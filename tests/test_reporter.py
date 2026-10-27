@@ -474,6 +474,7 @@ class RunDailyTest(unittest.TestCase):
         (self.clone / "scripts").mkdir()
         for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "report_layout.py", "reporter_key.py", "run_daily.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.clone / "scripts" / name)
+        shutil.copy2(ROOT / "versions.lock", self.clone / "versions.lock")
         (self.clone / "reporter").mkdir()
         (self.clone / "reporter" / "reporter.json").write_text(json.dumps(REPORTER))
         (self.clone / "nodes").mkdir()

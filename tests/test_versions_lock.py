@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_reports  # noqa: E402
 import check_versions_lock  # noqa: E402
 import daily_report  # noqa: E402
+from test_reporter import spki_pem  # noqa: E402
 
 SHA = "b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e"
 REPORTER = {"node_id": "e" * 64, "key_id": "f" * 64}
@@ -95,7 +96,10 @@ class ReporterNode:
                 pass
 
             def do_GET(self):
-                body = json.dumps({"announced_key_id": REPORTER["key_id"]}).encode()
+                if self.path.startswith(daily_report.LEDGER_ROUTE):
+                    body = json.dumps({"records": [], "node_pub_key_pem": spki_pem(REPORTER["key_id"])}).encode()
+                else:
+                    body = json.dumps({"announced_key_id": REPORTER["key_id"]}).encode()
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
