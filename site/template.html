@@ -35,6 +35,7 @@ dt { color: var(--muted); } dd { margin: 0; }
 td p { margin: .2rem 0; }
 .missed p { background: var(--o-none); padding: .5rem; }
 ul.days { columns: 12rem; }
+ul.attempts { margin: .2rem 0; padding-left: 1rem; }
 .gap { border-left: 3px solid var(--accent); padding-left: .8rem; }
 </style>
 </head>
@@ -100,8 +101,9 @@ counts for one day, and each says how many nodes it is out of: for example "<spa
 <code>nodes/&lt;node_id&gt;.json</code>, to the commitment list repository (its <code>nodes/README.md</code> lists
 the fields). The list's check must pass. From the next daily run the reporter asks your node. While the network is
 in its lab stage, only known operators are listed.</p>
-<p><strong>Leave:</strong> open a pull request that deletes your file. From the next run the reporter stops asking
-your node. Days already reported stay as they are: a report records what was asked and what came back, and is
+<p><strong>Leave:</strong> open a pull request that deletes your file and adds a leave mark,
+<code>nodes/left/&lt;node_id&gt;.json</code>, with the day it merges. From the next run the reporter stops asking
+your node, and this page lists it as left on that day. Days already reported stay as they are: a report records what was asked and what came back, and is
 never rewritten.</p>
 <p>The list is discovery, not evidence: an entry says how to ask a node, and the answers are the evidence.</p>
 
@@ -123,6 +125,7 @@ reporter's own node's check, and the raw files are linked so you can read exactl
 <h2 id="reports">The reports</h2>
 <p class="note">Newest first. A day with no run is marked missed, with the reason; a day is never silently absent.</p>
 $day_index
+$left
 $days
 </main>
 </body>

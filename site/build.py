@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Build the daily report page from reports/daily/ only.
 
-Usage: build.py [REPORTS] [--out DIR]   (default: reports/daily, _site)
+Usage: build.py [REPORTS] [--out DIR] [--left DIR]   (default: reports/daily, _site, nodes/left)
 
 Writes DIR/index.html, a static page (no scripts), and copies REPORTS to
-DIR/reports/daily/ byte for byte so every link on the page opens the raw file.
-Reading the reports is site/reports_model.py's job; a report it cannot read
-fails the build (exit 1) and nothing is written.
+DIR/reports/daily/ and the leave marks to DIR/nodes/left/ byte for byte so
+every link on the page opens the raw file. Reading them is
+site/reports_model.py's job; a report or mark it cannot read fails the build
+(exit 1) and nothing is written.
 
 Every count on the page reads "N of M listed nodes". Nodes are listed by node
 id, and the page says that order means nothing. No score, rank or total per
@@ -23,6 +24,7 @@ import reports_model  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 RAW = "reports/daily"
+LEFT = "nodes"
 WORDS = {1: "once", 2: "twice"}
 
 e = html.escape
@@ -45,8 +47,8 @@ def short(hex_id):
     return f'<code title="{e(hex_id)}">{e(hex_id[:12])}…</code>'
 
 
-def link(path, label):
-    return f'<a href="{e(RAW + "/" + path)}">{e(label)}</a>'
+def link(path, label, under=RAW):
+    return f'<a href="{e(under + "/" + path)}">{e(label)}</a>'
 
 
 def when(stamp):
@@ -54,15 +56,14 @@ def when(stamp):
 
 
 def attempts(answer):
+    """Every attempt that asked the question, earliest first, each with its own files."""
     n = len(answer.attempts)
-    asked = f"asked {WORDS.get(n, code(n) + ' times')}"
-    times = []
+    items = []
     for a in answer.attempts:
-        if a.at:
-            times.append(when(a.at))
-        elif a.window:
-            times.append(f"during the run, {when(a.window[0])} to {when(a.window[1])}")
-    return f"{asked}: {'; '.join(times)}" if times else asked
+        raw = [link(a.files["absence"], "why absent")] if "absence" in a.files else []
+        raw.append(link(a.files["verification"], "result line"))
+        items.append(f"<li>{when(a.at)} {outcome(a.outcome)} {code('by=' + a.by)} {' · '.join(raw)}</li>")
+    return f"asked {WORDS.get(n, code(n) + ' times')}<ul class=\"attempts\">{''.join(items)}</ul>"
 
 
 def answer_cell(a):
@@ -78,13 +79,15 @@ def answer_cell(a):
             parts.append(f"<dt>{key}</dt><dd>{code(a.details[key])}</dd>")
     parts.append(f"<dt>attempts</dt><dd>{attempts(a)}</dd>")
     parts.append("</dl>")
-    raw = [link(a.files["request"], "request")] if "request" in a.files else []
-    if "response" in a.files:
-        raw.append(link(a.files["response"], "response bytes"))
-    if "absence" in a.files:
-        raw.append(link(a.files["absence"], "why absent"))
-    raw.append(link(a.files["verification"], "result line"))
-    parts.append(f'<p class="raw">{" · ".join(raw)}</p>')
+    if a.asked_again:
+        parts.append('<p class="note">Answered when asked again after the run. The files the run settled for the day '
+                     'keep what the run got; the answer is in its own attempt.</p>')
+    if a.files:
+        raw = [link(a.files["request"], "request")]
+        if "response" in a.files:
+            raw.append(link(a.files["response"], "response bytes"))
+        raw.append(link(a.files["verification"], "result line"))
+        parts.append(f'<p class="raw">{" · ".join(raw)}</p>')
     parts.append(f"<details><summary>result line</summary>{code(a.line, 'line')}</details>")
     return "".join(parts)
 
@@ -98,8 +101,10 @@ def key_cell(node):
 
 
 def node_row(node):
+    fact = reports_model.layout.absence_fact(node.absent_running)
     cells = [
-        f'<th scope="row">{short(node.node_id)}<br>{link(node.files["NODE"], "NODE")} · {link(node.files["peer-key"], "peer-key.json")}</th>',
+        f'<th scope="row">{short(node.node_id)}<br>{link(node.files["NODE"], "NODE")} · {link(node.files["peer-key"], "peer-key.json")}'
+        + (f'<br>{code(fact, "fact")}' if fact else "") + "</th>",
         f"<td>{code(node.node_line)}</td>",
     ]
     for stem in reports_model.QUESTIONS:
@@ -141,43 +146,56 @@ def day_section(day):
     return f'<section class="day">{head}{intro}{summary(day)}{order}{table}</section>'
 
 
-def render(days):
+def left_section(left):
+    if not left:
+        return ""
+    items = "".join(f"<li>{short(m.node_id)} left on {when(m.date)}. {link(m.file, 'leave mark', LEFT)}</li>" for m in left)
+    return ('<h3 id="left">Nodes that left the list</h3><p class="note">Not asked from the day they left. '
+            f'Their days already reported stay below as they were.</p><ul class="left">{items}</ul>')
+
+
+def render(days, left=()):
     if days:
         body = "".join(day_section(d) for d in days)
     else:
         body = "<p>No report yet. The first run writes the first day here.</p>"
     index = "".join(f'<li><a href="#d{e(d.date)}">{when(d.date)}</a>{" (missed)" if d.missed else ""}</li>' for d in days)
     template = Template((HERE / "template.html").read_text(encoding="utf-8"))
-    return template.substitute(days=body, day_index=f"<ul class=\"days\">{index}</ul>" if days else "")
+    return template.substitute(days=body, day_index=f"<ul class=\"days\">{index}</ul>" if days else "",
+                               left=left_section(left))
 
 
-def build(reports, out):
-    days = reports_model.load(reports)  # raises before anything is written
-    page = render(days)
+def build(reports, out, left="nodes/left"):
+    days = reports_model.load(reports)  # raise before anything is written
+    marks = reports_model.load_left(left)
+    page = render(days, marks)
     out = Path(out)
     if out.exists():
         shutil.rmtree(out)
     shutil.copytree(reports, out / RAW)
+    if marks:
+        shutil.copytree(left, out / LEFT / "left")
     (out / "index.html").write_text(page, encoding="utf-8")
     return days
 
 
 def main(argv):
     args = argv[1:]
-    out = "_site"
-    if "--out" in args:
-        i = args.index("--out")
-        out = args[i + 1]
-        del args[i:i + 2]
+    opts = {"--out": "_site", "--left": "nodes/left"}
+    for opt in opts:
+        if opt in args:
+            i = args.index(opt)
+            opts[opt] = args[i + 1]
+            del args[i:i + 2]
     reports = Path(args[0] if args else "reports/daily")
     try:
-        days = build(reports, out)
+        days = build(reports, opts["--out"], opts["--left"])
     except reports_model.ReportError as err:
         for p in err.problems:
             print(p, file=sys.stderr)
         print(f"{reports}: the page was not built", file=sys.stderr)
         return 1
-    print(f"{out}/index.html: {len(days)} day{'' if len(days) == 1 else 's'} from {reports}")
+    print(f"{opts['--out']}/index.html: {len(days)} day{'' if len(days) == 1 else 's'} from {reports}")
     return 0
 
 
