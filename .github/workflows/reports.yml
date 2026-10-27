@@ -1,0 +1,30 @@
+name: reports
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The watchdog: the reporter runs at 06:00 UTC on its own node and pushes its
+  # report. At 09:00 UTC today's report (or its MISSED mark) must be here, so a
+  # reporter that stopped altogether turns this check red. It reads only this
+  # repository; it asks no node.
+  schedule:
+    - cron: "0 9 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reporter tests
+        if: github.event_name != 'schedule'
+        run: python3 -m unittest discover -s tests -v
+      - name: Check the reports
+        if: github.event_name != 'schedule'
+        run: python3 scripts/check_reports.py reports/daily
+      - name: No day is silently missing
+        if: github.event_name == 'schedule'
+        run: python3 scripts/check_reports.py reports/daily --through "$(date -u +%F)"
