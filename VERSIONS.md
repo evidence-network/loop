@@ -1,8 +1,9 @@
 # Versions
 
 [`versions.lock`](versions.lock) is the only place the loop's pins change: the
-lab host build, the capsules plugin, the reporter, and the capsulectl and
-evidencebook a verifier re-checks saved answers with. One pin per line:
+lab host build, the capsules plugin and the `evidence-request` crate it
+verifies answers with, the reporter, and the capsulectl and evidencebook a
+verifier re-checks saved answers with. One pin per line:
 
 ```
 <name> <repository> <ref>
@@ -23,8 +24,8 @@ Change that one line and open a pull request, for example when capsules 0.1.5
 is tagged:
 
 ```diff
--capsules Mesh-LLM/capsules 39027313c78db7aa711dfbee4897eef39540cf36
-+capsules Mesh-LLM/capsules v0.1.5
+-capsules Mesh-LLM/capsules-plugin 39027313c78db7aa711dfbee4897eef39540cf36
++capsules Mesh-LLM/capsules-plugin v0.1.5
 ```
 
 When mesh-llm #2620 merges, the lab host build becomes a single main commit:

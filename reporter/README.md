@@ -51,9 +51,9 @@ says `listed_key=match` or `listed_key=differs`.
 
 Needs, on the reporter node (not on a laptop or a CI runner):
 
-1. The lab host build, **mesh-llm main b5ed6bd8 + PR #2620** (it announces
-   plugin keys; release 0.78.1 does not), and **capsules 0.1.5**, installed as
-   in `JOIN-LAB.md`.
+1. The lab host build and the capsules plugin at the pins in
+   [`versions.lock`](../versions.lock) (the host build must announce plugin
+   keys; release mesh-llm 0.78.1 does not), installed as in `JOIN-LAB.md`.
 2. The node joined to the lab mesh as a full node, not `--client` (a client
    node gets a new id at every start, and keys are bound to node ids), and
    connected to the nodes it asks: a host learns announced keys from its peers.
