@@ -15,11 +15,14 @@ recomputes the capsule_id from them on its own. The step checks, on those bytes:
   model           model_attestation is present and names the model the producer gave
   key             key_id is the node's public key
 
+The producer envelope's signature is not verified in a second language (Class 1
+does not include it); every finding lists that under not_checked.
+
 --sealed CAPSULE skips sealing and checks a capsule capsule-emit sealed earlier
 the same way (the planted-failure tests use it).
 
 Tools come from steps/01-seal.setup.sh, installed under $LOOP_TOOLS/01-seal
-(default ~/.cache/evidence-network-loop/01-seal). Standard library only.
+(default $PWD/.tools/01-seal, as loop.sh exports it). Standard library only.
 """
 import argparse
 import base64
@@ -38,7 +41,7 @@ import finding  # noqa: E402
 PINNED = ["capsule-emit", "aac-go"]
 GO_MODULE = "github.com/action-state-group/agent-action-capsule/go"
 ASSERTS = ("a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the "
-           "AAC Go verifier, its capsule_id recomputes, its effect reads effect_attestation "
+           "AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its effect reads effect_attestation "
            "runtime_claimed (sealed in the producer's own process) and it carries model_attestation")
 # What the step tells the producer about the model; model_attestation must carry it back.
 MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
@@ -47,6 +50,10 @@ MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
 REGISTERED = ("gate_executed", "runtime_claimed", "host_served_observed")
 IN_PROCESS_CLASS = "runtime_claimed"
 SETUP = "none: steps/01-seal.setup.sh has not installed it"
+SIGNATURE = {"what": "the producer envelope signature, verified in a second language",
+             "why": "Class 1 does not include it and the pinned Go verifier command has no envelope mode; "
+                    "only key_id is matched to the node's key",
+             "issue": "to be filed"}
 
 SEAL = r"""
 import json, sys
@@ -64,7 +71,7 @@ with open(sys.argv[3], "w", encoding="utf-8") as f:
 
 
 def tools():
-    base = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "01-seal"
+    base = Path(os.environ.get("LOOP_TOOLS") or Path.cwd() / ".tools") / "01-seal"
     return base / "venv" / "bin" / "python", base / "bin" / "cross_language"
 
 
@@ -196,7 +203,7 @@ def main(argv=None):
 
     def write(result, proof, detail, nc=()):
         return finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
-                             proof=proof, detail=detail, not_checked=nc, started=started)
+                             proof=proof, detail=detail, not_checked=[*nc, SIGNATURE], started=started)
 
     if not_checked:
         write("NOT_CHECKED", [], f"node {node}: a pinned tool is missing or not the pin", not_checked)
@@ -226,8 +233,7 @@ def main(argv=None):
     failed = [n for n, c in checks.items() if not c["ok"]]
     detail = (f"node {node}: " + ("; ".join(f"{n}: {checks[n]['detail']}" for n in failed) if failed else
               "Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, "
-              "model_attestation present, key_id is the node's key. The producer envelope's "
-              "signature is not verified here (Class 1 does not include it)."))
+              "model_attestation present, key_id is the node's key"))
     write("FAIL" if failed else "PASS", ["capsule.json", "verifier.json", "checks.json"], detail)
     return 0
 

@@ -20,7 +20,7 @@ STEP = ROOT / "steps" / "01-seal"
 FIXTURES = ROOT / "tests" / "fixtures" / "step01"
 POPULATION = FIXTURES / "population" / "rehearsal"
 SEALED = FIXTURES / "sealed-capsule.json"
-TOOLS = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "01-seal"
+TOOLS = Path(os.environ.get("LOOP_TOOLS") or Path.cwd() / ".tools") / "01-seal"
 PYTHON, VERIFIER = TOOLS / "venv" / "bin" / "python", TOOLS / "bin" / "cross_language"
 SETUP = "run steps/01-seal.setup.sh (needs network) to install it"
 
@@ -72,6 +72,9 @@ class Step01SealTest(unittest.TestCase):
         self.assertEqual(capsule["effect"]["effect_attestation"], "runtime_claimed")
         self.assertEqual(go_capsule_id(capsule), capsule["capsule_id"])
         self.assertTrue(all(c["ok"] for c in self.checks().values()))
+        self.assertEqual([n["what"] for n in r["not_checked"]],
+                         ["the producer envelope signature, verified in a second language"])
+        self.assertEqual(r["not_checked"][0]["issue"], "to be filed")
 
     def test_the_fixture_capsule_verifies(self):
         need(VERIFIER)
@@ -135,7 +138,8 @@ class Step01SealTest(unittest.TestCase):
         env = dict(os.environ, LOOP_TOOLS=str(Path(self.tmp.name) / "no-tools"))
         r = self.run_step(env=env)
         self.assertEqual(r["result"], "NOT_CHECKED")
-        self.assertEqual(sorted(n["what"] for n in r["not_checked"]), ["aac-go", "capsule-emit"])
+        self.assertEqual(sorted(n["what"] for n in r["not_checked"]),
+                         ["aac-go", "capsule-emit", "the producer envelope signature, verified in a second language"])
 
 
 if __name__ == "__main__":
