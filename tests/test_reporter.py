@@ -308,9 +308,27 @@ class ReporterTest(unittest.TestCase):
         stale = self.out / "2026-10-27" / node_id(1)
         stale.mkdir(parents=True)
         (stale / "NODE").write_text("joined, discloses nothing\n")
+        ahead = self.out / "2026-11-02" / node_id(1)  # a run under a clock that ran ahead
+        ahead.mkdir(parents=True)
+        self.assertEqual(self.run_reporter("2026-10-30"), 0)
+        for day in ("2026-10-28", "2026-10-29"):  # the gap before today is still marked
+            self.assertIn("the reporter did not run", (self.out / day / "MISSED").read_text())
+        for day in ("2026-10-27", "2026-11-02"):
+            self.assertEqual([p.name for p in (self.out / day).iterdir()], ["MISSED"])
+            self.assertIn("stopped before it finished", (self.out / day / "MISSED").read_text())
+        self.assertEqual(check_reports.check(self.out, check_reports.dt.date(2026, 10, 30))[0], [])
+
+    def test_a_run_stopped_before_run_json_is_replaced_the_next_day(self):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-26"), 0)
+        self.assertEqual(self.run_reporter("2026-10-27"), 0)
+        # Stopped after README.md, mid-way through writing RUN.json.
+        day = self.out / "2026-10-27"
+        (day / "RUN.json").replace(day / "RUN.json.partial")
         self.assertEqual(self.run_reporter("2026-10-28"), 0)
-        self.assertEqual([p.name for p in (self.out / "2026-10-27").iterdir()], ["MISSED"])
-        self.assertIn("stopped before it finished", (self.out / "2026-10-27" / "MISSED").read_text())
+        self.assertEqual([p.name for p in day.iterdir()], ["MISSED"])
         self.assertEqual(check_reports.check(self.out, check_reports.dt.date(2026, 10, 28))[0], [])
 
     def test_the_console_must_sign_with_the_reporter_key(self):
@@ -506,6 +524,18 @@ class RunDailyTest(unittest.TestCase):
         done = self.run_daily()
         self.assertEqual(done.returncode, 1)
         self.assertIn("outside reports/daily", done.stderr)
+        self.assertEqual(self.origin_head(), before)
+
+    def test_a_file_added_then_deleted_in_local_commits_is_not_pushed(self):
+        before = self.origin_head()
+        (self.clone / "secret.txt").write_text("not for the repo\n")
+        self.git(self.clone, "add", "secret.txt")
+        self.git(self.clone, "commit", "--quiet", "-m", "add")
+        self.git(self.clone, "rm", "--quiet", "secret.txt")
+        self.git(self.clone, "commit", "--quiet", "-m", "remove")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("secret.txt", done.stderr)
         self.assertEqual(self.origin_head(), before)
 
     def test_a_failed_commit_fails_the_run(self):

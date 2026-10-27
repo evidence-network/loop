@@ -33,7 +33,9 @@ if [ "$status" -eq 0 ]; then msg="report: daily $day"; else msg="report: $day mi
 if ! git diff --cached --quiet; then
   git commit --quiet -s -m "$msg" || exit 1
 fi
-other="$(git diff --name-only origin/main HEAD -- . ':!reports/daily')" || exit 1
+# Every outgoing commit, not just the net diff: a file added then deleted
+# would still be pushed in history.
+other="$(git log -m --format= --name-only origin/main..HEAD -- . ':!reports/daily')" || exit 1
 if [ -n "$other" ]; then
   echo "local commits touch files outside reports/daily, not pushing:" >&2
   echo "$other" >&2

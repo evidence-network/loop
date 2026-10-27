@@ -203,11 +203,13 @@ def report_days(out):
 
 
 def mark_missed(out, today, why):
-    """Write MISSED for every earlier day with no finished report.
+    """Write MISSED for every day but today that has no finished report.
 
-    That is each day since the last report that has no directory, and each
-    earlier day whose run stopped before writing RUN.json, which would
-    otherwise fail check_reports on every later run.
+    That is each day between the last earlier report and today that has no
+    directory, and each
+    other day (earlier, or later after a clock that ran ahead) whose run
+    stopped before writing RUN.json, which would otherwise fail
+    check_reports on every later run. Today's is replaced by today's run.
     """
     days = report_days(out)
     if not days:
@@ -215,12 +217,15 @@ def mark_missed(out, today, why):
     marked = []
     for name in days:
         d = out / name
-        if name < today.isoformat() and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
+        if name != today.isoformat() and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
             shutil.rmtree(d)
             d.mkdir()
             (d / "MISSED").write_text(f"no report for {name}: its run stopped before it finished\n")
             marked.append(name)
-    day = dt.date.fromisoformat(days[-1]) + dt.timedelta(days=1)
+    earlier = [name for name in days if name < today.isoformat()]
+    if not earlier:
+        return marked
+    day = dt.date.fromisoformat(earlier[-1]) + dt.timedelta(days=1)
     while day < today:
         d = out / day.isoformat()
         d.mkdir(parents=True)
@@ -277,12 +282,16 @@ def run(args):
         "questions": [QUESTION_NAMES[s] for s in QUESTIONS],
         "asked": sorted(lines),
     }
-    (day_dir / "RUN.json").write_text(json.dumps(record, indent=2) + "\n")
     readme = [f"# Daily report {today.isoformat()}", "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
               " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.", ""]
     readme += [f"- `{node_id}`: {line}" for node_id, line in sorted(lines.items())] or ["- no node is listed"]
     (day_dir / "README.md").write_text("\n".join(readme) + "\n")
+    # RUN.json marks the day finished, so it goes last and appears whole: a run
+    # stopped before this rename leaves no RUN.json, and the next run replaces it.
+    tmp = day_dir / "RUN.json.partial"
+    tmp.write_text(json.dumps(record, indent=2) + "\n")
+    tmp.replace(day_dir / "RUN.json")
     return 0
 
 
