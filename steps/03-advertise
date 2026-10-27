@@ -233,9 +233,11 @@ def check_node(population, out, node, carrier, live):
     return rec, proofs
 
 
-def openssl_version():
-    r = subprocess.run(["openssl", "version"], capture_output=True, text=True)
-    return r.stdout.strip()
+def tool_versions():
+    """The runner's openssl and git, which the step uses (base-image tools, not versions.lock components)."""
+    out = [subprocess.run([t, a], capture_output=True, text=True).stdout.strip()
+           for t, a in (("openssl", "version"), ("git", "--version"))]
+    return " and ".join(out)
 
 
 def main(argv=None):
@@ -265,7 +267,7 @@ def main(argv=None):
         if not live:
             git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")
             proof.append("carrier.bundle")
-    verification = {"tool": f"scripts/check_commitment.py with {openssl_version()}", "nodes": records}
+    verification = {"tool": f"scripts/check_commitment.py with {tool_versions()}", "nodes": records}
     (out / "verification.json").write_text(json.dumps(verification, indent=2, sort_keys=True) + "\n")
     proof.append("verification.json")
 
@@ -277,7 +279,7 @@ def main(argv=None):
                    for r in records if r["result"] == "NOT_CHECKED"]
     checked = [r for r in records if r["result"] == "PASS"]
     for r in checked:
-        not_checked.append({"what": f"{r['name']}: the stapled history_card/1 signature verifies",
+        not_checked.append({"what": f"{r['name']}: the stapled history_card/1 verifies",
                             "why": "its bytes, digest, profile and responder are checked; its signature is not, "
                                    "as no pinned history_card/1 verifier is callable from the loop"
                                    + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),
@@ -300,8 +302,7 @@ def main(argv=None):
         + (f", inputs {r['inputs']}" if "inputs" in r else "")
         for r in records)
     finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=[], proof=proof,
-                  detail=detail + f". Verified with {openssl_version()} and git; neither is a "
-                                  "versions.lock component.",
+                  detail=detail + f". Runner tools: {tool_versions()} (not versions.lock components).",
                   not_checked=not_checked, started=started)
     return 0
 

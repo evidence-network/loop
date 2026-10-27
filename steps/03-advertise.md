@@ -36,8 +36,10 @@ changes with it.
 PASS means, for every node: all required fields present and well formed, no
 count, the signature verifies under the key in `spki`, the policy digest is
 the sha256 of the policy bytes, the policy is signed by the same key, and the
-staple and checkpoint bytes match their digests. Two parts are listed as
-`not_checked` on every PASS, because nothing pinned verifies them here yet:
+staple and checkpoint bytes match their digests. The result covers what the
+step asserts, and the step does not assert that the staple verifies. Two
+parts are listed as `not_checked` on every PASS, because nothing pinned
+verifies them here yet:
 
 - the stapled `history_card/1`'s own signature (its bytes, digest, profile,
   derivation and responder are checked);
@@ -105,9 +107,9 @@ A commitment is refused when, anywhere in its own members:
 - a value is a JSON number, or a string made only of decimal digits.
 
 No field above is a number; a duration is a string. The `bytes` of the
-checkpoint and of the staple are not scanned: they are signed artifacts the
-commitment carries whole, and a checkpoint or a history card may hold sizes
-of its own. The commitment itself never states one.
+checkpoint and of the staple are not scanned, by ruling: they are signed
+artifacts the commitment carries whole, and a checkpoint or a history card
+may hold sizes of its own. The commitment itself never states one.
 
 ## The check
 

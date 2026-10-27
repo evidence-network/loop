@@ -100,7 +100,7 @@ class StepTest(unittest.TestCase):
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")
         # The staple's signature and the checkpoint are named as not checked, never passed silently.
         whats = [x["what"] for x in f["not_checked"]]
-        self.assertIn("alice: the stapled history_card/1 signature verifies", whats)
+        self.assertIn("alice: the stapled history_card/1 verifies", whats)
         self.assertIn("alice: the stapled checkpoint attestation verifies", whats)
         # The bytes fetched back are the bytes in the carrier bundle's HEAD.
         repo = self.tmp / "clone"
