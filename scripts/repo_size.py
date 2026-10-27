@@ -57,6 +57,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_nodes  # noqa: E402
 import daily_report  # noqa: E402
+import reporter_key  # noqa: E402
 
 YEAR = 365
 STEMS = ("checkpoints", "history_card")
@@ -162,7 +163,12 @@ class FakeConsole:
                 self.wfile.write(body)
 
             def do_GET(self):
-                peer = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["peer"][0]
+                url = urllib.parse.urlparse(self.path)
+                if url.path == daily_report.LEDGER_ROUTE:
+                    der = reporter_key.ED25519_SPKI + bytes.fromhex(REPORTER["key_id"])
+                    pem = "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PUBLIC KEY-----\n"
+                    return self.reply(200, json.dumps({"records": [], "node_pub_key_pem": pem}).encode())
+                peer = urllib.parse.parse_qs(url.query)["peer"][0]
                 key = sha("key", fake.index[peer]) if peer in fake.index else None
                 self.reply(200, json.dumps({"announced_key_id": key}).encode())
 
