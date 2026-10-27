@@ -50,21 +50,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          POPULATION: rehearsal
         run: |
-          # The repository that owns each step's component.
+          # The repository that owns each step's component, by population. Live step 12 probes
+          # through the reporter's mesh_evidence_request path until capsules-plugin#53.
           declare -A OWNER=(
-            [01]=action-state-group/agent-action-capsule
-            [02]=action-state-group/evidencebook
-            [03]=evidence-network/loop
-            [12]=action-state-group/evidencebook
+            [rehearsal:01]=action-state-group/agent-action-capsule
+            [rehearsal:02]=action-state-group/evidencebook
+            [rehearsal:03]=evidence-network/loop
+            [rehearsal:12]=action-state-group/evidencebook
+            [live:01]=action-state-group/agent-action-capsule
+            [live:02]=action-state-group/evidencebook
+            [live:03]=evidence-network/loop
+            [live:12]=Mesh-LLM/capsules-plugin
           )
           [ -f loop-summary.txt ] || exit 0
           while read -r nn name result <&3; do
             [ "$result" = FAIL ] || continue
             label=loop-step-$nn
-            owner=${OWNER[$nn]:-unknown}
+            owner=${OWNER[$POPULATION:$nn]:-unknown}
             gh label create "$label" --color B60205 --description "loop step $nn failed" --force
-            body="Step $nn ($name) is FAIL on the nightly rehearsal run: $RUN_URL
+            body="Step $nn ($name) is FAIL on the nightly $POPULATION run: $RUN_URL
           The finding is in the run's findings artifact, under $nn-$name/finding.json.
           Owning component repository: $owner."
             n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number')

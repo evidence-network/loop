@@ -229,8 +229,11 @@ class BranchProtectionTest(unittest.TestCase):
             jobs |= set(re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", body, re.M))
         return jobs
 
+    # Jobs that run on PR but are not yet required; em-oss removes each when its gate is decided.
+    NOT_YET_REQUIRED = {"loop"}
+
     def test_required_checks_are_the_pull_request_jobs(self):
-        self.assertEqual(self.required_checks(), self.pull_request_jobs())
+        self.assertEqual(self.required_checks(), self.pull_request_jobs() - self.NOT_YET_REQUIRED)
 
     def test_job_names_are_unique(self):
         names = []
