@@ -32,7 +32,7 @@ python3 scripts/check_reports.py reports/daily || exit 1
 # checks, so a hit is caught here, before history, not after. The day's bytes
 # are held on this node, outside the clone, and the day is recorded as a run
 # that could not finish (MISSED, with why); nothing is staged or committed.
-# Exit 3. The check comes with en-public-flip-ready; until then this is inert.
+# Exit 3. The check is scripts/check_personal_data.py (the personal-data job).
 if [ -f scripts/check_personal_data.py ] && ! python3 -B scripts/check_personal_data.py reports/daily >&2; then
   held="${LOOP_HELD_DIR:-$HOME/.local/share/loop/held}/$day-$(date -u +%H%M%S)"
   mkdir -p "$(dirname "$held")" || exit 1
