@@ -18,5 +18,8 @@ jobs:
           python3 scripts/check_nodes.py tests/nodes/good
           ! python3 scripts/check_nodes.py tests/nodes/bad-key
           ! python3 scripts/check_nodes.py tests/nodes/dup
+          ! python3 scripts/check_nodes.py tests/nodes/no-consent
+          ! python3 scripts/check_nodes.py tests/nodes/email-contact
+          ! python3 scripts/check_nodes.py tests/nodes/phone-contact
       - name: Check the commitment list
         run: python3 scripts/check_nodes.py nodes

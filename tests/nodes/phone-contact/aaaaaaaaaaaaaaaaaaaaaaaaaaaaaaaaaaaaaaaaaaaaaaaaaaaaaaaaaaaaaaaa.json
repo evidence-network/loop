@@ -1,0 +1,14 @@
+{
+  "node_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "key_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "operator": "+1 555 010 0199",
+  "consent": "I run this node. The evidence network's daily reporter, signing with the key in reporter/reporter.json, may ask it checkpoints and history_card/1 once a day. What it answers, or that it did not answer, is published in the evidence-network/loop repository, including after that repository is public. I leave by removing this entry by pull request: the asks stop from the next run, and reports already published stay.",
+  "mesh": "lab",
+  "ask_route": "mesh",
+  "disclosure": {
+    "policy": "counterparties",
+    "stranger_safe": ["checkpoints", "history_card/1"]
+  },
+  "host_build": "mesh-llm lab build (main + #2620)",
+  "plugin_version": "capsules 0.1.5"
+}
