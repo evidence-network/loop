@@ -8,6 +8,9 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -432,6 +435,108 @@ class OfflineRetryTest(unittest.TestCase):
         first.rmdir()
         (node / "attempts").rmdir()
         refused(f"{DAY}/{node_id(1)}: no attempts/: every answer is kept with the attempt that got it")
+
+
+# Stand-ins for the reporter's scripts in a scratch clone: the run writes a day
+# whose answer bytes hold an email address, and the reports check passes.
+STUB_RUN = """import sys
+from pathlib import Path
+args = sys.argv[1:]
+day = args[args.index("--date") + 1]
+d = Path("reports/daily") / day / ("1" * 64)
+if args[0] == "ask":
+    d = d / "attempts" / "20261028T150000Z"
+d.mkdir(parents=True, exist_ok=True)
+(d / "checkpoints.response.json").write_text('{"note": "reach me at someone@mail.invalid.org"}\\n')
+"""
+FAILS = "import sys\nprint('reports/daily/x: email', file=sys.stderr)\nsys.exit(1)\n"
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
+class PersonalDataGuardTest(unittest.TestCase):
+    """run_daily.sh and ask_again.sh push straight to main: a personal-data hit must never be committed."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.held = base / "held"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "CAPSULES_PEER_KEYS"))}
+        self.env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t",
+                        GIT_COMMITTER_EMAIL="t@example.com", LOOP_HELD_DIR=str(self.held), HOME=str(base))
+        self.remote = base / "remote.git"
+        self.git("init", "-q", "--bare", "-b", "main", str(self.remote), cwd=base)
+        self.clone = base / "loop"
+        self.git("clone", "-q", str(self.remote), str(self.clone), cwd=base)
+        (self.clone / "scripts").mkdir()
+        (self.clone / "reports" / "daily").mkdir(parents=True)
+        (self.clone / "reports" / "daily" / ".gitkeep").write_text("")
+        for name in ("run_daily.sh", "ask_again.sh"):
+            shutil.copy(ROOT / "scripts" / name, self.clone / "scripts" / name)
+        (self.clone / "scripts" / "daily_report.py").write_text(STUB_RUN)
+        (self.clone / "scripts" / "check_reports.py").write_text("")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "base")
+        self.git("push", "-q", "origin", "HEAD:main")
+        self.git("branch", "-q", "--set-upstream-to=origin/main")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", *args], cwd=cwd or self.clone, env=self.env, check=True,
+                              capture_output=True, text=True).stdout
+
+    def today(self):
+        return subprocess.run(["date", "-u", "+%F"], capture_output=True, text=True, check=True).stdout.strip()
+
+    def script(self, name, *args):
+        return subprocess.run(["bash", f"scripts/{name}", *args], cwd=self.clone, env=self.env,
+                              capture_output=True, text=True)
+
+    def nothing_staged_or_committed(self, head):
+        self.assertEqual(self.git("rev-parse", "HEAD").strip(), head)
+        self.assertEqual(self.git("rev-parse", "origin/main").strip(), head)
+        self.assertEqual(self.git("ls-remote", str(self.remote), "main").split()[0], head)
+        self.assertEqual(self.git("diff", "--cached", "--name-only"), "")
+
+    def test_without_the_check_the_run_commits_as_before(self):
+        head = self.git("rev-parse", "HEAD").strip()
+        result = self.script("run_daily.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(self.git("rev-parse", "HEAD").strip(), head)
+
+    def test_a_personal_data_hit_in_the_run_is_held_and_nothing_is_committed(self):
+        (self.clone / "scripts" / "check_personal_data.py").write_text(FAILS)
+        self.git("add", "scripts/check_personal_data.py")
+        self.git("commit", "-q", "-m", "check")
+        self.git("push", "-q")
+        head = self.git("rev-parse", "HEAD").strip()
+        result = self.script("run_daily.sh")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.nothing_staged_or_committed(head)
+        day = self.clone / "reports" / "daily" / self.today()
+        self.assertEqual([p.name for p in day.iterdir()], ["MISSED"])  # a run that could not finish
+        self.assertIn("could not finish", (day / "MISSED").read_text())
+        held = list(self.held.iterdir())
+        self.assertEqual(len(held), 1)
+        self.assertTrue((held[0] / ("1" * 64) / "checkpoints.response.json").is_file())
+        self.assertNotIn("mail.invalid", "".join(p.read_text() for p in day.rglob("*") if p.is_file()))
+
+    def test_a_personal_data_hit_on_an_ask_again_is_held_and_nothing_is_committed(self):
+        day = self.today()
+        node = self.clone / "reports" / "daily" / day / ("1" * 64)
+        node.mkdir(parents=True)
+        (node / "NODE").write_text("joined, discloses nothing\n")
+        (self.clone / "scripts" / "check_personal_data.py").write_text(FAILS)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "day and check")
+        self.git("push", "-q")
+        head = self.git("rev-parse", "HEAD").strip()
+        result = self.script("ask_again.sh", "1" * 64)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.nothing_staged_or_committed(head)
+        self.assertEqual(self.git("status", "--porcelain"), "")  # the day is exactly as committed
+        self.assertEqual(len(list(self.held.rglob("checkpoints.response.json"))), 1)
 
 
 if __name__ == "__main__":

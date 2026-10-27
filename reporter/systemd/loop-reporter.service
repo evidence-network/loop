@@ -15,4 +15,5 @@ Environment=LOOP_CONSOLE=http://127.0.0.1:3131
 Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
 ExecStart=%h/loop/scripts/run_daily.sh
 # Exit 2 is a missed day, already committed: not a unit failure to retry.
+# Exit 3 (personal data held, nothing committed) stays a failure: someone looks.
 SuccessExitStatus=2

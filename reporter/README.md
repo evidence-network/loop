@@ -7,12 +7,17 @@ It asks nothing else. See [reports/README.md](../reports/README.md) for what a
 day's report holds.
 
 - `reporter.json`: the reporter's mesh node id and its capsules plugin key
-  (Ed25519 public key, 64 hex). **Placeholder until the reporter node exists:**
+  (Ed25519 public key, 64 hex), and `retry_after_s`: when a run asks a node
+  that gave no answer again, in seconds after the run starts (now 3600, 10800,
+  21600: three more attempts over six hours; empty or absent, one attempt). **Placeholder until the reporter node exists:**
   all zeros, and `daily_report.py run` refuses to run with it. Fill it on the
   reporter node with `scripts/reporter_key.py --write reporter/reporter.json`
   and open a pull request.
 - `systemd/`: the timer that runs `scripts/run_daily.sh` once a day on the
-  reporter node. Not installed anywhere yet.
+  reporter node, and one that runs `scripts/ask_again.sh` after it. Not
+  installed anywhere yet.
+- `workflows/ask-again.yml`: a manual GitHub dispatch for asking again. Inert
+  here; see [Asking again](#asking-again).
 
 ## The key
 
@@ -84,8 +89,29 @@ systemctl --user enable --now loop-reporter.timer
 loginctl enable-linger "$USER"
 ```
 
-The timer runs at 06:00 UTC (and at the next boot if the node was down then).
+The timer runs at 00:30 UTC (and at the next boot if the node was down then).
+A run asks nodes that gave no answer again for up to six hours, then commits.
 A day it did not run gets a `MISSED` mark from the next run, a run that cannot
 reach its own node commits `MISSED` for that day, and the `reports` workflow's
 09:00 UTC watchdog fails when today has neither a report nor a mark, or
 when `reporter.json` names a key but no report exists at all.
+
+## Asking again
+
+A node that was offline for the whole run can be asked again once the day's
+run has settled (before then, `ask` refuses: the run is still asking):
+
+```sh
+scripts/ask_again.sh <node_id>     # one node
+scripts/ask_again.sh               # every node with a question unanswered today
+```
+
+It asks only the questions the node has not answered today (a signed refusal
+is an answer), adds one attempt directory per node, and commits. Nothing
+already written changes. Two hooks call it; neither is enabled:
+
+- `systemd/loop-reporter-ask.timer` (12:00, 18:00 and 23:00 UTC), installed like
+  the daily timer;
+- `workflows/ask-again.yml`, a `workflow_dispatch` that needs a self-hosted
+  runner on the reporter node labelled `loop-reporter`. It lives outside
+  `.github/workflows` until that runner exists.

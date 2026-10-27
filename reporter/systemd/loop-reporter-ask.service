@@ -1,0 +1,17 @@
+# Ask every node with a question unanswered today again. Install beside
+# loop-reporter.* on the reporter node, not here; nothing installs or enables it.
+#   cp reporter/systemd/loop-reporter-ask.* ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now loop-reporter-ask.timer
+[Unit]
+Description=evidence-network loop: ask again the nodes absent today
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/loop
+Environment=LOOP_CONSOLE=http://127.0.0.1:3131
+Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
+ExecStart=%h/loop/scripts/ask_again.sh
+# Exit 2: the reporter could not reach its own node; nothing was written.
+SuccessExitStatus=2

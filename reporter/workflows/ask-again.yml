@@ -1,0 +1,32 @@
+# Ask again from GitHub: a manual dispatch that runs scripts/ask_again.sh on the
+# reporter node. Kept here, outside .github/workflows, so it is inert: a GitHub
+# runner cannot reach the mesh, and this needs a self-hosted runner on the
+# reporter node labelled `loop-reporter`. To enable, register that runner and
+# copy this file to .github/workflows/ by pull request.
+name: ask again
+
+on:
+  workflow_dispatch:
+    inputs:
+      node:
+        description: "Node id to ask again (empty: every node with a question unanswered today)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  ask:
+    runs-on: [self-hosted, loop-reporter]
+    steps:
+      - name: Ask again from the reporter's clone
+        env:
+          NODE: ${{ inputs.node }}
+        run: |
+          cd "$HOME/loop"
+          case "$NODE" in
+            "") exec scripts/ask_again.sh ;;
+            *[!0-9a-f]*) echo "node must be a 64-hex node id" >&2; exit 1 ;;
+            *) exec scripts/ask_again.sh "$NODE" ;;
+          esac
