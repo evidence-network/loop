@@ -1,0 +1,14 @@
+{
+  "population": "rehearsal",
+  "nodes": [
+    {
+      "name": "alice",
+      "key_dir": "tests/fixtures/step12/population/keys/alice"
+    },
+    {
+      "name": "bob",
+      "key_dir": "tests/fixtures/step12/population/keys/bob"
+    }
+  ],
+  "rail": "mock"
+}

@@ -23,3 +23,7 @@ evidencebook action-state-group/evidencebook v0.8.1
 # What a verifier re-checks saved answers with, offline.
 # step 02 book: the log evidencebook embeds, as the crate step 02's driver locks it.
 checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1
+# step 12 join
+# The capsulectl-book plugin the join creates and probes the book with, built
+# for capsulectl v0.1.0-rc23. `book doctor --probe` (evidencebook#134) is not in it.
+capsulectl-book action-state-group/evidencebook capsulectl/v0.1.0-rc23

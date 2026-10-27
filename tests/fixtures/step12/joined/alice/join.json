@@ -1,0 +1,37 @@
+{
+  "capsulectl": "capsulectl v0.1.0-rc23 (commit 8214f4be2c08b1ccb534724b6a285ca22f8bda49)",
+  "did": [
+    "bound the node key to a controller",
+    "created the book",
+    "wrote the commitment",
+    "probed the node as a stranger"
+  ],
+  "doctor_probe": false,
+  "join": "evidence-network/join.sh",
+  "status": [
+    {
+      "state": "self_attested",
+      "what": "every record in the book is sealed by the node key alone"
+    },
+    {
+      "state": "unwitnessed",
+      "what": "no witness receipt is held for the book's checkpoint: no witness endpoint is configured"
+    },
+    {
+      "state": "unbound",
+      "what": "the controller binding 74f1a59607a8fbb295f4d9d985b2e6b250c047800773372c5735fdef0d0f9f39 is signed by both keys, but no released verifier checks controller-binding/0, so a verifier holds the key unbound"
+    },
+    {
+      "state": "unchecked",
+      "what": "the commitment is in a provisional format until step 03 publishes its format and checker"
+    },
+    {
+      "state": "unshared",
+      "what": "a stranger receives checkpoints and history_card/1 only; history segments go to counterparties, adjudications to their subjects"
+    },
+    {
+      "state": "unchecked",
+      "what": "capsulectl book doctor --probe is not in the installed capsulectl-book; the stranger probe ran on the public path without it"
+    }
+  ]
+}

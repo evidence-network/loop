@@ -1,0 +1,359 @@
+#!/usr/bin/env python3
+"""Step 12, Join: one command on the pinned release joins a node, and a stranger's probe of it verifies.
+
+Usage: 12-join --population DIR --out DIR [--console URL]
+
+The probe backend is the population's choice (`probe` in population.json;
+by default `doctor` for rehearsal, `reporter` for live).
+
+`doctor` (nodes this machine can join): for each node, runs join.sh (bind the
+node key to a controller, create the book, write the commitment, probe the
+node as a stranger), then checks what join.sh wrote:
+
+  - the probe's answers (checkpoints, then history_card/1) verify under the
+    node key and checkpoint key the commitment advertises, checked by the
+    pinned capsulectl-book (`book request --for ... --response`), on the
+    answer bytes;
+  - the answers match the advertised policy: the node answers under the
+    policy whose digest it advertises, and both public subjects come back as
+    artifacts for exactly what was asked.
+
+What no released verifier can check yet is NOT_CHECKED, with the issue that
+owns it: the controller binding, `capsulectl book doctor --probe`, and the
+commitment's own format (step 03).
+
+`reporter` (Mesh plugin nodes, which doctor --probe cannot reach): asks each
+node checkpoints and history_card/1 through the daily reporter's ask
+(scripts/daily_report.py), whose plugin verifies each answer under the key
+the node's host announces. An answer that verifies under a key other than the
+listed one, does not verify, or refuses a subject the node lists as
+stranger-safe is a failure. Join, doctor, the binding and the signed
+commitment are NOT_CHECKED on the capsules plugin's issues.
+
+A part that was checked and did not hold makes the finding FAIL.
+"""
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "scripts"))
+import daily_report  # noqa: E402
+import finding  # noqa: E402
+import report_layout as layout  # noqa: E402
+
+ASSERTS = ("one command on the pinned release binds the node key to a controller, creates the book, "
+           "publishes the commitment, and a stranger's probe of the node (checkpoints, then history_card/1) "
+           "verifies and matches the advertised policy")
+PINNED = ["capsulectl", "capsulectl-book"]
+PROBES = ("checkpoints", "history_card")
+PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "join.json"]
+
+NOT_RELEASED_DOCTOR = {
+    "what": "capsulectl book doctor --probe",
+    "why": "merged on evidencebook main, not in any released capsulectl-book: the latest, capsulectl/v0.1.0-rc23, "
+           "predates it. The stranger probe ran on the public path with the pinned release instead",
+    "issue": "action-state-group/evidencebook#133, #134",
+}
+NO_BINDING_VERIFIER = {
+    "what": "the controller binding (controller-binding/0, same_controller_asserted, dual_signature/0)",
+    "why": "join.sh signs it with both keys, but no released implementation verifies controller-binding/0; "
+           "the spec and its vectors are in agent-action-capsule, and doctor reports it NOT_CHECKED too",
+    "issue": "action-state-group/agent-action-capsule spec/controller-binding-v0.md; action-state-group/evidencebook#133",
+}
+COMMITMENT_PENDING = {
+    "what": "the commitment's format, signature and publication in nodes/",
+    "why": "step 03 (Advertise) owns the commitment format and scripts/check_commitment.py; until they land "
+           "join.sh writes a provisional commitment and this step reads only the keys and policy digest it advertises",
+    "issue": "evidence-network/loop step 03 (Advertise): integration pending",
+}
+
+
+def tools():
+    """The capsulectl core binary steps/12-join.setup.sh installed (or $CAPSULECTL)."""
+    if os.environ.get("CAPSULECTL"):
+        return Path(os.environ["CAPSULECTL"])
+    return Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache/evidence-network-loop")) / "bin/capsulectl"
+
+
+def sha256(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def load(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+# --- The commitment: the one place this step reads it ----------------------
+# Step 03 owns the commitment's format and its checker. Until they land this
+# reads the provisional commitment join.sh writes, and only what the probe is
+# judged against: the keys and the policy the node advertises.
+def advertised(node_dir):
+    c = load(Path(node_dir) / "commitment.json")
+    return {"node_key": c["node_key"], "checkpoint_key": c["checkpoint_key"], "book_id": c["book_id"],
+            "policy_digest": c["policy_digest"], "subjects": c["subjects"], "derivations": c["derivations"]}
+
+
+def check_policy_match(node_dir, adv):
+    """The answers match the advertised policy. Returns a list of what did not."""
+    node_dir = Path(node_dir)
+    errs = []
+    if sha256(node_dir / "policy.json") != adv["policy_digest"]:
+        errs.append("the node answers under a policy whose digest is not the one it advertises")
+    for probe in PROBES:
+        req = load(node_dir / "probe" / f"{probe}.request.json")
+        ans = load(node_dir / "probe" / f"{probe}.answer.json")
+        asked = "+".join([*req["subject"], *([req["derivation"]] if "derivation" in req else [])])
+        if not all(s in adv["subjects"] for s in req["subject"]) or \
+                ("derivation" in req and req["derivation"] not in adv["derivations"]):
+            errs.append(f"{asked} is not among the subjects and derivations the node advertises")
+        if "artifact" not in ans or "reason" in ans:
+            errs.append(f"{asked} is refused ({ans.get('reason', 'no artifact')}), "
+                        "but the advertised policy answers it to anyone")
+            continue
+        if ans.get("subject") != req["subject"] or ans.get("derivation") != req.get("derivation"):
+            errs.append(f"the answer to {asked} is for another subject or derivation")
+    return errs
+
+
+def verify_answers(node_dir, adv, capsulectl, work):
+    """Each probe answer verifies under the advertised keys, by the pinned capsulectl-book.
+
+    The stranger's book is copied into `work` and its profile made again
+    there, so the proof bytes are never written to. Writes
+    probe/<probe>.verified.json (the verifier's output) and returns a list of
+    what did not verify.
+    """
+    node_dir, work = Path(node_dir), Path(work)
+    st = node_dir / "probe" / "stranger"
+    home = work / "stranger"
+    shutil.copytree(st, home)
+    for seed in home.glob("*.seed"):
+        seed.chmod(0o600)
+    env = dict(os.environ, XDG_CONFIG_HOME=str(home / "config"),
+               CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(Path(capsulectl).parent)))
+    prof = load(home / "profile.json")
+
+    def cap(*args):
+        return subprocess.run([str(capsulectl), *args], env=env, capture_output=True, text=True)
+
+    r = cap("profile", "create", "--name", "stranger", "--type", "jsonl", "--jsonl-path", str(home / "store"),
+            "--log-id", prof["log_id"], "--operator", prof["operator"],
+            "--trusted-key", load(home / "signing.json")["public_key"],
+            "--signing-key-file", str(home / "signing.seed"),
+            "--checkpoint-signing-key-file", str(home / "checkpoint.seed"),
+            "--checkpoint-trusted-key", load(home / "checkpoint.json")["public_key"])
+    if r.returncode == 0:
+        r = cap("store", "init", "--profile", "stranger")
+    if r.returncode != 0:
+        raise RuntimeError(f"could not make the stranger's profile again: {r.stderr.strip()}")
+    errs = []
+    for probe in PROBES:
+        rid = load(node_dir / "probe" / f"{probe}.asked.json")["record_id"]
+        r = cap("book", "request", "--profile", "stranger", "--for", rid,
+                "--response", str(node_dir / "probe" / f"{probe}.answer.json"),
+                "--responder-key", adv["node_key"], "--responder-checkpoint-key", adv["checkpoint_key"])
+        out = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
+        try:
+            verdict = json.loads(out) if out else {}
+        except ValueError:
+            verdict = {}
+        verdict.pop("response", None)
+        verdict.pop("output", None)
+        record = {"verifier": "capsulectl book request --for --response", "exit": r.returncode,
+                  "result": verdict, "refused": r.stderr.strip().splitlines()[0] if r.returncode else ""}
+        (node_dir / "probe" / f"{probe}.verified.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        if r.returncode != 0 or verdict.get("outcome") != "artifact":
+            errs.append(f"the {probe} answer does not verify under the advertised node and checkpoint keys: "
+                        f"{record['refused'] or verdict}")
+    return errs
+
+
+def judge(node_dir, capsulectl, work):
+    """(failures, not_checked, proof paths relative to node_dir) for one joined node."""
+    node_dir = Path(node_dir)
+    adv = advertised(node_dir)
+    errs = check_policy_match(node_dir, adv)
+    errs += verify_answers(node_dir, adv, capsulectl, work)
+    not_checked = [NO_BINDING_VERIFIER, COMMITMENT_PENDING]
+    proof = list(PROOF)
+    if (node_dir / "doctor.json").is_file():
+        proof.append("doctor.json")
+    else:
+        not_checked.insert(0, NOT_RELEASED_DOCTOR)
+    for probe in PROBES:
+        proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
+    return errs, not_checked, proof
+
+
+def make_test_controller_key(path):
+    """The rehearsal population has no controller keys: a test key made for this run."""
+    subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(path)], check=True,
+                   capture_output=True)
+
+
+def merge(into, items):
+    for item in items:
+        if item not in into:
+            into.append(item)
+
+
+# --- Probe backend "doctor": join.sh on this machine, then the stranger probe --
+def run_doctor(pop, out, tmp):
+    """Join each node with join.sh and judge what it wrote. Returns (failures, not_checked, proof, lines)."""
+    capsulectl = tools()
+    if not capsulectl.is_file():
+        raise SystemExit(f"12-join: no capsulectl at {capsulectl}; run steps/12-join.setup.sh")
+    failures, not_checked, proof, lines = [], [], [], []
+    for node in pop["nodes"]:
+        name = node["name"]
+        key_dir = ROOT / node["key_dir"]  # relative to the repository root, as population.json gives it
+        controller = key_dir / "controller-key.pem"
+        if not controller.is_file():
+            controller = Path(tmp) / f"{name}-controller-key.pem"
+            make_test_controller_key(controller)
+        node_out = out / name
+        if node_out.exists():
+            shutil.rmtree(node_out)
+        env = dict(os.environ, CAPSULECTL=str(capsulectl))
+        r = subprocess.run([str(ROOT / "join.sh"), "--name", name, "--node-key", str(key_dir / "node-key.pem"),
+                            "--controller-key", str(controller), "--out", str(node_out),
+                            "--home", str(Path(tmp) / f"{name}-home")],
+                           env=env, capture_output=True, text=True)
+        (out / f"{name}.join.log").write_text(r.stdout + r.stderr)
+        proof.append(f"{name}.join.log")
+        if r.returncode != 0:
+            failures.append(f"{name}: join.sh did not complete (exit {r.returncode}); see {name}.join.log")
+            continue
+        errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify")
+        failures += [f"{name}: {e}" for e in errs]
+        merge(not_checked, nc)
+        proof += [f"{name}/{x}" for x in p]
+        lines.append(f"{name}: joined; probe answers verify under the advertised keys and match the advertised policy"
+                     if not errs else f"{name}: {len(errs)} check(s) did not hold")
+    return failures, not_checked, proof, lines
+
+
+# --- Probe backend "reporter": a Mesh node, asked through the daily reporter --
+# doctor --probe asks a Go book's own responder in process and cannot reach a
+# Mesh plugin node. For those the probe is the daily reporter's ask
+# (scripts/daily_report.py, mesh_evidence_request through the reporter node's
+# capsules plugin), reused as it is: the plugin verifies each answer under the
+# key the node's host announces, and the reporter writes that verdict as a line.
+LIVE_NOT_CHECKED = [
+    {"what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
+     "why": "a Mesh node's book is the capsules plugin's; the plugin has no join or doctor yet, so join.sh "
+            "does not run against it",
+     "issue": "Mesh-LLM/capsules-plugin#53"},
+    {"what": "doctor --probe on a Mesh node",
+     "why": "the probe is the daily reporter's mesh_evidence_request path until the plugin has its own",
+     "issue": "Mesh-LLM/capsules-plugin#53"},
+    NO_BINDING_VERIFIER,
+    {"what": "the signed commitment and the policy digest the answers are matched against",
+     "why": "nodes/ entries are unsigned and carry no policy digest; the probe is matched against the entry's "
+            "listed key and stranger_safe subjects only",
+     "issue": "Mesh-LLM/capsules-plugin#51"},
+]
+
+
+def listed_entry(node):
+    """A live node's nodes/ entry: node_id, key_id and what it lists as stranger-safe."""
+    if "node_id" in node and "key_id" in node:
+        return node
+    return load(ROOT / "nodes" / f"{node.get('node_id', node['name'])}.json")
+
+
+def judge_reporter_line(stem, line, entry):
+    """(failure or None, not_checked or None) for one reporter verification line."""
+    name = daily_report.QUESTION_NAMES[stem]
+    state = line.split(" ", 1)[0]
+    safe = entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
+    if state == "verified":
+        if "listed_key=match" not in line.split():
+            return f"the {name} answer verifies under the announced key, which is not the listed key: {line}", None
+        return None, None
+    if state in ("refusal", "not_evidence"):
+        if state == "refusal" and name not in safe:
+            return None, None
+        why = ("is refused, but the node lists it as stranger-safe" if state == "refusal"
+               else "does not verify under the announced key")
+        return f"the {name} answer {why}: {line}", None
+    return None, {"what": f"the {name} probe answer", "why": f"the reporter got no verifiable answer: {line}",
+                  "issue": "Mesh-LLM/capsules-plugin#53"}
+
+
+def run_reporter(pop, out, console, timeout=30):
+    failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
+    at = daily_report.utc_now()
+    for node in pop["nodes"]:
+        entry = listed_entry(node)
+        name = node["name"]
+        node_dir = out / name
+        if node_dir.exists():
+            shutil.rmtree(node_dir)
+        node_dir.mkdir(parents=True)
+        result = daily_report.ask_attempt(console, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
+                                          timeout)
+        attempt = layout.attempts(node_dir)[-1]
+        proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
+        bad = []
+        for stem, line in result.items():
+            fail, nc = judge_reporter_line(stem, line, entry)
+            if fail:
+                bad.append(f"{name}: {fail}")
+            if nc:
+                merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
+        failures += bad
+        lines.append(f"{name}: " + "; ".join(f"{daily_report.QUESTION_NAMES[k]} {v.split(' ', 1)[0]}"
+                                                 for k, v in result.items()))
+    return failures, not_checked, proof, lines
+
+
+def backend(pop):
+    """The probe backend is the population's choice: `probe` in population.json, else by population."""
+    return pop.get("probe") or ("reporter" if pop["population"] == "live" else "doctor")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--console", default=os.environ.get("LOOP_CONSOLE", daily_report.DEFAULT_CONSOLE),
+                    help="the reporter node's console, for the reporter backend")
+    a = ap.parse_args(argv)
+    started = finding.now()
+    pop = load(a.population / "population.json")
+    a.out.mkdir(parents=True, exist_ok=True)
+    which = backend(pop)
+    if which == "doctor":
+        with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
+            failures, not_checked, proof, lines = run_doctor(pop, a.out, tmp)
+    elif which == "reporter":
+        failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console)
+    else:
+        print(f"12-join: unknown probe backend {which!r}", file=sys.stderr)
+        return 2
+    r = conclude(a.out, pop["population"], failures, not_checked, proof, lines, started, which)
+    print(f"12-join: {r['result']}: {r['detail']}", file=sys.stderr)
+    return 0
+
+
+def conclude(out, population, failures, not_checked, proof, lines, started, which="doctor"):
+    """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
+    result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
+    pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
+    return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
+                         detail=f"probe backend: {which}. " + "; ".join(failures or lines),
+                         not_checked=not_checked, started=started)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

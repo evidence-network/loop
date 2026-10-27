@@ -1,0 +1,25 @@
+{
+  "answers_within": "PT1H",
+  "ask": {
+    "bindings": [],
+    "endpoint": null
+  },
+  "book_id": "alice-book",
+  "checkpoint_key": "c71f458434554a7a48d9ba3ef9c00e655a4c535d602ac45d6725d3733a2abe52",
+  "commitment_version": "provisional/0",
+  "controller_binding": "74f1a59607a8fbb295f4d9d985b2e6b250c047800773372c5735fdef0d0f9f39",
+  "controller_class": "operator_key",
+  "derivations": [
+    "history_card/1"
+  ],
+  "human_gated": false,
+  "latest_checkpoint": "0oRYZKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCDHH0WENFVKekjZuj75wA5lWkxTXWAqxF1nJdNzOiq+Ug+iAWphbGljZS1ib29rAmxhbGljZS1ib29rIzSgWLGmZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUEaWlzc3VlZF9hdHgYMjAyNi0xMC0yN1QyMzoxNDowOS43MDFaaXByZXZfc2l6ZQBqY29tbWl0bWVudFhFglggMWBVZ5mYYhQQ3+CkhgIPfOid4/wdqo33AVev0ZGsQKpYICUVnkM0Rb/2PlGW2pvAvRxz1rNH/qwHsbyTv+c4SVqzb3ByZXZfY29tbWl0bWVudEBYQMXO48llqVWnv7lm15VLT0sEUkZiGOAyzv56QQHojUTWj9PoBVbVfJSQNnuwtB6Pl9DTtcKttR6Wlafa0229Gww=",
+  "node": "alice",
+  "node_key": "3ec96d967474798400434e1554b8344f0d4a17601be6711a99cdbd7b20d81a0e",
+  "policy_digest": "2bbac8bb1c69ae0d891010fe089554999f141a98eb359dd322057ec964c64f5d",
+  "policy_uri": null,
+  "sig": "251ddfa9538d3468dd09ab30585ddb67e0d7c2e0db9dacf8b38dc69d53df5489eed0045001857094e6fe09cb845bac6f9d034b471723e1f09ca86cca4dc3620c",
+  "subjects": [
+    "checkpoints"
+  ]
+}
