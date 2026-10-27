@@ -6,6 +6,9 @@ import base64
 import contextlib
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -37,11 +40,12 @@ class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, per node.
 
     behaviour[node_id] maps a question stem to a fixture name, "absence" (502),
-    or "timeout"; announced[node_id] is the key its host announces, or None.
+    or "timeout"; announced[node_id] is the key its host announces, or None;
+    signing is the key the console's own plugin signs with (its ledger route).
     """
 
-    def __init__(self, behaviour, announced, delay=1.0):
-        self.behaviour, self.announced, self.delay = behaviour, announced, delay
+    def __init__(self, behaviour, announced, delay=1.0, signing=REPORTER["key_id"]):
+        self.behaviour, self.announced, self.delay, self.signing = behaviour, announced, delay, signing
         self.asked = []
         fake = self
 
@@ -57,6 +61,9 @@ class FakeConsole:
 
             def do_GET(self):
                 url = urllib.parse.urlparse(self.path)
+                if url.path == daily_report.LEDGER_ROUTE:
+                    pem = spki_pem(fake.signing) if fake.signing else None
+                    return self.reply(200, json.dumps({"records": [], "node_pub_key_pem": pem}).encode())
                 if url.path != daily_report.PEER_KEY_ROUTE:
                     return self.reply(404, b"Not found")
                 peer = urllib.parse.parse_qs(url.query)["peer"][0]
@@ -153,7 +160,7 @@ class ReporterTest(unittest.TestCase):
     def every_outcome(self):
         both = lambda what: {"checkpoints": what, "history_card": what}  # noqa: E731
         behaviour = {
-            node_id(1): both("verified"),
+            node_id(1): {"checkpoints": "verified", "history_card": "verified_history_card"},
             node_id(2): both("refusal"),
             node_id(3): both("no_announced_key"),
             node_id(4): {"checkpoints": "verified", "history_card": "absence"},
@@ -173,6 +180,8 @@ class ReporterTest(unittest.TestCase):
         d = "2026-10-28"
         self.assertEqual(self.line(d, 1, "checkpoints"),
                          f"verified checkpoints=3 anchor={'a' * 64} key={key_id(1)} listed_key=match")
+        self.assertEqual(self.line(d, 1, "history_card"),
+                         f"verified halves=2 anchor={'a' * 64} key={key_id(1)} listed_key=match")
         self.assertEqual(self.line(d, 2, "history_card"), f"refusal reason=policy_declined key={key_id(2)} listed_key=match")
         self.assertEqual(self.line(d, 3, "checkpoints"), "no_announced_key listed_key=unknown")
         self.assertTrue(self.line(d, 4, "history_card").startswith('absence why="http 502: could not reach peer'))
@@ -291,6 +300,30 @@ class ReporterTest(unittest.TestCase):
         self.assertFalse((day / "MISSED").exists())
         self.assertEqual(check_reports.check(self.out)[0], [])
 
+    def test_a_run_that_stopped_on_an_earlier_day_is_marked_missed(self):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-26"), 0)
+        stale = self.out / "2026-10-27" / node_id(1)
+        stale.mkdir(parents=True)
+        (stale / "NODE").write_text("joined, discloses nothing\n")
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        self.assertEqual([p.name for p in (self.out / "2026-10-27").iterdir()], ["MISSED"])
+        self.assertIn("stopped before it finished", (self.out / "2026-10-27" / "MISSED").read_text())
+        self.assertEqual(check_reports.check(self.out, check_reports.dt.date(2026, 10, 28))[0], [])
+
+    def test_the_console_must_sign_with_the_reporter_key(self):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        for signing in ("c" * 64, None):
+            self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                       {node_id(1): key_id(1)}, signing=signing)
+            self.assertEqual(self.run_reporter("2026-10-28"), 1)
+            self.assertEqual(self.console.asked, [])
+            self.assertFalse((self.out / "2026-10-28").exists())
+            self.console.close()
+            self.console = None
+
     def test_a_day_is_run_once(self):
         self.list_nodes(entry(node_id(1), key_id(1)))
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
@@ -372,6 +405,24 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual({k: written[k] for k in ("node_id", "key_id")}, REPORTER)
         self.assertEqual(written["mesh"], "lab")
 
+    def test_the_watchdog_refuses_a_deployed_reporter_that_never_ran(self):
+        through = check_reports.dt.date(2026, 10, 28)
+        self.assertEqual(check_reports.check(self.out, through, self.reporter)[0],
+                         [f"{self.reporter} names a reporter key, but {self.out} holds no report"])
+        placeholder = self.dir / "placeholder.json"
+        placeholder.write_text((ROOT / "reporter" / "reporter.json").read_text())
+        self.assertEqual(check_reports.check(self.out, through, placeholder)[0], [])
+
+    def test_check_reports_requires_peer_key_and_the_day_readme(self):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        (self.out / "2026-10-28" / node_id(1) / "peer-key.json").unlink()
+        (self.out / "2026-10-28" / "README.md").unlink()
+        self.assertEqual(sorted(check_reports.check(self.out)[0]),
+                         [f"2026-10-28/{node_id(1)}: missing peer-key.json", "2026-10-28: missing README.md"])
+
     def test_check_reports_refuses_anything_beside_the_answers(self):
         self.list_nodes(entry(node_id(1), key_id(1)))
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "absence"}},
@@ -386,6 +437,90 @@ class ReporterTest(unittest.TestCase):
                       check_reports.check(self.out)[0])
         (self.out / "2026-10-28" / "ranking.md").write_text("")
         self.assertIn("2026-10-28: unexpected entry ranking.md", check_reports.check(self.out)[0])
+
+
+class RunDailyTest(unittest.TestCase):
+    """run_daily.sh in a throwaway clone that pushes to a local bare repository."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self.tmp.name)
+        self.origin, self.clone, data = tmp / "origin.git", tmp / "loop", tmp / "capsules"
+        self.env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                    "CAPSULES_DATA_DIR": str(data)}
+        self.env.pop("CAPSULES_PEER_KEYS", None)
+        self.git(tmp, "init", "--quiet", "--bare", "-b", "main", str(self.origin))
+        self.git(tmp, "init", "--quiet", "-b", "main", str(self.clone))
+        (self.clone / "scripts").mkdir()
+        for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "reporter_key.py", "run_daily.sh"):
+            shutil.copy2(ROOT / "scripts" / name, self.clone / "scripts" / name)
+        (self.clone / "reporter").mkdir()
+        (self.clone / "reporter" / "reporter.json").write_text(json.dumps(REPORTER))
+        (self.clone / "nodes").mkdir()
+        (self.clone / "nodes" / f"{node_id(1)}.json").write_text(json.dumps(entry(node_id(1), key_id(1))))
+        (self.clone / "reports" / "daily").mkdir(parents=True)
+        (self.clone / "reports" / "daily" / ".gitkeep").write_text("")
+        (self.clone / "README.md").write_text("loop\n")
+        self.git(self.clone, "config", "user.name", "reporter")
+        self.git(self.clone, "config", "user.email", "reporter@example.invalid")
+        self.git(self.clone, "add", ".")
+        self.git(self.clone, "commit", "--quiet", "-m", "seed")
+        self.git(self.clone, "remote", "add", "origin", str(self.origin))
+        self.git(self.clone, "push", "--quiet", "-u", "origin", "main")
+        (data / "keys").mkdir(parents=True)
+        (data / "self-peer-id").write_text(REPORTER["node_id"] + "\n")
+        (data / "keys" / "node-key.pub.pem").write_text(spki_pem(REPORTER["key_id"]))
+        private_key(data)
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.env["LOOP_CONSOLE"] = self.console.url
+
+    def tearDown(self):
+        self.console.close()
+        self.tmp.cleanup()
+
+    def git(self, cwd, *args):
+        return subprocess.run(["git", *args], cwd=cwd, env=self.env, check=True,
+                              capture_output=True, text=True).stdout
+
+    def run_daily(self):
+        return subprocess.run(["bash", str(self.clone / "scripts" / "run_daily.sh")], cwd=self.clone,
+                              env=self.env, capture_output=True, text=True)
+
+    def origin_head(self):
+        return self.git(self.origin, "rev-parse", "main").strip()
+
+    def test_a_report_is_pushed_to_main_and_touches_only_reports_daily(self):
+        before = self.origin_head()
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        changed = self.git(self.origin, "diff", "--name-only", before, "main").split()
+        self.assertTrue(changed)
+        self.assertTrue(all(name.startswith("reports/daily/") for name in changed), changed)
+        self.assertIn("report: daily", self.git(self.origin, "log", "-1", "--format=%s", "main"))
+
+    def test_a_local_commit_outside_reports_daily_is_not_pushed(self):
+        before = self.origin_head()
+        (self.clone / "README.md").write_text("changed\n")
+        self.git(self.clone, "commit", "--quiet", "-am", "local change")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("outside reports/daily", done.stderr)
+        self.assertEqual(self.origin_head(), before)
+
+    def test_a_failed_commit_fails_the_run(self):
+        before = self.origin_head()
+        self.git(self.clone, "config", "--unset", "user.email")
+        self.git(self.clone, "config", "user.useConfigOnly", "true")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(self.origin_head(), before)
+
+    def test_it_runs_only_on_main(self):
+        self.git(self.clone, "checkout", "--quiet", "-b", "other")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("not on main", done.stderr)
 
 
 if __name__ == "__main__":

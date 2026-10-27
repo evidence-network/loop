@@ -29,7 +29,9 @@ the private key stays in the plugin's data dir, readable by the reporter's
 user only, and is never backed up. `daily_report.py run --data-dir` refuses a
 `keys/node-key.pem` that another user owns or could read (the plugin writes it
 `0600`). If the key is lost, make a new one and open a `reporter.json` pull
-request: a new key is a new `key_id`. Reports from before then stay signed under
+request: a new key is a new `key_id`. Every run also checks that the plugin
+behind `--console` signs with the `reporter.json` key (its `ledger` route's
+`node_pub_key_pem`) and refuses otherwise. Reports from before then stay signed under
 the old one; `RUN.json` of each day names the key that ran it.
 
 ## Node keys come from the mesh, never a map
@@ -85,4 +87,5 @@ loginctl enable-linger "$USER"
 The timer runs at 06:00 UTC (and at the next boot if the node was down then).
 A day it did not run gets a `MISSED` mark from the next run, a run that cannot
 reach its own node commits `MISSED` for that day, and the `reports` workflow's
-09:00 UTC watchdog fails when today has neither a report nor a mark.
+09:00 UTC watchdog fails when today has neither a report nor a mark, or
+when `reporter.json` names a key but no report exists at all.

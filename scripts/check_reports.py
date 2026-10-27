@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check the daily reports: their layout, and that no day is silently missing.
 
-Usage: check_reports.py [DIR] [--through YYYY-MM-DD]   (default: reports/daily)
+Usage: check_reports.py [DIR] [--through YYYY-MM-DD [--reporter FILE]]
+       (default DIR: reports/daily)
 
 Every entry of DIR is a <YYYY-MM-DD> directory holding either RUN.json (a run:
 one <node_id>/ per node it asked) or MISSED (no run that day, and why). A node
@@ -9,7 +10,9 @@ directory holds NODE, peer-key.json, and for each question one .request.json,
 one .verification line, and exactly one of .response.json or .absence.txt.
 Nothing else is allowed, so no score or ranking file can land beside them.
 With --through, every day from the first report to that date must be present:
-a day nobody marked is refused. Standard library only. Exit 0 = clean, 1 = refused.
+a day nobody marked is refused. With --reporter too, a reporter.json that
+names a key (not the all-zero placeholder) and no report at all is refused:
+the reporter is deployed but has never run. Standard library only. Exit 0 = clean, 1 = refused.
 """
 import datetime as dt
 import json
@@ -29,6 +32,8 @@ def check_node(day, node_dir):
     errs = []
     where = f"{day}/{node_dir.name}"
     allowed = {"NODE", "peer-key.json"}
+    if not (node_dir / "peer-key.json").is_file():
+        errs.append(f"{where}: missing peer-key.json")
     for stem in STEMS:
         allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
         if not (node_dir / f"{stem}.request.json").is_file():
@@ -71,10 +76,14 @@ def check_day(day_dir):
     try:
         run = json.loads((day_dir / "RUN.json").read_text(encoding="utf-8"))
         asked = run["asked"]
+        if not (isinstance(asked, list) and all(isinstance(n, str) for n in asked)):
+            raise TypeError("asked is not a list of node ids")
         if run.get("date") != day:
             errs.append(f"{day}: RUN.json date is {run.get('date')}")
     except (ValueError, KeyError, TypeError) as e:
         return [f"{day}: RUN.json unreadable ({e})"]
+    if "README.md" not in names:
+        errs.append(f"{day}: missing README.md")
     nodes = {n for n in names if n not in DAY_FILES}
     for n in sorted(nodes):
         if not (HEX64.match(n) and (day_dir / n).is_dir()):
@@ -87,7 +96,13 @@ def check_day(day_dir):
     return errs
 
 
-def check(root, through=None):
+def deployed(reporter):
+    """Whether reporter.json names a real reporter key, not the placeholder."""
+    key = json.loads(reporter.read_text(encoding="utf-8")).get("key_id")
+    return isinstance(key, str) and HEX64.match(key) is not None and key != "0" * 64
+
+
+def check(root, through=None, reporter=None):
     errs = []
     days = []
     for p in sorted(root.iterdir()) if root.is_dir() else []:
@@ -98,6 +113,8 @@ def check(root, through=None):
             continue
         days.append(p.name)
         errs += check_day(p)
+    if not days and through is not None and reporter is not None and deployed(reporter):
+        errs.append(f"{reporter} names a reporter key, but {root} holds no report")
     if days and through is not None:
         day = dt.date.fromisoformat(days[0])
         while day <= through:
@@ -114,8 +131,13 @@ def main(argv):
         i = args.index("--through")
         through = dt.date.fromisoformat(args[i + 1])
         del args[i:i + 2]
+    reporter = None
+    if "--reporter" in args:
+        i = args.index("--reporter")
+        reporter = Path(args[i + 1])
+        del args[i:i + 2]
     root = Path(args[0] if args else "reports/daily")
-    errs, days = check(root, through)
+    errs, days = check(root, through, reporter)
     for e in errs:
         print(e, file=sys.stderr)
     if errs:

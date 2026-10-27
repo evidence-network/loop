@@ -55,6 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_nodes  # noqa: E402
+import reporter_key  # noqa: E402
 
 PROFILE = "evidence-interop/0"
 # The two stranger-safe questions, as the capsules Evidence page asks them
@@ -75,6 +76,9 @@ QUESTIONS = {
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
 TOOL_ROUTE = "/api/plugins/capsules/tools/mesh_evidence_request"
 PEER_KEY_ROUTE = "/api/plugins/capsules/http/peer-key"
+# The plugin's own ledger route; its node_pub_key_pem is the key the running
+# plugin signs with, so the console the reporter talks to is bound to reporter.json.
+LEDGER_ROUTE = "/api/plugins/capsules/http/ledger"
 DEFAULT_CONSOLE = "http://127.0.0.1:3131"
 PLACEHOLDER = "0" * 64
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -121,7 +125,9 @@ def verification_line(status, body, error, announced, listed):
     else:
         key = f"key={announced} listed_key={'match' if announced == listed else 'differs'}"
     if state == "artifact":
-        detail = f"checkpoints={verification.get('checkpoints')} anchor={verification.get('anchor')}"
+        # A history_card/1 artifact carries halves, not checkpoints.
+        count = "halves" if "halves" in verification else "checkpoints"
+        detail = f"{count}={verification.get(count)} anchor={verification.get('anchor')}"
         if "witnessed" in verification:
             detail += f" witnessed={verification['witnessed']}"
         return f"verified {detail} {key}"
@@ -185,8 +191,6 @@ def load_reporter(path, data_dir):
         if not (isinstance(value, str) and HEX64.match(value)) or value == PLACEHOLDER:
             raise ValueError(f"{path}: {field} is not set (run scripts/reporter_key.py on the reporter node)")
     if data_dir is not None:
-        import reporter_key
-
         reporter_key.check_private_key(Path(data_dir))
         local = reporter_key.read_identity(Path(data_dir))
         if local != {"node_id": reporter["node_id"], "key_id": reporter["key_id"]}:
@@ -199,12 +203,24 @@ def report_days(out):
 
 
 def mark_missed(out, today, why):
-    """Write MISSED for every day since the last report that has no directory."""
+    """Write MISSED for every earlier day with no finished report.
+
+    That is each day since the last report that has no directory, and each
+    earlier day whose run stopped before writing RUN.json, which would
+    otherwise fail check_reports on every later run.
+    """
     days = report_days(out)
     if not days:
         return []
-    day = dt.date.fromisoformat(days[-1]) + dt.timedelta(days=1)
     marked = []
+    for name in days:
+        d = out / name
+        if name < today.isoformat() and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
+            shutil.rmtree(d)
+            d.mkdir()
+            (d / "MISSED").write_text(f"no report for {name}: its run stopped before it finished\n")
+            marked.append(name)
+    day = dt.date.fromisoformat(days[-1]) + dt.timedelta(days=1)
     while day < today:
         d = out / day.isoformat()
         d.mkdir(parents=True)
@@ -233,11 +249,17 @@ def run(args):
     console = args.console.rstrip("/")
     started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
-        status, body = http("GET", peer_key_url(console, reporter["node_id"]), None, args.timeout)
+        status, body = http("GET", console + LEDGER_ROUTE, None, args.timeout)
         if status != 200:
-            raise ReporterDown(f"http {status} from {PEER_KEY_ROUTE}: {body.decode('utf-8', 'replace')}")
+            raise ReporterDown(f"http {status} from {LEDGER_ROUTE}: {body.decode('utf-8', 'replace')[:300]}")
     except OSError as e:
         raise ReporterDown(str(e))
+    try:
+        signing = reporter_key.key_from_pem(json.loads(body)["node_pub_key_pem"])
+    except (ValueError, KeyError, TypeError, AttributeError) as e:
+        raise ValueError(f"{console}: the plugin names no signing key ({e!r})")
+    if signing != reporter["key_id"]:
+        raise ValueError(f"{console}: the plugin signs with {signing}, not the reporter key {reporter['key_id']}")
 
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
     entries = [e for e in entries if e["node_id"] != reporter["node_id"]]
@@ -268,8 +290,8 @@ def prove(args):
     day_dir = Path(args.out) / args.date
     passing = []
     for node_dir in sorted(p for p in day_dir.iterdir() if p.is_dir()) if day_dir.is_dir() else []:
-        cp = (node_dir / "checkpoints.verification").read_text().split()
-        hc = (node_dir / "history_card.verification").read_text().split()
+        cp = (node_dir / "checkpoints.verification").read_text().split() or ["missing"]
+        hc = (node_dir / "history_card.verification").read_text().split() or ["missing"]
         count = next((int(t.split("=", 1)[1]) for t in cp if re.match(r"^checkpoints=\d+$", t)), 0)
         ok = cp[0] == "verified" and count >= 1 and hc[0] == "verified"
         print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; history_card/1: {hc[0]})")

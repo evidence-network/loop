@@ -10,6 +10,8 @@ as bytes and never parses them; the plugin is the verifier. A live run replaces
 these with what the lab nodes actually answer.
 
 - `verified.json`: an artifact that verified under the node's announced key.
+- `verified_history_card.json`: a `history_card/1` artifact that verified; it
+  carries `halves`, not `checkpoints`.
 - `refusal.json`: a refusal the node signed over the reporter's request.
 - `no_checkpoint_yet.json`: a signed `coverage_unsatisfiable`: the node has cut no
   checkpoint yet (the first is cut 300 s after activity). Recorded as
