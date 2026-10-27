@@ -64,6 +64,7 @@ Standard library only. Exit 0 = done, 1 = refused (bad input), 2 = missed day.
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 import re
 import shutil
@@ -283,6 +284,11 @@ def load_reporter(path, data_dir):
     return reporter
 
 
+def versions_lock_sha256(path=Path(__file__).resolve().parent.parent / "versions.lock"):
+    """The digest of the versions.lock this run ran under, recorded in RUN.json."""
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def report_days(out):
     return sorted(p.name for p in out.iterdir() if p.is_dir() and DATE.match(p.name)) if out.is_dir() else []
 
@@ -399,6 +405,7 @@ def run(args, now, sleep):
         "finished": layout.iso(now()),
         "questions": [QUESTION_NAMES[s] for s in QUESTIONS],
         "asked": sorted(lines),
+        "versions_lock_sha256": versions_lock_sha256(),
     }
     again = ", ".join(f"+{s:g}s" for s in schedule) or "never"
     readme = [f"# Daily report {today.isoformat()}", "",

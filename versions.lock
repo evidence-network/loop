@@ -1,0 +1,16 @@
+# versions.lock: the only place the loop's pins change. See VERSIONS.md.
+# One pin per line: <name> <repository> <ref>. <ref> is a full 40-hex commit
+# SHA or a released version tag; never a branch name or a short SHA.
+# The daily reporter writes this file's sha256 into each day's RUN.json.
+
+# Lab host build: mesh-llm main + PR #2620 (head commit; #2620 is still open).
+mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
+mesh-llm-pr-2620 Mesh-LLM/mesh-llm 5fc649c888b7ac4b3e75865de06a901b476629c0
+# capsules plugin: 0.1.5 is not tagged yet (Mesh-LLM/capsules#43). This is the
+# commit the lab build ran T3/T7 at, main 424f2c74 plus the 0.1.5 release prep.
+capsules Mesh-LLM/capsules 39027313c78db7aa711dfbee4897eef39540cf36
+# The daily reporter: scripts/daily_report.py as of this commit.
+reporter evidence-network/loop b8b46c83e8adb8154b0d831d018f35d21c9148b8
+# What a verifier re-checks saved answers with, offline.
+capsulectl action-state-group/capsule-cli v0.1.0-rc23
+evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.7
