@@ -1,0 +1,11 @@
+[Unit]
+Description=evidence-network loop: daily reporter, once a day
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 UTC
+# A run missed while the node was down starts at the next boot.
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

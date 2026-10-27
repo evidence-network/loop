@@ -1,0 +1,18 @@
+# The daily reporter run. Install as a user unit on the reporter node, not here:
+#   cp reporter/systemd/loop-reporter.* ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now loop-reporter.timer
+#   loginctl enable-linger "$USER"   # so it runs with nobody logged in
+[Unit]
+Description=evidence-network loop: daily reporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The clone of evidence-network/loop this node commits reports from.
+WorkingDirectory=%h/loop
+Environment=LOOP_CONSOLE=http://127.0.0.1:3131
+Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
+ExecStart=%h/loop/scripts/run_daily.sh
+# Exit 2 is a missed day, already committed: not a unit failure to retry.
+SuccessExitStatus=2
