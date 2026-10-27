@@ -20,3 +20,6 @@ these with what the lab nodes actually answer.
 - `not_evidence.json`: a reply that is neither a verified artifact nor a signed refusal.
 - `absence.txt`: the 502 body the host sends when the peer cannot be reached
   or never answers (`could not reach peer`, `peer does not answer evidence requests`).
+  `tests/test_offline_retry.py` serves the other 502 bodies the plugin sends
+  inline: `peer does not answer evidence requests` (recorded as `timeout`) and
+  `peer returned malformed response` (`not_evidence`, an answer: not asked again).

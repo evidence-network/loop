@@ -470,7 +470,7 @@ class RunDailyTest(unittest.TestCase):
         self.git(tmp, "init", "--quiet", "--bare", "-b", "main", str(self.origin))
         self.git(tmp, "init", "--quiet", "-b", "main", str(self.clone))
         (self.clone / "scripts").mkdir()
-        for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "reporter_key.py", "run_daily.sh"):
+        for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "report_layout.py", "reporter_key.py", "run_daily.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.clone / "scripts" / name)
         (self.clone / "reporter").mkdir()
         (self.clone / "reporter" / "reporter.json").write_text(json.dumps(REPORTER))
