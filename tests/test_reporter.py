@@ -103,6 +103,14 @@ def spki_pem(key_hex):
     return "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PUBLIC KEY-----\n"
 
 
+def private_key(data, mode=0o600):
+    """Stand-in for the plugin's private key file: only its owner and mode are checked."""
+    path = data / "keys" / "node-key.pem"
+    path.write_text("not read\n")
+    path.chmod(mode)
+    return path
+
+
 class ReporterTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -313,6 +321,7 @@ class ReporterTest(unittest.TestCase):
         (data / "keys").mkdir(parents=True)
         (data / "self-peer-id").write_text(REPORTER["node_id"] + "\n")
         (data / "keys" / "node-key.pub.pem").write_text(spki_pem(REPORTER["key_id"]))
+        private_key(data)
         self.assertEqual(reporter_key.read_identity(data), REPORTER)
         self.list_nodes(entry(node_id(1), key_id(1)))
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
@@ -322,6 +331,33 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(self.console.asked, [])
         (data / "keys" / "node-key.pub.pem").write_text(spki_pem(REPORTER["key_id"]))
         self.assertEqual(self.run_reporter("2026-10-28", None, "--data-dir", str(data)), 0)
+
+    def test_a_private_key_readable_beyond_its_user_is_refused(self):
+        data = self.dir / "capsules"
+        (data / "keys").mkdir(parents=True)
+        (data / "self-peer-id").write_text(REPORTER["node_id"] + "\n")
+        (data / "keys" / "node-key.pub.pem").write_text(spki_pem(REPORTER["key_id"]))
+        key = private_key(data, 0o640)
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-28", None, "--data-dir", str(data)), 1)
+        self.assertEqual(self.console.asked, [])
+        key.unlink()  # no private key at all is refused too
+        self.assertEqual(self.run_reporter("2026-10-28", None, "--data-dir", str(data)), 1)
+        private_key(data)
+        self.assertEqual(self.run_reporter("2026-10-28", None, "--data-dir", str(data)), 0)
+
+    def test_a_run_that_stopped_midway_is_replaced(self):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        stale = self.out / "2026-10-28" / node_id(1)
+        stale.mkdir(parents=True)
+        (stale / "NODE").write_text("joined, discloses nothing\n")
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        self.assertEqual(self.node_line("2026-10-28", 1), "discloses: checkpoints, history_card/1")
+        self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_reporter_key_writes_the_public_identity_only(self):
         data = self.dir / "capsules"

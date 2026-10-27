@@ -17,7 +17,8 @@ if [ -n "${CAPSULES_PEER_KEYS:-}" ]; then
   exit 1
 fi
 
-git pull --ff-only --quiet || exit 1
+# --rebase: a report committed but not pushed last time goes out on top.
+git pull --rebase --quiet || exit 1
 python3 scripts/daily_report.py run --date "$day" --console "$console" --data-dir "$data_dir"
 status=$?
 # 1 = refused before asking anyone (bad list, reporter key not set or not this

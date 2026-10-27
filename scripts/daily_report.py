@@ -46,6 +46,7 @@ import argparse
 import datetime as dt
 import json
 import re
+import shutil
 import sys
 import urllib.error
 import urllib.parse
@@ -144,7 +145,8 @@ def ask_node(console, entry, node_dir, timeout):
         status, body = http("GET", peer_key_url(console, node_id), None, timeout)
         (node_dir / "peer-key.json").write_bytes(body)
         if status == 200:
-            key = json.loads(body).get("announced_key_id")
+            reply = json.loads(body)
+            key = reply.get("announced_key_id") if isinstance(reply, dict) else None
             announced = key if isinstance(key, str) and HEX64.match(key) else None
     except (OSError, ValueError) as e:
         (node_dir / "peer-key.json").write_text(json.dumps({"error": str(e)}) + "\n")
@@ -185,6 +187,7 @@ def load_reporter(path, data_dir):
     if data_dir is not None:
         import reporter_key
 
+        reporter_key.check_private_key(Path(data_dir))
         local = reporter_key.read_identity(Path(data_dir))
         if local != {"node_id": reporter["node_id"], "key_id": reporter["key_id"]}:
             raise ValueError(f"{path} does not match the plugin key in {data_dir}: {local}")
@@ -223,6 +226,10 @@ def run(args):
         raise ValueError(f"{day_dir} already holds a run")
     for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {today.isoformat()}"):
         print(f"{missed}: MISSED")
+    # No RUN.json here (checked above): what is left is a MISSED mark or a run
+    # that stopped midway. This run replaces it.
+    if day_dir.exists():
+        shutil.rmtree(day_dir)
     console = args.console.rstrip("/")
     started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
@@ -234,9 +241,7 @@ def run(args):
 
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
     entries = [e for e in entries if e["node_id"] != reporter["node_id"]]
-    if day_dir.exists():
-        (day_dir / "MISSED").unlink(missing_ok=True)
-    day_dir.mkdir(parents=True, exist_ok=True)
+    day_dir.mkdir(parents=True)
     lines = {}
     for entry in entries:
         lines[entry["node_id"]] = ask_node(console, entry, day_dir / entry["node_id"], args.timeout)

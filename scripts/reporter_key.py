@@ -9,10 +9,16 @@ the node, and this script never reads it. This reads the two public files the
 plugin writes, <DATA_DIR>/self-peer-id and <DATA_DIR>/keys/node-key.pub.pem,
 and prints {"node_id", "key_id"} (or writes them into FILE, normally
 reporter/reporter.json, for a pull request). Standard library only.
+
+check_private_key() looks only at the private key's owner and mode, never its
+bytes: by Steven's ruling of 2026-10-27 (evidencebook-skills#61) the key is
+readable by the reporter's user only and has no backup.
 """
 import base64
 import json
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -27,6 +33,16 @@ def key_from_pem(text):
     if len(der) != 44 or not der.startswith(ED25519_SPKI):
         raise ValueError("not an Ed25519 public key in SubjectPublicKeyInfo form")
     return der[len(ED25519_SPKI):].hex()
+
+
+def check_private_key(data_dir):
+    """Refuse a private key another user could read or that this user does not own."""
+    path = data_dir / "keys" / "node-key.pem"
+    st = path.stat()
+    if st.st_uid != os.getuid():
+        raise ValueError(f"{path}: owned by uid {st.st_uid}, not this user ({os.getuid()})")
+    if st.st_mode & 0o077:
+        raise ValueError(f"{path}: mode {stat.filemode(st.st_mode)}, readable beyond this user (chmod 600 it)")
 
 
 def read_identity(data_dir):
