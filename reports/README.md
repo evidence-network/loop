@@ -64,34 +64,44 @@ Measured with `scripts/repo_size.py measure`: the reporter's own `run`, against
 a fake reporter-node console that answers with real capsules answers (built by
 capsules main 424f2c7's responder from a node key and a growing checkpoint
 chain; a probe test, not a live node), one node's bytes made distinct from
-another's. Each `*.response.json` holds a node's whole checkpoint list:
+another's. Each `*.response.json` holds a node's whole checkpoint list, and
+each answer is in the tree twice: in the attempt that got it
+(`attempts/<time>/`) and byte-copied into the settled day. Git stores the two
+copies as one blob, so they double the checkout, not the history:
 
 - about 2.4 KB per checkpoint for `checkpoints` and 2.7 KB for `history_card/1`;
   a node cutting 12 checkpoints a day adds about 61 KB a day to its two answers;
 - at most 1 MiB per answer (capsules refuses a larger one): past about 380
   checkpoints (`checkpoints`) and 350 (`history_card/1`) the node signs a
   `policy_declined` refusal of about 360 bytes instead, every day after;
-- the other files of a node's day (request, verification line, `NODE`,
-  `peer-key.json`) are about 2 KB.
+- the other files of a node's day (requests, verification lines, `NODE`,
+  `peer-key.json`, the `ATTEMPT` line, in the attempt and the settled day) are
+  about 1.5 KB;
+- an attempt that got no answer keeps only its request, its verification line
+  and its absence text, about 0.7 KB. An answered question is never asked again,
+  so a day holds at most one answer per question, however many attempts it
+  took.
 
-One day, 10 nodes: 0.45 MiB at 12 checkpoints each; 18.6 MiB when every answer
-is near the 1 MiB cap (2.7 MiB of it in git once packed).
+One day, 10 nodes: 0.92 MiB at 12 checkpoints each (130 KiB in git once
+packed); 37.2 MiB when every answer is near the 1 MiB cap (2.6 MiB in git).
 
 ### A year
 
 `tree` is what a checkout holds under `reports/`. `git` is what the history
 grows by, packed (`git repack -adf`). `git, no delta` is the same with every file
 compressed on its own: the bound when a day's answer shares no bytes with the
-day before. Attempts: one answer per question per day, or 4 (en-offline-retry's
-retries), each answered in full, which is an upper bound. In practice a retry
-follows only an attempt that got no answer.
+day before. Attempts: every node answers on the first attempt, or only on the
+4th (three retries that got no answer, each kept as its absence line).
 
-| a year of | nodes | tree, 1 / 4 attempts | git, 1 / 4 | git no delta, 1 / 4 |
+| a year of | nodes | tree, answered on attempt 1 / 4 | git, 1 / 4 | git no delta, 1 / 4 |
 |---|---|---|---|---|
-| lab rate: 12 checkpoints a day, capped after ~30 days (measured, 35 days) | 10 | 304 MiB / 1.2 GiB | 7 MiB / 10 MiB | 50 MiB / 196 MiB |
-| | 100 | 3.0 GiB / 11.9 GiB | 66 MiB / 95 MiB | 497 MiB / 1.9 GiB |
-| every answer near the 1 MiB cap, every day | 10 | 6.6 GiB / 26.6 GiB | n/a | 976 MiB / 3.8 GiB |
-| | 100 | 66 GiB / 266 GiB | n/a | 9.5 GiB / 38 GiB |
+| lab rate: 12 checkpoints a day, capped after ~30 days (measured, 35 days) | 10 | 607 MiB / 613 MiB | 6.7 MiB / 6.8 MiB | 51 MiB / 54 MiB |
+| | 100 | 5.9 GiB / 6.0 GiB | 67 MiB / 68 MiB | 511 MiB / 541 MiB |
+| every answer near the 1 MiB cap, every day (measured, 4 days) | 10 | 13.3 GiB / 13.3 GiB | n/a | 977 MiB / 980 MiB |
+| | 100 | 133 GiB / 133 GiB | n/a | 9.5 GiB / 9.6 GiB |
+
+Retries cost almost nothing: the bytes are in the answers, and a day has at
+most one per question.
 
 Git deltas make history cheap while a node's list only grows by appending:
 yesterday's checkpoints are the same bytes today, so a day costs only its new
@@ -105,7 +115,8 @@ which shifts its bytes every day). Use the "no delta" column there.
    wrote.
 2. **Then a release asset per month.** On the first run after a month is more
    than 90 days old (the month's last day is 90 days back), every
-   `*.response.json` of that month moves into one asset, `reports-<YYYY-MM>.tar.xz`, on the
+   `*.response.json` of that month (the attempt's and the settled day's copy)
+   moves into one asset, `reports-<YYYY-MM>.tar.xz`, on the
    release `reports-<YYYY-MM>`. The tar is ordered by node, then day, and
    compressed with xz. A month of one node's answers repeats yesterday's
    checkpoints, so it compresses to under 1% (89 MiB of measured answers made a

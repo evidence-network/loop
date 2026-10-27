@@ -67,17 +67,33 @@ class MeasureTest(unittest.TestCase):
         self.assertTrue(line.startswith("refusal reason=policy_declined "), line)
         self.assertLess(measured[1]["tree"], 8 * 1024)
 
-    def test_each_attempt_is_answered_with_its_own_bytes(self):
+    def test_a_settled_answer_is_in_the_tree_twice_and_in_git_once(self):
+        measured = self.measure(nodes=1, days=1, start=4)[1]
+        d = self.node_dir("2027-01-01", 0)
+        (attempt,) = (d / "attempts").iterdir()
+        self.assertEqual(attempt.name, "20270101T060000Z")
+        settled = (d / "checkpoints.response.json").read_bytes()
+        self.assertEqual((attempt / "checkpoints.response.json").read_bytes(), settled)
+        answers = sum(len((p / f"{s}.response.json").read_bytes()) for p in (d, attempt) for s in repo_size.STEMS)
+        self.assertGreater(answers, measured["tree"] * 0.8)
+        self.assertLess(measured["pack_nodelta"], answers / 2)
+
+    def test_a_retry_adds_only_the_failed_attempts_absence_lines(self):
         one = self.measure(nodes=1, days=1, start=4)[1]["tree"]
-        first, second = self.node_dir("2027-01-01", 0), self.node_dir("2027-01-01", 0, "attempt-2")
         shutil.rmtree(self.repo)
         self.repo.mkdir()
-        two = self.measure(nodes=1, days=1, start=4, attempts=2)[1]["tree"]
-        a = (first / "checkpoints.response.json").read_bytes()
-        b = (second / "checkpoints.response.json").read_bytes()
-        self.assertNotEqual(a, b)
-        self.assertEqual(len(a), len(b))
-        self.assertAlmostEqual(two / one, 2, delta=0.1)
+        three = self.measure(nodes=1, days=1, start=4, attempts=3)[1]["tree"]
+        daily = self.repo / "reports" / "daily"
+        self.assertEqual(check_reports.check(daily)[0], [])
+        d = self.node_dir("2027-01-01", 0)
+        attempts = sorted((d / "attempts").iterdir())
+        self.assertEqual([a.name for a in attempts], ["20270101T060000Z", "20270101T061000Z", "20270101T062000Z"])
+        for a in attempts[:2]:
+            self.assertEqual(sorted(p.name for p in a.glob("*.response.json")), [])
+            self.assertTrue((a / "checkpoints.verification").read_text().startswith("unreachable "))
+        self.assertEqual(len(list(attempts[2].glob("*.response.json"))), 2)
+        self.assertTrue((d / "history_card.verification").read_text().startswith("verified "))
+        self.assertLess(three - one, 4 * 1024)
 
     def test_a_list_that_only_grows_costs_history_little(self):
         m = self.measure(nodes=1, days=4, start=8, per_day=8)

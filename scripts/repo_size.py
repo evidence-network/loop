@@ -27,16 +27,19 @@ Each node answers with C + K*(day-1) checkpoints cut on day `day`. Answer bodies
                 checkpoint, refused past MAX_ANSWER_BYTES. For tests: its bytes
                 compress worse than real checkpoints.
 Each answer is wrapped as the plugin's reply (`{answer, held, request_digest,
-verification}`). With --attempts A the reporter asks A times a day (attempt 2..A
-into reports/attempt-<k>/; en-offline-retry owns the real layout), and every
-attempt is answered in full, with its own request digest, time and signature:
-the upper bound, since a retry follows only an attempt that got no answer.
+verification}`). With --attempts A the reporter file sets A-1 retries
+(`retry_after_s`) and every node answers only on attempt A: attempts 1..A-1 get
+"could not reach peer" and keep only their absence line. That is the most a day
+costs short of an absence: the reporter never asks an answered question again,
+so a day holds at most one answer per question, in its attempt directory and
+byte-copied into the settled day (git stores those two copies as one blob).
 
 Standard library and git. Exit 0 = measured.
 """
 import argparse
 import base64
 import contextlib
+import datetime as dt
 import functools
 import hashlib
 import io
@@ -52,11 +55,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_nodes  # noqa: E402
 import daily_report  # noqa: E402
 
 YEAR = 365
 STEMS = ("checkpoints", "history_card")
 REPORTER = {"node_id": "e" * 64, "key_id": "f" * 64}
+RETRY_EVERY_S = 600
 # capsules main (424f2c7) evidence_answer: an answer over 1 MiB is refused.
 MAX_ANSWER_BYTES = 1024 * 1024
 SYNTHETIC_STATEMENT = 1024
@@ -136,11 +141,14 @@ class Bodies:
 
 
 class FakeConsole:
-    """The reporter node's console: every node's key announced, `bodies` answers."""
+    """The reporter node's console: every node's key announced, `bodies` answers.
 
-    def __init__(self, bodies, nodes):
+    A question is answered on its `answer_on`-th ask of the day; the asks before
+    it get the plugin's "could not reach peer"."""
+
+    def __init__(self, bodies, nodes, answer_on=1):
         self.bodies, self.index = bodies, {node_id(i): i for i in range(nodes)}
-        self.day, self.attempt, self.count = None, 1, 0
+        self.day, self.count, self.answer_on, self.asked = None, 0, answer_on, {}
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -162,7 +170,10 @@ class FakeConsole:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 i = fake.index[body["peer_id"]]
-                self.reply(200, fake.bodies.reply(i, stem, fake.count, fake.day, fake.attempt))
+                attempt = fake.asked[i, stem, fake.day] = fake.asked.get((i, stem, fake.day), 0) + 1
+                if attempt < fake.answer_on:
+                    return self.reply(502, b"plugin tool failed: could not reach peer")
+                self.reply(200, fake.bodies.reply(i, stem, fake.count, fake.day, attempt))
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -190,46 +201,57 @@ def sizes(repo):
     return {"tree": tree_bytes(repo / "reports"), "pack": pack_bytes(repo), "pack_nodelta": pack_bytes(repo, False)}
 
 
-def setup(repo, nodes):
+class Clock:
+    """The reporter's clock: each day's run starts at 06:00 UTC, and sleeping moves it on."""
+
+    def __init__(self):
+        self.at = None
+
+    def now(self):
+        return self.at
+
+    def sleep(self, seconds):
+        self.at += dt.timedelta(seconds=seconds)
+
+
+def setup(repo, nodes, attempts=1):
     git(repo, "init", "-q")
     git(repo, "config", "user.email", "reporter@example.invalid")
     git(repo, "config", "user.name", "reporter")
     git(repo, "config", "gc.auto", "0")
     (repo / "nodes").mkdir()
     for i in range(nodes):
-        entry = {"node_id": node_id(i), "key_id": sha("key", i), "operator": "example-operator", "mesh": "lab",
-                 "ask_route": "mesh",
+        entry = {"node_id": node_id(i), "key_id": sha("key", i), "operator": "example-operator",
+                 "consent": check_nodes.CONSENT, "mesh": "lab", "ask_route": "mesh",
                  "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]},
                  "host_build": "mesh-llm lab build", "plugin_version": "capsules 0.1.5"}
         (repo / "nodes" / f"{entry['node_id']}.json").write_text(json.dumps(entry, indent=2) + "\n")
-    (repo / "reporter.json").write_text(json.dumps(REPORTER) + "\n")
+    retries = [RETRY_EVERY_S * k for k in range(1, attempts)]
+    (repo / "reporter.json").write_text(json.dumps({**REPORTER, "retry_after_s": retries}) + "\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "list")
 
 
 def measure(bodies, repo, nodes=10, days=1, start=12, per_day=12, attempts=1, first="2027-01-01"):
     """Measured sizes after day 1, after day D-1 and after day D (all nodes)."""
-    import datetime as dt
-
-    setup(repo, nodes)
-    console = FakeConsole(bodies, nodes)
+    setup(repo, nodes, attempts)
+    console, clock = FakeConsole(bodies, nodes, answer_on=attempts), Clock()
     out = {}
     try:
         for d in range(days):
-            day = (dt.date.fromisoformat(first) + dt.timedelta(days=d)).isoformat()
-            console.day, console.count = day, start + per_day * d
-            for attempt in range(1, attempts + 1):
-                console.attempt = attempt
-                where = "daily" if attempt == 1 else f"attempt-{attempt}"
-                argv = ["daily_report.py", "run", "--date", day, "--console", console.url,
-                        "--nodes", str(repo / "nodes"), "--out", str(repo / "reports" / where),
-                        "--reporter", str(repo / "reporter.json"), "--timeout", "30"]
-                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                    code = daily_report.main(argv)
-                if code != 0:
-                    raise RuntimeError(f"the reporter exited {code} on {day}")
+            day = dt.date.fromisoformat(first) + dt.timedelta(days=d)
+            console.day, console.count = day.isoformat(), start + per_day * d
+            clock.at = dt.datetime.combine(day, dt.time(6), dt.timezone.utc)
+            argv = ["daily_report.py", "run", "--date", day.isoformat(), "--console", console.url,
+                    "--nodes", str(repo / "nodes"), "--out", str(repo / "reports" / "daily"),
+                    "--reporter", str(repo / "reporter.json"), "--timeout", "30"]
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                code = daily_report.main(argv, now=clock.now, sleep=clock.sleep)
+            if code != 0:
+                raise RuntimeError(f"the reporter exited {code} on {day}: {err.getvalue().strip()}")
             git(repo, "add", "-A")
-            git(repo, "commit", "-qm", day)
+            git(repo, "commit", "-qm", day.isoformat())
             if d in (0, days - 2, days - 1):
                 out[d + 1] = sizes(repo)
     finally:
@@ -262,7 +284,7 @@ def main(argv):
     m.add_argument("--days", type=int, default=1)
     m.add_argument("--start", type=int, default=12, help="checkpoints each node has cut on day 1")
     m.add_argument("--per-day", type=int, default=12, help="checkpoints each node cuts a day")
-    m.add_argument("--attempts", type=int, default=1)
+    m.add_argument("--attempts", type=int, default=1, help="the attempt on which every node answers")
     m.add_argument("--work", help="keep the scratch repository here (default: a temporary one)")
     m.add_argument("--json", action="store_true")
     args = parser.parse_args(argv[1:])
@@ -281,7 +303,7 @@ def main(argv):
     if args.json:
         print(json.dumps({"measured": measured, "year": year}, indent=2, sort_keys=True))
         return 0
-    print(f"{args.nodes} nodes, {args.attempts} attempt(s)/day, {args.start} + {args.per_day}/day checkpoints, "
+    print(f"{args.nodes} nodes, answered on attempt {args.attempts}, {args.start} + {args.per_day}/day checkpoints, "
           f"{'real' if args.bodies else 'synthetic'} bodies")
     rows = [(f"after day {d}", measured[d]) for d in sorted(measured)]
     rows += [(f"year, {n} nodes", year[n]) for n in (10, 100)]
