@@ -1,0 +1,13 @@
+{
+  "node_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "key_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "operator": "example-operator",
+  "mesh": "lab",
+  "ask_route": "mesh",
+  "disclosure": {
+    "policy": "counterparties",
+    "stranger_safe": ["checkpoints", "history_card/1"]
+  },
+  "host_build": "mesh-llm lab build (main + #2620)",
+  "plugin_version": "capsules 0.1.5"
+}
