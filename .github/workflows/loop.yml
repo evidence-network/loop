@@ -53,7 +53,8 @@ jobs:
           POPULATION: rehearsal
         run: |
           # The repository that owns each step's component, by population. Live step 12 probes
-          # through the reporter's mesh_evidence_request path until capsules-plugin#53.
+          # through the reporter's mesh_evidence_request path until capsules-plugin#53, and a live
+          # commitment is signed by the node itself (capsules-plugin#51).
           declare -A OWNER=(
             [rehearsal:01]=action-state-group/agent-action-capsule
             [rehearsal:02]=action-state-group/evidencebook
@@ -61,7 +62,7 @@ jobs:
             [rehearsal:12]=action-state-group/evidencebook
             [live:01]=action-state-group/agent-action-capsule
             [live:02]=action-state-group/evidencebook
-            [live:03]=evidence-network/loop
+            [live:03]=Mesh-LLM/capsules-plugin
             [live:12]=Mesh-LLM/capsules-plugin
           )
           [ -f loop-summary.txt ] || exit 0
