@@ -20,7 +20,7 @@ STEP = ROOT / "steps" / "01-seal"
 FIXTURES = ROOT / "tests" / "fixtures" / "step01"
 POPULATION = FIXTURES / "population" / "rehearsal"
 SEALED = FIXTURES / "sealed-capsule.json"
-TOOLS = Path(os.environ.get("LOOP_TOOLS") or Path.cwd() / ".tools") / "01-seal"
+TOOLS = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "01-seal"
 PYTHON, VERIFIER = TOOLS / "venv" / "bin" / "python", TOOLS / "bin" / "cross_language"
 SETUP = "run steps/01-seal.setup.sh (needs network) to install it"
 

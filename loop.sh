@@ -21,6 +21,8 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 STEPS_DIR=${LOOP_STEPS_DIR:-$ROOT/steps}
 TIMEOUT=${LOOP_STEP_TIMEOUT:-1800}
 export PYTHONDONTWRITEBYTECODE=1
+# Where each step's setup.sh installed its pinned tools; every step reads the same default.
+export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
 declare -A NAMES=([01]=seal [02]=book [03]=advertise [12]=join)

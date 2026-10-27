@@ -2,7 +2,7 @@
 """Make step 01's test fixtures once; the tests read them and never regenerate.
 
 Run with the Python that steps/01-seal.setup.sh installed (it has `cryptography`):
-    .tools/01-seal/venv/bin/python -B tests/fixtures/step01/make_fixtures.py   (from the repo root)
+    ~/.cache/evidence-network-loop/01-seal/venv/bin/python -B tests/fixtures/step01/make_fixtures.py   (from the repo root)
 
 Writes, beside this file:
   population/rehearsal/population.json   the agreed population shape, Alice and Bob

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Install step 01's tools at their versions.lock pins, under $LOOP_TOOLS/01-seal
-# (default $PWD/.tools/01-seal, as loop.sh exports it):
+# (default ~/.cache/evidence-network-loop/01-seal, as loop.sh exports it):
 #   venv/            capsule-emit from PyPI (the sealer, Python), its dependencies
 #                    held to steps/01-seal.constraints.txt
 #   bin/cross_language   the AAC Go module's Class 1 verifier (the second language)
 # Needs python3 (>= 3.9), go and network. Nothing else installs for step 01.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="${LOOP_TOOLS:-$PWD/.tools}/01-seal"
+DEST="${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/01-seal"
 pin() { awk -v n="$1" '$1 == n { print $3 }' "$ROOT/versions.lock"; }
 CAPSULE_EMIT="$(pin capsule-emit)"   # python/vX.Y.Z
 AAC_GO="$(pin aac-go)"               # go/vX.Y.Z
