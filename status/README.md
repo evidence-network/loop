@@ -24,12 +24,14 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   repository is private. Setting `DROP_HELD = True` drops them at the flip.
 - The five numbers, each per population: minutes to the first sealed record
   (step 01), to the first answered request (step 12) and to the first
-  countersigned report (step 11), each from finding `started`/`finished` and
-  an upper bound; decisions limited or refused on evidence (M3) and filtered
-  volume beside raw (M2) are placeholders. A number that cannot be measured
+  countersigned report (step 11, a placeholder until M3), each the marker
+  step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
+  writes it before the first step); decisions limited or refused on evidence
+  (M3) and filtered volume beside raw (M2) are placeholders. A number that cannot be measured
   reads `not measured yet (M1|M2|M3)`, never 0. `NUMBERS` in the source says
   which finding fields each one reads.
 
 `tests/test_status_page.py` holds the page to this. The `site` workflow runs
-stage 1 on the rehearsal population and builds the page into `_site/status/`
-on every pull request, push to main, and nightly after the loop run.
+stage 1 on the rehearsal population itself and builds the page into
+`_site/status/` on every pull request, push to main, and nightly after the
+loop run. Later it can read the loop run's findings artifact instead.

@@ -88,15 +88,13 @@ HELD_FOR_FLIP = frozenset({4, 5, 6, 9})
 DROP_HELD = False
 HELD_NOTE = "Held: whether this row is published is settled when the repository opens."
 
-# The five numbers. A measured one reads finding fields only, from the newest run
-# of its population:
-#   start = the earliest `started` among the run's valid findings (loop.sh records
-#           no start of its own yet);
-#   event = the `finished` of the named step's finding, when that finding is a
+# The five numbers. A measured one reads the newest run of its population:
+#   start = run.json `started`, which loop.sh writes before the run's first step;
+#   event = the `finished` of the marker step's finding, when that finding is a
 #           valid PASS.
-# minutes = event - start. The finding is written after the event it proves, so
-# this is an upper bound; the page says so. A number with no step, or whose step
-# has no valid PASS, reads "not measured yet (<milestone>)", never 0.
+# minutes = event - start. A number with no marker step, a run with no valid
+# run.json for its population, or a marker step with no valid PASS reads
+# "not measured yet (<milestone>)", never 0.
 @dataclass(frozen=True)
 class Number:
     key: str
@@ -109,12 +107,11 @@ class Number:
 
 NUMBERS = (
     Number("first-sealed", "Minutes to the first sealed record", "minutes from the run's start", "M1", 1,
-           "step 01 (Seal) finding: its finished, minus the run's earliest started"),
+           "step 01 (Seal) finding's finished, minus run.json started"),
     Number("first-answered", "Minutes to the first answered request", "minutes from the run's start", "M1", 12,
-           "step 12 (Join) finding, whose probe asks the node's own responder: its finished, minus the run's "
-           "earliest started"),
+           "step 12 (Join) finding's finished (its probe asks the node's own responder), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
-           11, "step 11 (Report) finding: its finished, minus the run's earliest started"),
+           11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
     Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", None,
            "step 04 (Admit): no finding carries the decision counts yet"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", None,
@@ -167,6 +164,7 @@ class Run:
     population: str
     path: Path | None
     findings: dict = field(default_factory=dict)  # step number -> (step dir, record, problems)
+    started: str | None = None  # run.json `started`, when run.json is valid for this population
 
     @property
     def name(self):
@@ -195,6 +193,7 @@ def read_run(population, path):
     run = Run(population, path)
     if path is None:
         return run
+    run.started = run_start(path, population)
     by_step = {}
     for d in sorted(p for p in path.iterdir() if p.is_dir()):
         m = finding.STEP_DIR.match(d.name)
@@ -222,6 +221,16 @@ def read_run(population, path):
             problems = [f"{d.name}: population is {r['population']}, this run is {population}"]
         run.findings[n] = (d, r, problems)
     return run
+
+
+def run_start(path, population):
+    """run.json's `started` (loop.sh), or None when it is missing, unreadable or for another population."""
+    try:
+        r = json.loads((Path(path) / "run.json").read_text(encoding="utf-8"))
+        stamp(r["started"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return r["started"] if r.get("population") == population else None
 
 
 def href(run, d, name):
@@ -276,15 +285,17 @@ def stamp(text):
 
 
 def minutes(run, step):
-    """Minutes from the run's earliest valid `started` to `step`'s PASS `finished`, or None."""
-    valid = {n: r for n, (_, r, problems) in run.findings.items() if r is not None and not problems}
-    if step not in valid or valid[step]["result"] != "PASS":
+    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
+    if run.started is None or step not in run.findings:
+        return None
+    _, r, problems = run.findings[step]
+    if r is None or problems or r["result"] != "PASS":
         return None
     try:
-        start = min(stamp(r["started"]) for r in valid.values())
-        return (stamp(valid[step]["finished"]) - start).total_seconds() / 60
+        m = (stamp(r["finished"]) - stamp(run.started)).total_seconds() / 60
     except (TypeError, ValueError):
         return None
+    return m if m >= 0 else None
 
 
 def volume(raw, filtered, milestone="M2"):
@@ -309,7 +320,7 @@ def number_value(number, run):
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return f"not measured yet ({number.milestone})", False
-    return f"{m:.1f} minutes (upper bound)", True
+    return f"{m:.1f} minutes", True
 
 
 def read_lock(path):
@@ -500,9 +511,9 @@ and {lock} only.</p>
 <tbody>{rows}</tbody></table></div>
 
 <h2 id="numbers">Five numbers</h2>
-<p>Each number is per population, from that population's newest run only. A minutes figure runs from the earliest
-step start in the run to the end of the step that marks the event, so it is an upper bound. A number that cannot
-be measured yet says so, with the milestone it waits for; it is never shown as 0.</p>
+<p>Each number is per population, from that population's newest run only. A minutes figure runs from the run's
+start (its <code>run.json</code>, written before the first step) to the end of the step that marks the event. A
+number that cannot be measured yet says so, with the milestone it waits for; it is never shown as 0.</p>
 <div class="scroll"><table><thead><tr><th scope="col">Number</th><th scope="col">Unit</th>
 <th scope="col">Rehearsal</th><th scope="col">Live</th><th scope="col">From</th></tr></thead>
 <tbody>{numbers}</tbody></table></div>

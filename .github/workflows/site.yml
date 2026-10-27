@@ -28,7 +28,8 @@ jobs:
       # and versions.lock. A fresh stage-1 rehearsal run, as loop.yml runs it,
       # lands beside any live run committed under findings/; the page reads the
       # newest of each. A step's FAIL or a refused finding is a red row, not a
-      # failed build, so loop.sh's exit code does not stop the page.
+      # failed build, so loop.sh's exit code does not stop the page. For M1 the
+      # job runs stage 1 itself; later it can read loop.yml's findings artifact.
       - name: Install each step's pins
         run: |
           for s in steps/*.setup.sh; do

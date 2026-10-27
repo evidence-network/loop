@@ -24,6 +24,20 @@ sys.path.insert(0, str(ROOT / "steps"))
 import finding  # noqa: E402
 import status_page  # noqa: E402
 
+# A step that passes: one proof file, written through steps/finding.py.
+FAKE_STEP = """#!/usr/bin/env python3
+import argparse, json, sys
+sys.path.insert(0, {steps!r})
+import finding
+a = argparse.ArgumentParser()
+a.add_argument("--population"); a.add_argument("--out")
+args = a.parse_args()
+started = finding.now()
+population = json.load(open(args.population + "/population.json"))["population"]
+open(args.out + "/proof.txt", "w").write("proof bytes\\n")
+finding.write(args.out, result="PASS", population=population, asserts="a fake fact holds",
+              pinned=[], proof=["proof.txt"], detail="", started=started)
+"""
 CLAIMS = re.compile(r"\b(checked|verified|witnessed)\b", re.I)
 NAMES = {1: "seal", 2: "book", 3: "advertise", 12: "join"}
 
@@ -95,6 +109,12 @@ class StatusPageTest(unittest.TestCase):
                           pinned=["capsulectl"], proof=list(proof), detail=detail, not_checked=not_checked,
                           started=started)
         return d
+
+    def run_json(self, started, population="rehearsal", date="2026-10-27", run_population=None):
+        d = self.findings / f"{date}-{population}"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "run.json").write_text(json.dumps({"stage": "1", "population": run_population or population,
+                                                "started": started}))
 
     def build(self):
         err = io.StringIO()
@@ -293,15 +313,44 @@ class StatusPageTest(unittest.TestCase):
         row = re.search(rf'<tr id="n-{key}">(.*?)</tr>', self.html).group(1)
         return re.search(rf'<td class="(\w+)" data-population="{population}">([^<]*)</td>', row).groups()
 
-    def test_minutes_to_first_sealed_record_and_first_answered_request_come_from_findings(self):
-        self.write(1, "PASS", started="2026-10-27T01:59:30Z")  # finished 02:01:00
+    def test_minutes_run_from_run_json_to_the_marker_steps_finished(self):
+        self.run_json("2026-10-27T01:59:30Z")
+        self.write(1, "PASS", started="2026-10-27T02:00:30Z")  # finished 02:01:00
         self.write(2, "PASS", started="2026-10-27T02:01:00Z")
         self.write(12, "PASS", started="2026-10-27T02:05:00Z")  # finished 02:12:00
+        self.run_json("2026-10-27T02:00:00Z", population="live")
+        self.write(1, "PASS", population="live", started="2026-10-27T02:00:10Z")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("measured", "1.5 minutes (upper bound)"))
-        self.assertEqual(self.number("first-answered"), ("measured", "12.5 minutes (upper bound)"))
+        # From run.json, not from the earliest step start (that would be 0.5).
+        self.assertEqual(self.number("first-sealed"), ("measured", "1.5 minutes"))
+        self.assertEqual(self.number("first-answered"), ("measured", "12.5 minutes"))
+        self.assertEqual(self.number("first-sealed", "live"), ("measured", "1.0 minutes"))
+        self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M1)"))
+        self.assertNotIn("upper bound", self.html)
+
+    def test_no_valid_run_json_is_not_measured(self):
+        self.write(1, "PASS")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # no run.json
+        self.run_json("2026-10-27T01:00:00Z", run_population="live")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # another population
+        self.run_json("yesterday")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # not a UTC time
+        self.run_json("2026-10-27T03:00:00Z")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # after the step
+
+    def test_the_countersigned_report_is_a_placeholder_until_m3(self):
+        self.run_json("2026-10-27T02:00:00Z")
+        for n in NAMES:
+            self.write(n, "PASS")
+        self.page()
+        self.assertEqual(self.number("first-countersigned"), ("placeholder", "not measured yet (M3)"))
 
     def test_a_number_whose_step_did_not_pass_is_not_measured_yet(self):
+        self.run_json("2026-10-27T02:00:00Z")
         self.write(1, "FAIL")
         self.write(12, "NOT_CHECKED", not_checked=[{"what": "a", "why": "b", "issue": "c"}])
         self.page()
@@ -381,6 +430,32 @@ class StatusPageTest(unittest.TestCase):
             self.assertIn("no step executable", page.rows[n]["rehearsal"]["quoted"])
         self.assertIn("s-NOT_CHECKED", page.rows[7]["rehearsal"]["class"])
         self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))
+
+    def test_loop_sh_writes_run_json_first_and_the_page_measures_from_it(self):
+        """A real loop.sh run with a passing step 01: run.json comes before the step, and the check allows it."""
+        steps = self.dir / "fake-steps"
+        steps.mkdir()
+        step = steps / "01-seal"
+        step.write_text(FAKE_STEP.format(steps=str(ROOT / "steps")))
+        step.chmod(0o755)
+        run = self.findings / "2026-10-27-rehearsal"
+        env = dict(os.environ, LOOP_STEPS_DIR=str(steps))
+        r = subprocess.run([str(ROOT / "loop.sh"), "--stage", "1", "--out", str(run)], capture_output=True,
+                           text=True, env=env, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("01 seal PASS", r.stdout)
+        meta = json.loads((run / "run.json").read_text())
+        self.assertEqual(sorted(meta), ["population", "stage", "started"])
+        self.assertEqual((meta["stage"], meta["population"]), ("1", "rehearsal"))
+        seal = json.loads((run / "01-seal" / "finding.json").read_text())
+        self.assertLessEqual(meta["started"], seal["started"])  # written before the first step
+        self.assertEqual(finding.check(run), [])  # the check allows run.json
+        page = self.page()
+        self.assertIn("s-green", page.rows[1]["rehearsal"]["class"])
+        state, text = self.number("first-sealed")
+        self.assertEqual(state, "measured")
+        expected = (status_page.stamp(seal["finished"]) - status_page.stamp(meta["started"])).total_seconds() / 60
+        self.assertEqual(text, f"{expected:.1f} minutes")
 
 
 if __name__ == "__main__":
