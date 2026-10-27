@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "host": "lab",
+      "name": "lab-1",
+      "node_id": null
+    },
+    {
+      "host": "lab",
+      "name": "lab-2",
+      "node_id": null
+    }
+  ],
+  "population": "live",
+  "rail": null
+}

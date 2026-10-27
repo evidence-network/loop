@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    {
+      "host": "lab",
+      "name": "lab-1",
+      "node_id": "3aaf231b8906d46148e4591db11991a58a9ede6d529c9a0540a6cfbc5d3ed5bc"
+    }
+  ],
+  "population": "live",
+  "rail": null
+}

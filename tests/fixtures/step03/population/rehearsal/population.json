@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    {
+      "key_dir": "population/rehearsal/keys/alice",
+      "name": "alice"
+    },
+    {
+      "key_dir": "population/rehearsal/keys/bob",
+      "name": "bob"
+    }
+  ],
+  "population": "rehearsal",
+  "rail": "mock"
+}

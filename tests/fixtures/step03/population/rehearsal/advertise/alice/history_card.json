@@ -1,0 +1,16 @@
+{
+  "anchor": {
+    "digest": "c05cbf55144b1ac99e4ce5ab05ca2ff9f3238249690b0b4e94f3440ffca1e092",
+    "freshness": "as-of"
+  },
+  "artifact": "eyJoYWx2ZXMiOltdfQ",
+  "artifact_digest": "a4d6957c00f58e7b4fe5ed9ba2582729742ba282b9516375b5ae8af2a8b45419",
+  "derivation": "history_card/1",
+  "issued_at": "2026-10-27T00:00:00Z",
+  "profile": "evidence-interop/0",
+  "responder": "3aaf231b8906d46148e4591db11991a58a9ede6d529c9a0540a6cfbc5d3ed5bc",
+  "sig": "stand-in",
+  "subject": {
+    "book": "3aaf231b8906d46148e4591db11991a58a9ede6d529c9a0540a6cfbc5d3ed5bc"
+  }
+}
