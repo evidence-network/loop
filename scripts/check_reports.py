@@ -5,7 +5,8 @@ Usage: check_reports.py [DIR] [--through YYYY-MM-DD [--reporter FILE]]
        (default DIR: reports/daily)
 
 Every entry of DIR is a <YYYY-MM-DD> directory holding either RUN.json (a run:
-one <node_id>/ per node it asked) or MISSED (no run that day, and why). A node
+one <node_id>/ per node it asked, and the sha256 of the versions.lock it ran
+under as versions_lock_sha256) or MISSED (no run that day, and why). A node
 directory holds attempts/ (one <YYYYMMDDTHHMMSSZ>/ per time the node was asked,
 see report_layout.py) and the day as the run settled it: NODE, peer-key.json,
 and for each question one .request.json, one .verification line, and exactly
@@ -136,6 +137,9 @@ def check_day(day_dir):
             raise TypeError("asked is not a list of node ids")
         if run.get("date") != day:
             errs.append(f"{day}: RUN.json date is {run.get('date')}")
+        lock = run.get("versions_lock_sha256")
+        if not (isinstance(lock, str) and HEX64.match(lock)):
+            errs.append(f"{day}: RUN.json versions_lock_sha256 must be the 64-hex sha256 of the versions.lock it ran under")
     except (ValueError, KeyError, TypeError) as e:
         return [f"{day}: RUN.json unreadable ({e})"]
     if "README.md" not in names:

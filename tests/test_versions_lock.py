@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import check_reports  # noqa: E402
 import check_versions_lock  # noqa: E402
 import daily_report  # noqa: E402
 
@@ -78,8 +79,8 @@ class CheckTest(unittest.TestCase):
 
     def test_bumping_a_pin_is_a_one_line_change(self):
         text = (ROOT / "versions.lock").read_text()
-        bumped = text.replace("capsules Mesh-LLM/capsules 39027313c78db7aa711dfbee4897eef39540cf36",
-                              "capsules Mesh-LLM/capsules v0.1.5")
+        bumped = text.replace("capsules Mesh-LLM/capsules-plugin 39027313c78db7aa711dfbee4897eef39540cf36",
+                              "capsules Mesh-LLM/capsules-plugin v0.1.5")
         changed = [(a, b) for a, b in zip(text.splitlines(), bumped.splitlines()) if a != b]
         self.assertEqual(len(changed), 1)
         self.assertEqual(self.errs(bumped), [])
@@ -125,6 +126,31 @@ class ReportNamesTheLockTest(unittest.TestCase):
             run = json.loads((out / "2026-10-27" / "RUN.json").read_text())
         want = hashlib.sha256((ROOT / "versions.lock").read_bytes()).hexdigest()
         self.assertEqual(run["versions_lock_sha256"], want)
+
+    def test_check_reports_requires_the_digest(self):
+        node = ReporterNode()
+        self.addCleanup(node.close)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "nodes").mkdir()
+            (tmp / "reporter.json").write_text(json.dumps(REPORTER))
+            out = tmp / "daily"
+            argv = ["daily_report.py", "run", "--date", "2026-10-27", "--console", node.url,
+                    "--nodes", str(tmp / "nodes"), "--out", str(out), "--reporter", str(tmp / "reporter.json")]
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(daily_report.main(argv), 0)
+            self.assertEqual(check_reports.check(out)[0], [])
+            path = out / "2026-10-27" / "RUN.json"
+            run = json.loads(path.read_text())
+            for bad in (None, "", "abc", run["versions_lock_sha256"].upper()):
+                if bad is None:
+                    run.pop("versions_lock_sha256")
+                else:
+                    run["versions_lock_sha256"] = bad
+                path.write_text(json.dumps(run))
+                errs = check_reports.check(out)[0]
+                self.assertEqual(len(errs), 1, (bad, errs))
+                self.assertIn("versions_lock_sha256 must be the 64-hex sha256", errs[0])
 
     def test_the_digest_is_of_the_lock_bytes(self):
         with tempfile.TemporaryDirectory() as tmp:
