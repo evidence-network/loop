@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Step 01 Seal: a capsule sealed by one implementation verifies Class 1 in a second language.
+
+Usage: 01-seal --population DIR --out DIR/01-seal [--node NAME] [--sealed CAPSULE]
+
+capsule-emit (Python) seals one inference record with the node's key, in this
+process: the record is sealed inside the producer's own process, so its effect
+may claim no capture class stronger than `runtime_claimed`. The AAC Go verifier
+(a second language) then runs Class 1 verification on the sealed bytes, and
+recomputes the capsule_id from them on its own. The step checks, on those bytes:
+
+  class1          the Go verifier's Class 1 result is ok
+  capsule_id      the Go-recomputed capsule_id equals the carried one
+  effect_class    the effect carries effect_attestation, and it is runtime_claimed
+  model           model_attestation is present and names the model the producer gave
+  key             key_id is the node's public key
+
+--sealed CAPSULE skips sealing and checks a capsule capsule-emit sealed earlier
+the same way (the planted-failure tests use it).
+
+Tools come from steps/01-seal.setup.sh, installed under $LOOP_TOOLS/01-seal
+(default ~/.cache/evidence-network-loop/01-seal). Standard library only.
+"""
+import argparse
+import base64
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "steps"))
+import finding  # noqa: E402
+
+PINNED = ["capsule-emit", "aac-go"]
+GO_MODULE = "github.com/action-state-group/agent-action-capsule/go"
+ASSERTS = ("a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the "
+           "AAC Go verifier, its capsule_id recomputes, its effect reads effect_attestation "
+           "runtime_claimed (sealed in the producer's own process) and it carries model_attestation")
+# What the step tells the producer about the model; model_attestation must carry it back.
+MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
+# Registered effect_attestation values (AAC -05). A record sealed in the producer's
+# own process may claim only runtime_claimed.
+REGISTERED = ("gate_executed", "runtime_claimed", "host_served_observed")
+IN_PROCESS_CLASS = "runtime_claimed"
+SETUP = "none: steps/01-seal.setup.sh has not installed it"
+
+SEAL = r"""
+import json, sys
+from capsule_emit import seal
+model = json.loads(sys.argv[4])
+result = seal({"prompt": "rehearsal inference"}, action="inference_completion",
+              operator=sys.argv[5], developer="loop-step-01", model=model,
+              agent_output={"completion": "rehearsal completion"},
+              effect={"type": "inference_completion", "status": "confirmed"},
+              ledger=sys.argv[1], signing_key_path=sys.argv[2], witness=False)
+with open(sys.argv[3], "w", encoding="utf-8") as f:
+    json.dump(result.capsule, f, indent=2, sort_keys=True)
+    f.write("\n")
+"""
+
+
+def tools():
+    base = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "01-seal"
+    return base / "venv" / "bin" / "python", base / "bin" / "cross_language"
+
+
+def run(cmd, stdin=None, env=None):
+    """(exit, stdout, stderr); stdin goes in as exact bytes, so tampered bytes reach the verifier as they are."""
+    if isinstance(stdin, str):
+        stdin = stdin.encode()
+    p = subprocess.run(cmd, input=stdin, capture_output=True, timeout=120, env=env)
+    return p.returncode, p.stdout.decode(errors="replace"), p.stderr.decode(errors="replace")
+
+
+def lock_version(name):
+    return finding.pins()[name][1].rsplit("/", 1)[-1].lstrip("v")
+
+
+def installed_pins(python, verifier):
+    """The installed versions, or {what, why, issue} entries for each that is missing or not the pin."""
+    seen, missing = {}, []
+    if not python.is_file():
+        missing.append({"what": "capsule-emit", "why": f"{python} is not installed", "issue": SETUP})
+    else:
+        rc, out, err = run([str(python), "-B", "-I", "-c",
+                            "import importlib.metadata as m; print(m.version('capsule-emit'))"])
+        seen["capsule-emit"] = out.strip() if rc == 0 else f"unreadable: {err.strip()}"
+    if not verifier.is_file():
+        missing.append({"what": "aac-go", "why": f"{verifier} is not installed", "issue": SETUP})
+    elif shutil.which("go"):
+        rc, out, _ = run(["go", "version", "-m", str(verifier)])
+        mods = [ln.split() for ln in out.splitlines() if ln.strip().startswith("mod")]
+        seen["aac-go"] = next((m[2].lstrip("v") for m in mods if len(m) > 2 and m[1] == GO_MODULE), "unreadable")
+    else:
+        missing.append({"what": "aac-go", "why": "go is not on PATH to read the verifier's module version",
+                        "issue": SETUP})
+    for name, version in seen.items():
+        if version != lock_version(name):
+            missing.append({"what": name, "why": f"installed {version}, versions.lock pins {lock_version(name)}",
+                            "issue": SETUP})
+    return seen, missing
+
+
+def node_key_dir(pop_dir, population, node):
+    nodes = {n["name"]: n for n in population["nodes"]}
+    entry = nodes.get(node) or population["nodes"][0]
+    key_dir = Path(entry["key_dir"])
+    # key_dir is relative to the tree that holds population/<name>/.
+    return entry["name"], key_dir if key_dir.is_absolute() else pop_dir.resolve().parent.parent / key_dir
+
+
+def raw_public_hex(pub_pem):
+    """The raw Ed25519 key from an SPKI PEM: the DER's last 32 bytes, after its fixed 12-byte prefix."""
+    body = "".join(ln for ln in pub_pem.read_text().splitlines() if not ln.startswith("-----"))
+    der = base64.b64decode(body)
+    if len(der) != 44 or der[:12] != bytes.fromhex("302a300506032b6570032100"):
+        raise ValueError(f"{pub_pem}: not an Ed25519 SPKI public key")
+    return der[12:].hex()
+
+
+def check(capsule_bytes, verifier, node_pub):
+    """Every check on the sealed bytes: {name: {ok, detail}} plus the verifier's raw outputs."""
+    checks, outputs = {}, {}
+    rc, out, err = run([str(verifier), "verify"], stdin=capsule_bytes)
+    outputs["verify"] = {"command": "cross_language verify", "exit": rc, "stdout": out, "stderr": err}
+    checks["class1"] = {"ok": rc == 0, "detail": "Class 1 ok" if rc == 0 else f"exit {rc}: {err.strip()}"}
+    try:
+        capsule = json.loads(capsule_bytes)
+    except ValueError as e:
+        for name in ("capsule_id", "effect_class", "model", "key"):
+            checks[name] = {"ok": False, "detail": f"the sealed bytes are not JSON ({e})"}
+        return checks, outputs
+    carried = capsule.get("capsule_id")
+    # Recompute: drop the id and the envelope fields outside its preimage, then let Go seal it.
+    stripped = {k: v for k, v in capsule.items() if k not in ("capsule_id", "signature", "key_id")}
+    rc, out, err = run([str(verifier), "seal"], stdin=json.dumps(stripped))
+    try:
+        recomputed = json.loads(out)["capsule_id"] if rc == 0 else None
+    except (ValueError, KeyError, TypeError):
+        recomputed = None
+    outputs["recompute"] = {"command": "cross_language seal (capsule_id, signature, key_id removed)",
+                            "exit": rc, "capsule_id": recomputed, "stderr": err}
+    ok = recomputed is not None and recomputed == carried
+    if ok and checks["class1"]["ok"]:
+        ok = out_id(outputs["verify"]["stdout"]) == carried
+    checks["capsule_id"] = {"ok": ok, "detail": f"carried {carried}, recomputed {recomputed}"}
+
+    effect = capsule.get("effect")
+    if not isinstance(effect, dict):
+        checks["effect_class"] = {"ok": False, "detail": "the capsule carries no effect record"}
+    else:
+        ea = effect.get("effect_attestation")
+        ok = ea == IN_PROCESS_CLASS
+        why = ("sealed in the producer's own process reads runtime_claimed" if ok else
+               "missing" if ea is None else
+               f"{ea!r} is not registered, so no stronger than runtime_claimed, and is not what an "
+               "in-process seal writes" if ea not in REGISTERED else
+               f"{ea!r} claims a capture class an in-process seal cannot have")
+        checks["effect_class"] = {"ok": ok, "detail": f"effect_attestation {ea!r}: {why}"}
+
+    ma = capsule.get("model_attestation")
+    ok = isinstance(ma, dict) and all(ma.get(k) == v for k, v in MODEL.items())
+    checks["model"] = {"ok": ok, "detail": f"model_attestation {json.dumps(ma, sort_keys=True)}"}
+
+    key_id = capsule.get("key_id")
+    checks["key"] = {"ok": key_id == node_pub, "detail": f"key_id {key_id}, node public key {node_pub}"}
+    return checks, outputs
+
+
+def out_id(stdout):
+    lines = stdout.split()
+    return lines[-1] if lines else None
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--node", default="alice")
+    ap.add_argument("--sealed", type=Path, help="check this capsule instead of sealing a new one")
+    a = ap.parse_args(argv)
+    started = finding.now()
+    out = a.out
+    out.mkdir(parents=True, exist_ok=True)
+    population = json.loads((a.population / "population.json").read_text(encoding="utf-8"))
+    pop_name = population["population"]
+    node, key_dir = node_key_dir(a.population, population, a.node)
+    python, verifier = tools()
+    seen, not_checked = installed_pins(python, verifier)
+    if a.sealed:  # nothing is sealed here, so only the verifier must be installed
+        not_checked = [n for n in not_checked if n["what"] != "capsule-emit"]
+
+    def write(result, proof, detail, nc=()):
+        return finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=detail, not_checked=nc, started=started)
+
+    if not_checked:
+        write("NOT_CHECKED", [], f"node {node}: a pinned tool is missing or not the pin", not_checked)
+        return 0
+
+    capsule_path = out / "capsule.json"
+    if a.sealed:
+        shutil.copyfile(a.sealed, capsule_path)
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            # Seal with a copy: a missing key would otherwise be generated in place.
+            key = Path(tmp) / "node-key.pem"
+            shutil.copyfile(key_dir / "node-key.pem", key)
+            env = dict(os.environ, CAPSULE_WITNESS="off")
+            rc, _, err = run([str(python), "-B", "-I", "-c", SEAL, str(Path(tmp) / "ledger"), str(key),
+                              str(capsule_path), json.dumps(MODEL), pop_name], env=env)
+        if rc != 0:
+            (out / "seal.stderr.txt").write_text(err)
+            write("FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})")
+            return 0
+
+    checks, outputs = check(capsule_path.read_bytes(), verifier, raw_public_hex(key_dir / "node-key.pub.pem"))
+    (out / "verifier.json").write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n")
+    (out / "checks.json").write_text(json.dumps(
+        {"node": node, "sealed_by": "given capsule" if a.sealed else "capsule-emit, in this process",
+         "installed": seen, "checks": checks}, indent=2, sort_keys=True) + "\n")
+    failed = [n for n, c in checks.items() if not c["ok"]]
+    detail = (f"node {node}: " + ("; ".join(f"{n}: {checks[n]['detail']}" for n in failed) if failed else
+              "Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, "
+              "model_attestation present, key_id is the node's key. The producer envelope's "
+              "signature is not verified here (Class 1 does not include it)."))
+    write("FAIL" if failed else "PASS", ["capsule.json", "verifier.json", "checks.json"], detail)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
