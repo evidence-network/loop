@@ -51,7 +51,7 @@ class EntryRulesTest(unittest.TestCase):
 
     def test_consent_is_the_published_statement_word_for_word(self):
         self.assertEqual(self.check(), [])
-        for consent in ("yes", "", True, check_nodes.CONSENT.replace("once a day", "twice a day"),
+        for consent in ("yes", "", True, check_nodes.CONSENT.replace("usually daily", "twice daily"),
                         check_nodes.CONSENT + " "):
             self.assertEqual(self.check(consent=consent),
                              [f"{'a' * 64}.json: consent must be the operator statement in nodes/README.md, word for word"],

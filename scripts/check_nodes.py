@@ -23,11 +23,11 @@ REQUIRED = ("node_id", "key_id", "operator", "consent", "mesh", "ask_route", "di
 # The operator statement every entry carries, word for word. Changing it is a
 # change to what operators agreed to: every listed entry must carry the new text.
 CONSENT = (
-    "I run this node. The evidence network's daily reporter, signing with the key in "
-    "reporter/reporter.json, may ask it checkpoints and history_card/1 once a day. "
-    "What it answers, or that it did not answer, is published in the evidence-network/loop "
-    "repository, including after that repository is public. I leave by removing this entry "
-    "by pull request: the asks stop from the next run, and reports already published stay."
+    "I add this node to the evidence network to help improve the evidence layer. "
+    "The network may ask it for its history summary, usually daily, and never for the "
+    "content of any request, answer or payment. A summary of its answers, or that it did "
+    "not answer, is published at https://evidence-network.github.io/loop/stats/. "
+    "To leave, remove this entry: the asks stop on the next run, and past reports stay."
 )
 # A GitHub handle: alphanumerics and single inner hyphens, at most 39 characters.
 GITHUB_HANDLE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")

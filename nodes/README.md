@@ -29,12 +29,12 @@ Open a pull request adding `nodes/<node_id>.json`:
   an email address or a phone number; the list holds no personal data.
 - `consent` is the operator statement. By adding it, the operator agrees to it:
 
-  > I run this node. The evidence network's daily reporter, signing with the key in reporter/reporter.json, may ask it checkpoints and history_card/1 once a day. What it answers, or that it did not answer, is published in the evidence-network/loop repository, including after that repository is public. I leave by removing this entry by pull request: the asks stop from the next run, and reports already published stay.
+  > I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay.
 
   The value goes in the entry exactly as this JSON string:
 
   ```
-  "I run this node. The evidence network's daily reporter, signing with the key in reporter/reporter.json, may ask it checkpoints and history_card/1 once a day. What it answers, or that it did not answer, is published in the evidence-network/loop repository, including after that repository is public. I leave by removing this entry by pull request: the asks stop from the next run, and reports already published stay."
+  "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay."
   ```
 
 - `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`.
