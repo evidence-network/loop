@@ -1,0 +1,76 @@
+# The loop, stage 1, on the rehearsal population: nightly, on every pull request, and by hand.
+# Each step's setup.sh installs its pins from versions.lock; loop.sh runs the steps and checks
+# their findings; findings/ is uploaded as an artifact. On the nightly run only, each step whose
+# finding is FAIL opens (or comments on) one issue in this repository, labelled loop-step-NN,
+# naming the component repository that owns the step.
+name: loop
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # A setup that fails does not stop the run: its step then fails, and the finding says so.
+      - name: Install each step's pins
+        run: |
+          for s in steps/*.setup.sh; do
+            [ -e "$s" ] || continue
+            echo "::group::$s"
+            bash "$s" || echo "::warning::$s exited $?"
+            echo "::endgroup::"
+          done
+      - name: Run stage 1 on the rehearsal population
+        run: |
+          set -o pipefail
+          ./loop.sh --stage 1 --population rehearsal --out "findings/$(date -u +%F)-rehearsal" | tee loop-summary.txt
+      - name: Upload the findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: findings-rehearsal-${{ github.run_id }}
+          path: findings/
+          if-no-files-found: warn
+      - name: Open or update one issue per failing step
+        if: always() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # The repository that owns each step's component.
+          declare -A OWNER=(
+            [01]=action-state-group/agent-action-capsule
+            [02]=action-state-group/evidencebook
+            [03]=evidence-network/loop
+            [12]=action-state-group/evidencebook
+          )
+          [ -f loop-summary.txt ] || exit 0
+          while read -r nn name result <&3; do
+            [ "$result" = FAIL ] || continue
+            label=loop-step-$nn
+            owner=${OWNER[$nn]:-unknown}
+            gh label create "$label" --color B60205 --description "loop step $nn failed" --force
+            body="Step $nn ($name) is FAIL on the nightly rehearsal run: $RUN_URL
+          The finding is in the run's findings artifact, under $nn-$name/finding.json.
+          Owning component repository: $owner."
+            n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number')
+            if [ -n "$n" ]; then
+              gh issue comment "$n" --body "$body"
+            else
+              gh issue create --title "loop step $nn ($name) fails" --label "$label" --body "$body"
+            fi
+          done 3< loop-summary.txt
