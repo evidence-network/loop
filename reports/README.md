@@ -33,7 +33,9 @@ each question (`checkpoints`, `history_card` for `history_card/1`):
   the attempt that got it; or `<q>.absence.txt` when nothing came back, with
   each attempt's time and why;
 - `<q>.verification`: one line, starting with
-  - `verified`: an artifact that verified under the node's announced key;
+  - `verified`: an artifact that verified under the node's announced key,
+    with `mmr_size=<n> timestamp=<time>` (the log size and time in the
+    checkpoint the answer is anchored at) when the answer names one;
   - `no_checkpoint_yet`: a signed `coverage_unsatisfiable`, the node has cut no
     checkpoint yet;
   - `refusal`: another refusal the node signed over this request, with its reason;

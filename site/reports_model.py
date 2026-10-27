@@ -6,8 +6,9 @@ scripts/daily_report.py writes it): this module reads a node's day through it
 its own. Before reading, it runs scripts/check_reports.py over the whole tree,
 so the page refuses exactly what the reports check refuses. On top of that it
 is strict about what the page shows: a result line it cannot read, a
-`verified` line without its checkpoint count and anchor, or over a response
-that is not an artifact. Anything it does not recognise is a ReportError, so
+`verified` line without its checkpoint count and anchor, over a response
+that is not an artifact, or with a log size and time other than the answer's
+checkpoint (`layout.last_checkpoint()`). Anything it does not recognise is a ReportError, so
 the page build fails instead of showing a guess.
 
 Per question, the page shows the day so far, from the attempts: the answer of
@@ -71,7 +72,8 @@ class Answer:
     asked_again: bool = False  # the answer came from an ask-again after the run
     checkpoints: int | None = None
     anchor: str | None = None
-    epoch: str | None = None  # the answer format (evidence-interop/0) has no epoch field; kept for the page's column
+    mmr_size: int | None = None  # the log size at the answer's checkpoint (layout.last_checkpoint), from the line
+    timestamp: str | None = None  # that checkpoint's time
 
 
 @dataclass
@@ -175,6 +177,13 @@ def read_answer(root, node_dir, stem, day_so_far, problems):
             state = None
         if state != "artifact":
             problems.append(f"{where}: the line says verified but the response's verification state is {state!r}")
+        size, at = answer.details.get("mmr_size"), answer.details.get("timestamp")
+        if size is not None or at is not None:
+            if (size, at) != tuple(map(str, layout.last_checkpoint((a / f"{stem}.response.json").read_bytes()) or ())) \
+                    or not size.isdigit():
+                problems.append(f"{where}: the line's mmr_size={size} timestamp={at} is not the answer's checkpoint")
+            else:
+                answer.mmr_size, answer.timestamp = int(size), at
     return answer
 
 

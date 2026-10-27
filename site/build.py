@@ -71,7 +71,9 @@ def answer_cell(a):
     if a.outcome == "verified":
         parts.append(f"<dt>checkpoints in the answer</dt><dd>{code(f'checkpoints={a.checkpoints}')}</dd>")
         parts.append(f"<dt>anchor</dt><dd>{short(a.anchor)}</dd>")
-        parts.append("<dt>epoch</dt><dd>" + (code(a.epoch) if a.epoch else "none: the answer format carries no epoch") + "</dd>")
+        parts.append("<dt>log size at checkpoint</dt><dd>" + (
+            f"{code(f'mmr_size={a.mmr_size}')} at {when(a.timestamp)}" if a.mmr_size is not None
+            else "not on the result line: the answer names no checkpoint") + "</dd>")
         if "witnessed" in a.details:
             parts.append(f"<dt>witnessed</dt><dd>{code(a.details['witnessed'])}</dd>")
     for key in ("reason", "why"):

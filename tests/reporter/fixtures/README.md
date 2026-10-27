@@ -23,6 +23,11 @@ plugin is the verifier. A live run replaces these with what the lab nodes
 actually answer.
 
 - `verified.json`: an artifact that verified under the node's announced key.
+  Its `checkpoints` artifact holds two real checkpoint statements, the COSE_Sign1
+  cases of checkpointed-local-log's checkpoint conformance vectors
+  (`checkpoint-conformance-vectors/cose-vectors.json`, log sizes 3 and 11), and
+  its `anchor` is the SHA-256 of the last, so the reporter records
+  `mmr_size=11 timestamp=2026-01-01T00:05:00Z`.
 - `verified_history_card.json`: a `history_card/1` artifact that verified; it
   carries `halves`, not `checkpoints`.
 - `refusal.json`: a refusal the node signed over the reporter's request.

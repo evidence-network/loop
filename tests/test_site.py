@@ -254,11 +254,13 @@ class SiteTest(unittest.TestCase):
             n5 = self.attempt(DAY, 5, i).relative_to(self.reports.parent.parent).as_posix()
             self.assertIn(f'href="{n5}/checkpoints.absence.txt"', self.html)
 
-    def test_a_verified_row_shows_checkpoints_anchor_epoch_attempts_and_its_line(self):
+    def test_a_verified_row_shows_checkpoints_anchor_log_size_attempts_and_its_line(self):
         row = self.row(DAY, 1)
-        self.assertIn("<code>checkpoints=3</code>", row)
+        self.assertIn("<code>checkpoints=2</code>", row)
         self.assertIn(f'<code title="{"a" * 64}">', row)
-        self.assertIn("epoch</dt>", row)
+        self.assertNotIn("epoch", row)
+        self.assertIn('<dt>log size at checkpoint</dt><dd><code>mmr_size=11</code> at '
+                      '<time datetime="2026-01-01T00:05:00Z">', row)
         self.assertIn('asked once<ul class="attempts"><li><time datetime="2026-10-28T06:00:00Z">', row)
         self.assertIn("<code>by=run pass=1</code>", row)
         line = (self.reports / DAY / node_id(1) / "checkpoints.verification").read_text().strip()
@@ -362,6 +364,19 @@ class BrokenReportTest(unittest.TestCase):
     def test_verified_without_a_checkpoint_count(self):
         (self.attempt / "checkpoints.verification").write_text(f"verified anchor={'a' * 64}\n")
         self.refused("checkpoints=<n>")
+
+    def test_a_log_size_other_than_the_answers(self):
+        line = (self.attempt / "checkpoints.verification").read_text()
+        (self.attempt / "checkpoints.verification").write_text(line.replace("mmr_size=11", "mmr_size=12"))
+        self.refused("is not the answer's checkpoint")
+
+    def test_a_line_without_a_log_size_says_so(self):
+        line = (self.attempt / "checkpoints.verification").read_text()
+        (self.attempt / "checkpoints.verification").write_text(
+            line.replace(" mmr_size=11 timestamp=2026-01-01T00:05:00Z", ""))
+        code, err, out = self.build()
+        self.assertEqual(code, 0, err)
+        self.assertIn("not on the result line: the answer names no checkpoint", (out / "index.html").read_text())
 
     def test_verified_line_over_a_refusal(self):
         refusal = (ROOT / "tests" / "reporter" / "fixtures" / "refusal.json").read_bytes()

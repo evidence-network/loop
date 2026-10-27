@@ -71,7 +71,9 @@ request. It does <strong>not</strong> mean the node's records are true or comple
 that anyone vouches for it. Repeating this check yourself, offline, is not possible yet; see
 <a href="#offline">checking an answer yourself</a>.
 The key column also says whether the announced key is the one the node listed (<code>listed_key=match</code>) or
-not (<code>listed_key=differs</code>).</dd>
+not (<code>listed_key=differs</code>).
+"Log size at checkpoint" is the size of the node's log (<code>mmr_size</code>) and the time in the checkpoint the
+answer is anchored at, as the answer states them. A size that grows from day to day shows the log keeps growing.</dd>
 <dt><code class="outcome o-no_checkpoint_yet">no_checkpoint_yet</code></dt>
 <dd>The node signed a <code>coverage_unsatisfiable</code> answer: it has not cut its first checkpoint yet. A node
 cuts its first checkpoint about five minutes after its first activity. This is not a refusal and not an absence.</dd>

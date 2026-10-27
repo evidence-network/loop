@@ -22,11 +22,18 @@ An attempt's verification line starts with one of
     other reason. The question is asked again.
 
 A question with no answer after its last attempt is the day's `absence`.
+
+A `verified` line also carries the log size at the answer's checkpoint,
+`mmr_size=<n> timestamp=<time>`, when the answer names one: `last_checkpoint()`
+reads it from the answer's artifact (see there).
 Standard library only.
 """
+import base64
 import datetime as dt
+import hashlib
 import json
 import re
+import struct
 from pathlib import Path
 
 STEMS = ("checkpoints", "history_card")
@@ -36,6 +43,7 @@ ATTEMPT_STATES = ANSWERED + NO_ANSWER
 DAY_STATES = ANSWERED + ("absence",)
 ATTEMPTS = "attempts"
 ATTEMPT_NAME = re.compile(r"^\d{8}T\d{6}Z$")
+CHECKPOINT_TIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 ATTEMPT_LINE = re.compile(r"^at=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) by=(run pass=[1-9]\d*|ask)$")
 
 
@@ -140,6 +148,74 @@ def read_attempt(attempt_dir):
     """(at, by) from an attempt's ATTEMPT line, or None when it does not parse."""
     m = ATTEMPT_LINE.match((Path(attempt_dir) / "ATTEMPT").read_text(encoding="utf-8").strip())
     return (m.group(1), m.group(2)) if m else None
+
+
+def _cbor(b, i=0):
+    """(value, next index) of the CBOR item at b[i]: definite lengths only, tags dropped."""
+    major, info, i = b[i] >> 5, b[i] & 31, i + 1
+    if info < 24:
+        n = info
+    elif info <= 27:
+        size = 1 << (info - 24)
+        n, i = int.from_bytes(b[i:i + size], "big"), i + size
+        if major == 7 and info > 24:
+            return struct.unpack({2: ">e", 4: ">f", 8: ">d"}[size], b[i - size:i])[0], i
+    else:
+        raise ValueError("indefinite or reserved CBOR length")
+    if major == 0:
+        return n, i
+    if major == 1:
+        return -1 - n, i
+    if major in (2, 3):
+        if i + n > len(b):
+            raise ValueError("CBOR string runs past the end")
+        return (b[i:i + n] if major == 2 else b[i:i + n].decode("utf-8")), i + n
+    if major == 4:
+        items = []
+        for _ in range(n):
+            v, i = _cbor(b, i)
+            items.append(v)
+        return items, i
+    if major == 5:
+        m = {}
+        for _ in range(n):
+            k, i = _cbor(b, i)
+            m[k], i = _cbor(b, i)
+        return m, i
+    if major == 6:
+        return _cbor(b, i)
+    return {20: False, 21: True, 22: None}.get(n), i
+
+
+def last_checkpoint(response):
+    """(mmr_size, timestamp) of the checkpoint a verified answer is anchored at, or None.
+
+    `response` is a .response.json's bytes. The answer's artifact (base64url) is
+    a JSON object whose `checkpoints` list (or `history` entries' `checkpoint`,
+    for history_card/1) holds signed checkpoint statements in hex, oldest first,
+    ending with the one the artifact's `anchor` names. A statement is a COSE_Sign1
+    whose payload carries `log_size` (the MMR size) and `issued_at`. Only the
+    last statement is read, and only when its SHA-256 is the artifact's `anchor`.
+    The reporter does not verify: it reads this after the plugin said `artifact`.
+    """
+    try:
+        answer = json.loads(response)["answer"]
+        text = (answer.get("artifact") or answer["envelope"]["artifact"])
+        artifact = json.loads(base64.urlsafe_b64decode(text + "=" * (-len(text) % 4)))
+        chain = artifact.get("checkpoints") or [h["checkpoint"] for h in artifact.get("history") or []]
+        statement = bytes.fromhex(chain[-1])
+        if hashlib.sha256(statement).hexdigest() != artifact["anchor"]:
+            return None
+        sign1, _ = _cbor(statement)
+        claims, _ = _cbor(sign1[2])
+        size, at = claims["log_size"], claims["issued_at"]
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError, struct.error):
+        return None
+    if isinstance(size, int) and not isinstance(size, bool) and size >= 0 and isinstance(at, str) \
+            and CHECKPOINT_TIME.match(at):
+        return size, at
+    return None
+
 
 
 def run_record(day_dir):

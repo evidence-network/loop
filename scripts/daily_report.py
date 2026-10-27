@@ -171,6 +171,9 @@ def verification_line(status, body, error, announced, listed, timed_out=False):
         detail = f"{count}={verification.get(count)} anchor={verification.get('anchor')}"
         if "witnessed" in verification:
             detail += f" witnessed={verification['witnessed']}"
+        checkpoint = layout.last_checkpoint(body)
+        if checkpoint:
+            detail += f" mmr_size={checkpoint[0]} timestamp={checkpoint[1]}"
         return f"verified {detail} {key}"
     if state == "refusal" and verification.get("reason") == "coverage_unsatisfiable":
         return f"no_checkpoint_yet reason=coverage_unsatisfiable {key}"

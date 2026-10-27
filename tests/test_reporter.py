@@ -181,7 +181,8 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(self.run_reporter("2026-10-28"), 0)
         d = "2026-10-28"
         self.assertEqual(self.line(d, 1, "checkpoints"),
-                         f"verified checkpoints=3 anchor={'a' * 64} key={key_id(1)} listed_key=match")
+                         f"verified checkpoints=2 anchor={'a' * 64} mmr_size=11 timestamp=2026-01-01T00:05:00Z "
+                         f"key={key_id(1)} listed_key=match")
         self.assertEqual(self.line(d, 1, "history_card"),
                          f"verified halves=2 anchor={'a' * 64} key={key_id(1)} listed_key=match")
         self.assertEqual(self.line(d, 2, "history_card"), f"refusal reason=policy_declined key={key_id(2)} listed_key=match")
