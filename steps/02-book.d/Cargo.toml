@@ -1,0 +1,21 @@
+[package]
+name = "loop-step02-book"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Step 02 Book's driver: append to an evidencebook book, cut a checkpoint, verify inclusion with the library."
+
+[[bin]]
+name = "loop-step02-book"
+path = "src/main.rs"
+
+# Exact versions, matching versions.lock: evidencebook is crates/evidencebook-v0.0.7,
+# checkpointed-local-log (embedded by evidencebook) is crates/checkpointed-local-log-v0.3.1.
+# Cargo.lock is committed; steps/02-book.setup.sh builds with --locked and checks it.
+[dependencies]
+evidencebook = "=0.0.7"
+checkpointed-local-log = "=0.3.1"
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+hex = "0.4"

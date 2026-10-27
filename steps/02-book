@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Step 02 Book: the record is in a book at a position, under a checkpoint that verifies.
+
+Usage: 02-book --population DIR --out DIR
+
+Alice's book (the population's `alice` node, its test key) gets two records
+sealed with Alice's key: an opening record, then the record the step asserts
+on. A checkpoint signed by the same key is cut over both. The proof bytes
+(record.json, placement.json, checkpoint.json, checkpoint.cose,
+inclusion.json) are then checked by evidencebook's own verifier, through the
+driver steps/02-book.setup.sh installs; its verdict is verify.json.
+
+The finding:
+- FAIL when any check on the proof bytes does not hold (a record altered
+  after append, a checkpoint from another book, a wrong signer).
+- Otherwise NOT_CHECKED, because the witness part cannot be checked: no
+  witness receipt is obtained on the rehearsal population, and the pinned
+  evidencebook has no witness-receipt verifier (D-14). The detail lists the
+  checks that held. It never reads "witnessed".
+
+Exit 0 once the finding is written, whatever the result; non-zero when the
+step itself broke (no driver installed, unreadable population).
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "steps"))
+import finding  # noqa: E402
+
+ASSERTS = ("the record is in the node's book at a stated position, under a signed checkpoint "
+           "that verifies; the checkpoint's witness receipt verifies")
+PINNED = ["evidencebook", "checkpointed-local-log", "evidence-request"]
+PROOF = ["record.json", "placement.json", "checkpoint.json", "checkpoint.cose", "inclusion.json", "verify.json"]
+WITNESS_NOT_CHECKED = {
+    "what": "a witness receipt on the checkpoint, and its verification",
+    "why": ("the rehearsal population has no witness, so no receipt is obtained; and the pinned "
+            "evidencebook (crate 0.0.7) has no witness-receipt verifier, so a receipt could not be "
+            "verified if one were attached"),
+    "issue": "D-14; action-state-group/evidencebook#119 (receipt verification: merged, in no release yet), #123 (the v0.8.0 release)",
+}
+
+
+def driver():
+    """The installed driver binary, or None."""
+    env = os.environ.get("LOOP_STEP02_BOOK_BIN")
+    if env:
+        p = Path(env)
+    else:
+        tools = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop"))
+        p = tools / "02-book" / "bin" / "loop-step02-book"
+    return p if p.is_file() and os.access(p, os.X_OK) else None
+
+
+def node(population_dir, name):
+    """(population name, private key PEM, public key PEM) of the named node."""
+    pop = json.loads((Path(population_dir) / "population.json").read_text(encoding="utf-8"))
+    for n in pop["nodes"]:
+        if n["name"] == name:
+            key_dir = Path(n["key_dir"])
+            key_dir = key_dir if key_dir.is_absolute() else ROOT / key_dir
+            return pop["population"], key_dir / "node-key.pem", key_dir / "node-key.pub.pem"
+    raise KeyError(f"{population_dir}: no node named {name}")
+
+
+def run(bin_, *args):
+    return subprocess.run([str(bin_), *map(str, args)], capture_output=True, text=True)
+
+
+def book(bin_, key, book_id, out, time, note="rehearsal record"):
+    """Make a new book, append, cut a checkpoint; write the proof files into out."""
+    with tempfile.TemporaryDirectory() as work:
+        r = run(bin_, "book", "--key", key, "--book-id", book_id, "--book-dir", Path(work) / "book",
+                "--out", out, "--time", time, "--note", note)
+    if r.returncode != 0:
+        raise RuntimeError(f"driver book: {r.stderr.strip()}")
+
+
+def decide(bin_, out, *, population, book_id, pub, started):
+    """Verify the proof bytes in out with the driver and write the finding."""
+    out = Path(out)
+    r = run(bin_, "verify", "--pub", pub, "--book-id", book_id, "--dir", out)
+    if r.returncode not in (0, 1):
+        raise RuntimeError(f"driver verify: {r.stderr.strip()}")
+    (out / "verify.json").write_text(r.stdout)
+    verdict = json.loads(r.stdout)
+    held = [c["check"] for c in verdict["checks"] if c["ok"]]
+    failed = [f"{c['check']} ({c['detail']})" for c in verdict["checks"] if not c["ok"]]
+    proof = [p for p in PROOF if (out / p).is_file()]
+    where = f"book {book_id}, position {verdict['position']}, record {verdict['record_id']}"
+    if r.returncode == 1 or failed:
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}",
+                             started=started)
+    detail = (f"{where}: held on the proof bytes, checked by evidencebook: {', '.join(held)}. "
+              f"Witness part not checked ({verdict['witness_receipts']} receipts on the checkpoint).")
+    return finding.write(out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=PINNED,
+                         proof=proof, detail=detail, not_checked=[WITNESS_NOT_CHECKED], started=started)
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    bin_ = driver()
+    if bin_ is None:
+        print("02-book: the driver is not installed; run steps/02-book.setup.sh", file=sys.stderr)
+        return 2
+    population, key, pub = node(a.population, "alice")
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    for p in PROOF + ["finding.json"]:
+        (out / p).unlink(missing_ok=True)
+    book_id = f"{population}-alice"
+    book(bin_, key, book_id, out, started)
+    decide(bin_, out, population=population, book_id=book_id, pub=pub, started=started)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
