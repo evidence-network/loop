@@ -2,6 +2,7 @@
 
 Run: python3 -m unittest discover -s tests -v
 """
+import base64
 import contextlib
 import hashlib
 import io
@@ -18,10 +19,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_reports  # noqa: E402
 import check_versions_lock  # noqa: E402
 import daily_report  # noqa: E402
-from test_reporter import spki_pem  # noqa: E402
+import reporter_key  # noqa: E402
 
 SHA = "b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e"
 REPORTER = {"node_id": "e" * 64, "key_id": "f" * 64}
+
+
+def spki_pem(key_hex):
+    der = reporter_key.ED25519_SPKI + bytes.fromhex(key_hex)
+    return "-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PUBLIC KEY-----\n"
 
 
 def lock(*pins):
