@@ -50,6 +50,14 @@ python3 -B site/build.py stats/data/daily --findings findings --lock versions.lo
   gap, never zero or negative. Rehearsal nodes are not in the daily set and are
   never added to it.
 - `template.html` is the page around them, including the explainer.
+- With `--rehearsal stats/data/rehearsal` (the `stats` workflow passes it) and
+  any slot file there, a second page, `_site/stats/rehearsal/`, shows the
+  reporter rehearsal, a test: a **TEST** label, one row per 10-minute UTC slot
+  from the first to the last, newest first, and **MISSED** for a slot the
+  reporter marked missed or one with no file, as a missed day. The daily page
+  gets one TEST line linking it and no rehearsal row. With no slot file the
+  site is byte for byte as without it. `tests/test_rehearsal.py` holds the page
+  to this.
 
 The page has no scripts and loads nothing from elsewhere. Every count reads
 "N of M ..."; other numbers are quoted record values or times. Nodes are

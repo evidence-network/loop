@@ -1,7 +1,8 @@
 # Sourced by run_daily.sh and ask_again.sh, from the root of the loop clone.
 # The reports go to the private raw store, a checkout of evidence-network/loop-data
 # named by LOOP_DATA_DIR (required, no default): it sets $data (that checkout),
-# $reports (its reports/daily) and data_git (git in it). The loop clone is only
+# $reports (its reports/<set>: $report_set if the caller set it, else daily)
+# and data_git (git in it). The loop clone is only
 # read: it is brought up to date with origin/main, fast-forward only, and never
 # committed to or pushed from.
 if [ -z "${LOOP_DATA_DIR:-}" ]; then
@@ -16,7 +17,7 @@ if [ "$data" = "$(git rev-parse --show-toplevel)" ]; then
   echo "LOOP_DATA_DIR is this loop clone: the reports go to the loop-data checkout, never here" >&2
   return 1
 fi
-reports="$data/reports/daily"
+reports="$data/reports/${report_set:-daily}"
 data_git() { git -C "$data" "$@"; }
 [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = main ] || { echo "not on main: the loop clone" >&2; return 1; }
 git pull --ff-only --quiet origin main || { echo "the loop clone does not fast-forward to origin/main" >&2; return 1; }

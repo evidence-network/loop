@@ -22,7 +22,11 @@ writes nightly with `scripts/scrub_reports.py`.
   and open a pull request.
 - `systemd/`: the timer that runs `scripts/run_daily.sh` once a day on the
   reporter node, and one that runs `scripts/ask_again.sh` after it. Not
-  installed anywhere yet.
+  installed anywhere yet. Beside them, `loop-reporter-rehearsal.*`, the
+  10-minute rehearsal (see [The rehearsal](#the-rehearsal)), and
+  `reporter-env.conf`, a drop-in that gives the daily units the same optional
+  settings file (see [The reporter's own node](#the-reporters-own-node)).
+- `reporter.env.example`: that settings file, `~/.config/loop-reporter/env`.
 - `workflows/ask-again.yml`: a manual GitHub dispatch for asking again. Inert
   here; see [Asking again](#asking-again).
 
@@ -142,3 +146,119 @@ written changes. Two hooks call it; neither is enabled:
 - `workflows/ask-again.yml`, a `workflow_dispatch` that needs a self-hosted
   runner on the reporter node labelled `loop-reporter`. It lives outside
   `.github/workflows` until that runner exists.
+
+## The reporter's own node
+
+A node can't be asked through its own console. So the reporter asks its own
+node (the `node_id` in `reporter.json`, when it is listed in `nodes/`) through a
+second console, another lab node's, as step 12 does. Its row is then an answer,
+verified like any other, not an absence. Without a second console it is left
+out, as before. This holds for the daily run, asking again and the rehearsal.
+
+- `LOOP_SECOND_CONSOLE` (or `--second-console`): that other node's console.
+  It must not be the reporter's own; the run refuses it.
+- `LOOP_SELF_NODE` (or `--self-node`): the reporter node's label in
+  `population/live/population.json`. Optional. When set, it must be the node
+  `reporter.json` names, or the run refuses: a stale label never sends some
+  other node's questions through the second console.
+
+`RUN.json` lists the node under `asked_through_second_console`, and the
+`README.md` of the day or slot says so on its line. Both are set in one file on
+the reporter node, which the rehearsal unit reads and the daily units read
+through a drop-in, so no unit changes:
+
+```sh
+mkdir -p ~/.config/loop-reporter
+cp ~/loop/reporter/reporter.env.example ~/.config/loop-reporter/env   # fill in both values
+for unit in loop-reporter loop-reporter-ask; do
+  mkdir -p ~/.config/systemd/user/$unit.service.d
+  cp ~/loop/reporter/systemd/reporter-env.conf ~/.config/systemd/user/$unit.service.d/env.conf
+done
+systemctl --user daemon-reload
+```
+
+## The rehearsal
+
+A test of the whole path before the daily run starts: the daily run, every 10
+minutes, into loop-data's `reports/rehearsal/`, apart from `reports/daily/`.
+Then loop-data's `publish-scrubbed`, then this repository's
+`stats/data/rehearsal/`, then the stats site, which shows it on its own page
+under a **TEST** label. Then it is wiped, and the daily run starts clean.
+
+- `run_daily.sh --set rehearsal` (the unit sets `LOOP_REPORT_SET=rehearsal`)
+  writes one report per 10-minute UTC slot,
+  `reports/rehearsal/<YYYY-MM-DD>T<HHMM>Z/`, in the daily layout. It stages and
+  pushes only `reports/rehearsal/`, under the same guards. Its retries are
+  bounded to the slot (at +120 s and +240 s, no request longer than 20 s,
+  nothing started after 7 minutes), whatever `retry_after_s` says.
+- A slot with no run gets a `MISSED` mark from the next run, as a day does.
+  The site shows it, and a slot with no file at all, as MISSED.
+- loop-data checks each push to `reports/rehearsal/` as it checks the daily
+  reports, slot by slot, in its own workflow (`reports-rehearsal`; a rehearsal
+  push never runs the daily watchdog), and publishes it to
+  `stats/data/rehearsal/` here.
+- Each publish is a push to this repository's `main`, so the `stats` workflow
+  builds and deploys Pages about once every 10 minutes while the rehearsal
+  runs. That is accepted for the rehearsal's length; it stops with the timer.
+- Run the rehearsal timer or the daily one, never both.
+
+Install, on the reporter node, after the daily setup above (both checkouts, linger):
+
+```sh
+git -C ~/loop pull --ff-only
+cp ~/loop/reporter/systemd/loop-reporter-rehearsal.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+```
+
+Start it (the daily timer stays off):
+
+```sh
+systemctl --user disable --now loop-reporter.timer
+systemctl --user enable --now loop-reporter-rehearsal.timer
+systemctl --user list-timers 'loop-reporter*'
+journalctl --user -u loop-reporter-rehearsal.service -f
+```
+
+A planted stop: stop the timer across at least one slot boundary
+(`:00`, `:10`, ... UTC), then start it again. The next run commits `MISSED`
+for each slot it skipped, and the TEST page shows them:
+
+```sh
+systemctl --user stop loop-reporter-rehearsal.timer
+# wait past a slot boundary, then:
+systemctl --user start loop-reporter-rehearsal.timer
+```
+
+Stop it (a run under way finishes first; wait for `inactive`):
+
+```sh
+systemctl --user disable --now loop-reporter-rehearsal.timer
+systemctl --user is-active loop-reporter-rehearsal.service
+```
+
+Wipe it, once it is stopped. Each repository has `scripts/wipe_rehearsal.sh`,
+which removes its rehearsal path in one commit and refuses if that commit
+would touch anything else, `reports/daily/` and `stats/data/daily/` above all.
+loop-data first: once its wipe is on `main`, `publish-scrubbed` publishes the
+empty rehearsal set, which removes `stats/data/rehearsal/` here and the TEST
+page with it. This repository's script is the fallback when that did not
+happen.
+
+```sh
+# loop-data, from a checkout that can open a pull request:
+git fetch origin && git switch -c wipe-rehearsal origin/main
+scripts/wipe_rehearsal.sh
+git push origin wipe-rehearsal          # open the pull request and merge it
+# loop, only if stats/data/rehearsal/ is still on main after publish-scrubbed ran:
+git fetch origin && git switch -c wipe-rehearsal origin/main
+scripts/wipe_rehearsal.sh
+git push origin wipe-rehearsal          # open the pull request and merge it
+# the reporter node: drop what a stopped run may have left
+git -C ~/loop-data pull --rebase --quiet origin main && rm -rf ~/loop-data/reports/rehearsal
+```
+
+Switch to the daily run:
+
+```sh
+systemctl --user enable --now loop-reporter.timer
+```

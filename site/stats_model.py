@@ -9,7 +9,12 @@ states are scripts/report_layout.py's (DAY_STATES, ATTEMPT_STATES).
 This module is strict: a file that is not that format exactly (an unknown or
 missing key, a state it does not know, an answer hash on an absence, a file
 name that is not its date) is a StatsError, so the site build fails instead of
-showing a guess. Standard library only.
+showing a guess.
+
+The rehearsal set (stats/data/rehearsal/, a test of the reporter) has the same
+format with one file per 10-minute UTC slot, `<YYYY-MM-DD>T<HHMM>Z.json`:
+load(root, layout.Rehearsal) reads it the same way, and slots() lays its slots
+out as calendar() lays out days. Standard library only.
 """
 import datetime as dt
 import json
@@ -26,6 +31,7 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 DAY_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
+SLOT_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{4}Z)\.json$")
 SKIP = {".gitkeep", "README.md"}
 # Key -> the question as the reporter names it.
 QUESTIONS = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
@@ -188,12 +194,13 @@ def canonical(obj):
     return [(json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=a) + "\n").encode("utf-8") for a in (True, False)]
 
 
-def read_day(path, problems):
+def read_day(path, problems, period=layout.Daily):
     where = path.name
     n = len(problems)
-    m = DAY_FILE.match(path.name)
+    m = DAY_FILE.match(path.name) if period is layout.Daily else SLOT_FILE.match(path.name)
     if not m:
-        problems.append(f"{where}: not a <YYYY-MM-DD>.json day file")
+        problems.append(f"{where}: not a <YYYY-MM-DD>.json day file" if period is layout.Daily
+                        else f"{where}: not a <YYYY-MM-DD>T<HHMM>Z.json slot file")
         return None
     raw = path.read_bytes()
     try:
@@ -208,9 +215,9 @@ def read_day(path, problems):
     if d["date"] != m.group(1):
         problems.append(f"{where}: date is {d['date']!r}, the file name says {m.group(1)}")
     try:
-        dt.date.fromisoformat(m.group(1))
+        period.parse(m.group(1))
     except ValueError:
-        problems.append(f"{where}: {m.group(1)} is not a date")
+        problems.append(f"{where}: {m.group(1)} is not a {period.noun}")
     if d["run"] not in ("settled", "missed"):
         problems.append(f"{where}: run must be settled or missed")
     if (d["run"] == "missed") != isinstance(d["missed_reason"], str) or d["missed_reason"] == "":
@@ -241,8 +248,8 @@ def read_day(path, problems):
                d["listed"], nodes, path.name)
 
 
-def load(root):
-    """Every day under root, newest first. Raises StatsError on anything unreadable."""
+def load(root, period=layout.Daily):
+    """Every day (or rehearsal slot) under root, newest first. Raises StatsError on anything unreadable."""
     root = Path(root)
     if not root.is_dir():
         raise StatsError([f"{root}: no such directory"])
@@ -253,7 +260,7 @@ def load(root):
         if not path.is_file() or path.is_symlink():
             problems.append(f"{path.name}: not a day file")
             continue
-        day = read_day(path, problems)
+        day = read_day(path, problems, period)
         if day:
             days.append(day)
     if problems:
@@ -271,6 +278,20 @@ def calendar(days):
     while first <= last:
         out.append((first.isoformat(), by_date.get(first.isoformat())))
         first += dt.timedelta(days=1)
+    return out
+
+
+def slots(days):
+    """Every rehearsal slot from the first to the last, earliest first: (slot, Day or None)."""
+    if not days:
+        return []
+    by_slot = {d.date: d for d in days}
+    first, last = (layout.Rehearsal.parse(x) for x in (min(by_slot), max(by_slot)))
+    out = []
+    while first <= last:
+        name = layout.Rehearsal.name(first)
+        out.append((name, by_slot.get(name)))
+        first += layout.Rehearsal.step
     return out
 
 
