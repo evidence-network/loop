@@ -39,6 +39,8 @@ this repository has no lockfiles. Re-vendor them from there if one is ever added
   - **Excludes this script, its allowlist, its CI workflow and its tests by file name.**
   - **Scans the COMMITTED tree** (`git ls-files -z`) of ROOT, and never follows a symbolic link
     or reads outside ROOT: on a fork run ROOT is untrusted content.
+  - **Every tracked text file**, whatever its name or suffix. Only a binary file, one holding a
+    NUL byte, is skipped.
 
 Usage: python3 leak_lint.py [ROOT=.]
 Exit 0 = clean; 1 = leak(s) found; 2 = misconfiguration (no term list).
@@ -59,16 +61,6 @@ SELF_NAMES = {
     "leak-lint.yml",
     "test_leak_lint.py",
 }
-
-SCAN_SUFFIXES = (
-    ".py", ".go", ".rs", ".ts", ".js", ".mjs",
-    ".md", ".rst", ".txt", ".xml",
-    ".toml", ".cfg", ".yml", ".yaml", ".json",
-    ".html", ".sh", ".service", ".timer",
-)
-
-#: Files scanned by name whose suffix is not in SCAN_SUFFIXES.
-SCAN_NAMES = {"CODEOWNERS", "MISSED", "NODE", "LICENSE"}
 
 # Lowercase-alnum segments only (excludes uppercase citation tags structurally), each segment
 # 2+ chars (excludes a hex regex character class like `[0-9a-f]`), 3+ segments (excludes
@@ -229,12 +221,14 @@ def scan(root: Path, terms: dict[str, tuple[str, ...]]) -> tuple[list[str], list
     for f in _tracked_files(root):
         if f.name in SELF_NAMES:
             continue
-        if f.suffix not in SCAN_SUFFIXES and f.name not in SCAN_NAMES:
-            continue
         text = _read_regular_file(root, f)
         if text is None:
             # Not a readable regular file inside ROOT (deleted-but-staged, a link, a
             # directory): not a leak either way.
+            continue
+        if "\0" in text:
+            # A binary file: NUL bytes never appear in text. Every other file is scanned,
+            # whatever its name or suffix (versions.lock, .verification, ATTEMPT, .pem).
             continue
         for i, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
