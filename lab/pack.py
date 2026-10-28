@@ -33,6 +33,7 @@ import argparse
 import hashlib
 import io
 import json
+import re
 import sys
 import tarfile
 from pathlib import Path
@@ -93,6 +94,13 @@ def build_strings(build):
     return host_build, f"capsules {at}, binary sha256 {c['binary_sha256']}"
 
 
+def host_name(node):
+    """The node's directory name under $LAB_DIR/nodes: from its data_dir once entries wrote one,
+    else its name. A node's name is its operator's label and may differ (stevenmih-1 for lab-1)."""
+    m = re.match(r"\$LAB_DIR/nodes/([^/]+)/", node.get("data_dir") or "")
+    return m.group(1) if m else node["name"]
+
+
 def entries(root, lab_dir, operator, reporter, dry_run=False):
     """Write (or print) the entries. Returns a list of errors; empty means done."""
     build_path = Path(lab_dir) / "build.json"
@@ -120,7 +128,8 @@ def entries(root, lab_dir, operator, reporter, dry_run=False):
     writes = []
     reporter_identity = None
     for node in pop["nodes"]:
-        d = data_dir(lab_dir, node["name"])
+        host = host_name(node)
+        d = data_dir(lab_dir, host)
         try:
             identity = reporter_key.read_identity(d)
         except (OSError, ValueError) as e:
@@ -144,9 +153,9 @@ def entries(root, lab_dir, operator, reporter, dry_run=False):
         node["node_id"] = identity["node_id"]
         # Where steps 01 and 02 find the node's key and book on this host, named from $LAB_DIR
         # (steps/live.py expands it) so no host path goes into the repository.
-        node["data_dir"] = f"$LAB_DIR/nodes/{node['name']}/.local/share/capsules"
-        node["book_dir"] = f"$LAB_DIR/nodes/{node['name']}/join-book"
-        if node["name"] == reporter:
+        node["data_dir"] = f"$LAB_DIR/nodes/{host}/.local/share/capsules"
+        node["book_dir"] = f"$LAB_DIR/nodes/{host}/join-book"
+        if host == reporter:
             try:
                 reporter_key.check_private_key(d)
             except (OSError, ValueError) as e:
@@ -197,7 +206,7 @@ def plan(root, lab_dir, day):
     files += findings
     files.append((f"{run}/build.json", lab_dir / "build.json"))
     for node in pop["nodes"]:
-        joined = walk(lab_dir / "join" / node["name"], f"{run}/join/{node['name']}")
+        joined = walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
         if not joined:
             missing.append(f"{run}/join/{node['name']}/ (run lab/lab.sh join)")
         files += joined

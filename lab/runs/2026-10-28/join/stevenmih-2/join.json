@@ -1,0 +1,30 @@
+{
+  "capsulectl": "capsulectl v0.1.0-rc23 (commit 8214f4be2c08b1ccb534724b6a285ca22f8bda49)",
+  "capsulectl_book": "capsulectl-book v0.8.1 (commit 2ad089e7ac416ebffe52f9dfed8a781909851870)",
+  "did": [
+    "bound the node key to a controller",
+    "created the book",
+    "wrote the commitment",
+    "probed the node as a stranger"
+  ],
+  "doctor_probe": true,
+  "join": "evidence-network/join.sh",
+  "status": [
+    {
+      "state": "self_attested",
+      "what": "every record in the book is sealed by the node key alone"
+    },
+    {
+      "state": "unwitnessed",
+      "what": "no witness receipt is held for the book's checkpoint: no witness endpoint is configured"
+    },
+    {
+      "state": "unbound",
+      "what": "the controller binding e1fdb9dd3e8be646963908f6466f2a27d22e4fed51b56dfff355edb8ae87cd1a is signed by both keys, but no released verifier checks controller-binding/0, so a verifier holds the key unbound"
+    },
+    {
+      "state": "unshared",
+      "what": "a stranger receives checkpoints and history_card/1 only; history segments go to counterparties, adjudications to their subjects"
+    }
+  ]
+}

@@ -33,12 +33,13 @@ settles. No key is kept here.
 Each node is:
 
 ```
-{"name": "lab-1", "node_id": "<64 hex>", "host": "lab",
+{"name": "stevenmih-1", "node_id": "<64 hex>", "host": "lab",
  "data_dir": "$LAB_DIR/nodes/lab-1/.local/share/capsules",
  "book_dir": "$LAB_DIR/nodes/lab-1/join-book"}
 ```
 
-- `name`: the node's name in the lab (`lab-1`, `lab-2`, `lab-3`).
+- `name`: the node's label, chosen by its operator (the lab run's are `stevenmih-1`, `-2`, `-3`;
+  their directories on the lab host keep `lab-1`, `lab-2`, `lab-3`).
 - `node_id`: the node id its capsules plugin learned from its host.
 - `host`: always `"lab"`, the one lab host. Never a hostname.
 - `data_dir`: the node's capsules plugin data dir on the lab host. Step 01 seals

@@ -1,0 +1,41 @@
+{
+  "nodes": [
+    {
+      "carrier": "git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json",
+      "errors": [
+        "no commitment at HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json"
+      ],
+      "key_id": null,
+      "name": "lab-1",
+      "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+      "notes": [],
+      "result": "NOT_CHECKED",
+      "signed_by": "the node (never the harness)"
+    },
+    {
+      "carrier": "git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+      "errors": [
+        "no commitment at HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json"
+      ],
+      "key_id": null,
+      "name": "lab-2",
+      "node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "notes": [],
+      "result": "NOT_CHECKED",
+      "signed_by": "the node (never the harness)"
+    },
+    {
+      "carrier": "git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
+      "errors": [
+        "no commitment at HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json"
+      ],
+      "key_id": null,
+      "name": "lab-3",
+      "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+      "notes": [],
+      "result": "NOT_CHECKED",
+      "signed_by": "the node (never the harness)"
+    }
+  ],
+  "tool": "scripts/check_commitment.py with OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0"
+}
