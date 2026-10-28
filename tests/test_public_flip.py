@@ -230,7 +230,7 @@ class BranchProtectionTest(unittest.TestCase):
         return jobs
 
     # Jobs that run on PR but are not yet required; the maintainers remove each when its gate is decided.
-    NOT_YET_REQUIRED = {"loop"}
+    NOT_YET_REQUIRED = {"loop", "commitments"}
 
     def test_required_checks_are_the_pull_request_jobs(self):
         self.assertEqual(self.required_checks(), self.pull_request_jobs() - self.NOT_YET_REQUIRED)

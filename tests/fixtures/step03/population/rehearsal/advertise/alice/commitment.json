@@ -1,0 +1,30 @@
+{
+  "answers": {
+    "derivations": [
+      "checkpoints",
+      "history_card/1"
+    ],
+    "subjects": [
+      "record"
+    ]
+  },
+  "answers_within": "PT24H",
+  "ask": {
+    "bindings": [
+      "capsules-evidence-request/iroh",
+      "a2a/https"
+    ]
+  },
+  "human_gated": true,
+  "policy": {
+    "records": "counterparties",
+    "stranger_safe": [
+      "checkpoints",
+      "history_card/1"
+    ]
+  },
+  "predicate_classes": [
+    "performed:counterparty_half",
+    "settled:mock"
+  ]
+}

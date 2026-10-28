@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Step 03 Advertise: each node's commitment is published, fetched back, and verified.
+
+Usage: 03-advertise --population DIR --out DIR
+
+For every rehearsal node in DIR/population.json this signs the node's
+commitment (steps/03-advertise.md) with the node's test key, publishes it to the first carrier,
+a file in nodes/commitments/ of a git repository, reads it back from that
+repository's HEAD with `git show`, and verifies the bytes it read back with
+scripts/check_commitment.py: the fields, no counts, the signature under the
+SPKI key, the policy digest against the policy bytes, the staple's and the
+checkpoint's digests.
+
+- rehearsal: the carrier is a scratch git repository (the repository's own
+  nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
+  file, so `git show` can be re-run on exactly what was fetched.
+- live: the harness never signs for a live node. A live commitment is one the
+  node signed and published itself (Mesh-LLM/capsules-plugin#51); this reads
+  the carrier's HEAD (--carrier, default this repository), publishes nothing,
+  and requires the commitment to be under the key_id the list holds for that
+  node. A node with no commitment there yet is NOT_CHECKED on that issue.
+
+Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
+history_card.json, checkpoint.json) when present. Without them a rehearsal
+node gets stand-ins, named as such in the finding. The staple's signature and
+the checkpoint attestation are not verified here (no pinned verifier for the
+first; step 02 owns the second): each is a not_checked entry.
+"""
+import argparse
+import base64
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "steps"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_commitment as cc  # noqa: E402
+import finding  # noqa: E402
+
+ASSERTS = ("the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git "
+           "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
+           "count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the "
+           "signed policy's bytes")
+STAPLE_ISSUE = "evidence-network/loop: no pinned history_card/1 verifier the loop can call (to be filed)"
+# The node itself signs and publishes its commitment (component side).
+LIVE_ISSUE = "Mesh-LLM/capsules-plugin#51"
+CHECKPOINT_ISSUE = "evidence-network/loop: step 02 Book (steps/02-book) verifies the checkpoint"
+GIT_ID = ["-c", "user.name=loop rehearsal", "-c", "user.email=rehearsal@loop.invalid", "-c", "commit.gpgsign=false"]
+
+# Called with the carrier's work tree after the files are written and before
+# they are committed. Tests set it to plant a failure; the step never does.
+PUBLISH_HOOK = None
+
+DEFAULTS = {
+    "ask": {"bindings": ["capsules-evidence-request/iroh"]},
+    "answers": {"subjects": ["record"], "derivations": ["checkpoints", "history_card/1"]},
+    "predicate_classes": ["performed:counterparty_half"],
+    "human_gated": False,
+    "answers_within": "PT1M",
+    "policy": {"records": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]},
+}
+
+
+def b64(raw):
+    return base64.b64encode(raw).decode("ascii")
+
+
+def standin_staple(key_id):
+    """A history_card/1 answer in the plugin's flat evidence-interop/0 shape; its sig is a stand-in."""
+    artifact = json.dumps({"halves": []}, separators=(",", ":")).encode()
+    card = {
+        "profile": cc.STAPLE_PROFILE,
+        "subject": {"book": key_id},
+        "derivation": "history_card/1",
+        "anchor": {"digest": hashlib.sha256(b"rehearsal checkpoint").hexdigest(), "freshness": "as-of"},
+        "artifact_digest": hashlib.sha256(artifact).hexdigest(),
+        "responder": key_id,
+        "issued_at": "2026-10-27T00:00:00Z",
+        "sig": "stand-in",
+        "artifact": cc.b64url(artifact),
+    }
+    return (json.dumps(card, indent=2, sort_keys=True) + "\n").encode()
+
+
+def standin_checkpoint():
+    cp = {"profile": "rehearsal-stand-in", "root": hashlib.sha256(b"rehearsal checkpoint").hexdigest(),
+          "signature": "stand-in"}
+    return (json.dumps(cp, indent=2, sort_keys=True) + "\n").encode()
+
+
+def node_inputs(population, node):
+    """(settings, staple bytes, checkpoint bytes, source) for one node."""
+    d = population / "advertise" / node["name"]
+    if d.is_dir():
+        settings = dict(DEFAULTS, **json.loads((d / "commitment.json").read_text(encoding="utf-8")))
+        return settings, (d / "history_card.json").read_bytes(), (d / "checkpoint.json").read_bytes(), f"advertise/{node['name']}"
+    return dict(DEFAULTS), None, standin_checkpoint(), "stand-in"
+
+
+def build(node_id, key_id, spki, settings, staple, checkpoint, private_key):
+    """(commitment, policy bytes): both signed by the node key."""
+    policy = cc.sign({"profile": cc.POLICY_PROFILE, "key_id": key_id, "policy": settings["policy"]}, private_key)
+    policy_bytes = (json.dumps(policy, indent=2, sort_keys=True) + "\n").encode()
+    doc = {
+        "profile": cc.PROFILE,
+        "node_id": node_id,
+        "key_id": key_id,
+        "spki": b64(spki),
+        "issued_at": finding.now(),
+        "ask": {"endpoint": f"mesh:{node_id}", "bindings": settings["ask"]["bindings"]},
+        "answers": settings["answers"],
+        "lcap": {"policy_digest": hashlib.sha256(policy_bytes).hexdigest(),
+                 "policy_uri": f"policies/{node_id}.json",
+                 "predicate_classes": settings["predicate_classes"]},
+        "checkpoint": {"sha256": hashlib.sha256(checkpoint).hexdigest(), "bytes": b64(checkpoint)},
+        "human_gated": settings["human_gated"],
+        "answers_within": settings["answers_within"],
+        "history_card": {"derivation": "history_card/1", "sha256": hashlib.sha256(staple).hexdigest(),
+                         "bytes": b64(staple)},
+    }
+    return cc.sign(doc, private_key), policy_bytes
+
+
+def git(repo, *args, check=True):
+    r = subprocess.run(["git", "-C", str(repo), *GIT_ID, *args], capture_output=True)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.decode(errors='replace').strip()}")
+    return r
+
+
+def publish(carrier, node_id, doc, policy_bytes):
+    """Commit nodes/commitments/<node_id>.json and its policy to the carrier repository."""
+    tree = carrier / "nodes" / "commitments"
+    (tree / "policies").mkdir(parents=True, exist_ok=True)
+    (tree / f"{node_id}.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    (tree / "policies" / f"{node_id}.json").write_bytes(policy_bytes)
+    if PUBLISH_HOOK:
+        PUBLISH_HOOK(carrier)
+    git(carrier, "add", "nodes")
+    git(carrier, "commit", "-q", "--allow-empty", "-m", f"advertise: commitment for {node_id}")
+
+
+def fetch(carrier, path):
+    """The bytes at HEAD:<path> in the carrier, or None."""
+    r = git(carrier, "show", f"HEAD:{path}", check=False)
+    return r.stdout if r.returncode == 0 else None
+
+
+def rehearsal_node(population, node, carrier):
+    """Sign a rehearsal node's commitment with its TEST key and publish it. Returns (record, key_id)."""
+    key_dir = Path(node["key_dir"])
+    if not key_dir.is_absolute():
+        key_dir = population.parent.parent / key_dir
+    spki = cc.spki_from_pem((key_dir / "node-key.pub.pem").read_text(encoding="utf-8"))
+    key_id = cc.key_id_of(spki)
+    node_id = node.get("node_id") or key_id
+    settings, staple, checkpoint, source = node_inputs(population, node)
+    staple = staple if staple is not None else standin_staple(key_id)
+    doc, policy_bytes = build(node_id, key_id, spki, settings, staple, checkpoint, key_dir / "node-key.pem")
+    publish(carrier, node_id, doc, policy_bytes)
+    return {"name": node["name"], "node_id": node_id, "key_id": key_id, "inputs": source,
+            "signed_by": "the harness, with the node's rehearsal TEST key",
+            "published_commit": git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}, key_id
+
+
+def live_node(node, carrier):
+    """A live node: the harness never signs for it. Returns (record, the listed key_id or None).
+
+    The commitment must be one the node signed and published itself; the key it
+    must be under is the node's key_id in the list (nodes/<node_id>.json) at HEAD.
+    """
+    rec = {"name": node["name"], "node_id": node.get("node_id"), "signed_by": "the node (never the harness)"}
+    if not node.get("node_id"):
+        return rec, None
+    listed = fetch(carrier, f"nodes/{node['node_id']}.json")
+    try:
+        key_id = json.loads(listed)["key_id"] if listed is not None else None
+    except (ValueError, KeyError, TypeError):
+        key_id = None
+    rec["key_id"] = key_id
+    return rec, key_id
+
+
+def check_node(population, out, node, carrier, live):
+    """One node's verification record, and the proof files it wrote."""
+    if live:
+        rec, key_id = live_node(node, carrier)
+    else:
+        rec, key_id = rehearsal_node(population, node, carrier)
+    rec["carrier"] = ("git repository" if live else "git scratch repository (carrier.bundle)") + \
+        f" HEAD:nodes/commitments/{rec['node_id']}.json"
+    if not rec["node_id"]:
+        rec["result"], rec["errors"], rec["notes"] = "NOT_CHECKED", ["the node has no node_id yet"], []
+        return rec, []
+    path = f"nodes/commitments/{rec['node_id']}.json"
+    fetched = fetch(carrier, path)
+    if fetched is None:
+        rec["result"], rec["errors"], rec["notes"] = "NOT_CHECKED", [f"no commitment at HEAD:{path}"], []
+        return rec, []
+    proofs = [f"{node['name']}.commitment.json"]
+    (out / proofs[0]).write_bytes(fetched)
+
+    def fetch_policy(uri):
+        if "://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]:
+            return None
+        got = fetch(carrier, f"nodes/commitments/{uri}")
+        if got is not None:
+            (out / f"{node['name']}.policy.json").write_bytes(got)
+            proofs.append(f"{node['name']}.policy.json")
+        return got if got is not None else b""
+
+    try:
+        doc = json.loads(fetched)
+    except ValueError as e:
+        doc = None
+        errs, notes = [f"fetched bytes are not JSON ({e})"], []
+    if doc is not None:
+        errs, notes = cc.verify(doc, fetch_policy)
+        if key_id is None:
+            errs.append(f"nodes/{rec['node_id']}.json does not list the node's key_id at HEAD")
+        elif isinstance(doc, dict) and doc.get("key_id") != key_id:
+            errs.append("the commitment is not under this node's key")
+    rec["result"] = "FAIL" if errs else "PASS"
+    rec["errors"], rec["notes"] = errs, notes
+    if doc is not None and not errs:
+        rec["sha256"] = hashlib.sha256(fetched).hexdigest()
+        rec["signature"] = "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)"
+        rec["policy_digest"] = doc["lcap"]["policy_digest"]
+    return rec, proofs
+
+
+def tool_versions():
+    """The runner's openssl and git, which the step uses (base-image tools, not versions.lock components)."""
+    out = [subprocess.run([t, a], capture_output=True, text=True).stdout.strip()
+           for t, a in (("openssl", "version"), ("git", "--version"))]
+    return " and ".join(out)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--carrier", type=Path, default=ROOT,
+                    help="live only: the git repository whose HEAD is read (default: this repository)")
+    args = ap.parse_args(argv)
+    started = finding.now()
+    population = args.population.resolve()
+    out = args.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    pop = json.loads((population / "population.json").read_text(encoding="utf-8"))
+    kind = pop["population"]
+    live = kind == "live"
+    records, proof = [], []
+    with tempfile.TemporaryDirectory() as tmp:
+        carrier = args.carrier.resolve() if live else Path(tmp) / "carrier"
+        if not live:
+            carrier.mkdir()
+            git(carrier, "init", "-q")
+        for node in pop["nodes"]:
+            rec, files = check_node(population, out, node, carrier, live)
+            records.append(rec)
+            proof += files
+        if not live:
+            git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")
+            proof.append("carrier.bundle")
+    verification = {"tool": f"scripts/check_commitment.py with {tool_versions()}", "nodes": records}
+    (out / "verification.json").write_text(json.dumps(verification, indent=2, sort_keys=True) + "\n")
+    proof.append("verification.json")
+
+    results = {r["result"] for r in records}
+    not_checked = [{"what": f"{r['name']}: the node-signed commitment is published and verifies",
+                    "why": "; ".join(r["errors"]) + ("; a live commitment is signed by the node, never by the "
+                                                     "harness, and nodes do not publish one yet" if live else ""),
+                    "issue": LIVE_ISSUE if live else "evidence-network/loop: step 12 Join (steps/12-join) publishes it"}
+                   for r in records if r["result"] == "NOT_CHECKED"]
+    checked = [r for r in records if r["result"] == "PASS"]
+    for r in checked:
+        not_checked.append({"what": f"{r['name']}: the stapled history_card/1 verifies",
+                            "why": "its bytes, digest, profile and responder are checked; its signature is not, "
+                                   "as no pinned history_card/1 verifier is callable from the loop"
+                                   + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),
+                            "issue": STAPLE_ISSUE})
+        not_checked.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
+                            "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
+                            "issue": CHECKPOINT_ISSUE})
+        for n in r["notes"]:
+            not_checked.append({"what": f"{r['name']}: the policy digest", "why": n,
+                                "issue": "evidence-network/loop: the step fetches policies from the carrier only"})
+    if "FAIL" in results:
+        result = "FAIL"
+    elif checked and "NOT_CHECKED" not in results:
+        result = "PASS"
+    else:
+        result = "NOT_CHECKED"
+    detail = "; ".join(
+        f"{r['name']}: {r['result']} via {r['carrier']}"
+        + (f" ({'; '.join(r['errors'])})" if r["errors"] else "")
+        + (f", inputs {r['inputs']}" if "inputs" in r else "")
+        for r in records)
+    finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=[], proof=proof,
+                  detail=detail + f". Runner tools: {tool_versions()} (not versions.lock components).",
+                  not_checked=not_checked, started=started)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

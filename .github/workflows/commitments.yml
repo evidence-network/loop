@@ -1,0 +1,26 @@
+name: commitments
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  commitments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Step 03 tools
+        run: steps/03-advertise.setup.sh
+      - name: Checker and step tests
+        run: python3 -B -m unittest tests.test_step03_advertise -v
+      - name: Step 03 on the test population
+        run: |
+          python3 -B steps/03-advertise --population tests/fixtures/step03/population/rehearsal --out "$RUNNER_TEMP/findings/03-advertise"
+          python3 -B steps/finding.py check "$RUNNER_TEMP/findings"
+          grep -q '"result": "PASS"' "$RUNNER_TEMP/findings/03-advertise/finding.json"
+      - name: Check the published commitments
+        run: python3 -B scripts/check_commitment.py nodes/commitments
