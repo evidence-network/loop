@@ -226,7 +226,10 @@ class BranchProtectionTest(unittest.TestCase):
             if not re.search(r"^  pull_request(_target)?:", text, re.M):
                 continue
             body = text.split("\njobs:\n", 1)[1]
-            jobs |= set(re.findall(r"^  ([A-Za-z0-9_-]+):\s*$", body, re.M))
+            for job, block in re.findall(r"^  ([A-Za-z0-9_-]+):\s*\n((?:    .*\n|\s*\n)*)", body, re.M):
+                # A job skipped on every pull request (stats.yml's deploy) is not a check a PR can pass.
+                if not re.search(r"^    if: .*github\.event_name != 'pull_request'", block, re.M):
+                    jobs.add(job)
         return jobs
 
     # Jobs that run on PR but are not yet required; the maintainers remove each when its gate is decided.
@@ -234,6 +237,15 @@ class BranchProtectionTest(unittest.TestCase):
 
     def test_required_checks_are_the_pull_request_jobs(self):
         self.assertEqual(self.required_checks(), self.pull_request_jobs() - self.NOT_YET_REQUIRED)
+
+    def test_the_stats_site_check_and_its_deploy(self):
+        self.assertIn("site", self.required_checks())
+        text = (ROOT / ".github" / "workflows" / "stats.yml").read_text()
+        self.assertIn("python3 -B .github/leak_lint.py", text)
+        self.assertNotIn("deploy", self.pull_request_jobs())
+        self.assertIn("uses: actions/deploy-pages@", text)
+        self.assertIn("    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'", text)
+        self.assertFalse((ROOT / ".github" / "workflows" / "site.yml").exists())
 
     def test_job_names_are_unique(self):
         names = []

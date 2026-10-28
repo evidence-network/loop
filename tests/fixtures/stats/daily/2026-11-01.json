@@ -1,0 +1,109 @@
+{
+  "date": "2026-11-01",
+  "listed": 3,
+  "missed_reason": null,
+  "nodes": [
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 80,
+            "timestamp": "2026-11-01T05:00:00Z"
+          },
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 80,
+            "timestamp": "2026-11-01T05:00:00Z"
+          },
+          "state": "verified"
+        }
+      }
+    },
+    {
+      "absent_days_running": 1,
+      "left_on": null,
+      "node_id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "node_line": "joined, discloses nothing",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": null,
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "absence"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "state": "absence"
+        },
+        "history_card": {
+          "answer_sha256": null,
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "absence"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "state": "absence"
+        }
+      }
+    },
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "4444444444444444444444444444444444444444444444444444444444444444",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c4c",
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 3,
+            "timestamp": "2026-11-01T05:00:00Z"
+          },
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+          "attempts": [
+            {
+              "at": "2026-11-01T06:00:00Z",
+              "state": "refusal"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "state": "refusal"
+        }
+      }
+    }
+  ],
+  "reporter_key_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "run": "settled",
+  "versions_lock_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+}

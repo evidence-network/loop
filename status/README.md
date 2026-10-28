@@ -3,8 +3,9 @@
 - `findings.py` (loop.sh): writes one run's `index.md`, the link list.
 - `status_page.py`: the loop status page. Twelve rows, one per step of the
   loop, each with a rehearsal cell and a live cell, the five numbers, and a
-  badge (`badge.svg`) with the worst row of each population. The report page
-  embeds the badge and links here.
+  badge (`badge.svg`) with the worst row of each population. The stats site
+  (`site/build.py`) builds it into `_site/stats/status/`, draws its rows as
+  the loop's path and its five numbers, embeds the badge and links here.
 
 ```sh
 python3 -B status/status_page.py findings --lock versions.lock --out _site/status
@@ -31,7 +32,7 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   reads `not measured yet (M1|M2|M3)`, never 0. `NUMBERS` in the source says
   which finding fields each one reads.
 
-`tests/test_status_page.py` holds the page to this. The `site` workflow runs
+`tests/test_status_page.py` holds the page to this. The `stats` workflow runs
 stage 1 on the rehearsal population itself and builds the page into
-`_site/status/` on every pull request, push to main, and nightly after the
+`_site/stats/status/` on every pull request, push to main, and nightly after the
 loop run. Later it can read the loop run's findings artifact instead.
