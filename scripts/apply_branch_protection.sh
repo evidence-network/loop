@@ -9,11 +9,12 @@
 # 1. "main: history" - no deletion, no force-push. Nobody bypasses it, deploy keys included.
 # 2. "main: review and checks" - changes by pull request, one approving review from a code
 #    owner, and the required checks below (from GitHub Actions only). Deploy keys bypass it:
-#    the daily reporter pushes reports/daily/<date>/ straight to main with its deploy key
-#    (ruling on the reporter's daily run, 2026-10-27). GitHub cannot limit a key to a path, so
-#    .github/workflows/direct-push.yml fails any push to main that is not a merged pull request
-#    and touches anything outside reports/daily/. The bypass covers EVERY deploy key with write
-#    access, so the repository must have exactly one: the reporter's.
+#    loop-data's stats publisher pushes the scrubbed set, stats/data/, straight to main with its
+#    deploy key (the reporter's raw reports go to private loop-data instead, 2026-10-27). GitHub
+#    cannot limit a key to a path, so .github/workflows/direct-push.yml fails any push to main
+#    that is not a merged pull request and touches anything outside stats/data/. The bypass
+#    covers EVERY deploy key with write access, so the repository must have exactly one: the
+#    stats publisher's.
 #
 # Rulesets on a private repository need a paid plan; on a free organization, run this right
 # after the repository is made public.
@@ -82,7 +83,7 @@ verify() {
   gh api "repos/$REPO/rulesets" --jq '.[].id' | while read -r id; do
     gh api "repos/$REPO/rulesets/$id" --jq '{id, name, enforcement, conditions, bypass_actors, rules}'
   done
-  echo "# Write deploy keys (must be exactly one, the reporter's):"
+  echo "# Write deploy keys (must be exactly one, the stats publisher's):"
   gh api "repos/$REPO/keys" --jq '[.[] | select(.read_only == false) | {id, title, created_at}]'
 }
 
@@ -97,9 +98,9 @@ prerequisites() {
   fi
   n=$(gh api "repos/$REPO/keys" --jq '[.[] | select(.read_only == false)] | length')
   if [ "$n" -gt 1 ]; then
-    echo "$REPO has $n write deploy keys; every one would bypass review. Keep only the reporter's." >&2; ok=0
+    echo "$REPO has $n write deploy keys; every one would bypass review. Keep only the stats publisher's." >&2; ok=0
   elif [ "$n" -eq 0 ]; then
-    echo "note: no write deploy key yet; the reporter's daily push needs one (read-only keys are fine)" >&2
+    echo "note: no write deploy key yet; the stats publisher's nightly push needs one (read-only keys are fine)" >&2
   fi
   if ! gh api "repos/$REPO/actions/secrets" --jq '.secrets[].name' | grep -qx LEAK_LINT_TERMS; then
     echo "secret LEAK_LINT_TERMS is not set on $REPO: leak-lint would fail every pull request" >&2; ok=0
