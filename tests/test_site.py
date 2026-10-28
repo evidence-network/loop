@@ -439,7 +439,7 @@ class SiteTest(unittest.TestCase):
                          "<span class=\"count\">1.0 of the run's 3.0 minutes</span>")
         self.assertEqual(self.number("first-sealed", "live"),
                          "<span class=\"count\">1.0 of the run's 1.0 minutes</span>")
-        self.assertEqual(self.number("first-answered", "rehearsal"), "not measured yet (<code>M1</code>)")
+        self.assertEqual(self.number("first-answered", "rehearsal"), "not measured yet (<code>M2</code>)")
         for key, m in (("first-countersigned", "M3"), ("limited", "M3"), ("filtered", "M2")):
             for p in status_page.POPULATIONS:
                 self.assertEqual(self.number(key, p), f"not measured yet (<code>{m}</code>)")
