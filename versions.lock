@@ -19,3 +19,7 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # built from the same evidencebook tag.
 capsulectl action-state-group/evidencebook v0.8.1
 evidencebook action-state-group/evidencebook v0.8.1
+# The daily reporter: scripts/daily_report.py as of this commit.
+# What a verifier re-checks saved answers with, offline.
+# step 02 book: the log evidencebook embeds, as the crate step 02's driver locks it.
+checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1
