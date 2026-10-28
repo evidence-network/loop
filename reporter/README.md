@@ -226,13 +226,16 @@ systemctl --user list-timers 'loop-reporter*'
 journalctl --user -u loop-reporter-rehearsal.service -f
 ```
 
-A planted stop: stop the timer across at least one slot boundary
-(`:00`, `:10`, ... UTC), then start it again. The next run commits `MISSED`
-for each slot it skipped, and the TEST page shows them:
+A planted stop skips one whole slot. Starting the timer fires a run at once,
+and that run reports the slot it starts in. So restarting inside the slot you
+meant to skip reports that slot as clean, and nothing is MISSED. To skip slot
+`S`: stop the timer before `S` begins, and start it again only once the next
+slot, `S+10min`, has begun. The run that start fires reports `S+10min` and
+commits `MISSED` for `S`, and the TEST page shows it:
 
 ```sh
 systemctl --user stop loop-reporter-rehearsal.timer
-# wait past a slot boundary, then:
+# wait until the slot after the one to skip has begun (past two :x0 UTC boundaries), then:
 systemctl --user start loop-reporter-rehearsal.timer
 ```
 
