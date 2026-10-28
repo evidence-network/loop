@@ -1,0 +1,11 @@
+[Unit]
+Description=evidence-network loop: ask again the nodes absent today, after the daily run
+
+[Timer]
+# After the daily run has settled (it starts 00:30 UTC and asks again until +6 h).
+# Before then `ask` refuses: the day has no settled run yet.
+OnCalendar=*-*-* 12,18,23:00:00 UTC
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

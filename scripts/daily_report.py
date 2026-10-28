@@ -4,37 +4,57 @@
 Usage:
   daily_report.py run   [--date D] [--console URL] [--nodes DIR] [--out DIR]
                         [--reporter FILE] [--data-dir DIR] [--timeout S]
+  daily_report.py ask   (--node ID | --absent) [--date D] [--console URL]
+                        [--nodes DIR] [--out DIR] [--reporter FILE]
+                        [--data-dir DIR] [--timeout S]
   daily_report.py prove --date D [--out DIR]
 
 `run` asks each node in nodes/ `checkpoints` and `history_card/1` over the mesh
 evidence request, through the reporter node's own capsules plugin
 (POST <console>/api/plugins/capsules/tools/mesh_evidence_request), and writes
 what came back under <out>/<date>/<node_id>/. It asks those two and nothing else.
+A question that got no answer (the node unreachable, or no answer in time) is
+asked again at the times in the reporter file's `retry_after_s` (seconds after
+the run starts; none, one attempt). An answer, a signed refusal included, is
+never asked again. Every attempt is its own directory, written once
+(scripts/report_layout.py has the layout and how a day is read from it).
 The plugin signs each request with the reporter's announced key and checks the
 answer under the key the reporter's host announces for the node (mesh-llm
 plugin key announcement; the reporter node sets no CAPSULES_PEER_KEYS map, so
 no key comes from static configuration); this script records that check, it
 does not repeat it.
 
-Per question Q (`checkpoints`, `history_card`):
+The day, as the run settles it after its last attempt, per question Q
+(`checkpoints`, `history_card`):
   Q.request.json     the request map handed to the plugin
   Q.response.json    the plugin's reply, the exact bytes received: the node's
                      answer (artifact or signed refusal) beside its verification
-  Q.absence.txt      instead of a response, when nothing came back: why
+  Q.absence.txt      instead of a response, when nothing came back: each
+                     attempt's time and why
   Q.verification     one line: verified | no_checkpoint_yet | refusal |
                      no_announced_key | not_evidence | absence, then key=value
                      details. no_checkpoint_yet is a signed coverage_unsatisfiable:
                      the node has cut no checkpoint yet (its first comes 300 s
                      after activity). It is neither a refusal nor an absence.
-  peer-key.json      the key the reporter's node judged the answers under
+                     An absence lists every attempt time (attempts=...).
+  peer-key.json      the key the reporter's node judged the answers under (as
+                     of the last attempt)
   NODE               "discloses: ...", "joined, no checkpoint yet" or
                      "joined, discloses nothing"
+Answered questions are byte copies of the attempt that answered them.
+
+`ask` is the "ask again" path, after the day's run has settled: it asks one
+node (--node) or every node with a question unanswered today (--absent) the
+questions it has not answered today, and adds one attempt directory per node.
+It writes nothing else; the files the run settled stay as they are, and
+report_layout.answers() reads the day with the later attempt in it.
 
 A day with no run is never silent: `run` first writes <out>/<day>/MISSED for
 each day since the last report that has none, and a run that cannot reach its
 own node writes MISSED for today and exits 2. No score, no ranking, no
 aggregate: each node's files say what that node answered, and nothing is
-totalled across nodes.
+totalled across nodes. A node that answered nothing is shown with how many
+days running that is ("absent 3 days running"), a fact about that node only.
 
 `prove` is the day-one acceptance check, printed, never written to the repo:
 exit 0 when at least two nodes answered `checkpoints` verified with at least
@@ -48,6 +68,7 @@ import json
 import re
 import shutil
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,6 +76,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_nodes  # noqa: E402
+import report_layout as layout  # noqa: E402
 import reporter_key  # noqa: E402
 
 PROFILE = "evidence-interop/0"
@@ -108,12 +130,30 @@ def quote(text):
     return json.dumps(" ".join(str(text).split())[:300])
 
 
-def verification_line(status, body, error, announced, listed):
+# What the host's tool route sends back when the plugin got no answer: mesh-llm
+# handle_call answers a plugin tool error with a 502 carrying its text, and the
+# capsules plugin (mesh_evidence_bridge.rs, SendError) says which failure it was.
+NO_ANSWER_TEXT = (
+    ("could not reach peer", "unreachable"),  # the mesh stream could not be opened
+    ("peer does not answer evidence requests", "timeout"),  # opened; nothing came back in time
+)
+MALFORMED_TEXT = "peer returned malformed response"  # an answer, but not JSON
+
+
+def verification_line(status, body, error, announced, listed, timed_out=False):
     """One line for one question: the state the plugin found, then details."""
     if error is not None:
-        return f"absence why={quote(error)}"
+        return f"{'timeout' if timed_out else 'absence'} why={quote(error)}"
     if status != 200:
-        return f"absence why={quote(f'http {status}: ' + body.decode('utf-8', 'replace'))}"
+        text = body.decode("utf-8", "replace")
+        why = quote(f"http {status}: {text}")
+        if status == 502:
+            for marker, cls in NO_ANSWER_TEXT:
+                if marker in text:
+                    return f"{cls} why={why}"
+            if MALFORMED_TEXT in text:
+                return f"not_evidence why={why}"
+        return f"absence why={why}"
     try:
         reply = json.loads(body)
         verification = reply["verification"]
@@ -142,45 +182,90 @@ def verification_line(status, body, error, announced, listed):
     return f"not_evidence why={quote('unknown verification state ' + str(state))} {key}"
 
 
-def ask_node(console, entry, node_dir, timeout):
-    """Ask one node both questions; write its files. Returns its NODE line."""
+def write_new(path, data):
+    """Write a file that must not exist yet: a report is never rewritten."""
+    with open(path, "xb") as f:
+        f.write(data if isinstance(data, bytes) else data.encode())
+
+
+def ask_attempt(console, entry, node_dir, stems, at, by, timeout):
+    """Ask one node the given questions once; write the attempt. Returns {stem: line}."""
     node_id, listed = entry["node_id"], entry["key_id"]
-    node_dir.mkdir(parents=True)
+    d = node_dir / layout.ATTEMPTS / layout.attempt_name(at)
+    if d.exists():
+        raise ValueError(f"{d} already exists: one attempt per node per second")
+    d.mkdir(parents=True)
+    write_new(d / "ATTEMPT", f"at={layout.iso(at)} {by}\n")
     announced = None
     try:
         status, body = http("GET", peer_key_url(console, node_id), None, timeout)
-        (node_dir / "peer-key.json").write_bytes(body)
+        write_new(d / "peer-key.json", body)
         if status == 200:
             reply = json.loads(body)
             key = reply.get("announced_key_id") if isinstance(reply, dict) else None
             announced = key if isinstance(key, str) and HEX64.match(key) else None
     except (OSError, ValueError) as e:
-        (node_dir / "peer-key.json").write_text(json.dumps({"error": str(e)}) + "\n")
-    disclosed, waiting = [], False
-    for stem, request in QUESTIONS.items():
-        (node_dir / f"{stem}.request.json").write_text(json.dumps(request, indent=2, sort_keys=True) + "\n")
-        status, body, error = None, b"", None
+        if not (d / "peer-key.json").exists():
+            write_new(d / "peer-key.json", json.dumps({"error": str(e)}) + "\n")
+    lines = {}
+    for stem in stems:
+        request = QUESTIONS[stem]
+        write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
+        status, body, error, timed_out = None, b"", None, False
         try:
             status, body = http("POST", console + TOOL_ROUTE, {"peer_id": node_id, "request": request}, timeout)
         except OSError as e:
-            error = f"no reply from the reporter's node within {timeout}s: {e}"
+            timed_out = isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError)
+            if timed_out:
+                error = f"no reply from the reporter's node within {timeout}s: {e}"
+            else:
+                error = f"the reporter's node did not take the request: {e}"
         if error is None and status == 200:
-            (node_dir / f"{stem}.response.json").write_bytes(body)
+            write_new(d / f"{stem}.response.json", body)
         else:
-            (node_dir / f"{stem}.absence.txt").write_text(
-                (error or f"http {status}\n{body.decode('utf-8', 'replace')}").rstrip("\n") + "\n"
-            )
-        line = verification_line(status, body, error, announced, listed)
-        (node_dir / f"{stem}.verification").write_text(line + "\n")
+            write_new(d / f"{stem}.absence.txt",
+                      (error or f"http {status}\n{body.decode('utf-8', 'replace')}").rstrip("\n") + "\n")
+        lines[stem] = verification_line(status, body, error, announced, listed, timed_out)
+        write_new(d / f"{stem}.verification", lines[stem] + "\n")
+    return lines
+
+
+def settle(node_dir):
+    """Write the node's day from its attempts, once, after the run's last attempt. Returns NODE."""
+    day = layout.answers(node_dir)
+    disclosed, waiting = [], False
+    for stem in QUESTIONS:
+        a = day[stem]
+        first = a["tried"][0][0]
+        write_new(node_dir / f"{stem}.request.json", (first / f"{stem}.request.json").read_bytes())
+        if a["attempt"] is not None:
+            for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification"):
+                if (a["attempt"] / name).is_file():
+                    write_new(node_dir / name, (a["attempt"] / name).read_bytes())
+            line = a["line"]
+        else:
+            write_new(node_dir / f"{stem}.absence.txt", layout.absence_text(a["tried"], stem))
+            line = layout.absence_line(a["tried"])
+            write_new(node_dir / f"{stem}.verification", line + "\n")
         if line.startswith("verified "):
             disclosed.append(QUESTION_NAMES[stem])
         waiting = waiting or line.startswith("no_checkpoint_yet ")
+    write_new(node_dir / "peer-key.json", (layout.attempts(node_dir)[-1] / "peer-key.json").read_bytes())
     if disclosed:
         node_line = f"discloses: {', '.join(disclosed)}"
     else:
         node_line = "joined, no checkpoint yet" if waiting else "joined, discloses nothing"
-    (node_dir / "NODE").write_text(node_line + "\n")
+    write_new(node_dir / "NODE", node_line + "\n")
     return node_line
+
+
+def retry_schedule(reporter, path):
+    """`retry_after_s`: when to ask again, in seconds after the run starts, rising."""
+    after = reporter.get("retry_after_s", [])
+    ok = isinstance(after, list) and all(isinstance(s, (int, float)) and not isinstance(s, bool) and s > 0 for s in after)
+    if not ok or after != sorted(set(after)):
+        raise ValueError(f"{path}: retry_after_s must be a rising list of seconds after the run starts")
+    return after
 
 
 def load_reporter(path, data_dir):
@@ -235,26 +320,14 @@ def mark_missed(out, today, why):
     return marked
 
 
-def run(args):
-    today = dt.date.fromisoformat(args.date) if args.date else dt.datetime.now(dt.timezone.utc).date()
-    out = Path(args.out)
-    reporter = load_reporter(args.reporter, args.data_dir)
-    errs, _ = check_nodes.check_dir(Path(args.nodes))
-    if errs:
-        raise ValueError("the commitment list does not check:\n  " + "\n  ".join(errs))
-    day_dir = out / today.isoformat()
-    if (day_dir / "RUN.json").exists():
-        raise ValueError(f"{day_dir} already holds a run")
-    for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {today.isoformat()}"):
-        print(f"{missed}: MISSED")
-    # No RUN.json here (checked above): what is left is a MISSED mark or a run
-    # that stopped midway. This run replaces it.
-    if day_dir.exists():
-        shutil.rmtree(day_dir)
-    console = args.console.rstrip("/")
-    started = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+def utc_now():
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+
+
+def reporter_up(console, reporter, timeout):
+    """The console answers, and the plugin behind it signs with the reporter key."""
     try:
-        status, body = http("GET", console + LEDGER_ROUTE, None, args.timeout)
+        status, body = http("GET", console + LEDGER_ROUTE, None, timeout)
         if status != 200:
             raise ReporterDown(f"http {status} from {LEDGER_ROUTE}: {body.decode('utf-8', 'replace')[:300]}")
     except OSError as e:
@@ -266,32 +339,116 @@ def run(args):
     if signing != reporter["key_id"]:
         raise ValueError(f"{console}: the plugin signs with {signing}, not the reporter key {reporter['key_id']}")
 
+
+def run(args, now, sleep):
+    start = now()
+    today = dt.date.fromisoformat(args.date) if args.date else start.date()
+    out = Path(args.out)
+    reporter = load_reporter(args.reporter, args.data_dir)
+    schedule = retry_schedule(reporter, args.reporter)
+    errs, _ = check_nodes.check_dir(Path(args.nodes))
+    if errs:
+        raise ValueError("the commitment list does not check:\n  " + "\n  ".join(errs))
+    day_dir = out / today.isoformat()
+    if (day_dir / "RUN.json").exists():
+        raise ValueError(f"{day_dir} already holds a run")
+    for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {today.isoformat()}"):
+        print(f"{missed}: MISSED")
+    console = args.console.rstrip("/")
+    reporter_up(console, reporter, args.timeout)
+
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
     entries = [e for e in entries if e["node_id"] != reporter["node_id"]]
-    day_dir.mkdir(parents=True)
+    if day_dir.exists():
+        (day_dir / "MISSED").unlink(missing_ok=True)
+    day_dir.mkdir(parents=True, exist_ok=True)
+    # A run that was cut short today left its attempts: they stand, and this
+    # run asks only what they left unanswered. Anything else it left (files it
+    # settled before stopping, a node no longer listed) is redone from them.
+    listed = {e["node_id"] for e in entries}
+    for left in sorted(day_dir.iterdir()):
+        if left.is_dir() and left.name in listed:
+            for f in left.iterdir():
+                if f.name != layout.ATTEMPTS:
+                    shutil.rmtree(f) if f.is_dir() else f.unlink()
+        else:
+            shutil.rmtree(left) if left.is_dir() else left.unlink()
+    for entry in entries:
+        (day_dir / entry["node_id"]).mkdir(exist_ok=True)
+    for n, after in enumerate([0, *schedule], 1):
+        owed = {e["node_id"]: layout.unanswered(day_dir / e["node_id"]) for e in entries}
+        if not any(owed.values()):
+            break
+        if n > 1:
+            wait = (start + dt.timedelta(seconds=after) - now()).total_seconds()
+            print(f"asking {sum(1 for v in owed.values() if v)} node(s) again in {max(wait, 0):.0f}s (attempt {n})")
+            if wait > 0:
+                sleep(wait)
+        for entry in entries:
+            if owed[entry["node_id"]]:
+                ask_attempt(console, entry, day_dir / entry["node_id"], owed[entry["node_id"]], now(),
+                            f"by=run pass={n}", args.timeout)
     lines = {}
     for entry in entries:
-        lines[entry["node_id"]] = ask_node(console, entry, day_dir / entry["node_id"], args.timeout)
+        lines[entry["node_id"]] = settle(day_dir / entry["node_id"])
         print(f"{entry['node_id']}: {lines[entry['node_id']]}")
-    finished = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     record = {
         "date": today.isoformat(),
         "reporter": {"node_id": reporter["node_id"], "key_id": reporter["key_id"]},
-        "started": started,
-        "finished": finished,
+        "started": layout.iso(start),
+        "finished": layout.iso(now()),
         "questions": [QUESTION_NAMES[s] for s in QUESTIONS],
         "asked": sorted(lines),
     }
+    again = ", ".join(f"+{s:g}s" for s in schedule) or "never"
     readme = [f"# Daily report {today.isoformat()}", "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
-              " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.", ""]
-    readme += [f"- `{node_id}`: {line}" for node_id, line in sorted(lines.items())] or ["- no node is listed"]
-    (day_dir / "README.md").write_text("\n".join(readme) + "\n")
+              " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.",
+              f"A question with no answer was asked again at {again} after the run started;"
+              " each node's `attempts/` holds every time it was asked.", ""]
+    for node_id, line in sorted(lines.items()):
+        fact = layout.absence_fact(layout.absent_days_running(out, node_id, today))
+        readme.append(f"- `{node_id}`: {line}" + (f"; {fact}" if fact else ""))
+    if not lines:
+        readme.append("- no node is listed")
+    write_new(day_dir / "README.md", "\n".join(readme) + "\n")
     # RUN.json marks the day finished, so it goes last and appears whole: a run
-    # stopped before this rename leaves no RUN.json, and the next run replaces it.
+    # stopped before this rename leaves no RUN.json, and the next run resumes it.
     tmp = day_dir / "RUN.json.partial"
     tmp.write_text(json.dumps(record, indent=2) + "\n")
     tmp.replace(day_dir / "RUN.json")
+    return 0
+
+
+def ask(args, now):
+    """Ask again, after the day's run: one node, or every node still owed an answer today."""
+    today = dt.date.fromisoformat(args.date) if args.date else now().date()
+    day_dir = Path(args.out) / today.isoformat()
+    if not (day_dir / "RUN.json").is_file():
+        raise ValueError(f"{day_dir}: no settled run to ask again after (the run asks again on its own schedule)")
+    asked = layout.run_record(day_dir)["asked"]
+    if args.node is not None and args.node not in asked:
+        raise ValueError(f"{args.node} was not asked on {today.isoformat()}")
+    targets = [args.node] if args.node is not None else [n for n in asked if layout.unanswered(day_dir / n)]
+    listed = {}
+    for p in sorted(Path(args.nodes).glob("*.json")):
+        e = json.loads(p.read_text(encoding="utf-8"))
+        listed[e["node_id"]] = e
+    missing = [n for n in targets if n not in listed]
+    if missing:
+        raise ValueError(f"not on the commitment list any more: {', '.join(missing)}")
+    reporter = load_reporter(args.reporter, args.data_dir)
+    console = args.console.rstrip("/")
+    reporter_up(console, reporter, args.timeout)
+    if not targets:
+        print(f"{today.isoformat()}: every node has answered every question; nothing to ask")
+    for node_id in targets:
+        stems = layout.unanswered(day_dir / node_id)
+        if not stems:
+            print(f"{node_id}: answered every question today; nothing to ask")
+            continue
+        lines = ask_attempt(console, listed[node_id], day_dir / node_id, stems, now(), "by=ask", args.timeout)
+        print(f"{node_id}: " + "; ".join(f"{QUESTION_NAMES[s]}: {l}" for s, l in lines.items()))
     return 0
 
 
@@ -310,7 +467,8 @@ def prove(args):
     return 0 if len(passing) >= 2 else 1
 
 
-def main(argv):
+def main(argv, now=utc_now, sleep=time.sleep):
+    """`now` and `sleep` are the clock: a test passes its own, so no run waits for real."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
@@ -321,15 +479,35 @@ def main(argv):
     r.add_argument("--reporter", default="reporter/reporter.json")
     r.add_argument("--data-dir", help="the reporter's capsules data dir, to check its key is the committed one")
     r.add_argument("--timeout", type=float, default=60.0)
+    a = sub.add_parser("ask", help="ask again after the day's run")
+    which = a.add_mutually_exclusive_group(required=True)
+    which.add_argument("--node", help="the node id to ask again")
+    which.add_argument("--absent", action="store_true", help="every node with a question unanswered today")
+    a.add_argument("--date", help="UTC date of the run to add to (default: today, UTC)")
+    a.add_argument("--console", default=DEFAULT_CONSOLE, help="the reporter node's mesh-llm console")
+    a.add_argument("--nodes", default="nodes")
+    a.add_argument("--out", default="reports/daily")
+    a.add_argument("--reporter", default="reporter/reporter.json")
+    a.add_argument("--data-dir", help="the reporter's capsules data dir, to check its key is the committed one")
+    a.add_argument("--timeout", type=float, default=60.0)
     p = sub.add_parser("prove")
     p.add_argument("--date", required=True)
     p.add_argument("--out", default="reports/daily")
     args = parser.parse_args(argv[1:])
     try:
-        return run(args) if args.cmd == "run" else prove(args)
+        if args.cmd == "run":
+            return run(args, now, sleep)
+        return ask(args, now) if args.cmd == "ask" else prove(args)
     except ReporterDown as e:
-        day = args.date or dt.datetime.now(dt.timezone.utc).date().isoformat()
+        day = args.date or now().date().isoformat()
         d = Path(args.out) / day
+        if args.cmd == "ask":
+            print(f"{day}: not asked again: the reporter could not reach its own node: {e}", file=sys.stderr)
+            return 2
+        if d.exists() and any(p.name != "MISSED" for p in d.iterdir()):
+            # Attempts from a run cut short today stand; the day is not marked over them.
+            print(f"{day}: the reporter could not reach its own node: {e}; earlier attempts kept", file=sys.stderr)
+            return 2
         d.mkdir(parents=True, exist_ok=True)
         (d / "MISSED").write_text(f"no report for {day}: the reporter could not reach its own node: {e}\n")
         print(f"{day}: MISSED ({e})", file=sys.stderr)

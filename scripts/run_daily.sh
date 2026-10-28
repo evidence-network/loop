@@ -28,6 +28,21 @@ status=$?
 # node's): nothing to commit, and the next run will mark this day MISSED.
 [ "$status" -eq 1 ] && exit 1
 python3 scripts/check_reports.py reports/daily || exit 1
+# Nothing with personal data in it is pushed: this push skips the required
+# checks, so a hit is caught here, before history, not after. The day's bytes
+# are held on this node, outside the clone, and the day is recorded as a run
+# that could not finish (MISSED, with why); nothing is staged or committed.
+# Exit 3. The check comes with en-public-flip-ready; until then this is inert.
+if [ -f scripts/check_personal_data.py ] && ! python3 -B scripts/check_personal_data.py reports/daily >&2; then
+  held="${LOOP_HELD_DIR:-$HOME/.local/share/loop/held}/$day-$(date -u +%H%M%S)"
+  mkdir -p "$(dirname "$held")" || exit 1
+  [ -d "reports/daily/$day" ] && { mv "reports/daily/$day" "$held" || exit 1; }
+  mkdir -p "reports/daily/$day"
+  echo "no report for $day: the run could not finish: its answers failed the personal-data check and are held on the reporter node" \
+    > "reports/daily/$day/MISSED"
+  echo "$day: personal-data check failed; held in $held; nothing committed" >&2
+  exit 3
+fi
 git add reports/daily || exit 1
 if [ "$status" -eq 0 ]; then msg="report: daily $day"; else msg="report: $day missed"; fi
 if ! git diff --cached --quiet; then

@@ -6,9 +6,12 @@ Usage: check_reports.py [DIR] [--through YYYY-MM-DD [--reporter FILE]]
 
 Every entry of DIR is a <YYYY-MM-DD> directory holding either RUN.json (a run:
 one <node_id>/ per node it asked) or MISSED (no run that day, and why). A node
-directory holds NODE, peer-key.json, and for each question one .request.json,
-one .verification line, and exactly one of .response.json or .absence.txt.
-Nothing else is allowed, so no score or ranking file can land beside them.
+directory holds attempts/ (one <YYYYMMDDTHHMMSSZ>/ per time the node was asked,
+see report_layout.py) and the day as the run settled it: NODE, peer-key.json,
+and for each question one .request.json, one .verification line, and exactly
+one of .response.json or .absence.txt. A settled answer must be the bytes of
+an attempt's answer. Nothing else is allowed, so no score or ranking file can
+land beside them.
 With --through, every day from the first report to that date must be present:
 a day nobody marked is refused. With --reporter too, a reporter.json that
 names a key (not the all-zero placeholder) and no report at all is refused:
@@ -20,38 +23,91 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import report_layout as layout  # noqa: E402
+
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-STEMS = ("checkpoints", "history_card")
-STATES = ("verified", "no_checkpoint_yet", "refusal", "no_announced_key", "not_evidence", "absence")
+STEMS = layout.STEMS
+STATES = layout.DAY_STATES
 NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/1)(, history_card/1)?)$")
 DAY_FILES = {"RUN.json", "README.md"}
+
+
+def check_answer(where, d, stem, states):
+    """One question's files in `d`: request, one verification line, one answer or absence."""
+    errs = []
+    if not (d / f"{stem}.request.json").is_file():
+        errs.append(f"{where}: missing {stem}.request.json")
+    answered = (d / f"{stem}.response.json").is_file()
+    absent = (d / f"{stem}.absence.txt").is_file()
+    if answered == absent:
+        errs.append(f"{where}: needs exactly one of {stem}.response.json or {stem}.absence.txt")
+    line_path = d / f"{stem}.verification"
+    if not line_path.is_file():
+        return errs + [f"{where}: missing {stem}.verification"]
+    lines = line_path.read_text(encoding="utf-8").splitlines()
+    state = lines[0].split(" ", 1)[0] if len(lines) == 1 and lines[0] else None
+    if state not in states:
+        errs.append(f"{where}: {stem}.verification is not one line starting with one of {', '.join(states)}")
+    # No bytes came back: a no-answer state, or a reply the plugin could not read.
+    elif (absent and state not in layout.NO_ANSWER + ("not_evidence",)) or (answered and state in layout.NO_ANSWER):
+        errs.append(f"{where}: {stem}.verification says {state} but the answer is {'absent' if absent else 'present'}")
+    return errs
+
+
+def check_attempt(where, a):
+    """One attempt: ATTEMPT naming its own time, peer-key.json, the questions it asked."""
+    where = f"{where}/{layout.ATTEMPTS}/{a.name}"
+    if not layout.ATTEMPT_NAME.match(a.name) or not a.is_dir():
+        return [f"{where}: not a <YYYYMMDDTHHMMSSZ> attempt directory"]
+    errs = []
+    allowed = {"ATTEMPT", "peer-key.json"}
+    attempt = layout.read_attempt(a) if (a / "ATTEMPT").is_file() else None
+    if attempt is None:
+        errs.append(f"{where}: ATTEMPT must be one line 'at=<time> by=run pass=<n>' or 'at=<time> by=ask'")
+    elif attempt[0] != layout.attempt_time(a.name):
+        errs.append(f"{where}: ATTEMPT says at={attempt[0]}, not the directory's time")
+    if not (a / "peer-key.json").is_file():
+        errs.append(f"{where}: missing peer-key.json")
+    asked = 0
+    for stem in STEMS:
+        files = {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
+        allowed |= files
+        if any((a / f).exists() for f in files):
+            asked += 1
+            errs += check_answer(where, a, stem, layout.ATTEMPT_STATES)
+    if not asked:
+        errs.append(f"{where}: asks no question")
+    extra = sorted(p.name for p in a.iterdir() if p.name not in allowed)
+    if extra:
+        errs.append(f"{where}: unexpected file(s) {', '.join(extra)}")
+    return errs
 
 
 def check_node(day, node_dir):
     errs = []
     where = f"{day}/{node_dir.name}"
-    allowed = {"NODE", "peer-key.json"}
+    allowed = {"NODE", "peer-key.json", layout.ATTEMPTS}
     if not (node_dir / "peer-key.json").is_file():
         errs.append(f"{where}: missing peer-key.json")
+    root = node_dir / layout.ATTEMPTS
+    entries = sorted(root.iterdir()) if root.is_dir() else []
+    if not entries:
+        errs.append(f"{where}: no {layout.ATTEMPTS}/: every answer is kept with the attempt that got it")
+    for a in entries:
+        errs += check_attempt(where, a)
+    day_answers = layout.answers(node_dir)
     for stem in STEMS:
         allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
-        if not (node_dir / f"{stem}.request.json").is_file():
-            errs.append(f"{where}: missing {stem}.request.json")
-        answered = (node_dir / f"{stem}.response.json").is_file()
-        absent = (node_dir / f"{stem}.absence.txt").is_file()
-        if answered == absent:
-            errs.append(f"{where}: needs exactly one of {stem}.response.json or {stem}.absence.txt")
-        line_path = node_dir / f"{stem}.verification"
-        if not line_path.is_file():
-            errs.append(f"{where}: missing {stem}.verification")
-            continue
-        lines = line_path.read_text(encoding="utf-8").splitlines()
-        state = lines[0].split(" ", 1)[0] if len(lines) == 1 and lines[0] else None
-        if state not in STATES:
-            errs.append(f"{where}: {stem}.verification is not one line starting with one of {', '.join(STATES)}")
-        elif (state == "absence") != absent:
-            errs.append(f"{where}: {stem}.verification says {state} but the answer is {'absent' if absent else 'present'}")
+        errs += check_answer(where, node_dir, stem, STATES)
+        settled = node_dir / f"{stem}.response.json"
+        if settled.is_file() and not any(
+            (a / f"{stem}.response.json").is_file()
+            and (a / f"{stem}.response.json").read_bytes() == settled.read_bytes()
+            for a, _ in day_answers[stem]["tried"]
+        ):
+            errs.append(f"{where}: {stem}.response.json is not the answer of any attempt")
     node = node_dir / "NODE"
     if not node.is_file() or not NODE_LINE.match(node.read_text(encoding="utf-8").strip()):
         errs.append(f"{where}: NODE must say 'discloses: ...', 'joined, no checkpoint yet' or 'joined, discloses nothing'")
