@@ -3,10 +3,11 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: mesh-llm main b5ed6bd8 merged into the #2620 branch (#2620 is still open).
-# 4e98fd86 is the commit the lab host binary was built from; it contains b5ed6bd8.
-mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
-mesh-llm-pr-2620 Mesh-LLM/mesh-llm 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8
+# Lab host build: mesh-llm main 3947de0c merged into the #2620 branch at its head 5fc649c8
+# (#2620 is still open: a plugin the host restarts gets the mesh snapshot again, and a plugin
+# whose start was cancelled is restarted). The lab source must contain both commits.
+mesh-llm Mesh-LLM/mesh-llm 3947de0cbc73fe5cbcaae548b297f03a401532d7
+mesh-llm-pr-2620 Mesh-LLM/mesh-llm 5fc649c888b7ac4b3e75865de06a901b476629c0
 # The capsules plugin (the repo was Mesh-LLM/capsules). main after v0.1.5: it adds the controller
 # declaration (#77), share at completion by default (#72), the signed commitment (#75) and the
 # Lightning settlement adapter (#82, for #57). No release carries them yet; its manifests and
