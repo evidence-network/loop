@@ -13,6 +13,11 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 bin="${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/bin"
 mkdir -p "$bin"
+# capsulectl refuses a plugin that others can write (the file or its directory). Under a
+# umask of 002 (the Ubuntu default) go build and mkdir leave both group-writable, so the
+# binaries and their directory are made go-w here, on every run, the early exit included.
+tighten() { chmod go-w "$bin" "$(dirname "$bin")"; for f in "$bin/capsulectl" "$bin/capsulectl-book"; do [ -e "$f" ] && chmod 755 "$f"; done; return 0; }
+tighten
 
 pin() { awk -v n="$1" '$1 == n { print $2, $3 }' "$root/versions.lock"; }
 read -r core_repo core_tag <<<"$(pin capsulectl)"
@@ -46,6 +51,7 @@ build -ldflags "$core_ld -X $CORE/cli.PluginVersion=$book_tag -X $CORE/cli.Plugi
   -o "$bin/capsulectl-book" ./cmd/capsulectl-book
 build -ldflags "$core_ld" -o "$bin/capsulectl" "$CORE/cmd/capsulectl"
 echo "$book_repo $book_tag $commit capsule-cli $core_version" >"$bin/capsulectl.built-from"
+tighten
 
 "$bin/capsulectl" --version >&2
 "$bin/capsulectl-book" --version >&2

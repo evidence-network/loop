@@ -179,7 +179,10 @@ The three run in one tmux session, `loop-lab`, one window per node:
 `tmux attach -t loop-lab` to watch (detach with `C-b d`; do not `C-c` a
 node, use `lab/lab.sh stop`). The launch script for each node is
 `$LAB_DIR/run/<name>.sh`, so a node can be started again by hand with
-`tmux new-window -d -t loop-lab -n <name> $LAB_DIR/run/<name>.sh`.
+`tmux new-window -d -t loop-lab -n <name> "bash $LAB_DIR/run/<name>.sh >> $LAB_DIR/logs/<name>.log 2>&1"`
+(through `bash`, never the bare path: where the script cannot be executed, a bare path closes
+the window with an empty log). A node that exits within 5 seconds of its launch, or dies while
+`start` waits on it, stops `start` at once with the last lines of its log.
 
 Check:
 

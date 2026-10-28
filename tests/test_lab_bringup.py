@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -302,6 +303,52 @@ class ToolsTest(LabRoot):
         self.setup_script("01-a", "exit 0")
         self.assertEqual(self.run_lab("tools").returncode, 0)
         self.assertEqual(self.build()["failures"], ["lab/lab.sh check has not run"])
+
+
+@unittest.skipUnless(shutil.which("tmux"), "tmux is not installed: lab.sh start cannot be run")
+class StartTest(LabRoot):
+    """lab.sh start for real, in a tmux session of its own, with a fake mesh-llm that dies:
+    start must stop within seconds and show the node's log tail, not wait out its 600 s."""
+
+    def setUp(self):
+        super().setUp()
+        self.session = f"loop-lab-test-{os.getpid()}-{id(self)}"
+        self.addCleanup(subprocess.run, ["tmux", "kill-session", "-t", self.session], capture_output=True)
+        self.lab.mkdir()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+
+    def start(self, body, **env):
+        mesh = self.tmp / "bin" / "mesh-llm"
+        mesh.write_text("#!/bin/sh\n" + body + "\n")
+        mesh.chmod(0o755)
+        return self.run_lab("start", LAB_MODEL=str(self.tmp / "model.gguf"), LAB_TMUX_SESSION=self.session,
+                            LAB_PORT_BASE=str(20000 + os.getpid() % 20000), **env)
+
+    def test_a_node_that_exits_at_once_is_reported_within_10s(self):
+        t = time.monotonic()
+        r = self.start("echo 'boom: planted failure' >&2; exit 1")
+        self.assertLess(time.monotonic() - t, 10, r.stderr)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("lab-1 is not running", r.stderr)
+        self.assertIn("boom: planted failure", r.stderr)
+        self.assertNotIn("timed out", r.stderr)
+
+    def test_a_node_that_dies_while_start_waits_stops_the_wait(self):
+        t = time.monotonic()
+        r = self.start("sleep 4; echo 'gone: planted failure' >&2; exit 1", LAB_UP_SECONDS="2")
+        self.assertLess(time.monotonic() - t, 20, r.stderr)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("started lab-1", r.stdout)
+        self.assertIn("gone: planted failure", r.stderr)
+        self.assertIn("stopped waiting: lab-1 has loaded the model", r.stderr)
+
+    def test_tmux_runs_the_launcher_through_bash_into_the_log(self):
+        # Never the bare path: where the script cannot be executed (a noexec mount), a bare path
+        # closes the window before the launcher's first line, with an empty log.
+        r = self.run_lab("--dry-run", "start", LAB_MODEL="/opt/model.gguf", LAB_TMUX_SESSION=self.session)
+        for name in ("lab-1", "lab-2", "lab-3"):
+            launcher, log = self.lab / "run" / f"{name}.sh", self.lab / "logs" / f"{name}.log"
+            self.assertIn(f"-n {name} bash\\ {launcher}\\ \\>\\>\\ {log}\\ 2\\>\\&1", r.stdout)
 
 
 class RunbookTest(unittest.TestCase):
