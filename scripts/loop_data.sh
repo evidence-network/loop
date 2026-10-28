@@ -19,5 +19,11 @@ if [ "$data" = "$(git rev-parse --show-toplevel)" ]; then
 fi
 reports="$data/reports/${report_set:-daily}"
 data_git() { git -C "$data" "$@"; }
+# The run commits there (with -s): refuse before asking anyone when git has no identity to commit with,
+# rather than leave a slot or a day half staged. Set one in that checkout (reporter/README.md).
+data_git var GIT_COMMITTER_IDENT > /dev/null 2>&1 || {
+  echo "no git identity to commit with in $data: set user.name and user.email there (reporter/README.md)" >&2
+  return 1
+}
 [ "$(git symbolic-ref --short HEAD 2>/dev/null)" = main ] || { echo "not on main: the loop clone" >&2; return 1; }
 git pull --ff-only --quiet origin main || { echo "the loop clone does not fast-forward to origin/main" >&2; return 1; }
