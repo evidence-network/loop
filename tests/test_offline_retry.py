@@ -22,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
+import check_nodes  # noqa: E402
 import check_reports  # noqa: E402
 import daily_report  # noqa: E402
 import report_layout as layout  # noqa: E402
@@ -54,6 +55,7 @@ def entry(nid, kid):
         "node_id": nid,
         "key_id": kid,
         "operator": "example-operator",
+        "consent": check_nodes.CONSENT,
         "mesh": "lab",
         "ask_route": "mesh",
         "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]},
