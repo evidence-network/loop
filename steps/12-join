@@ -8,19 +8,26 @@ by default `doctor` for rehearsal, `reporter` for live).
 
 `doctor` (nodes this machine can join): for each node, runs join.sh (bind the
 node key to a controller, create the book, write the commitment, probe the
-node as a stranger), then checks what join.sh wrote:
+node as a stranger with `capsulectl book doctor --probe`), then checks what
+join.sh wrote:
 
-  - the probe's answers (checkpoints, then history_card/1) verify under the
-    node key and checkpoint key the commitment advertises, checked by the
-    pinned capsulectl-book (`book request --for ... --response`), on the
-    answer bytes;
+  - the commitment verifies with step 03's checker (scripts/check_commitment.py):
+    its fields, no count, its signature under the node key, and the policy
+    digest against the signed policy published beside it;
+  - `capsulectl book doctor --probe`, from the pinned capsulectl-book, asked
+    the node as a stranger for checkpoints and then history_card/1 and found
+    both answers verify and match the policy (doctor.json), and it found the
+    controller binding naming the node key;
+  - the kept stranger answers verify under the node key and checkpoint key
+    the commitment advertises, checked by the pinned capsulectl-book
+    (`book request --for ... --response`), on the answer bytes;
   - the answers match the advertised policy: the node answers under the
-    policy whose digest it advertises, and both public subjects come back as
-    artifacts for exactly what was asked.
+    policy the commitment's signed policy carries, and both public subjects
+    come back as artifacts for exactly what was asked.
 
-What no released verifier can check yet is NOT_CHECKED, with the issue that
-owns it: the controller binding, `capsulectl book doctor --probe`, and the
-commitment's own format (step 03).
+The controller binding's own verification (controller-binding/0, both
+signatures) is outside the assertion: no released verifier checks it yet, and
+a PASS says so in detail, citing the issue that owns it.
 
 `reporter` (Mesh plugin nodes, which doctor --probe cannot reach): asks each
 node checkpoints and history_card/1 through the daily reporter's ask
@@ -33,6 +40,7 @@ commitment are NOT_CHECKED on the capsules plugin's issues.
 A part that was checked and did not hold makes the finding FAIL.
 """
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -46,35 +54,31 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts"))
+import check_commitment as check_commitment_  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
 import report_layout as layout  # noqa: E402
 
-ASSERTS = ("one command on the pinned release binds the node key to a controller, creates the book, "
-           "publishes the commitment, and a stranger's probe of the node (checkpoints, then history_card/1) "
-           "verifies and matches the advertised policy")
+ASSERTS = ("one command on the pinned release records a controller binding for the node key (its controller "
+           "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
+           "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
+           "advertised policy")
 PINNED = ["capsulectl", "capsulectl-book"]
 PROBES = ("checkpoints", "history_card")
-PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "join.json"]
+PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
+         "doctor.json", "join.json"]
+DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 
-NOT_RELEASED_DOCTOR = {
-    "what": "capsulectl book doctor --probe",
-    "why": "merged on evidencebook main, not in any released capsulectl-book: the latest, capsulectl/v0.1.0-rc23, "
-           "predates it. The stranger probe ran on the public path with the pinned release instead",
-    "issue": "action-state-group/evidencebook#133, #134",
-}
 NO_BINDING_VERIFIER = {
     "what": "the controller binding (controller-binding/0, same_controller_asserted, dual_signature/0)",
-    "why": "join.sh signs it with both keys, but no released implementation verifies controller-binding/0; "
-           "the spec and its vectors are in agent-action-capsule, and doctor reports it NOT_CHECKED too",
-    "issue": "action-state-group/agent-action-capsule spec/controller-binding-v0.md; action-state-group/evidencebook#133",
+    "why": "join.sh signs it with both keys, but no released implementation verifies controller-binding/0, "
+           "and doctor reports it NOT_CHECKED too",
+    "issue": "action-state-group/agent-action-capsule#432",
 }
-COMMITMENT_PENDING = {
-    "what": "the commitment's format, signature and publication in nodes/",
-    "why": "step 03 (Advertise) owns the commitment format and scripts/check_commitment.py; until they land "
-           "join.sh writes a provisional commitment and this step reads only the keys and policy digest it advertises",
-    "issue": "evidence-network/loop step 03 (Advertise): integration pending",
-}
+BINDING_OUTSIDE = finding.outside(
+    "the controller binding's own verification (controller-binding/0, both signatures), as no released "
+    "verifier checks it; doctor lists the binding naming the node key and reports its signatures not checked",
+    NO_BINDING_VERIFIER["issue"])
 
 
 def tools():
@@ -93,21 +97,59 @@ def load(path):
 
 
 # --- The commitment: the one place this step reads it ----------------------
-# Step 03 owns the commitment's format and its checker. Until they land this
-# reads the provisional commitment join.sh writes, and only what the probe is
-# judged against: the keys and the policy the node advertises.
+# join.sh writes it in step 03's format (steps/03-advertise.md); its checkpoint
+# member carries the book's checkpoint attestation whole: {book_id,
+# checkpoint_key, statement}.
 def advertised(node_dir):
     c = load(Path(node_dir) / "commitment.json")
-    return {"node_key": c["node_key"], "checkpoint_key": c["checkpoint_key"], "book_id": c["book_id"],
-            "policy_digest": c["policy_digest"], "subjects": c["subjects"], "derivations": c["derivations"]}
+    attestation = json.loads(base64.b64decode(c["checkpoint"]["bytes"]))
+    return {"node_key": c["key_id"], "checkpoint_key": attestation["checkpoint_key"],
+            "book_id": attestation["book_id"], "policy_digest": c["lcap"]["policy_digest"],
+            "policy_uri": c["lcap"]["policy_uri"], "subjects": c["answers"]["subjects"],
+            "derivations": c["answers"]["derivations"]}
+
+
+def check_commitment(node_dir):
+    """The commitment verifies with step 03's checker, its policy fetched beside it. Returns what did not."""
+    try:
+        doc = load(Path(node_dir) / "commitment.json")
+    except (OSError, ValueError) as e:
+        return [f"the commitment is not readable JSON ({e})"]
+    errs, notes = check_commitment_.verify(doc, check_commitment_.file_fetcher(node_dir))
+    return [f"the commitment does not verify: {e}" for e in errs + notes]
+
+
+def check_doctor(node_dir, adv):
+    """What capsulectl book doctor --probe found. Returns what did not hold."""
+    node_dir = Path(node_dir)
+    try:
+        found = {f["check"]: f for f in load(node_dir / "doctor.json")["findings"]}
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return [f"doctor.json is not capsulectl book doctor's findings ({e})"]
+    errs = []
+    for check in DOCTOR_PROBES:
+        f = found.get(check, {})
+        if f.get("state") != "match":
+            errs.append(f"doctor --probe {check}: {f.get('state', 'absent')} ({f.get('detail', 'no finding')})")
+    binding = load(node_dir / "controller.json")["binding_digest"]
+    if binding not in found.get("controller_binding", {}).get("records", []):
+        errs.append(f"doctor does not list the controller binding {binding} as naming the node key")
+    if found.get("checkpoint", {}).get("state") != "present":
+        errs.append(f"doctor finds no checkpoint over the book: {found.get('checkpoint')}")
+    return errs
 
 
 def check_policy_match(node_dir, adv):
     """The answers match the advertised policy. Returns a list of what did not."""
     node_dir = Path(node_dir)
     errs = []
-    if sha256(node_dir / "policy.json") != adv["policy_digest"]:
-        errs.append("the node answers under a policy whose digest is not the one it advertises")
+    published = node_dir / adv["policy_uri"]
+    try:
+        signed = load(published) if sha256(published) == adv["policy_digest"] else None
+    except (OSError, ValueError):
+        signed = None
+    if signed is None or signed.get("policy") != load(node_dir / "policy.json"):
+        errs.append("the node answers under a policy that is not the one it advertises")
     for probe in PROBES:
         req = load(node_dir / "probe" / f"{probe}.request.json")
         ans = load(node_dir / "probe" / f"{probe}.answer.json")
@@ -180,15 +222,16 @@ def verify_answers(node_dir, adv, capsulectl, work):
 def judge(node_dir, capsulectl, work):
     """(failures, not_checked, proof paths relative to node_dir) for one joined node."""
     node_dir = Path(node_dir)
-    adv = advertised(node_dir)
-    errs = check_policy_match(node_dir, adv)
+    errs = check_commitment(node_dir)
+    try:
+        adv = advertised(node_dir)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return errs + [f"the commitment does not advertise the node's keys and policy ({e})"], [], list(PROOF)
+    errs += check_doctor(node_dir, adv)
+    errs += check_policy_match(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
-    not_checked = [NO_BINDING_VERIFIER, COMMITMENT_PENDING]
+    not_checked = []
     proof = list(PROOF)
-    if (node_dir / "doctor.json").is_file():
-        proof.append("doctor.json")
-    else:
-        not_checked.insert(0, NOT_RELEASED_DOCTOR)
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
     return errs, not_checked, proof
@@ -237,8 +280,9 @@ def run_doctor(pop, out, tmp):
         failures += [f"{name}: {e}" for e in errs]
         merge(not_checked, nc)
         proof += [f"{name}/{x}" for x in p]
-        lines.append(f"{name}: joined; probe answers verify under the advertised keys and match the advertised policy"
-                     if not errs else f"{name}: {len(errs)} check(s) did not hold")
+        lines.append(f"{name}: joined; the commitment verifies, doctor --probe finds both answers verify and match "
+                     "the policy, and the kept answers verify under the advertised keys and match the advertised "
+                     "policy" if not errs else f"{name}: {len(errs)} check(s) did not hold")
     return failures, not_checked, proof, lines
 
 
@@ -362,8 +406,11 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
+    detail = f"probe backend: {which}. " + "; ".join(failures or lines) + "."
+    if result == "PASS":  # a PASS covers its assertion; the binding's own verification is outside it
+        detail += " " + BINDING_OUTSIDE
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
-                         detail=f"probe backend: {which}. " + "; ".join(failures or lines),
+                         detail=detail,
                          not_checked=not_checked, started=started)
 
 

@@ -11,13 +11,16 @@
 #      the controller class, in binding.json and controller.json;
 #   2. creates the node's evidence book (a capsulectl book profile), seals a
 #      first record and cuts a checkpoint over it, in book.json;
-#   3. writes the node's commitment, commitment.json, to open as a pull
-#      request to nodes/ (see publish_commitment below);
-#   4. probes the node as a stranger would: `capsulectl book doctor --probe`
-#      where the installed capsulectl-book has it; on a build without it, the
-#      same two public requests (checkpoints, then history_card/1) are asked
-#      by a throwaway stranger profile and answered on the public path, and
-#      the requests and answers are kept in DIR/probe for a verifier.
+#   3. writes the node's commitment, commitment.json (evidence-commitment/0,
+#      steps/03-advertise.md), signed by the node key, with its signed share
+#      policy in disclosure-policy.json, to open as a pull request to
+#      nodes/commitments/ (see publish_commitment below). It staples the
+#      history_card/1 answer the node gave a stranger: a throwaway stranger
+#      profile asks the two public requests (checkpoints, then history_card/1),
+#      the node answers them on the public path, and the requests and answers
+#      are kept in DIR/probe for a verifier;
+#   4. probes the node as a stranger would: `capsulectl book doctor --probe`,
+#      into doctor.json.
 # join.json lists what was done, what is self-attested, unwitnessed,
 # unchecked, unbound and unshared. join.sh checks nothing itself: the loop's
 # step 12 (steps/12-join) verifies DIR.
@@ -47,7 +50,7 @@ while [ $# -gt 0 ]; do
     --answers-within) answers_within="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --home) home="$2"; shift 2 ;;
-    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "join.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -94,6 +97,8 @@ node_pub="$(pubhex "$node_key")" controller_pub="$(pubhex "$controller_key")"
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 doctor_has_probe=no
 cap book doctor --help 2>/dev/null | grep -q -- '--probe' && doctor_has_probe=yes
+[ "$doctor_has_probe" = yes ] || {
+  echo "join.sh: the installed capsulectl-book has no book doctor --probe (run steps/12-join.setup.sh)" >&2; exit 2; }
 
 # --- 1. Bind the node key to its controller (controller-binding/0) -----------
 python3 - "$node_pub" "$controller_pub" "$now" "$out/binding.json" <<'EOF'
@@ -171,57 +176,10 @@ else
 fi
 
 # --- 3. Publish the commitment ----------------------------------------------
-# The one place join.sh makes the commitment. Its format and its checker
-# (scripts/check_commitment.py) belong to step 03, Advertise; until they land
-# this writes a provisional commitment/0 with the fields this node can fill,
-# signed by the node key over its JCS without `sig`. Publishing it is a pull
-# request adding it to nodes/; join.sh never pushes.
-publish_commitment() {
-  python3 - "$out" "$name" "$book_id" "$node_pub" "$checkpoint_pub" "$controller_class" "$answers_within" <<'EOF'
-import hashlib, json, sys
-out, name, book_id, node, checkpoint, cls, within = sys.argv[1:]
-book = json.load(open(f"{out}/book.json"))
-controller = json.load(open(f"{out}/controller.json"))
-commitment = {
-    "commitment_version": "provisional/0",
-    "node": name,
-    "node_key": node,
-    "book_id": book_id,
-    "checkpoint_key": checkpoint,
-    "controller_class": cls,
-    "controller_binding": controller["binding_digest"],
-    "ask": {"endpoint": None, "bindings": []},
-    "subjects": ["checkpoints"],
-    "derivations": ["history_card/1"],
-    "policy_digest": hashlib.sha256(open(f"{out}/policy.json", "rb").read()).hexdigest(),
-    "policy_uri": None,
-    "latest_checkpoint": book["checkpoint_statement"],
-    "human_gated": False,
-    "answers_within": within,
-    "sig": "",
-}
-json.dump(commitment, open(f"{out}/commitment.json", "w"), indent=2, sort_keys=True)
-EOF
-  jcs_without "$out/commitment.json" sig >"$home/commitment.signing-input"
-  local sig; sig="$(sign "$node_key" "$home/commitment.signing-input")"
-  python3 - "$out/commitment.json" "$sig" <<'EOF'
-import json, sys
-path, sig = sys.argv[1:]
-c = json.load(open(path)); c["sig"] = sig
-json.dump(c, open(path, "w"), indent=2, sort_keys=True)
-EOF
-}
-publish_commitment
-echo "join: wrote commitment.json; open a pull request adding it to nodes/" >&2
-
-# --- 4. Probe the node as a stranger ----------------------------------------
-if [ "$doctor_has_probe" = yes ]; then
-  cap book doctor --profile "$name" --policy "$out/policy.json" \
-    --controller-binding "$out/binding.json" --probe >"$out/doctor.json"
-fi
-# The stranger's answers are kept as bytes either way, so a verifier can
-# check them. The stranger is a throwaway profile with keys made here: its
-# seeds sit in probe/stranger/ on purpose, and are not secrets.
+# First the stranger's two public requests, answered by the node: the
+# history_card/1 answer is the commitment's staple, and the bytes stay in
+# DIR/probe for a verifier. The stranger is a throwaway profile with keys made
+# here: its seeds sit in probe/stranger/ on purpose, and are not secrets.
 st="$out/probe/stranger"
 mkdir -p "$st"
 pub_only() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps({"public_key": d["public_key"]}))'; }
@@ -244,12 +202,62 @@ ask() { # NAME REQUEST_JSON: the stranger asks; the node answers on the public p
 }
 ask checkpoints '{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}'
 ask history_card '{"subject":{"checkpoints":null},"derivation":"history_card/1","coverage":{"min_freshness":1}}'
-echo "join: asked the node for checkpoints and history_card/1 as a stranger" >&2
+echo "join: a stranger asked the node for checkpoints and history_card/1" >&2
+
+# The commitment, in step 03's format (steps/03-advertise.md), signed with
+# scripts/check_commitment.py's signer; step 12 verifies it with that checker. Its checkpoint member
+# carries the book's checkpoint attestation whole: the book, its checkpoint
+# key and the signed checkpoint statement. The share policy the node answers
+# under (policy.json) is published signed by the node key, as
+# disclosure-policy/0, in disclosure-policy.json beside the commitment.
+# Publishing it is a pull request adding both to nodes/commitments/; join.sh
+# never pushes.
+publish_commitment() {
+  python3 - "$root" "$out" "$node_key" "$book_id" "$node_pub" "$checkpoint_pub" "$answers_within" "$now" <<'EOF'
+import base64, hashlib, json, sys
+root, out, key, book_id, node, checkpoint_key, within, now = sys.argv[1:]
+sys.path.insert(0, f"{root}/scripts")
+import check_commitment as cc
+b64 = lambda raw: base64.b64encode(raw).decode("ascii")
+policy = cc.sign({"profile": cc.POLICY_PROFILE, "key_id": node,
+                  "policy": json.load(open(f"{out}/policy.json"))}, key)
+policy_bytes = (json.dumps(policy, indent=2, sort_keys=True) + "\n").encode()
+open(f"{out}/disclosure-policy.json", "wb").write(policy_bytes)
+book = json.load(open(f"{out}/book.json"))
+attestation = (json.dumps({"book_id": book_id, "checkpoint_key": checkpoint_key,
+                           "statement": book["checkpoint_statement"]}, indent=2, sort_keys=True) + "\n").encode()
+staple = open(f"{out}/probe/history_card.answer.json", "rb").read()
+commitment = cc.sign({
+    "profile": cc.PROFILE,
+    "node_id": node,
+    "key_id": node,
+    "spki": b64(cc.ED25519_SPKI + bytes.fromhex(node)),
+    "issued_at": now,
+    "ask": {"endpoint": f"book:{book_id}", "bindings": ["capsulectl-book/respond"]},
+    "answers": {"subjects": ["checkpoints"], "derivations": ["history_card/1"]},
+    "lcap": {"policy_digest": hashlib.sha256(policy_bytes).hexdigest(), "policy_uri": "disclosure-policy.json",
+             "predicate_classes": ["recorded:self_attested"]},
+    "checkpoint": {"sha256": hashlib.sha256(attestation).hexdigest(), "bytes": b64(attestation)},
+    "human_gated": False,
+    "answers_within": within,
+    "history_card": {"derivation": "history_card/1", "sha256": hashlib.sha256(staple).hexdigest(),
+                     "bytes": b64(staple)},
+}, key)
+open(f"{out}/commitment.json", "w").write(json.dumps(commitment, indent=2, sort_keys=True) + "\n")
+EOF
+}
+publish_commitment
+echo "join: wrote commitment.json and disclosure-policy.json; open a pull request adding them to nodes/commitments/" >&2
+
+# --- 4. Probe the node as a stranger ----------------------------------------
+cap book doctor --profile "$name" --policy "$out/policy.json" \
+  --controller-binding "$out/binding.json" --probe >"$out/doctor.json"
+echo "join: probed the node as a stranger with capsulectl book doctor --probe" >&2
 
 # --- What this join is, in the words of the doctor's list --------------------
-python3 - "$out" "$doctor_has_probe" "$("$capsulectl" --version 2>/dev/null | head -1)" <<'EOF'
+python3 - "$out" "$("$capsulectl" --version 2>/dev/null | head -1)" "$("$CAPSULECTL_PLUGIN_ROOTS/capsulectl-book" --version 2>/dev/null | head -1)" <<'EOF'
 import json, sys
-out, doctor, version = sys.argv[1:]
+out, version, book_version = sys.argv[1:]
 c = json.load(open(f"{out}/controller.json"))
 p = json.load(open(f"{out}/policy.json"))
 off = sorted(k for k, v in p.items() if v == "off")
@@ -257,12 +265,10 @@ status = [
     {"state": "self_attested", "what": "every record in the book is sealed by the node key alone"},
     {"state": "unwitnessed", "what": "no witness receipt is held for the book's checkpoint: no witness endpoint is configured"},
     {"state": "unbound", "what": f"the controller binding {c['binding_digest']} is signed by both keys, but no released verifier checks controller-binding/0, so a verifier holds the key unbound"},
-    {"state": "unchecked", "what": "the commitment is in a provisional format until step 03 publishes its format and checker"},
     {"state": "unshared", "what": "a stranger receives checkpoints and history_card/1 only; history segments go to counterparties, adjudications to their subjects" + (f"; off: {', '.join(off)}" if off else "")},
 ]
-if doctor != "yes":
-    status.append({"state": "unchecked", "what": "capsulectl book doctor --probe is not in the installed capsulectl-book; the stranger probe ran on the public path without it"})
-json.dump({"join": "evidence-network/join.sh", "capsulectl": version, "doctor_probe": doctor == "yes",
+json.dump({"join": "evidence-network/join.sh", "capsulectl": version, "capsulectl_book": book_version,
+           "doctor_probe": True,
            "did": ["bound the node key to a controller", "created the book", "wrote the commitment",
                    "probed the node as a stranger"],
            "status": status}, open(f"{out}/join.json", "w"), indent=2, sort_keys=True)
