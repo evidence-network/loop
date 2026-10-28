@@ -111,6 +111,21 @@ compare the two sha256 lines it prints with the ones your build recorded
 when it was made. If they differ, or `check` exits 1, stop here and report
 what it printed; do not start nodes on a build the lock does not name.
 
+Two cases that look like failures but are not:
+
+- The mesh-llm tree is a local merge of the two pins (its HEAD is neither
+  pin): that passes, because the check is containment, not equality.
+- The capsules tree sits at a commit before the pin tag, and the tag adds
+  only files that are not built (a changelog, install notes): compare with
+  `git diff --stat HEAD <tag>`. If nothing built differs, `git checkout
+  <tag>` in that tree, then run `check` again; the plugin binary does not
+  need rebuilding. If anything built differs, stop: the binary is not the
+  pinned plugin.
+
+Point `MESH_LLM_SRC` and `CAPSULES_SRC` at the source trees the binaries
+were built from, not at a build manifest or a release bundle: `check` reads
+the trees.
+
 ### Tools
 
 On the lab host: `git`, `curl`, `python3`, `openssl` 3, `tmux`, `ss`
