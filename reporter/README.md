@@ -262,3 +262,111 @@ Switch to the daily run:
 ```sh
 systemctl --user enable --now loop-reporter.timer
 ```
+
+To go live with the rehearsal's last clean slot as day one, follow
+[Going live](#going-live) instead of the switch above.
+
+## Going live
+
+The rehearsal ends, and the daily run starts, with the last clean rehearsal
+slot as day one's data: the same bytes, now a live day under
+`reports/daily/<that slot's UTC day>/`. Everything below runs on the reporter
+node from `~/loop` (on `main`), with `~/loop-data` beside it, in this order.
+
+1. The confidence check, while the rehearsal still runs. `lab/lab.sh check`
+   (on the lab host, with its settings as in `LAB-BRINGUP.md`) records the
+   build the nodes run in `$LAB_DIR/build.json`; the reports themselves do not
+   record it. The check reads loop-data's slots as the reporter pushed them:
+
+   ```sh
+   lab/lab.sh check
+   python3 scripts/rehearsal_confidence.py ~/loop-data/reports/rehearsal --build-json "$LAB_DIR/build.json"
+   ```
+
+   It prints `CONFIDENT` (exit 0) when the newest 12 slots or more (two hours)
+   are clean (every node in `nodes/`, the reporter's own node through the second
+   console included, answered both questions verified under its listed key,
+   under the current `versions.lock`), a MISSED slot comes before them and the
+   slot after it is clean (the planted stop, see [The rehearsal](#the-rehearsal)),
+   and `build.json` is the pinned build. Otherwise `NOT YET: <reason>`, naming
+   the first slot that is not clean and why: keep the rehearsal running and
+   check again. `--json` prints every slot's verdict.
+
+2. Stop the rehearsal timer. A run under way finishes first; wait for
+   `inactive`:
+
+   ```sh
+   systemctl --user disable --now loop-reporter-rehearsal.timer
+   while [ "$(systemctl --user is-active loop-reporter-rehearsal.service)" = activating ]; do sleep 10; done
+   systemctl --user is-active loop-reporter-rehearsal.service   # inactive
+   ```
+
+   A slot that run finished may not be clean; the next step takes the newest
+   one that is.
+
+3. Promote the last clean slot. It copies the slot into
+   `reports/daily/<its UTC day>/` (each node's files byte for byte; only
+   `RUN.json`, now `"label": "live"` and `"promoted_from": "rehearsal/<slot>"`,
+   and `README.md`, now `# Daily report <day>` with no TEST, are rewritten),
+   checks the daily set with the daily watchdog
+   (`check_reports.py --through <day> --reporter reporter/reporter.json`), and
+   commits only `reports/daily/<day>/` in `~/loop-data`. It refuses a slot that
+   is not clean, a day that exists already, a daily set that fails the check,
+   and any change outside `reports/daily/<day>/`. `--slot <YYYY-MM-DD>T<HHMM>Z`
+   names a slot instead.
+
+   ```sh
+   python3 scripts/promote_rehearsal_slot.py --last-clean --data ~/loop-data --commit
+   ```
+
+4. Push, with the reporter's deploy key, as `run_daily.sh` does:
+
+   ```sh
+   git -C ~/loop-data log --stat origin/main..HEAD   # one commit, reports/daily/<day>/ only
+   git -C ~/loop-data push origin HEAD:main
+   ```
+
+   loop-data's `reports` workflow (the daily watchdog) runs on that push. Promote
+   on the slot's own UTC day: on a later day, today has no report yet and the
+   watchdog reads red until step 6's run lands it.
+
+5. Wipe the rehearsal: loop-data first, then this repository if needed, then
+   the reporter node's copy, through the existing scripts (as in
+   [The rehearsal](#the-rehearsal)):
+
+   ```sh
+   # loop-data, from a checkout that can open a pull request:
+   git fetch origin && git switch -c wipe-rehearsal origin/main
+   scripts/wipe_rehearsal.sh
+   git push origin wipe-rehearsal          # open the pull request and merge it
+   # loop, only if stats/data/rehearsal/ is still on main after publish-scrubbed ran:
+   git fetch origin && git switch -c wipe-rehearsal origin/main
+   scripts/wipe_rehearsal.sh
+   git push origin wipe-rehearsal          # open the pull request and merge it
+   # the reporter node:
+   git -C ~/loop-data pull --rebase --quiet origin main && rm -rf ~/loop-data/reports/rehearsal
+   ```
+
+6. Enable the daily run, with the drop-ins that give the daily units the
+   settings file (the second console):
+
+   ```sh
+   for unit in loop-reporter loop-reporter-ask; do
+     mkdir -p ~/.config/systemd/user/$unit.service.d
+     cp ~/loop/reporter/systemd/reporter-env.conf ~/.config/systemd/user/$unit.service.d/env.conf
+   done
+   systemctl --user daemon-reload
+   systemctl --user enable --now loop-reporter.timer
+   systemctl --user list-timers 'loop-reporter*'   # loop-reporter.timer only; no rehearsal timer
+   ```
+
+   The first run is at the next 00:30 UTC. If the timer ran before
+   (`Persistent=true`), enabling it may start a run at once: for day one's own
+   day it refuses (`already holds a run`) and pushes nothing; for a later day it
+   reports that day and marks any day between as MISSED.
+
+Afterwards, once `publish-scrubbed` has run (06:30 UTC, or by hand with
+`set: daily`), the stats page shows day one as a live day, settled, with each
+node's answers, and no TEST label: the loop-data wipe published an empty
+rehearsal set, which removed `stats/data/rehearsal/`, so the stats build makes
+no rehearsal page and the daily page carries no TEST line.
