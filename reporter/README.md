@@ -194,7 +194,12 @@ under a **TEST** label. Then it is wiped, and the daily run starts clean.
 - A slot with no run gets a `MISSED` mark from the next run, as a day does.
   The site shows it, and a slot with no file at all, as MISSED.
 - loop-data checks each push to `reports/rehearsal/` as it checks the daily
-  reports, slot by slot, and publishes it to `stats/data/rehearsal/` here.
+  reports, slot by slot, in its own workflow (`reports-rehearsal`; a rehearsal
+  push never runs the daily watchdog), and publishes it to
+  `stats/data/rehearsal/` here.
+- Each publish is a push to this repository's `main`, so the `stats` workflow
+  builds and deploys Pages about once every 10 minutes while the rehearsal
+  runs. That is accepted for the rehearsal's length; it stops with the timer.
 - Run the rehearsal timer or the daily one, never both.
 
 Install, on the reporter node, after the daily setup above (both checkouts, linger):
