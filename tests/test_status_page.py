@@ -150,7 +150,7 @@ class StatusPageTest(unittest.TestCase):
             path = f"findings/2026-10-27-rehearsal/01-seal/{name}"
             self.assertIn(f'href="{path}"', self.html)
             self.assertTrue((self.out / path).is_file(), path)
-        self.assertIn("<code>capsulectl</code> <code>v0.1.0-rc23</code>", self.html)
+        self.assertIn(f"<code>capsulectl</code> <code>{finding.pins()['capsulectl'][1]}</code>", self.html)
 
     def test_a_pass_whose_proof_bytes_changed_is_not_green(self):
         d = self.write(1, "PASS")
