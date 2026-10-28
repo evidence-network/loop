@@ -6,6 +6,8 @@ LOOP_REQUIRE_TOOLS=1 (CI, after the setups ran), fail to load. The
 reporter backend runs against a fake reporter console on localhost.
 Fixtures: tests/fixtures/step12/, made by make_fixtures.py.
 """
+import contextlib
+import io
 import importlib.machinery
 import importlib.util
 import json
@@ -284,6 +286,19 @@ class ReporterBackendTest(Tmp):
         # lab-3 is asked through its own console, which does not answer for it, as on the first lab run.
         self.assertEqual([i["what"] for i in self.per_node(r)],
                          ["lab-3: the checkpoints probe answer", "lab-3: the history_card/1 probe answer"])
+
+    def test_a_self_node_not_in_the_population_is_refused(self):
+        # A stale or misspelt name (a host name in place of the operator's label) would quietly ask
+        # the reporter's node through its own console again.
+        pop_dir = Path(self.tmp.name) / "lab"
+        pop_dir.mkdir()
+        (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            rc = step.main(["--population", str(pop_dir), "--out", str(self.out), "--console", "http://127.0.0.1:1",
+                            "--self-node", "lab-9", "--second-console", "http://127.0.0.1:1"])
+        self.assertEqual(rc, 2)
+        self.assertIn("--self-node 'lab-9' is not a node in the population", err.getvalue())
 
     def test_the_flags_come_from_the_environment_too(self):
         env = {"LOOP_SELF_NODE": "lab-3", "LOOP_SECOND_CONSOLE": "http://127.0.0.1:1"}

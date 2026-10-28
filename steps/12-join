@@ -421,6 +421,11 @@ def main(argv=None):
         with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
             failures, not_checked, proof, lines = run_doctor(pop, a.out, tmp)
     elif which == "reporter":
+        if a.self_node and a.self_node not in [n["name"] for n in pop["nodes"]]:
+            # A misspelt or stale name would quietly ask that node through its own console again.
+            print(f"12-join: --self-node {a.self_node!r} is not a node in the population "
+                  f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
+            return 2
         failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
                                                            second_console=a.second_console)
     else:

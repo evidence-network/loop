@@ -419,8 +419,16 @@ cmd_loop() {
   # A node can't be asked through its own console, so step 12 asks the reporter node through a
   # second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
   # LAB_DIR: population/live names each node's data_dir and book_dir from it.
-  local second=lab-1; [ "$REPORTER" = lab-1 ] && second=lab-2
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$REPORTER" LOOP_SECOND_CONSOLE="$(console "$second")" \
+  # LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
+  # host_name maps a label back to its lab-N directory the same way).
+  local second=lab-1 self
+  [ "$REPORTER" = lab-1 ] && second=lab-2
+  self=$(python3 -c 'import json, sys
+for n in json.load(open(sys.argv[1]))["nodes"]:
+    if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
+        print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
+  [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
     LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
