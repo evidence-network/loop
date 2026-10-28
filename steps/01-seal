@@ -247,8 +247,13 @@ def main_live(population, out, started, sealed=None):
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
-    finding.write(out, result=live.worst(results), population=pop_name, asserts=ASSERTS, pinned=PINNED,
-                  proof=proof, detail="; ".join(details), not_checked=[*not_checked, SIGNATURE], started=started)
+    result, detail = live.worst(results), "; ".join(details)
+    if result == "PASS":  # a PASS covers its assertion; the signature is outside it
+        detail, not_checked = f"{detail}. {OUTSIDE}", []
+    else:
+        not_checked = [*not_checked, SIGNATURE]
+    finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
+                  proof=proof, detail=detail, not_checked=not_checked, started=started)
     return 0
 
 

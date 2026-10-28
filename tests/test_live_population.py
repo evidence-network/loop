@@ -167,8 +167,9 @@ class Step01LiveTest(LiveCase):
             checks = json.loads((self.findings / "01-seal" / name / "checks.json").read_text())
             self.assertTrue(checks["checks"]["key"]["ok"])
             self.assertIn(capsule["key_id"], checks["checks"]["key"]["detail"])
-        self.assertEqual([n["what"] for n in r["not_checked"]],
-                         ["the producer envelope signature, verified in a second language"])
+        # A PASS covers its assertion: the signature, outside it, is said in detail, not as not_checked.
+        self.assertEqual(r["not_checked"], [])
+        self.assertIn("Outside this step's assertion: the producer envelope signature", r["detail"])
 
     def test_a_node_with_another_nodes_public_key_fails(self):
         keys = self.lab_dir / "nodes" / "lab-2" / ".local" / "share" / "capsules" / "keys"
