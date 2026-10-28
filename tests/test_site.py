@@ -94,6 +94,30 @@ def make_findings(findings):
             json.dumps({"stage": "1", "population": p, "started": "2026-10-27T02:00:00Z"}))
 
 
+BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright")
+# The two allowed exceptions; both are provenance. The status page's pin table: the
+# repository each pinned component comes from. A cited issue: exactly an `owner/repo#N`
+# reference, or a link to https://github.com/owner/repo/issues/N. Prose naming the org
+# is not an exception.
+PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
+ISSUE_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
+ISSUE_REF = re.compile(r"\b[\w.-]+/[\w.-]+#\d+\b")
+
+
+def branding(out):
+    """(page, brand) for each brand on any built HTML page, outside the two exceptions."""
+    hits = []
+    for page in sorted(Path(out).rglob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        if page.relative_to(out).as_posix() == "stats/status/index.html":
+            text = PINS.sub("", text, count=1)
+        if PINS.search(text):
+            hits.append((page.relative_to(out).as_posix(), "a pin table outside the status page's pins"))
+        low = ISSUE_REF.sub("", ISSUE_LINK.sub("", text)).lower()
+        hits += [(page.relative_to(out).as_posix(), b) for b in BRANDS if re.search(rf"\b{re.escape(b)}\b", low)]
+    return hits
+
+
 def run_build(data, findings, out):
     err = io.StringIO()
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
@@ -166,27 +190,36 @@ class SiteTest(unittest.TestCase):
         # The public leak-lint rule: [ + three or more hyphenated lowercase segments + ].
         self.assertIsNone(re.search(r"\[[a-z0-9]+(?:-[a-z0-9]+){2,}\]", self.html))
 
-    BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright")
-    # The one allowed exception: the status page's pin table. Its repository
-    # paths are where each pinned component comes from (provenance), so they stay.
-    PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
-
     def test_it_says_it_is_the_evidence_networks_with_no_company_branding(self):
         self.assertIn("This site is the evidence network's.", self.html)
         self.assertIn("evidence network", (self.out / "index.html").read_text())
         pages = sorted(self.out.rglob("*.html"))
         self.assertIn(self.out / "stats" / "status" / "index.html", pages)
         self.assertEqual(len(pages), 3)  # the root redirect, the stats page and the status page
-        for page in pages:
-            text = page.read_text()
-            if page == self.out / "stats" / "status" / "index.html":
-                pins = self.PINS.search(text)
-                self.assertIn("action-state-group/", pins.group(0))  # the exception is the pin table, and it is used
-                text = self.PINS.sub("", text)
-            self.assertIsNone(self.PINS.search(text), page)  # no other page carries a pin table
-            low = text.lower()
-            for brand in self.BRANDS:
-                self.assertIsNone(re.search(rf"\b{re.escape(brand)}\b", low), (page, brand))
+        pins = PINS.search((self.out / "stats" / "status" / "index.html").read_text())
+        self.assertIn("action-state-group/", pins.group(0))  # the pin table exception is used
+        self.assertEqual(branding(self.out), [])
+
+    def test_a_cited_issue_reference_is_allowed_and_the_org_in_prose_is_not(self):
+        ref = "action-state-group/agent-action-capsule#431"
+        gap = f"alice: PASS. Outside this step's assertion: the envelope signature is not verified ({ref})."
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            write_finding(findings, 1, "seal", "PASS", "rehearsal", detail=gap)
+            self.assertEqual(run_build(DATA, findings, Path(d) / "a")[0], 0)
+            for page in ("stats/index.html", "stats/status/index.html"):
+                text = (Path(d) / "a" / page).read_text()
+                self.assertIn(f'<a href="https://github.com/action-state-group/agent-action-capsule/issues/431">{ref}</a>',
+                              text)
+            self.assertEqual(branding(Path(d) / "a"), [])  # a gap line with an AAC issue ref passes
+            for prose in ("Built by action-state-group.", "See action-state-group/agent-action-capsule for more.",
+                          "An Action State project.", "https://github.com/action-state-group/agent-action-capsule"):
+                write_finding(findings, 1, "seal", "PASS", "rehearsal", detail=f"{gap} {prose}")
+                self.assertEqual(run_build(DATA, findings, Path(d) / "b")[0], 0)
+                hits = branding(Path(d) / "b")
+                self.assertTrue(hits, prose)  # the org anywhere else on a built page fails
+                self.assertEqual({h[0] for h in hits}, {"stats/status/index.html"}, prose)
 
     def test_only_the_deploy_job_takes_the_pages_concurrency_group(self):
         wf = (ROOT / ".github" / "workflows" / "stats.yml").read_text()
