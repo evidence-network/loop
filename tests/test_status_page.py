@@ -339,26 +339,40 @@ class StatusPageTest(unittest.TestCase):
 
     # The badge
 
-    def test_the_badge_shows_the_worst_row_of_each_population(self):
+    def test_the_badge_counts_each_population_and_takes_the_worst_rows_colour(self):
         self.write(1, "PASS")
         self.write(2, "FAIL")
         self.page()
         badge = (self.out / "badge.svg").read_text()
-        self.assertIn('aria-label="loop: rehearsal red, live NOT_CHECKED"', badge)
-        self.assertEqual(re.findall(r">([^<>]+)</text>", badge), ["loop", "rehearsal red", "live NOT_CHECKED"])
+        label = "rehearsal 1 PASS · 1 FAIL · 10 not checked, live 0 PASS · 0 FAIL · 12 not checked"
+        self.assertIn(f'aria-label="loop: {label}"', badge)
+        self.assertEqual(re.findall(r">([^<>]+)</text>", badge),
+                         ["loop", "rehearsal 1 PASS · 1 FAIL · 10 not checked", "live 0 PASS · 0 FAIL · 12 not checked"])
+        self.assertEqual(re.findall(r'<rect [^>]*fill="(#\w+)"', badge)[1:],
+                         [status_page.BADGE_COLOURS["red"], status_page.BADGE_COLOURS["NOT_CHECKED"]])
+        self.assertIn(f'<img src="badge.svg" alt="loop: {label}">', self.html)
         for p in ("rehearsal", "live"):
             rs = status_page.rows({q: status_page.read_run(q, d) for q, d in
                                    status_page.latest_runs(self.findings).items()})
             self.assertEqual(status_page.worst(rs, p), {"rehearsal": "red", "live": "NOT_CHECKED"}[p])
 
-    def test_the_badge_is_never_green_while_a_row_is_not(self):
-        for n in NAMES:
+    def test_four_pass_and_eight_not_checked_reads_as_counts_and_is_never_green(self):
+        for n in NAMES:  # 01, 02, 03 and 12 PASS; steps 4-11 have no finding
             self.write(n, "PASS")
         self.page()
-        self.assertIn("rehearsal NOT_CHECKED", (self.out / "badge.svg").read_text())  # steps 4-11 have no finding
+        badge = (self.out / "badge.svg").read_text()
+        self.assertIn(">rehearsal 4 PASS · 0 FAIL · 8 not checked</text>", badge)
+        self.assertIn('aria-label="loop: rehearsal 4 PASS · 0 FAIL · 8 not checked, live 0 PASS · 0 FAIL · 12 not '
+                      'checked"', badge)
+        rehearsal = re.findall(r'<rect [^>]*fill="(#\w+)"', badge)[1]
+        self.assertEqual(rehearsal, status_page.BADGE_COLOURS["NOT_CHECKED"])
+        self.assertNotEqual(rehearsal, status_page.BADGE_COLOURS["green"])
+        self.assertNotIn("NOT_CHECKED", badge)  # the counts replace the worst state's name
+        # One row per population, so it fits a 390 px phone (358 px between the gutters) without scaling.
+        self.assertLessEqual(int(re.search(r'<svg [^>]*width="(\d+)"', badge).group(1)), 358)
 
     def test_the_report_page_embeds_the_badge(self):
-        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="Loop status"></a>',
+        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="loop: $badge_alt"></a>',
                       (ROOT / "site" / "template.html").read_text())
 
     # The five numbers
@@ -388,7 +402,9 @@ class StatusPageTest(unittest.TestCase):
         self.write(1, "PASS", started="2026-10-27T02:00:20Z")  # finished 02:01:00
         self.page()
         self.assertEqual(self.number("first-sealed"), ("measured", "42 s"))
-        self.assertEqual(status_page.duration(0), "0 s")
+        self.assertEqual(status_page.duration(0), "<1 s")
+        self.assertEqual(status_page.duration(0.99 / 60), "<1 s")  # never "0 s", nor rounded up to "1 s"
+        self.assertEqual(status_page.duration(1 / 60), "1 s")
         self.assertEqual(status_page.duration(59.4 / 60), "59 s")
         self.assertEqual(status_page.duration(59.6 / 60), "1.0 minutes")
         self.assertEqual(status_page.duration(1.5), "1.5 minutes")
@@ -496,7 +512,7 @@ class StatusPageTest(unittest.TestCase):
 
     def test_no_findings_at_all_builds_a_not_checked_page(self):
         self.assertEqual(self.build(), 0, self.err)
-        self.assertIn("rehearsal NOT_CHECKED", (self.out / "badge.svg").read_text())
+        self.assertIn(">rehearsal 0 PASS · 0 FAIL · 12 not checked</text>", (self.out / "badge.svg").read_text())
 
     # The real loop.sh
 

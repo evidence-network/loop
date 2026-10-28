@@ -258,6 +258,29 @@ class SiteTest(unittest.TestCase):
         self.assertEqual(live.count('<path class="line"'), 1)  # the gap on 10-31 breaks 10-30 from 11-01
         self.assertIn(build.count(3, 6, "day") + " have a point", live)
 
+    def test_the_chart_takes_the_full_width_about_two_to_one_and_reads_on_a_phone(self):
+        records = self.section("records")
+        self.assertNotIn('class="pair"', records)  # the live chart is not half of a two-column grid
+        svg = re.search(r'<svg class="records" viewBox="0 0 (\d+) (\d+)"', records)
+        w, h = int(svg.group(1)), int(svg.group(2))
+        self.assertEqual(w / h, 2)
+        css = self.html[self.html.index("<style>"):self.html.index("</style>")]
+        rule = re.search(r"\nsvg\.records \{([^}]*)\}", css).group(1)
+        self.assertIn("width: 100%", rule)
+        self.assertNotIn("max-width", rule)
+        self.assertIn("figure.pop, figure.rec { margin: 0; }", css)  # no default figure indent either
+        # At 390 px the chart is drawn 358 px wide (16 px gutters): its text is at least 12 px and it is
+        # at least 175 px tall.
+        phone = css[css.index("@media (max-width: 36rem)"):]
+        phone = phone[:phone.index("\n}")]
+        size = int(re.search(r"svg\.records text \{ font-size: (\d+)px; \}", phone).group(1))
+        self.assertGreaterEqual(size * 358 / w, 12)
+        self.assertGreaterEqual(358 * h / w, 175)
+        self.assertIn("svg.records text.minor, svg.records text.value:not(.newest) { display: none; }", phone)
+        dates = re.findall(r'<text class="code xdate( minor)?" [^>]*>([\d-]+)</text>', records)
+        self.assertEqual(dates[-1], ("", "11-02"))  # the newest date always shows
+        self.assertIn('<text class="code value newest"', records)
+
     def test_both_halves_is_a_legend_entry_with_no_line_and_no_zero(self):
         live = self.records()
         self.assertIn(f"records with both halves: not measured yet ({build.code('M2')}); no line is drawn", live)
@@ -368,6 +391,24 @@ class SiteTest(unittest.TestCase):
         # Step 01 finished 02:01:00 and step 03, the run's last, 02:03:00.
         self.assertIn('<td class="measured" data-population="rehearsal"><span class="count">42 s of the run\'s '
                       "2.7 minutes</span></td>", row)
+
+    def test_under_one_second_reads_less_than_one_second_not_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-rehearsal" / "run.json").write_text(
+                json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:01:00Z"}))
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        tile = re.search(r'<section class="tile" id="t-first-sealed">(.*?)</section>', page, re.S).group(1)
+        self.assertIn('rehearsal: <span class="value">&lt;1 s</span>', tile)  # step 01 finished at 02:01:00
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        self.assertIn('data-population="rehearsal"><span class="count">&lt;1 s of the run\'s 2.0 minutes', row)
+        self.assertNotIn(">0 s", page)
+
+    def test_the_header_badge_alt_counts_each_population(self):
+        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="loop: rehearsal 1 PASS · 1 FAIL · 10 not '
+                      'checked, live 1 PASS · 0 FAIL · 11 not checked"></a>', self.html)
 
     def test_held_rows_follow_the_status_page(self):
         self.assertEqual(sorted(int(n) for n in re.findall(r'class="step [^"]* held" data-step="(\d+)"',

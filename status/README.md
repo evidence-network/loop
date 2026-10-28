@@ -3,7 +3,8 @@
 - `findings.py` (loop.sh): writes one run's `index.md`, the link list.
 - `status_page.py`: the loop status page. Twelve rows, one per step of the
   loop, each with a rehearsal cell and a live cell, the five numbers, and a
-  badge (`badge.svg`) with the worst row of each population. The stats site
+  badge (`badge.svg`) counting each population's rows (`4 PASS · 0 FAIL · 8
+  not checked`), coloured by its worst row. The stats site
   (`site/build.py`) builds it into `_site/stats/status/`, draws its rows as
   the loop's path and its five numbers, embeds the badge and links here.
 

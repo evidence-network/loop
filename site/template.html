@@ -25,6 +25,7 @@ h2 { font-size: 1.3rem; margin: 2.5rem 0 .5rem; border-bottom: 1px solid var(--l
 h3 { font-size: 1.1rem; margin: 2rem 0 .4rem; }
 p, li { max-width: 44rem; }
 a { color: var(--accent); }
+img { max-width: 100%; height: auto; }
 code { background: var(--code); padding: 0 .25em; border-radius: 3px; font-size: .9em; overflow-wrap: anywhere; }
 .note { color: var(--muted); font-size: .9rem; }
 .scroll { overflow-x: auto; }
@@ -50,21 +51,35 @@ ul.legend svg { vertical-align: middle; }
 .tile p { margin: .3rem 0; }
 .tile .value { font-size: 1.15rem; }
 .tile .count { font-weight: 600; }
-svg.records { width: 100%; max-width: 36rem; height: auto; display: block; font-family: system-ui, sans-serif; }
+svg.records { width: 100%; height: auto; display: block; font-family: system-ui, sans-serif; }
 svg.records .axis { stroke: var(--muted); stroke-width: 1.5; }
 svg.records .grid { stroke: var(--line); stroke-width: 1; }
-svg.records text { fill: var(--muted); font-size: 17px; text-anchor: middle; }
+svg.records text { fill: var(--muted); font-size: 12px; text-anchor: middle; }
 svg.records text.tick { text-anchor: end; }
 svg.records text.value { fill: var(--fg); font-weight: 600; }
 svg.records .line, ul.series .line { fill: none; stroke: var(--series); stroke-width: 3; stroke-linejoin: round; }
 ul.series .line.pending { stroke: var(--muted); stroke-dasharray: 3 4; stroke-width: 2; }
 svg.records .point circle { fill: var(--series); stroke: var(--bg); stroke-width: 2; }
-svg.records .gapmark { font-size: 13px; font-style: italic; }
+svg.records .gapmark { font-size: 11px; font-style: italic; }
+/* The chart's units scale with its width (720 units wide): larger text where it is drawn narrower. */
+@media (max-width: 56rem) {
+  svg.records text { font-size: 16px; }
+  svg.records .gapmark { font-size: 14px; }
+}
+@media (max-width: 36rem) {
+  svg.records text { font-size: 26px; }
+  svg.records .gapmark { font-size: 22px; }
+  svg.records text.minor, svg.records text.value:not(.newest) { display: none; }
+  svg.records .line { stroke-width: 5; }
+  svg.records .point circle { r: 12px; stroke-width: 3; }
+  svg.records .axis { stroke-width: 2.5; }
+}
 ul.series { list-style: none; padding: 0; font-size: .9rem; margin: .2rem 0 .4rem; }
 ul.series svg { vertical-align: middle; }
 ul.drops { font-size: .9rem; }
 .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.5rem; }
-figure.pop { margin: 0; }
+figure.pop, figure.rec { margin: 0; }
+figure.rec + figure.rec { margin-top: 1.5rem; }
 figure.pop figcaption { margin-bottom: .4rem; }
 svg { font-family: system-ui, sans-serif; }
 svg .code { font-family: ui-monospace, monospace; }
@@ -100,7 +115,7 @@ footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem
 <body>
 <main>
 <h1>Loop stats</h1>
-<p><a href="status/"><img src="status/badge.svg" alt="Loop status"></a></p>
+<p><a href="status/"><img src="status/badge.svg" alt="loop: $badge_alt"></a></p>
 <p>This site is the evidence network's. It shows, from files in the network's public repository and nothing else:
 how many records the listed nodes seal each day; four figures, each with what it is out of; why this record keeping
 matters; the loop, the steps a node goes through from sealing a record to a new node joining; and every node on the

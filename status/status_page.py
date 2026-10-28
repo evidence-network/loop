@@ -362,7 +362,10 @@ def number_value(number, run):
 
 
 def duration(m):
-    """Minutes as the page states them: whole seconds under one minute, else minutes to one decimal."""
+    """Minutes as the page states them: "<1 s" under one second, whole seconds under one minute, else minutes
+    to one decimal."""
+    if m * 60 < 1:
+        return "<1 s"
     seconds = round(m * 60)
     return f"{seconds} s" if seconds < 60 else f"{m:.1f} minutes"
 
@@ -413,18 +416,33 @@ def check_rows(rs, out):
 BADGE_COLOURS = {GREEN: "#2e7d32", RED: "#c62828", NOT_CHECKED: "#6b6b66"}
 
 
-def badge(states):
-    """A flat SVG badge: "loop | rehearsal <worst> | live <worst>", one segment per population."""
-    parts = [("loop", "#3d3d3a")] + [(f"{p} {states[p]}", BADGE_COLOURS[states[p]]) for p in POPULATIONS]
-    widths = [10 + 7 * len(text) for text, _ in parts]
-    x, rects, texts = 0, [], []
-    for (text, colour), w in zip(parts, widths):
-        rects.append(f'<rect x="{x}" width="{w}" height="20" fill="{colour}"/>')
-        texts.append(f'<text x="{x + w / 2}" y="14">{e(text)}</text>')
-        x += w
-    label = ", ".join(f"{p} {states[p]}" for p in POPULATIONS)
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{x}" height="20" role="img" aria-label="loop: {label}">'
-            f"<title>loop: {label} (the worst row of each population)</title>{''.join(rects)}"
+def counts(rs, population):
+    """A population's rows counted by state: "4 PASS · 0 FAIL · 8 not checked". FAIL counts MALFORMED too."""
+    states = [r.cells[population].state for r in rs]
+    return f"{states.count(GREEN)} PASS · {states.count(RED)} FAIL · {states.count(NOT_CHECKED)} not checked"
+
+
+def badge_label(rs):
+    """The badge's words, also its alt text: each population's counts."""
+    return ", ".join(f"{p} {counts(rs, p)}" for p in POPULATIONS)
+
+
+def badge(rs):
+    """A flat SVG badge: "loop" beside one row per population, "<population> <counts>", each row coloured by that
+    population's worst row. Two rows keep it narrow enough for a phone."""
+    rows = [(f"{p} {counts(rs, p)}", BADGE_COLOURS[worst(rs, p)]) for p in POPULATIONS]
+    head = 10 + 7 * len("loop")
+    w = max(10 + 7 * len(text) for text, _ in rows)
+    height = 20 * len(rows)
+    rects = [f'<rect x="0" width="{head}" height="{height}" fill="#3d3d3a"/>']
+    texts = [f'<text x="{head / 2}" y="{height / 2 + 4}">loop</text>']
+    for i, (text, colour) in enumerate(rows):
+        rects.append(f'<rect x="{head}" y="{20 * i}" width="{w}" height="20" fill="{colour}"/>')
+        texts.append(f'<text x="{head + w / 2}" y="{20 * i + 14}">{e(text)}</text>')
+    label = e(badge_label(rs))
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{head + w}" height="{height}" role="img" '
+            f'aria-label="loop: {label}"><title>loop: {label} (each colour is the worst row of its population)</title>'
+            f"{''.join(rects)}"
             f'<g fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle">'
             f"{''.join(texts)}</g></svg>\n")
 
@@ -521,6 +539,7 @@ h1 {{ font-size: 1.7rem; margin: 0 0 .5rem; }}
 h2 {{ font-size: 1.3rem; margin: 2.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }}
 p {{ max-width: 46rem; }}
 a {{ color: var(--accent); }}
+img {{ max-width: 100%; height: auto; }}
 code {{ background: var(--code); padding: 0 .25em; border-radius: 3px; font-size: .9em; overflow-wrap: anywhere; }}
 q.said {{ font-style: italic; overflow-wrap: anywhere; }}
 .note {{ color: var(--muted); font-size: .9rem; }}
@@ -549,7 +568,7 @@ added together.</p>
 matching its sha256. <code>FAIL</code> or a finding that does not pass the check (<code>MALFORMED</code>) is red.
 <code>NOT_CHECKED</code> means the step could not establish its fact; the cell lists what, why and the owning issue.
 A <code>PASS</code> cell lists each gap its finding names: something outside the step's assertion, with its issue.
-Italic text is quoted from the finding. The badge shows the worst row of each population. Built from the findings
+Italic text is quoted from the finding. The badge counts each population's rows by state; its colour is the worst row. Built from the findings
 and {lock} only.</p>
 <p>Runs read:</p>
 {runs}
@@ -576,8 +595,7 @@ number that cannot be measured yet says so, with the milestone it waits for; it 
 
 
 def render(rs, runs, lock):
-    states = {p: worst(rs, p) for p in POPULATIONS}
-    return PAGE.format(badge_alt=e(", ".join(f"{p} {states[p]}" for p in POPULATIONS)), lock=e(LOCK),
+    return PAGE.format(badge_alt=e(badge_label(rs)), lock=e(LOCK),
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
@@ -601,7 +619,7 @@ def build(findings_dir, lock_path, out):
         shutil.rmtree(out)
         raise
     (out / "index.html").write_text(render(rs, runs, lock), encoding="utf-8")
-    (out / "badge.svg").write_text(badge({p: worst(rs, p) for p in POPULATIONS}), encoding="utf-8")
+    (out / "badge.svg").write_text(badge(rs), encoding="utf-8")
     return rs
 
 

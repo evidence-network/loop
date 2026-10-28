@@ -84,8 +84,11 @@ def nice(n):
 
 
 def records_chart(points):
-    """The live line: records sealed per day across the listed nodes. A gap is no point, never 0."""
-    w, h, left, right, top, bottom = 560, 250, 52, 16, 22, 52
+    """The live line: records sealed per day across the listed nodes. A gap is no point, never 0.
+
+    Drawn 2:1 at the content's full width. The margins fit the largest labels: on a phone the template sets the
+    text to 26 units (about 13 px at 390 px wide), hides every other date and keeps only the newest value."""
+    w, h, left, right, top, bottom = 720, 360, 76, 20, 34, 74
     pw, ph = w - left - right, h - top - bottom
     n = len(points)
     ymax = nice(max([p.sealed for p in points if p.sealed is not None] + [1]))
@@ -96,11 +99,12 @@ def records_chart(points):
         if v is None:
             continue
         parts.append(f'<line class="grid" x1="{left}" y1="{y(v):g}" x2="{w - right}" y2="{y(v):g}"/>'
-                     f'<text class="code tick" x="{left - 8}" y="{y(v) + 5:g}">{v}</text>')
+                     f'<text class="code tick" x="{left - 10}" y="{y(v) + 6:g}">{v}</text>')
     every = max(1, -(-n // 7))
-    for i, p in enumerate(points):
-        if i % every == 0 or i == n - 1:
-            parts.append(f'<text class="code xdate" x="{x(i):g}" y="{top + ph + 24}">{e(p.date[5:])}</text>')
+    shown = [i for i in range(n) if i % every == 0 and n - 1 - i >= every] + [n - 1]
+    for k, i in enumerate(shown):
+        minor = " minor" if (len(shown) - 1 - k) % 2 else ""  # hidden on a phone; the newest date always shows
+        parts.append(f'<text class="code xdate{minor}" x="{x(i):g}" y="{top + ph + 32}">{e(points[i].date[5:])}</text>')
     segment, segments = [], []
     for i, p in enumerate(points):
         if p.sealed is None:
@@ -118,14 +122,15 @@ def records_chart(points):
         if p.sealed is None:
             tip = f"{p.date}: no point, {p.why}"
             parts.append(f'<g class="gap" data-date="{p.date}"><title>{e(tip)}</title>'
-                         f'<text class="gapmark" x="{x(i):g}" y="{top + ph + 42}">gap</text></g>')
+                         f'<text class="gapmark" x="{x(i):g}" y="{top + ph + 62}">gap</text></g>')
             continue
         tip = f"{p.date}: {p.sealed} records sealed, from {p.nodes} of {p.listed} listed nodes"
         if p.longer:
             tip += f"; for {p.longer} of them, since a count older than the day before"
+        newest = " newest" if i == n - 1 else ""
         parts.append(f'<g class="point" data-date="{p.date}" data-sealed="{p.sealed}"><title>{e(tip)}</title>'
-                     f'<circle cx="{x(i):g}" cy="{y(p.sealed):g}" r="5"/>'
-                     + (f'<text class="code value" x="{x(i):g}" y="{y(p.sealed) - 10:g}">{p.sealed}</text>'
+                     f'<circle cx="{x(i):g}" cy="{y(p.sealed):g}" r="6"/>'
+                     + (f'<text class="code value{newest}" x="{x(i):g}" y="{y(p.sealed) - 14:g}">{p.sealed}</text>'
                         if label_all or i == n - 1 else "") + "</g>")
     label = (f"Records sealed per day on the listed nodes, {points[0].date} to {points[-1].date}; "
              "a day with no point is a gap") if points else "No day yet"
@@ -157,7 +162,7 @@ def records_section(days):
                  "</figcaption><p>No daily line. The reporter asks only the nodes on the commitment list; the "
                  'rehearsal nodes run only in <a href="#loop">the loop</a>. Their records are never added to the live '
                  "line.</p></figure>")
-    return f'<div class="pair">{live}{rehearsal}</div>'
+    return live + rehearsal  # one above the other: the live chart takes the full width
 
 
 # Four tiles
@@ -340,7 +345,7 @@ def number_cell(nb, run):
     part, whole = status_page.duration(m), status_page.duration(total)
     if part.endswith(" minutes"):
         part = part.removesuffix(" minutes")  # "1.0 of the run's 3.0 minutes"
-    return f'<td class="measured" {p}><span class="count">{part} of the run\'s {whole}</span></td>'
+    return f'<td class="measured" {p}><span class="count">{e(part)} of the run\'s {e(whole)}</span></td>'
 
 
 def numbers_section(runs):
@@ -505,7 +510,8 @@ def days_section(days):
 
 def render(days, rs, runs, all_runs):
     template = Template((HERE / "template.html").read_text(encoding="utf-8"))
-    return template.substitute(records=records_section(days), tiles=tiles_section(days, all_runs),
+    return template.substitute(badge_alt=e(status_page.badge_label(rs)), records=records_section(days),
+                               tiles=tiles_section(days, all_runs),
                                loop=loop_section(rs, runs), numbers=numbers_section(runs),
                                nodes=nodes_section(days), days=days_section(days))
 
