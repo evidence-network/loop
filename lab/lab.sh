@@ -6,7 +6,9 @@
 #   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
-#   tools     install every stage-1 step's pinned tools (each steps/<NN>-<name>.setup.sh)
+#             on every outcome, and exits 1 naming each failure
+#   tools     install every stage-1 step's pinned tools (each steps/<NN>-<name>.setup.sh): runs every
+#             setup, records each one's exit code in build.json, and exits 1 if any failed
 #   start     lab-1 makes the mesh and serves the model; lab-2 and lab-3 join it. No relay.
 #   status    each node: pid, ports, node id, and the plugin keys its console lists
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
@@ -16,7 +18,7 @@
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
-#   all       check, start, exchange, wait for the first checkpoints, join, entries, loop, pack
+#   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
 # changes nothing.
@@ -99,60 +101,151 @@ port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 
 # --- check ------------------------------------------------------------------------------------
 pin() { awk -v n="$1" '$1 == n { print $3 }' "$ROOT/versions.lock"; }
+is_sha() { [[ $1 =~ ^[0-9a-f]{40}$ ]]; }
+# resolve_pin TREE PIN: the commit PIN names in TREE. A full SHA is itself; a tag is resolved
+# to its commit, after fetching the tree's tags if the tag is not there yet.
+resolve_pin() {
+  local tree=$1 ref=$2
+  if is_sha "$ref"; then echo "$ref"; return 0; fi
+  git -C "$tree" rev-parse -q --verify "refs/tags/$ref^{commit}" 2> /dev/null && return 0
+  GIT_TERMINAL_PROMPT=0 git -C "$tree" fetch -q --tags 2> /dev/null || true
+  git -C "$tree" rev-parse -q --verify "refs/tags/$ref^{commit}" 2> /dev/null
+}
+# head_of TREE: its HEAD commit; fails for an unset path or a path that is not a git tree.
+head_of() { [ -n "$1" ] && git -C "$1" rev-parse -q --verify 'HEAD^{commit}' 2> /dev/null; }
+# record SECTION: merge one command's outcome (JSON on stdin) into $LAB_DIR/build.json.
+record() { mkdir -p "$LAB_DIR" && python3 -B "$ROOT/lab/pack.py" record "$1" --lab-dir "$LAB_DIR"; }
+
 cmd_check() {
-  need MESH_LLM_SRC; need MESH_LLM_BIN; need CAPSULES_SRC; need CAPSULES_BIN
   local mesh_pin pr_pin cap_pin
   mesh_pin=$(pin mesh-llm) pr_pin=$(pin mesh-llm-pr-2620) cap_pin=$(pin capsules)
-  [ -n "$mesh_pin" ] && [ -n "$cap_pin" ] || die "versions.lock has no mesh-llm or capsules pin"
-  run git -C "$MESH_LLM_SRC" rev-parse HEAD
-  run git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$mesh_pin" HEAD
-  [ -z "$pr_pin" ] || run git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$pr_pin" HEAD
-  run git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no
-  run git -C "$CAPSULES_SRC" rev-parse HEAD
-  run git -C "$CAPSULES_SRC" status --porcelain --untracked-files=no
-  run sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
-  run "$MESH_LLM_BIN" --version
-  [ "$DRY" = 1 ] && { echo "  > $LAB_DIR/build.json"; return 0; }
-
-  local fails=() mesh_head cap_head
-  mesh_head=$(git -C "$MESH_LLM_SRC" rev-parse HEAD)
-  cap_head=$(git -C "$CAPSULES_SRC" rev-parse HEAD)
-  git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$mesh_pin" HEAD || fails+=("mesh-llm source $mesh_head does not contain the mesh-llm pin $mesh_pin")
-  if [ -n "$pr_pin" ]; then
-    git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$pr_pin" HEAD || fails+=("mesh-llm source $mesh_head does not contain the mesh-llm-pr-2620 pin $pr_pin")
+  if [ "$DRY" = 1 ]; then
+    need MESH_LLM_SRC; need MESH_LLM_BIN; need CAPSULES_SRC; need CAPSULES_BIN
+    say git -C "$MESH_LLM_SRC" rev-parse HEAD
+    say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$mesh_pin" HEAD
+    [ -z "$pr_pin" ] || say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$pr_pin" HEAD
+    say git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no
+    say git -C "$CAPSULES_SRC" rev-parse HEAD
+    if ! is_sha "$cap_pin"; then
+      say git -C "$CAPSULES_SRC" rev-parse -q --verify "refs/tags/$cap_pin^{commit}"
+      echo "  (git fetch --tags first if the tag is not in the tree; HEAD must be that commit)"
+    fi
+    say git -C "$CAPSULES_SRC" status --porcelain --untracked-files=no
+    say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
+    say "$MESH_LLM_BIN" --version
+    echo "  > $LAB_DIR/build.json (written on every outcome; exit 1 when a check fails)"
+    return 0
   fi
-  [ -z "$(git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no)" ] || fails+=("mesh-llm source has uncommitted changes")
-  [ "$cap_head" = "$cap_pin" ] || fails+=("capsules source is at $cap_head, the capsules pin is $cap_pin")
-  [ -z "$(git -C "$CAPSULES_SRC" status --porcelain --untracked-files=no)" ] || fails+=("capsules source has uncommitted changes")
-  mkdir -p "$LAB_DIR"
-  python3 -B - "$LAB_DIR/build.json" "$mesh_head" "$mesh_pin" "$pr_pin" "$cap_head" \
-    "$(sha256sum < "$MESH_LLM_BIN" | cut -d' ' -f1)" "$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1)" \
-    "$("$MESH_LLM_BIN" --version 2>&1 | head -1)" "${fails[@]+"${fails[@]}"}" << 'PY'
+
+  # Every outcome is recorded: a check that cannot run is a failure with its reason, never an abort.
+  local fails=() v mesh_head="" cap_head="" cap_commit="" mesh_sha="" cap_sha="" version="" c rc name p
+  for v in MESH_LLM_SRC MESH_LLM_BIN CAPSULES_SRC CAPSULES_BIN; do
+    [ -n "${!v:-}" ] || fails+=("$v is not set")
+  done
+  [ -n "$mesh_pin" ] || fails+=("versions.lock has no mesh-llm pin")
+  [ -n "$cap_pin" ] || fails+=("versions.lock has no capsules pin")
+
+  if mesh_head=$(head_of "${MESH_LLM_SRC:-}"); then
+    for name in mesh-llm mesh-llm-pr-2620; do
+      p=$(pin "$name"); [ -n "$p" ] || continue
+      if ! c=$(resolve_pin "$MESH_LLM_SRC" "$p"); then
+        fails+=("the $name pin $p is not in the mesh-llm source"); continue
+      fi
+      rc=0; git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$c" HEAD 2> /dev/null || rc=$?
+      case $rc in
+        0) ;;
+        1) fails+=("mesh-llm source $mesh_head does not contain the $name pin $p") ;;
+        *) fails+=("the $name pin $p is not in the mesh-llm source (git merge-base exited $rc)") ;;
+      esac
+    done
+    [ -z "$(git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no)" ] || fails+=("mesh-llm source has uncommitted changes")
+  else
+    mesh_head=""; [ -z "${MESH_LLM_SRC:-}" ] || fails+=("mesh-llm source $MESH_LLM_SRC is not a git tree")
+  fi
+
+  if cap_head=$(head_of "${CAPSULES_SRC:-}"); then
+    if [ -z "$cap_pin" ]; then :
+    elif ! cap_commit=$(resolve_pin "$CAPSULES_SRC" "$cap_pin"); then
+      cap_commit=""; fails+=("the capsules pin $cap_pin is not a tag in the capsules source, even after git fetch --tags")
+    elif [ "$cap_head" != "$cap_commit" ]; then
+      fails+=("capsules source is at $cap_head, the capsules pin $cap_pin is $cap_commit")
+    fi
+    [ -z "$(git -C "$CAPSULES_SRC" status --porcelain --untracked-files=no)" ] || fails+=("capsules source has uncommitted changes")
+  else
+    cap_head=""; [ -z "${CAPSULES_SRC:-}" ] || fails+=("capsules source $CAPSULES_SRC is not a git tree")
+  fi
+
+  if [ -n "${MESH_LLM_BIN:-}" ]; then
+    if [ -f "$MESH_LLM_BIN" ] && [ -r "$MESH_LLM_BIN" ]; then
+      mesh_sha=$(sha256sum < "$MESH_LLM_BIN" | cut -d' ' -f1)
+      rc=0; version=$("$MESH_LLM_BIN" --version 2>&1) || rc=$?
+      version=${version%%$'\n'*}
+      [ "$rc" = 0 ] || fails+=("$MESH_LLM_BIN --version exited $rc")
+    else
+      fails+=("MESH_LLM_BIN $MESH_LLM_BIN is not a readable file")
+    fi
+  fi
+  if [ -n "${CAPSULES_BIN:-}" ]; then
+    if [ -f "$CAPSULES_BIN" ] && [ -r "$CAPSULES_BIN" ]; then
+      cap_sha=$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1)
+    else
+      fails+=("CAPSULES_BIN $CAPSULES_BIN is not a readable file")
+    fi
+  fi
+
+  python3 -B - "$mesh_head" "$mesh_pin" "$pr_pin" "$cap_head" "$cap_pin" "$cap_commit" "$mesh_sha" "$cap_sha" \
+    "$version" "${fails[@]+"${fails[@]}"}" << 'PY' | record check || die "cannot write $LAB_DIR/build.json"
 import datetime as dt, json, sys
-path, mesh_head, mesh_pin, pr_pin, cap_head, mesh_sha, cap_sha, version, *fails = sys.argv[1:]
-build = {
-    "ok": not fails,
+mesh_head, mesh_pin, pr_pin, cap_head, cap_pin, cap_commit, mesh_sha, cap_sha, version, *fails = sys.argv[1:]
+print(json.dumps({
     "failures": fails,
     "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "mesh_llm": {"source_head": mesh_head, "contains": {"mesh-llm": mesh_pin, "mesh-llm-pr-2620": pr_pin or None},
-                 "binary_sha256": mesh_sha, "version": version},
-    "capsules": {"source_head": cap_head, "binary_sha256": cap_sha},
+    "mesh_llm": {"source_head": mesh_head or None, "contains": {"mesh-llm": mesh_pin or None, "mesh-llm-pr-2620": pr_pin or None},
+                 "binary_sha256": mesh_sha or None, "version": version or None},
+    "capsules": {"source_head": cap_head or None, "pin": cap_pin or None, "pin_commit": cap_commit or None,
+                 "binary_sha256": cap_sha or None},
     "relay": "off (--disable-iroh-relays) until Mesh-LLM/capsules-plugin#48 is closed",
-}
-json.dump(build, open(path, "w"), indent=2, sort_keys=True)
+}))
 PY
   cat "$LAB_DIR/build.json"
-  if [ ${#fails[@]} -gt 0 ]; then
-    printf 'lab.sh: NOT the pinned build: %s\n' "${fails[@]}" >&2
+  local all
+  all=$(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin).get("failures", [])))' < "$LAB_DIR/build.json")
+  if [ -n "$all" ]; then
+    printf 'lab.sh: NOT the pinned build:\n%s\n' "$all" >&2
     exit 1
   fi
   echo "check: the build matches versions.lock"
 }
 
 # --- tools ------------------------------------------------------------------------------------
+# Each setup runs, pass or fail; the failures (setup and exit code) go into build.json, which
+# then reads ok:false until a later `tools` run installs every step's tools.
 cmd_tools() {
-  local s
-  for s in "$ROOT"/steps/[0-9][0-9]-*.setup.sh; do run "$s"; done
+  local s rc results=() failed=0
+  for s in "$ROOT"/steps/[0-9][0-9]-*.setup.sh; do
+    [ -e "$s" ] || continue
+    if [ "$DRY" = 1 ]; then say "$s"; continue; fi
+    echo "== tools: $(basename "$s")"
+    rc=0; "$s" || rc=$?
+    [ "$rc" = 0 ] || { failed=$((failed + 1)); echo "lab.sh: tools: $(basename "$s") FAILED (exit $rc)" >&2; }
+    results+=("$(basename "$s")" "$rc")
+  done
+  if [ "$DRY" = 1 ]; then echo "  > $LAB_DIR/build.json (each setup's exit code; a failed setup makes it ok:false)"; return 0; fi
+  python3 -B - "${results[@]+"${results[@]}"}" << 'PY' | record tools || die "cannot write $LAB_DIR/build.json"
+import datetime as dt, json, sys
+args = sys.argv[1:]
+setups = [{"name": n, "exit": int(rc)} for n, rc in zip(args[::2], args[1::2])]
+print(json.dumps({
+    "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "setups": setups,
+    "failures": [f"tools: steps/{s['name']} exited {s['exit']}" for s in setups if s["exit"]],
+}))
+PY
+  if [ "$failed" -gt 0 ]; then
+    echo "lab.sh: tools: $failed of $((${#results[@]} / 2)) setups failed; build.json reads ok:false until they pass" >&2
+    exit 1
+  fi
+  echo "tools: every step's setup passed"
 }
 
 # --- start / stop / status --------------------------------------------------------------------
@@ -336,7 +429,7 @@ cmd_pack() {
 }
 
 cmd_all() {
-  cmd_check; cmd_start; cmd_exchange
+  cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
   cmd_join; cmd_entries; cmd_loop; cmd_pack

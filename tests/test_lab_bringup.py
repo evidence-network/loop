@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,10 +37,28 @@ BUILD = {
 }
 
 
-def lab_sh(*args, env=None):
-    e = {k: v for k, v in os.environ.items() if not k.startswith(("LAB_", "MESH_LLM_", "CAPSULES_"))}
+def lab_sh(*args, env=None, root=ROOT):
+    e = {k: v for k, v in os.environ.items() if not k.startswith(("LAB_", "MESH_LLM_", "CAPSULES_", "GIT_"))}
     e.update(env or {})
-    return subprocess.run(["bash", str(LAB), *args], capture_output=True, text=True, env=e, cwd=ROOT)
+    return subprocess.run(["bash", str(Path(root) / "lab" / "lab.sh"), *args], capture_output=True, text=True,
+                          env=e, cwd=root)
+
+
+def git(tree, *args):
+    return subprocess.run(["git", "-C", str(tree), "-c", "user.name=lab test", "-c", "user.email=lab@example.invalid",
+                           "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", *args],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def new_tree(path, commits=1):
+    """A git tree with `commits` empty commits; returns their SHAs, oldest first."""
+    path.mkdir(parents=True)
+    git(path, "init", "-q")
+    shas = []
+    for i in range(commits):
+        git(path, "commit", "-q", "--allow-empty", "-m", f"c{i}")
+        shas.append(git(path, "rev-parse", "HEAD"))
+    return shas
 
 
 def tree_digest(path):
@@ -117,11 +136,186 @@ class DryRunTest(unittest.TestCase):
         self.assertRegex(self.out, r"missing: findings/\d{4}-\d{2}-\d{2}-live/")
         self.assertRegex(self.out, r"MANIFEST.json")
 
+    def test_all_runs_check_then_tools_then_the_rest(self):
+        marks = [("check", "merge-base --is-ancestor"), ("tools", "steps/01-seal.setup.sh"),
+                 ("start", " serve --config "), ("exchange", "/v1/chat/completions"),
+                 ("join", "join.sh --name lab-1"), ("entries", "would write nodes/<lab-1 node_id>.json"),
+                 ("loop", "loop.sh --stage 1"), ("pack", "would pack")]
+        at = [(self.out.find(text), name) for name, text in marks]
+        self.assertTrue(all(i >= 0 for i, _ in at), at)
+        self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("--port 9903 --console 9913 --bind-port 9923", r.stdout)
         self.assertNotIn("--port 980", r.stdout)
+
+
+class LabRoot(unittest.TestCase):
+    """A copy of lab/ and scripts/ in a scratch root with its own versions.lock and steps/,
+    so lab.sh check and tools run for real against throwaway git trees and fake setups."""
+
+    def setUp(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is not installed: lab.sh check cannot be run")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.root, self.lab = self.tmp / "root", self.tmp / "lab"
+        ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+        for d in ("lab", "scripts"):
+            shutil.copytree(ROOT / d, self.root / d, ignore=ignore)
+        (self.root / "steps").mkdir()
+        # mesh-llm: the main pin, then the PR pin on top of it.
+        self.mesh = new_tree(self.tmp / "mesh-llm", 2)
+        self.cap = new_tree(self.tmp / "capsules", 1)
+        git(self.tmp / "capsules", "tag", "v0.1.5")
+        for name, body in (("mesh-llm", "#!/bin/sh\necho mesh-llm 0.0.0-test\n"), ("capsules", "plugin\n")):
+            f = self.tmp / "bin" / name
+            f.parent.mkdir(exist_ok=True)
+            f.write_text(body)
+            f.chmod(0o755)
+        self.env = {"LAB_DIR": str(self.lab), "MESH_LLM_SRC": str(self.tmp / "mesh-llm"),
+                    "MESH_LLM_BIN": str(self.tmp / "bin/mesh-llm"), "CAPSULES_SRC": str(self.tmp / "capsules"),
+                    "CAPSULES_BIN": str(self.tmp / "bin/capsules")}
+        self.lock(self.mesh[0], self.mesh[1], "v0.1.5")
+
+    def lock(self, mesh, pr, cap):
+        (self.root / "versions.lock").write_text(
+            "# test pins\n"
+            f"mesh-llm Mesh-LLM/mesh-llm {mesh}\nmesh-llm-pr-2620 Mesh-LLM/mesh-llm {pr}\n"
+            f"capsules Mesh-LLM/capsules-plugin {cap}\n")
+
+    def run_lab(self, *args, **env):
+        return lab_sh(*args, env={**self.env, **env}, root=self.root)
+
+    def build(self):
+        return json.loads((self.lab / "build.json").read_text())
+
+    def setup_script(self, name, body):
+        f = self.root / "steps" / f"{name}.setup.sh"
+        f.write_text("#!/usr/bin/env bash\n" + body + "\n")
+        f.chmod(0o755)
+
+
+class CheckTest(LabRoot):
+    def assert_fails_with(self, r, text):
+        self.assertEqual(r.returncode, 1, r.stderr)
+        build = self.build()
+        self.assertIs(build["ok"], False)
+        self.assertTrue(any(text in f for f in build["failures"]), build["failures"])
+        self.assertIn(text, r.stderr)
+
+    def test_a_tag_pin_resolves_to_its_commit(self):
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        build = self.build()
+        self.assertIs(build["ok"], True, build["failures"])
+        self.assertEqual(build["capsules"]["pin"], "v0.1.5")
+        self.assertEqual(build["capsules"]["pin_commit"], self.cap[0])
+        self.assertEqual(build["capsules"]["source_head"], self.cap[0])
+        self.assertEqual(build["mesh_llm"]["version"], "mesh-llm 0.0.0-test")
+        host_build, plugin = pack.build_strings(build)
+        self.assertEqual(plugin.split(",")[0], f"capsules v0.1.5 ({self.cap[0]})")
+
+    def test_a_tag_pin_is_fetched_when_the_tree_lacks_it(self):
+        clone = self.tmp / "capsules-clone"
+        subprocess.run(["git", "clone", "-q", "--no-tags", str(self.tmp / "capsules"), str(clone)], check=True)
+        self.assertEqual(git(clone, "tag"), "")
+        r = self.run_lab("check", CAPSULES_SRC=str(clone))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.build()["capsules"]["pin_commit"], self.cap[0])
+
+    def test_a_tree_past_the_tag_fails(self):
+        git(self.tmp / "capsules", "commit", "-q", "--allow-empty", "-m", "past the tag")
+        self.assert_fails_with(self.run_lab("check"), f"the capsules pin v0.1.5 is {self.cap[0]}")
+
+    def test_a_missing_tag_fails(self):
+        self.lock(self.mesh[0], self.mesh[1], "v9.9.9")
+        self.assert_fails_with(self.run_lab("check"), "the capsules pin v9.9.9 is not a tag")
+
+    def test_a_full_sha_pin_compares_as_is(self):
+        self.lock(self.mesh[0], self.mesh[1], self.cap[0])
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.build()["capsules"]["pin_commit"], self.cap[0])
+        self.lock(self.mesh[0], self.mesh[1], "0" * 40)
+        self.assert_fails_with(self.run_lab("check"), f"the capsules pin {'0' * 40} is {'0' * 40}")
+
+    def test_a_mesh_pin_not_in_the_tree_writes_build_json(self):
+        self.lock("1" * 40, self.mesh[1], "v0.1.5")
+        self.assert_fails_with(self.run_lab("check"), f"the mesh-llm pin {'1' * 40} is not in the mesh-llm source")
+
+    def test_a_mesh_tree_without_the_pr_pin_writes_build_json(self):
+        git(self.tmp / "mesh-llm", "checkout", "-q", self.mesh[0])
+        self.assert_fails_with(self.run_lab("check"), f"does not contain the mesh-llm-pr-2620 pin {self.mesh[1]}")
+
+    def test_unset_paths_and_missing_binaries_write_build_json(self):
+        self.assert_fails_with(self.run_lab("check", MESH_LLM_SRC="", CAPSULES_BIN=str(self.tmp / "nope")),
+                               "MESH_LLM_SRC is not set")
+        self.assertIn(f"CAPSULES_BIN {self.tmp / 'nope'} is not a readable file", self.build()["failures"])
+
+    def test_a_failed_check_replaces_an_ok_build(self):
+        self.assertEqual(self.run_lab("check").returncode, 0)
+        self.lock(self.mesh[0], self.mesh[1], "v9.9.9")
+        self.assert_fails_with(self.run_lab("check"), "v9.9.9")
+
+
+class ToolsTest(LabRoot):
+    def test_every_setup_runs_and_each_failure_is_recorded(self):
+        self.assertEqual(self.run_lab("check").returncode, 0)
+        ran = self.tmp / "ran"
+        self.setup_script("01-a", f"echo 01 >> {ran}")
+        self.setup_script("02-b", f"echo 02 >> {ran}; exit 3")
+        self.setup_script("12-c", f"echo 12 >> {ran}; exit 5")
+        r = self.run_lab("tools")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertEqual(ran.read_text().split(), ["01", "02", "12"])
+        self.assertIn("02-b.setup.sh FAILED (exit 3)", r.stderr)
+        self.assertIn("12-c.setup.sh FAILED (exit 5)", r.stderr)
+        build = self.build()
+        self.assertIs(build["ok"], False)
+        self.assertEqual(build["tools"]["setups"], [{"name": "01-a.setup.sh", "exit": 0},
+                                                    {"name": "02-b.setup.sh", "exit": 3},
+                                                    {"name": "12-c.setup.sh", "exit": 5}])
+        self.assertEqual(build["failures"], ["tools: steps/02-b.setup.sh exited 3", "tools: steps/12-c.setup.sh exited 5"])
+        # The check keeps the tools record: it fails, naming the setups, until tools passes.
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("tools: steps/02-b.setup.sh exited 3", r.stderr)
+        self.setup_script("02-b", "exit 0")
+        self.setup_script("12-c", "exit 0")
+        self.assertEqual(self.run_lab("tools").returncode, 0)
+        self.assertIs(self.build()["ok"], True, self.build()["failures"])
+
+    def test_tools_before_check_is_not_ok(self):
+        self.setup_script("01-a", "exit 0")
+        self.assertEqual(self.run_lab("tools").returncode, 0)
+        self.assertEqual(self.build()["failures"], ["lab/lab.sh check has not run"])
+
+
+class RunbookTest(unittest.TestCase):
+    """LAB-BRINGUP.md section 5 matches loop.sh's step files and the live steps' inputs."""
+
+    def setUp(self):
+        text = (ROOT / "LAB-BRINGUP.md").read_text()
+        self.section = text.split("## 5. Stage 1, once", 1)[1].split("\n## 6.", 1)[0]
+
+    def test_one_step_file_per_stage_1_step(self):
+        # loop.sh's own rule: a step is a file named exactly <NN>-<name>.
+        loop = (ROOT / "loop.sh").read_text()
+        self.assertIn("=~ ^[0-9]{2}-[a-z][a-z0-9-]*$", loop)
+        for nn in ("01", "02", "03", "12"):
+            steps = [p.name for p in (ROOT / "steps").glob(f"{nn}-*")
+                     if p.is_file() and re.fullmatch(r"[0-9]{2}-[a-z][a-z0-9-]*", p.name)]
+            self.assertEqual(len(steps), 1, steps)
+            self.assertIn(f"`{steps[0].replace('-', ' ', 1)}`", self.section)
+
+    def test_section_5_names_the_live_inputs_not_the_old_failures(self):
+        for text in ("data_dir", "book_dir", "population/live/population.json", "LAB_DIR"):
+            self.assertIn(text, self.section)
+        self.assertNotIn("second executable", self.section)
+        self.assertNotIn("read a test key", self.section)
 
 
 class LabFixture(unittest.TestCase):
