@@ -8,9 +8,10 @@
 mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
 mesh-llm-pr-2620 Mesh-LLM/mesh-llm 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8
 # The capsules plugin (the repo was Mesh-LLM/capsules). main after v0.1.5: it adds the controller
-# declaration (#77), share at completion by default (#72) and the signed commitment (#75) that live
-# step 05 needs. No release carries them yet; its manifests and dependencies are v0.1.5's.
-capsules Mesh-LLM/capsules-plugin 5d2d1021337f70eabc191366dd4617b3a8f0d2f0
+# declaration (#77), share at completion by default (#72), the signed commitment (#75) and the
+# Lightning settlement adapter (#82, for #57). No release carries them yet; its manifests and
+# dependencies are v0.1.5's.
+capsules Mesh-LLM/capsules-plugin 06532ef981b345118e0a6fe142fb896acbc18e5b
 # The answer format the plugin verifies with today: the evidence-request crate,
 # pinned =0.2.0 in the plugin's Cargo.toml at that commit. crates.io 0.2.0 is published from
 # this tag (its .cargo_vcs_info.json names the tag's commit, dd64efe7).
