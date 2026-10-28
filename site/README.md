@@ -16,6 +16,18 @@ python3 -B site/build.py stats/data/daily --findings findings --lock versions.lo
   read, a key it does not know, an answer hash on an absence or a state its
   attempts do not settle fails the build, and nothing is written.
 - `build.py` draws, in order:
+  - records sealed per day on the listed nodes: one line, from each node's
+    `records_at_checkpoint` minus its last earlier one (`stats_model.sealed_per_day`).
+    A day with no day file, a missed run, a node whose count fell or no count to
+    compare with is a gap, never zero or negative. Rehearsal nodes are not in
+    the daily set and are never added to the line. Records with both halves have
+    no source until M2: a legend entry, no line;
+  - four tiles, each with what it is out of and its window: nodes that answered
+    on the newest day, of nodes listed; exchanges with both halves (a
+    placeholder until M2); the median time to the first sealed record over the
+    last seven days of runs per population (step 01's findings, with the status
+    page's rules); asks refused or absent, of asks, and days missed, of days;
+  - "Why this matters" and "How it helps";
   - the loop's steps as a path, once for the newest rehearsal run and once for
     the newest live run, side by side and never added together. Each step's
     state, the held rows and the five numbers are `status/status_page.py`'s,

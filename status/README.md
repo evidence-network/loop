@@ -3,7 +3,8 @@
 - `findings.py` (loop.sh): writes one run's `index.md`, the link list.
 - `status_page.py`: the loop status page. Twelve rows, one per step of the
   loop, each with a rehearsal cell and a live cell, the five numbers, and a
-  badge (`badge.svg`) with the worst row of each population. The stats site
+  badge (`badge.svg`) counting each population's rows (`4 PASS · 0 FAIL · 8
+  not checked`), coloured by its worst row. The stats site
   (`site/build.py`) builds it into `_site/stats/status/`, draws its rows as
   the loop's path and its five numbers, embeds the badge and links here.
 
@@ -21,15 +22,20 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   `NOT_CHECKED` and the row names the issue that owns it.
 - The page's own words say "checked", "verified" or "witnessed" only in a
   `PASS` cell. Text a finding supplies is shown as a quote of the finding.
-- Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown while the
-  repository is private. Setting `DROP_HELD = True` drops them at the flip.
+- A `PASS` cell shows each gap its finding names: a sentence in `detail`
+  starting `Outside this step's assertion: ` and ending with the issue as
+  `owner/repo#N`. The cell shows it on a gap line, with the issue linked.
+- Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,
+  until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record
   (step 01), to the first answered request (step 12) and to the first
   countersigned report (step 11, a placeholder until M3), each the marker
   step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
-  writes it before the first step); decisions limited or refused on evidence
-  (M3) and filtered volume beside raw (M2) are placeholders. A number that cannot be measured
-  reads `not measured yet (M1|M2|M3)`, never 0. `NUMBERS` in the source says
+  writes it before the first step), in seconds when under one minute; decisions limited or refused on evidence
+  (M3) and filtered volume beside raw (M2) are placeholders. A number whose marker step has no
+  `PASS` reads `not measured yet (M1|M2|M3)`, never 0. When the marker step is a
+  `PASS` but the run has no start time, the cell says why: "not measured: this
+  run did not record its start time (run.json)" when `run.json` is missing. `NUMBERS` in the source says
   which finding fields each one reads.
 
 `tests/test_status_page.py` holds the page to this. The `stats` workflow runs

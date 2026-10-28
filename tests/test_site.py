@@ -27,7 +27,7 @@ import stats_model  # noqa: E402
 import status_page  # noqa: E402
 
 DATA = ROOT / "tests" / "fixtures" / "stats" / "daily"
-COUNT = re.compile(r"^(\d+(?:\.\d+)?) of (?:the run's )?(\d+(?:\.\d+)?) [a-z]")
+COUNT = re.compile(r"^(\d+(?:\.\d+)?)(?: s)? of (?:the run's )?(\d+(?:\.\d+)?) [a-z]")
 CLAIMS = re.compile(r"\b(checked|verified|witnessed)\b", re.I)
 DATES = ["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]
 
@@ -62,6 +62,8 @@ class Text(HTMLParser):
         for tag, cls in reversed(stack):
             if tag == "span" and cls == "count":
                 return "count"
+            if tag == "span" and cls == "value":
+                return "value"  # a tile's measured value: its tile carries the count it is out of
             if tag in ("code", "time", "style", "title") or (tag in ("text", "tspan") and "code" in cls.split()):
                 return "code" if tag in ("text", "tspan") else tag
         return "prose"
@@ -73,13 +75,13 @@ def parse(page):
     return t
 
 
-def write_finding(findings, n, name, result, population, not_checked=()):
+def write_finding(findings, n, name, result, population, not_checked=(), detail=""):
     d = findings / f"2026-10-27-{population}" / f"{n:02d}-{name}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "proof.bin").write_bytes(b"proof bytes for step %d\n" % n)
     with mock.patch.object(finding, "now", return_value="2026-10-27T02:%02d:00Z" % n):
         finding.write(d, result=result, population=population, asserts=f"step {n} holds", pinned=["capsulectl"],
-                      proof=["proof.bin"], detail="", not_checked=not_checked, started="2026-10-27T02:00:00Z")
+                      proof=["proof.bin"], detail=detail, not_checked=not_checked, started="2026-10-27T02:00:00Z")
 
 
 def make_findings(findings):
@@ -92,6 +94,30 @@ def make_findings(findings):
     for p in ("rehearsal", "live"):
         (findings / f"2026-10-27-{p}" / "run.json").write_text(
             json.dumps({"stage": "1", "population": p, "started": "2026-10-27T02:00:00Z"}))
+
+
+BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright")
+# The two allowed exceptions; both are provenance. The status page's pin table: the
+# repository each pinned component comes from. A cited issue: exactly an `owner/repo#N`
+# reference, or a link to https://github.com/owner/repo/issues/N. Prose naming the org
+# is not an exception.
+PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
+ISSUE_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
+ISSUE_REF = re.compile(r"\b[\w.-]+/[\w.-]+#\d+\b")
+
+
+def branding(out):
+    """(page, brand) for each brand on any built HTML page, outside the two exceptions."""
+    hits = []
+    for page in sorted(Path(out).rglob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        if page.relative_to(out).as_posix() == "stats/status/index.html":
+            text = PINS.sub("", text, count=1)
+        if PINS.search(text):
+            hits.append((page.relative_to(out).as_posix(), "a pin table outside the status page's pins"))
+        low = ISSUE_REF.sub("", ISSUE_LINK.sub("", text)).lower()
+        hits += [(page.relative_to(out).as_posix(), b) for b in BRANDS if re.search(rf"\b{re.escape(b)}\b", low)]
+    return hits
 
 
 def run_build(data, findings, out):
@@ -169,9 +195,144 @@ class SiteTest(unittest.TestCase):
     def test_it_says_it_is_the_evidence_networks_with_no_company_branding(self):
         self.assertIn("This site is the evidence network's.", self.html)
         self.assertIn("evidence network", (self.out / "index.html").read_text())
-        low = self.html.lower()
-        for brand in ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright"):
-            self.assertIsNone(re.search(rf"\b{re.escape(brand)}\b", low), brand)
+        pages = sorted(self.out.rglob("*.html"))
+        self.assertIn(self.out / "stats" / "status" / "index.html", pages)
+        self.assertEqual(len(pages), 3)  # the root redirect, the stats page and the status page
+        pins = PINS.search((self.out / "stats" / "status" / "index.html").read_text())
+        self.assertIn("action-state-group/", pins.group(0))  # the pin table exception is used
+        self.assertEqual(branding(self.out), [])
+
+    def test_a_cited_issue_reference_is_allowed_and_the_org_in_prose_is_not(self):
+        ref = "action-state-group/agent-action-capsule#431"
+        gap = f"alice: PASS. Outside this step's assertion: the envelope signature is not verified: {ref}."
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            write_finding(findings, 1, "seal", "PASS", "rehearsal", detail=gap)
+            self.assertEqual(run_build(DATA, findings, Path(d) / "a")[0], 0)
+            for page in ("stats/index.html", "stats/status/index.html"):
+                text = (Path(d) / "a" / page).read_text()
+                self.assertIn(f'<a href="https://github.com/action-state-group/agent-action-capsule/issues/431">{ref}</a>',
+                              text)
+            self.assertEqual(branding(Path(d) / "a"), [])  # a gap line with an AAC issue ref passes
+            for prose in ("Built by action-state-group.", "See action-state-group/agent-action-capsule for more.",
+                          "An Action State project.", "https://github.com/action-state-group/agent-action-capsule"):
+                write_finding(findings, 1, "seal", "PASS", "rehearsal", detail=f"{gap} {prose}")
+                self.assertEqual(run_build(DATA, findings, Path(d) / "b")[0], 0)
+                hits = branding(Path(d) / "b")
+                self.assertTrue(hits, prose)  # the org anywhere else on a built page fails
+                self.assertEqual({h[0] for h in hits}, {"stats/status/index.html"}, prose)
+
+    def test_only_the_deploy_job_takes_the_pages_concurrency_group(self):
+        wf = (ROOT / ".github" / "workflows" / "stats.yml").read_text()
+        jobs = wf.index("\njobs:")
+        self.assertNotIn("concurrency:", wf[:jobs])  # not workflow-wide: pull request builds never wait on it
+        deploy = wf[wf.index("\n  deploy:"):]
+        self.assertEqual(wf.count("concurrency:"), 1)
+        self.assertRegex(deploy, r"\n    concurrency:\n      group: pages\n      cancel-in-progress: false\n")
+
+    # Records per day, the four tiles, why this matters
+
+    def test_the_page_leads_with_the_chart_then_tiles_then_why_then_the_loop_and_grid(self):
+        order = re.findall(r'<h2 id="([a-z]+)">', self.html)
+        self.assertEqual(order[:6], ["records", "tiles", "matters", "loop", "numbers", "nodes"])
+
+    def records(self, population="live"):
+        return re.search(rf'<figure class="rec" data-population="{population}">(.*?)</figure>', self.html,
+                         re.S).group(1)
+
+    def test_the_chart_draws_records_sealed_per_day_and_gaps_never_zero(self):
+        live = self.records()
+        points = dict(re.findall(r'<g class="point" data-date="([\d-]+)" data-sealed="(\d+)">', live))
+        # Node 1: 22, 31, 41, 41 records; node 4: 2, 2. A node's first count adds nothing.
+        self.assertEqual(points, {"2026-10-30": "9", "2026-11-01": "10", "2026-11-02": "0"})
+        gaps = re.findall(r'<g class="gap" data-date="([\d-]+)"><title>([^<]*)</title>', live)
+        self.assertEqual([g[0] for g in gaps], ["2026-10-28", "2026-10-29", "2026-10-31"])
+        self.assertIn("the reporter missed this day", gaps[1][1])
+        self.assertIn("no day file", gaps[2][1])
+        self.assertIn("from 1 of 4 listed nodes", live)
+        # 10-31 has no day file, so node 1's 11-01 count is compared with its 10-30 one, and the point says so.
+        self.assertIn("2026-11-01: 10 records sealed, from 1 of 3 listed nodes; for 1 of them, since a count older "
+                      "than the day before", live)
+        self.assertNotIn("2026-11-02: 0 records sealed, from 2 of 3 listed nodes;", live)
+        self.assertEqual(live.count('<path class="line"'), 1)  # the gap on 10-31 breaks 10-30 from 11-01
+        self.assertIn(build.count(3, 6, "day") + " have a point", live)
+
+    def test_the_chart_takes_the_full_width_about_two_to_one_and_reads_on_a_phone(self):
+        records = self.section("records")
+        self.assertNotIn('class="pair"', records)  # the live chart is not half of a two-column grid
+        svg = re.search(r'<svg class="records" viewBox="0 0 (\d+) (\d+)"', records)
+        w, h = int(svg.group(1)), int(svg.group(2))
+        self.assertEqual(w / h, 2)
+        css = self.html[self.html.index("<style>"):self.html.index("</style>")]
+        rule = re.search(r"\nsvg\.records \{([^}]*)\}", css).group(1)
+        self.assertIn("width: 100%", rule)
+        self.assertNotIn("max-width", rule)
+        self.assertIn("figure.pop, figure.rec { margin: 0; }", css)  # no default figure indent either
+        # At 390 px the chart is drawn 358 px wide (16 px gutters): its text is at least 12 px and it is
+        # at least 175 px tall.
+        phone = css[css.index("@media (max-width: 36rem)"):]
+        phone = phone[:phone.index("\n}")]
+        size = int(re.search(r"svg\.records text \{ font-size: (\d+)px; \}", phone).group(1))
+        self.assertGreaterEqual(size * 358 / w, 12)
+        self.assertGreaterEqual(358 * h / w, 175)
+        self.assertIn("svg.records text.minor, svg.records text.value:not(.newest) { display: none; }", phone)
+        dates = re.findall(r'<text class="code xdate( minor)?" [^>]*>([\d-]+)</text>', records)
+        self.assertEqual(dates[-1], ("", "11-02"))  # the newest date always shows
+        self.assertIn('<text class="code value newest"', records)
+
+    def test_both_halves_is_a_legend_entry_with_no_line_and_no_zero(self):
+        live = self.records()
+        self.assertIn(f"records with both halves: not measured yet ({build.code('M2')}); no line is drawn", live)
+        svg = re.search(r'<svg class="records".*?</svg>', live, re.S).group(0)
+        self.assertNotIn("pending", svg)
+        self.assertEqual(svg.count('class="line"'), 1)
+
+    def test_rehearsal_and_live_are_never_one_line(self):
+        self.assertEqual(re.findall(r'<figure class="rec" data-population="(\w+)">', self.html), ["live", "rehearsal"])
+        self.assertNotIn("<svg", self.records("rehearsal"))
+        self.assertIn("never added to the live line", self.records("rehearsal"))
+
+    def test_no_negative_value_anywhere(self):
+        self.assertIsNone(re.search(r'data-sealed="-|>-\d|−\d', self.html))
+        for stack, data in self.text.chunks:
+            self.assertIsNone(re.search(r"(^|\s)[-−]\d", data), data)
+
+    def tile(self, key):
+        return re.search(rf'<section class="tile" id="t-{key}">(.*?)</section>', self.html, re.S).group(1)
+
+    def test_four_tiles_each_with_its_denominator_and_window(self):
+        self.assertEqual(re.findall(r'<section class="tile" id="t-([a-z-]+)">', self.html),
+                         ["answered", "halves", "first-sealed", "not-answered"])
+        self.assertIn(build.count(2, 3, "listed node"), self.tile("answered"))  # 11-02: nodes 1 and 4 replied
+        self.assertIn('<time datetime="2026-11-02">', self.tile("answered"))
+        t = self.tile("not-answered")
+        self.assertIn(build.count(11, 26, "ask"), t)  # 4 refused + 7 absent, of 13 nodes asked twice
+        self.assertIn(f"refused {build.count(4, 26, 'ask')}, absent {build.count(7, 26, 'ask')}", t)
+        self.assertIn(f"missed {build.count(1, 6, 'day')}", t)
+        t = self.tile("first-sealed")
+        self.assertIn('rehearsal: <span class="value">1.0 minutes</span>', t)
+        self.assertIn(f"rehearsal: median of {build.count(1, 1, 'run')} in the window", t)
+        for key in ("answered", "first-sealed", "not-answered"):
+            self.assertIn('<span class="count">', self.tile(key), key)  # its denominator
+            self.assertIn('class="window note"', self.tile(key))
+
+    def test_the_both_halves_tile_is_a_placeholder_not_zero(self):
+        t = self.tile("halves")
+        self.assertIn(f"not measured yet ({build.code('M2')})", t)
+        self.assertIn("of exchanges", t)
+        self.assertIsNone(re.search(r">\s*0\b|\b0 of", t))
+
+    def test_why_this_matters_is_short_plain_and_neutral(self):
+        section = self.section("matters")
+        words = len(re.sub(r"<[^>]+>", " ", section.split("</h2>", 1)[1]).split())
+        self.assertTrue(100 <= words <= 150, words)
+        self.assertIn("<h3>How it helps</h3>", section)
+        low = section.lower()
+        for word in ("price", "pricing", "fee", "pay", "economic", "reputation", "score", "rank", "underwrit",
+                     "insur", "kyb", "customer", "premium", "registry"):
+            self.assertNotIn(word, low)
+        self.assertIn('href="#offline"', section)  # the offline check is not claimed before it exists
 
     # The loop
 
@@ -191,6 +352,63 @@ class SiteTest(unittest.TestCase):
         self.assertIn('class="step s-NOT_CHECKED" data-step="2" data-label="NOT_CHECKED"', self.figure("rehearsal"))
         self.assertIn('class="step s-red" data-step="3" data-label="FAIL"', self.figure("rehearsal"))
         self.assertIn('class="step s-NOT_CHECKED" data-step="2"', self.figure("live"))
+
+    def test_a_pass_step_with_a_gap_shows_it_on_the_path(self):
+        gaps = {1: ("seal", "the producer envelope signature is not verified in a second language",
+                    "action-state-group/agent-action-capsule#431"),
+                3: ("advertise", "alice: the stapled history_card/1 signature is not verified",
+                    "action-state-group/agent-action-capsule#430"),
+                12: ("join", "the controller binding of the joined node is not established",
+                     "action-state-group/agent-action-capsule#432")}
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            for n, (name, text, issue) in gaps.items():
+                write_finding(findings, n, name, "PASS", "rehearsal",
+                              detail=f"alice: PASS. Outside this step's assertion: {text}: {issue}.")
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        fig = re.search(r'<figure class="pop" data-population="rehearsal">(.*?)</figure>', page, re.S).group(1)
+        for n, (_, text, issue) in gaps.items():
+            self.assertIn(f'class="step s-green" data-step="{n}" data-label="PASS" data-gaps="1"', fig)
+            repo, num = issue.split("#")
+            line = re.search(rf'<li><a href="status/#step-{n:02d}">.*?</li>', fig).group(0)
+            self.assertIn(f"gap, outside the assertion: <q>{build.e(text)}</q>", line)
+            self.assertIn(f'<a href="https://github.com/{repo}/issues/{num}">{issue}</a>', line)
+        self.assertEqual(fig.count('class="gapmark"'), 3)
+        self.assertNotIn("data-gaps", self.figure("rehearsal"))  # no gap sentence, no gap mark
+        self.assertNotIn('class="gaps"', self.html)
+
+    def test_under_a_minute_reads_in_seconds(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-rehearsal" / "run.json").write_text(
+                json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:00:18Z"}))
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        # Step 01 finished 02:01:00 and step 03, the run's last, 02:03:00.
+        self.assertIn('<td class="measured" data-population="rehearsal"><span class="count">42 s of the run\'s '
+                      "2.7 minutes</span></td>", row)
+
+    def test_under_one_second_reads_less_than_one_second_not_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-rehearsal" / "run.json").write_text(
+                json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:01:00Z"}))
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        tile = re.search(r'<section class="tile" id="t-first-sealed">(.*?)</section>', page, re.S).group(1)
+        self.assertIn('rehearsal: <span class="value">&lt;1 s</span>', tile)  # step 01 finished at 02:01:00
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        self.assertIn('data-population="rehearsal"><span class="count">&lt;1 s of the run\'s 2.0 minutes', row)
+        self.assertNotIn(">0 s", page)
+
+    def test_the_header_badge_alt_counts_each_population(self):
+        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="loop: rehearsal 1 PASS · 1 FAIL · 10 not '
+                      'checked, live 1 PASS · 0 FAIL · 11 not checked"></a>', self.html)
 
     def test_held_rows_follow_the_status_page(self):
         self.assertEqual(sorted(int(n) for n in re.findall(r'class="step [^"]* held" data-step="(\d+)"',
@@ -263,11 +481,44 @@ class SiteTest(unittest.TestCase):
         self.assertIn(f"{build.count(1, 6, 'day')} missed", nodes)
         self.assertIn(f"{build.count(1, 6, 'day')} with no day file", nodes)
 
+    def test_the_day_grid_is_large_enough_to_read(self):
+        svg = re.search(r'<div class="scroll">(<svg class="timeline" width="(\d+)" height="\d+".*?</svg>)</div>',
+                        self.section("nodes"), re.S)
+        self.assertIsNotNone(svg)  # drawn at its own size, in its own scroll box: the page itself never scrolls sideways
+        marks = re.findall(r'<rect class="t-[a-z]+" data-date="[^"]+" data-q="[^"]+" x="[\d.]+" y="[\d.]+" '
+                           r'width="(\d+)" height="(\d+)"', svg.group(1))
+        self.assertEqual(len(marks), 2 * 6 * len(build.node_ids(stats_model.load(DATA))))
+        self.assertTrue(all(int(w) >= 24 and int(h) >= 14 for w, h in marks), marks[:2])
+        css = (ROOT / "site" / "template.html").read_text()
+        sizes = dict(re.findall(r"svg\.timeline (text(?:\.\w+)?|\.leftlabel) \{[^}]*font-size: (\d+)px", css))
+        self.assertEqual(sizes, {"text": "13", "text.date": "11", "text.key": "11", ".leftlabel": "11"})
+        self.assertIn('upper mark: <tspan class="code">checkpoints</tspan>', svg.group(1))
+        # Six days plus the labels fit a 390 px phone inside its 16 px gutters.
+        self.assertLessEqual(int(svg.group(2)), 390 - 32)
+        self.assertIn(".scroll { overflow-x: auto; }", css)
+        # Every colour the grid uses is redefined for dark mode.
+        light, dark = css.split("@media (prefers-color-scheme: dark)")[0], css.split("@media (prefers-color-scheme: dark)")[1]
+        for var in ("--t-answered", "--t-refused", "--t-absent", "--t-missed", "--muted", "--fg", "--bg", "--series", "--line"):
+            self.assertIn(var + ":", light.split("}")[0])
+            self.assertIn(var + ":", dark.split("}")[0] + "}")
+
+    def test_a_pass_with_no_run_json_says_its_start_was_not_recorded(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-live" / "run.json").unlink()
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        self.assertIn('<td class="placeholder" data-population="live">not measured: this run did not record its '
+                      "start time (<code>run.json</code>)</td>", row)
+        self.assertIn('data-population="rehearsal"><span class="count">1.0 of', row)  # run.json there: measured
+
     def test_left_on(self):
         node = re.search(rf'<g class="node" data-node="{nid(3)}">(.*?)</g>', self.html, re.S).group(1)
         self.assertIn('left on <tspan class="code">2026-11-01</tspan>', node)
         x = re.search(r'<rect class="t-out" data-date="2026-11-01" data-q="checkpoints" x="([\d.]+)"', node).group(1)
-        self.assertRegex(node, rf'<line class="leftmark" x1="{float(x) - 1:g}"')
+        self.assertRegex(node, rf'<line class="leftmark" x1="{float(x) - 2:g}"')
         self.assertIn('left on <time datetime="2026-11-01">', self.day("2026-10-28"))
         self.assertNotIn("left on", re.search(rf'data-node="{nid(2)}">(.*?)</g>', self.html, re.S).group(1))
 
@@ -307,6 +558,9 @@ class SiteTest(unittest.TestCase):
         for stack, data in self.text.chunks:
             ctx = self.text.context(stack)
             if ctx in ("code", "time", "style", "title"):
+                continue
+            if ctx == "value":
+                self.assertTrue(any(tag == "section" and cls == "tile" for tag, cls in stack), data)
                 continue
             if ctx == "count":
                 m = COUNT.match(data.strip())
@@ -485,6 +739,59 @@ class BrokenDayFileTest(unittest.TestCase):
         code, _ = run_build(self.data, Path(self.tmp.name) / "findings", self.out)
         self.assertEqual(code, 1)
         self.assertEqual((self.out / "keep").read_text(), "old")
+
+
+class SealedPerDayTest(unittest.TestCase):
+    """stats_model.sealed_per_day: a node's count minus its last earlier one; a drop is a gap, never negative."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data = Path(self.tmp.name) / "daily"
+        shutil.copytree(DATA, self.data)
+        self.out = Path(self.tmp.name) / "_site"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def set_size(self, date, i, mmr):
+        path = self.data / f"{date}.json"
+        d = json.loads(path.read_text())
+        q = d["nodes"][i]["questions"]["checkpoints"]
+        q["log_size_at_checkpoint"]["mmr_size"] = mmr
+        q["records_at_checkpoint"] = build.stats_model.leaves(mmr)
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+
+    def test_a_drop_is_a_gap_with_a_note_never_negative(self):
+        self.set_size("2026-11-02", 0, 41)  # node 1: 41 records on 11-01, 22 on 11-02
+        points = {p.date: p for p in stats_model.sealed_per_day(stats_model.load(self.data))}
+        self.assertIsNone(points["2026-11-02"].sealed)
+        self.assertEqual(points["2026-11-02"].drops, [(nid(1), "2026-11-01")])
+        self.assertTrue(all(p.sealed is None or p.sealed >= 0 for p in points.values()))
+        self.assertEqual(run_build(self.data, Path(self.tmp.name) / "findings", self.out)[0], 0)
+        page = (self.out / "stats" / "index.html").read_text()
+        self.assertIn('<g class="gap" data-date="2026-11-02">', page)
+        self.assertNotIn('data-date="2026-11-02" data-sealed', page)
+        self.assertIn('<time datetime="2026-11-02">2026-11-02</time>: node <code title="' + nid(1), page)
+        self.assertIn("A drop is not drawn as a negative value", page)
+        self.assertIsNone(re.search(r'data-sealed="-', page))
+
+    def test_a_count_counts_from_the_last_earlier_known_one(self):
+        # Node 1 is not verified on 11-01: 11-02 compares with 10-30.
+        path = self.data / "2026-11-01.json"
+        d = json.loads(path.read_text())
+        d["nodes"][0]["questions"]["checkpoints"].update(log_size_at_checkpoint=None, records_at_checkpoint=None)
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+        points = {p.date: p for p in stats_model.sealed_per_day(stats_model.load(self.data))}
+        self.assertEqual((points["2026-11-02"].sealed, points["2026-11-02"].nodes), (10, 2))
+
+    def test_records_that_are_not_the_checkpoints_leaf_count_are_refused(self):
+        path = self.data / "2026-10-28.json"
+        d = json.loads(path.read_text())
+        d["nodes"][0]["questions"]["checkpoints"]["records_at_checkpoint"] = 41
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+        code, err = run_build(self.data, Path(self.tmp.name) / "findings", self.out)
+        self.assertEqual(code, 1)
+        self.assertIn("records_at_checkpoint is not the leaf count", err)
 
 
 class FixturesTest(unittest.TestCase):

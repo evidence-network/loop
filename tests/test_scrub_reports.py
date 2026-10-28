@@ -181,7 +181,9 @@ class ScrubTest(unittest.TestCase):
         self.assertEqual(n1["node_line"], "discloses: checkpoints, history_card/1")
         self.assertEqual(n1["questions"]["checkpoints"]["log_size_at_checkpoint"],
                          {"mmr_size": 41, "timestamp": "2026-10-19T23:55:00Z"})
+        self.assertEqual(n1["questions"]["checkpoints"]["records_at_checkpoint"], 22)  # 2*22 - popcount(22) = 41
         self.assertIsNone(n1["questions"]["history_card"]["log_size_at_checkpoint"])  # halves, no checkpoints
+        self.assertIsNone(n1["questions"]["history_card"]["records_at_checkpoint"])
         settled = self.reports / "2026-10-20" / N1 / "checkpoints.response.json"
         self.assertEqual(n1["questions"]["checkpoints"]["answer_sha256"], hashlib.sha256(settled.read_bytes()).hexdigest())
         n2 = self.node("2026-10-20", N2)
@@ -193,6 +195,7 @@ class ScrubTest(unittest.TestCase):
         self.assertEqual(n3["questions"]["checkpoints"]["state"], "absence")
         self.assertEqual([a["state"] for a in n3["questions"]["checkpoints"]["attempts"]], ["unreachable"] * 2)
         self.assertIsNone(n3["questions"]["checkpoints"]["answer_sha256"])
+        self.assertIsNone(n3["questions"]["checkpoints"]["records_at_checkpoint"])  # nothing verified
         self.assertEqual(n3["absent_days_running"], 1)
 
     def test_a_retry_an_absence_a_missed_day_and_an_ask_again(self):
@@ -269,9 +272,10 @@ class CheckTest(unittest.TestCase):
                        "left_on": None, "questions": {
                            "checkpoints": {"state": "verified", "attempts": [{"at": "2026-10-20T00:30:01Z", "state": "verified"}],
                                            "log_size_at_checkpoint": {"mmr_size": 41, "timestamp": "2026-10-19T23:55:00Z"},
-                                           "answer_sha256": "3" * 64},
+                                           "records_at_checkpoint": 22, "answer_sha256": "3" * 64},
                            "history_card": {"state": "absence", "attempts": [{"at": "2026-10-20T00:30:01Z", "state": "timeout"}],
-                                            "log_size_at_checkpoint": None, "answer_sha256": None}}}]}
+                                            "log_size_at_checkpoint": None, "records_at_checkpoint": None,
+                                            "answer_sha256": None}}}]}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -324,6 +328,24 @@ class CheckTest(unittest.TestCase):
         self.assertTrue(self.mutate(lambda d: d.update(run="partial")))
         self.assertTrue(self.mutate(lambda d: d["nodes"].append(dict(d["nodes"][0]))) )
         self.assertIn("not the file's", "\n".join(self.errs(self.good, name="2026-10-21.json")))
+
+    def test_records_at_checkpoint_is_the_leaf_count_of_the_checkpoint(self):
+        self.assertEqual([scrub_reports.leaves(n) for n in (0, 1, 3, 4, 7, 8, 10, 41, 4095, 4096)],
+                         [0, 1, 2, 3, 4, 5, 6, 22, 2048, 2049])
+        self.assertEqual([scrub_reports.leaves(n) for n in (2, 5, 6, 9, -1, None, True)], [None] * 7)
+        for n in range(2000):  # the inverse of the MMR's node count, 2n - popcount(n)
+            self.assertEqual(scrub_reports.leaves(2 * n - bin(n).count("1")), n)
+        q = lambda d: d["nodes"][0]["questions"]  # noqa: E731
+        self.assertIn("not the leaf count", "\n".join(self.mutate(lambda d: q(d)["checkpoints"].update(
+            records_at_checkpoint=41))))  # the node count, not the records
+        self.assertIn("not a count", "\n".join(self.mutate(lambda d: q(d)["checkpoints"].update(
+            records_at_checkpoint=-1))))
+        self.assertIn("not the leaf count", "\n".join(self.mutate(lambda d: q(d)["checkpoints"].update(
+            records_at_checkpoint=None))))  # a checkpoint has its count
+        self.assertIn("not the leaf count", "\n".join(self.mutate(lambda d: q(d)["history_card"].update(
+            records_at_checkpoint=3))))  # no checkpoint, no count
+        self.assertIn("missing key(s) records_at_checkpoint", "\n".join(self.mutate(lambda d: q(d)["checkpoints"].pop(
+            "records_at_checkpoint"))))
 
     def test_only_the_canonical_bytes(self):
         text = json.dumps(self.good, sort_keys=True)

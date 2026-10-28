@@ -11,11 +11,6 @@ on:
 permissions:
   contents: read
 
-# One deploy at a time; a newer build does not cancel one that is deploying.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   # The required check keeps its name, `site`: it builds the stats site and
   # scans it on every pull request, push to main and nightly run.
@@ -72,6 +67,11 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: site
     runs-on: ubuntu-latest
+    # One deploy at a time; a newer one waits and does not cancel one that is
+    # deploying. Only this job takes the group, so pull request builds never queue.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

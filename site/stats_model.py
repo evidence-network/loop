@@ -2,8 +2,8 @@
 
 One file per day, `<YYYY-MM-DD>.json`, written by scripts/scrub_reports.py with
 sorted keys, a 2-space indent and a trailing newline. It carries, per node per
-day, each question's settled state, its attempts, the log size at checkpoint
-and the SHA-256 of the settled answer: no answer, request or key bytes. The
+day, each question's settled state, its attempts, the log size at checkpoint,
+the records in the log at that checkpoint, and the SHA-256 of the settled answer: no answer, request or key bytes. The
 states are scripts/report_layout.py's (DAY_STATES, ATTEMPT_STATES).
 
 This module is strict: a file that is not that format exactly (an unknown or
@@ -15,11 +15,12 @@ import datetime as dt
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import report_layout as layout  # noqa: E402
+from scrub_reports import leaves  # noqa: E402
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -30,7 +31,7 @@ SKIP = {".gitkeep", "README.md"}
 QUESTIONS = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
 DAY_KEYS = {"date", "run", "missed_reason", "versions_lock_sha256", "reporter_key_id", "listed", "nodes"}
 NODE_KEYS = {"node_id", "node_line", "absent_days_running", "left_on", "questions"}
-QUESTION_KEYS = {"state", "attempts", "log_size_at_checkpoint", "answer_sha256"}
+QUESTION_KEYS = {"state", "attempts", "log_size_at_checkpoint", "records_at_checkpoint", "answer_sha256"}
 ATTEMPT_KEYS = {"at", "state"}
 LOG_SIZE_KEYS = {"mmr_size", "timestamp"}
 
@@ -55,6 +56,7 @@ class Answer:
     state: str  # one of layout.DAY_STATES
     attempts: list  # Attempt, earliest first
     log_size: dict | None  # {"mmr_size", "timestamp"}
+    records: int | None  # records in the node's log at that checkpoint; None exactly when log_size is
     answer_sha256: str | None  # None exactly when the state is absence
 
 
@@ -135,6 +137,10 @@ def read_answer(stem, q, where, problems):
     if size is not None and _keys(size, LOG_SIZE_KEYS, f"{where}.log_size_at_checkpoint", problems):
         if not (_int(size["mmr_size"]) and isinstance(size["timestamp"], str) and STAMP.match(size["timestamp"])):
             problems.append(f"{where}.log_size_at_checkpoint: needs mmr_size=<n> and a UTC timestamp")
+    records = q["records_at_checkpoint"]
+    if records != (leaves(size.get("mmr_size")) if isinstance(size, dict) else None) or (
+            records is not None and not _int(records)):
+        problems.append(f"{where}: records_at_checkpoint is not the leaf count of log_size_at_checkpoint")
     digest = q["answer_sha256"]
     if not _hex_or_null(digest):
         problems.append(f"{where}: answer_sha256 is not 64 hex or null")
@@ -142,7 +148,7 @@ def read_answer(stem, q, where, problems):
         problems.append(f"{where}: answer_sha256 must be null exactly when the state is absence")
     if len(problems) > n:
         return None
-    return Answer(stem, q["state"], tried, size, digest)
+    return Answer(stem, q["state"], tried, size, records, digest)
 
 
 def read_node(node, where, problems):
@@ -276,3 +282,55 @@ def left_on(days):
             if node.left_on:
                 out[node.node_id] = node.left_on
     return out
+
+
+@dataclass
+class Point:
+    """One date of the sealed-records line: the records sealed that day across the listed nodes."""
+
+    date: str
+    sealed: int | None  # None: a gap in the line, never 0 in its place
+    nodes: int  # the nodes whose count was compared with an earlier one
+    listed: int
+    why: str | None = None  # why the point is a gap
+    drops: list = field(default_factory=list)  # (node id, the earlier date) for each node whose count fell
+    longer: int = 0  # of `nodes`, those whose last earlier count is older than the day before
+
+
+def sealed_per_day(days):
+    """Per date, the records sealed that day, summed over nodes, from each node's `checkpoints` answer.
+
+    A node's records sealed on a day are its records_at_checkpoint that day minus
+    its last earlier known value. A node's first known value has nothing to
+    compare with, so it adds nothing. A count lower than the last one is a drop:
+    the day is a gap, with the drop named, never a negative value.
+    """
+    last = {}  # node id -> (date, records) last known
+    points = []
+    for date, day in calendar(days):
+        if day is None or day.missed:
+            points.append(Point(date, None, 0, 0, "no day file" if day is None else "the reporter missed this day"))
+            continue
+        sealed, nodes, drops, longer = 0, 0, [], 0
+        yesterday = (dt.date.fromisoformat(date) - dt.timedelta(days=1)).isoformat()
+        for node in day.nodes:
+            a = node.answers.get("checkpoints")
+            now = a.records if a else None
+            if now is None:
+                continue
+            if node.node_id in last:
+                since, before = last[node.node_id]
+                if now < before:
+                    drops.append((node.node_id, since))
+                else:
+                    sealed += now - before
+                    nodes += 1
+                    longer += since != yesterday
+            last[node.node_id] = (date, now)
+        if drops:
+            points.append(Point(date, None, nodes, day.listed, "a node's count fell", drops))
+        elif not nodes:
+            points.append(Point(date, None, 0, day.listed, "no node's count could be compared with an earlier one"))
+        else:
+            points.append(Point(date, sealed, nodes, day.listed, longer=longer))
+    return points

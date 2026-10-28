@@ -45,7 +45,7 @@ POPULATIONS = ("rehearsal", "live")
 RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)$")
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
-HARNESS = ("evidencebook-skills #53", "https://github.com/action-state-group/evidencebook-skills/issues/53")
+HARNESS = ("loop #24", "https://github.com/evidence-network/loop/issues/24")
 
 
 @dataclass(frozen=True)
@@ -81,20 +81,23 @@ STEPS = (
                      "through the public path.", NODE_SIDE, "M1"),
 )
 
-# Rows whose publication is settled on the public-flip checklist. They are built
-# and shown while the repository is private. The flip drops them by setting
-# DROP_HELD to True; nothing else changes.
+# Rows whose place on the page is still to be settled. They are built and shown,
+# marked held. Setting DROP_HELD to True drops them; nothing else changes.
 HELD_FOR_FLIP = frozenset({4, 5, 6, 9})
 DROP_HELD = False
-HELD_NOTE = "Held: whether this row is published is settled when the repository opens."
+HELD_NOTE = "Held: whether this row stays on the page is still to be settled."
+
+# A PASS finding names what lies outside its assertion in `detail`, one sentence
+# per gap, in the form steps/finding.py checks; gaps() reads them back.
 
 # The five numbers. A measured one reads the newest run of its population:
 #   start = run.json `started`, which loop.sh writes before the run's first step;
 #   event = the `finished` of the marker step's finding, when that finding is a
 #           valid PASS.
-# minutes = event - start. A number with no marker step, a run with no valid
-# run.json for its population, or a marker step with no valid PASS reads
-# "not measured yet (<milestone>)", never 0.
+# minutes = event - start. A number with no marker step, or whose marker step has
+# no valid PASS, reads "not measured yet (<milestone>)". A marker step that is a
+# valid PASS in a run with no usable start time says exactly why (NO_START and
+# the rest of not_measured()). Never 0.
 @dataclass(frozen=True)
 class Number:
     key: str
@@ -137,6 +140,7 @@ class Cell:
     why: str  # HTML, the page's own words
     said: list = field(default_factory=list)  # (what, text): text the finding supplies, shown as a quote
     not_checked: list = field(default_factory=list)  # the finding's {what, why, issue} entries
+    gaps: list = field(default_factory=list)  # Gap: what a PASS finding says lies outside its assertion
     proofs: list = field(default_factory=list)  # (label, href relative to DIR)
     links: list = field(default_factory=list)  # (label, href): the finding itself
     pinned: list = field(default_factory=list)  # (name, ref)
@@ -147,6 +151,19 @@ class Cell:
             raise ValueError(f"unknown state {self.state!r}")
         if self.state == GREEN and not (self.label == "PASS" and self.proofs):
             raise ValueError("a green cell is a PASS with its proof files")
+
+
+@dataclass(frozen=True)
+class Gap:
+    text: str  # the sentence after "Outside this step's assertion: ", up to its issue
+    issue: str  # owner/repo#N
+    url: str
+
+
+def gaps(detail):
+    """Each gap sentence in a finding's detail, as steps/finding.py defines and checks it."""
+    return [Gap(text, issue, "https://github.com/{}/issues/{}".format(*issue.split("#")))
+            for text, issue in finding.gaps(str(detail or ""))]
 
 
 @dataclass
@@ -260,7 +277,8 @@ def cell(step, run):
     )
     if r["result"] == "PASS":
         return Cell(p, GREEN, "PASS", f"PASS in {code(run.name)}: the finding says its assertion was checked on "
-                                      f"the proof bytes, and each proof file is here and matches its sha256.", **kw)
+                                      f"the proof bytes, and each proof file is here and matches its sha256.",
+                    gaps=gaps(r["detail"]), **kw)
     if r["result"] == "FAIL":
         return Cell(p, RED, "FAIL", f"FAIL in {code(run.name)}: the assertion did not hold.", **kw)
     return Cell(p, NOT_CHECKED, NOT_CHECKED, f"{code(NOT_CHECKED)} in {code(run.name)}: the finding lists what "
@@ -284,12 +302,32 @@ def stamp(text):
     return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
 
 
-def minutes(run, step):
-    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
-    if run.started is None or step not in run.findings:
+NO_START = "not measured: this run did not record its start time (run.json)"
+
+
+def passed(run, step):
+    """`step`'s finding in run, when it is a valid PASS; else None."""
+    if step not in run.findings:
         return None
     _, r, problems = run.findings[step]
-    if r is None or problems or r["result"] != "PASS":
+    return r if r is not None and not problems and r["result"] == "PASS" else None
+
+
+def not_measured(run, step, milestone):
+    """Why a minutes number has no value: its milestone while the marker step has no PASS, else the start's fault."""
+    if run.path is None or passed(run, step) is None:
+        return f"not measured yet ({milestone})"
+    if not (run.path / "run.json").is_file():
+        return NO_START
+    if run.started is None:
+        return "not measured: this run's run.json gives no start time for this population"
+    return "not measured: this run's run.json start is after the step finished"
+
+
+def minutes(run, step):
+    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
+    r = passed(run, step)
+    if run.started is None or r is None:
         return None
     try:
         m = (stamp(r["finished"]) - stamp(run.started)).total_seconds() / 60
@@ -319,8 +357,17 @@ def number_value(number, run):
         return decided(None, None, number.milestone), False
     m = minutes(run, number.step) if run.path else None
     if m is None:
-        return f"not measured yet ({number.milestone})", False
-    return f"{m:.1f} minutes", True
+        return not_measured(run, number.step, number.milestone), False
+    return duration(m), True
+
+
+def duration(m):
+    """Minutes as the page states them: "<1 s" under one second, whole seconds under one minute, else minutes
+    to one decimal."""
+    if m * 60 < 1:
+        return "<1 s"
+    seconds = round(m * 60)
+    return f"{seconds} s" if seconds < 60 else f"{m:.1f} minutes"
 
 
 def read_lock(path):
@@ -369,18 +416,33 @@ def check_rows(rs, out):
 BADGE_COLOURS = {GREEN: "#2e7d32", RED: "#c62828", NOT_CHECKED: "#6b6b66"}
 
 
-def badge(states):
-    """A flat SVG badge: "loop | rehearsal <worst> | live <worst>", one segment per population."""
-    parts = [("loop", "#3d3d3a")] + [(f"{p} {states[p]}", BADGE_COLOURS[states[p]]) for p in POPULATIONS]
-    widths = [10 + 7 * len(text) for text, _ in parts]
-    x, rects, texts = 0, [], []
-    for (text, colour), w in zip(parts, widths):
-        rects.append(f'<rect x="{x}" width="{w}" height="20" fill="{colour}"/>')
-        texts.append(f'<text x="{x + w / 2}" y="14">{e(text)}</text>')
-        x += w
-    label = ", ".join(f"{p} {states[p]}" for p in POPULATIONS)
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{x}" height="20" role="img" aria-label="loop: {label}">'
-            f"<title>loop: {label} (the worst row of each population)</title>{''.join(rects)}"
+def counts(rs, population):
+    """A population's rows counted by state: "4 PASS · 0 FAIL · 8 not checked". FAIL counts MALFORMED too."""
+    states = [r.cells[population].state for r in rs]
+    return f"{states.count(GREEN)} PASS · {states.count(RED)} FAIL · {states.count(NOT_CHECKED)} not checked"
+
+
+def badge_label(rs):
+    """The badge's words, also its alt text: each population's counts."""
+    return ", ".join(f"{p} {counts(rs, p)}" for p in POPULATIONS)
+
+
+def badge(rs):
+    """A flat SVG badge: "loop" beside one row per population, "<population> <counts>", each row coloured by that
+    population's worst row. Two rows keep it narrow enough for a phone."""
+    rows = [(f"{p} {counts(rs, p)}", BADGE_COLOURS[worst(rs, p)]) for p in POPULATIONS]
+    head = 10 + 7 * len("loop")
+    w = max(10 + 7 * len(text) for text, _ in rows)
+    height = 20 * len(rows)
+    rects = [f'<rect x="0" width="{head}" height="{height}" fill="#3d3d3a"/>']
+    texts = [f'<text x="{head / 2}" y="{height / 2 + 4}">loop</text>']
+    for i, (text, colour) in enumerate(rows):
+        rects.append(f'<rect x="{head}" y="{20 * i}" width="{w}" height="20" fill="{colour}"/>')
+        texts.append(f'<text x="{head + w / 2}" y="{20 * i + 14}">{e(text)}</text>')
+    label = e(badge_label(rs))
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{head + w}" height="{height}" role="img" '
+            f'aria-label="loop: {label}"><title>loop: {label} (each colour is the worst row of its population)</title>'
+            f"{''.join(rects)}"
             f'<g fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle">'
             f"{''.join(texts)}</g></svg>\n")
 
@@ -392,6 +454,9 @@ def issue_html(issue):
 
 def cell_html(c):
     parts = [f'<p class="label"><code>{e(c.label)}</code></p>', f"<p>{c.why}</p>"]
+    for g in c.gaps:
+        parts.append(f'<p class="gap"><strong>gap</strong>, outside the assertion: <q class="said">{e(g.text)}</q> '
+                     f"issue: {link(g.url, g.issue)}</p>")
     if c.not_checked:
         items = "".join(f'<li>what: <q class="said">{e(str(i["what"]))}</q>; why: <q class="said">{e(str(i["why"]))}'
                         f"</q>; issue: {issue_html(i['issue'])}</li>" for i in c.not_checked)
@@ -462,10 +527,10 @@ PAGE = """<!doctype html>
 <title>Loop status</title>
 <style>
 :root {{ --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
-        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; }}
+        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; --gap: #a86a00; }}
 @media (prefers-color-scheme: dark) {{
   :root {{ --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
-          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; }}
+          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; --gap: #e0a640; }}
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }}
@@ -474,6 +539,7 @@ h1 {{ font-size: 1.7rem; margin: 0 0 .5rem; }}
 h2 {{ font-size: 1.3rem; margin: 2.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }}
 p {{ max-width: 46rem; }}
 a {{ color: var(--accent); }}
+img {{ max-width: 100%; height: auto; }}
 code {{ background: var(--code); padding: 0 .25em; border-radius: 3px; font-size: .9em; overflow-wrap: anywhere; }}
 q.said {{ font-style: italic; overflow-wrap: anywhere; }}
 .note {{ color: var(--muted); font-size: .9rem; }}
@@ -487,6 +553,7 @@ td.placeholder {{ color: var(--muted); }}
 dl {{ margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }}
 dt {{ color: var(--muted); }} dd {{ margin: 0; }}
 td p, td ul {{ margin: .2rem 0; }}
+p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; overflow-wrap: anywhere; }}
 </style>
 </head>
 <body>
@@ -500,7 +567,8 @@ added together.</p>
 <p>A cell is <code>PASS</code> (green) only when the step's finding says PASS and its proof files are here, each
 matching its sha256. <code>FAIL</code> or a finding that does not pass the check (<code>MALFORMED</code>) is red.
 <code>NOT_CHECKED</code> means the step could not establish its fact; the cell lists what, why and the owning issue.
-Italic text is quoted from the finding. The badge shows the worst row of each population. Built from the findings
+A <code>PASS</code> cell lists each gap its finding names: something outside the step's assertion, with its issue.
+Italic text is quoted from the finding. The badge counts each population's rows by state; its colour is the worst row. Built from the findings
 and {lock} only.</p>
 <p>Runs read:</p>
 {runs}
@@ -527,8 +595,7 @@ number that cannot be measured yet says so, with the milestone it waits for; it 
 
 
 def render(rs, runs, lock):
-    states = {p: worst(rs, p) for p in POPULATIONS}
-    return PAGE.format(badge_alt=e(", ".join(f"{p} {states[p]}" for p in POPULATIONS)), lock=e(LOCK),
+    return PAGE.format(badge_alt=e(badge_label(rs)), lock=e(LOCK),
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
@@ -552,7 +619,7 @@ def build(findings_dir, lock_path, out):
         shutil.rmtree(out)
         raise
     (out / "index.html").write_text(render(rs, runs, lock), encoding="utf-8")
-    (out / "badge.svg").write_text(badge({p: worst(rs, p) for p in POPULATIONS}), encoding="utf-8")
+    (out / "badge.svg").write_text(badge(rs), encoding="utf-8")
     return rs
 
 

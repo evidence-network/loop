@@ -6,6 +6,7 @@ into findings/<date>-<population>/<NN>-<name>/. One test runs the real loop.sh.
 Run: python3 -B -m unittest discover -s tests -v
 """
 import contextlib
+import html
 import io
 import json
 import os
@@ -215,7 +216,60 @@ class StatusPageTest(unittest.TestCase):
         row = re.search(r'<tr class="row" id="step-07".*?</tr>', self.html).group(0)
         self.assertIn('href="https://github.com/Mesh-LLM/capsules-plugin/issues/49"', row)
         row = re.search(r'<tr class="row" id="step-08".*?</tr>', self.html).group(0)
-        self.assertIn('href="https://github.com/action-state-group/evidencebook-skills/issues/53"', row)
+        self.assertIn('href="https://github.com/evidence-network/loop/issues/24"', row)
+
+    def test_steps_08_10_and_11_are_owned_by_a_loop_issue(self):
+        self.write(1, "PASS")
+        self.page()
+        for n in (8, 10, 11):
+            row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
+            self.assertIn('owner: <a href="https://github.com/evidence-network/loop/issues/24">loop #24</a>', row)
+        self.assertNotIn("evidencebook-skills", self.html)
+
+    # A PASS finding's gaps, in the convention the steps write: one sentence in
+    # detail, "Outside this step's assertion: ...", ending with owner/repo#N.
+    GAPS = {1: ("the producer envelope signature is not verified in a second language",
+                "action-state-group/agent-action-capsule#431"),
+            3: ("alice: the stapled history_card/1 signature is not verified",
+                "action-state-group/agent-action-capsule#430"),
+            12: ("the controller binding of the joined node is not established",
+                 "action-state-group/agent-action-capsule#432")}
+
+    def gap_detail(self, n):
+        text, issue = self.GAPS[n]
+        return f"alice: PASS via the carrier. Outside this step's assertion: {text}: {issue}."
+
+    def test_a_pass_row_shows_each_gap_with_its_issue_linked(self):
+        for n in self.GAPS:
+            self.write(n, "PASS", detail=self.gap_detail(n))
+        page = self.page()
+        for n, (text, issue) in self.GAPS.items():
+            c = page.rows[n]["rehearsal"]
+            self.assertIn("s-green", c["class"])
+            row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
+            repo, num = issue.split("#")
+            gap = re.search(r'<p class="gap">(.*?)</p>', row).group(1)
+            self.assertIn(f'<q class="said">{status_page.e(text)}</q>', gap)
+            self.assertIn(f'<a href="https://github.com/{repo}/issues/{num}">{issue}</a>', gap)
+            self.assertIn("gap, outside the assertion", c["own"])
+
+    def test_a_pass_with_no_gap_sentence_has_no_gap_line(self):
+        self.write(1, "PASS", detail="alice: PASS via the carrier.")
+        self.page()
+        self.assertNotIn('<p class="gap">', self.html)
+
+    def test_gaps_parse_the_convention(self):
+        g = status_page.gaps("x. Outside this step's assertion: a; b, step 02's c: o/r#7. y.")
+        self.assertEqual(g, [status_page.Gap("a; b, step 02's c", "o/r#7", "https://github.com/o/r/issues/7")])
+        g = status_page.gaps("Outside this step's assertion: a: o/r#1. Outside this step's assertion: b: o/s#2.")
+        self.assertEqual([(x.text, x.issue) for x in g], [("a", "o/r#1"), ("b", "o/s#2")])
+        self.assertEqual(status_page.gaps("Outside this step's assertion: no issue named."), [])
+        self.assertEqual(status_page.gaps(""), [])
+
+    def test_gaps_show_only_on_pass(self):
+        self.write(1, "FAIL", detail=self.gap_detail(1))
+        self.page()
+        self.assertNotIn('<p class="gap">', self.html)
 
     def test_no_run_of_a_population_is_not_checked(self):
         self.write(1, "PASS")
@@ -285,33 +339,48 @@ class StatusPageTest(unittest.TestCase):
 
     # The badge
 
-    def test_the_badge_shows_the_worst_row_of_each_population(self):
+    def test_the_badge_counts_each_population_and_takes_the_worst_rows_colour(self):
         self.write(1, "PASS")
         self.write(2, "FAIL")
         self.page()
         badge = (self.out / "badge.svg").read_text()
-        self.assertIn('aria-label="loop: rehearsal red, live NOT_CHECKED"', badge)
-        self.assertEqual(re.findall(r">([^<>]+)</text>", badge), ["loop", "rehearsal red", "live NOT_CHECKED"])
+        label = "rehearsal 1 PASS · 1 FAIL · 10 not checked, live 0 PASS · 0 FAIL · 12 not checked"
+        self.assertIn(f'aria-label="loop: {label}"', badge)
+        self.assertEqual(re.findall(r">([^<>]+)</text>", badge),
+                         ["loop", "rehearsal 1 PASS · 1 FAIL · 10 not checked", "live 0 PASS · 0 FAIL · 12 not checked"])
+        self.assertEqual(re.findall(r'<rect [^>]*fill="(#\w+)"', badge)[1:],
+                         [status_page.BADGE_COLOURS["red"], status_page.BADGE_COLOURS["NOT_CHECKED"]])
+        self.assertIn(f'<img src="badge.svg" alt="loop: {label}">', self.html)
         for p in ("rehearsal", "live"):
             rs = status_page.rows({q: status_page.read_run(q, d) for q, d in
                                    status_page.latest_runs(self.findings).items()})
             self.assertEqual(status_page.worst(rs, p), {"rehearsal": "red", "live": "NOT_CHECKED"}[p])
 
-    def test_the_badge_is_never_green_while_a_row_is_not(self):
-        for n in NAMES:
+    def test_four_pass_and_eight_not_checked_reads_as_counts_and_is_never_green(self):
+        for n in NAMES:  # 01, 02, 03 and 12 PASS; steps 4-11 have no finding
             self.write(n, "PASS")
         self.page()
-        self.assertIn("rehearsal NOT_CHECKED", (self.out / "badge.svg").read_text())  # steps 4-11 have no finding
+        badge = (self.out / "badge.svg").read_text()
+        self.assertIn(">rehearsal 4 PASS · 0 FAIL · 8 not checked</text>", badge)
+        self.assertIn('aria-label="loop: rehearsal 4 PASS · 0 FAIL · 8 not checked, live 0 PASS · 0 FAIL · 12 not '
+                      'checked"', badge)
+        rehearsal = re.findall(r'<rect [^>]*fill="(#\w+)"', badge)[1]
+        self.assertEqual(rehearsal, status_page.BADGE_COLOURS["NOT_CHECKED"])
+        self.assertNotEqual(rehearsal, status_page.BADGE_COLOURS["green"])
+        self.assertNotIn("NOT_CHECKED", badge)  # the counts replace the worst state's name
+        # One row per population, so it fits a 390 px phone (358 px between the gutters) without scaling.
+        self.assertLessEqual(int(re.search(r'<svg [^>]*width="(\d+)"', badge).group(1)), 358)
 
     def test_the_report_page_embeds_the_badge(self):
-        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="Loop status"></a>',
+        self.assertIn('<a href="status/"><img src="status/badge.svg" alt="loop: $badge_alt"></a>',
                       (ROOT / "site" / "template.html").read_text())
 
     # The five numbers
 
     def number(self, key, population="rehearsal"):
         row = re.search(rf'<tr id="n-{key}">(.*?)</tr>', self.html).group(1)
-        return re.search(rf'<td class="(\w+)" data-population="{population}">([^<]*)</td>', row).groups()
+        cls, text = re.search(rf'<td class="(\w+)" data-population="{population}">([^<]*)</td>', row).groups()
+        return cls, html.unescape(text)
 
     def test_minutes_run_from_run_json_to_the_marker_steps_finished(self):
         self.run_json("2026-10-27T01:59:30Z")
@@ -328,19 +397,51 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M1)"))
         self.assertNotIn("upper bound", self.html)
 
-    def test_no_valid_run_json_is_not_measured(self):
+    def test_under_a_minute_reads_in_seconds(self):
+        self.run_json("2026-10-27T02:00:18Z")
+        self.write(1, "PASS", started="2026-10-27T02:00:20Z")  # finished 02:01:00
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("measured", "42 s"))
+        self.assertEqual(status_page.duration(0), "<1 s")
+        self.assertEqual(status_page.duration(0.99 / 60), "<1 s")  # never "0 s", nor rounded up to "1 s"
+        self.assertEqual(status_page.duration(1 / 60), "1 s")
+        self.assertEqual(status_page.duration(59.4 / 60), "59 s")
+        self.assertEqual(status_page.duration(59.6 / 60), "1.0 minutes")
+        self.assertEqual(status_page.duration(1.5), "1.5 minutes")
+
+    def test_a_pass_with_no_run_json_says_the_run_did_not_record_its_start(self):
         self.write(1, "PASS")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # no run.json
+        self.assertEqual(self.number("first-sealed"),
+                         ("placeholder", "not measured: this run did not record its start time (run.json)"))
+        self.assertNotIn("not measured yet (M1)</td>", re.search(r'<tr id="n-first-sealed">.*?</tr>',
+                                                                 self.html).group(0).split('data-population="live"')[0])
+
+    def test_minutes_measured_no_run_json_and_no_pass_are_three_cases(self):
+        self.write(1, "PASS")
+        self.write(12, "NOT_CHECKED", not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
+        self.page()  # no run.json
+        self.assertEqual(self.number("first-sealed"), ("placeholder", status_page.NO_START))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))  # 12 no PASS
+        self.run_json("2026-10-27T02:00:00Z")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("measured", "1.0 minutes"))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))
+
+    def test_an_unusable_run_json_says_why(self):
+        self.write(1, "PASS")
         self.run_json("2026-10-27T01:00:00Z", run_population="live")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # another population
+        self.assertEqual(self.number("first-sealed"),  # another population's run.json
+                         ("placeholder", "not measured: this run's run.json gives no start time for this population"))
         self.run_json("yesterday")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # not a UTC time
+        self.assertEqual(self.number("first-sealed"),  # not a UTC time
+                         ("placeholder", "not measured: this run's run.json gives no start time for this population"))
         self.run_json("2026-10-27T03:00:00Z")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # after the step
+        self.assertEqual(self.number("first-sealed"),
+                         ("placeholder", "not measured: this run's run.json start is after the step finished"))
 
     def test_the_countersigned_report_is_a_placeholder_until_m3(self):
         self.run_json("2026-10-27T02:00:00Z")
@@ -411,7 +512,7 @@ class StatusPageTest(unittest.TestCase):
 
     def test_no_findings_at_all_builds_a_not_checked_page(self):
         self.assertEqual(self.build(), 0, self.err)
-        self.assertIn("rehearsal NOT_CHECKED", (self.out / "badge.svg").read_text())
+        self.assertIn(">rehearsal 0 PASS · 0 FAIL · 12 not checked</text>", (self.out / "badge.svg").read_text())
 
     # The real loop.sh
 
@@ -455,7 +556,7 @@ class StatusPageTest(unittest.TestCase):
         state, text = self.number("first-sealed")
         self.assertEqual(state, "measured")
         expected = (status_page.stamp(seal["finished"]) - status_page.stamp(meta["started"])).total_seconds() / 60
-        self.assertEqual(text, f"{expected:.1f} minutes")
+        self.assertEqual(text, status_page.duration(expected))
 
 
 if __name__ == "__main__":

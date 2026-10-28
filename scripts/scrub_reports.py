@@ -23,8 +23,12 @@ only the fields below; `check` refuses a file holding anything else.
     nodes/left/<node_id>.json, or null), and per question (checkpoints,
     history_card): state (the day as read with any later ask in it), every
     attempt's time and state, log_size_at_checkpoint (the latest checkpoint's
-    mmr_size and timestamp in a verified answer, else null) and answer_sha256
-    (the SHA-256 of the answer's bytes; null when nothing came back).
+    mmr_size and timestamp in a verified answer, else null),
+    records_at_checkpoint (how many records the node's log holds at that
+    checkpoint: the leaf count of an MMR of mmr_size nodes; null exactly when
+    log_size_at_checkpoint is null, or mmr_size is no MMR's size) and
+    answer_sha256 (the SHA-256 of the answer's bytes; null when nothing came
+    back).
 
 No answer, request, peer-key or verification bytes go in. The same input
 gives the same bytes: sorted keys, 2-space indent, a trailing newline, and
@@ -56,7 +60,7 @@ NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|d
 
 DAY_KEYS = {"date", "run", "missed_reason", "versions_lock_sha256", "reporter_key_id", "listed", "nodes"}
 NODE_KEYS = {"node_id", "node_line", "absent_days_running", "left_on", "questions"}
-QUESTION_KEYS = {"state", "attempts", "log_size_at_checkpoint", "answer_sha256"}
+QUESTION_KEYS = {"state", "attempts", "log_size_at_checkpoint", "records_at_checkpoint", "answer_sha256"}
 
 
 def dump(day):
@@ -103,6 +107,20 @@ def log_size(reply):
     return best
 
 
+def leaves(mmr_size):
+    """The records (leaves) in an MMR of mmr_size nodes, or None when no MMR has that size.
+
+    An MMR of n leaves has 2n - popcount(n) nodes, which grows with n, so n lies
+    within 64 of mmr_size / 2.
+    """
+    if not (isinstance(mmr_size, int) and not isinstance(mmr_size, bool) and mmr_size >= 0):
+        return None
+    for n in range(mmr_size // 2, mmr_size // 2 + 66):
+        if 2 * n - bin(n).count("1") == mmr_size:
+            return n
+    return None
+
+
 def question(node_dir, stem, answered):
     """One question's day: state, attempts, log size, the answer's digest."""
     a = answered[stem]
@@ -118,7 +136,8 @@ def question(node_dir, stem, answered):
                     size = log_size(json.loads(body))
                 except ValueError:
                     size = None
-    return {"state": a["state"], "attempts": attempts, "log_size_at_checkpoint": size, "answer_sha256": digest}
+    return {"state": a["state"], "attempts": attempts, "log_size_at_checkpoint": size,
+            "records_at_checkpoint": leaves(size["mmr_size"]) if size else None, "answer_sha256": digest}
 
 
 def left_on(left_dir, node_id):
@@ -233,6 +252,11 @@ def check_question(where, q, errs):
         if not is_int(size["mmr_size"]):
             errs.append(f"{where}.log_size_at_checkpoint.mmr_size: not a count")
         match(f"{where}.log_size_at_checkpoint.timestamp", size["timestamp"], ISO, errs)
+    records = q["records_at_checkpoint"]
+    if records is not None and not is_int(records):
+        errs.append(f"{where}.records_at_checkpoint: not a count")
+    elif records != (leaves(size.get("mmr_size")) if isinstance(size, dict) else None):
+        errs.append(f"{where}.records_at_checkpoint: not the leaf count of log_size_at_checkpoint.mmr_size")
     match(f"{where}.answer_sha256", q["answer_sha256"], HEX64, errs, nullable=True)
 
 
