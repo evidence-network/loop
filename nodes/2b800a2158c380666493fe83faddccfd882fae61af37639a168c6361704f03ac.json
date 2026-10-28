@@ -8,10 +8,10 @@
       "history_card/1"
     ]
   },
-  "host_build": "mesh-llm 03217d7e8a8df6431e2d5c5f8f6e56d83abe9f66 (contains mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e, mesh-llm-pr-2620 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8), binary sha256 3e1ba77935fe09f930198a8157b2317865d9adac12977b71be445aa815b5052a; no relay until Mesh-LLM/capsules-plugin#48 is closed",
+  "host_build": "mesh-llm 3f84d41e77052f4fecab9cfd4a4b076b57c99396 (contains mesh-llm 3947de0cbc73fe5cbcaae548b297f03a401532d7, mesh-llm-pr-2620 5fc649c888b7ac4b3e75865de06a901b476629c0), binary sha256 645893c23cbf8833a4fbcb72e8825cf7178b68c9d4c64ccf07bee2291b1d2a81; no relay until Mesh-LLM/capsules-plugin#48 is closed",
   "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
   "mesh": "lab",
   "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
   "operator": "StevenMih",
-  "plugin_version": "capsules v0.1.5 (5c53ea2441f54c60c87f300af678286a2e12c8fe), binary sha256 9c9b7c9729f81c7751f7a3860b01129b49eff07bc3ff4ca3ac70220b1635652d"
+  "plugin_version": "capsules 06532ef981b345118e0a6fe142fb896acbc18e5b, binary sha256 42ce97b6df505ff7604ad56f57f94d584307cc170a562705a3207d7b8444025d"
 }

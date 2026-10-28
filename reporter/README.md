@@ -357,17 +357,21 @@ node from `~/loop` (on `main`), with `~/loop-data` beside it, in this order.
    git -C ~/loop-data pull --rebase --quiet origin main && rm -rf ~/loop-data/reports/rehearsal
    ```
 
-6. Enable the daily run, with the drop-ins that give the daily units the
-   settings file (the second console):
+6. Install the daily units, with the drop-ins that give them the settings
+   file (the second console), and enable the daily run. The rehearsal step
+   installed only `loop-reporter-rehearsal.*`; without the copy, `enable`
+   fails with `Unit loop-reporter.timer not found`:
 
    ```sh
+   cp ~/loop/reporter/systemd/loop-reporter.* ~/loop/reporter/systemd/loop-reporter-ask.* ~/.config/systemd/user/
    for unit in loop-reporter loop-reporter-ask; do
      mkdir -p ~/.config/systemd/user/$unit.service.d
      cp ~/loop/reporter/systemd/reporter-env.conf ~/.config/systemd/user/$unit.service.d/env.conf
    done
    systemctl --user daemon-reload
    systemctl --user enable --now loop-reporter.timer
-   systemctl --user list-timers 'loop-reporter*'   # loop-reporter.timer only; no rehearsal timer
+   systemctl --user enable --now loop-reporter-ask.timer   # optional: asks again at 12:00, 18:00, 23:00 UTC
+   systemctl --user list-timers 'loop-reporter*'   # loop-reporter.timer (and -ask if enabled); no rehearsal timer
    ```
 
    The first run is at the next 00:30 UTC. If the timer ran before
