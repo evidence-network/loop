@@ -11,8 +11,8 @@ and prints {"node_id", "key_id"} (or writes them into FILE, normally
 reporter/reporter.json, for a pull request). Standard library only.
 
 check_private_key() looks only at the private key's owner and mode, never its
-bytes: by Steven's ruling of 2026-10-27 (evidencebook-skills#61) the key is
-readable by the reporter's user only and has no backup.
+bytes: by the reporter's key custody rule the key is readable by the
+reporter's user only and has no backup.
 """
 import base64
 import json

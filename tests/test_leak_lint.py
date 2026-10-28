@@ -91,6 +91,26 @@ class LeakLintTest(unittest.TestCase):
         self.repo.commit()
         self.assertEqual(run_lint(self.repo.path).returncode, 1)
 
+    def test_files_of_any_suffix_are_scanned(self):
+        for rel, text in (("reports/daily/2026-01-01/n/checkpoints.verification", "verified SYNTHETIC_QUEUE_WORD\n"),
+                          ("versions.lock", "# synthetic-buffer\nx a/b 0123\n"),
+                          ("reports/daily/2026-01-01/n/attempts/20260101T000000Z/ATTEMPT", "synthetic-buffer\n"),
+                          ("keys/node-key.pub.pem", "-----BEGIN PUBLIC KEY-----\n/synthetic/private/path\n")):
+            with self.subTest(rel=rel):
+                doc = self.repo.write(rel, text)
+                self.repo.commit()
+                red = run_lint(self.repo.path)
+                self.assertEqual(red.returncode, 1, red.stdout)
+                self.assertIn(f"{rel}:", red.stdout)
+                doc.unlink()
+                self.repo.commit()
+                self.assertEqual(run_lint(self.repo.path).returncode, 0)
+
+    def test_only_a_binary_file_is_skipped(self):
+        (self.repo.path / "blob.bin").write_bytes(b"\x89PNG\0\0SYNTHETIC_QUEUE_WORD\n")
+        self.repo.commit()
+        self.assertEqual(run_lint(self.repo.path).returncode, 0)
+
     def test_match_is_case_sensitive(self):
         self.repo.write("README.md", "synthetic_queue_word in another casing\n")
         self.repo.commit()

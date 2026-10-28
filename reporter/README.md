@@ -29,9 +29,8 @@ is never in this repository; `reporter_key.py` reads only the public files
 key on the mesh, bound to its node id by its node key, and the plugin signs
 every request with it, so each node can see who asked.
 
-By Steven's ruling of 2026-10-27 (action-state-group/evidencebook-skills#61),
-the private key stays in the plugin's data dir, readable by the reporter's
-user only, and is never backed up. `daily_report.py run --data-dir` refuses a
+The reporter's key custody rule: the private key stays in the plugin's data
+dir, readable by the reporter's user only, and is never backed up. `daily_report.py run --data-dir` refuses a
 `keys/node-key.pem` that another user owns or could read (the plugin writes it
 `0600`). If the key is lost, make a new one and open a `reporter.json` pull
 request: a new key is a new `key_id`. Every run also checks that the plugin
