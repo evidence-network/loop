@@ -1,7 +1,7 @@
 """Steps 01, 02, 03 and 12 on the live population: each node's own key and book, or NOT_CHECKED.
 
-On the committed population/live (every data_dir, book_dir and node_id null) each
-step writes NOT_CHECKED with a `live node <name>` entry, never a crash or a FAIL,
+On a population with every data_dir, book_dir and node_id null (the file before the
+lab run, kept as tests/fixtures/live/null) each step writes NOT_CHECKED with a `live node <name>` entry, never a crash or a FAIL,
 and `loop.sh --stage 1 --population live` exits 0. With a fixture LAB_DIR (the
 TEST keys of tests/fixtures/step02 as each node's plugin keys, and a book join.sh
 makes here with them), step 01 seals with each node's key and PASSes, and step 02
@@ -24,6 +24,7 @@ import live  # noqa: E402
 
 LIVE = ROOT / "population" / "live"
 FIXTURE = ROOT / "tests" / "fixtures" / "live" / "population.json"
+NULL = ROOT / "tests" / "fixtures" / "live" / "null"
 TEST_KEYS = ROOT / "tests" / "fixtures" / "step02" / "rehearsal" / "keys"
 NODE_KEYS = {"lab-1": "alice", "lab-2": "bob"}  # TEST keys only: never a live node's
 TOOLS = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
@@ -80,30 +81,40 @@ class LiveCase(unittest.TestCase):
 
 
 class CommittedLiveTest(LiveCase):
-    """The committed file: every path and id is null. No step needs a tool to say so."""
+    """The committed file names the three lab nodes, each listed in nodes/; the null file, no node.
+    No step needs a tool to say so."""
 
-    def test_committed_file_is_all_null(self):
+    def test_committed_file_names_the_listed_lab_nodes(self):
         pop = json.loads((LIVE / "population.json").read_text())
         self.assertEqual([n["name"] for n in pop["nodes"]], ["lab-1", "lab-2", "lab-3"])
+        for n in pop["nodes"]:
+            self.assertRegex(n["node_id"], r"^[0-9a-f]{64}$")
+            self.assertTrue((ROOT / "nodes" / f"{n['node_id']}.json").is_file(), n["name"])
+            self.assertEqual(n["host"], "lab")
+            self.assertTrue(n["data_dir"].startswith(f"$LAB_DIR/nodes/{n['name']}/"), n)
+            self.assertTrue(n["book_dir"].startswith(f"$LAB_DIR/nodes/{n['name']}/"), n)
+
+    def test_null_file_is_all_null(self):
+        pop = json.loads((NULL / "population.json").read_text())
         for n in pop["nodes"]:
             self.assertEqual(n, {"name": n["name"], "node_id": None, "host": "lab", "data_dir": None,
                                  "book_dir": None})
 
     def test_01_null_data_dir_is_not_checked(self):
-        self.assert_null_nodes(self.step("01-seal"))
+        self.assert_null_nodes(self.step("01-seal", NULL))
 
     def test_02_null_data_dir_is_not_checked(self):
-        r = self.step("02-book")
+        r = self.step("02-book", NULL)
         self.assert_null_nodes(r, "data_dir")
         self.assert_null_nodes(r, "book_dir")
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book"})
 
     def test_03_is_not_checked(self):
-        self.assertEqual(self.step("03-advertise")["result"], "NOT_CHECKED")
+        self.assertEqual(self.step("03-advertise", NULL)["result"], "NOT_CHECKED")
 
     def test_12_null_node_id_is_not_checked(self):
         # No node is asked, so no console is reached: an address nothing answers on.
-        r = self.step("12-join", env=dict(os.environ, LOOP_CONSOLE="http://127.0.0.1:9"))
+        r = self.step("12-join", NULL, env=dict(os.environ, LOOP_CONSOLE="http://127.0.0.1:9"))
         self.assertEqual(r["result"], "NOT_CHECKED")
         for name in ("lab-1", "lab-2", "lab-3"):
             self.assertIn({"what": f"live node {name}", "why": "node_id not set, or no nodes/<node_id>.json",

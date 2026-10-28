@@ -133,7 +133,8 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("would pack", self.out)
         for arc in ("population/live/population.json", "reporter/reporter.json"):
             self.assertIn(f"  {arc}  <-  ", self.out)
-        self.assertRegex(self.out, r"missing: findings/\d{4}-\d{2}-\d{2}-live/")
+        # Today's live findings: missing before loop.sh runs, listed once a run is in the tree.
+        self.assertRegex(self.out, r"(missing: findings/|  findings/)\d{4}-\d{2}-\d{2}-live/")
         self.assertRegex(self.out, r"MANIFEST.json")
 
     def test_all_runs_check_then_tools_then_the_rest(self):

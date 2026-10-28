@@ -1,0 +1,158 @@
+{
+  "asserts": "one command on the pinned release records a controller binding for the node key (its controller class recorded), creates the book, publishes the commitment, and a stranger's probe of the node (capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the advertised policy",
+  "detail": "probe backend: reporter. lab-1: checkpoints answered under the listed key; history_card/1 answered under the listed key; lab-2: checkpoints answered under the listed key; history_card/1 answered under the listed key; lab-3: checkpoints unreachable; history_card/1 unreachable.",
+  "finished": "2026-10-28T06:27:49Z",
+  "name": "join",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#53",
+      "what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
+      "why": "a Mesh node's book is the capsules plugin's; the plugin has no join or doctor yet, so join.sh does not run against it"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#53",
+      "what": "doctor --probe on a Mesh node",
+      "why": "the probe is the daily reporter's mesh_evidence_request path until the plugin has its own"
+    },
+    {
+      "issue": "action-state-group/agent-action-capsule#432",
+      "what": "the controller binding (controller-binding/0, same_controller_asserted, dual_signature/0)",
+      "why": "join.sh signs it with both keys, but no released implementation verifies controller-binding/0, and doctor reports it NOT_CHECKED too"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#51",
+      "what": "the signed commitment and the policy digest the answers are matched against",
+      "why": "nodes/ entries are unsigned and carry no policy digest; the probe is matched against the entry's listed key and stranger_safe subjects only"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#53",
+      "what": "lab-3: the checkpoints probe answer",
+      "why": "the reporter got no verifiable answer: unreachable why=\"http 502: {\\\"error\\\":\\\"Plugin 'capsules' failed 'invoke_service' (code -32603): could not reach peer: target peer is not routable\\\"}\""
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#53",
+      "what": "lab-3: the history_card/1 probe answer",
+      "why": "the reporter got no verifiable answer: unreachable why=\"http 502: {\\\"error\\\":\\\"Plugin 'capsules' failed 'invoke_service' (code -32603): could not reach peer: target peer is not routable\\\"}\""
+    }
+  ],
+  "pinned": {
+    "capsules": {
+      "ref": "v0.1.5",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "reporter": {
+      "ref": "4d00c42c9856fc892f7309ee9b434dca1bb69202",
+      "repository": "evidence-network/loop"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "lab-1/attempts/20261028T062749Z/ATTEMPT",
+      "sha256": "6cac37425faa14171e050660e1a2a9fcae0bd13408f6b052c731525059fab6f6"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/checkpoints.response.json",
+      "sha256": "4d1864201933ef505cc5e5fa96c80c01a016f9a443eed0bf0ef298bd62e2eb98"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/checkpoints.verification",
+      "sha256": "cab755b9b9e2ae8083d4a4f948491b14ec451f42aa1d523fd70677c4ec455c89"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/history_card.response.json",
+      "sha256": "7ed31c733473749cdae0536fb5cf42d261a476d31f7ee74a6459148a3e11c174"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/history_card.verification",
+      "sha256": "cab755b9b9e2ae8083d4a4f948491b14ec451f42aa1d523fd70677c4ec455c89"
+    },
+    {
+      "path": "lab-1/attempts/20261028T062749Z/peer-key.json",
+      "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/ATTEMPT",
+      "sha256": "6cac37425faa14171e050660e1a2a9fcae0bd13408f6b052c731525059fab6f6"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/checkpoints.response.json",
+      "sha256": "55a084819ccd1b3519e479f79a161a773731aa66f13450da1893ff07ba8b8d78"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/checkpoints.verification",
+      "sha256": "bc9a9e5a9bf3c5dadd099aa7e2e17473c0eca95e1050f5fcf2239713c2bb97ca"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/history_card.response.json",
+      "sha256": "91fad596f7591c3c05de58f63586f9c43ced0a7580ef8aa5ceb57718c23b1f05"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/history_card.verification",
+      "sha256": "bc9a9e5a9bf3c5dadd099aa7e2e17473c0eca95e1050f5fcf2239713c2bb97ca"
+    },
+    {
+      "path": "lab-2/attempts/20261028T062749Z/peer-key.json",
+      "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/ATTEMPT",
+      "sha256": "6cac37425faa14171e050660e1a2a9fcae0bd13408f6b052c731525059fab6f6"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/checkpoints.absence.txt",
+      "sha256": "ececcc3914c5bc3e9208d22b1e9f20ccc36ba6ee1846c2f31a27c38f131bbf3c"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/checkpoints.verification",
+      "sha256": "affdfc8f209517219d00dd838dd74e058fc0861bf09f9eae93eb346619e8c24e"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/history_card.absence.txt",
+      "sha256": "ececcc3914c5bc3e9208d22b1e9f20ccc36ba6ee1846c2f31a27c38f131bbf3c"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/history_card.verification",
+      "sha256": "affdfc8f209517219d00dd838dd74e058fc0861bf09f9eae93eb346619e8c24e"
+    },
+    {
+      "path": "lab-3/attempts/20261028T062749Z/peer-key.json",
+      "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-28T06:27:49Z",
+  "step": "12"
+}

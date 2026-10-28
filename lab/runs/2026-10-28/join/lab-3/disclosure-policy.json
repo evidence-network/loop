@@ -1,0 +1,14 @@
+{
+  "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+  "policy": {
+    "adjudications": "deliver_to_subjects",
+    "history_segments": "counterparties",
+    "record_at_completion": "counterparty"
+  },
+  "profile": "disclosure-policy/0",
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "Tqmb-2pK3-FApBZNGvPH9pRu5oOoq4RNPV9-YlGIhWOyLh1YZfHneqF0q5sjp9UzawQINMLXnupAOFuWZCyUCg"
+  }
+}

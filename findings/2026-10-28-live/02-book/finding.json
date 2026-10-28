@@ -1,0 +1,113 @@
+{
+  "asserts": "the record is in the node's book at a stated position, under a signed checkpoint that verifies; the checkpoint's witness receipt verifies",
+  "detail": "node lab-1: book lab-1-book, sequence 4, capsule 3f22606ca1aa0a73b506e60ad48e87f959bc85f1d070d9744408b24efcec01eb: these held on the proof bytes, by capsulectl verify --bundle and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key. Witness part not checked.; node lab-2: book lab-2-book, sequence 4, capsule e51d7686f720fa6ed17bfb0395d47463c4eab0d63bb2846da21255f7f5fa926e: these held on the proof bytes, by capsulectl verify --bundle and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key. Witness part not checked.; node lab-3: book lab-3-book, sequence 4, capsule 7568a2e1638db361abb160d489f0887f824593ef4699d6917c4bb956926d3367: these held on the proof bytes, by capsulectl verify --bundle and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key. Witness part not checked.",
+  "finished": "2026-10-28T06:27:49Z",
+  "name": "book",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop: the lab nodes' books have no witness configured (population/live)",
+      "what": "a witness receipt on the book's checkpoint, and its verification",
+      "why": "no witness is configured for a lab node's book, so its checkpoint carries no receipt"
+    }
+  ],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "lab-1/capsule.json",
+      "sha256": "df193ce83677f909b7c4eeb1cb6b2bd76135841aec52a3d6d0b7db2010bdbabb"
+    },
+    {
+      "path": "lab-1/append.json",
+      "sha256": "d33cc8f492b653a8bca5bfa9df15b0dd0e44e3b0118284dce199615e5e09e380"
+    },
+    {
+      "path": "lab-1/checkpoint.json",
+      "sha256": "b59cf0af5591bbcec9199ec5d1c4d1f6188cd7f737e1e92c847de46e07c77a17"
+    },
+    {
+      "path": "lab-1/bundle.json",
+      "sha256": "aba8bc0f6792a355f1fc8c34d8994b5c204a18d1fa978b40e26f5a7d0f14dbb0"
+    },
+    {
+      "path": "lab-1/book-record.json",
+      "sha256": "7d2ddcccdd15f756d5089ced5c783a779d364485fb1ce029e379db854ea2ca72"
+    },
+    {
+      "path": "lab-1/verify.json",
+      "sha256": "9a1ad3b2c39c7d7862d259cce52dab46df9eb686b1a6f915816f9d6597b5e244"
+    },
+    {
+      "path": "lab-1/checks.json",
+      "sha256": "c519f58e8466a6f351a631d619d4297fee778d6ce52622e217681a26e0836b9a"
+    },
+    {
+      "path": "lab-2/capsule.json",
+      "sha256": "9145be585fa4163734f4bbe9d35b4ab53613d5969c16aacd937f71c38b9caae2"
+    },
+    {
+      "path": "lab-2/append.json",
+      "sha256": "87840f7e3bd501994f33da2266bdfd736c8f98b9bb4a47773fcf7af7f4f69ad8"
+    },
+    {
+      "path": "lab-2/checkpoint.json",
+      "sha256": "7d65a973b52752b37d911835e702cdd92091263a595ccddc823a4c380df6e60b"
+    },
+    {
+      "path": "lab-2/bundle.json",
+      "sha256": "b2e84bb046ec0a91b99fe0c59aafbd9799374f5c6e6d3cd815e70d96e27d3e92"
+    },
+    {
+      "path": "lab-2/book-record.json",
+      "sha256": "5fb021aab1f19f32f72dc68cd11ddcb06d92c1d938b643a8e7e0f5e1baab8385"
+    },
+    {
+      "path": "lab-2/verify.json",
+      "sha256": "034d7ea6bd17bc0da34d78ed017b5a8696ff6cdfc9867b924ad4ac0a293b7e44"
+    },
+    {
+      "path": "lab-2/checks.json",
+      "sha256": "3bacf4ad77ff10e26076172548b644ed2ac328e3ce3c9f3fe5f28c7a172101f5"
+    },
+    {
+      "path": "lab-3/capsule.json",
+      "sha256": "e611fcbd816751c92079024aeac6b06dd829d38278037917eb441206be76bd7f"
+    },
+    {
+      "path": "lab-3/append.json",
+      "sha256": "711479b1ab1dc43e2c3a0f9152af48ff85ffab3b123a35f86867742c9aebc07a"
+    },
+    {
+      "path": "lab-3/checkpoint.json",
+      "sha256": "13e7e674608fe152b965d2862aa4f53ace3e74467b17cdece49a3cdd26c736c2"
+    },
+    {
+      "path": "lab-3/bundle.json",
+      "sha256": "bfc34dab8631eda368316628c41caf130682811440f0ee04aec5154337762b12"
+    },
+    {
+      "path": "lab-3/book-record.json",
+      "sha256": "8c11ecaf9cc3847e93cb8531dfc0efcd929466ec4a9950db21cbbc2f571bce65"
+    },
+    {
+      "path": "lab-3/verify.json",
+      "sha256": "37319de68677d4058330aad6dc441bd8827d83ea661147acefd6218761a05014"
+    },
+    {
+      "path": "lab-3/checks.json",
+      "sha256": "f84c8f3e313b47055a8614f0c152eaef6d99afc03073bd1caecaa1870ef9ba97"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-28T06:27:48Z",
+  "step": "02"
+}

@@ -1,0 +1,59 @@
+{
+  "asserts": "a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
+  "detail": "node lab-1: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node lab-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node lab-3: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key. Outside this step's assertion: the producer envelope signature is not verified in a second language (Class 1 does not include it; only key_id is matched to the node's key): action-state-group/agent-action-capsule#431.",
+  "finished": "2026-10-28T06:27:48Z",
+  "name": "seal",
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.14.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsule-emit": {
+      "ref": "python/v0.13.0",
+      "repository": "action-state-group/capsule-emit"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "lab-1/capsule.json",
+      "sha256": "940ea3105a9ee4afa2c1d8a63214afa3fc250992e6bf7bd7f4a93bda0bfb34ee"
+    },
+    {
+      "path": "lab-1/verifier.json",
+      "sha256": "bb8f5755e5e41ca72c323e47d1ffc0e08fed1930fdf1274ec5f1833806c897ed"
+    },
+    {
+      "path": "lab-1/checks.json",
+      "sha256": "008df8ed1973061d28fa8d8b37fd3b92fb5bc5977ecf1f048f1db76b4e8db5c2"
+    },
+    {
+      "path": "lab-2/capsule.json",
+      "sha256": "c1c914d87dd28746f9321e5b6e4503cc6dcb0da74aebd56d23403961611e6a07"
+    },
+    {
+      "path": "lab-2/verifier.json",
+      "sha256": "c9b20920805fadfdba706c79444d9ce70f9999a898c477f5eccc04adf71efb81"
+    },
+    {
+      "path": "lab-2/checks.json",
+      "sha256": "e0469a1acb62bc76e50745b41d3e9d2a22b7b6543f055e3c7a1f355443a584cf"
+    },
+    {
+      "path": "lab-3/capsule.json",
+      "sha256": "41d9a512e135cc31fc22826dbb50638ef3cee4238bb54a7913dc5b2a3529bdb7"
+    },
+    {
+      "path": "lab-3/verifier.json",
+      "sha256": "ed49fec071dbb98f7cb76f670ff5d991f2b436f44740fcc609a1384adfb2eae6"
+    },
+    {
+      "path": "lab-3/checks.json",
+      "sha256": "f805505377f82d5168095cf38e8cacd3b9553484dd417d94a2722058a8e8f78b"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-28T06:27:47Z",
+  "step": "01"
+}

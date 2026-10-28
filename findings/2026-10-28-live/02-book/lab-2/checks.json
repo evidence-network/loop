@@ -1,0 +1,33 @@
+{
+  "checks": {
+    "bundle": {
+      "detail": "capsulectl verify --bundle exit 0, verdict VALID",
+      "ok": true
+    },
+    "checkpoint": {
+      "detail": "checkpoint over 10 nodes of lab-2-book, signed by 5990a91d2b17809f5e9532bd6d022526e320a64547133067aad979bb54c0bf55, the book's checkpoint key 5990a91d2b17809f5e9532bd6d022526e320a64547133067aad979bb54c0bf55",
+      "ok": true
+    },
+    "membership": {
+      "detail": "checkpoint pass, per_record_membership pass, producer_signatures pass",
+      "ok": true
+    },
+    "node_key": {
+      "detail": "node key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26; the book was bound to ['6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26']",
+      "ok": true
+    },
+    "position": {
+      "detail": "log lab-2-book seq 4, appended at 4",
+      "ok": true
+    },
+    "record": {
+      "detail": "book record c828460e0551b42503c79c77e3feb2fc98ce8ee3338df6d26403bde867eab967 (bundle root c828460e0551b42503c79c77e3feb2fc98ce8ee3338df6d26403bde867eab967) carries capsule e51d7686f720fa6ed17bfb0395d47463c4eab0d63bb2846da21255f7f5fa926e in book lab-2-book; header digest 9d1a4b2e01cde68ce7f2e3b4d62177e4425d37fa5ed1b2c8520a14751b21ba60, signed 9d1a4b2e01cde68ce7f2e3b4d62177e4425d37fa5ed1b2c8520a14751b21ba60",
+      "ok": true
+    },
+    "signer": {
+      "detail": "record key_id 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, producer key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, node key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "ok": true
+    }
+  },
+  "node": "lab-2"
+}
