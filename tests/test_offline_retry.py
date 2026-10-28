@@ -540,6 +540,32 @@ class PersonalDataGuardTest(unittest.TestCase):
         self.assertEqual(self.git("status", "--porcelain"), "")  # the day is exactly as committed
         self.assertEqual(len(list(self.held.rglob("checkpoints.response.json"))), 1)
 
+    def with_the_real_check(self, run=None):
+        shutil.copy(ROOT / "scripts" / "check_personal_data.py", self.clone / "scripts" / "check_personal_data.py")
+        if run is not None:
+            (self.clone / "scripts" / "daily_report.py").write_text(run)
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "the real check")
+        self.git("push", "-q")
+        return self.git("rev-parse", "HEAD").strip()
+
+    def test_the_real_check_is_found_and_holds_a_hit(self):
+        head = self.with_the_real_check()
+        result = self.script("run_daily.sh")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("email", result.stderr)
+        self.nothing_staged_or_committed(head)
+        day = self.clone / "reports" / "daily" / self.today()
+        self.assertEqual([p.name for p in day.iterdir()], ["MISSED"])
+        self.assertEqual(len(list(self.held.rglob("checkpoints.response.json"))), 1)
+
+    def test_the_real_check_lets_a_clean_day_through(self):
+        head = self.with_the_real_check(STUB_RUN.replace("reach me at someone@mail.invalid.org", "no answer"))
+        result = self.script("run_daily.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(self.git("rev-parse", "HEAD").strip(), head)
+        self.assertFalse(self.held.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

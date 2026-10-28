@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+# On every push to main: a push that is not a merged pull request (the daily reporter's deploy
+# key) may touch only reports/daily/. See .github/direct_push.py.
+name: direct-push
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  direct-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Was this push a merged pull request?
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          n=$(gh api "repos/${{ github.repository }}/commits/$AFTER/pulls" \
+                --jq "[.[] | select(.merged_at != null and .merge_commit_sha == \"$AFTER\")] | length")
+          if [ "$n" -gt 0 ]; then echo "via_pr=true" >> "$GITHUB_OUTPUT"; else echo "via_pr=false" >> "$GITHUB_OUTPUT"; fi
+      - name: A direct push touches only reports/daily/
+        run: python3 .github/direct_push.py "${{ github.event.before }}" "${{ github.event.after }}" "${{ steps.pr.outputs.via_pr }}"

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0
+# No personal data in the commitment list or the reports: no email address, phone number or
+# public IP address. See scripts/check_personal_data.py. Also runs on push to main, which is
+# where the daily reporter's direct pushes are checked.
+name: personal-data
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  personal-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: No personal data in nodes/ or reports/
+        run: python3 scripts/check_personal_data.py nodes reports

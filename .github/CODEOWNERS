@@ -1,0 +1,11 @@
+# Code owners: a pull request needs a review from one of these before it merges.
+#
+# PLACEHOLDER: `@evidence-network/loop-maintainers` is a placeholder team. It must exist in the
+# evidence-network organization, with write access to this repository, before
+# scripts/apply_branch_protection.sh is run (the script checks). Until then GitHub reports this
+# line as an unknown owner. Who is in the team is a maintainers' decision, not this file's.
+#
+# The daily reporter's direct pushes to reports/daily/ bypass review by design (deploy key);
+# the direct-push workflow checks they touch nothing else.
+
+*       @evidence-network/loop-maintainers
