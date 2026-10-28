@@ -1,0 +1,10 @@
+# step 01 seal: exact versions of capsule-emit's Python dependencies, from the
+# venv steps/01-seal.setup.sh built at capsule-emit 0.13.0 (pip freeze, minus
+# capsule-emit itself, whose pin is versions.lock). setup.sh installs with -c.
+agent-action-capsule==0.12.0
+cbor2==6.1.5
+cffi==2.1.1
+checkpointed-local-log==0.7.0
+cryptography==50.0.2
+pycparser==3.12
+scitt-cose==0.5.0

@@ -27,3 +27,8 @@ checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpoi
 # The capsulectl-book plugin the join creates and probes the book with, built
 # for capsulectl v0.1.0-rc23. `book doctor --probe` (evidencebook#134) is not in it.
 capsulectl-book action-state-group/evidencebook capsulectl/v0.1.0-rc23
+# step 01 seal
+# The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
+# verifier (the AAC Go module's cross_language command).
+capsule-emit action-state-group/capsule-emit python/v0.13.0
+aac-go action-state-group/agent-action-capsule go/v0.14.0
