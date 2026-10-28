@@ -17,6 +17,12 @@ changes nothing. Read a dry run before each real step the first time.
 lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|pack|stop|all
 ```
 
+`all` runs the sections below in order: `check`, `tools`, `start`,
+`exchange`, a wait for each node's first checkpoint, `join`, `entries`,
+`loop`, `pack`. It stops at the first command that fails: a build that is
+not the pinned one (`check`) or a step setup that failed (`tools`) stops it
+before any node starts, with each reason in `$LAB_DIR/build.json`.
+
 ## 0. Where things live
 
 Pick a directory on the lab host for this lab, and use it for every command:

@@ -136,6 +136,15 @@ class DryRunTest(unittest.TestCase):
         self.assertRegex(self.out, r"missing: findings/\d{4}-\d{2}-\d{2}-live/")
         self.assertRegex(self.out, r"MANIFEST.json")
 
+    def test_all_runs_check_then_tools_then_the_rest(self):
+        marks = [("check", "merge-base --is-ancestor"), ("tools", "steps/01-seal.setup.sh"),
+                 ("start", " serve --config "), ("exchange", "/v1/chat/completions"),
+                 ("join", "join.sh --name lab-1"), ("entries", "would write nodes/<lab-1 node_id>.json"),
+                 ("loop", "loop.sh --stage 1"), ("pack", "would pack")]
+        at = [(self.out.find(text), name) for name, text in marks]
+        self.assertTrue(all(i >= 0 for i, _ in at), at)
+        self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)

@@ -18,7 +18,7 @@
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
-#   all       check, start, exchange, wait for the first checkpoints, join, entries, loop, pack
+#   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
 # changes nothing.
@@ -429,7 +429,7 @@ cmd_pack() {
 }
 
 cmd_all() {
-  cmd_check; cmd_start; cmd_exchange
+  cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
   cmd_join; cmd_entries; cmd_loop; cmd_pack
