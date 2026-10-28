@@ -440,12 +440,13 @@ class OfflineRetryTest(unittest.TestCase):
 
 
 # Stand-ins for the reporter's scripts in a scratch clone: the run writes a day
-# whose answer bytes hold an email address, and the reports check passes.
+# whose answer bytes hold an email address (into --out, the loop-data checkout),
+# and the reports check passes.
 STUB_RUN = """import sys
 from pathlib import Path
 args = sys.argv[1:]
 day = args[args.index("--date") + 1]
-d = Path("reports/daily") / day / ("1" * 64)
+d = Path(args[args.index("--out") + 1]) / day / ("1" * 64)
 if args[0] == "ask":
     d = d / "attempts" / "20261028T150000Z"
 d.mkdir(parents=True, exist_ok=True)
@@ -456,7 +457,7 @@ FAILS = "import sys\nprint('reports/daily/x: email', file=sys.stderr)\nsys.exit(
 
 @unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
 class PersonalDataGuardTest(unittest.TestCase):
-    """run_daily.sh and ask_again.sh push straight to main: a personal-data hit must never be committed."""
+    """run_daily.sh and ask_again.sh push straight to loop-data's main: a personal-data hit must never be committed."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -465,21 +466,32 @@ class PersonalDataGuardTest(unittest.TestCase):
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(("GIT_", "CAPSULES_PEER_KEYS"))}
         self.env.update(GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t",
                         GIT_COMMITTER_EMAIL="t@example.com", LOOP_HELD_DIR=str(self.held), HOME=str(base))
-        self.remote = base / "remote.git"
+        self.loop_remote = base / "loop.git"
+        self.git("init", "-q", "--bare", "-b", "main", str(self.loop_remote), cwd=base)
+        self.loop = base / "loop"
+        self.git("clone", "-q", str(self.loop_remote), str(self.loop), cwd=base)
+        self.git("checkout", "-q", "-b", "main", cwd=self.loop)
+        (self.loop / "scripts").mkdir()
+        for name in ("run_daily.sh", "ask_again.sh", "loop_data.sh"):
+            shutil.copy(ROOT / "scripts" / name, self.loop / "scripts" / name)
+        (self.loop / "scripts" / "daily_report.py").write_text(STUB_RUN)
+        (self.loop / "scripts" / "check_reports.py").write_text("")
+        self.publish(self.loop, "base")
+        # The loop-data checkout the reports go to: self.clone, as the guard sees it.
+        self.remote = base / "loop-data.git"
         self.git("init", "-q", "--bare", "-b", "main", str(self.remote), cwd=base)
-        self.clone = base / "loop"
+        self.clone = base / "loop-data"
         self.git("clone", "-q", str(self.remote), str(self.clone), cwd=base)
-        (self.clone / "scripts").mkdir()
+        self.git("checkout", "-q", "-b", "main")
         (self.clone / "reports" / "daily").mkdir(parents=True)
         (self.clone / "reports" / "daily" / ".gitkeep").write_text("")
-        for name in ("run_daily.sh", "ask_again.sh"):
-            shutil.copy(ROOT / "scripts" / name, self.clone / "scripts" / name)
-        (self.clone / "scripts" / "daily_report.py").write_text(STUB_RUN)
-        (self.clone / "scripts" / "check_reports.py").write_text("")
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "base")
-        self.git("push", "-q", "origin", "HEAD:main")
-        self.git("branch", "-q", "--set-upstream-to=origin/main")
+        self.publish(self.clone, "base")
+        self.env["LOOP_DATA_DIR"] = str(self.clone)
+
+    def publish(self, repo, msg):
+        self.git("add", "-A", cwd=repo)
+        self.git("commit", "-q", "-m", msg, cwd=repo)
+        self.git("push", "-q", "-u", "origin", "HEAD:main", cwd=repo)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -492,7 +504,7 @@ class PersonalDataGuardTest(unittest.TestCase):
         return subprocess.run(["date", "-u", "+%F"], capture_output=True, text=True, check=True).stdout.strip()
 
     def script(self, name, *args):
-        return subprocess.run(["bash", f"scripts/{name}", *args], cwd=self.clone, env=self.env,
+        return subprocess.run(["bash", f"scripts/{name}", *args], cwd=self.loop, env=self.env,
                               capture_output=True, text=True)
 
     def nothing_staged_or_committed(self, head):
@@ -508,10 +520,8 @@ class PersonalDataGuardTest(unittest.TestCase):
         self.assertNotEqual(self.git("rev-parse", "HEAD").strip(), head)
 
     def test_a_personal_data_hit_in_the_run_is_held_and_nothing_is_committed(self):
-        (self.clone / "scripts" / "check_personal_data.py").write_text(FAILS)
-        self.git("add", "scripts/check_personal_data.py")
-        self.git("commit", "-q", "-m", "check")
-        self.git("push", "-q")
+        (self.loop / "scripts" / "check_personal_data.py").write_text(FAILS)
+        self.publish(self.loop, "check")
         head = self.git("rev-parse", "HEAD").strip()
         result = self.script("run_daily.sh")
         self.assertEqual(result.returncode, 3, result.stderr)
@@ -529,10 +539,9 @@ class PersonalDataGuardTest(unittest.TestCase):
         node = self.clone / "reports" / "daily" / day / ("1" * 64)
         node.mkdir(parents=True)
         (node / "NODE").write_text("joined, discloses nothing\n")
-        (self.clone / "scripts" / "check_personal_data.py").write_text(FAILS)
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "day and check")
-        self.git("push", "-q")
+        self.publish(self.clone, "day")
+        (self.loop / "scripts" / "check_personal_data.py").write_text(FAILS)
+        self.publish(self.loop, "check")
         head = self.git("rev-parse", "HEAD").strip()
         result = self.script("ask_again.sh", "1" * 64)
         self.assertEqual(result.returncode, 3, result.stderr)
@@ -541,12 +550,10 @@ class PersonalDataGuardTest(unittest.TestCase):
         self.assertEqual(len(list(self.held.rglob("checkpoints.response.json"))), 1)
 
     def with_the_real_check(self, run=None):
-        shutil.copy(ROOT / "scripts" / "check_personal_data.py", self.clone / "scripts" / "check_personal_data.py")
+        shutil.copy(ROOT / "scripts" / "check_personal_data.py", self.loop / "scripts" / "check_personal_data.py")
         if run is not None:
-            (self.clone / "scripts" / "daily_report.py").write_text(run)
-        self.git("add", "-A")
-        self.git("commit", "-q", "-m", "the real check")
-        self.git("push", "-q")
+            (self.loop / "scripts" / "daily_report.py").write_text(run)
+        self.publish(self.loop, "the real check")
         return self.git("rev-parse", "HEAD").strip()
 
     def test_the_real_check_is_found_and_holds_a_hit(self):

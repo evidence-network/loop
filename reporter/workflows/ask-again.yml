@@ -25,6 +25,7 @@ jobs:
           NODE: ${{ inputs.node }}
         run: |
           cd "$HOME/loop"
+          export LOOP_DATA_DIR="$HOME/loop-data"   # the reports go to the loop-data checkout
           case "$NODE" in
             "") exec scripts/ask_again.sh ;;
             *[!0-9a-f]*) echo "node must be a 64-hex node id" >&2; exit 1 ;;

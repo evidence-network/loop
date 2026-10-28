@@ -12,6 +12,8 @@ Type=oneshot
 WorkingDirectory=%h/loop
 Environment=LOOP_CONSOLE=http://127.0.0.1:3131
 Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
+# The checkout of the private evidence-network/loop-data the reports are pushed to.
+Environment=LOOP_DATA_DIR=%h/loop-data
 ExecStart=%h/loop/scripts/ask_again.sh
 # Exit 2: the reporter could not reach its own node; nothing was written.
 SuccessExitStatus=2

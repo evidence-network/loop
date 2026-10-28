@@ -9,10 +9,12 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-# The clone of evidence-network/loop this node commits reports from.
+# The clone of evidence-network/loop the reporter runs from; it only reads it.
 WorkingDirectory=%h/loop
 Environment=LOOP_CONSOLE=http://127.0.0.1:3131
 Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
+# The checkout of the private evidence-network/loop-data the reports are pushed to.
+Environment=LOOP_DATA_DIR=%h/loop-data
 ExecStart=%h/loop/scripts/run_daily.sh
 # Exit 2 is a missed day, already committed: not a unit failure to retry.
 # Exit 3 (personal data held, nothing committed) stays a failure: someone looks.
