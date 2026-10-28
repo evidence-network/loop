@@ -315,11 +315,16 @@ lab/lab.sh loop
 This runs, from this clone:
 
 ```sh
-LOOP_CONSOLE=http://127.0.0.1:9813 ./loop.sh --stage 1 --population live --out findings/<date>-live
+LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=lab-3 LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 \
+  LAB_DIR=$LAB_DIR ./loop.sh --stage 1 --population live --out findings/<date>-live
 ```
 
-`LOOP_CONSOLE` is the reporter node's console: step 12 asks each node
-through it. `loop.sh` prints one line per step; the result is in each
+`LOOP_CONSOLE` is the reporter node's console: step 12 asks each other node
+through it. A node can't be asked through its own console, so
+`LOOP_SELF_NODE` names the reporter node and step 12 asks it through
+`LOOP_SECOND_CONSOLE`, lab-1's console (lab-2's when lab-1 is the reporter).
+Without a second console the reporter node's probe is NOT_CHECKED, not FAIL.
+The finding's detail says which console asked each node. `loop.sh` prints one line per step; the result is in each
 `findings/<date>-live/<NN>-<name>/finding.json`, not in the exit code.
 
 `loop.sh` runs one step per stage-1 number: the file in `steps/` named

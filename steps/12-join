@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Step 12, Join: one command on the pinned release joins a node, and a stranger's probe of it verifies.
 
-Usage: 12-join --population DIR --out DIR [--console URL]
+Usage: 12-join --population DIR --out DIR [--console URL] [--self-node NAME] [--second-console URL]
 
 The probe backend is the population's choice (`probe` in population.json;
 by default `doctor` for rehearsal, `reporter` for live).
@@ -36,6 +36,11 @@ the node's host announces. An answer that verifies under a key other than the
 listed one, does not verify, or refuses a subject the node lists as
 stranger-safe is a failure. Join, doctor, the binding and the signed
 commitment are NOT_CHECKED on the capsules plugin's issues.
+
+A node cannot be asked through its own console. `--self-node` names the
+population node whose console `--console` is; that node is asked through
+`--second-console`, another node's console, and every other node through
+`--console`. A self node with no second console is NOT_CHECKED, never FAIL.
 
 A part that was checked and did not hold makes the finding FAIL.
 """
@@ -341,11 +346,28 @@ def said(line):
     return "answered under the listed key" if state == "verified" else state
 
 
-def run_reporter(pop, out, console, timeout=30):
+NO_SECOND_CONSOLE_ISSUE = "evidence-network/loop: step 12 asks the reporter's own node through a second console"
+
+
+def no_second_console(name):
+    return {"what": f"{name}: the probe of the reporter's own node",
+            "why": "a node can't be asked through its own console, and no second node's console was given "
+                   "(--second-console, or LOOP_SECOND_CONSOLE)",
+            "issue": NO_SECOND_CONSOLE_ISSUE}
+
+
+def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
     at = daily_report.utc_now()
     for node in pop["nodes"]:
         name = node["name"]
+        asker, via = console, "the reporter's console"
+        if self_node and name == self_node:
+            if not second_console:
+                merge(not_checked, [no_second_console(name)])
+                lines.append(f"{name}: not asked, the reporter's own node and no second console")
+                continue
+            asker, via = second_console, "a second node's console"
         try:
             entry = listed_entry(node)
         except FileNotFoundError:
@@ -357,7 +379,7 @@ def run_reporter(pop, out, console, timeout=30):
         if node_dir.exists():
             shutil.rmtree(node_dir)
         node_dir.mkdir(parents=True)
-        result = daily_report.ask_attempt(console, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
+        result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
                                           timeout)
         attempt = layout.attempts(node_dir)[-1]
         proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
@@ -369,7 +391,9 @@ def run_reporter(pop, out, console, timeout=30):
             if nc:
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         failures += bad
-        lines.append(f"{name}: " + "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
+        asked = f" (asked through {via})" if self_node else ""
+        lines.append(f"{name}{asked}: " +
+                     "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
     return failures, not_checked, proof, lines
 
 
@@ -384,6 +408,10 @@ def main(argv=None):
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--console", default=os.environ.get("LOOP_CONSOLE", daily_report.DEFAULT_CONSOLE),
                     help="the reporter node's console, for the reporter backend")
+    ap.add_argument("--self-node", default=os.environ.get("LOOP_SELF_NODE") or None,
+                    help="the population node whose console --console is; it is asked through --second-console")
+    ap.add_argument("--second-console", default=os.environ.get("LOOP_SECOND_CONSOLE") or None,
+                    help="another node's console, to ask the self node through")
     a = ap.parse_args(argv)
     started = finding.now()
     pop = load(a.population / "population.json")
@@ -393,7 +421,13 @@ def main(argv=None):
         with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
             failures, not_checked, proof, lines = run_doctor(pop, a.out, tmp)
     elif which == "reporter":
-        failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console)
+        if a.self_node and a.self_node not in [n["name"] for n in pop["nodes"]]:
+            # A misspelt or stale name would quietly ask that node through its own console again.
+            print(f"12-join: --self-node {a.self_node!r} is not a node in the population "
+                  f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
+            return 2
+        failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
+                                                           second_console=a.second_console)
     else:
         print(f"12-join: unknown probe backend {which!r}", file=sys.stderr)
         return 2
