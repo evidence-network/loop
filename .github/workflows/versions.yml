@@ -1,0 +1,19 @@
+name: versions
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checker tests
+        run: python3 -B -m unittest tests.test_versions_lock -v
+      - name: Every pin is a full SHA or a released version
+        run: python3 -B scripts/check_versions_lock.py versions.lock

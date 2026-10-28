@@ -1,0 +1,21 @@
+# versions.lock: the only place the loop's pins change. See VERSIONS.md.
+# One pin per line: <name> <repository> <ref>. <ref> is a full 40-hex commit
+# SHA or a released version tag; never a branch name or a short SHA.
+# The daily reporter writes this file's sha256 into each day's RUN.json.
+
+# Lab host build: mesh-llm main b5ed6bd8 merged into the #2620 branch (#2620 is still open).
+# 4e98fd86 is the commit the lab host binary was built from; it contains b5ed6bd8.
+mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
+mesh-llm-pr-2620 Mesh-LLM/mesh-llm 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8
+# The capsules plugin (the repo was Mesh-LLM/capsules).
+capsules Mesh-LLM/capsules-plugin v0.1.5
+# The answer format the plugin verifies with today: the evidence-request crate,
+# pinned =0.2.0 in the plugin's Cargo.toml at that commit. crates.io 0.2.0 is published from
+# this tag (its .cargo_vcs_info.json names the tag's commit, dd64efe7).
+evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.2.0
+# The daily reporter: scripts/daily_report.py as of this commit (main after #3).
+reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
+# What a verifier re-checks saved answers with, offline: evidencebook, and capsulectl
+# built from the same evidencebook tag.
+capsulectl action-state-group/evidencebook v0.8.1
+evidencebook action-state-group/evidencebook v0.8.1
