@@ -4,18 +4,25 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 license = "Apache-2.0"
-description = "Step 02 Book's driver: append to an evidencebook book, cut a checkpoint, verify inclusion with the library."
+description = "Step 02 Book's driver: append to an evidencebook book, cut a checkpoint, take a rehearsal witness receipt, verify with the library."
 
 [[bin]]
 name = "loop-step02-book"
 path = "src/main.rs"
 
-# Exact versions, matching versions.lock: evidencebook is crates/evidencebook-v0.0.7,
-# checkpointed-local-log (embedded by evidencebook) is crates/checkpointed-local-log-v0.3.1.
-# Cargo.lock is committed; steps/02-book.setup.sh builds with --locked and checks it.
+# evidencebook is the Rust crate in action-state-group/evidencebook at the tag
+# versions.lock pins (v0.8.1); checkpointed-local-log is the log that tag's
+# crate embeds (crates/checkpointed-local-log-v0.3.1). The tag's crate verifies
+# witness receipts with AAC's verifier (agent-action-capsule, locked here at the
+# version versions.lock pins). Cargo.lock is committed; steps/02-book.setup.sh
+# builds with --locked and checks it against versions.lock.
 [dependencies]
-evidencebook = "=0.0.7"
+evidencebook = { git = "https://github.com/action-state-group/evidencebook", tag = "v0.8.1" }
 checkpointed-local-log = "=0.3.1"
 ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 hex = "0.4"
+# The rehearsal witness's receipt: an RFC 9162 COSE Receipt over the checkpoint digest.
+base64 = "0.22"
+coset = "0.4"
+sha2 = "0.10"

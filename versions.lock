@@ -19,14 +19,15 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # built from the same evidencebook tag.
 capsulectl action-state-group/evidencebook v0.8.1
 evidencebook action-state-group/evidencebook v0.8.1
-# The daily reporter: scripts/daily_report.py as of this commit.
-# What a verifier re-checks saved answers with, offline.
-# step 02 book: the log evidencebook embeds, as the crate step 02's driver locks it.
+# step 02 book
+# The log evidencebook v0.8.1's Rust crate embeds, as its Cargo.lock and step 02's driver lock it.
 checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1
+# AAC's Rust crate, whose witness receipt verifier evidencebook v0.8.1's crate calls.
+aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1
 # step 12 join
-# The capsulectl-book plugin the join creates and probes the book with, built
-# for capsulectl v0.1.0-rc23. `book doctor --probe` (evidencebook#134) is not in it.
-capsulectl-book action-state-group/evidencebook capsulectl/v0.1.0-rc23
+# The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
+# built from the evidencebook tag's capsulectl/ module.
+capsulectl-book action-state-group/evidencebook v0.8.1
 # step 01 seal
 # The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).

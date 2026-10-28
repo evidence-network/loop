@@ -2,8 +2,9 @@
 //! Step 02 Book's driver over the pinned evidencebook crate.
 //!
 //!   loop-step02-book book   --key PEM --book-id ID --book-dir DIR --out DIR --time RFC3339 [--note TEXT]
-//!   loop-step02-book reseal --key PEM --record FILE
-//!   loop-step02-book verify --pub PEM --book-id ID --dir DIR
+//!   loop-step02-book reseal  --key PEM --record FILE
+//!   loop-step02-book witness --key PEM --url URL --checkpoint FILE
+//!   loop-step02-book verify  --pub PEM --book-id ID --dir DIR [--witnesses FILE]
 //!
 //! `book` opens a fresh book, appends two records sealed with the key (an
 //! opening record, then the record the step asserts on), cuts a signed
@@ -11,12 +12,22 @@
 //! record.json, placement.json, checkpoint.json, checkpoint.cose (when the
 //! library built the COSE form) and inclusion.json.
 //!
+//! `witness` is the rehearsal witness: given a checkpoint (checkpoint.json),
+//! it signs the checkpoint's digest with its key and prints the receipt, in the
+//! form a CLL witness answers `POST /v1/digest` with plus its `ts_url`: an
+//! RFC 9162 COSE Receipt over a one-entry tree whose entry is SHA-256 of the
+//! checkpoint digest. It checks nothing; whoever holds the receipt verifies it.
+//!
 //! `verify` reads only those files and checks them with the library:
 //! the record id is recomputed from the record (evidencebook JSON-DIGEST),
 //! the record's seal is checked against the public key, the checkpoint's
 //! signature and signer are checked, and the record's inclusion at the stated
 //! position under the checkpoint root is checked with
-//! `evidencebook::substrate::verify_inclusion`. It prints one JSON object
+//! `evidencebook::substrate::verify_inclusion`. With --witnesses (a witness
+//! directory, `witnesses.json`), the receipts checkpoint.json carries are
+//! verified against checkpoint.cose by the library's served summary
+//! (`served_summary::summary_value`), which counts a checkpoint witnessed only
+//! on a receipt AAC's witness verifier passes under that directory. It prints one JSON object
 //! and exits 0 when every check held, 1 when any did not, 2 on a usage or
 //! input error.
 //!
@@ -30,9 +41,10 @@ use ed25519_dalek::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
 use evidencebook::canonical::json_digest;
 use evidencebook::record::{EpistemicType, Header, HEADER_VERSION};
+use evidencebook::served_summary::{summary_value, Coverage, Labels};
 use evidencebook::substrate::{
     record_id_from_hex, verify_inclusion, Checkpoint, CllSubstrate, InclusionEvidence, RecordId,
-    CHECKPOINT_KIND,
+    WitnessEntry, CHECKPOINT_KIND,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -48,8 +60,9 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("book") => flags(&args[1..]).and_then(|f| book(&f)).map(|_| 0),
         Some("reseal") => flags(&args[1..]).and_then(|f| reseal(&f)).map(|_| 0),
+        Some("witness") => flags(&args[1..]).and_then(|f| witness(&f)).map(|_| 0),
         Some("verify") => flags(&args[1..]).and_then(|f| verify(&f)),
-        _ => Err("usage: loop-step02-book book|reseal|verify [flags]; see the source header".into()),
+        _ => Err("usage: loop-step02-book book|reseal|witness|verify [flags]; see the source header".into()),
     };
     match result {
         Ok(code) => ExitCode::from(code),
@@ -201,6 +214,94 @@ fn reseal(f: &Flags) -> Result<(), String> {
     write_json(&path, &seal(&key, header, &id))
 }
 
+/// The rehearsal witness's receipt for a checkpoint, as the Rust and Go
+/// books' own tests mint one: COSE_Sign1, EdDSA, verifiable data structure
+/// RFC 9162 (395 = 1), the inclusion proof [tree size 1, leaf index 0, no
+/// path] under 396, and the detached payload the leaf hash of the entry.
+fn receipt(cp: &Checkpoint, ts_url: &str, key: &SigningKey) -> Result<WitnessEntry, String> {
+    use base64::Engine as _;
+    use coset::{cbor::value::Value as Cbor, iana, TaggedCborSerializable};
+    use sha2::{Digest, Sha256};
+    let digest = hex::decode(cp.digest()).map_err(|e| e.to_string())?;
+    let entry: [u8; 32] = Sha256::digest(&digest).into();
+    let leaf: [u8; 32] = Sha256::digest([&[0u8][..], &entry].concat()).into();
+    let proof = vec![0x83, 0x01, 0x00, 0x80];
+    let mut sign1 = coset::CoseSign1Builder::new()
+        .protected(
+            coset::HeaderBuilder::new()
+                .algorithm(iana::Algorithm::EdDSA)
+                .value(395, Cbor::Integer(1.into()))
+                .build(),
+        )
+        .unprotected(
+            coset::HeaderBuilder::new()
+                .value(396, Cbor::Map(vec![(Cbor::Integer((-1).into()), Cbor::Array(vec![Cbor::Bytes(proof)]))]))
+                .build(),
+        )
+        .payload(leaf.to_vec())
+        .create_signature(b"", |tbs| key.sign(tbs).to_bytes().to_vec())
+        .build();
+    sign1.payload = None;
+    Ok(WitnessEntry {
+        ts_url: ts_url.to_string(),
+        entry_hash: hex::encode(entry),
+        receipt_b64: base64::engine::general_purpose::STANDARD
+            .encode(sign1.to_tagged_vec().map_err(|e| e.to_string())?),
+        leaf_index: 0,
+        tree_size: 1,
+        is_stub: false,
+    })
+}
+
+fn witness(f: &Flags) -> Result<(), String> {
+    let key = signing_key(need(f, "key")?)?;
+    let url = need(f, "url")?;
+    let path = PathBuf::from(need(f, "checkpoint")?);
+    let cp: Checkpoint = serde_json::from_value(read_json(&path)?)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let entry = receipt(&cp, url, &key)?;
+    let v = serde_json::to_value(&entry).map_err(|e| e.to_string())?;
+    println!("{}", serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// The labels the served summary is published under. Only its `coverage`
+/// member is read here, so these are fixed rehearsal names.
+const LABELS: Labels<'static> = Labels {
+    schema: "loop_rehearsal_summary/0",
+    definition_digest: "",
+    groups_member: "groups",
+    digest_member: "digest",
+    variants_member: "variants",
+    refused_note: "",
+    digest_absent_note: "",
+    selection_note: "",
+    derivation_note: "",
+    coverage_note: "",
+    adjudications_note: "",
+    no_requester_identifiers: "",
+    not_a_score: "",
+};
+
+/// The `ts_url`s of the receipts the library counts as witnessing `cp`,
+/// verified against `statement` under `directory`.
+fn verified_witnesses(cp: &Checkpoint, statement: &[u8], directory: &Value) -> Vec<String> {
+    let v = summary_value(
+        &[],
+        &Coverage { checkpoint: cp, covered: 0, statement, witness_directory: Some(directory) },
+        &|_| false,
+        &LABELS,
+    );
+    let coverage = &v["coverage"];
+    if coverage["witnessed"] != json!(true) {
+        return Vec::new();
+    }
+    coverage["witnesses"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|w| w.as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
+}
+
 struct Checks(Vec<Value>);
 
 impl Checks {
@@ -286,14 +387,36 @@ fn verify(f: &Flags) -> Result<u8, String> {
         },
     );
 
+    // The witness receipts: verified by the library against the checkpoint's
+    // own COSE statement, under the witness directory.
+    let mut witnessed = Vec::new();
+    if let Some(dir_path) = f.get("witnesses") {
+        let directory = read_json(Path::new(dir_path))?;
+        let statement = std::fs::read(dir.join("checkpoint.cose")).unwrap_or_default();
+        witnessed = verified_witnesses(&cp, &statement, &directory);
+        let ok = !witnessed.is_empty();
+        c.add(
+            "witness_receipt",
+            ok,
+            if ok {
+                format!("{} of {} receipts on checkpoint {} verify under the witness directory: {}",
+                        witnessed.len(), cp.witnesses.len(), cp.digest(), witnessed.join(", "))
+            } else {
+                format!("none of the {} receipts on checkpoint {} verifies under the witness directory",
+                        cp.witnesses.len(), cp.digest())
+            },
+        );
+    }
+
     let all = c.0.iter().all(|v| v["ok"] == json!(true));
     let out = json!({
-        "verifier": "evidencebook 0.0.7 (Rust): canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion",
+        "verifier": "evidencebook (Rust) at action-state-group/evidencebook v0.8.1: canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion, served_summary (AAC's witness receipt verifier)",
         "book_id": book_id,
         "position": position,
         "record_id": id_hex,
         "checkpoint_digest": cp.digest(),
         "witness_receipts": cp.witnesses.len(),
+        "witnesses_verified": witnessed,
         "checks": c.0,
         "ok": all,
     });
