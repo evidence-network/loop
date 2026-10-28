@@ -22,7 +22,12 @@ An attempt's verification line starts with one of
     other reason. The question is asked again.
 
 A question with no answer after its last attempt is the day's `absence`.
-Standard library only.
+
+A report set is a directory under reports/ holding one directory per period:
+`daily`, one per UTC day (<YYYY-MM-DD>), and `rehearsal`, a test of the
+reporter, one per 10-minute UTC slot (<YYYY-MM-DD>T<HHMM>Z, minutes a multiple
+of 10). A period's directory has the same layout in both; SETS has each set's
+period. Standard library only.
 """
 import datetime as dt
 import json
@@ -37,6 +42,53 @@ DAY_STATES = ANSWERED + ("absence",)
 ATTEMPTS = "attempts"
 ATTEMPT_NAME = re.compile(r"^\d{8}T\d{6}Z$")
 ATTEMPT_LINE = re.compile(r"^at=(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z) by=(run pass=[1-9]\d*|ask)$")
+
+
+class Daily:
+    """The daily set: one directory per UTC day, <YYYY-MM-DD>."""
+    set = "daily"
+    noun = "day"
+    pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    step = dt.timedelta(days=1)
+
+    @staticmethod
+    def name(period):
+        return period.isoformat()
+
+    @staticmethod
+    def parse(name):
+        return dt.date.fromisoformat(name)
+
+    @staticmethod
+    def of(at):
+        """The day a UTC time falls in."""
+        return at.date()
+
+
+class Rehearsal:
+    """The rehearsal set: one directory per 10-minute UTC slot, <YYYY-MM-DD>T<HHMM>Z."""
+    set = "rehearsal"
+    noun = "slot"
+    pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])[0-5]0Z$")
+    step = dt.timedelta(minutes=10)
+
+    @staticmethod
+    def name(period):
+        return period.strftime("%Y-%m-%dT%H%MZ")
+
+    @staticmethod
+    def parse(name):
+        if not Rehearsal.pattern.match(name):
+            raise ValueError(f"{name!r} is not a 10-minute slot <YYYY-MM-DD>T<HHMM>Z")
+        return dt.datetime.strptime(name, "%Y-%m-%dT%H%MZ").replace(tzinfo=dt.timezone.utc)
+
+    @staticmethod
+    def of(at):
+        """The slot a UTC time falls in."""
+        return at.replace(minute=at.minute - at.minute % 10, second=0, microsecond=0)
+
+
+SETS = {"daily": Daily, "rehearsal": Rehearsal}
 
 
 def iso(at):
@@ -114,19 +166,20 @@ def absence_text(tried, stem):
     return "\n".join(lines) + "\n"
 
 
-def absent_days_running(out, node_id, day):
+def absent_days_running(out, node_id, day, period=Daily):
     """How many days, ending with `day`, the node was asked and answered nothing.
 
     Counts back day by day and stops at a day the node answered anything, was
     not asked, or had no run. A re-ask that got an answer ends the run of days.
+    In the rehearsal set it counts slots the same way.
     """
     n = 0
     while True:
-        node_dir = Path(out) / day.isoformat() / node_id
+        node_dir = Path(out) / period.name(day) / node_id
         if not (node_dir.is_dir() and attempts(node_dir) and absent(node_dir)):
             return n
         n += 1
-        day -= dt.timedelta(days=1)
+        day -= period.step
 
 
 def absence_fact(n):

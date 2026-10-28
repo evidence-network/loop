@@ -8,6 +8,13 @@ Written by the daily reporter ([reporter/](../reporter/README.md)).
   run marks every day it finds without a report, and the `reports` check
   refuses a gap with no mark.
 
+`reports/rehearsal/<YYYY-MM-DD>T<HHMM>Z/` is the reporter rehearsal, a test of
+the daily run every 10 minutes: one directory per 10-minute UTC slot, in the
+same layout and under the same checks (`check_reports.py --set rehearsal`),
+with MISSED for a slot with no run. It lives in loop-data beside
+`reports/daily/` and is wiped as a whole before the daily run starts; see
+[reporter/README.md](../reporter/README.md#the-rehearsal).
+
 A node's directory holds `attempts/`: one `<YYYYMMDDTHHMMSSZ>/` per time the
 reporter asked it, written once and never changed. A question that got no
 answer is asked again at the times in `reporter/reporter.json`

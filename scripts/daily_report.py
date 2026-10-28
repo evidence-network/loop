@@ -2,11 +2,14 @@
 """The daily reporter: ask every listed node the two stranger-safe questions.
 
 Usage:
-  daily_report.py run   [--date D] [--console URL] [--nodes DIR] [--out DIR]
-                        [--reporter FILE] [--data-dir DIR] [--timeout S]
+  daily_report.py run   [--set daily|rehearsal] [--date D] [--console URL]
+                        [--nodes DIR] [--out DIR] [--reporter FILE]
+                        [--data-dir DIR] [--timeout S] [--self-node NAME]
+                        [--second-console URL] [--population FILE]
   daily_report.py ask   (--node ID | --absent) [--date D] [--console URL]
                         [--nodes DIR] [--out DIR] [--reporter FILE]
-                        [--data-dir DIR] [--timeout S]
+                        [--data-dir DIR] [--timeout S] [--self-node NAME]
+                        [--second-console URL] [--population FILE]
   daily_report.py prove --date D [--out DIR]
 
 `run` asks each node in nodes/ `checkpoints` and `history_card/1` over the mesh
@@ -43,6 +46,24 @@ The day, as the run settles it after its last attempt, per question Q
                      "joined, discloses nothing"
 Answered questions are byte copies of the attempt that answered them.
 
+`--set rehearsal` (or LOOP_REPORT_SET=rehearsal) is a test of the reporter:
+the same run, one report per 10-minute UTC slot (D is <YYYY-MM-DD>T<HHMM>Z)
+under <out> = reports/rehearsal, MISSED for a slot with no run exactly as for
+a day, and its retries bounded so the run settles inside its slot: it asks
+again at REHEARSAL_RETRY_AFTER_S instead of `retry_after_s`, gives no request
+more than REHEARSAL_TIMEOUT_S, and starts nothing after REHEARSAL_BUDGET_S
+into the slot. The default set is `daily`, unchanged.
+
+A node can't be asked through its own console, so the reporter's own node
+(reporter.json `node_id`) is left out unless a second console is given:
+`--second-console` (or LOOP_SECOND_CONSOLE), another lab node's console. Then
+the reporter's node is asked like any listed node, through that console, and
+RUN.json names it under `asked_through_second_console`. `--self-node` (or
+LOOP_SELF_NODE) is the reporter's label in the population file
+(population/live/population.json); when given, it must name the node
+reporter.json names, so a stale label is refused rather than asking some
+other node through the second console.
+
 `ask` is the "ask again" path, after the day's run has settled: it asks one
 node (--node) or every node with a question unanswered today (--absent) the
 questions it has not answered today, and adds one attempt directory per node.
@@ -66,6 +87,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -105,7 +127,13 @@ LEDGER_ROUTE = "/api/plugins/capsules/http/ledger"
 DEFAULT_CONSOLE = "http://127.0.0.1:3131"
 PLACEHOLDER = "0" * 64
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# The rehearsal set settles inside its 10-minute slot: retries in seconds after
+# the run starts, the longest any one request waits, and how far into the slot
+# the run may still start a request (the rest is left for the pull and push).
+REHEARSAL_RETRY_AFTER_S = [120, 240]
+REHEARSAL_TIMEOUT_S = 20.0
+REHEARSAL_BUDGET_S = 420
+DEFAULT_POPULATION = "population/live/population.json"
 
 
 class ReporterDown(Exception):
@@ -189,8 +217,18 @@ def write_new(path, data):
         f.write(data if isinstance(data, bytes) else data.encode())
 
 
-def ask_attempt(console, entry, node_dir, stems, at, by, timeout):
-    """Ask one node the given questions once; write the attempt. Returns {stem: line}."""
+def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
+    """Ask one node the given questions once; write the attempt. Returns {stem: line}.
+
+    `left`, when given, says how many seconds the run has left: no request
+    waits longer than that, nor less than 1 s unless `timeout` is shorter.
+    """
+    if left is not None:
+        cap = timeout
+        timeout = lambda: min(cap, max(1.0, left()))  # noqa: E731
+    else:
+        fixed = timeout
+        timeout = lambda: fixed  # noqa: E731
     node_id, listed = entry["node_id"], entry["key_id"]
     d = node_dir / layout.ATTEMPTS / layout.attempt_name(at)
     if d.exists():
@@ -199,7 +237,7 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout):
     write_new(d / "ATTEMPT", f"at={layout.iso(at)} {by}\n")
     announced = None
     try:
-        status, body = http("GET", peer_key_url(console, node_id), None, timeout)
+        status, body = http("GET", peer_key_url(console, node_id), None, timeout())
         write_new(d / "peer-key.json", body)
         if status == 200:
             reply = json.loads(body)
@@ -213,12 +251,13 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout):
         request = QUESTIONS[stem]
         write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
         status, body, error, timed_out = None, b"", None, False
+        wait = timeout()
         try:
-            status, body = http("POST", console + TOOL_ROUTE, {"peer_id": node_id, "request": request}, timeout)
+            status, body = http("POST", console + TOOL_ROUTE, {"peer_id": node_id, "request": request}, wait)
         except OSError as e:
             timed_out = isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError)
             if timed_out:
-                error = f"no reply from the reporter's node within {timeout}s: {e}"
+                error = f"no reply from the reporter's node within {wait:g}s: {e}"
             else:
                 error = f"the reporter's node did not take the request: {e}"
         if error is None and status == 200:
@@ -289,11 +328,37 @@ def versions_lock_sha256(path=Path(__file__).resolve().parent.parent / "versions
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def report_days(out):
-    return sorted(p.name for p in out.iterdir() if p.is_dir() and DATE.match(p.name)) if out.is_dir() else []
+def self_node(args, reporter, console):
+    """The second console the reporter's own node is asked through, or None.
+
+    Refuses a --self-node label the population does not have, or one that is
+    not the node reporter.json names, and a second console that is the
+    reporter's own.
+    """
+    second = (args.second_console or "").rstrip("/") or None
+    if args.self_node:
+        try:
+            pop = json.loads(Path(args.population).read_text(encoding="utf-8"))
+            named = {n["name"]: n.get("node_id") for n in pop["nodes"]}
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise ValueError(f"--self-node {args.self_node!r}: cannot read the population {args.population} ({e})")
+        if args.self_node not in named:
+            raise ValueError(f"--self-node {args.self_node!r} is not a node in {args.population} "
+                             f"({', '.join(named)})")
+        if named[args.self_node] != reporter["node_id"]:
+            raise ValueError(f"--self-node {args.self_node!r} is node {named[args.self_node]}, not the "
+                             f"reporter's node {reporter['node_id']}")
+    if second is not None and second == console:
+        raise ValueError(f"--second-console {second} is the reporter's own console: a node can't be asked "
+                         "through its own console")
+    return second
 
 
-def mark_missed(out, today, why):
+def report_days(out, period=layout.Daily):
+    return sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.match(p.name)) if out.is_dir() else []
+
+
+def mark_missed(out, today, why, period=layout.Daily):
     """Write MISSED for every day but today that has no finished report.
 
     That is each day between the last earlier report and today that has no
@@ -301,28 +366,30 @@ def mark_missed(out, today, why):
     other day (earlier, or later after a clock that ran ahead) whose run
     stopped before writing RUN.json, which would otherwise fail
     check_reports on every later run. Today's is replaced by today's run.
+    In the rehearsal set, the same for every 10-minute slot.
     """
-    days = report_days(out)
+    days = report_days(out, period)
+    now = period.name(today)
     if not days:
         return []
     marked = []
     for name in days:
         d = out / name
-        if name != today.isoformat() and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
+        if name != now and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
             shutil.rmtree(d)
             d.mkdir()
             (d / "MISSED").write_text(f"no report for {name}: its run stopped before it finished\n")
             marked.append(name)
-    earlier = [name for name in days if name < today.isoformat()]
+    earlier = [name for name in days if name < now]
     if not earlier:
         return marked
-    day = dt.date.fromisoformat(earlier[-1]) + dt.timedelta(days=1)
+    day = period.parse(earlier[-1]) + period.step
     while day < today:
-        d = out / day.isoformat()
+        d = out / period.name(day)
         d.mkdir(parents=True)
-        (d / "MISSED").write_text(f"no report for {day.isoformat()}: {why}\n")
-        marked.append(day.isoformat())
-        day += dt.timedelta(days=1)
+        (d / "MISSED").write_text(f"no report for {period.name(day)}: {why}\n")
+        marked.append(period.name(day))
+        day += period.step
     return marked
 
 
@@ -347,24 +414,36 @@ def reporter_up(console, reporter, timeout):
 
 
 def run(args, now, sleep):
+    period = layout.SETS[args.set]
+    rehearsal = period is layout.Rehearsal
     start = now()
-    today = dt.date.fromisoformat(args.date) if args.date else start.date()
+    today = period.parse(args.date) if args.date else period.of(start)
+    name = period.name(today)
     out = Path(args.out)
     reporter = load_reporter(args.reporter, args.data_dir)
     schedule = retry_schedule(reporter, args.reporter)
+    timeout, time_left = args.timeout, None
+    if rehearsal:
+        # Bounded so the run settles inside its slot, whatever reporter.json says.
+        schedule, timeout = REHEARSAL_RETRY_AFTER_S, min(args.timeout, REHEARSAL_TIMEOUT_S)
+        deadline = today + dt.timedelta(seconds=REHEARSAL_BUDGET_S)
+        time_left = lambda: (deadline - now()).total_seconds()  # noqa: E731
     errs, _ = check_nodes.check_dir(Path(args.nodes))
     if errs:
         raise ValueError("the commitment list does not check:\n  " + "\n  ".join(errs))
-    day_dir = out / today.isoformat()
+    day_dir = out / name
     if (day_dir / "RUN.json").exists():
         raise ValueError(f"{day_dir} already holds a run")
-    for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {today.isoformat()}"):
-        print(f"{missed}: MISSED")
     console = args.console.rstrip("/")
-    reporter_up(console, reporter, args.timeout)
+    second = self_node(args, reporter, console)
+    for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {name}", period):
+        print(f"{missed}: MISSED")
+    reporter_up(console, reporter, timeout)
 
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
-    entries = [e for e in entries if e["node_id"] != reporter["node_id"]]
+    # The reporter's own node is asked only through a second console, never its own.
+    entries = [e for e in entries if e["node_id"] != reporter["node_id"] or second]
+    via = {reporter["node_id"]: second} if second else {}
     if day_dir.exists():
         (day_dir / "MISSED").unlink(missing_ok=True)
     day_dir.mkdir(parents=True, exist_ok=True)
@@ -387,19 +466,22 @@ def run(args, now, sleep):
             break
         if n > 1:
             wait = (start + dt.timedelta(seconds=after) - now()).total_seconds()
+            if time_left is not None and time_left() - max(wait, 0) <= 0:
+                print(f"no time left in the slot to ask {sum(1 for v in owed.values() if v)} node(s) again")
+                break
             print(f"asking {sum(1 for v in owed.values() if v)} node(s) again in {max(wait, 0):.0f}s (attempt {n})")
             if wait > 0:
                 sleep(wait)
         for entry in entries:
             if owed[entry["node_id"]]:
-                ask_attempt(console, entry, day_dir / entry["node_id"], owed[entry["node_id"]], now(),
-                            f"by=run pass={n}", args.timeout)
+                ask_attempt(via.get(entry["node_id"], console), entry, day_dir / entry["node_id"],
+                            owed[entry["node_id"]], now(), f"by=run pass={n}", timeout, time_left)
     lines = {}
     for entry in entries:
         lines[entry["node_id"]] = settle(day_dir / entry["node_id"])
         print(f"{entry['node_id']}: {lines[entry['node_id']]}")
     record = {
-        "date": today.isoformat(),
+        "date": name,
         "reporter": {"node_id": reporter["node_id"], "key_id": reporter["key_id"]},
         "started": layout.iso(start),
         "finished": layout.iso(now()),
@@ -407,14 +489,20 @@ def run(args, now, sleep):
         "asked": sorted(lines),
         "versions_lock_sha256": versions_lock_sha256(),
     }
+    asked_via = sorted(n for n in via if n in lines)
+    if asked_via:
+        record["asked_through_second_console"] = asked_via
     again = ", ".join(f"+{s:g}s" for s in schedule) or "never"
-    readme = [f"# Daily report {today.isoformat()}", "",
+    title = f"# Rehearsal report {name} (TEST)" if rehearsal else f"# Daily report {name}"
+    readme = [title, "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
               " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.",
               f"A question with no answer was asked again at {again} after the run started;"
               " each node's `attempts/` holds every time it was asked.", ""]
     for node_id, line in sorted(lines.items()):
-        fact = layout.absence_fact(layout.absent_days_running(out, node_id, today))
+        fact = layout.absence_fact(layout.absent_days_running(out, node_id, today, period))
+        if node_id in via:
+            fact = "; ".join(x for x in ("the reporter's own node, asked through a second node's console", fact) if x)
         readme.append(f"- `{node_id}`: {line}" + (f"; {fact}" if fact else ""))
     if not lines:
         readme.append("- no node is listed")
@@ -446,6 +534,8 @@ def ask(args, now):
         raise ValueError(f"not on the commitment list any more: {', '.join(missing)}")
     reporter = load_reporter(args.reporter, args.data_dir)
     console = args.console.rstrip("/")
+    second = self_node(args, reporter, console)
+    via = {reporter["node_id"]: second} if second else {}
     reporter_up(console, reporter, args.timeout)
     if not targets:
         print(f"{today.isoformat()}: every node has answered every question; nothing to ask")
@@ -454,7 +544,8 @@ def ask(args, now):
         if not stems:
             print(f"{node_id}: answered every question today; nothing to ask")
             continue
-        lines = ask_attempt(console, listed[node_id], day_dir / node_id, stems, now(), "by=ask", args.timeout)
+        lines = ask_attempt(via.get(node_id, console), listed[node_id], day_dir / node_id, stems, now(), "by=ask",
+                            args.timeout)
         print(f"{node_id}: " + "; ".join(f"{QUESTION_NAMES[s]}: {l}" for s, l in lines.items()))
     return 0
 
@@ -474,18 +565,29 @@ def prove(args):
     return 0 if len(passing) >= 2 else 1
 
 
+def self_options(p):
+    p.add_argument("--self-node", default=os.environ.get("LOOP_SELF_NODE") or None,
+                   help="the reporter's label in --population; it must be reporter.json's node")
+    p.add_argument("--second-console", default=os.environ.get("LOOP_SECOND_CONSOLE") or None,
+                   help="another node's console, to ask the reporter's own node through")
+    p.add_argument("--population", default=DEFAULT_POPULATION, help="where --self-node is looked up")
+
+
 def main(argv, now=utc_now, sleep=time.sleep):
     """`now` and `sleep` are the clock: a test passes its own, so no run waits for real."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--date", help="UTC date to report as (default: today, UTC)")
+    r.add_argument("--set", choices=sorted(layout.SETS), default=os.environ.get("LOOP_REPORT_SET") or "daily",
+                   help="daily (default), or rehearsal: one report per 10-minute slot, a test")
+    r.add_argument("--date", help="UTC date to report as (default: today, UTC); in rehearsal, the slot")
     r.add_argument("--console", default=DEFAULT_CONSOLE, help="the reporter node's mesh-llm console")
     r.add_argument("--nodes", default="nodes")
-    r.add_argument("--out", default="reports/daily")
+    r.add_argument("--out", help="default: reports/<set>")
     r.add_argument("--reporter", default="reporter/reporter.json")
     r.add_argument("--data-dir", help="the reporter's capsules data dir, to check its key is the committed one")
     r.add_argument("--timeout", type=float, default=60.0)
+    self_options(r)
     a = sub.add_parser("ask", help="ask again after the day's run")
     which = a.add_mutually_exclusive_group(required=True)
     which.add_argument("--node", help="the node id to ask again")
@@ -497,16 +599,21 @@ def main(argv, now=utc_now, sleep=time.sleep):
     a.add_argument("--reporter", default="reporter/reporter.json")
     a.add_argument("--data-dir", help="the reporter's capsules data dir, to check its key is the committed one")
     a.add_argument("--timeout", type=float, default=60.0)
+    self_options(a)
     p = sub.add_parser("prove")
     p.add_argument("--date", required=True)
     p.add_argument("--out", default="reports/daily")
     args = parser.parse_args(argv[1:])
+    args.set = getattr(args, "set", "daily")
+    period = layout.SETS[args.set]
+    if args.out is None:
+        args.out = f"reports/{period.set}"
     try:
         if args.cmd == "run":
             return run(args, now, sleep)
         return ask(args, now) if args.cmd == "ask" else prove(args)
     except ReporterDown as e:
-        day = args.date or now().date().isoformat()
+        day = args.date or period.name(period.of(now()))
         d = Path(args.out) / day
         if args.cmd == "ask":
             print(f"{day}: not asked again: the reporter could not reach its own node: {e}", file=sys.stderr)

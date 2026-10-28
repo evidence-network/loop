@@ -6,6 +6,14 @@ nightly Action writes it with `scripts/scrub_reports.py scrub` and pushes it
 here. `scrub_reports.py check` and `site/stats_model.py` refuse any file that
 is not exactly this format. The site in `site/` reads it.
 
+`stats/data/rehearsal/<YYYY-MM-DD>T<HHMM>Z.json` is the reporter rehearsal,
+a test: the same format, one file per 10-minute UTC slot (`date` is the slot,
+and `absent_days_running` counts slots). loop-data publishes it on every
+rehearsal run (`scrub_reports.py scrub --set rehearsal`). The site shows it on
+its own page under a TEST label, never among the daily rows. The rehearsal's
+wipe removes the whole directory (`scripts/wipe_rehearsal.sh`, or loop-data's
+publish of an empty set); `stats/data/daily/` is never touched by it.
+
 One file per day: JSON with sorted keys, a 2-space indent and a trailing
 newline. The file holds no bytes of any answer, request, peer key or
 verification text.
@@ -17,7 +25,7 @@ verification text.
 | `missed_reason` | the reporter's reason, up to its first `:`; `null` when settled |
 | `versions_lock_sha256` | the sha256 of the `versions.lock` the run ran under; `null` when missed |
 | `reporter_key_id` | the reporter's key id; `null` when missed |
-| `listed` | how many nodes the run asked; `0` when missed |
+| `listed` | how many nodes the run asked (the reporter's own node only through a second console); `0` when missed |
 | `nodes` | one object per node asked, sorted by `node_id`; `[]` when missed |
 
 Each node: `node_id`, `node_line` (the reporter's `NODE` line),

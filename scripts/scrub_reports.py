@@ -2,8 +2,8 @@
 """The scrubbed set: what a day of raw reports may show in public, and nothing more.
 
 Usage:
-  scrub_reports.py scrub REPORTS_DIR OUT_DIR [--left DIR]
-  scrub_reports.py check OUT_DIR
+  scrub_reports.py scrub REPORTS_DIR OUT_DIR [--left DIR] [--set daily|rehearsal]
+  scrub_reports.py check OUT_DIR [--set daily|rehearsal]
 
 The raw reports (reports/daily/<YYYY-MM-DD>/, scripts/report_layout.py) hold
 the bytes each node answered. They stay in the private raw store. `scrub`
@@ -17,7 +17,8 @@ only the fields below; `check` refuses a file holding anything else.
   versions_lock_sha256  from RUN.json; null when missed
   reporter_key_id       the reporter's key from RUN.json; null when missed
   listed                the nodes the run asked (the commitment list that day,
-                        less the reporter); 0 when missed
+                        less the reporter unless a second console asked it);
+                        0 when missed
   nodes                 one per node asked, sorted by node_id; [] when missed:
     node_id, node_line (NODE), absent_days_running, left_on (from
     nodes/left/<node_id>.json, or null), and per question (checkpoints,
@@ -32,13 +33,17 @@ only the fields below; `check` refuses a file holding anything else.
 
 No answer, request, peer-key or verification bytes go in. The same input
 gives the same bytes: sorted keys, 2-space indent, a trailing newline, and
-OUT_DIR holds exactly one file per input day. Standard library only.
+OUT_DIR holds exactly one file per input day.
+
+With --set rehearsal, the rehearsal set (reports/rehearsal/, a test of the
+reporter, one directory per 10-minute UTC slot) is scrubbed the same way into
+one OUT_DIR/<YYYY-MM-DD>T<HHMM>Z.json per slot: `date` is the slot, and
+absent_days_running counts slots. Standard library only.
 Exit 0 = done / clean, 1 = refused.
 """
 import argparse
 import base64
 import binascii
-import datetime as dt
 import hashlib
 import json
 import re
@@ -50,7 +55,6 @@ import report_layout as layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-DAY_FILE = re.compile(r"^\d{4}-\d{2}-\d{2}\.json$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$")
 # A run of base64/base64url characters this long in free text is a blob, not words.
@@ -65,6 +69,11 @@ QUESTION_KEYS = {"state", "attempts", "log_size_at_checkpoint", "records_at_chec
 
 def dump(day):
     return json.dumps(day, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def day_file(period):
+    """A scrubbed file's name in the set: <period>.json."""
+    return re.compile(period.pattern.pattern[:-1] + r"\.json$")
 
 
 def missed_reason(text, date):
@@ -148,7 +157,7 @@ def left_on(left_dir, node_id):
     return left if isinstance(left, str) and DATE.match(left) else None
 
 
-def scrub_day(reports, day_dir, left_dir):
+def scrub_day(reports, day_dir, left_dir, period=layout.Daily):
     date = day_dir.name
     if (day_dir / "RUN.json").is_file():
         run = layout.run_record(day_dir)
@@ -162,7 +171,7 @@ def scrub_day(reports, day_dir, left_dir):
             nodes.append({
                 "node_id": node_id,
                 "node_line": (node_dir / "NODE").read_text(encoding="utf-8").strip(),
-                "absent_days_running": layout.absent_days_running(reports, node_id, dt.date.fromisoformat(date)),
+                "absent_days_running": layout.absent_days_running(reports, node_id, period.parse(date), period),
                 "left_on": left_on(left_dir, node_id),
                 "questions": {s: question(node_dir, s, answered) for s in layout.STEMS},
             })
@@ -176,18 +185,18 @@ def scrub_day(reports, day_dir, left_dir):
     raise ValueError(f"{date}: neither RUN.json nor MISSED (a run still under way is not scrubbed)")
 
 
-def scrub(reports, out, left_dir):
+def scrub(reports, out, left_dir, period=layout.Daily):
     reports, out = Path(reports), Path(out)
-    days = sorted(p for p in reports.iterdir() if p.is_dir() and DATE.match(p.name)) if reports.is_dir() else []
+    days = sorted(p for p in reports.iterdir() if p.is_dir() and period.pattern.match(p.name)) if reports.is_dir() else []
     written = {}
     for d in days:
-        written[f"{d.name}.json"] = dump(scrub_day(reports, d, left_dir))
-    errs = [e for name, text in written.items() for e in check_text(name, text)]
+        written[f"{d.name}.json"] = dump(scrub_day(reports, d, left_dir, period))
+    errs = [e for name, text in written.items() for e in check_text(name, text, period)]
     if errs:
         raise ValueError("the scrubbed set does not check:\n  " + "\n  ".join(errs))
     out.mkdir(parents=True, exist_ok=True)
     for p in out.iterdir():
-        if DAY_FILE.match(p.name) and p.name not in written:
+        if day_file(period).match(p.name) and p.name not in written:
             p.unlink()
     for name, text in written.items():
         path = out / name
@@ -260,11 +269,11 @@ def check_question(where, q, errs):
     match(f"{where}.answer_sha256", q["answer_sha256"], HEX64, errs, nullable=True)
 
 
-def check_day(name, day):
+def check_day(name, day, period=layout.Daily):
     errs = []
     if not keys(name, day, DAY_KEYS, errs):
         return errs
-    match(f"{name}: date", day["date"], DATE, errs)
+    match(f"{name}: date", day["date"], period.pattern, errs)
     if f"{day['date']}.json" != name:
         errs.append(f"{name}: date {day['date']!r} is not the file's")
     if day["run"] not in ("settled", "missed"):
@@ -300,20 +309,21 @@ def check_day(name, day):
     return errs
 
 
-def check_text(name, text):
-    if not DAY_FILE.match(name):
-        return [f"{name}: not <YYYY-MM-DD>.json"]
+def check_text(name, text, period=layout.Daily):
+    if not day_file(period).match(name):
+        return [f"{name}: not <YYYY-MM-DD>.json" if period is layout.Daily
+                else f"{name}: not a <YYYY-MM-DD>T<HHMM>Z.json 10-minute slot"]
     try:
         day = json.loads(text)
     except ValueError as e:
         return [f"{name}: not JSON ({e})"]
-    errs = check_day(name, day)
+    errs = check_day(name, day, period)
     if not errs and dump(day) != text:
         errs.append(f"{name}: not in the canonical form (sorted keys, 2-space indent, trailing newline)")
     return errs
 
 
-def check(out):
+def check(out, period=layout.Daily):
     out = Path(out)
     if not out.is_dir():
         return [f"{out}: not a directory"]
@@ -329,7 +339,7 @@ def check(out):
         except UnicodeDecodeError:
             errs.append(f"{p.name}: not UTF-8")
             continue
-        errs += check_text(p.name, text)
+        errs += check_text(p.name, text, period)
     return errs
 
 
@@ -342,19 +352,23 @@ def main(argv):
     s.add_argument("--left", default=str(ROOT / "nodes" / "left"), help="the leave marks (default: nodes/left)")
     c = sub.add_parser("check")
     c.add_argument("out")
+    for p in (s, c):
+        p.add_argument("--set", choices=sorted(layout.SETS), default="daily",
+                       help="daily (default), or rehearsal: one file per 10-minute slot")
     args = parser.parse_args(argv[1:])
+    period = layout.SETS[args.set]
     if args.cmd == "check":
-        errs = check(args.out)
+        errs = check(args.out, period)
         for e in errs:
             print(e, file=sys.stderr)
         print(f"{args.out}: {'refused' if errs else 'clean'}")
         return 1 if errs else 0
     try:
-        days = scrub(args.reports, args.out, args.left)
+        days = scrub(args.reports, args.out, args.left, period)
     except (OSError, ValueError, KeyError) as e:
         print(e, file=sys.stderr)
         return 1
-    print(f"{args.out}: {len(days)} day(s)")
+    print(f"{args.out}: {len(days)} {period.noun}(s)")
     return 0
 
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=evidence-network loop: reporter rehearsal (TEST), every 10 minutes
+
+[Timer]
+# On the 10-minute UTC slots the rehearsal reports: :00, :10, ... :50.
+OnCalendar=*:0/10
+AccuracySec=1s
+# No Persistent=: a slot the node was down for is marked MISSED by the next run.
+
+[Install]
+WantedBy=timers.target
