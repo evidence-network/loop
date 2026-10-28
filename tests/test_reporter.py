@@ -430,7 +430,9 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(check_reports.check(self.out, through, self.reporter)[0],
                          [f"{self.reporter} names a reporter key, but {self.out} holds no report"])
         placeholder = self.dir / "placeholder.json"
-        placeholder.write_text((ROOT / "reporter" / "reporter.json").read_text())
+        unfilled = json.loads((ROOT / "reporter" / "reporter.json").read_text())
+        unfilled.update(node_id="0" * 64, key_id="0" * 64)
+        placeholder.write_text(json.dumps(unfilled))
         self.assertEqual(check_reports.check(self.out, through, placeholder)[0], [])
 
     def test_check_reports_requires_peer_key_and_the_day_readme(self):
