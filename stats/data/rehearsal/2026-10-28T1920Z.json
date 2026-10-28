@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-28T1920Z",
+  "listed": 3,
+  "missed_reason": null,
+  "nodes": [
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "b1e55dee8ffdc8007b8059339c156faab05ae72518f6a5f39c094988cea89c98",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "0667cc844065e88a207244a33eb94fd25b97843da7d22b6eda68e4aa1046c062",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        }
+      }
+    },
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "397dd2d06e7cff3a488b233ce5e98ecf81ed8a1cb7f8fe61fab21b2923c2de2b",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "6e8f410e218a6ff5ade2077f8cf0070fcde6b3e0c62754abebc06a8cada88a21",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        }
+      }
+    },
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "d4c7ff58c877f3622e8563b7f82b50c32342df5eb52372bdc6e627423742a1e5",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "0e8000b1ea422f87fb4a3f17779e5ac9a1908f5eb25592561f7d1110af03f519",
+          "attempts": [
+            {
+              "at": "2026-10-28T19:20:01Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
+          "state": "verified"
+        }
+      }
+    }
+  ],
+  "reporter_key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+  "run": "settled",
+  "versions_lock_sha256": "dc3251d5a58d1ca01855240b49a8b98dcff041c3d1a71c837e518291df1dbd70"
+}
