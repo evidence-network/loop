@@ -1,0 +1,408 @@
+# Lab bring-up: three nodes on one host
+
+This runbook brings up the loop's three lab nodes (`lab-1`, `lab-2`, `lab-3`
+in [`population/live/`](population/live/population.json)) on one lab host,
+joins each with [`join.sh`](join.sh), runs stage 1 once against them, and
+packs everything that goes back into this repository into one tarball.
+
+You run it by hand, in a shell on the lab host that you reach from your
+laptop. Nothing here pushes: the nodes' credentials cannot write to this
+repository, so you copy the tarball back and a maintainer commits it.
+
+`lab/lab.sh` does each step. Every command takes `--dry-run`, which prints
+the commands it would run (and, for `pack`, the files it would take) and
+changes nothing. Read a dry run before each real step the first time.
+
+```
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|pack|stop|all
+```
+
+## 0. Where things live
+
+Pick a directory on the lab host for this lab, and use it for every command:
+
+```sh
+export LAB_DIR=$HOME/loop-lab          # any empty directory you own
+```
+
+| Path | What it holds |
+| --- | --- |
+| `$LAB_DIR/nodes/<name>/` | the node's `HOME` (mode 0700): its mesh key, `config.toml`, and its capsules plugin data under `.local/share/capsules` (plugin key, book, `self-peer-id`) |
+| `$LAB_DIR/nodes/<name>/join-book/` | the book `join.sh` creates (`--home`) |
+| `$LAB_DIR/controllers/<name>/` | the controller key `join.sh` binds the node key to |
+| `$LAB_DIR/join/<name>/` | what `join.sh` wrote (`--out`): binding, book, commitment, probe |
+| `$LAB_DIR/run/` | pid files, launch scripts and the mesh invite token (mode 0700) |
+| `$LAB_DIR/logs/<name>.log` | each node's log. It holds the invite token: never copy a log off the host |
+| `$LAB_DIR/build.json` | what `check` confirmed about the build |
+| `$LAB_DIR/out/loop-lab-<date>.tgz` | the tarball you bring back |
+
+Ports: `LAB_PORT_BASE` (default 9800) gives each node an API port
+(base+1..3), a console (base+11..13) and a QUIC port (base+21..23):
+
+| Node | Role | API | Console | QUIC |
+| --- | --- | --- | --- | --- |
+| lab-1 | answers; makes the mesh and serves the model | 9801 | 9811 | 9821 |
+| lab-2 | answers | 9802 | 9812 | 9822 |
+| lab-3 | answers; the reporter node (`LAB_REPORTER`) | 9803 | 9813 | 9823 |
+
+The lab host may run other nodes. `start` refuses a port that is already in
+use, and nothing here touches another node's processes, ports or data. If a
+port is taken, choose another `LAB_PORT_BASE` and use it for every command.
+
+## 1. Prerequisites
+
+### The build, already on the host
+
+The lab host build and the capsules plugin are built already. This runbook
+uses them; it builds nothing. They must be at the [`versions.lock`](versions.lock)
+pins:
+
+- `mesh-llm`: mesh-llm main at the `mesh-llm` pin, with PR #2620 at the
+  `mesh-llm-pr-2620` pin (#2620 is still open, so the build carries both);
+- `capsules`: the capsules plugin at the `capsules` pin.
+
+```sh
+grep -E '^(mesh-llm|mesh-llm-pr-2620|capsules) ' versions.lock
+```
+
+Tell `lab.sh` where they are:
+
+```sh
+export MESH_LLM_BIN=/path/to/mesh-llm          # the lab host build's binary
+export MESH_LLM_SRC=/path/to/mesh-llm/source   # the git tree it was built from
+export MESH_LLM_RUNTIME=/path/to/native-runtimes   # if the build keeps its runtimes beside it
+export CAPSULES_BIN=/path/to/capsules          # the plugin binary
+export CAPSULES_SRC=/path/to/capsules/source   # the git tree it was built from
+export LAB_MODEL=/path/to/model.gguf           # any small GGUF chat model; lab-1 serves it
+export LAB_OPERATOR=<your GitHub handle>       # without @; goes into each nodes/ entry
+```
+
+### Confirm each SHA before starting
+
+```sh
+lab/lab.sh check
+```
+
+It reads the three pins from `versions.lock` and checks, with git:
+
+- the mesh-llm tree contains the `mesh-llm` pin
+  (`git merge-base --is-ancestor <pin> HEAD`) and the `mesh-llm-pr-2620` pin,
+  and has no uncommitted changes to tracked files;
+- the capsules tree is exactly at the `capsules` pin (`git rev-parse HEAD`),
+  with no uncommitted changes;
+
+then records both trees' HEADs, both binaries' sha256 and
+`mesh-llm --version` in `$LAB_DIR/build.json`, and exits 1 naming each
+mismatch. git proves what a tree is at, not what a binary was built from:
+compare the two sha256 lines it prints with the ones your build recorded
+when it was made. If they differ, or `check` exits 1, stop here and report
+what it printed; do not start nodes on a build the lock does not name.
+
+### Tools
+
+On the lab host: `git`, `curl`, `python3`, `openssl` 3, `tmux`, `ss`
+(iproute2). Then install every stage-1 step's pinned tools (capsulectl and
+capsulectl-book for `join.sh`, and what steps 01 to 03 run), each checked
+against its release's checksums:
+
+```sh
+lab/lab.sh tools
+```
+
+## 2. Three nodes on one host
+
+```sh
+lab/lab.sh --dry-run start      # read it
+lab/lab.sh start
+```
+
+What `start` does, following the usual three-node pattern (one node makes a
+private mesh, two join it by an invite file):
+
+1. Each node gets its own `HOME` under `$LAB_DIR/nodes/<name>` (mode 0700),
+   and with it its own mesh key, config, plugin data dir, book and runtime
+   cache. Its own ports, as in the table above.
+2. Each node runs as `mesh-llm serve`, never `--client`: a client node gets a
+   new id at every start, and a node's plugin key is bound to its id.
+3. **No relay.** Every node runs with `--disable-iroh-relays` and reaches the
+   others over loopback, until Mesh-LLM/capsules-plugin#48 is closed. Never
+   `--publish`: `start` stops all three if any node reports a
+   `publication_state` other than `private`.
+4. `CAPSULES_PEER_KEYS` is unset for every node: each plugin learns the
+   others' keys only from the mesh's key announcement.
+5. `CAPSULES_HOST_CONSOLE_URL` points each plugin at its own node's console.
+   Without it the plugin asks the default console, which on a shared host is
+   another node's.
+6. lab-1 starts first with `--gguf $LAB_MODEL` and makes the mesh. Its invite
+   token goes from its status straight into `$LAB_DIR/run/invite.token`
+   (0600): never onto the screen or into an argument. lab-2 and lab-3 start
+   with `--join-file` and wait until they can route to lab-1's model.
+7. It waits until each plugin knows its own node id
+   (`.local/share/capsules/self-peer-id`), then prints `status`.
+
+The three run in one tmux session, `loop-lab`, one window per node:
+`tmux attach -t loop-lab` to watch (detach with `C-b d`; do not `C-c` a
+node, use `lab/lab.sh stop`). The launch script for each node is
+`$LAB_DIR/run/<name>.sh`, so a node can be started again by hand with
+`tmux new-window -d -t loop-lab -n <name> $LAB_DIR/run/<name>.sh`.
+
+Check:
+
+```sh
+lab/lab.sh status
+```
+
+Each node should be `up`, show a node id, and its console's
+`/api/plugin-keys` should list three keys: its own and the other two. If
+not, see [A node will not announce its key](#a-node-will-not-announce-its-key).
+
+### Give every book a record
+
+A node answers `checkpoints` with a checkpoint only after it has one, and
+the plugin cuts its first checkpoint 300 seconds after activity. Before
+that it answers a signed `coverage_unsatisfiable`, which the reporter
+records as `no_checkpoint_yet`. So make one exchange per node, then wait:
+
+```sh
+lab/lab.sh exchange     # lab-2 and lab-3 each ask lab-1 for one chat completion
+sleep 360
+```
+
+Each side seals its half, so all three books have a record.
+
+## 3. Join each node, and what goes back
+
+### join.sh, for each node
+
+```sh
+lab/lab.sh --dry-run join
+lab/lab.sh join
+```
+
+For each node this:
+
+1. makes a controller key, `$LAB_DIR/controllers/<name>/controller-key.pem`
+   (Ed25519, 0600), unless one is already there;
+2. runs the one command, [`join.sh`](join.sh) (see [JOIN-LAB.md](JOIN-LAB.md)):
+
+   ```sh
+   ./join.sh --name <name> \
+     --node-key $LAB_DIR/nodes/<name>/.local/share/capsules/keys/node-key.pem \
+     --controller-key $LAB_DIR/controllers/<name>/controller-key.pem \
+     --out $LAB_DIR/join/<name> --home $LAB_DIR/nodes/<name>/join-book
+   ```
+
+   The node key is the capsules plugin's own key, read where the plugin
+   keeps it, so the commitment `join.sh` writes is under the same key the
+   node's `nodes/` entry lists;
+3. deletes `join-book/node.seed`, the copy of the node key `join.sh` made
+   for its book profile. The join is finished with it, and the plugin's data
+   dir keeps the only copy of each node key.
+
+When all three are joined, take the controller keys off the host (JOIN-LAB:
+keep the controller key off the node once the binding is signed). Copy
+`$LAB_DIR/controllers/` to your laptop with `scp`, keep it as you keep other
+private keys, then delete it on the host with `rm -r $LAB_DIR/controllers`.
+It never goes into the tarball.
+
+`$LAB_DIR/join/<name>/join.json` lists what the join did and what is still
+unchecked. On the lab build, the binding, `book doctor --probe` and the
+commitment's final format read as unchecked; that is expected (JOIN-LAB,
+"What the lab build does not do yet").
+
+### The entries
+
+```sh
+lab/lab.sh --dry-run entries
+lab/lab.sh entries
+```
+
+This writes, in this clone (it commits nothing):
+
+- **`nodes/<node_id>.json`** for each node. `node_id` is the plugin's
+  `self-peer-id`, `key_id` its plugin key (`keys/node-key.pub.pem`), both read
+  by `scripts/reporter_key.py`'s reader from the public files only. `consent`
+  is `CONSENT` from [`scripts/check_nodes.py`](scripts/check_nodes.py),
+  whatever that constant holds in this clone: pull this repository before
+  running `entries`, so the entries carry the statement as it is now.
+  `host_build` names the mesh-llm tree, the pins it contains, the binary's
+  sha256, and that the node runs with no relay until
+  Mesh-LLM/capsules-plugin#48 is closed; `plugin_version` names the plugin
+  tree and its binary's sha256. Then `scripts/check_nodes.py nodes` must say
+  `3 entries ok`;
+- **`population/live/population.json`** with the three real node ids;
+- **`reporter/reporter.json`** with the reporter node's values (below).
+
+`entries` refuses if `$LAB_DIR/build.json` says the build is not the pinned
+one.
+
+## 4. The reporter node
+
+`lab-3` is the reporter node (`LAB_REPORTER` chooses another). It is a lab
+node like the others, and it is also the node the daily reporter will ask
+from.
+
+**Key custody.** The reporter's key is lab-3's capsules plugin key. The
+plugin made it on first start, at
+`$LAB_DIR/nodes/lab-3/.local/share/capsules/keys/node-key.pem`, mode 0600,
+owned by you. As [reporter/README.md](reporter/README.md) says:
+
+- it stays in that data dir, readable by your user only. Check:
+  `stat -c '%U %a' $LAB_DIR/nodes/lab-3/.local/share/capsules/keys/node-key.pem`
+  prints your user and `600`. `entries` refuses otherwise;
+- it is **never backed up and never copied**: keep `$LAB_DIR/nodes/lab-3`
+  out of any backup or sync on the host, never `scp` it, never put it in the
+  tarball (`pack` refuses a file holding a private key). `join` reads it in
+  place and deletes the one seed copy `join.sh` makes; check
+  `ls $LAB_DIR/nodes/lab-3/join-book/node.seed` says no such file;
+- if it is lost, the plugin makes a new one, which is a new `key_id`: run
+  `entries` again and send the new `reporter.json`. Reports signed under the
+  old key stay as they are.
+
+**Its `reporter/reporter.json`.** `entries` fills `node_id` and `key_id`
+(as `scripts/reporter_key.py --write` does), `operator` (`LAB_OPERATOR`),
+`mesh` (`lab`), `host_build` and `plugin_version` (from `build.json`, as in
+the `nodes/` entries), and leaves `retry_after_s` as it is. Compare with
+`python3 scripts/reporter_key.py $LAB_DIR/nodes/lab-3/.local/share/capsules`.
+
+**Not yet:** do not install the reporter's systemd timers or run
+`scripts/run_daily.sh`. Setting up the daily reporter is separate work and
+comes after these entries are merged. When it is set up, it must ask from
+lab-3's console (`--console http://127.0.0.1:9813`), not the default 3131.
+
+## 5. Stage 1, once
+
+```sh
+lab/lab.sh --dry-run loop
+lab/lab.sh loop
+```
+
+This runs, from this clone:
+
+```sh
+LOOP_CONSOLE=http://127.0.0.1:9813 ./loop.sh --stage 1 --population live --out findings/<date>-live
+```
+
+`LOOP_CONSOLE` is the reporter node's console: step 12 asks each node
+through it. `loop.sh` prints one line per step; the result is in each
+`findings/<date>-live/<NN>-<name>/finding.json`, not in the exit code.
+
+What to expect on the live population today, so a FAIL here is read for
+what it is:
+
+- `12 join`: asks each listed node `checkpoints` and `history_card/1` from
+  lab-3 and judges each answer under the key the node's host announces. The
+  join, the binding and the signed commitment read NOT_CHECKED on the
+  plugin's issues, so the step reads NOT_CHECKED at best. A FAIL names the
+  node and the answer.
+- `01 seal`, `02 book`, `03 advertise` read FAIL on a live run with this
+  version of `loop.sh` and the steps: steps 01 and 02 read a test key from
+  the population (live nodes have none), and `loop.sh` takes the
+  `steps/01-seal.constraints.txt` and `steps/03-advertise.md` files beside
+  those steps for a second executable. Each FAIL's `detail` says which. Do
+  not work around them on the host; they are reported with the tarball.
+
+## 6. Pack and bring back
+
+```sh
+lab/lab.sh --dry-run pack       # lists every file it will take, and anything missing
+lab/lab.sh pack
+```
+
+One tarball, `$LAB_DIR/out/loop-lab-<date>.tgz`, whose paths are this
+repository's, so a maintainer extracts it at the repository root:
+
+| Path in the tarball | From |
+| --- | --- |
+| `nodes/<node_id>.json` (three) | `entries` |
+| `population/live/population.json` | `entries` |
+| `reporter/reporter.json` | `entries` |
+| `findings/<date>-live/` | `loop` |
+| `lab/runs/<date>/build.json` | `check` |
+| `lab/runs/<date>/join/<name>/` | `join` (each node's commitment is `commitment.json` there) |
+| `lab/runs/<date>/MANIFEST.json` | `pack`: the sha256 of every file above |
+
+`pack` leaves out every `*.seed` and `*.pem` file, and stops if any file it
+would take holds a PEM private key or the mesh invite token. It never takes
+`$LAB_DIR/nodes`, `$LAB_DIR/controllers`, `$LAB_DIR/run` or `$LAB_DIR/logs`.
+It prints the tarball's sha256.
+
+From your laptop:
+
+```sh
+scp '<lab host>:<LAB_DIR>/out/loop-lab-<date>.tgz' .
+sha256sum loop-lab-<date>.tgz        # the same as pack printed
+```
+
+Then send the maintainers the tarball and the paste-back list below.
+
+### What to paste back
+
+1. The tarball, and the sha256 `pack` printed.
+2. The output of `lab/lab.sh check` (or `cat $LAB_DIR/build.json`), and the
+   two binary sha256 values your build recorded when it was made.
+3. The output of `lab/lab.sh status`, after `start` and again before `pack`
+   (node ids, ports, the plugin keys each console lists; no token, no key).
+4. The three `node_id`s and the reporter's `key_id`, as `entries` printed them.
+5. The per-step lines `loop.sh` printed (`NN name RESULT`).
+6. Anything that differed from this runbook, and any step you skipped.
+
+All three nodes keep running after `pack`: the entries are for nodes that
+answer. Stop them only if you have to (below).
+
+## 7. Teardown and restart
+
+**Stop:** `lab/lab.sh stop` sends each node SIGTERM and waits up to 30
+seconds, so its plugin writes its shutdown checkpoint, then kills anything
+left and closes the tmux session. It does not delete anything.
+
+**Restart:** `lab/lab.sh start` again. Each node keeps its `HOME`, so it
+keeps its mesh key and node id, its plugin key and its book: the `nodes/`
+entries stay valid. lab-1 makes a new mesh with a new invite token, and the
+other two join it. Run `status` and check the keys are listed again.
+A node whose node id or key changed (its `HOME` was lost) needs a new
+`nodes/` entry: run `entries` and `pack` again.
+
+**Restart one node:** `kill -TERM $(cat $LAB_DIR/run/<name>.pid)`, wait for
+it to exit, then `tmux new-window -d -t loop-lab -n <name> $LAB_DIR/run/<name>.sh`.
+Restarting lab-1 makes a new invite token; restart lab-2 and lab-3 after it
+(or `stop` and `start` all three).
+
+**Remove the lab:** `lab/lab.sh stop`, then `rm -r $LAB_DIR` once the
+tarball is safely back and merged. That deletes every node key, including
+the reporter's; a new lab is new keys and new entries. Before removing a
+node that is listed in `nodes/`, open the leave pull request described in
+[nodes/README.md](nodes/README.md).
+
+## A node will not announce its key
+
+`curl -s http://127.0.0.1:<console>/api/plugin-keys` should list the node's
+own key and its peers'. If a key is missing:
+
+1. **The build.** Key announcement needs a mesh-llm build that has it
+   (release 0.78.1 does not). `lab/lab.sh check` must pass.
+2. **The plugin started?** Look in `$LAB_DIR/logs/<name>.log` for the
+   capsules plugin starting, or failing to (read it on the host; it holds
+   the invite token). `$LAB_DIR/nodes/<name>/config.toml` must name
+   `CAPSULES_BIN`, and `.local/share/capsules/keys/node-key.pub.pem` must
+   exist.
+3. **Its own id.** `.local/share/capsules/self-peer-id` must exist. A plugin
+   that the host started again, without being told its node's id, refuses
+   every signed ask until the next mesh event (Mesh-LLM/capsules-plugin#48;
+   fixed by mesh-llm #2620, which the build carries). Restarting that node's
+   mesh-llm clears it.
+4. **Its own console.** The launch script must set
+   `CAPSULES_HOST_CONSOLE_URL` to the node's own console. Without it the
+   plugin asks the default console and every answer reads
+   `no_announced_key`.
+5. **No key map.** `CAPSULES_PEER_KEYS` must be unset (the launch scripts
+   unset it): keys come from the mesh only.
+6. **Connected.** A node learns announced keys from peers it is connected
+   to. `lab/lab.sh status` for each node: lab-2 and lab-3 must have joined
+   lab-1's mesh (they wait for lab-1's model at start). If one lost the mesh,
+   restart it; if lab-1 restarted, restart the other two after it.
+7. **Not a client.** Every node must be `serve`, never `--client` (a client
+   gets a new id at every start).
+8. **Answers but no checkpoint.** An answer of `coverage_unsatisfiable`
+   (recorded as `no_checkpoint_yet`) is not a key problem: the node has not
+   cut its first checkpoint yet. Run `exchange` and wait 300 seconds.
