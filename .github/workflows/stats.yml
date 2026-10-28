@@ -30,6 +30,9 @@ jobs:
       # site/template.html's tokens; no network.
       - name: Stats page contrast check
         run: python3 -B -m unittest discover -s tests -p test_stats_contrast.py -v
+      # The reporter rehearsal's TEST page and its MISSED slots, kept apart from the daily rows.
+      - name: Rehearsal page tests
+        run: python3 -B -m unittest discover -s tests -p test_rehearsal.py -v
       # The page built from the committed fixtures, byte for byte against the
       # committed expected page. It is built outside _site and never deployed.
       - name: Stats page against the committed expected page
@@ -53,8 +56,10 @@ jobs:
       # The site from the scrubbed day files (stats/data/daily/) and the
       # findings only, into _site/stats/: the Pages URL ends /loop/stats/. A day
       # file the site cannot read fails this step, and nothing is deployed.
+      # The reporter rehearsal's slots (stats/data/rehearsal/, a test), while
+      # there are any, get their own page under a TEST label: _site/stats/rehearsal/.
       - name: Build the stats site
-        run: python3 -B site/build.py stats/data/daily --findings findings --lock versions.lock --out _site
+        run: python3 -B site/build.py stats/data/daily --findings findings --lock versions.lock --out _site --rehearsal stats/data/rehearsal
       # The leak scan over the site as built. leak_lint.py scans a git tree's
       # tracked files, so the site is staged in a scratch repository outside the
       # checkout and scanned there; nothing is committed. Fail-closed exactly
