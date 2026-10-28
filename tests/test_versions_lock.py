@@ -7,6 +7,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import sys
 import tempfile
 import threading
@@ -86,8 +87,8 @@ class CheckTest(unittest.TestCase):
 
     def test_bumping_a_pin_is_a_one_line_change(self):
         text = (ROOT / "versions.lock").read_text()
-        bumped = text.replace("capsules Mesh-LLM/capsules-plugin v0.1.5",
-                              "capsules Mesh-LLM/capsules-plugin v0.1.6")
+        bumped = re.sub(r"(?m)^capsules Mesh-LLM/capsules-plugin \S+$",
+                        "capsules Mesh-LLM/capsules-plugin v9.9.9", text)
         changed = [(a, b) for a, b in zip(text.splitlines(), bumped.splitlines()) if a != b]
         self.assertEqual(len(changed), 1)
         self.assertEqual(self.errs(bumped), [])
