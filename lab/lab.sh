@@ -50,6 +50,9 @@ LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
 MODEL_NAME=${LAB_MODEL_NAME:-lab-model}
+SESSION=${LAB_TMUX_SESSION:-loop-lab}
+UP_SECONDS=${LAB_UP_SECONDS:-5}
+STARTED=()
 TODAY=$(date -u +%F)
 
 # In a dry run an unset path reads as its own name, so the plan still prints.
@@ -84,7 +87,9 @@ wait_for() {
   local seconds=$1 what=$2; shift 2
   if [ "$DRY" = 1 ]; then echo "  (wait up to ${seconds}s: $what)"; return 0; fi
   local deadline=$((SECONDS + seconds))
+  local dead
   until "$@" > /dev/null 2>&1; do
+    if dead=$(dead_node); then report_dead "$dead"; echo "lab.sh: stopped waiting: $what" >&2; return 1; fi
     [ "$SECONDS" -ge "$deadline" ] && { echo "lab.sh: timed out after ${seconds}s: $what" >&2; return 1; }
     sleep 3
   done
@@ -289,12 +294,42 @@ start_node() { # NAME EXTRA_ARGS...
     [ "$DRY" = 1 ] || port_free "$p" || die "port $p is in use: pick another LAB_PORT_BASE"
   done
   write_launcher "$@"
-  if [ "$DRY" = 1 ] || tmux has-session -t loop-lab 2> /dev/null; then
-    run tmux new-window -d -t loop-lab -n "$name" "$LAB_DIR/run/$name.sh"
+  run rm -f "$(pidfile "$name")"
+  # tmux runs the launcher through bash, never by its bare path, with bash's own stderr in the
+  # node's log: a bare path dies before its first line where the file cannot be executed (a
+  # noexec mount, a lost mode bit), and the window closes with an empty log and nothing said.
+  local cmd
+  cmd=$(printf 'bash %q >> %q 2>&1' "$LAB_DIR/run/$name.sh" "$(logfile "$name")")
+  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "$SESSION" -n "$name" "$cmd"
   else
-    run tmux new-session -d -s loop-lab -n "$name" "$LAB_DIR/run/$name.sh"
+    run tmux new-session -d -s "$SESSION" -n "$name" "$cmd"
   fi
+  STARTED+=("$name")
+  still_up "$name" || die "$name exited at once"
   echo "started $name: api $(api_port "$name") console $(console_port "$name") quic $(bind_port "$name")"
+}
+
+# A node that exits within a few seconds of its launch is reported then, with its log tail, not
+# when a wait_for runs out; wait_for calls dead_node too, so a node that dies later stops the wait.
+still_up() { # NAME
+  [ "$DRY" = 1 ] && { echo "  (within ${UP_SECONDS}s: $1 is still running, or stop with its log tail)"; return 0; }
+  local _
+  for _ in $(seq "$UP_SECONDS"); do
+    sleep 1
+    [ -s "$(pidfile "$1")" ] && ! alive "$1" && break
+  done
+  alive "$1" && return 0
+  report_dead "$1"; return 1
+}
+report_dead() { # NAME
+  echo "lab.sh: $1 is not running; the last lines of $(logfile "$1"):" >&2
+  tail -n 20 "$(logfile "$1")" 2> /dev/null | sed 's/^/  | /' >&2 || true
+}
+dead_node() { # prints the first started node that is not running
+  local n
+  for n in "${STARTED[@]}"; do alive "$n" || { echo "$n"; return 0; }; done
+  return 1
 }
 
 cmd_start() {
@@ -349,7 +384,7 @@ cmd_stop() {
     if alive "$n"; then kill -KILL "$(pid_of "$n")" 2> /dev/null || true; fi
     rm -f "$(pidfile "$n")"
   done
-  tmux kill-session -t loop-lab 2> /dev/null || true
+  tmux kill-session -t "$SESSION" 2> /dev/null || true
   echo "stopped ${NODES[*]}"
 }
 
