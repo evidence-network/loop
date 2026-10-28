@@ -38,8 +38,9 @@ STEP = textwrap.dedent("""\
     if how == "other-population":
         population = "live" if population == "rehearsal" else "rehearsal"
     open(args.out + "/proof.txt", "w").write("proof bytes\\n")
-    finding.write(args.out, result="PASS", population=population, asserts="a fake fact holds",
-                  pinned=["capsulectl"], proof=["proof.txt"], detail="", started=started)
+    finding.write(args.out, result="FAIL" if how == "fail" else "PASS", population=population,
+                  asserts="a fake fact holds", pinned=["capsulectl"], proof=["proof.txt"], detail="",
+                  started=started)
 """)
 
 
@@ -122,6 +123,39 @@ class LoopTest(unittest.TestCase):
         self.assertIn("not executable", self.finding("01-seal")["detail"])
         self.assertIn("did not finish", self.finding("12-join")["detail"])
 
+    # --strict: a rehearsal run that is not green fails the job; a live run reports and never gates.
+
+    def test_strict_rehearsal_passes_when_every_step_is_green(self):
+        self.all_steps()
+        r = self.loop("--out", str(self.out), "--strict")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_strict_rehearsal_exits_3_on_a_fail(self):
+        self.all_steps(**{"02-book": "fail"})
+        self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
+        r = self.loop("--out", str(self.out), "--strict")
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertIn("02 book FAIL", r.stdout.splitlines())
+        self.assertIn("rehearsal steps not green", r.stderr)
+
+    def test_strict_rehearsal_exits_3_on_a_broken_step(self):
+        self.all_steps(**{"12-join": "crash"})
+        r = self.loop("--out", str(self.out), "--strict")
+        self.assertEqual(r.returncode, 3, r.stderr)
+
+    def test_strict_rehearsal_keeps_exit_1_for_a_malformed_finding(self):
+        self.all_steps(**{"01-seal": "malformed"})
+        r = self.loop("--out", str(self.out), "--strict")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("01 seal MALFORMED", r.stdout.splitlines())
+
+    def test_strict_live_never_gates_on_a_fail(self):
+        self.all_steps(**{"02-book": "fail", "12-join": "crash"})
+        r = self.loop("--population", "live", "--out", str(self.dir / "live"), "--strict")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("02 book FAIL", r.stdout.splitlines())
+        self.assertIn("reported, not gated", r.stderr)
+
     def test_a_malformed_finding_exits_1(self):
         self.all_steps(**{"02-book": "malformed"})
         r = self.loop("--out", str(self.out))
@@ -169,7 +203,18 @@ class PopulationTest(unittest.TestCase):
         p = json.loads((POPULATION / "rehearsal/population.json").read_text())
         self.assertEqual(p, {"population": "rehearsal", "rail": "mock", "nodes": [
             {"name": "alice", "key_dir": "population/rehearsal/keys/alice"},
-            {"name": "bob", "key_dir": "population/rehearsal/keys/bob"}]})
+            {"name": "bob", "key_dir": "population/rehearsal/keys/bob"}],
+            "witness": {"name": "rehearsal-witness", "url": "https://witness.rehearsal.invalid",
+                        "key_dir": "population/rehearsal/keys/witness",
+                        "directory": "population/rehearsal/witnesses.json"}})
+
+    def test_the_witness_directory_lists_the_rehearsal_witness_key(self):
+        import base64
+        pem = (POPULATION / "rehearsal/keys/witness/witness-key.pub.pem").read_text()
+        raw = base64.b64decode("".join(ln for ln in pem.splitlines() if not ln.startswith("-----")))[-32:]
+        d = json.loads((POPULATION / "rehearsal/witnesses.json").read_text())
+        self.assertEqual(d, {"witnesses": [{"name": "rehearsal-witness", "endpoint": "https://witness.rehearsal.invalid",
+                                            "key_ids": [raw.hex()]}]})
 
     def test_live_population_names_no_secret_or_host(self):
         p = json.loads((POPULATION / "live/population.json").read_text())
@@ -183,9 +228,9 @@ class PopulationTest(unittest.TestCase):
         self.assertFalse(list((POPULATION / "live").glob("**/*.pem")))
 
     def test_rehearsal_keys_load_and_match_their_pub_pems(self):
-        for name in ("alice", "bob"):
+        for name, stem in (("alice", "node-key"), ("bob", "node-key"), ("witness", "witness-key")):
             key_dir = POPULATION / "rehearsal/keys" / name
-            priv, pub = key_dir / "node-key.pem", key_dir / "node-key.pub.pem"
+            priv, pub = key_dir / f"{stem}.pem", key_dir / f"{stem}.pub.pem"
             try:
                 from cryptography.hazmat.primitives import serialization
                 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey

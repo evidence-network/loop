@@ -17,6 +17,13 @@ Each `keys/<name>/` holds `node-key.pem` (Ed25519, PKCS#8) and
 `node-key.pub.pem` (SPKI). `make_rehearsal.py` made them with openssl;
 `make_rehearsal.py --force` makes a new pair.
 
+`witness` in `population.json` is the rehearsal witness, a TEST witness:
+its key is `keys/witness/witness-key.pem` (public on purpose, like the node
+keys), its `url` names it in a receipt, and `witnesses.json` is the witness
+directory a verifier trusts it under (its raw Ed25519 key in hex). Step 02
+gives it the book's checkpoint and verifies the receipt it returns with
+evidencebook's verifier. Its receipts mean nothing outside the rehearsal.
+
 ## live/
 
 Our three lab nodes, named without secrets and without hostnames. Node ids

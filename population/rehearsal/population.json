@@ -10,5 +10,11 @@
       "key_dir": "population/rehearsal/keys/bob"
     }
   ],
-  "rail": "mock"
+  "rail": "mock",
+  "witness": {
+    "name": "rehearsal-witness",
+    "url": "https://witness.rehearsal.invalid",
+    "key_dir": "population/rehearsal/keys/witness",
+    "directory": "population/rehearsal/witnesses.json"
+  }
 }
