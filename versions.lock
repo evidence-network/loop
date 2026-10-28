@@ -3,19 +3,19 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: mesh-llm main + PR #2620 (head commit; #2620 is still open).
+# Lab host build: mesh-llm main b5ed6bd8 merged into the #2620 branch (#2620 is still open).
+# 4e98fd86 is the commit the lab host binary was built from; it contains b5ed6bd8.
 mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
-mesh-llm-pr-2620 Mesh-LLM/mesh-llm 5fc649c888b7ac4b3e75865de06a901b476629c0
-# capsules plugin (the repo was Mesh-LLM/capsules): 0.1.5 is not tagged yet
-# (Mesh-LLM/capsules-plugin#43). This is the commit the lab build ran T3/T7 at,
-# main 424f2c74 plus the 0.1.5 release prep.
-capsules Mesh-LLM/capsules-plugin 39027313c78db7aa711dfbee4897eef39540cf36
+mesh-llm-pr-2620 Mesh-LLM/mesh-llm 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8
+# The capsules plugin (the repo was Mesh-LLM/capsules).
+capsules Mesh-LLM/capsules-plugin v0.1.5
 # The answer format the plugin verifies with today: the evidence-request crate,
 # pinned =0.2.0 in the plugin's Cargo.toml at that commit. crates.io 0.2.0 is published from
 # this tag (its .cargo_vcs_info.json names the tag's commit, dd64efe7).
 evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.2.0
-# The daily reporter: scripts/daily_report.py as of this commit.
-reporter evidence-network/loop b8b46c83e8adb8154b0d831d018f35d21c9148b8
-# What a verifier re-checks saved answers with, offline.
-capsulectl action-state-group/capsule-cli v0.1.0-rc23
-evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.7
+# The daily reporter: scripts/daily_report.py as of this commit (main after #3).
+reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
+# What a verifier re-checks saved answers with, offline: evidencebook, and capsulectl
+# built from the same evidencebook tag.
+capsulectl action-state-group/evidencebook v0.8.1
+evidencebook action-state-group/evidencebook v0.8.1

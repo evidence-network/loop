@@ -86,8 +86,8 @@ class CheckTest(unittest.TestCase):
 
     def test_bumping_a_pin_is_a_one_line_change(self):
         text = (ROOT / "versions.lock").read_text()
-        bumped = text.replace("capsules Mesh-LLM/capsules-plugin 39027313c78db7aa711dfbee4897eef39540cf36",
-                              "capsules Mesh-LLM/capsules-plugin v0.1.5")
+        bumped = text.replace("capsules Mesh-LLM/capsules-plugin v0.1.5",
+                              "capsules Mesh-LLM/capsules-plugin v0.1.6")
         changed = [(a, b) for a, b in zip(text.splitlines(), bumped.splitlines()) if a != b]
         self.assertEqual(len(changed), 1)
         self.assertEqual(self.errs(bumped), [])
