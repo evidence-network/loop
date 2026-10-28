@@ -2,9 +2,16 @@
 
 The daily reporter: a node on the lab mesh with its own key, which once a day
 asks every node in `nodes/` the two stranger-safe questions, `checkpoints` and
-`history_card/1`, and commits what came back under `reports/daily/<date>/`.
-It asks nothing else. See [reports/README.md](../reports/README.md) for what a
-day's report holds.
+`history_card/1`, and commits what came back under `reports/daily/<date>/` in
+**evidence-network/loop-data**, a private repository: the raw store. It asks
+nothing else. See [reports/README.md](../reports/README.md) for what a day's
+report holds.
+
+The raw reports hold the bytes each node answered, so they are not published
+here. This repository gets only the scrubbed set, `stats/data/daily/<date>.json`
+(per node per day: the outcome, its attempts, the log size at the checkpoint and
+the SHA-256 of the answer, never the answer), which a GitHub Action in loop-data
+writes nightly with `scripts/scrub_reports.py`.
 
 - `reporter.json`: the reporter's mesh node id and its capsules plugin key
   (Ed25519 public key, 64 hex), and `retry_after_s`: when a run asks a node
@@ -72,16 +79,33 @@ python3 scripts/daily_report.py prove --date "$(date -u +%F)"   # exit 0: the da
 
 `prove` passes when at least two nodes answered `checkpoints` verified with at
 least one checkpoint, and `history_card/1` verified. It prints; it writes
-nothing to the repository. Commit `reports/daily/<date>/` and push it to
-`main` as `run_daily.sh` does (below).
+nothing to the repository. Pass `--out <loop-data checkout>/reports/daily` to
+both commands to write into the raw store, then commit `reports/daily/<date>/`
+there and push it to loop-data's `main` as `run_daily.sh` does (below).
 
 ## Running it daily
 
-On the reporter node, one always-on lab node, from a clone at `~/loop` that
-pushes with a deploy key scoped to this repository. `run_daily.sh` stages
-only `reports/daily` and pushes it straight to `main`.
+On the reporter node, one always-on lab node, with two checkouts:
+
+- `~/loop`, a clone of this repository on `main`. The reporter only reads it
+  (its scripts, `nodes/`, `reporter.json`): each run fast-forwards it to
+  `origin/main` and never commits to it or pushes from it, so clone it with no
+  write credential.
+- `~/loop-data`, a clone of evidence-network/loop-data on `main` that pushes
+  with the reporter's deploy key, the only key with write access there.
+  `LOOP_DATA_DIR` names it (required, no default; the systemd units set it).
+
+`run_daily.sh` writes the day into `$LOOP_DATA_DIR/reports/daily`, stages only
+`reports/daily` there and pushes it straight to loop-data's `main` (`git push
+origin HEAD:main`). It runs only with both checkouts on `main`, pulls
+loop-data with `--rebase` first, refuses to push when any outgoing commit
+touches anything outside `reports/daily/` (a file added then deleted
+included), and holds a day that fails the personal-data check on the node,
+outside both checkouts, committing nothing.
 
 ```sh
+git clone https://github.com/evidence-network/loop ~/loop
+git clone git@github.com:evidence-network/loop-data ~/loop-data   # with the deploy key
 cp reporter/systemd/loop-reporter.* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now loop-reporter.timer
@@ -90,10 +114,11 @@ loginctl enable-linger "$USER"
 
 The timer runs at 00:30 UTC (and at the next boot if the node was down then).
 A run asks nodes that gave no answer again for up to six hours, then commits.
-A day it did not run gets a `MISSED` mark from the next run, a run that cannot
-reach its own node commits `MISSED` for that day, and the `reports` workflow's
-09:00 UTC watchdog fails when today has neither a report nor a mark, or
-when `reporter.json` names a key but no report exists at all.
+A day it did not run gets a `MISSED` mark from the next run, and a run that cannot
+reach its own node commits `MISSED` for that day. The `reports` workflow's
+09:00 UTC watchdog reads this repository's `reports/daily`, which no longer
+receives reports: it has to move to loop-data, or read the scrubbed set (see
+the pull request that moved the reports).
 
 ## Asking again
 
@@ -106,8 +131,9 @@ scripts/ask_again.sh               # every node with a question unanswered today
 ```
 
 It asks only the questions the node has not answered today (a signed refusal
-is an answer), adds one attempt directory per node, and commits. Nothing
-already written changes. Two hooks call it; neither is enabled:
+is an answer), adds one attempt directory per node, and commits to loop-data
+under the same guards as `run_daily.sh` (`LOOP_DATA_DIR` too). Nothing already
+written changes. Two hooks call it; neither is enabled:
 
 - `systemd/loop-reporter-ask.timer` (12:00, 18:00 and 23:00 UTC), installed like
   the daily timer;

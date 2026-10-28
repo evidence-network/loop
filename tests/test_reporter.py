@@ -460,34 +460,35 @@ class ReporterTest(unittest.TestCase):
 
 
 class RunDailyTest(unittest.TestCase):
-    """run_daily.sh in a throwaway clone that pushes to a local bare repository."""
+    """run_daily.sh in a throwaway loop clone that pushes its reports to a scratch loop-data repository."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         tmp = Path(self.tmp.name)
         self.origin, self.clone, data = tmp / "origin.git", tmp / "loop", tmp / "capsules"
+        self.data_origin, self.data = tmp / "loop-data.git", tmp / "loop-data"
         self.env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
-                    "CAPSULES_DATA_DIR": str(data)}
+                    "CAPSULES_DATA_DIR": str(data), "LOOP_DATA_DIR": str(self.data)}
         self.env.pop("CAPSULES_PEER_KEYS", None)
         self.git(tmp, "init", "--quiet", "--bare", "-b", "main", str(self.origin))
         self.git(tmp, "init", "--quiet", "-b", "main", str(self.clone))
         (self.clone / "scripts").mkdir()
-        for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "report_layout.py", "reporter_key.py", "run_daily.sh"):
+        for name in ("check_nodes.py", "check_reports.py", "daily_report.py", "report_layout.py", "reporter_key.py",
+                     "run_daily.sh", "loop_data.sh"):
             shutil.copy2(ROOT / "scripts" / name, self.clone / "scripts" / name)
         shutil.copy2(ROOT / "versions.lock", self.clone / "versions.lock")
         (self.clone / "reporter").mkdir()
         (self.clone / "reporter" / "reporter.json").write_text(json.dumps(REPORTER))
         (self.clone / "nodes").mkdir()
         (self.clone / "nodes" / f"{node_id(1)}.json").write_text(json.dumps(entry(node_id(1), key_id(1))))
-        (self.clone / "reports" / "daily").mkdir(parents=True)
-        (self.clone / "reports" / "daily" / ".gitkeep").write_text("")
         (self.clone / "README.md").write_text("loop\n")
-        self.git(self.clone, "config", "user.name", "reporter")
-        self.git(self.clone, "config", "user.email", "reporter@example.invalid")
-        self.git(self.clone, "add", ".")
-        self.git(self.clone, "commit", "--quiet", "-m", "seed")
-        self.git(self.clone, "remote", "add", "origin", str(self.origin))
-        self.git(self.clone, "push", "--quiet", "-u", "origin", "main")
+        self.seed(self.clone, self.origin)
+        self.git(tmp, "init", "--quiet", "--bare", "-b", "main", str(self.data_origin))
+        self.git(tmp, "init", "--quiet", "-b", "main", str(self.data))
+        (self.data / "reports" / "daily").mkdir(parents=True)
+        (self.data / "reports" / "daily" / ".gitkeep").write_text("")
+        (self.data / "README.md").write_text("loop-data\n")
+        self.seed(self.data, self.data_origin)
         (data / "keys").mkdir(parents=True)
         (data / "self-peer-id").write_text(REPORTER["node_id"] + "\n")
         (data / "keys" / "node-key.pub.pem").write_text(spki_pem(REPORTER["key_id"]))
@@ -495,10 +496,24 @@ class RunDailyTest(unittest.TestCase):
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
                                    {node_id(1): key_id(1)})
         self.env["LOOP_CONSOLE"] = self.console.url
+        self.loop_head = self.head(self.origin)
 
     def tearDown(self):
+        # The loop clone is only read: nothing committed there, nothing pushed to loop, whatever the run did.
+        self.assertEqual(self.head(self.origin), self.loop_head)
+        self.assertEqual(self.git(self.clone, "rev-parse", "HEAD").strip(), self.loop_head)
+        status = self.git(self.clone, "status", "--porcelain").splitlines()
+        self.assertEqual([l for l in status if "__pycache__" not in l], [])
         self.console.close()
         self.tmp.cleanup()
+
+    def seed(self, repo, origin):
+        self.git(repo, "config", "user.name", "reporter")
+        self.git(repo, "config", "user.email", "reporter@example.invalid")
+        self.git(repo, "add", ".")
+        self.git(repo, "commit", "--quiet", "-m", "seed")
+        self.git(repo, "remote", "add", "origin", str(origin))
+        self.git(repo, "push", "--quiet", "-u", "origin", "main")
 
     def git(self, cwd, *args):
         return subprocess.run(["git", *args], cwd=cwd, env=self.env, check=True,
@@ -508,22 +523,40 @@ class RunDailyTest(unittest.TestCase):
         return subprocess.run(["bash", str(self.clone / "scripts" / "run_daily.sh")], cwd=self.clone,
                               env=self.env, capture_output=True, text=True)
 
-    def origin_head(self):
-        return self.git(self.origin, "rev-parse", "main").strip()
+    def head(self, origin):
+        return self.git(origin, "rev-parse", "main").strip()
 
-    def test_a_report_is_pushed_to_main_and_touches_only_reports_daily(self):
+    def origin_head(self):
+        return self.head(self.data_origin)
+
+    def test_a_report_is_pushed_to_loop_data_main_and_touches_only_reports_daily(self):
         before = self.origin_head()
         done = self.run_daily()
         self.assertEqual(done.returncode, 0, done.stderr)
-        changed = self.git(self.origin, "diff", "--name-only", before, "main").split()
+        changed = self.git(self.data_origin, "diff", "--name-only", before, "main").split()
         self.assertTrue(changed)
         self.assertTrue(all(name.startswith("reports/daily/") for name in changed), changed)
-        self.assertIn("report: daily", self.git(self.origin, "log", "-1", "--format=%s", "main"))
+        self.assertTrue(any(name.endswith("checkpoints.response.json") for name in changed), changed)
+        self.assertIn("report: daily", self.git(self.data_origin, "log", "-1", "--format=%s", "main"))
+        self.assertFalse((self.clone / "reports").exists())  # no raw byte lands in the loop clone
+
+    def test_loop_data_dir_is_required(self):
+        before = self.origin_head()
+        for value in (None, "", str(self.clone), str(Path(self.tmp.name) / "nowhere")):
+            if value is None:
+                self.env.pop("LOOP_DATA_DIR", None)
+            else:
+                self.env["LOOP_DATA_DIR"] = value
+            done = self.run_daily()
+            self.assertEqual(done.returncode, 1, (value, done.stderr))
+            self.assertIn("LOOP_DATA_DIR", done.stderr)
+            self.assertEqual(self.console.asked, [])
+        self.assertEqual(self.origin_head(), before)
 
     def test_a_local_commit_outside_reports_daily_is_not_pushed(self):
         before = self.origin_head()
-        (self.clone / "README.md").write_text("changed\n")
-        self.git(self.clone, "commit", "--quiet", "-am", "local change")
+        (self.data / "README.md").write_text("changed\n")
+        self.git(self.data, "commit", "--quiet", "-am", "local change")
         done = self.run_daily()
         self.assertEqual(done.returncode, 1)
         self.assertIn("outside reports/daily", done.stderr)
@@ -531,11 +564,11 @@ class RunDailyTest(unittest.TestCase):
 
     def test_a_file_added_then_deleted_in_local_commits_is_not_pushed(self):
         before = self.origin_head()
-        (self.clone / "secret.txt").write_text("not for the repo\n")
-        self.git(self.clone, "add", "secret.txt")
-        self.git(self.clone, "commit", "--quiet", "-m", "add")
-        self.git(self.clone, "rm", "--quiet", "secret.txt")
-        self.git(self.clone, "commit", "--quiet", "-m", "remove")
+        (self.data / "secret.txt").write_text("not for the repo\n")
+        self.git(self.data, "add", "secret.txt")
+        self.git(self.data, "commit", "--quiet", "-m", "add")
+        self.git(self.data, "rm", "--quiet", "secret.txt")
+        self.git(self.data, "commit", "--quiet", "-m", "remove")
         done = self.run_daily()
         self.assertEqual(done.returncode, 1)
         self.assertIn("secret.txt", done.stderr)
@@ -543,17 +576,25 @@ class RunDailyTest(unittest.TestCase):
 
     def test_a_failed_commit_fails_the_run(self):
         before = self.origin_head()
-        self.git(self.clone, "config", "--unset", "user.email")
-        self.git(self.clone, "config", "user.useConfigOnly", "true")
+        self.git(self.data, "config", "--unset", "user.email")
+        self.git(self.data, "config", "user.useConfigOnly", "true")
         done = self.run_daily()
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertEqual(self.origin_head(), before)
 
     def test_it_runs_only_on_main(self):
-        self.git(self.clone, "checkout", "--quiet", "-b", "other")
+        before = self.origin_head()
+        self.git(self.data, "checkout", "--quiet", "-b", "other")
         done = self.run_daily()
         self.assertEqual(done.returncode, 1)
         self.assertIn("not on main", done.stderr)
+        self.git(self.data, "checkout", "--quiet", "main")
+        self.git(self.clone, "checkout", "--quiet", "-b", "other")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("not on main: the loop clone", done.stderr)
+        self.git(self.clone, "checkout", "--quiet", "main")
+        self.assertEqual(self.origin_head(), before)
 
 
 if __name__ == "__main__":

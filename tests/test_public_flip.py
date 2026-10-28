@@ -125,12 +125,12 @@ class DirectPushTest(unittest.TestCase):
             return quiet(direct_push.main, [before or self.before, after, via_pr])
 
     def test_reporter_push_of_a_day_passes(self):
-        after = self.repo.commit("report", {"reports/daily/2026-11-01/RUN.json": "{}",
-                                            "reports/daily/2026-10-31/MISSED": "why"})
+        after = self.repo.commit("report", {"stats/data/daily/2026-11-01.json": "{}",
+                                            "stats/data/daily/2026-10-31.json": "{}"})
         self.assertEqual(self.check(after)[0], 0)
 
-    def test_direct_push_outside_reports_daily_fails(self):
-        self.repo.commit("report", {"reports/daily/2026-11-01/RUN.json": "{}"})
+    def test_direct_push_outside_stats_data_fails(self):
+        self.repo.commit("stats", {"stats/data/daily/2026-11-01.json": "{}"})
         after = self.repo.commit("sneak", {"nodes/x.json": "{}"})
         code, out = self.check(after)
         self.assertEqual(code, 1)

@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
 """direct-push guard: a push to main that did not come from a merged pull request may touch only
-reports/daily/.
+stats/data/.
 
-main takes changes by pull request, except the daily reporter's: its deploy key pushes
-reports/daily/<date>/ straight to main (the ruleset lets deploy keys bypass the pull-request
-rule). GitHub cannot limit a deploy key to a path, so this check, run on every push to main,
+main takes changes by pull request, except the stats publisher's: loop-data's publish-scrubbed
+workflow pushes the scrubbed set, stats/data/, straight to main with its deploy key (the ruleset
+lets deploy keys bypass the pull-request rule). The reporter's raw reports go to loop-data, never
+here. GitHub cannot limit a deploy key to a path, so this check, run on every push to main,
 turns red when a direct push touched anything else. See scripts/apply_branch_protection.sh.
 
 Usage: python3 direct_push.py BEFORE AFTER VIA_PR
   VIA_PR: "true" when AFTER is the merge commit of a merged pull request (the workflow asks the
   API), anything else otherwise.
-Exit 0 = allowed; 1 = a direct push outside reports/daily/; 2 = bad arguments.
+Exit 0 = allowed; 1 = a direct push outside stats/data/; 2 = bad arguments.
 """
 from __future__ import annotations
 
 import subprocess
 import sys
 
-ALLOWED_PREFIX = "reports/daily/"
+ALLOWED_PREFIX = "stats/data/"
 ZERO = "0" * 40
 
 
@@ -52,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
               f"request and touches {len(bad)} path(s) outside {ALLOWED_PREFIX}:")
         for p in bad:
             print(" ", p)
-        print("Only the daily reporter pushes directly, and only reports/daily/. Revert this "
+        print("Only the stats publisher pushes directly, and only stats/data/. Revert this "
               "push by pull request and find out which key made it.")
         return 1
     print(f"direct-push: {before[:12]}..{after[:12]} touches only {ALLOWED_PREFIX}.")
