@@ -16,6 +16,7 @@
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
 #             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
+#             (and the reporter node itself from a second node's console)
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
@@ -415,8 +416,12 @@ cmd_entries() {
 
 cmd_loop() {
   # The reporter's console, never the default 3131: other nodes on the lab host may answer there.
+  # A node can't be asked through its own console, so step 12 asks the reporter node through a
+  # second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
   # LAB_DIR: population/live names each node's data_dir and book_dir from it.
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
+  local second=lab-1; [ "$REPORTER" = lab-1 ] && second=lab-2
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$REPORTER" LOOP_SECOND_CONSOLE="$(console "$second")" \
+    LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }

@@ -127,7 +127,8 @@ class DryRunTest(unittest.TestCase):
             self.assertIn(f"rm -f {self.lab}/nodes/{name}/join-book/node.seed", self.out)
 
     def test_loop_from_the_reporter_console_and_pack_list(self):
-        self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813", self.out)
+        self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=lab-3 "
+                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LAB_DIR=", self.out)
         self.assertIn("loop.sh --stage 1 --population live --out", self.out)
         self.assertRegex(self.out, r"would write nodes/<\S+ node_id>\.json")
         self.assertIn("would pack", self.out)
@@ -151,6 +152,12 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("--port 9903 --console 9913 --bind-port 9923", r.stdout)
         self.assertNotIn("--port 980", r.stdout)
+
+    def test_a_lab_1_reporter_is_asked_through_lab_2s_console(self):
+        r = lab_sh("--dry-run", "loop", env={**self.env, "LAB_REPORTER": "lab-1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=lab-1 "
+                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 ", r.stdout)
 
 
 class LabRoot(unittest.TestCase):

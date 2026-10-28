@@ -17,6 +17,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "tests" / "fixtures" / "step12"
@@ -164,9 +165,12 @@ class DoctorBackendTest(Tmp):
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced):
+    def __init__(self, answers, announced, own=None):
+        """`own` is the node_id of the node this console belongs to. Like the real one, the console does
+        not answer for its own node: a 502 with the absence text, for the key and for each question."""
         fake = self
-        self.answers, self.announced = answers, announced
+        self.answers, self.announced, self.own = answers, announced, own
+        self.asked = []
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -179,10 +183,15 @@ class FakeConsole:
                 self.wfile.write(body)
 
             def do_GET(self):
+                if fake.own is not None and parse_qs(urlparse(self.path).query).get("peer") == [fake.own]:
+                    return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
                 self.reply(200, json.dumps({"announced_key_id": fake.announced}).encode())
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                fake.asked.append(body["peer_id"])
+                if fake.own is not None and body["peer_id"] == fake.own:
+                    return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 what = fake.answers[stem]
                 if what == "absence":
@@ -199,6 +208,10 @@ class FakeConsole:
 
 
 LISTED = "2" * 64
+LAB = [{"name": f"lab-{i}", "node_id": str(i) * 64, "key_id": LISTED,
+        "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}
+       for i in (1, 2, 3)]
+VERIFIED = {"checkpoints": "verified", "history_card": "verified_history_card"}
 
 
 class ReporterBackendTest(Tmp):
@@ -216,6 +229,74 @@ class ReporterBackendTest(Tmp):
             console.close()
         self.assertEqual(finding.check(self.out.parent), [])
         return json.loads((self.out / "finding.json").read_text())
+
+    def run_lab(self, *flags, second=True):
+        """Three lab nodes, lab-3 the reporter: --console is lab-3's, the second console lab-1's. Each
+        console refuses its own node."""
+        pop_dir = Path(self.tmp.name) / "lab"
+        pop_dir.mkdir()
+        (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
+        reporter, other = FakeConsole(VERIFIED, LISTED, own="3" * 64), FakeConsole(VERIFIED, LISTED, own="1" * 64)
+        argv = ["--population", str(pop_dir), "--out", str(self.out), "--console", reporter.url]
+        for flag in flags:
+            argv += {"self": ["--self-node", "lab-3"], "second": ["--second-console", other.url]}[flag]
+        try:
+            self.assertEqual(step.main(argv), 0)
+        finally:
+            reporter.close()
+            other.close()
+        self.assertEqual(finding.check(self.out.parent), [])
+        self.asked = {"reporter": reporter.asked, "second": other.asked}
+        return json.loads((self.out / "finding.json").read_text())
+
+    def per_node(self, r):
+        return [i for i in r["not_checked"] if i["what"].startswith("lab-")]
+
+    def test_with_both_flags_the_reporter_node_is_asked_through_the_second_console(self):
+        r = self.run_lab("self", "second")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])  # the plugin issues only
+        self.assertEqual(self.per_node(r), [])
+        self.assertEqual(set(self.asked["second"]), {"3" * 64})
+        self.assertEqual(set(self.asked["reporter"]), {"1" * 64, "2" * 64})
+        for n in ("lab-1", "lab-2"):
+            self.assertIn(f"{n} (asked through the reporter's console): checkpoints answered under the listed key; "
+                          "history_card/1 answered under the listed key", r["detail"])
+        self.assertIn("lab-3 (asked through a second node's console): checkpoints answered under the listed key",
+                      r["detail"])
+        self.assertNotIn("127.0.0.1", r["detail"])
+
+    def test_a_self_node_without_a_second_console_is_not_checked_never_fail(self):
+        r = self.run_lab("self")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(self.per_node(r), [step.no_second_console("lab-3")])
+        self.assertIn("can't be asked through its own console", r["not_checked"][-1]["why"])
+        self.assertIn("--second-console", r["not_checked"][-1]["why"])
+        self.assertNotIn("3" * 64, self.asked["reporter"])
+        self.assertIn("lab-3: not asked, the reporter's own node and no second console", r["detail"])
+
+    def test_with_neither_flag_every_node_is_asked_through_the_console_as_before(self):
+        r = self.run_lab()
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(set(self.asked["reporter"]), {"1" * 64, "2" * 64, "3" * 64})
+        self.assertEqual(self.asked["second"], [])
+        self.assertIn("lab-1: checkpoints answered under the listed key", r["detail"])
+        self.assertNotIn("asked through", r["detail"])
+        # lab-3 is asked through its own console, which does not answer for it, as on the first lab run.
+        self.assertEqual([i["what"] for i in self.per_node(r)],
+                         ["lab-3: the checkpoints probe answer", "lab-3: the history_card/1 probe answer"])
+
+    def test_the_flags_come_from_the_environment_too(self):
+        env = {"LOOP_SELF_NODE": "lab-3", "LOOP_SECOND_CONSOLE": "http://127.0.0.1:1"}
+        old = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        try:
+            r = self.run_lab()
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k) if v is None else os.environ.__setitem__(k, v)
+        self.assertEqual(self.asked["second"], [])
+        self.assertNotIn("3" * 64, self.asked["reporter"])
+        self.assertIn("lab-3 (asked through a second node's console)", r["detail"])
 
     def test_live_population_uses_the_reporter_backend(self):
         self.assertEqual(step.backend({"population": "live"}), "reporter")
