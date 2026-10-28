@@ -237,7 +237,7 @@ class StatusPageTest(unittest.TestCase):
 
     def gap_detail(self, n):
         text, issue = self.GAPS[n]
-        return f"alice: PASS via the carrier. Outside this step's assertion: {text} ({issue})."
+        return f"alice: PASS via the carrier. Outside this step's assertion: {text}: {issue}."
 
     def test_a_pass_row_shows_each_gap_with_its_issue_linked(self):
         for n in self.GAPS:
@@ -259,9 +259,9 @@ class StatusPageTest(unittest.TestCase):
         self.assertNotIn('<p class="gap">', self.html)
 
     def test_gaps_parse_the_convention(self):
-        g = status_page.gaps("x. Outside this step's assertion: a; b, step 02's c (o/r#7). y.")
+        g = status_page.gaps("x. Outside this step's assertion: a; b, step 02's c: o/r#7. y.")
         self.assertEqual(g, [status_page.Gap("a; b, step 02's c", "o/r#7", "https://github.com/o/r/issues/7")])
-        g = status_page.gaps("Outside this step's assertion: a o/r#1. Outside this step's assertion: b o/s#2")
+        g = status_page.gaps("Outside this step's assertion: a: o/r#1. Outside this step's assertion: b: o/s#2.")
         self.assertEqual([(x.text, x.issue) for x in g], [("a", "o/r#1"), ("b", "o/s#2")])
         self.assertEqual(status_page.gaps("Outside this step's assertion: no issue named."), [])
         self.assertEqual(status_page.gaps(""), [])

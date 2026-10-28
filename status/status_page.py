@@ -88,9 +88,7 @@ DROP_HELD = False
 HELD_NOTE = "Held: whether this row stays on the page is still to be settled."
 
 # A PASS finding names what lies outside its assertion in `detail`, one sentence
-# each: "Outside this step's assertion: <text> ... owner/repo#N." Each one is a
-# gap, shown on the row with its issue linked.
-GAP = re.compile(r"Outside this step's assertion: (.*?)\b([\w.-]+/[\w.-]+)#(\d+)\)?(?:\.(?=\s|$)|$)", re.S)
+# per gap, in the form steps/finding.py checks; gaps() reads them back.
 
 # The five numbers. A measured one reads the newest run of its population:
 #   start = run.json `started`, which loop.sh writes before the run's first step;
@@ -163,9 +161,9 @@ class Gap:
 
 
 def gaps(detail):
-    """Each "Outside this step's assertion: ... owner/repo#N." sentence in a finding's detail."""
-    return [Gap(text.rstrip(" (,;:"), f"{repo}#{n}", f"https://github.com/{repo}/issues/{n}")
-            for text, repo, n in GAP.findall(str(detail or ""))]
+    """Each gap sentence in a finding's detail, as steps/finding.py defines and checks it."""
+    return [Gap(text, issue, "https://github.com/{}/issues/{}".format(*issue.split("#")))
+            for text, issue in finding.gaps(str(detail or ""))]
 
 
 @dataclass

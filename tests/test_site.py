@@ -204,7 +204,7 @@ class SiteTest(unittest.TestCase):
 
     def test_a_cited_issue_reference_is_allowed_and_the_org_in_prose_is_not(self):
         ref = "action-state-group/agent-action-capsule#431"
-        gap = f"alice: PASS. Outside this step's assertion: the envelope signature is not verified ({ref})."
+        gap = f"alice: PASS. Outside this step's assertion: the envelope signature is not verified: {ref}."
         with tempfile.TemporaryDirectory() as d:
             findings = Path(d) / "findings"
             make_findings(findings)
@@ -342,7 +342,7 @@ class SiteTest(unittest.TestCase):
             make_findings(findings)
             for n, (name, text, issue) in gaps.items():
                 write_finding(findings, n, name, "PASS", "rehearsal",
-                              detail=f"alice: PASS. Outside this step's assertion: {text} ({issue}).")
+                              detail=f"alice: PASS. Outside this step's assertion: {text}: {issue}.")
             self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
             page = (Path(d) / "_site" / "stats" / "index.html").read_text()
         fig = re.search(r'<figure class="pop" data-population="rehearsal">(.*?)</figure>', page, re.S).group(1)
