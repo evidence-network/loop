@@ -1,0 +1,461 @@
+#!/usr/bin/env python3
+"""Step 05 Deal and push: both sides seal halves of one deal and push them; each holds and cites the other's.
+
+Usage: 05-deal --population DIR --out DIR
+
+The rehearsal population's `alice` and `bob` (their TEST keys) make one deal,
+each in its own book, through the driver steps/05-deal.setup.sh installs (a
+Rust build of evidencebook's crate at the pinned tag):
+
+- each side opens its book and cuts a checkpoint, which the other side learns;
+- each side seals its half of the deal (the deal id, the exchange's request
+  and response digests, the other side's key) citing the other side's
+  checkpoint, and appends it under a new checkpoint;
+- at completion each side whose `share_record_at_completion` is
+  `counterparty` pushes its half as a record-push bundle (the half, its
+  inclusion proof, the checkpoint it is under);
+- the receiver checks the push, holds the bytes as transmitted by their
+  record id, and seals a record in its own book citing the other half
+  (`citation_purpose: counterparty_half`) and the checkpoint it came under.
+
+Each node's setting is `<population dir>/step05/settings.json`
+(`{"<node>": {"share_record_at_completion": "counterparty" | "off"}}`); a node
+it does not name is `off`, the default of the pinned capsules plugin.
+
+The proof bytes (deal.json, verify.json and, for each side, its open
+checkpoint, half, push, held stores, citing record, checkpoints and proofs)
+are then checked by the driver's `verify`, with evidencebook's library: record
+ids recomputed, seals, checkpoint signatures and signers, inclusion. Its
+verdict is verify.json.
+
+The receiver records how it resolved each push's sender, `accepted_via`
+(the shape capsules-plugin#69 agreed): `controller_declaration` when a
+controller declaration binds the sender's evidence key, else
+`operator_stopgap`; a node set to `host_announced` records that. The
+declarations come from `<population dir>/step05/controllers.json`, each
+signed by its controller's TEST key; their format is the rehearsal's
+stand-in until the plugin's lands (#69). Refusals are replies that name the
+refused key_id and are not sealed.
+
+The finding:
+- FAIL when any check on the proof bytes does not hold (a half citing the
+  wrong counterparty checkpoint, a held half whose bytes do not recompute to
+  the digest it is held and cited by, a side that pushed nothing, a
+  counterparty whose key is bound to the receiver's own controller).
+- PASS when every check held and each side accepted under a controller
+  declaration that verifies and binds the sender's key.
+- NOT_CHECKED when every check held but a side accepted via
+  `operator_stopgap` or `host_announced`: acceptance is then the one
+  not_checked entry (Mesh-LLM/capsules-plugin#69), never a pass.
+
+On the live population each lab node's capsules plugin data dir is read
+(steps/live.py): the halves it holds from its counterparties
+(`ledger/received-capsules.jsonl`, with their provenance and the bundle's
+checkpoint and proof) and its own chain (`ledger/capsules.jsonl`). For each
+held half: the AAC Go verifier (step 01's pin) runs Class 1 on the held bytes
+and recomputes the capsule_id from them; the driver checks the half is
+included under the checkpoint it was pushed with, signed by the half's key;
+and the node's own chain carries a record citing it as `counterparty_half`,
+whose capsule_id recomputes. The parts the pinned plugin does not do are
+not_checked entries naming their issues: halves citing each other and the
+other side's checkpoint (#49), the push on by default (#68), acceptance under
+a controller declaration (#69), and the held half's signature in a second
+language (AAC#431). A node with no held half is NOT_CHECKED under #68. A node
+whose data_dir is not readable is NOT_CHECKED. One finding, the worst over the
+nodes.
+
+No spend: this step starts no exchange and pays nothing on either population.
+On the live population it reads the halves the lab run's exchanges left; the
+spend of those exchanges is the lab run's, inside its cap, and is recorded
+there. The finding's detail says so.
+
+Exit 0 once the finding is written, whatever the result; non-zero when the
+step itself broke (no driver installed, unreadable population).
+"""
+import argparse
+import base64
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "steps"))
+import finding  # noqa: E402
+import live  # noqa: E402
+
+ASSERTS = ("both sides seal halves of one deal, each citing the other half and the other side's checkpoint; "
+           "each pushes its half at completion with share_record_at_completion on; the receiver holds the "
+           "foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key "
+           "under a controller declaration")
+PINNED = ["evidencebook", "checkpointed-local-log"]
+POLICY_ON = "counterparty"
+DEFAULT_POLICY = "off"
+SIDES = ("alice", "bob")
+SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkpoint.json", "half-inclusion.json",
+              "push.json", "refusal.json", "held/received-records.jsonl", "held/received-provenance.jsonl",
+              "held/received-inclusion.jsonl", "citing.json", "citing-inclusion.json", "checkpoint.json",
+              "placement.json"]
+PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
+ISSUE_69 = "Mesh-LLM/capsules-plugin#69"
+ACCEPTANCE_WHAT = "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration"
+ACCEPT_MODES = ("controller_declaration", "operator_stopgap", "host_announced")
+STAND_IN = finding.outside("the controller declaration's format, which is the rehearsal's stand-in "
+                           "(steps/05-deal.d) until the capsules plugin's lands", ISSUE_69)
+
+
+def acceptance(vias):
+    """The not_checked entry for sides accepted other than under a controller declaration."""
+    return {"what": ACCEPTANCE_WHAT,
+            "why": f"accepted via {', '.join(vias)}: only controller_declaration meets the assertion",
+            "issue": ISSUE_69}
+NO_SPEND = "Spend: none; this step starts no exchange and pays nothing (would spend 0 USD)."
+
+
+def driver():
+    """The installed driver binary, or None."""
+    env = os.environ.get("LOOP_STEP05_DEAL_BIN")
+    if env:
+        p = Path(env)
+    else:
+        p = tools_dir() / "05-deal" / "bin" / "loop-step05-deal"
+    return p if p.is_file() and os.access(p, os.X_OK) else None
+
+
+def tools_dir():
+    return Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop"))
+
+
+def run(bin_, *args):
+    return subprocess.run([str(bin_), *map(str, args)], capture_output=True, text=True, timeout=300)
+
+
+def nodes(population_dir):
+    """(population name, {name: (private key PEM, public key PEM)}) for alice and bob."""
+    pop = json.loads((Path(population_dir) / "population.json").read_text(encoding="utf-8"))
+    keys = {}
+    for n in pop["nodes"]:
+        if n["name"] in SIDES:
+            key_dir = Path(n["key_dir"])
+            key_dir = key_dir if key_dir.is_absolute() else ROOT / key_dir
+            keys[n["name"]] = (key_dir / "node-key.pem", key_dir / "node-key.pub.pem")
+    missing = [s for s in SIDES if s not in keys]
+    if missing:
+        raise KeyError(f"{population_dir}: no node named {', '.join(missing)}")
+    return pop["population"], keys
+
+
+def settings(population_dir):
+    """Each side's {share_record_at_completion, accepted_via}: a side the settings do not
+    name is off (the pinned plugin's default) and accepts under a controller declaration
+    when one binds the sender."""
+    p = Path(population_dir) / "step05" / "settings.json"
+    doc = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    out = {}
+    for s in SIDES:
+        side = doc.get(s) or {}
+        out[s] = {"share_record_at_completion": side.get("share_record_at_completion", DEFAULT_POLICY),
+                  "accepted_via": side.get("accepted_via", ACCEPT_MODES[0])}
+        if out[s]["accepted_via"] not in ACCEPT_MODES:
+            raise ValueError(f"{p}: {s} accepted_via is one of {', '.join(ACCEPT_MODES)}")
+    return out
+
+
+def raw_public_hex(pub_pem):
+    """The raw Ed25519 key of an SPKI PEM, hex."""
+    der = base64.b64decode("".join(ln for ln in Path(pub_pem).read_text().splitlines() if not ln.startswith("-----")))
+    if len(der) != 44 or der[:12] != bytes.fromhex("302a300506032b6570032100"):
+        raise ValueError(f"{pub_pem}: not an Ed25519 SPKI public key")
+    return der[12:].hex()
+
+
+def declarations(bin_, population_dir, keys, time):
+    """The controller declarations `<population dir>/step05/controllers.json` names, each
+    signed by its controller's TEST key: [{...}], or [] when there is no such file.
+
+    controllers.json: {"controllers": [{"id", "key_dir" (controller-key.pem), "nodes": [...]}]}
+    """
+    p = Path(population_dir) / "step05" / "controllers.json"
+    if not p.is_file():
+        return []
+    out = []
+    for c in json.loads(p.read_text(encoding="utf-8"))["controllers"]:
+        key_dir = Path(c["key_dir"])
+        key_dir = key_dir if key_dir.is_absolute() else ROOT / key_dir
+        bound = ",".join(raw_public_hex(keys[n][1]) for n in c["nodes"])
+        r = run(bin_, "declare", "--controller-key", key_dir / "controller-key.pem", "--controller-id", c["id"],
+                "--keys", bound, "--time", time)
+        if r.returncode != 0:
+            raise RuntimeError(f"driver declare: {r.stderr.strip()}")
+        out.append(json.loads(r.stdout))
+    return out
+
+
+def deal(bin_, population, keys, side_settings, out, time, decls=(), plant=None):
+    """Run the deal both sides make; write the proof files into out."""
+    out = Path(out)
+    with tempfile.TemporaryDirectory() as work:
+        decl_file = Path(work) / "declarations.json"
+        decl_file.write_text(json.dumps(list(decls)))
+        args = ["deal", "--a-key", keys["alice"][0], "--b-key", keys["bob"][0], "--a-name", "alice",
+                "--b-name", "bob", "--population", population, "--deal-id", f"{population}-deal-{time}",
+                "--time", time, "--work", Path(work) / "books", "--out", out, "--declarations", decl_file]
+        for flag, side in (("a", "alice"), ("b", "bob")):
+            args += [f"--{flag}-policy", side_settings[side]["share_record_at_completion"],
+                     f"--{flag}-accept", side_settings[side]["accepted_via"]]
+        r = run(bin_, *args, *(["--plant", plant] if plant else []))
+    if r.returncode != 0:
+        raise RuntimeError(f"driver deal: {r.stderr.strip()}")
+
+
+def decide(bin_, out, *, population, keys, started):
+    """Verify the proof bytes in out with the driver and write the finding."""
+    out = Path(out)
+    r = run(bin_, "verify", "--a-pub", keys["alice"][1], "--b-pub", keys["bob"][1], "--a-name", "alice",
+            "--b-name", "bob", "--dir", out)
+    if r.returncode not in (0, 1):
+        raise RuntimeError(f"driver verify: {r.stderr.strip()}")
+    (out / "verify.json").write_text(r.stdout)
+    verdict = json.loads(r.stdout)
+    held = sorted({c["check"] for c in verdict["checks"] if c["ok"]})
+    failed = [f"{c['side']} {c['check']} ({c['detail']})" for c in verdict["checks"] if not c["ok"]]
+    proof = [p for p in PROOF if (out / p).is_file()]
+    where = f"deal {verdict['deal_id']} between books {', '.join(verdict['books'])}"
+    if r.returncode == 1 or failed:
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}. {NO_SPEND}",
+                             started=started)
+    unaccepted = verdict.get("acceptance_not_checked") or []
+    if unaccepted:
+        vias = sorted({f"{u['accepted_via']} ({u['side']})" for u in unaccepted})
+        detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
+                  f"Acceptance not checked: {', '.join(vias)} is not a controller declaration. {NO_SPEND}")
+        return finding.write(out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=detail, not_checked=[acceptance(vias)], started=started)
+    detail = (f"{where}: evidencebook found these held on the proof bytes, for both sides: {', '.join(held)}. "
+              f"Each push was accepted on the sender's evidence key under a controller declaration (rehearsal "
+              f"TEST controller keys) that binds it, and the two keys are under different controllers. "
+              f"{NO_SPEND} {STAND_IN}")
+    return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED,
+                         proof=proof, detail=detail, started=started)
+
+
+def clean(out):
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    for p in ["deal.json", "declarations.json", "verify.json", "finding.json"]:
+        (out / p).unlink(missing_ok=True)
+    for s in SIDES:
+        shutil.rmtree(out / s, ignore_errors=True)
+
+
+# --- The live population: what each lab node's capsules plugin holds ----------
+LIVE_PINNED = ["capsules", "aac-go", "evidencebook", "checkpointed-local-log"]
+LIVE_SETUP = "none: steps/05-deal.setup.sh has not installed it"
+LIVE_HALVES = {
+    "what": "halves that cite each other and the other side's checkpoint",
+    "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's "
+           "checkpoint; only the receiver's citing record cites the half it holds",
+    "issue": "Mesh-LLM/capsules-plugin#49",
+}
+LIVE_DEFAULT = {
+    "what": "each side pushing its half at completion by default",
+    "why": "share_record_at_completion is off by default in the pinned plugin, and a node's setting is not "
+           "in its data dir to read",
+    "issue": "Mesh-LLM/capsules-plugin#68",
+}
+LIVE_ACCEPTANCE = dict(what=ACCEPTANCE_WHAT, issue=ISSUE_69, why="the pinned capsules plugin accepts a push on the host-announced peer id "
+                                       "(or CAPSULES_PEER_KEYS), not on an evidence key under a controller "
+                                       "declaration")
+LIVE_SIGNATURE = {
+    "what": "the held half's producer signature, in a second language",
+    "why": "Class 1 does not include it and the pinned Go verifier has no envelope mode",
+    "issue": "action-state-group/agent-action-capsule#431",
+}
+STRIPPED = ("capsule_id", "signature", "key_id")
+
+
+def cross_language():
+    return tools_dir() / "01-seal" / "bin" / "cross_language"
+
+
+def live_tools(bin_):
+    """[{what, why, issue}] for each live tool missing or not at its pin."""
+    missing = []
+    if bin_ is None:
+        missing.append({"what": "the step 05 driver (evidencebook)", "why": "not installed", "issue": LIVE_SETUP})
+    verifier = cross_language()
+    if not (verifier.is_file() and os.access(verifier, os.X_OK)):
+        missing.append({"what": "aac-go", "why": f"{verifier} is not installed", "issue": LIVE_SETUP})
+    elif shutil.which("go"):
+        want = finding.pins()["aac-go"][1].rsplit("/", 1)[-1]
+        out = subprocess.run(["go", "version", "-m", str(verifier)], capture_output=True, text=True).stdout
+        mods = [ln.split() for ln in out.splitlines() if ln.strip().startswith("mod")]
+        got = next((m[2] for m in mods if len(m) > 2 and m[1].endswith("agent-action-capsule/go")), "unreadable")
+        if got != want:
+            missing.append({"what": "aac-go", "why": f"installed {got}, versions.lock pins {want}", "issue": LIVE_SETUP})
+    return missing
+
+
+def lines(path):
+    """The non-empty lines of a JSON-lines file, as text; none when it is absent."""
+    try:
+        return [ln for ln in Path(path).read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except FileNotFoundError:
+        return []
+
+
+def parsed(text):
+    try:
+        v = json.loads(text)
+        return v if isinstance(v, dict) else None
+    except ValueError:
+        return None
+
+
+def capsule_checks(raw):
+    """Class 1 on the bytes and the capsule_id recomputed from them, by the Go verifier: (ok, detail)."""
+    verifier = str(cross_language())
+    v = subprocess.run([verifier, "verify"], input=raw.encode(), capture_output=True, timeout=120)
+    capsule = parsed(raw) or {}
+    carried = capsule.get("capsule_id")
+    stripped = json.dumps({k: x for k, x in capsule.items() if k not in STRIPPED})
+    s = subprocess.run([verifier, "seal"], input=stripped.encode(), capture_output=True, timeout=120)
+    recomputed = (parsed(s.stdout.decode(errors="replace")) or {}).get("capsule_id") if s.returncode == 0 else None
+    printed = (v.stdout.decode(errors="replace").split() or [None])[-1]
+    ok = v.returncode == 0 and printed == carried and recomputed == carried and carried is not None
+    return ok, (f"Class 1 exit {v.returncode}; carried {carried}, recomputed {recomputed}"
+                + ("" if v.returncode == 0 else f" ({v.stderr.decode(errors='replace').strip()})"))
+
+
+def cites(capsule, capsule_id):
+    return any(isinstance(r, dict) and r.get("citation_purpose") == "counterparty_half" and r.get("digest") == capsule_id
+               for r in capsule.get("references") or [])
+
+
+def live_node(bin_, name, data_dir, out, work):
+    """Check every half the node holds: (result, proof, detail, pairs)."""
+    out.mkdir(parents=True, exist_ok=True)
+    work.mkdir(parents=True, exist_ok=True)
+    ledger = data_dir / "ledger"
+    held = lines(ledger / "received-capsules.jsonl")
+    provenance = [p for p in map(parsed, lines(ledger / "received-provenance.jsonl")) if p]
+    inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
+    own_lines = lines(ledger / "capsules.jsonl")
+    own = [c for c in map(parsed, own_lines) if c]
+    if not held:
+        return "NOT_CHECKED", [], f"node {name}: holds no pushed half", []
+    checks, proof = [], []
+    for n, raw in enumerate(held, 1):
+        stem = f"held-{n}"
+        (out / f"{stem}.json").write_text(raw + "\n")
+        proof.append(f"{stem}.json")
+        capsule = parsed(raw) or {}
+        cid = capsule.get("capsule_id")
+        c = {"held": stem, "capsule_id": cid}
+        ok, detail = capsule_checks(raw)
+        c["held_by_digest"] = {"ok": ok, "detail": detail}
+        prov = next((p for p in provenance if p.get("capsule_id") == cid), None)
+        c["provenance"] = {"ok": prov is not None,
+                           "detail": f"received from {prov.get('received_from')} via {prov.get('via')} at "
+                                     f"{prov.get('received_at')}" if prov else "no provenance line names it"}
+        inc = next((i for i in inclusions if i.get("half_capsule_id") == cid), None)
+        if inc is None:
+            c["pushed_under_checkpoint"] = {"ok": False, "detail": "no held checkpoint and proof name it"}
+        else:
+            (work / f"{stem}-cp.json").write_text(json.dumps(inc.get("checkpoint")))
+            (work / f"{stem}-proof.json").write_text(json.dumps(inc.get("inclusion_proof")))
+            r = run(bin_, "held", "--record-id", cid or "", "--key-id", capsule.get("key_id") or "",
+                    "--checkpoint", work / f"{stem}-cp.json", "--inclusion", work / f"{stem}-proof.json")
+            v = parsed(r.stdout) or {"ok": False, "detail": r.stderr.strip()}
+            (out / f"{stem}-inclusion.json").write_text(json.dumps(inc, indent=2, sort_keys=True) + "\n")
+            proof.append(f"{stem}-inclusion.json")
+            c["pushed_under_checkpoint"] = {"ok": r.returncode == 0 and v.get("ok") is True, "detail": v.get("detail")}
+        citing = [ln for ln, cap in zip(own_lines, map(parsed, own_lines)) if cap and cites(cap, cid)]
+        if not citing:
+            c["cited"] = {"ok": False, "detail": f"none of the node's {len(own)} records cites {cid} as counterparty_half"}
+        else:
+            (out / f"{stem}-citing.json").write_text(citing[0] + "\n")
+            proof.append(f"{stem}-citing.json")
+            ok, detail = capsule_checks(citing[0])
+            c["cited"] = {"ok": ok, "detail": f"record {parsed(citing[0]).get('capsule_id')} cites it: {detail}"}
+        checks.append(c)
+    (out / "checks.json").write_text(json.dumps({"node": name, "held": checks}, indent=2, sort_keys=True) + "\n")
+    proof.append("checks.json")
+    failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
+    pairs = [(capsule.get("model_attestation", {}).get("compute_attestation", {}).get("agent_input_digest"),
+              c["capsule_id"]) for c, capsule in zip(checks, map(lambda r: parsed(r) or {}, held))]
+    if failed:
+        return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs
+    return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
+                                  f"the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was "
+                                  f"pushed with (evidencebook), and cited as counterparty_half by the node's own "
+                                  f"record"), pairs
+
+
+def main_live(pop, out, started):
+    out.mkdir(parents=True, exist_ok=True)
+    bin_ = driver()
+    missing = live_tools(bin_)
+    results, proof, details, not_checked = [], [], [], list(missing)
+    own_inputs = {}
+    with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
+        for entry in pop["nodes"]:
+            name = entry["name"]
+            data_dir = live.readable(entry, "data_dir", "ledger")
+            if data_dir is None or missing:
+                results.append("NOT_CHECKED")
+                if data_dir is None:
+                    not_checked.append(live.not_checked(name, "data_dir"))
+                details.append(f"node {name}: not checked, "
+                               f"{'data_dir not set or unreadable' if data_dir is None else 'a pinned tool is missing'}")
+                continue
+            if (out / name).exists():
+                shutil.rmtree(out / name)
+            result, files, detail, pairs = live_node(bin_, name, data_dir, out / name, Path(tmp) / name)
+            results.append(result)
+            proof += [f"{name}/{f}" for f in files]
+            details.append(detail)
+            own_inputs[name] = {d for d, _ in pairs if d}
+            if not files and LIVE_DEFAULT not in not_checked:
+                not_checked.append(LIVE_DEFAULT)
+    seen = [d for ds in own_inputs.values() for d in ds]
+    both = sorted({d for d in seen if seen.count(d) > 1})
+    details.append(f"exchanges with a half held on each of two nodes: {len(both)}")
+    for nc in (LIVE_HALVES, LIVE_DEFAULT, LIVE_ACCEPTANCE, LIVE_SIGNATURE):
+        if nc not in not_checked:
+            not_checked.append(nc)
+    result = live.worst(results + ["NOT_CHECKED"])
+    finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                  proof=proof, detail="; ".join(details) + f". {NO_SPEND}", not_checked=not_checked,
+                  started=started)
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    pop = json.loads((Path(a.population) / "population.json").read_text(encoding="utf-8"))
+    if pop["population"] == "live":
+        return main_live(pop, Path(a.out), started)
+    bin_ = driver()
+    if bin_ is None:
+        print("05-deal: the driver is not installed; run steps/05-deal.setup.sh", file=sys.stderr)
+        return 2
+    population, keys = nodes(a.population)
+    out = Path(a.out)
+    clean(out)
+    deal(bin_, population, keys, settings(a.population), out, started,
+         decls=declarations(bin_, a.population, keys, started))
+    decide(bin_, out, population=population, keys=keys, started=started)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

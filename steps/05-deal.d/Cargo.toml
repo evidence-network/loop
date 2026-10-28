@@ -1,0 +1,25 @@
+[package]
+name = "loop-step05-deal"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Step 05 Deal and push's driver: two books seal halves of one deal, push them as bundles, hold and cite the other side's half; the proof bytes are checked with the library."
+
+[[bin]]
+name = "loop-step05-deal"
+path = "src/main.rs"
+
+# The same pins as step 02's driver: evidencebook is the Rust crate in
+# action-state-group/evidencebook at the tag versions.lock pins (v0.8.1);
+# checkpointed-local-log is the log that tag's crate embeds
+# (crates/checkpointed-local-log-v0.3.1). Cargo.lock is committed and starts
+# from step 02's; steps/05-deal.setup.sh builds with --locked and checks it
+# against versions.lock.
+[dependencies]
+evidencebook = { git = "https://github.com/action-state-group/evidencebook", tag = "v0.8.1" }
+checkpointed-local-log = "=0.3.1"
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+hex = "0.4"
+sha2 = "0.10"
