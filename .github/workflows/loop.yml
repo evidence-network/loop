@@ -1,8 +1,9 @@
 # The loop, stage 1, on the rehearsal population: nightly, on every pull request, and by hand.
-# Each step's setup.sh installs its pins from versions.lock; loop.sh runs the steps and checks
-# their findings; findings/ is uploaded as an artifact. On the nightly run only, each step whose
-# finding is FAIL opens (or comments on) one issue in this repository, labelled loop-step-NN,
-# naming the component repository that owns the step.
+# Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
+# tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
+# job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
+# only, each step whose finding is FAIL opens (or comments on) one issue in this repository,
+# labelled loop-step-NN, naming the component repository that owns the step.
 name: loop
 
 on:
@@ -24,19 +25,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      # A setup that fails does not stop the run: its step then fails, and the finding says so.
+      # capsulectl and capsulectl-book are built from source at their pin (steps/12-join.setup.sh).
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: false
+      # A setup that fails fails the job: a step without its pinned tools cannot be judged.
       - name: Install each step's pins
         run: |
+          set -e
           for s in steps/*.setup.sh; do
             [ -e "$s" ] || continue
             echo "::group::$s"
-            bash "$s" || echo "::warning::$s exited $?"
+            bash "$s"
             echo "::endgroup::"
           done
+      # The planted-failure tests of the steps that need real tools. With the tools installed
+      # above they run; LOOP_REQUIRE_TOOLS=1 turns a missing tool into an error, never a skip.
+      - name: Step tests with the pinned tools
+        env:
+          LOOP_REQUIRE_TOOLS: "1"
+        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step12_join -v
+      # --strict: a rehearsal FAIL or MALFORMED finding fails the job (exit 3, or 1 for a refused finding).
       - name: Run stage 1 on the rehearsal population
         run: |
           set -o pipefail
-          ./loop.sh --stage 1 --population rehearsal --out "findings/$(date -u +%F)-rehearsal" | tee loop-summary.txt
+          ./loop.sh --stage 1 --population rehearsal --strict --out "findings/$(date -u +%F)-rehearsal" | tee loop-summary.txt
       - name: Upload the findings
         if: always()
         uses: actions/upload-artifact@v4
