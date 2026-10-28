@@ -290,6 +290,13 @@ def judge_reporter_line(stem, line, entry):
                   "issue": "Mesh-LLM/capsules-plugin#53"}
 
 
+def said(line):
+    """A reporter line's state for detail. A "verified" line reaching detail matched the listed key; the
+    finding words it so, as a NOT_CHECKED detail may not claim a check (steps/finding.py)."""
+    state = line.split(" ", 1)[0]
+    return "answered under the listed key" if state == "verified" else state
+
+
 def run_reporter(pop, out, console, timeout=30):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
     at = daily_report.utc_now()
@@ -312,8 +319,7 @@ def run_reporter(pop, out, console, timeout=30):
             if nc:
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         failures += bad
-        lines.append(f"{name}: " + "; ".join(f"{daily_report.QUESTION_NAMES[k]} {v.split(' ', 1)[0]}"
-                                                 for k, v in result.items()))
+        lines.append(f"{name}: " + "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
     return failures, not_checked, proof, lines
 
 

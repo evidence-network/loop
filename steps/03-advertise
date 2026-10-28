@@ -24,7 +24,8 @@ Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
 node gets stand-ins, named as such in the finding. The staple's signature and
 the checkpoint attestation are not verified here (no pinned verifier for the
-first; step 02 owns the second): each is a not_checked entry.
+first; step 02 owns the second). Both are outside the assertion: on a PASS
+each is a sentence in detail, otherwise a not_checked entry.
 """
 import argparse
 import base64
@@ -278,21 +279,24 @@ def main(argv=None):
                     "issue": LIVE_ISSUE if live else "evidence-network/loop: step 12 Join (steps/12-join) publishes it"}
                    for r in records if r["result"] == "NOT_CHECKED"]
     checked = [r for r in records if r["result"] == "PASS"]
+    # The staple's signature and the checkpoint attestation are outside the assertion: on a PASS they are
+    # sentences in detail, otherwise not_checked entries. A policy digest not checked is inside it.
+    outside = []
     for r in checked:
-        not_checked.append({"what": f"{r['name']}: the stapled history_card/1 verifies",
-                            "why": "its bytes, digest, profile and responder are checked; its signature is not, "
-                                   "as no pinned history_card/1 verifier is callable from the loop"
-                                   + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),
-                            "issue": STAPLE_ISSUE})
-        not_checked.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
-                            "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
-                            "issue": CHECKPOINT_ISSUE})
+        outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies",
+                        "why": "its bytes, digest, profile and responder are checked; its signature is not, "
+                               "as no pinned history_card/1 verifier is callable from the loop"
+                               + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),
+                        "issue": STAPLE_ISSUE})
+        outside.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
+                        "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
+                        "issue": CHECKPOINT_ISSUE})
         for n in r["notes"]:
             not_checked.append({"what": f"{r['name']}: the policy digest", "why": n,
                                 "issue": "evidence-network/loop: the step fetches policies from the carrier only"})
     if "FAIL" in results:
         result = "FAIL"
-    elif checked and "NOT_CHECKED" not in results:
+    elif checked and not not_checked:
         result = "PASS"
     else:
         result = "NOT_CHECKED"
@@ -301,9 +305,19 @@ def main(argv=None):
         + (f" ({'; '.join(r['errors'])})" if r["errors"] else "")
         + (f", inputs {r['inputs']}" if "inputs" in r else "")
         for r in records)
+    detail += f". Runner tools: {tool_versions()} (not versions.lock components)."
+    if result == "PASS":
+        detail += " Outside this step's assertion: " + "; ".join(
+            f"{r['name']}: the stapled history_card/1 signature is not verified, as no pinned history_card/1 "
+            f"verifier is callable from the loop ({STAPLE_ISSUE})"
+            + (", and the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else "")
+            + f"; {r['name']}: the stapled checkpoint attestation is not verified here, as that is step 02's "
+            f"assertion ({CHECKPOINT_ISSUE})"
+            for r in checked) + "."
+    else:
+        not_checked += outside
     finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=[], proof=proof,
-                  detail=detail + f". Runner tools: {tool_versions()} (not versions.lock components).",
-                  not_checked=not_checked, started=started)
+                  detail=detail, not_checked=not_checked, started=started)
     return 0
 
 

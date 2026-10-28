@@ -250,7 +250,7 @@ class StatusPageTest(unittest.TestCase):
     def test_no_cell_claims_checked_verified_or_witnessed_unless_pass(self):
         nc = [{"what": "receipt", "why": "the witness key was never verified", "issue": "x#1"}]
         self.write(1, "PASS")
-        self.write(2, "NOT_CHECKED", not_checked=nc, detail="nothing was checked")
+        self.write(2, "NOT_CHECKED", not_checked=nc, detail="the receipt was not checked")
         self.write(3, "FAIL", detail="the commitment was not verified")
         d = self.write(12, "PASS")
         (d / "proof.bin").write_bytes(b"changed\n")  # a PASS claim the check refuses

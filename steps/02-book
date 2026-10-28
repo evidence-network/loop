@@ -97,7 +97,7 @@ def decide(bin_, out, *, population, book_id, pub, started):
         return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
                              proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}",
                              started=started)
-    detail = (f"{where}: held on the proof bytes, checked by evidencebook: {', '.join(held)}. "
+    detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
               f"Witness part not checked ({verdict['witness_receipts']} receipts on the checkpoint).")
     return finding.write(out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=PINNED,
                          proof=proof, detail=detail, not_checked=[WITNESS_NOT_CHECKED], started=started)

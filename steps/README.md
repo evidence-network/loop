@@ -4,6 +4,11 @@
 runs the stage's steps in order. Stage 1 (M1) is steps 01 Seal, 02 Book,
 03 Advertise and 12 Join.
 
+`loop.sh` needs bash 4 or later and `timeout` from GNU coreutils. Without
+either it stops with exit 2 before any step runs. On macOS, install a newer
+bash and coreutils (`brew install bash coreutils`) and put coreutils' gnubin
+directory first on PATH.
+
 ## A step
 
 A step is an executable `steps/<NN>-<name>` (Python 3, standard library
@@ -29,6 +34,19 @@ steps/<NN>-<name> --population <population dir> --out <findings dir>/<NN>-<name>
 - A test plants one failure per step and shows the step's finding turn `FAIL`.
 
 `python3 steps/finding.py check <findings dir>` refuses a malformed finding.
+Among what it refuses:
+
+- A `NOT_CHECKED` finding whose `asserts` or `detail` claims a check: the
+  words "checked", "witnessed" and "verified". Negated, they are allowed:
+  "not checked", "not verified", "never verified", "could not be verified",
+  "has not been checked". "unchecked", "unverified" and "NOT_CHECKED" are
+  other words and are allowed too.
+- A `PASS` with `not_checked` entries. A PASS covers its assertion fully.
+  Anything outside the assertion that was not checked is not part of the
+  result; the step says so in `detail` as a sentence, without claiming it
+  was checked: "Outside this step's assertion: ...".
+- A proof path that is absolute, starts with `/` or contains `..`. Proof
+  paths are relative to the step's directory.
 
 ## The population
 

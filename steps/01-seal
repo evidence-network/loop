@@ -16,7 +16,8 @@ recomputes the capsule_id from them on its own. The step checks, on those bytes:
   key             key_id is the node's public key
 
 The producer envelope's signature is not verified in a second language (Class 1
-does not include it); every finding lists that under not_checked.
+does not include it). It is outside the assertion: a PASS says so in detail,
+any other finding lists it under not_checked.
 
 --sealed CAPSULE skips sealing and checks a capsule capsule-emit sealed earlier
 the same way (the planted-failure tests use it).
@@ -54,6 +55,8 @@ SIGNATURE = {"what": "the producer envelope signature, verified in a second lang
              "why": "Class 1 does not include it and the pinned Go verifier command has no envelope mode; "
                     "only key_id is matched to the node's key",
              "issue": "to be filed"}
+OUTSIDE = ("Outside this step's assertion: the producer envelope signature is not verified in a second language "
+           "(Class 1 does not include it; only key_id is matched to the node's key).")
 
 SEAL = r"""
 import json, sys
@@ -202,8 +205,12 @@ def main(argv=None):
         not_checked = [n for n in not_checked if n["what"] != "capsule-emit"]
 
     def write(result, proof, detail, nc=()):
+        if result == "PASS":  # a PASS covers its assertion; the signature is outside it
+            detail = f"{detail}. {OUTSIDE}"
+        else:
+            nc = [*nc, SIGNATURE]
         return finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
-                             proof=proof, detail=detail, not_checked=[*nc, SIGNATURE], started=started)
+                             proof=proof, detail=detail, not_checked=nc, started=started)
 
     if not_checked:
         write("NOT_CHECKED", [], f"node {node}: a pinned tool is missing or not the pin", not_checked)
