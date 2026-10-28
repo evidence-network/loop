@@ -10,8 +10,9 @@ signed by the node's plugin key (joins/README.md is the format). This refuses on
 - whose spki is not an Ed25519 key, or is not the key key_id names;
 - whose signature does not verify under spki, over its RFC 8785 (JCS) canonical
   form without `sig` (the canonicalisation of check_commitment.py);
-- whose consent_sha256 is not the sha256 of today's operator statement
-  (check_nodes.CONSENT); a digest of a known older statement is named;
+- whose consent_sha256 is not the sha256 of today's switch statement
+  (joins/SWITCH_CONSENT.txt, its bytes); a digest of the nodes/ operator statement
+  (check_nodes.CONSENT) or of a known older statement is named;
 - whose `at` is more than five minutes in the future;
 - that carries personal data, by the rules of check_personal_data.py.
 
@@ -30,14 +31,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_commitment  # noqa: E402
+import check_nodes  # noqa: E402
 import check_personal_data  # noqa: E402
-from check_nodes import CONSENT  # noqa: E402
 
 KINDS = ("join/1", "leave/1")
 FIELDS = {"kind": str, "node_id": str, "key_id": str, "consent_sha256": str, "at": str, "spki": str, "sig": dict}
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SKEW = dt.timedelta(minutes=5)
+# The statement shown under the join switch in mesh-llm setup, kept only in this file.
+CONSENT_FILE = Path(__file__).resolve().parent.parent / "joins" / "SWITCH_CONSENT.txt"
+CONSENT = CONSENT_FILE.read_bytes().decode("utf-8")
 
 
 def consent_sha256(text):
@@ -45,6 +49,8 @@ def consent_sha256(text):
 
 
 CONSENT_SHA256 = consent_sha256(CONSENT)
+# A nodes/ entry agrees to check_nodes.CONSENT ("remove this entry"); a join does not.
+NODES_CONSENT_SHA256 = consent_sha256(check_nodes.CONSENT)
 # Statements operators agreed to before today's, word for word, so a stale join says which one it carries.
 OLDER_CONSENTS = {
     "the first operator statement (replaced 2026-10-27)": (
@@ -89,10 +95,13 @@ def field_errors(doc):
 def consent_errors(doc):
     if doc["consent_sha256"] == CONSENT_SHA256:
         return []
+    if doc["consent_sha256"] == NODES_CONSENT_SHA256:
+        return ["consent_sha256 is the digest of the nodes/ operator statement; "
+                "a join agrees to the switch statement in joins/SWITCH_CONSENT.txt"]
     for label, text in OLDER_CONSENTS.items():
         if doc["consent_sha256"] == consent_sha256(text):
-            return [f"consent_sha256 is the digest of {label}, not of today's operator statement; join again"]
-    return ["consent_sha256 is not the digest of the operator statement in nodes/README.md"]
+            return [f"consent_sha256 is the digest of {label}, not of today's switch statement; join again"]
+    return ["consent_sha256 is not the digest of the switch statement in joins/SWITCH_CONSENT.txt"]
 
 
 def verify(doc, now):

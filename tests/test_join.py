@@ -47,6 +47,26 @@ def resign(doc, owner="alice"):
     return check_commitment.sign(doc, KEYS / owner / "node-key.pem")
 
 
+class SwitchStatement(unittest.TestCase):
+    def test_the_file_is_one_line_with_no_trailing_newline(self):
+        raw = (ROOT / "joins" / "SWITCH_CONSENT.txt").read_bytes()
+        self.assertTrue(raw)
+        self.assertNotIn(b"\n", raw)
+        self.assertNotIn(b"\r", raw)
+        self.assertEqual(raw.decode("utf-8"), check_join.CONSENT)
+
+    def test_the_verifier_uses_its_digest(self):
+        raw = (ROOT / "joins" / "SWITCH_CONSENT.txt").read_bytes()
+        self.assertEqual(check_join.CONSENT_SHA256, hashlib.sha256(raw).hexdigest())
+
+    def test_the_verifier_reads_it_from_the_repository_not_the_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = subprocess.run([sys.executable, "-B", "-c", "import check_join; print(check_join.CONSENT_SHA256)"],
+                               cwd=tmp, env={"PYTHONPATH": str(ROOT / "scripts")}, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), check_join.CONSENT_SHA256)
+
+
 @unittest.skipUnless(openssl_ok(), NO_OPENSSL)
 class Fixtures(unittest.TestCase):
     def test_good_join_passes(self):
@@ -73,9 +93,16 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(set(load("good-join.json")), set(check_join.FIELDS))
         self.assertFalse({"handle", "operator", "nostr", "npub", "email"} & set(check_join.FIELDS))
 
-    def test_consent_digest_is_of_check_nodes_consent(self):
-        self.assertEqual(load("good-join.json")["consent_sha256"],
-                         hashlib.sha256(check_nodes.CONSENT.encode("utf-8")).hexdigest())
+    def test_nodes_consent_join_is_refused_and_named(self):
+        self.assertEqual(errors("nodes-consent-join.json"),
+                         ["consent_sha256 is the digest of the nodes/ operator statement; "
+                          "a join agrees to the switch statement in joins/SWITCH_CONSENT.txt"])
+
+    def test_consent_digest_is_of_the_switch_statement_file(self):
+        raw = (ROOT / "joins" / "SWITCH_CONSENT.txt").read_bytes()
+        self.assertEqual(load("good-join.json")["consent_sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertEqual(check_join.CONSENT_SHA256, hashlib.sha256(raw).hexdigest())
+        self.assertNotEqual(check_join.CONSENT, check_nodes.CONSENT)
 
     def test_generator_reproduces_the_committed_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,7 +134,8 @@ class Refusals(unittest.TestCase):
 
     def test_unknown_consent_digest_is_refused(self):
         doc = resign({**load("good-join.json"), "consent_sha256": "0" * 64})
-        self.assertEqual(self.check(doc), ["consent_sha256 is not the digest of the operator statement in nodes/README.md"])
+        self.assertEqual(self.check(doc),
+                         ["consent_sha256 is not the digest of the switch statement in joins/SWITCH_CONSENT.txt"])
 
     def test_at_more_than_five_minutes_ahead_is_refused(self):
         doc = load("good-join.json")
@@ -163,7 +191,8 @@ class Directory(unittest.TestCase):
         script = str(ROOT / "scripts" / "check_join.py")
         r = subprocess.run([sys.executable, "-B", script, str(FIX)], capture_output=True, text=True)
         self.assertEqual(r.returncode, 1)
-        for name in ("forged-join.json", "forged-join-own-key.json", "stale-consent-join.json", "handle-join.json"):
+        for name in ("forged-join.json", "forged-join-own-key.json", "stale-consent-join.json",
+                     "nodes-consent-join.json", "handle-join.json"):
             self.assertIn(name, r.stderr)
         with tempfile.TemporaryDirectory() as tmp:
             for name in ("good-join.json", "good-leave.json"):

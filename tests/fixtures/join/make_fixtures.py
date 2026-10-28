@@ -6,11 +6,12 @@ Usage: python3 -B tests/fixtures/join/make_fixtures.py [OUT_DIR]   (default: thi
 Signs with population/rehearsal/keys/{alice,bob}: TEST keys, committed on purpose,
 never used live. A test node's node_id is its key_id, as on the rehearsal
 population. Writes:
-- good-join.json: alice joins under today's operator statement;
+- good-join.json: alice joins under today's switch statement (joins/SWITCH_CONSENT.txt);
 - good-leave.json: alice leaves, an hour later;
 - forged-join.json: claims alice's key_id and key, signed by bob;
 - forged-join-own-key.json: claims alice's key_id, carries and is signed by bob's key;
 - stale-consent-join.json: alice joins under the first operator statement;
+- nodes-consent-join.json: alice joins under the nodes/ operator statement (check_nodes.CONSENT);
 - handle-join.json: alice's join with an extra `handle` field, signed with it.
 Ed25519 signatures are deterministic, so rerunning rewrites the files identically.
 """
@@ -57,6 +58,8 @@ def fixtures():
         "forged-join.json": check_commitment.sign(record("join/1", "alice", JOIN_AT), bob),
         "forged-join-own-key.json": check_commitment.sign(own_key, bob),
         "stale-consent-join.json": check_commitment.sign(record("join/1", "alice", JOIN_AT, older), alice),
+        "nodes-consent-join.json": check_commitment.sign(
+            record("join/1", "alice", JOIN_AT, check_join.NODES_CONSENT_SHA256), alice),
         "handle-join.json": check_commitment.sign({**record("join/1", "alice", JOIN_AT), "handle": "alice-test"},
                                                   alice),
     }
