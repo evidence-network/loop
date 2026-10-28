@@ -100,10 +100,11 @@ class StepTest(unittest.TestCase):
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")
         # The staple's signature and the checkpoint are outside the assertion: named in detail, never passed.
         self.assertEqual(f["not_checked"], [])
-        outside = f["detail"].split("Outside this step's assertion: ", 1)[1]
-        self.assertIn("alice: the stapled history_card/1 signature is not verified", outside)
-        self.assertIn("alice: the stapled checkpoint attestation is not verified here", outside)
-        self.assertIn("the staple is a rehearsal stand-in", outside)
+        self.assertEqual(finding.gaps(f["detail"]), [
+            ("the stapled history_card/1 signature (alice, bob) is not verified, as no released history_card/1 "
+             "verifier is callable from the loop", "action-state-group/agent-action-capsule#430")])
+        self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
+        self.assertIn("The staple of bob is a rehearsal stand-in.", f["detail"])
         # The bytes fetched back are the bytes in the carrier bundle's HEAD.
         repo = self.tmp / "clone"
         subprocess.run(["git", "-c", "advice.detachedHead=false", "clone", "-q", str(out / "carrier.bundle"), str(repo)], check=True)

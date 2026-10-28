@@ -46,7 +46,8 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
            "count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the "
            "signed policy's bytes")
-STAPLE_ISSUE = "evidence-network/loop: no pinned history_card/1 verifier the loop can call (to be filed)"
+# No released verifier for a stapled history_card/1 that the loop can call.
+STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 # The node itself signs and publishes its commitment (component side).
 LIVE_ISSUE = "Mesh-LLM/capsules-plugin#51"
 CHECKPOINT_ISSUE = "evidence-network/loop: step 02 Book (steps/02-book) verifies the checkpoint"
@@ -307,13 +308,14 @@ def main(argv=None):
         for r in records)
     detail += f". Runner tools: {tool_versions()} (not versions.lock components)."
     if result == "PASS":
-        detail += " Outside this step's assertion: " + "; ".join(
-            f"{r['name']}: the stapled history_card/1 signature is not verified, as no pinned history_card/1 "
-            f"verifier is callable from the loop ({STAPLE_ISSUE})"
-            + (", and the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else "")
-            + f"; {r['name']}: the stapled checkpoint attestation is not verified here, as that is step 02's "
-            f"assertion ({CHECKPOINT_ISSUE})"
-            for r in checked) + "."
+        names = ", ".join(r["name"] for r in checked)
+        standins = [r["name"] for r in checked if r.get("inputs") == "stand-in"]
+        if standins:
+            detail += f" The staple of {', '.join(standins)} is a rehearsal stand-in."
+        detail += (f" The stapled checkpoint attestation is step 02's assertion; here ({names}) only its bytes are "
+                   "matched to the committed digest. " + finding.outside(
+                       f"the stapled history_card/1 signature ({names}) is not verified, as no released "
+                       "history_card/1 verifier is callable from the loop", STAPLE_ISSUE))
     else:
         not_checked += outside
     finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=[], proof=proof,

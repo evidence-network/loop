@@ -60,9 +60,10 @@ SETUP = "none: steps/01-seal.setup.sh has not installed it"
 SIGNATURE = {"what": "the producer envelope signature, verified in a second language",
              "why": "Class 1 does not include it and the pinned Go verifier command has no envelope mode; "
                     "only key_id is matched to the node's key",
-             "issue": "to be filed"}
-OUTSIDE = ("Outside this step's assertion: the producer envelope signature is not verified in a second language "
-           "(Class 1 does not include it; only key_id is matched to the node's key).")
+             "issue": "action-state-group/agent-action-capsule#431"}
+OUTSIDE = finding.outside("the producer envelope signature is not verified in a second language "
+                          "(Class 1 does not include it; only key_id is matched to the node's key)",
+                          SIGNATURE["issue"])
 
 SEAL = r"""
 import json, sys
