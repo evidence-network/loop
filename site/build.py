@@ -21,6 +21,7 @@ Every count reads "N of M ...". No score, rank or total per node. Nothing
 links under reports/: the reporter's raw files are not part of this site.
 Standard library only.
 """
+import datetime as dt
 import html
 import shutil
 import sys
@@ -68,6 +69,183 @@ def short(hex_id):
 
 def when(stamp):
     return f'<time datetime="{e(stamp)}">{e(stamp)}</time>'
+
+
+# Sealed records per day
+
+def nice(n):
+    """The smallest of 1, 2, 5, 10, 20, 50, ... at or above n: the y axis's top value."""
+    step = 1
+    while True:
+        for m in (1, 2, 5):
+            if m * step >= n:
+                return m * step
+        step *= 10
+
+
+def records_chart(points):
+    """The live line: records sealed per day across the listed nodes. A gap is no point, never 0."""
+    w, h, left, right, top, bottom = 560, 250, 52, 16, 22, 52
+    pw, ph = w - left - right, h - top - bottom
+    n = len(points)
+    ymax = nice(max([p.sealed for p in points if p.sealed is not None] + [1]))
+    x = lambda i: left + (pw * (i + 0.5) / n)  # noqa: E731
+    y = lambda v: top + ph - ph * v / ymax  # noqa: E731
+    parts = [f'<line class="axis" x1="{left}" y1="{top + ph}" x2="{w - right}" y2="{top + ph}"/>']
+    for v in (0, ymax // 2 if ymax % 2 == 0 else None, ymax):
+        if v is None:
+            continue
+        parts.append(f'<line class="grid" x1="{left}" y1="{y(v):g}" x2="{w - right}" y2="{y(v):g}"/>'
+                     f'<text class="code tick" x="{left - 8}" y="{y(v) + 5:g}">{v}</text>')
+    every = max(1, -(-n // 7))
+    for i, p in enumerate(points):
+        if i % every == 0 or i == n - 1:
+            parts.append(f'<text class="code xdate" x="{x(i):g}" y="{top + ph + 24}">{e(p.date[5:])}</text>')
+    segment, segments = [], []
+    for i, p in enumerate(points):
+        if p.sealed is None:
+            segments.append(segment)
+            segment = []
+        else:
+            segment.append((x(i), y(p.sealed)))
+    segments.append(segment)
+    for seg in segments:
+        if len(seg) > 1:
+            parts.append('<path class="line" d="' + " ".join(f"{'M' if j == 0 else 'L'}{a:g} {b:g}"
+                                                            for j, (a, b) in enumerate(seg)) + '"/>')
+    label_all = n <= 14
+    for i, p in enumerate(points):
+        if p.sealed is None:
+            tip = f"{p.date}: no point, {p.why}"
+            parts.append(f'<g class="gap" data-date="{p.date}"><title>{e(tip)}</title>'
+                         f'<text class="gapmark" x="{x(i):g}" y="{top + ph + 42}">gap</text></g>')
+            continue
+        tip = f"{p.date}: {p.sealed} records sealed, from {p.nodes} of {p.listed} listed nodes"
+        if p.longer:
+            tip += f"; for {p.longer} of them, since a count older than the day before"
+        parts.append(f'<g class="point" data-date="{p.date}" data-sealed="{p.sealed}"><title>{e(tip)}</title>'
+                     f'<circle cx="{x(i):g}" cy="{y(p.sealed):g}" r="5"/>'
+                     + (f'<text class="code value" x="{x(i):g}" y="{y(p.sealed) - 10:g}">{p.sealed}</text>'
+                        if label_all or i == n - 1 else "") + "</g>")
+    label = (f"Records sealed per day on the listed nodes, {points[0].date} to {points[-1].date}; "
+             "a day with no point is a gap") if points else "No day yet"
+    return (f'<svg class="records" viewBox="0 0 {w} {h}" role="img" aria-label="{e(label)}">'
+            + "".join(parts) + "</svg>")
+
+
+def records_section(days):
+    points = stats_model.sealed_per_day(days)
+    legend = ('<ul class="series"><li><svg width="26" height="12" aria-hidden="true"><line class="line" x1="1" y1="6" '
+              'x2="25" y2="6"/></svg> records sealed per day, across the listed nodes</li>'
+              '<li><svg width="26" height="12" aria-hidden="true"><line class="line pending" x1="1" y1="6" x2="25" '
+              f'y2="6"/></svg> records with both halves: not measured yet ({code("M2")}); no line is drawn</li></ul>')
+    if points:
+        chart = records_chart(points)
+        drops = [(p, nid, since) for p in points for nid, since in p.drops]
+        notes = "".join(f"<li>{when(p.date)}: node {short(nid)} holds fewer records at its checkpoint than on "
+                        f"{when(since)}. A drop is not drawn as a negative value; the day is a gap.</li>"
+                        for p, nid, since in drops)
+        sealed = [p for p in points if p.sealed is not None]
+        body = (f"{chart}<p class=\"note\">{count(len(sealed), len(points), 'day')} have a point. A gap is a day "
+                "with no day file, a missed run, a node whose count fell, or no node with an earlier count to "
+                "compare with; it is never drawn as zero.</p>" + (f'<ul class="drops">{notes}</ul>' if notes else ""))
+    else:
+        body = "<p>No day yet. The first two scrubbed day files draw the first point here.</p>"
+    live = (f'<figure class="rec" data-population="live"><figcaption><strong>Live</strong>: the nodes on the '
+            f"commitment list, as the daily reporter found them</figcaption>{legend}{body}</figure>")
+    rehearsal = ('<figure class="rec" data-population="rehearsal"><figcaption><strong>Rehearsal</strong>'
+                 "</figcaption><p>No daily line. The reporter asks only the nodes on the commitment list; the "
+                 'rehearsal nodes run only in <a href="#loop">the loop</a>. Their records are never added to the live '
+                 "line.</p></figure>")
+    return f'<div class="pair">{live}{rehearsal}</div>'
+
+
+# Four tiles
+
+WINDOW_DAYS = 7  # the runs the median reads: the newest run of a population and the six days before it
+
+
+def tile(key, title, value, denominator, window):
+    return (f'<section class="tile" id="t-{key}"><h3>{title}</h3><p class="value">{value}</p>'
+            f'<p class="den">{denominator}</p><p class="window note">{window}</p></section>')
+
+
+def runs_of(findings):
+    """Every run under findings, per population, newest first."""
+    root, out = Path(findings), {p: [] for p in status_page.POPULATIONS}
+    for d in sorted(root.iterdir(), reverse=True) if root.is_dir() else []:
+        m = status_page.RUN_DIR.match(d.name)
+        if m and d.is_dir():
+            out[m.group(2)].append(status_page.read_run(m.group(2), d))
+    return out
+
+
+def median(values):
+    v = sorted(values)
+    return (v[len(v) // 2] + v[(len(v) - 1) // 2]) / 2
+
+
+def first_sealed_tile(runs):
+    """The median minutes to the first sealed record per population, over the runs in the window."""
+    nb = next(nb for nb in status_page.NUMBERS if nb.key == "first-sealed")
+    lines, dens, windows = [], [], []
+    for p in status_page.POPULATIONS:
+        rs = runs[p]
+        if not rs:
+            lines.append(f"{p}: not measured yet ({code(nb.milestone)})")
+            dens.append(f"{p}: no run yet")
+            continue
+        newest = rs[0].name[:10]
+        start = (dt.date.fromisoformat(newest) - dt.timedelta(days=WINDOW_DAYS - 1)).isoformat()
+        rs = [r for r in rs if r.name[:10] >= start]
+        got = [m for m in (status_page.minutes(r, nb.step) for r in rs) if m is not None]
+        no_start = sum(1 for r in rs if status_page.passed(r, nb.step) and r.started is None)
+        if got:
+            lines.append(f'{p}: <span class="value">{e(status_page.duration(median(got)))}</span>')
+        elif no_start:
+            lines.append(f"{p}: not measured: {count(no_start, len(rs), 'run')} did not record its start time "
+                         f"({code('run.json')})")
+        else:
+            lines.append(f"{p}: not measured yet ({code(nb.milestone)})")
+        dens.append(f"{p}: median of {count(len(got), len(rs), 'run')} in the window")
+        windows.append(f"{p}: {when(start)} to {when(newest)}")
+    return tile("first-sealed", "Median time to the first sealed record", "<br>".join(lines), "<br>".join(dens),
+                f"the step {code('01')} findings; " + ("; ".join(windows) or "no run yet"))
+
+
+def tiles_section(days, runs):
+    cal = stats_model.calendar(days)
+    newest = max(days, key=lambda d: d.date) if days else None
+    if newest is None:
+        answered = tile("answered", "Nodes that answered", "not measured yet: no day file", "no listed node yet",
+                        "the newest day")
+    elif newest.missed:
+        answered = tile("answered", "Nodes that answered", "not measured: the reporter missed the newest day",
+                        "no node was asked that day", f"{when(newest.date)}, the newest day")
+    else:
+        n = sum(1 for node in newest.nodes if any(KIND[a.state] == "answered" for a in node.answers.values()))
+        answered = tile("answered", "Nodes that answered", count(n, newest.listed),
+                        "a reply to at least one of the two questions, of the nodes listed that day",
+                        f"{when(newest.date)}, the newest day")
+    halves = tile("halves", "Exchanges with both halves held", f"not measured yet ({code('M2')})",
+                  f"of exchanges: no source until step {code('05')} (Deal and push) has findings",
+                  "none yet; never shown as zero")
+    settled = [d for _, d in cal if d and not d.missed]
+    asks = sum(2 * d.listed for d in settled)
+    states = [a.state for d in settled for node in d.nodes for a in node.answers.values()]
+    refused, absent = states.count("refusal"), states.count("absence")
+    missed = sum(1 for _, d in cal if d and d.missed)
+    if cal:
+        window = f"{when(cal[0][0])} to {when(cal[-1][0])}"
+        not_answered = tile("not-answered", "Asks refused or absent, and days missed",
+                            f"{count(refused + absent, asks, 'ask')}",
+                            f"refused {count(refused, asks, 'ask')}, absent {count(absent, asks, 'ask')}; "
+                            f"missed {count(missed, len(cal), 'day')}",
+                            f"{window}; an ask is one question to one listed node on a settled day")
+    else:
+        not_answered = tile("not-answered", "Asks refused or absent, and days missed", "not measured yet: no day file",
+                            "no ask yet", "no day yet")
+    return f'<div class="tiles">{answered}{halves}{first_sealed_tile(runs)}{not_answered}</div>'
 
 
 # The loop
@@ -325,9 +503,10 @@ def days_section(days):
     return f'<ul class="days">{index}</ul>' + "".join(day_section(d) for d in days)
 
 
-def render(days, rs, runs):
+def render(days, rs, runs, all_runs):
     template = Template((HERE / "template.html").read_text(encoding="utf-8"))
-    return template.substitute(loop=loop_section(rs, runs), numbers=numbers_section(runs),
+    return template.substitute(records=records_section(days), tiles=tiles_section(days, all_runs),
+                               loop=loop_section(rs, runs), numbers=numbers_section(runs),
                                nodes=nodes_section(days), days=days_section(days))
 
 
@@ -362,7 +541,7 @@ def build(data, findings, lock, out):
     (site / DATA).mkdir(parents=True)
     for d in days:
         shutil.copyfile(Path(data) / d.file, site / DATA / d.file)
-    (site / "index.html").write_text(render(days, rs, runs), encoding="utf-8")
+    (site / "index.html").write_text(render(days, rs, runs, runs_of(findings)), encoding="utf-8")
     (out / "index.html").write_text(ROOT_PAGE, encoding="utf-8")
     return days
 

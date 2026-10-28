@@ -16,7 +16,11 @@ six dates:
   2026-11-02  settled, 3 listed: node 2 absent two days running.
 """
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from scrub_reports import leaves  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "daily"
 KEY = "e" * 64  # the reporter's key id
@@ -29,7 +33,8 @@ def nid(n):
 
 def q(state, *attempts, size=None, digest=None):
     return {"state": state, "attempts": [{"at": at, "state": s} for at, s in attempts],
-            "log_size_at_checkpoint": size, "answer_sha256": digest}
+            "log_size_at_checkpoint": size, "records_at_checkpoint": leaves(size["mmr_size"]) if size else None,
+            "answer_sha256": digest}
 
 
 def node(n, line, questions, absent=0, left=None):
@@ -82,8 +87,8 @@ def days():
     ], 4)
     for date, absent in ((d5, 1), (d6, 2)):
         yield day(date, [
-            node(1, both, [q("verified", (at(date, 6), "verified"), size=size(80, at(date, 5)), digest="1e" * 32),
-                           q("verified", (at(date, 6), "verified"), size=size(80, at(date, 5)), digest="1f" * 32)]),
+            node(1, both, [q("verified", (at(date, 6), "verified"), size=size(79, at(date, 5)), digest="1e" * 32),
+                           q("verified", (at(date, 6), "verified"), size=size(79, at(date, 5)), digest="1f" * 32)]),
             node(2, "joined, discloses nothing", [q("absence", (at(date, 6), "absence")),
                                                   q("absence", (at(date, 6), "absence"))], absent=absent),
             node(4, both, [q("verified", (at(date, 6), "verified"), size=size(3, at(date, 5)), digest="4c" * 32),

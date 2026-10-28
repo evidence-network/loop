@@ -21,6 +21,7 @@
             "mmr_size": 41,
             "timestamp": "2026-10-28T05:00:00Z"
           },
+          "records_at_checkpoint": 22,
           "state": "verified"
         },
         "history_card": {
@@ -35,6 +36,7 @@
             "mmr_size": 41,
             "timestamp": "2026-10-28T05:00:00Z"
           },
+          "records_at_checkpoint": 22,
           "state": "verified"
         }
       }
@@ -54,6 +56,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "refusal"
         },
         "history_card": {
@@ -65,6 +68,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "refusal"
         }
       }
@@ -91,6 +95,7 @@
             "mmr_size": 7,
             "timestamp": "2026-10-28T04:00:00Z"
           },
+          "records_at_checkpoint": 4,
           "state": "verified"
         },
         "history_card": {
@@ -106,6 +111,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "absence"
         }
       }

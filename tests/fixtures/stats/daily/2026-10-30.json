@@ -21,6 +21,7 @@
             "mmr_size": 57,
             "timestamp": "2026-10-30T05:00:00Z"
           },
+          "records_at_checkpoint": 31,
           "state": "verified"
         },
         "history_card": {
@@ -35,6 +36,7 @@
             "mmr_size": 57,
             "timestamp": "2026-10-30T05:00:00Z"
           },
+          "records_at_checkpoint": 31,
           "state": "verified"
         }
       }
@@ -58,6 +60,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "absence"
         },
         "history_card": {
@@ -73,6 +76,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "absence"
         }
       }
@@ -92,6 +96,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "not_evidence"
         },
         "history_card": {
@@ -103,6 +108,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "no_announced_key"
         }
       }
@@ -122,6 +128,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "no_checkpoint_yet"
         },
         "history_card": {
@@ -133,6 +140,7 @@
             }
           ],
           "log_size_at_checkpoint": null,
+          "records_at_checkpoint": null,
           "state": "no_checkpoint_yet"
         }
       }

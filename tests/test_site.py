@@ -62,6 +62,8 @@ class Text(HTMLParser):
         for tag, cls in reversed(stack):
             if tag == "span" and cls == "count":
                 return "count"
+            if tag == "span" and cls == "value":
+                return "value"  # a tile's measured value: its tile carries the count it is out of
             if tag in ("code", "time", "style", "title") or (tag in ("text", "tspan") and "code" in cls.split()):
                 return "code" if tag in ("text", "tspan") else tag
         return "prose"
@@ -229,6 +231,86 @@ class SiteTest(unittest.TestCase):
         self.assertEqual(wf.count("concurrency:"), 1)
         self.assertRegex(deploy, r"\n    concurrency:\n      group: pages\n      cancel-in-progress: false\n")
 
+    # Records per day, the four tiles, why this matters
+
+    def test_the_page_leads_with_the_chart_then_tiles_then_why_then_the_loop_and_grid(self):
+        order = re.findall(r'<h2 id="([a-z]+)">', self.html)
+        self.assertEqual(order[:6], ["records", "tiles", "matters", "loop", "numbers", "nodes"])
+
+    def records(self, population="live"):
+        return re.search(rf'<figure class="rec" data-population="{population}">(.*?)</figure>', self.html,
+                         re.S).group(1)
+
+    def test_the_chart_draws_records_sealed_per_day_and_gaps_never_zero(self):
+        live = self.records()
+        points = dict(re.findall(r'<g class="point" data-date="([\d-]+)" data-sealed="(\d+)">', live))
+        # Node 1: 22, 31, 41, 41 records; node 4: 2, 2. A node's first count adds nothing.
+        self.assertEqual(points, {"2026-10-30": "9", "2026-11-01": "10", "2026-11-02": "0"})
+        gaps = re.findall(r'<g class="gap" data-date="([\d-]+)"><title>([^<]*)</title>', live)
+        self.assertEqual([g[0] for g in gaps], ["2026-10-28", "2026-10-29", "2026-10-31"])
+        self.assertIn("the reporter missed this day", gaps[1][1])
+        self.assertIn("no day file", gaps[2][1])
+        self.assertIn("from 1 of 4 listed nodes", live)
+        # 10-31 has no day file, so node 1's 11-01 count is compared with its 10-30 one, and the point says so.
+        self.assertIn("2026-11-01: 10 records sealed, from 1 of 3 listed nodes; for 1 of them, since a count older "
+                      "than the day before", live)
+        self.assertNotIn("2026-11-02: 0 records sealed, from 2 of 3 listed nodes;", live)
+        self.assertEqual(live.count('<path class="line"'), 1)  # the gap on 10-31 breaks 10-30 from 11-01
+        self.assertIn(build.count(3, 6, "day") + " have a point", live)
+
+    def test_both_halves_is_a_legend_entry_with_no_line_and_no_zero(self):
+        live = self.records()
+        self.assertIn(f"records with both halves: not measured yet ({build.code('M2')}); no line is drawn", live)
+        svg = re.search(r'<svg class="records".*?</svg>', live, re.S).group(0)
+        self.assertNotIn("pending", svg)
+        self.assertEqual(svg.count('class="line"'), 1)
+
+    def test_rehearsal_and_live_are_never_one_line(self):
+        self.assertEqual(re.findall(r'<figure class="rec" data-population="(\w+)">', self.html), ["live", "rehearsal"])
+        self.assertNotIn("<svg", self.records("rehearsal"))
+        self.assertIn("never added to the live line", self.records("rehearsal"))
+
+    def test_no_negative_value_anywhere(self):
+        self.assertIsNone(re.search(r'data-sealed="-|>-\d|−\d', self.html))
+        for stack, data in self.text.chunks:
+            self.assertIsNone(re.search(r"(^|\s)[-−]\d", data), data)
+
+    def tile(self, key):
+        return re.search(rf'<section class="tile" id="t-{key}">(.*?)</section>', self.html, re.S).group(1)
+
+    def test_four_tiles_each_with_its_denominator_and_window(self):
+        self.assertEqual(re.findall(r'<section class="tile" id="t-([a-z-]+)">', self.html),
+                         ["answered", "halves", "first-sealed", "not-answered"])
+        self.assertIn(build.count(2, 3, "listed node"), self.tile("answered"))  # 11-02: nodes 1 and 4 replied
+        self.assertIn('<time datetime="2026-11-02">', self.tile("answered"))
+        t = self.tile("not-answered")
+        self.assertIn(build.count(11, 26, "ask"), t)  # 4 refused + 7 absent, of 13 nodes asked twice
+        self.assertIn(f"refused {build.count(4, 26, 'ask')}, absent {build.count(7, 26, 'ask')}", t)
+        self.assertIn(f"missed {build.count(1, 6, 'day')}", t)
+        t = self.tile("first-sealed")
+        self.assertIn('rehearsal: <span class="value">1.0 minutes</span>', t)
+        self.assertIn(f"rehearsal: median of {build.count(1, 1, 'run')} in the window", t)
+        for key in ("answered", "first-sealed", "not-answered"):
+            self.assertIn('<span class="count">', self.tile(key), key)  # its denominator
+            self.assertIn('class="window note"', self.tile(key))
+
+    def test_the_both_halves_tile_is_a_placeholder_not_zero(self):
+        t = self.tile("halves")
+        self.assertIn(f"not measured yet ({build.code('M2')})", t)
+        self.assertIn("of exchanges", t)
+        self.assertIsNone(re.search(r">\s*0\b|\b0 of", t))
+
+    def test_why_this_matters_is_short_plain_and_neutral(self):
+        section = self.section("matters")
+        words = len(re.sub(r"<[^>]+>", " ", section.split("</h2>", 1)[1]).split())
+        self.assertTrue(100 <= words <= 150, words)
+        self.assertIn("<h3>How it helps</h3>", section)
+        low = section.lower()
+        for word in ("price", "pricing", "fee", "pay", "economic", "reputation", "score", "rank", "underwrit",
+                     "insur", "kyb", "customer", "premium", "registry"):
+            self.assertNotIn(word, low)
+        self.assertIn('href="#offline"', section)  # the offline check is not claimed before it exists
+
     # The loop
 
     def test_the_loop_is_a_path_per_population_from_the_status_rows(self):
@@ -375,7 +457,7 @@ class SiteTest(unittest.TestCase):
         self.assertIn(".scroll { overflow-x: auto; }", css)
         # Every colour the grid uses is redefined for dark mode.
         light, dark = css.split("@media (prefers-color-scheme: dark)")[0], css.split("@media (prefers-color-scheme: dark)")[1]
-        for var in ("--t-answered", "--t-refused", "--t-absent", "--t-missed", "--muted", "--fg", "--bg"):
+        for var in ("--t-answered", "--t-refused", "--t-absent", "--t-missed", "--muted", "--fg", "--bg", "--series", "--line"):
             self.assertIn(var + ":", light.split("}")[0])
             self.assertIn(var + ":", dark.split("}")[0] + "}")
 
@@ -435,6 +517,9 @@ class SiteTest(unittest.TestCase):
         for stack, data in self.text.chunks:
             ctx = self.text.context(stack)
             if ctx in ("code", "time", "style", "title"):
+                continue
+            if ctx == "value":
+                self.assertTrue(any(tag == "section" and cls == "tile" for tag, cls in stack), data)
                 continue
             if ctx == "count":
                 m = COUNT.match(data.strip())
@@ -613,6 +698,59 @@ class BrokenDayFileTest(unittest.TestCase):
         code, _ = run_build(self.data, Path(self.tmp.name) / "findings", self.out)
         self.assertEqual(code, 1)
         self.assertEqual((self.out / "keep").read_text(), "old")
+
+
+class SealedPerDayTest(unittest.TestCase):
+    """stats_model.sealed_per_day: a node's count minus its last earlier one; a drop is a gap, never negative."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data = Path(self.tmp.name) / "daily"
+        shutil.copytree(DATA, self.data)
+        self.out = Path(self.tmp.name) / "_site"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def set_size(self, date, i, mmr):
+        path = self.data / f"{date}.json"
+        d = json.loads(path.read_text())
+        q = d["nodes"][i]["questions"]["checkpoints"]
+        q["log_size_at_checkpoint"]["mmr_size"] = mmr
+        q["records_at_checkpoint"] = build.stats_model.leaves(mmr)
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+
+    def test_a_drop_is_a_gap_with_a_note_never_negative(self):
+        self.set_size("2026-11-02", 0, 41)  # node 1: 41 records on 11-01, 22 on 11-02
+        points = {p.date: p for p in stats_model.sealed_per_day(stats_model.load(self.data))}
+        self.assertIsNone(points["2026-11-02"].sealed)
+        self.assertEqual(points["2026-11-02"].drops, [(nid(1), "2026-11-01")])
+        self.assertTrue(all(p.sealed is None or p.sealed >= 0 for p in points.values()))
+        self.assertEqual(run_build(self.data, Path(self.tmp.name) / "findings", self.out)[0], 0)
+        page = (self.out / "stats" / "index.html").read_text()
+        self.assertIn('<g class="gap" data-date="2026-11-02">', page)
+        self.assertNotIn('data-date="2026-11-02" data-sealed', page)
+        self.assertIn('<time datetime="2026-11-02">2026-11-02</time>: node <code title="' + nid(1), page)
+        self.assertIn("A drop is not drawn as a negative value", page)
+        self.assertIsNone(re.search(r'data-sealed="-', page))
+
+    def test_a_count_counts_from_the_last_earlier_known_one(self):
+        # Node 1 is not verified on 11-01: 11-02 compares with 10-30.
+        path = self.data / "2026-11-01.json"
+        d = json.loads(path.read_text())
+        d["nodes"][0]["questions"]["checkpoints"].update(log_size_at_checkpoint=None, records_at_checkpoint=None)
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+        points = {p.date: p for p in stats_model.sealed_per_day(stats_model.load(self.data))}
+        self.assertEqual((points["2026-11-02"].sealed, points["2026-11-02"].nodes), (10, 2))
+
+    def test_records_that_are_not_the_checkpoints_leaf_count_are_refused(self):
+        path = self.data / "2026-10-28.json"
+        d = json.loads(path.read_text())
+        d["nodes"][0]["questions"]["checkpoints"]["records_at_checkpoint"] = 41
+        path.write_text(json.dumps(d, sort_keys=True, indent=2) + "\n")
+        code, err = run_build(self.data, Path(self.tmp.name) / "findings", self.out)
+        self.assertEqual(code, 1)
+        self.assertIn("records_at_checkpoint is not the leaf count", err)
 
 
 class FixturesTest(unittest.TestCase):
