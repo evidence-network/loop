@@ -38,7 +38,7 @@ class FindingTest(unittest.TestCase):
     def test_a_not_checked_without_saying_why_is_refused(self):
         with self.assertRaises(ValueError):
             self.write(result="NOT_CHECKED")
-        self.write(result="NOT_CHECKED", not_checked=[{"what": "receipt", "why": "no verifier", "issue": "D-14"}])
+        self.write(result="NOT_CHECKED", not_checked=[{"what": "receipt", "why": "no verifier", "issue": "example-org/example#1"}])
 
     def test_an_unpinned_component_is_refused(self):
         with self.assertRaises(KeyError):
@@ -61,7 +61,7 @@ class FindingTest(unittest.TestCase):
 
     # A NOT_CHECKED finding may not word itself as checked.
 
-    NC = [{"what": "receipt", "why": "no verifier", "issue": "D-14"}]
+    NC = [{"what": "receipt", "why": "no verifier", "issue": "example-org/example#1"}]
 
     def test_a_not_checked_that_claims_a_check_is_refused(self):
         for field, text in (("detail", "the receipt was checked"), ("detail", "Witnessed by two nodes"),
@@ -74,7 +74,7 @@ class FindingTest(unittest.TestCase):
     def test_a_not_checked_may_say_what_was_not_checked(self):
         for text in ("the receipt was not checked", "the key is not verified", "an unverified receipt",
                      "the witness part is unchecked", "the signature could not be verified",
-                     "the witness key was never verified", "NOT_CHECKED on D-14", "it has not been checked",
+                     "the witness key was never verified", "NOT_CHECKED on example-org/example#1", "it has not been checked",
                      "the receipt was not witnessed"):
             with self.subTest(text=text):
                 self.write(result="NOT_CHECKED", not_checked=self.NC, detail=text, asserts=f"x; {text}")
@@ -90,8 +90,29 @@ class FindingTest(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             self.write(not_checked=self.NC)
         self.assertIn("a PASS covers its assertion fully", str(e.exception))
-        self.write(detail="Outside this step's assertion: the receipt is not checked.")
+        self.write(detail="Outside this step's assertion: the receipt is not checked: example-org/example#1.")
         self.write(result="FAIL", not_checked=self.NC)
+
+    # A gap outside the assertion is one sentence ending with the issue, owner/repo#N.
+
+    def test_a_gap_sentence_ends_with_its_issue(self):
+        gap = finding.outside("the binding is not verified; no verifier yet", "example-org/example#12")
+        self.assertEqual(gap, "Outside this step's assertion: the binding is not verified; no verifier yet: "
+                              "example-org/example#12.")
+        detail = f"all held. {gap} {finding.outside('the staple', 'other-org/other#3')}"
+        self.write(detail=detail)
+        self.assertEqual(finding.gaps(detail), [("the binding is not verified; no verifier yet",
+                                                 "example-org/example#12"), ("the staple", "other-org/other#3")])
+        with self.assertRaises(ValueError):
+            finding.outside("the staple", "no issue yet")
+
+    def test_a_gap_without_its_issue_is_refused(self):
+        for detail in ("Outside this step's assertion: the receipt is not checked.",
+                       "Outside this step's assertion: the staple (no issue yet).",
+                       "Outside this step's assertion: the staple: example-org/example#1"):
+            with self.subTest(detail=detail), self.assertRaises(ValueError) as e:
+                self.write(detail=detail)
+            self.assertIn("each gap in detail is one sentence", str(e.exception))
 
     # Proof paths stay inside the step directory.
 

@@ -1,0 +1,11 @@
+{
+  "witnesses": [
+    {
+      "name": "rehearsal-witness",
+      "endpoint": "https://witness.rehearsal.invalid",
+      "key_ids": [
+        "d0fe644a581a66cb66363593b1adfcf3d9af89b46ac1272b71fe4f04503f3917"
+      ]
+    }
+  ]
+}

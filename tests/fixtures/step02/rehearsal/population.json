@@ -1,1 +1,2 @@
-{"population":"rehearsal","nodes":[{"name":"alice","key_dir":"tests/fixtures/step02/rehearsal/keys/alice"},{"name":"bob","key_dir":"tests/fixtures/step02/rehearsal/keys/bob"}],"rail":"mock"}
+{"population":"rehearsal","nodes":[{"name":"alice","key_dir":"tests/fixtures/step02/rehearsal/keys/alice"},{"name":"bob","key_dir":"tests/fixtures/step02/rehearsal/keys/bob"}],"rail":"mock",
+ "witness":{"name":"rehearsal-witness","url":"https://witness.rehearsal.invalid","key_dir":"tests/fixtures/step02/rehearsal/keys/witness","directory":"tests/fixtures/step02/rehearsal/witnesses.json"}}

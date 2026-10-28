@@ -29,6 +29,8 @@ def need(*tools):
     for t in tools:
         if not t.is_file():
             msg = f"SKIPPED LOUDLY: step 01's tool {t} is not installed; {SETUP}"
+            if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":  # CI, after the setups: a missing tool is an error
+                raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {msg}")
             print(msg, file=sys.stderr)
             raise unittest.SkipTest(msg)
 
@@ -75,6 +77,7 @@ class Step01SealTest(unittest.TestCase):
         # The envelope signature is outside the assertion: a PASS says so in detail, with no not_checked entry.
         self.assertEqual(r["not_checked"], [])
         self.assertIn("Outside this step's assertion: the producer envelope signature is not verified", r["detail"])
+        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#431"])
 
     def test_the_fixture_capsule_verifies(self):
         need(VERIFIER)

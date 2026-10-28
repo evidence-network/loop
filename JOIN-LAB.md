@@ -46,16 +46,22 @@ keys; it never says who that is.
 1. binds your node key to your controller key (a `controller-binding/0`
    record, signed by both, and the controller class);
 2. creates your book and cuts its first checkpoint;
-3. writes your commitment, with your sharing policy's digest in it;
-4. asks your node `checkpoints`, then `history_card/1`, the way a stranger
-   would, and keeps the requests and answers for anyone to check.
+3. writes your commitment in step 03's format (`evidence-commitment/0`,
+   [steps/03-advertise.md](steps/03-advertise.md)), signed by your node key,
+   with your sharing policy, signed too, beside it (`disclosure-policy.json`).
+   It staples the `history_card/1` answer your node gave a stranger: a
+   throwaway stranger asks `checkpoints`, then `history_card/1`, and the
+   requests and answers are kept for anyone to check;
+4. probes your node as a stranger with `capsulectl book doctor --probe`, into
+   `doctor.json`.
 
 It writes `join.json`, which lists what was done and what is still only your
 own word: what is self-attested, unwitnessed, unchecked, unbound or unshared.
 
 ### What you need
 
-- Linux on amd64, `openssl` 3, `python3`, `curl`.
+- Linux or macOS, `openssl` 3, `python3`, `git`, and Go (the version
+  evidencebook's `capsulectl/go.mod` names, or newer) to build capsulectl.
 - Two Ed25519 private keys in PKCS#8 PEM: your node key and your controller
   key. They must differ. To make them:
 
@@ -72,8 +78,8 @@ own word: what is self-attested, unwitnessed, unchecked, unbound or unshared.
 ```sh
 git clone https://github.com/evidence-network/loop && cd loop
 
-# 1. Install capsulectl and capsulectl-book at the versions.lock pins,
-#    each checked against its release's SHA256SUMS.
+# 1. Build capsulectl and capsulectl-book from source at the versions.lock
+#    pin (an evidencebook tag; it has no release binaries).
 steps/12-join.setup.sh
 
 # 2. Join.
@@ -83,7 +89,8 @@ steps/12-join.setup.sh
 # 3. Read what it did, and what is still unchecked.
 cat join-out/join.json
 
-# 4. Publish: open a pull request adding your commitment to nodes/.
+# 4. Publish: open a pull request adding commitment.json and
+#    disclosure-policy.json to nodes/commitments/.
 ```
 
 Your book and its profile live under `~/.local/share/evidence-network/my-node`
@@ -103,23 +110,22 @@ The loop's step 12 checks what join.sh wrote:
 steps/12-join --population population/rehearsal --out findings/12-join
 ```
 
-It verifies the stranger's answers under the keys your commitment advertises,
-with the pinned capsulectl-book, and checks that they match the advertised
-policy. Its `finding.json` says `PASS`, `FAIL` or `NOT_CHECKED`, and for each
-part not checked, what, why and the issue that owns it.
+It verifies your commitment with step 03's checker, reads what
+`book doctor --probe` found (both answers verify and match the policy, and the
+binding names your node key), verifies the stranger's kept answers under the
+keys your commitment advertises with the pinned capsulectl-book, and checks
+that they match the advertised policy. Its `finding.json` says `PASS`, `FAIL`
+or `NOT_CHECKED`; a `PASS` names in `detail` what lies outside its assertion,
+with the issue that owns it.
 
 ## What the lab build does not do yet
 
-These read `NOT_CHECKED` until they ship. They are never shown as checked.
+These are never shown as checked.
 
-- `capsulectl book doctor --probe` is merged but not in a released
-  capsulectl-book (action-state-group/evidencebook#133, #134). join.sh uses
-  it when the installed build has it; until then it asks the same two
-  questions on the public path without it.
-- No released tool verifies a `controller-binding/0` record yet. join.sh
-  signs it; nothing checks it, so your key reads as unbound.
-- The commitment's final format and checker come with step 03; join.sh
-  writes a provisional one.
+- No released tool verifies a `controller-binding/0` record yet
+  (action-state-group/agent-action-capsule#432). join.sh signs it and doctor
+  finds it naming your key, but nothing checks its signatures, so your key
+  reads as unbound. Step 12 states this outside its assertion.
 - Mesh nodes keep their book in the capsules plugin. For them, join, doctor
   and the probe come with Mesh-LLM/capsules-plugin#53, and the signed
   commitment with Mesh-LLM/capsules-plugin#51. Until then the loop probes a

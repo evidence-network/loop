@@ -1,7 +1,9 @@
 # steps/: the reference loop, one step at a time
 
-`./loop.sh --stage 1 [--population rehearsal|live] [--out DIR] [--steps 01,02,...]`
-runs the stage's steps in order. Stage 1 (M1) is steps 01 Seal, 02 Book,
+`./loop.sh --stage 1 [--population rehearsal|live] [--out DIR] [--steps 01,02,...] [--strict]`
+runs the stage's steps in order. With `--strict` (CI) a rehearsal run with a
+`FAIL` or `MALFORMED` step exits 3, so the job fails; a live run is reported
+and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
 03 Advertise and 12 Join.
 
 `loop.sh` needs bash 4 or later and `timeout` from GNU coreutils. Without
@@ -43,8 +45,12 @@ Among what it refuses:
   other words and are allowed too.
 - A `PASS` with `not_checked` entries. A PASS covers its assertion fully.
   Anything outside the assertion that was not checked is not part of the
-  result; the step says so in `detail` as a sentence, without claiming it
-  was checked: "Outside this step's assertion: ...".
+  result; the step says so in `detail`, without claiming it was checked, as
+  one sentence per gap that ends with the issue that owns it:
+  `Outside this step's assertion: <what>: <owner/repo#N>.`
+  (`finding.outside(what, issue)` writes it, `finding.gaps(detail)` reads
+  them back for the status page). A detail with an "Outside this step's
+  assertion: " sentence in any other form is refused.
 - A proof path that is absolute, starts with `/` or contains `..`. Proof
   paths are relative to the step's directory.
 

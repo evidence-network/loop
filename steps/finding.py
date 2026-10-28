@@ -28,6 +28,24 @@ FIELDS = ("step", "name", "result", "population", "asserts", "pinned", "proof", 
 # "unverified" and "NOT_CHECKED" are other words and are not matched.
 NEGATED_CHECK = re.compile(r"\b(?:not|never|cannot)(?:\s+be(?:en)?)?\s+(?:checked|witnessed|verified)\b", re.I)
 CLAIMED_CHECK = re.compile(r"\b(?:checked|witnessed|verified)\b", re.I)
+# A PASS states each gap outside its assertion in detail as one sentence,
+# "Outside this step's assertion: <what>: <owner/repo#N>.", which outside()
+# writes and gaps() reads back (the status page shows them on the row).
+OUTSIDE = "Outside this step's assertion: "
+ISSUE_REF = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+$")
+GAP = re.compile(re.escape(OUTSIDE) + r"(.+?): ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.(?=\s|$)")
+
+
+def outside(what, issue):
+    """One gap sentence for a PASS detail: what lies outside the assertion, and the issue that owns it."""
+    if not ISSUE_REF.match(issue):
+        raise ValueError(f"a gap's issue is owner/repo#N, not {issue!r}")
+    return f"{OUTSIDE}{what}: {issue}."
+
+
+def gaps(detail):
+    """The [(what, issue)] gap sentences in a detail."""
+    return GAP.findall(detail)
 
 
 def pins(path=ROOT / "versions.lock"):
@@ -118,6 +136,8 @@ def check_record(step_dir, r):
             claim = CLAIMED_CHECK.search(NEGATED_CHECK.sub("", str(r[field])))
             if claim:
                 errs.append(f"{where}: a NOT_CHECKED {field} may not claim {claim.group(0)!r}")
+    if str(r["detail"]).count(OUTSIDE) != len(gaps(str(r["detail"]))):
+        errs.append(f"{where}: each gap in detail is one sentence, \"{OUTSIDE}<what>: <owner/repo#N>.\"")
     if r["result"] == "PASS" and r["not_checked"]:
         errs.append(f"{where}: a PASS covers its assertion fully, so it has no not_checked entries; "
                     "say what lies outside the assertion in detail")

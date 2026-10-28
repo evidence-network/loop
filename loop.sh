@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh: run one stage of the loop's steps, then check their findings.
 #
-#   ./loop.sh --stage 1 [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12]
+#   ./loop.sh --stage 1 [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
 #
 # Each step runs as `steps/<NN>-<name> --population population/<p> --out DIR/<NN>-<name>`
 # and writes one finding.json there (see steps/README.md). A step that is missing, or
@@ -12,6 +12,8 @@
 #
 # Exit 0: every step has a valid finding (FAIL and NOT_CHECKED included: the result is in
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
+# With --strict (CI) a rehearsal run whose summary has a FAIL or MALFORMED line exits 3, so
+# the job fails; a live run never does (live runs report, they do not gate).
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
 # LOOP_STEP_TIMEOUT is each step's limit in seconds (default 1800).
@@ -43,13 +45,14 @@ STAGE_1="01 02 03 12"
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
 
-stage="" population=rehearsal out="" only=""
+stage="" population=rehearsal out="" only="" strict=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --stage) stage=${2:-}; shift 2 || usage ;;
     --population) population=${2:-}; shift 2 || usage ;;
     --out) out=${2:-}; shift 2 || usage ;;
     --steps) only=${2:-}; shift 2 || usage ;;
+    --strict) strict=yes; shift ;;
     -h|--help) usage ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -167,7 +170,7 @@ PY
 python3 -B "$ROOT/status/findings.py" "$out" >&2 || status=1
 
 # One line per step; a finding the check refused reads MALFORMED, whatever it claims.
-python3 -B - "$ROOT" "$out" "$population" "${ran[@]}" <<'PY'
+summary=$(python3 -B - "$ROOT" "$out" "$population" "${ran[@]}" <<'PY'
 import json, sys
 from pathlib import Path
 root, out, population, *ran = sys.argv[1:]
@@ -182,4 +185,16 @@ for base in ran:
         ok = False
     print(nn, name, r["result"] if ok else "MALFORMED")
 PY
+)
+echo "$summary"
+if [ "$strict" = yes ]; then
+  red=$(awk '$3 == "FAIL" || $3 == "MALFORMED"' <<<"$summary")
+  if [ "$population" != rehearsal ]; then
+    echo "loop.sh: --strict gates only the rehearsal population; $population results are reported, not gated" >&2
+  elif [ -n "$red" ]; then
+    echo "loop.sh: --strict: rehearsal steps not green:" >&2
+    echo "$red" >&2
+    [ "$status" -ne 0 ] || status=3
+  fi
+fi
 exit $status

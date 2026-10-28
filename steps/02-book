@@ -5,18 +5,24 @@ Usage: 02-book --population DIR --out DIR
 
 Alice's book (the population's `alice` node, its test key) gets two records
 sealed with Alice's key: an opening record, then the record the step asserts
-on. A checkpoint signed by the same key is cut over both. The proof bytes
-(record.json, placement.json, checkpoint.json, checkpoint.cose,
-inclusion.json) are then checked by evidencebook's own verifier, through the
-driver steps/02-book.setup.sh installs; its verdict is verify.json.
+on. A checkpoint signed by the same key is cut over both. The population's
+witness (`witness` in population.json: the rehearsal witness, a TEST key) is
+then given the checkpoint and returns a receipt over its digest, which the
+book keeps on the checkpoint. The proof bytes (record.json, placement.json,
+checkpoint.json with the receipt, checkpoint.cose, inclusion.json,
+witness-receipt.json, witnesses.json) are then checked by evidencebook's own
+verifier at the pinned tag, through the driver steps/02-book.setup.sh
+installs; its verdict is verify.json. The receipt is verified by the
+library's served summary, which runs AAC's witness receipt verifier against
+the checkpoint's COSE statement under the witness directory (witnesses.json).
 
 The finding:
 - FAIL when any check on the proof bytes does not hold (a record altered
-  after append, a checkpoint from another book, a wrong signer).
-- Otherwise NOT_CHECKED, because the witness part cannot be checked: no
-  witness receipt is obtained on the rehearsal population, and the pinned
-  evidencebook has no witness-receipt verifier (D-14). The detail lists the
-  checks that held. It never reads "witnessed".
+  after append, a checkpoint from another book, a wrong signer, a receipt
+  from a key the directory does not list or for another checkpoint).
+- PASS when every check held, the witness receipt included.
+- NOT_CHECKED when the population names no witness: the rest is checked and
+  listed in detail, and the witness part is the one not_checked entry.
 
 On the live population each node's own book is used: the book join.sh made
 under its book_dir, sealed with its own key from its data_dir (steps/live.py).
@@ -26,8 +32,8 @@ cuts a checkpoint with the book's checkpoint key, then bundles the record;
 signature, membership under the signed checkpoint). The step then checks that the
 bundle's record is the one appended, at its position, signed by the node key,
 under a checkpoint signed by the key the book was created with. The live driver
-is capsulectl, not the rehearsal driver, and the witness part is NOT_CHECKED as
-on rehearsal. A node whose data_dir or book_dir is not set or not readable is
+is capsulectl, not the rehearsal driver, and the witness part is NOT_CHECKED:
+no witness is configured for a lab node's book. A node whose data_dir or book_dir is not set or not readable is
 NOT_CHECKED. One finding, the worst over the nodes, its detail listing each node.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
@@ -51,14 +57,13 @@ import live  # noqa: E402
 
 ASSERTS = ("the record is in the node's book at a stated position, under a signed checkpoint "
            "that verifies; the checkpoint's witness receipt verifies")
-PINNED = ["evidencebook", "checkpointed-local-log", "evidence-request"]
-PROOF = ["record.json", "placement.json", "checkpoint.json", "checkpoint.cose", "inclusion.json", "verify.json"]
+PINNED = ["evidencebook", "checkpointed-local-log", "evidence-request", "aac-rust"]
+PROOF = ["record.json", "placement.json", "checkpoint.json", "checkpoint.cose", "inclusion.json",
+         "witness-receipt.json", "witnesses.json", "verify.json"]
 WITNESS_NOT_CHECKED = {
     "what": "a witness receipt on the checkpoint, and its verification",
-    "why": ("the rehearsal population has no witness, so no receipt is obtained; and the pinned "
-            "evidencebook (crate 0.0.7) has no witness-receipt verifier, so a receipt could not be "
-            "verified if one were attached"),
-    "issue": "D-14; action-state-group/evidencebook#119 (receipt verification: merged, in no release yet), #123 (the v0.8.0 release)",
+    "why": "the population names no witness, so no receipt is obtained for the checkpoint",
+    "issue": "evidence-network/loop: population.json names no witness (population/README.md)",
 }
 
 
@@ -84,6 +89,19 @@ def node(population_dir, name):
     raise KeyError(f"{population_dir}: no node named {name}")
 
 
+def witness_of(population_dir):
+    """The population's witness: {url, key, directory} with paths resolved, or None."""
+    w = json.loads((Path(population_dir) / "population.json").read_text(encoding="utf-8")).get("witness")
+    if not w:
+        return None
+
+    def at(p):
+        p = Path(p)
+        return p if p.is_absolute() else ROOT / p
+    return {"name": w["name"], "url": w["url"], "key": at(w["key_dir"]) / "witness-key.pem",
+            "directory": at(w["directory"])}
+
+
 def run(bin_, *args):
     return subprocess.run([str(bin_), *map(str, args)], capture_output=True, text=True)
 
@@ -97,10 +115,29 @@ def book(bin_, key, book_id, out, time, note="rehearsal record"):
         raise RuntimeError(f"driver book: {r.stderr.strip()}")
 
 
-def decide(bin_, out, *, population, book_id, pub, started):
-    """Verify the proof bytes in out with the driver and write the finding."""
+def witnessed(bin_, w, out):
+    """Give the checkpoint to the witness; keep its receipt on the checkpoint, and the directory, in out."""
     out = Path(out)
-    r = run(bin_, "verify", "--pub", pub, "--book-id", book_id, "--dir", out)
+    r = run(bin_, "witness", "--key", w["key"], "--url", w["url"], "--checkpoint", out / "checkpoint.json")
+    if r.returncode != 0:
+        raise RuntimeError(f"driver witness: {r.stderr.strip()}")
+    (out / "witness-receipt.json").write_text(r.stdout)
+    cp = json.loads((out / "checkpoint.json").read_text())
+    cp["witnesses"] = cp.get("witnesses", []) + [json.loads(r.stdout)]
+    (out / "checkpoint.json").write_text(json.dumps(cp, indent=2) + "\n")
+    shutil.copyfile(w["directory"], out / "witnesses.json")
+
+
+def decide(bin_, out, *, population, book_id, pub, started):
+    """Verify the proof bytes in out with the driver and write the finding.
+
+    The witness part is verified when out holds a witness directory
+    (witnesses.json); without one it is NOT_CHECKED.
+    """
+    out = Path(out)
+    has_witness = (out / "witnesses.json").is_file()
+    r = run(bin_, "verify", "--pub", pub, "--book-id", book_id, "--dir", out,
+            *(["--witnesses", out / "witnesses.json"] if has_witness else []))
     if r.returncode not in (0, 1):
         raise RuntimeError(f"driver verify: {r.stderr.strip()}")
     (out / "verify.json").write_text(r.stdout)
@@ -113,6 +150,12 @@ def decide(bin_, out, *, population, book_id, pub, started):
         return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
                              proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}",
                              started=started)
+    if has_witness:
+        detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
+                  f"The checkpoint's receipt from {', '.join(verdict['witnesses_verified'])} verifies under "
+                  f"witnesses.json; that witness is the rehearsal TEST witness.")
+        return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=detail, started=started)
     detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
               f"Witness part not checked ({verdict['witness_receipts']} receipts on the checkpoint).")
     return finding.write(out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=PINNED,
@@ -124,9 +167,8 @@ LIVE_PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PROOF = ["capsule.json", "append.json", "checkpoint.json", "bundle.json", "book-record.json", "verify.json"]
 LIVE_WITNESS_NOT_CHECKED = {
     "what": "a witness receipt on the book's checkpoint, and its verification",
-    "why": ("no witness is configured for a lab node's book, so its checkpoint carries no receipt; and the "
-            "pinned evidencebook has no witness-receipt verifier"),
-    "issue": WITNESS_NOT_CHECKED["issue"],
+    "why": "no witness is configured for a lab node's book, so its checkpoint carries no receipt",
+    "issue": "evidence-network/loop: the lab nodes' books have no witness configured (population/live)",
 }
 LIVE_SETUP = "none: steps/12-join.setup.sh has not installed it"
 PKCS8_ED25519 = bytes.fromhex("302e020100300506032b657004220420")
@@ -143,11 +185,24 @@ def capsulectl():
         if not (binary.is_file() and os.access(binary, os.X_OK)):
             missing.append({"what": name, "why": f"{binary} is not installed", "issue": LIVE_SETUP})
             continue
-        r = subprocess.run([str(binary), "--version"], capture_output=True, text=True)
-        got = (r.stdout.split() + ["", "unreadable"])[1]
+        got = built_from(binary) if name == "capsulectl" else \
+            (subprocess.run([str(binary), "--version"], capture_output=True, text=True).stdout.split()
+             + ["", "unreadable"])[1]
         if got != want:
             missing.append({"what": name, "why": f"installed {got}, versions.lock pins {want}", "issue": LIVE_SETUP})
     return cap, missing
+
+
+def built_from(core):
+    """The evidencebook tag the capsulectl core was built from, per the stamp steps/12-join.setup.sh writes.
+
+    The core reports its own (capsule-cli) version; the stamp names the tag whose
+    capsulectl/go.mod chose it: `<repository> <tag> <commit>`.
+    """
+    try:
+        return (core.parent / "capsulectl.built-from").read_text().split()[1]
+    except (OSError, IndexError):
+        return "unstamped"
 
 
 def jcs(obj):
@@ -242,8 +297,8 @@ def live_book(cap, name, data_dir, book_dir, out, work, time):
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
     if failed:
         return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}"
-    return "NOT_CHECKED", proof, (f"{where}: held on the proof bytes, checked by capsulectl verify --bundle and "
-                                  f"here: {', '.join(checks)}. Witness part not checked.")
+    return "NOT_CHECKED", proof, (f"{where}: these held on the proof bytes, by capsulectl verify --bundle and "
+                                  f"this step's comparisons: {', '.join(checks)}. Witness part not checked.")
 
 
 def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):
@@ -342,6 +397,9 @@ def main(argv):
         (out / p).unlink(missing_ok=True)
     book_id = f"{population}-alice"
     book(bin_, key, book_id, out, started)
+    w = witness_of(a.population)
+    if w is not None:
+        witnessed(bin_, w, out)
     decide(bin_, out, population=population, book_id=book_id, pub=pub, started=started)
     return 0
 
