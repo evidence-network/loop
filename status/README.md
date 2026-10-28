@@ -21,13 +21,16 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   `NOT_CHECKED` and the row names the issue that owns it.
 - The page's own words say "checked", "verified" or "witnessed" only in a
   `PASS` cell. Text a finding supplies is shown as a quote of the finding.
-- Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown while the
-  repository is private. Setting `DROP_HELD = True` drops them at the flip.
+- A `PASS` cell shows each gap its finding names: a sentence in `detail`
+  starting `Outside this step's assertion: ` and ending with the issue as
+  `owner/repo#N`. The cell shows it on a gap line, with the issue linked.
+- Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,
+  until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record
   (step 01), to the first answered request (step 12) and to the first
   countersigned report (step 11, a placeholder until M3), each the marker
   step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
-  writes it before the first step); decisions limited or refused on evidence
+  writes it before the first step), in seconds when under one minute; decisions limited or refused on evidence
   (M3) and filtered volume beside raw (M2) are placeholders. A number that cannot be measured
   reads `not measured yet (M1|M2|M3)`, never 0. `NUMBERS` in the source says
   which finding fields each one reads.

@@ -8,12 +8,12 @@
 :root { --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
         --o-ok: #e3efe3; --o-wait: #eef0f6; --o-no: #f6eee3; --o-none: #f3e6e6;
         --s-green: #2e7d32; --s-red: #c62828; --s-not: #8a8a84;
-        --t-answered: #4f8f55; --t-refused: #c98a2b; --t-absent: #b5473f; --t-missed: #9a9a94; }
+        --t-answered: #4f8f55; --t-refused: #c98a2b; --t-absent: #b5473f; --t-missed: #9a9a94; --gap: #a86a00; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
           --o-ok: #1f3021; --o-wait: #23263a; --o-no: #362d1f; --o-none: #3a2222;
           --s-green: #5fae64; --s-red: #e0675f; --s-not: #77776f;
-          --t-answered: #5fae64; --t-refused: #d9a04a; --t-absent: #d0645b; --t-missed: #6b6b66; }
+          --t-answered: #5fae64; --t-refused: #d9a04a; --t-absent: #d0645b; --t-missed: #6b6b66; --gap: #e0a640; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
@@ -54,6 +54,9 @@ svg.path .s-green circle { fill: var(--s-green); }
 svg.path .s-red circle { fill: var(--s-red); }
 svg.path .s-NOT_CHECKED circle { fill: var(--s-not); }
 svg.path .held circle { stroke: var(--fg); stroke-dasharray: 3 3; }
+svg.path .step circle.gapmark { fill: var(--bg); stroke: var(--gap); stroke-width: 2.5; stroke-dasharray: none; }
+ul.gaps { font-size: .9rem; padding-left: 1rem; }
+ul.gaps li { border-left: 3px solid var(--gap); padding-left: .5rem; list-style: none; margin: .2rem 0; }
 svg.path text { text-anchor: middle; fill: var(--fg); }
 svg.path text.n { fill: #fff; font-size: 11px; font-weight: 600; }
 svg.path text.name { font-size: 8.5px; }

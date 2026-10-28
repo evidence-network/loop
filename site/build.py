@@ -101,11 +101,14 @@ def path_svg(rs, population):
     for row, x, y in spots:
         c = row.cells[population]
         s = row.step
-        tip = f"{s.n:02d} {s.name}, {population}: {c.label}" + (f". {status_page.HELD_NOTE}" if row.held else "")
+        tip = (f"{s.n:02d} {s.name}, {population}: {c.label}"
+               + "".join(f". Gap: {g.text} ({g.issue})" for g in c.gaps)
+               + (f". {status_page.HELD_NOTE}" if row.held else ""))
+        mark = f'<circle class="gapmark" cx="{x + r - 3}" cy="{y - r + 3}" r="5"/>' if c.gaps else ""
         steps.append(
             f'<a href="{STATUS}/#step-{s.n:02d}"><g class="step s-{e(c.state)}{" held" if row.held else ""}" '
-            f'data-step="{s.n}" data-label="{e(c.label)}"><title>{e(tip)}</title>'
-            f'<circle cx="{x}" cy="{y}" r="{r}"/>'
+            f'data-step="{s.n}" data-label="{e(c.label)}"{f" data-gaps={chr(34)}{len(c.gaps)}{chr(34)}" if c.gaps else ""}>'
+            f'<title>{e(tip)}</title><circle cx="{x}" cy="{y}" r="{r}"/>{mark}'
             f'<text class="code n" x="{x}" y="{y + 4}">{s.n:02d}</text>'
             f'<text class="name" x="{x}" y="{y + r + 13}">{e(s.name)}</text></g></a>')
     states = [row.cells[population].state for row in rs]
@@ -121,6 +124,17 @@ def tally(rs, population):
     return "; ".join(f"{code(LABELS[st])} {count(states.count(st), len(rs), 'step')}" for st in status_page.ORDER)
 
 
+def gaps_list(rs, population):
+    """Each PASS step's gaps: what its finding says lies outside its assertion, with the issue linked."""
+    items = [f'<li><a href="{STATUS}/#step-{row.step.n:02d}">{code(f"{row.step.n:02d}")} '
+             f"{e(row.step.name)}</a>: gap, outside the assertion: <q>{e(g.text)}</q> issue: "
+             f'<a href="{e(g.url)}">{e(g.issue)}</a></li>'
+             for row in rs for g in row.cells[population].gaps]
+    if not items:
+        return ""
+    return f'<p class="note">A ringed step passed with a gap its finding names:</p><ul class="gaps">{"".join(items)}</ul>'
+
+
 def loop_section(rs, runs):
     figures = []
     for p in status_page.POPULATIONS:
@@ -132,7 +146,7 @@ def loop_section(rs, runs):
             note = (f'<p class="note">Dashed: {", ".join(code(f"{s.n:02d}") for s in held)}. '
                     f"{e(status_page.HELD_NOTE)}</p>")
         figures.append(f'<figure class="pop" data-population="{p}"><figcaption><strong>{p.capitalize()}</strong>: '
-                       f"{source}</figcaption>{path_svg(rs, p)}<p>{tally(rs, p)}.</p>{note}</figure>")
+                       f"{source}</figcaption>{path_svg(rs, p)}<p>{tally(rs, p)}.</p>{gaps_list(rs, p)}{note}</figure>")
     return f'<div class="pair">{"".join(figures)}</div>'
 
 
@@ -143,7 +157,10 @@ def number_cell(nb, run):
     if not measured:
         return f'<td class="placeholder" {p}>not measured yet ({code(nb.milestone)})</td>'
     m, total = status_page.minutes(run, nb.step), run_minutes(run)
-    return f'<td class="measured" {p}><span class="count">{m:.1f} of the run\'s {total:.1f} minutes</span></td>'
+    part, whole = status_page.duration(m), status_page.duration(total)
+    if part.endswith(" minutes"):
+        part = part.removesuffix(" minutes")  # "1.0 of the run's 3.0 minutes"
+    return f'<td class="measured" {p}><span class="count">{part} of the run\'s {whole}</span></td>'
 
 
 def numbers_section(runs):

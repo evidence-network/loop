@@ -27,7 +27,7 @@ import stats_model  # noqa: E402
 import status_page  # noqa: E402
 
 DATA = ROOT / "tests" / "fixtures" / "stats" / "daily"
-COUNT = re.compile(r"^(\d+(?:\.\d+)?) of (?:the run's )?(\d+(?:\.\d+)?) [a-z]")
+COUNT = re.compile(r"^(\d+(?:\.\d+)?)(?: s)? of (?:the run's )?(\d+(?:\.\d+)?) [a-z]")
 CLAIMS = re.compile(r"\b(checked|verified|witnessed)\b", re.I)
 DATES = ["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]
 
@@ -73,13 +73,13 @@ def parse(page):
     return t
 
 
-def write_finding(findings, n, name, result, population, not_checked=()):
+def write_finding(findings, n, name, result, population, not_checked=(), detail=""):
     d = findings / f"2026-10-27-{population}" / f"{n:02d}-{name}"
     d.mkdir(parents=True, exist_ok=True)
     (d / "proof.bin").write_bytes(b"proof bytes for step %d\n" % n)
     with mock.patch.object(finding, "now", return_value="2026-10-27T02:%02d:00Z" % n):
         finding.write(d, result=result, population=population, asserts=f"step {n} holds", pinned=["capsulectl"],
-                      proof=["proof.bin"], detail="", not_checked=not_checked, started="2026-10-27T02:00:00Z")
+                      proof=["proof.bin"], detail=detail, not_checked=not_checked, started="2026-10-27T02:00:00Z")
 
 
 def make_findings(findings):
@@ -166,12 +166,35 @@ class SiteTest(unittest.TestCase):
         # The public leak-lint rule: [ + three or more hyphenated lowercase segments + ].
         self.assertIsNone(re.search(r"\[[a-z0-9]+(?:-[a-z0-9]+){2,}\]", self.html))
 
+    BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright")
+    # The one allowed exception: the status page's pin table. Its repository
+    # paths are where each pinned component comes from (provenance), so they stay.
+    PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
+
     def test_it_says_it_is_the_evidence_networks_with_no_company_branding(self):
         self.assertIn("This site is the evidence network's.", self.html)
         self.assertIn("evidence network", (self.out / "index.html").read_text())
-        low = self.html.lower()
-        for brand in ("action state", "action-state", "actionstate", "asg", "muse", "dots", "©", "copyright"):
-            self.assertIsNone(re.search(rf"\b{re.escape(brand)}\b", low), brand)
+        pages = sorted(self.out.rglob("*.html"))
+        self.assertIn(self.out / "stats" / "status" / "index.html", pages)
+        self.assertEqual(len(pages), 3)  # the root redirect, the stats page and the status page
+        for page in pages:
+            text = page.read_text()
+            if page == self.out / "stats" / "status" / "index.html":
+                pins = self.PINS.search(text)
+                self.assertIn("action-state-group/", pins.group(0))  # the exception is the pin table, and it is used
+                text = self.PINS.sub("", text)
+            self.assertIsNone(self.PINS.search(text), page)  # no other page carries a pin table
+            low = text.lower()
+            for brand in self.BRANDS:
+                self.assertIsNone(re.search(rf"\b{re.escape(brand)}\b", low), (page, brand))
+
+    def test_only_the_deploy_job_takes_the_pages_concurrency_group(self):
+        wf = (ROOT / ".github" / "workflows" / "stats.yml").read_text()
+        jobs = wf.index("\njobs:")
+        self.assertNotIn("concurrency:", wf[:jobs])  # not workflow-wide: pull request builds never wait on it
+        deploy = wf[wf.index("\n  deploy:"):]
+        self.assertEqual(wf.count("concurrency:"), 1)
+        self.assertRegex(deploy, r"\n    concurrency:\n      group: pages\n      cancel-in-progress: false\n")
 
     # The loop
 
@@ -191,6 +214,45 @@ class SiteTest(unittest.TestCase):
         self.assertIn('class="step s-NOT_CHECKED" data-step="2" data-label="NOT_CHECKED"', self.figure("rehearsal"))
         self.assertIn('class="step s-red" data-step="3" data-label="FAIL"', self.figure("rehearsal"))
         self.assertIn('class="step s-NOT_CHECKED" data-step="2"', self.figure("live"))
+
+    def test_a_pass_step_with_a_gap_shows_it_on_the_path(self):
+        gaps = {1: ("seal", "the producer envelope signature is not verified in a second language",
+                    "action-state-group/agent-action-capsule#431"),
+                3: ("advertise", "alice: the stapled history_card/1 signature is not verified",
+                    "action-state-group/agent-action-capsule#430"),
+                12: ("join", "the controller binding of the joined node is not established",
+                     "action-state-group/agent-action-capsule#432")}
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            for n, (name, text, issue) in gaps.items():
+                write_finding(findings, n, name, "PASS", "rehearsal",
+                              detail=f"alice: PASS. Outside this step's assertion: {text} ({issue}).")
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        fig = re.search(r'<figure class="pop" data-population="rehearsal">(.*?)</figure>', page, re.S).group(1)
+        for n, (_, text, issue) in gaps.items():
+            self.assertIn(f'class="step s-green" data-step="{n}" data-label="PASS" data-gaps="1"', fig)
+            repo, num = issue.split("#")
+            line = re.search(rf'<li><a href="status/#step-{n:02d}">.*?</li>', fig).group(0)
+            self.assertIn(f"gap, outside the assertion: <q>{build.e(text)}</q>", line)
+            self.assertIn(f'<a href="https://github.com/{repo}/issues/{num}">{issue}</a>', line)
+        self.assertEqual(fig.count('class="gapmark"'), 3)
+        self.assertNotIn("data-gaps", self.figure("rehearsal"))  # no gap sentence, no gap mark
+        self.assertNotIn('class="gaps"', self.html)
+
+    def test_under_a_minute_reads_in_seconds(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-rehearsal" / "run.json").write_text(
+                json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:00:18Z"}))
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        # Step 01 finished 02:01:00 and step 03, the run's last, 02:03:00.
+        self.assertIn('<td class="measured" data-population="rehearsal"><span class="count">42 s of the run\'s '
+                      "2.7 minutes</span></td>", row)
 
     def test_held_rows_follow_the_status_page(self):
         self.assertEqual(sorted(int(n) for n in re.findall(r'class="step [^"]* held" data-step="(\d+)"',

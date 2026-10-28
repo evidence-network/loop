@@ -45,7 +45,7 @@ POPULATIONS = ("rehearsal", "live")
 RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)$")
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
-HARNESS = ("evidencebook-skills #53", "https://github.com/action-state-group/evidencebook-skills/issues/53")
+HARNESS = ("loop #24", "https://github.com/evidence-network/loop/issues/24")
 
 
 @dataclass(frozen=True)
@@ -81,12 +81,16 @@ STEPS = (
                      "through the public path.", NODE_SIDE, "M1"),
 )
 
-# Rows whose publication is settled on the public-flip checklist. They are built
-# and shown while the repository is private. The flip drops them by setting
-# DROP_HELD to True; nothing else changes.
+# Rows whose place on the page is still to be settled. They are built and shown,
+# marked held. Setting DROP_HELD to True drops them; nothing else changes.
 HELD_FOR_FLIP = frozenset({4, 5, 6, 9})
 DROP_HELD = False
-HELD_NOTE = "Held: whether this row is published is settled when the repository opens."
+HELD_NOTE = "Held: whether this row stays on the page is still to be settled."
+
+# A PASS finding names what lies outside its assertion in `detail`, one sentence
+# each: "Outside this step's assertion: <text> ... owner/repo#N." Each one is a
+# gap, shown on the row with its issue linked.
+GAP = re.compile(r"Outside this step's assertion: (.*?)\b([\w.-]+/[\w.-]+)#(\d+)\)?(?:\.(?=\s|$)|$)", re.S)
 
 # The five numbers. A measured one reads the newest run of its population:
 #   start = run.json `started`, which loop.sh writes before the run's first step;
@@ -137,6 +141,7 @@ class Cell:
     why: str  # HTML, the page's own words
     said: list = field(default_factory=list)  # (what, text): text the finding supplies, shown as a quote
     not_checked: list = field(default_factory=list)  # the finding's {what, why, issue} entries
+    gaps: list = field(default_factory=list)  # Gap: what a PASS finding says lies outside its assertion
     proofs: list = field(default_factory=list)  # (label, href relative to DIR)
     links: list = field(default_factory=list)  # (label, href): the finding itself
     pinned: list = field(default_factory=list)  # (name, ref)
@@ -147,6 +152,19 @@ class Cell:
             raise ValueError(f"unknown state {self.state!r}")
         if self.state == GREEN and not (self.label == "PASS" and self.proofs):
             raise ValueError("a green cell is a PASS with its proof files")
+
+
+@dataclass(frozen=True)
+class Gap:
+    text: str  # the sentence after "Outside this step's assertion: ", up to its issue
+    issue: str  # owner/repo#N
+    url: str
+
+
+def gaps(detail):
+    """Each "Outside this step's assertion: ... owner/repo#N." sentence in a finding's detail."""
+    return [Gap(text.rstrip(" (,;:"), f"{repo}#{n}", f"https://github.com/{repo}/issues/{n}")
+            for text, repo, n in GAP.findall(str(detail or ""))]
 
 
 @dataclass
@@ -260,7 +278,8 @@ def cell(step, run):
     )
     if r["result"] == "PASS":
         return Cell(p, GREEN, "PASS", f"PASS in {code(run.name)}: the finding says its assertion was checked on "
-                                      f"the proof bytes, and each proof file is here and matches its sha256.", **kw)
+                                      f"the proof bytes, and each proof file is here and matches its sha256.",
+                    gaps=gaps(r["detail"]), **kw)
     if r["result"] == "FAIL":
         return Cell(p, RED, "FAIL", f"FAIL in {code(run.name)}: the assertion did not hold.", **kw)
     return Cell(p, NOT_CHECKED, NOT_CHECKED, f"{code(NOT_CHECKED)} in {code(run.name)}: the finding lists what "
@@ -320,7 +339,13 @@ def number_value(number, run):
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return f"not measured yet ({number.milestone})", False
-    return f"{m:.1f} minutes", True
+    return duration(m), True
+
+
+def duration(m):
+    """Minutes as the page states them: whole seconds under one minute, else minutes to one decimal."""
+    seconds = round(m * 60)
+    return f"{seconds} s" if seconds < 60 else f"{m:.1f} minutes"
 
 
 def read_lock(path):
@@ -392,6 +417,9 @@ def issue_html(issue):
 
 def cell_html(c):
     parts = [f'<p class="label"><code>{e(c.label)}</code></p>', f"<p>{c.why}</p>"]
+    for g in c.gaps:
+        parts.append(f'<p class="gap"><strong>gap</strong>, outside the assertion: <q class="said">{e(g.text)}</q> '
+                     f"issue: {link(g.url, g.issue)}</p>")
     if c.not_checked:
         items = "".join(f'<li>what: <q class="said">{e(str(i["what"]))}</q>; why: <q class="said">{e(str(i["why"]))}'
                         f"</q>; issue: {issue_html(i['issue'])}</li>" for i in c.not_checked)
@@ -462,10 +490,10 @@ PAGE = """<!doctype html>
 <title>Loop status</title>
 <style>
 :root {{ --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
-        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; }}
+        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; --gap: #a86a00; }}
 @media (prefers-color-scheme: dark) {{
   :root {{ --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
-          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; }}
+          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; --gap: #e0a640; }}
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }}
@@ -487,6 +515,7 @@ td.placeholder {{ color: var(--muted); }}
 dl {{ margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }}
 dt {{ color: var(--muted); }} dd {{ margin: 0; }}
 td p, td ul {{ margin: .2rem 0; }}
+p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; }}
 </style>
 </head>
 <body>
@@ -500,6 +529,7 @@ added together.</p>
 <p>A cell is <code>PASS</code> (green) only when the step's finding says PASS and its proof files are here, each
 matching its sha256. <code>FAIL</code> or a finding that does not pass the check (<code>MALFORMED</code>) is red.
 <code>NOT_CHECKED</code> means the step could not establish its fact; the cell lists what, why and the owning issue.
+A <code>PASS</code> cell lists each gap its finding names: something outside the step's assertion, with its issue.
 Italic text is quoted from the finding. The badge shows the worst row of each population. Built from the findings
 and {lock} only.</p>
 <p>Runs read:</p>

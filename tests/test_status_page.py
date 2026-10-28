@@ -215,7 +215,60 @@ class StatusPageTest(unittest.TestCase):
         row = re.search(r'<tr class="row" id="step-07".*?</tr>', self.html).group(0)
         self.assertIn('href="https://github.com/Mesh-LLM/capsules-plugin/issues/49"', row)
         row = re.search(r'<tr class="row" id="step-08".*?</tr>', self.html).group(0)
-        self.assertIn('href="https://github.com/action-state-group/evidencebook-skills/issues/53"', row)
+        self.assertIn('href="https://github.com/evidence-network/loop/issues/24"', row)
+
+    def test_steps_08_10_and_11_are_owned_by_a_loop_issue(self):
+        self.write(1, "PASS")
+        self.page()
+        for n in (8, 10, 11):
+            row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
+            self.assertIn('owner: <a href="https://github.com/evidence-network/loop/issues/24">loop #24</a>', row)
+        self.assertNotIn("evidencebook-skills", self.html)
+
+    # A PASS finding's gaps, in the convention the steps write: one sentence in
+    # detail, "Outside this step's assertion: ...", ending with owner/repo#N.
+    GAPS = {1: ("the producer envelope signature is not verified in a second language",
+                "action-state-group/agent-action-capsule#431"),
+            3: ("alice: the stapled history_card/1 signature is not verified",
+                "action-state-group/agent-action-capsule#430"),
+            12: ("the controller binding of the joined node is not established",
+                 "action-state-group/agent-action-capsule#432")}
+
+    def gap_detail(self, n):
+        text, issue = self.GAPS[n]
+        return f"alice: PASS via the carrier. Outside this step's assertion: {text} ({issue})."
+
+    def test_a_pass_row_shows_each_gap_with_its_issue_linked(self):
+        for n in self.GAPS:
+            self.write(n, "PASS", detail=self.gap_detail(n))
+        page = self.page()
+        for n, (text, issue) in self.GAPS.items():
+            c = page.rows[n]["rehearsal"]
+            self.assertIn("s-green", c["class"])
+            row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
+            repo, num = issue.split("#")
+            gap = re.search(r'<p class="gap">(.*?)</p>', row).group(1)
+            self.assertIn(f'<q class="said">{status_page.e(text)}</q>', gap)
+            self.assertIn(f'<a href="https://github.com/{repo}/issues/{num}">{issue}</a>', gap)
+            self.assertIn("gap, outside the assertion", c["own"])
+
+    def test_a_pass_with_no_gap_sentence_has_no_gap_line(self):
+        self.write(1, "PASS", detail="alice: PASS via the carrier.")
+        self.page()
+        self.assertNotIn('<p class="gap">', self.html)
+
+    def test_gaps_parse_the_convention(self):
+        g = status_page.gaps("x. Outside this step's assertion: a; b, step 02's c (o/r#7). y.")
+        self.assertEqual(g, [status_page.Gap("a; b, step 02's c", "o/r#7", "https://github.com/o/r/issues/7")])
+        g = status_page.gaps("Outside this step's assertion: a o/r#1. Outside this step's assertion: b o/s#2")
+        self.assertEqual([(x.text, x.issue) for x in g], [("a", "o/r#1"), ("b", "o/s#2")])
+        self.assertEqual(status_page.gaps("Outside this step's assertion: no issue named."), [])
+        self.assertEqual(status_page.gaps(""), [])
+
+    def test_gaps_show_only_on_pass(self):
+        self.write(1, "FAIL", detail=self.gap_detail(1))
+        self.page()
+        self.assertNotIn('<p class="gap">', self.html)
 
     def test_no_run_of_a_population_is_not_checked(self):
         self.write(1, "PASS")
@@ -327,6 +380,16 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(self.number("first-sealed", "live"), ("measured", "1.0 minutes"))
         self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M1)"))
         self.assertNotIn("upper bound", self.html)
+
+    def test_under_a_minute_reads_in_seconds(self):
+        self.run_json("2026-10-27T02:00:18Z")
+        self.write(1, "PASS", started="2026-10-27T02:00:20Z")  # finished 02:01:00
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("measured", "42 s"))
+        self.assertEqual(status_page.duration(0), "0 s")
+        self.assertEqual(status_page.duration(59.4 / 60), "59 s")
+        self.assertEqual(status_page.duration(59.6 / 60), "1.0 minutes")
+        self.assertEqual(status_page.duration(1.5), "1.5 minutes")
 
     def test_no_valid_run_json_is_not_measured(self):
         self.write(1, "PASS")
@@ -455,7 +518,7 @@ class StatusPageTest(unittest.TestCase):
         state, text = self.number("first-sealed")
         self.assertEqual(state, "measured")
         expected = (status_page.stamp(seal["finished"]) - status_page.stamp(meta["started"])).total_seconds() / 60
-        self.assertEqual(text, f"{expected:.1f} minutes")
+        self.assertEqual(text, status_page.duration(expected))
 
 
 if __name__ == "__main__":
