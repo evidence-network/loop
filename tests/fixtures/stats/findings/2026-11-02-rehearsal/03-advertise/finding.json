@@ -1,0 +1,18 @@
+{
+  "asserts": "step 03 holds on the rehearsal nodes",
+  "detail": "",
+  "finished": "2026-11-02T02:03:00Z",
+  "name": "advertise",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "proof.bin",
+      "sha256": "5ad28414a17e1c7dff086110f96724a731db311229d33011fd7e6af4dbb07571"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T02:00:00Z",
+  "step": "03"
+}

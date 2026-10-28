@@ -285,6 +285,15 @@ def left_on(days):
 
 
 @dataclass
+class Part:
+    """One node's share of a day's sealed records."""
+
+    node_id: str
+    sealed: int
+    since: str  # the date of the earlier count it is compared with
+
+
+@dataclass
 class Point:
     """One date of the sealed-records line: the records sealed that day across the listed nodes."""
 
@@ -295,6 +304,7 @@ class Point:
     why: str | None = None  # why the point is a gap
     drops: list = field(default_factory=list)  # (node id, the earlier date) for each node whose count fell
     longer: int = 0  # of `nodes`, those whose last earlier count is older than the day before
+    parts: list = field(default_factory=list)  # Part per node compared, by node id
 
 
 def sealed_per_day(days):
@@ -311,7 +321,7 @@ def sealed_per_day(days):
         if day is None or day.missed:
             points.append(Point(date, None, 0, 0, "no day file" if day is None else "the reporter missed this day"))
             continue
-        sealed, nodes, drops, longer = 0, 0, [], 0
+        sealed, nodes, drops, longer, parts = 0, 0, [], 0, []
         yesterday = (dt.date.fromisoformat(date) - dt.timedelta(days=1)).isoformat()
         for node in day.nodes:
             a = node.answers.get("checkpoints")
@@ -326,11 +336,46 @@ def sealed_per_day(days):
                     sealed += now - before
                     nodes += 1
                     longer += since != yesterday
+                    parts.append(Part(node.node_id, now - before, since))
             last[node.node_id] = (date, now)
         if drops:
             points.append(Point(date, None, nodes, day.listed, "a node's count fell", drops))
         elif not nodes:
             points.append(Point(date, None, 0, day.listed, "no node's count could be compared with an earlier one"))
         else:
-            points.append(Point(date, sealed, nodes, day.listed, longer=longer))
+            points.append(Point(date, sealed, nodes, day.listed, longer=longer, parts=parts))
     return points
+
+
+# The window the page draws: the newest WINDOW dates of the calendar. Older dates fold into one thin band.
+WINDOW = 30
+
+
+def window(days, size=WINDOW):
+    """(older, shown): the calendar split into the dates before the window and the newest `size` dates."""
+    cal = calendar(days)
+    return cal[:-size] if len(cal) > size else [], cal[-size:]
+
+
+# A node's day, both questions read together, for the charts that count a node once a day.
+# `partial`: one question verified and the other not. Otherwise both settled the same way, or
+# the node counts under its better-answered question, in this order.
+NODE_DAY = ("verified", "partial", "no_checkpoint_yet", "no_announced_key", "not_evidence", "refusal", "absence")
+
+
+def node_day(node):
+    states = [node.answers[stem].state for stem in QUESTIONS]
+    if all(s == "verified" for s in states):
+        return "verified"
+    if "verified" in states:
+        return "partial"
+    return min(states, key=NODE_DAY.index)
+
+
+def first_seen(days):
+    """node id -> the first date it is in a day file's nodes."""
+    out = {}
+    for day in sorted(days, key=lambda d: d.date):
+        for node in day.nodes:
+            out.setdefault(node.node_id, day.date)
+    return out

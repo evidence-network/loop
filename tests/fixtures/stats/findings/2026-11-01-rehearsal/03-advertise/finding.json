@@ -1,0 +1,24 @@
+{
+  "asserts": "step 03 holds on the rehearsal nodes",
+  "detail": "",
+  "finished": "2026-11-01T02:04:00Z",
+  "name": "advertise",
+  "not_checked": [
+    {
+      "issue": "https://github.com/evidence-network/loop/issues/24",
+      "what": "the fact this step asserts",
+      "why": "the rehearsal fixture leaves it open on purpose"
+    }
+  ],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "proof.bin",
+      "sha256": "5ad28414a17e1c7dff086110f96724a731db311229d33011fd7e6af4dbb07571"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-01T02:00:00Z",
+  "step": "03"
+}

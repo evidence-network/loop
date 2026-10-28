@@ -22,6 +22,20 @@ jobs:
         run: python3 -B -m unittest discover -s tests -p test_site.py -v
       - name: Status page tests
         run: python3 -B -m unittest discover -s tests -p test_status_page.py -v
+      # The page's acceptance checks: the expected page, the negative fixture,
+      # each <details> table against its SVG, titles, no scripts or external URLs.
+      - name: Stats page checks
+        run: python3 -B -m unittest discover -s tests -p test_stats_redesign.py -v
+      # Contrast (4.5:1 in both colour schemes) and 12px labels, computed from
+      # site/template.html's tokens; no network.
+      - name: Stats page contrast check
+        run: python3 -B -m unittest discover -s tests -p test_stats_contrast.py -v
+      # The page built from the committed fixtures, byte for byte against the
+      # committed expected page. It is built outside _site and never deployed.
+      - name: Stats page against the committed expected page
+        run: |
+          python3 -B site/build.py tests/fixtures/stats/daily --findings tests/fixtures/stats/findings --lock versions.lock --out "$RUNNER_TEMP/fixture-site"
+          diff -u tests/fixtures/stats/expected/index.html "$RUNNER_TEMP/fixture-site/stats/index.html"
       # The loop's rows and numbers come from loop findings and versions.lock.
       # A fresh stage-1 rehearsal run, as loop.yml runs it, lands beside any
       # live run committed under findings/; the site reads the newest of each.
