@@ -3,13 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Daily evidence reports</title>
+<title>Loop stats</title>
 <style>
 :root { --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
-        --o-ok: #e3efe3; --o-wait: #eef0f6; --o-no: #f6eee3; --o-none: #f3e6e6; }
+        --o-ok: #e3efe3; --o-wait: #eef0f6; --o-no: #f6eee3; --o-none: #f3e6e6;
+        --s-green: #2e7d32; --s-red: #c62828; --s-not: #8a8a84;
+        --t-answered: #4f8f55; --t-refused: #c98a2b; --t-absent: #b5473f; --t-missed: #9a9a94; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
-          --o-ok: #1f3021; --o-wait: #23263a; --o-no: #362d1f; --o-none: #3a2222; }
+          --o-ok: #1f3021; --o-wait: #23263a; --o-no: #362d1f; --o-none: #3a2222;
+          --s-green: #5fae64; --s-red: #e0675f; --s-not: #77776f;
+          --t-answered: #5fae64; --t-refused: #d9a04a; --t-absent: #d0645b; --t-missed: #6b6b66; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
@@ -20,9 +24,7 @@ h3 { font-size: 1.1rem; margin: 2rem 0 .4rem; }
 p, li { max-width: 44rem; }
 a { color: var(--accent); }
 code { background: var(--code); padding: 0 .25em; border-radius: 3px; font-size: .9em; overflow-wrap: anywhere; }
-pre { background: var(--code); padding: .8rem; overflow-x: auto; border-radius: 4px; }
-pre code { padding: 0; background: none; }
-.note, .raw { color: var(--muted); font-size: .9rem; }
+.note { color: var(--muted); font-size: .9rem; }
 .scroll { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
 th, td { border: 1px solid var(--line); padding: .5rem; vertical-align: top; text-align: left; }
@@ -30,26 +32,82 @@ td.o-verified { background: var(--o-ok); }
 td.o-no_checkpoint_yet { background: var(--o-wait); }
 td.o-refusal, td.o-no_announced_key, td.o-not_evidence { background: var(--o-no); }
 td.o-absence { background: var(--o-none); }
+td.placeholder { color: var(--muted); }
 dl { margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }
 dt { color: var(--muted); } dd { margin: 0; }
 td p { margin: .2rem 0; }
 .missed p { background: var(--o-none); padding: .5rem; }
 ul.days { columns: 12rem; }
 ul.attempts { margin: .2rem 0; padding-left: 1rem; }
+ul.legend { list-style: none; padding: 0; font-size: .9rem; }
 .gap { border-left: 3px solid var(--accent); padding-left: .8rem; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.5rem; }
+figure.pop { margin: 0; }
+figure.pop figcaption { margin-bottom: .4rem; }
+svg { font-family: system-ui, sans-serif; }
+svg .code { font-family: ui-monospace, monospace; }
+svg.path { width: 100%; max-width: 26rem; height: auto; display: block; }
+svg.path .track { fill: none; stroke: var(--line); stroke-width: 4; }
+svg.path .track.back { stroke-dasharray: 3 5; }
+svg.path circle { stroke: var(--bg); stroke-width: 2; }
+svg.path .s-green circle { fill: var(--s-green); }
+svg.path .s-red circle { fill: var(--s-red); }
+svg.path .s-NOT_CHECKED circle { fill: var(--s-not); }
+svg.path .held circle { stroke: var(--fg); stroke-dasharray: 3 3; }
+svg.path text { text-anchor: middle; fill: var(--fg); }
+svg.path text.n { fill: #fff; font-size: 11px; font-weight: 600; }
+svg.path text.name { font-size: 8.5px; }
+svg.timeline text { fill: var(--fg); font-size: 10px; }
+svg.timeline text.date { font-size: 8.5px; fill: var(--muted); }
+svg.timeline .leftlabel { font-size: 9px; fill: var(--muted); }
+svg.timeline .leftmark { stroke: var(--fg); stroke-width: 2; }
+.t-answered { fill: var(--t-answered); }
+.t-refused { fill: var(--t-refused); }
+.t-absent { fill: var(--t-absent); }
+.t-missed { fill: var(--t-missed); }
+.t-out { fill: none; stroke: var(--line); }
+.t-none { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
+footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem; }
 </style>
 </head>
 <body>
 <main>
-<h1>Daily evidence reports</h1>
+<h1>Loop stats</h1>
 <p><a href="status/"><img src="status/badge.svg" alt="Loop status"></a></p>
-<p>Once a day, one node on the mesh, the <em>reporter</em>, asks every node on the commitment list
-the same two questions and saves exactly what came back. This page shows those saved answers, one
-row per node per day, with a link to every raw file. It is built from the saved files and nothing else.</p>
-<p>New here? Read <a href="#what">what the reporter asks</a> and <a href="#outcomes">what each result means</a> first.
-Then <a href="#reports">the reports</a>.</p>
+<p>This site is the evidence network's. It shows, from files in the network's public repository and nothing else:
+the loop, the steps a node goes through from sealing a record to a new node joining, and where each step stands;
+five numbers that say how far the loop has come; and every node on the commitment list, day by day, as the daily
+reporter found it.</p>
+<p>New here? Read <a href="#what">what the reporter asks</a> and <a href="#outcomes">what each result means</a>.
+Then <a href="#loop">the loop</a>, <a href="#numbers">the five numbers</a>, <a href="#nodes">the nodes</a> and
+<a href="#days">each day</a>.</p>
+
+<h2 id="loop">The loop</h2>
+<p>The loop is the network's test harness: one step per fact, each writing a finding with its proof files. The
+rehearsal run uses demo nodes and test keys; the live run uses the lab nodes. They are drawn side by side and never
+added together. A step is green only when its finding says <code>PASS</code> and its proof files match; red is
+<code>FAIL</code> or a finding that does not pass the format check; grey is <code>NOT_CHECKED</code>, a step that
+could not establish its fact yet. Each step links to its row on the <a href="status/">status page</a>, which lists
+what, why and the issue that owns it.</p>
+$loop
+
+<h2 id="numbers">Five numbers</h2>
+<p>Each number is per population, from that population's newest run. A minutes figure runs from the run's start to
+the end of the step that marks the event, and is shown out of the whole run's length. A number that cannot be
+measured yet says so, with the milestone it waits for; it is never shown as zero. The
+<a href="status/#numbers">status page</a> says which finding each one reads.</p>
+$numbers
+
+<h2 id="nodes">The nodes, day by day</h2>
+<p>Once a day the reporter asks every node on the commitment list the same two questions. Here is what came back,
+per node, per question, per day.</p>
+$nodes
 
 <h2 id="what">What the reporter asks</h2>
+<p>Once a day, one node on the mesh, the <em>reporter</em>, asks every node on the commitment list
+the same two questions and saves exactly what came back. Those saved files are kept in a separate repository that is
+not published. This site shows a scrubbed record of them: per node per day, the result of each question, every
+attempt, the log size at the checkpoint, and the <code>SHA-256</code> of the answer, never the answer's bytes.</p>
 <p>Each node on this network keeps a book of sealed records about the exchanges it takes part in, and
 answers evidence requests under its own disclosure policy. Most records are answered only to the other
 party of that exchange. Two questions are answered to anyone, and they are the only two the reporter asks:</p>
@@ -63,16 +121,15 @@ the proof that it extends the one before. Again, no record's contents.</li>
 so each node can see who asked. It asks nothing else, and it never asks itself.</p>
 
 <h2 id="outcomes">What each result means</h2>
-<p>Each question gets exactly one result per node per day.</p>
+<p>Each question gets exactly one result per node per day. On the timeline, the first four are <em>answered</em>, a
+<code>refusal</code> is <em>refused</em> and an <code>absence</code> is <em>absent</em>.</p>
 <dl>
 <dt><code class="outcome o-verified">verified</code></dt>
-<dd>The node answered, and the reporter's own node checked the answer's signature under the key the node's host
-announces on the mesh, and the answer's form. It means: this node, holding that key, signed this answer to this
-request. It does <strong>not</strong> mean the node's records are true or complete, that the node is trustworthy, or
-that anyone vouches for it. Repeating this check yourself, offline, is not possible yet; see
-<a href="#offline">checking an answer yourself</a>.
-The key column also says whether the announced key is the one the node listed (<code>listed_key=match</code>) or
-not (<code>listed_key=differs</code>).</dd>
+<dd>The node answered, and the reporter's own node ran its check on the answer's signature, under the key the
+node's host announces on the mesh, and on the answer's form, and both held. It means: this node, holding that key,
+signed this answer to this request. It does <strong>not</strong> mean the node's records are true or complete, that
+the node is trustworthy, or that anyone vouches for it. Repeating that check yourself, offline, is not possible yet;
+see <a href="#offline">checking an answer yourself</a>.</dd>
 <dt><code class="outcome o-no_checkpoint_yet">no_checkpoint_yet</code></dt>
 <dd>The node signed a <code>coverage_unsatisfiable</code> answer: it has not cut its first checkpoint yet. A node
 cuts its first checkpoint about five minutes after its first activity. This is not a refusal and not an absence.</dd>
@@ -80,20 +137,21 @@ cuts its first checkpoint about five minutes after its first activity. This is n
 <dd>The node signed a "no" over this exact request, with a reason. A signed refusal is an answer: the node is up,
 holds its key, and chose not to disclose. It says nothing bad about the node.</dd>
 <dt><code class="outcome o-absence">absence</code></dt>
-<dd>Nothing came back: the node was offline, could not be reached, or did not answer in time. The saved file says
-why. An absence says nothing about the node's records.</dd>
+<dd>Nothing came back: the node was offline, could not be reached, or did not answer in time. Each attempt says how it
+ended: <code>unreachable</code>, <code>timeout</code> or <code>absence</code>. An absence says nothing about the node's
+records.</dd>
 <dt><code class="outcome o-no_announced_key">no_announced_key</code></dt>
 <dd>A reply came back, but the reporter's host had learned no key for the node, so there was nothing to check it against.</dd>
 <dt><code class="outcome o-not_evidence">not_evidence</code></dt>
-<dd>A reply came back that is neither a signed answer that checks out nor a signed refusal. The saved file says why.</dd>
+<dd>A reply came back that is neither a signed answer that checks out nor a signed refusal.</dd>
 </dl>
-<p>Each node also has a <code>NODE</code> line: <code>discloses: ...</code> (the questions it answered with a checked
-signed answer), <code>joined, no checkpoint yet</code>, or <code>joined, discloses nothing</code>.</p>
+<p>Each node also has a <code>NODE</code> line: <code>discloses: ...</code> (the questions it answered with a signed
+answer that held), <code>joined, no checkpoint yet</code>, or <code>joined, discloses nothing</code>.</p>
 
 <h2 id="why">Why there is no score</h2>
-<p>Each result is a fact about one exchange on one day: what was asked, what came back, and how it checked. Adding
+<p>Each result is a fact about one exchange on one day: what was asked, what came back, and how the reporter's check came out. Adding
 those up into a number per node would claim more than the records say. An absence can be the reporter's own path
-to the node; a refusal is a node using its policy. So the page has no score, no ranking and no table of nodes by
+to the node; a refusal is a node using its policy. So the site has no score, no ranking and no table of nodes by
 result. Nodes are listed by node id, which is a key, so the order means nothing. The only numbers about nodes are
 counts for one day, and each says how many nodes it is out of: for example "<span class="count">2 of 3 listed nodes</span>".</p>
 
@@ -104,30 +162,34 @@ the fields). The list's check must pass. From the next daily run the reporter as
 in its lab stage, only known operators are listed.</p>
 <p><strong>Leave:</strong> open a pull request that deletes your file and adds a leave mark,
 <code>nodes/left/&lt;node_id&gt;.json</code>, with the day it merges. From the next run the reporter stops asking
-your node, and this page lists it as left on that day. Days already reported stay as they are: a report records what was asked and what came back, and is
-never rewritten.</p>
+your node, and this site shows it as left on that day. Days already reported stay as they are: a report records what
+was asked and what came back, and is never rewritten.</p>
 <p>The list is discovery, not evidence: an entry says how to ask a node, and the answers are the evidence.</p>
 
 <h2 id="offline">Checking an answer yourself</h2>
 <div class="gap">
 <p><strong>Not yet available.</strong> There is no command yet that re-checks one saved answer offline on a fresh
-machine, and this page will not show one until it works.</p>
-<p>Why: a signed answer is bound to the exact bytes of the request it answers (a <code>SHA-256</code> digest of them). Before
-sending, the reporter's plugin adds its own members to the request: who is asking, the audience, a fresh nonce, a
-deadline, and the reporter's signature. The reports save the request as the reporter built it
-(<code>&lt;q&gt;.request.json</code>) and the plugin's reply around the answer (<code>&lt;q&gt;.response.json</code>),
-but not the exact bytes that were sent, and those cannot be rebuilt (the nonce is random). So the request binding of a
-saved answer cannot be re-checked from these files alone.</p>
+machine, and this site will not show one until it works.</p>
+<p>Why: a signed answer is bound to the exact bytes of the request it answers (a <code>SHA-256</code> digest of them).
+Before sending, the reporter's plugin adds its own members to the request: who is asking, the audience, a fresh nonce,
+a deadline, and the reporter's signature. The reporter saves the request as it built it and the plugin's reply around
+the answer, but not the exact bytes that were sent, and those cannot be rebuilt (the nonce is random). So the request
+binding of a saved answer cannot be tested again from the saved files alone.</p>
 <p>What closing the gap takes: the plugin's tool reply returns the exact bytes it sent, the reporter saves them beside
 the answer, and a command-line checker for this answer format is published. Until then, each result here is the
-reporter's own node's check, and the raw files are linked so you can read exactly what came back.</p>
+reporter's own node's result. The saved files themselves are not published; each day shows the <code>SHA-256</code>
+of every settled answer, so a copy of an answer can be matched to the one recorded here.</p>
 </div>
 
-<h2 id="reports">The reports</h2>
-<p class="note">Newest first. A day with no run is marked missed, with the reason; a day is never silently absent.</p>
-$day_index
-$left
+<h2 id="days">Each day</h2>
+<p class="note">Newest first. A day with no run is marked missed, with the reason; a day is never silently absent.
+Each day links its scrubbed day file.</p>
 $days
+
+<footer>
+<p class="note">The evidence network's loop stats, built by <code>site/build.py</code> from the scrubbed day files
+under <code>stats/data/daily/</code> and the loop's findings.</p>
+</footer>
 </main>
 </body>
 </html>

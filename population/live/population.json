@@ -1,9 +1,9 @@
 {
   "population": "live",
   "nodes": [
-    {"name": "lab-1", "node_id": null, "host": "lab"},
-    {"name": "lab-2", "node_id": null, "host": "lab"},
-    {"name": "lab-3", "node_id": null, "host": "lab"}
+    {"name": "lab-1", "node_id": null, "host": "lab", "data_dir": null, "book_dir": null},
+    {"name": "lab-2", "node_id": null, "host": "lab", "data_dir": null, "book_dir": null},
+    {"name": "lab-3", "node_id": null, "host": "lab", "data_dir": null, "book_dir": null}
   ],
   "rail": null
 }

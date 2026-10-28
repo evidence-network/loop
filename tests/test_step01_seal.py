@@ -72,9 +72,9 @@ class Step01SealTest(unittest.TestCase):
         self.assertEqual(capsule["effect"]["effect_attestation"], "runtime_claimed")
         self.assertEqual(go_capsule_id(capsule), capsule["capsule_id"])
         self.assertTrue(all(c["ok"] for c in self.checks().values()))
-        self.assertEqual([n["what"] for n in r["not_checked"]],
-                         ["the producer envelope signature, verified in a second language"])
-        self.assertEqual(r["not_checked"][0]["issue"], "to be filed")
+        # The envelope signature is outside the assertion: a PASS says so in detail, with no not_checked entry.
+        self.assertEqual(r["not_checked"], [])
+        self.assertIn("Outside this step's assertion: the producer envelope signature is not verified", r["detail"])
 
     def test_the_fixture_capsule_verifies(self):
         need(VERIFIER)

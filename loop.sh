@@ -16,6 +16,17 @@
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
 # LOOP_STEP_TIMEOUT is each step's limit in seconds (default 1800).
 # LOOP_FINDINGS is where the default out directory goes (default findings/).
+#
+# Needs bash 4+ (associative arrays) and `timeout` from GNU coreutils; it stops with exit 2
+# before any step runs when either is missing.
+if [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  echo "loop.sh: needs bash 4 or later (this is ${BASH_VERSION:-not bash}); run it with a newer bash" >&2
+  exit 2
+fi
+if ! command -v timeout >/dev/null 2>&1; then
+  echo "loop.sh: needs timeout from GNU coreutils on PATH (macOS: brew install coreutils, then put its gnubin first)" >&2
+  exit 2
+fi
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")" && pwd)

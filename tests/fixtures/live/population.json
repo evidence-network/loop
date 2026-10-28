@@ -1,0 +1,10 @@
+{
+  "population": "live",
+  "nodes": [
+    {"name": "lab-1", "node_id": null, "host": "lab",
+     "data_dir": "$LAB_DIR/nodes/lab-1/.local/share/capsules", "book_dir": "$LAB_DIR/nodes/lab-1/join-book"},
+    {"name": "lab-2", "node_id": null, "host": "lab",
+     "data_dir": "$LAB_DIR/nodes/lab-2/.local/share/capsules", "book_dir": "$LAB_DIR/nodes/lab-2/join-book"}
+  ],
+  "rail": null
+}

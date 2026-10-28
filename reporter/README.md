@@ -115,10 +115,12 @@ loginctl enable-linger "$USER"
 The timer runs at 00:30 UTC (and at the next boot if the node was down then).
 A run asks nodes that gave no answer again for up to six hours, then commits.
 A day it did not run gets a `MISSED` mark from the next run, and a run that cannot
-reach its own node commits `MISSED` for that day. The `reports` workflow's
-09:00 UTC watchdog reads this repository's `reports/daily`, which no longer
-receives reports: it has to move to loop-data, or read the scrubbed set (see
-the pull request that moved the reports).
+reach its own node commits `MISSED` for that day. The watchdog lives in
+loop-data: its `reports` workflow runs this repository's
+`scripts/check_reports.py --through <today> --reporter reporter/reporter.json`
+over loop-data's `reports/daily` at 09:00 UTC and on every push there, so a day
+with neither a report nor a `MISSED` mark turns it red. Here, the `reports`
+workflow only tests the reporter code on pull requests.
 
 ## Asking again
 

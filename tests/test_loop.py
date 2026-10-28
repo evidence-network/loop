@@ -176,8 +176,10 @@ class PopulationTest(unittest.TestCase):
         self.assertEqual(p["population"], "live")
         self.assertEqual(len(p["nodes"]), 3)
         for n in p["nodes"]:
-            self.assertEqual(sorted(n), ["host", "name", "node_id"])
+            self.assertEqual(sorted(n), ["book_dir", "data_dir", "host", "name", "node_id"])
             self.assertEqual(n["host"], "lab")
+            for path in (n["data_dir"], n["book_dir"]):  # null, or named from $LAB_DIR: never a host path
+                self.assertTrue(path is None or path.startswith("$LAB_DIR/"), path)
         self.assertFalse(list((POPULATION / "live").glob("**/*.pem")))
 
     def test_rehearsal_keys_load_and_match_their_pub_pems(self):

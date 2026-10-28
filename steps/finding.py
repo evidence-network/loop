@@ -22,6 +22,12 @@ POPULATIONS = ("rehearsal", "live")
 STEP_DIR = re.compile(r"^(\d{2})-([a-z][a-z0-9-]*)$")
 FIELDS = ("step", "name", "result", "population", "asserts", "pinned", "proof", "detail",
           "not_checked", "started", "finished")
+# In a NOT_CHECKED finding, asserts and detail may not claim a check: "checked",
+# "witnessed" and "verified" are refused unless negated ("not checked", "never
+# verified", "could not be verified", "has not been checked"). "unchecked",
+# "unverified" and "NOT_CHECKED" are other words and are not matched.
+NEGATED_CHECK = re.compile(r"\b(?:not|never|cannot)(?:\s+be(?:en)?)?\s+(?:checked|witnessed|verified)\b", re.I)
+CLAIMED_CHECK = re.compile(r"\b(?:checked|witnessed|verified)\b", re.I)
 
 
 def pins(path=ROOT / "versions.lock"):
@@ -94,7 +100,9 @@ def check_record(step_dir, r):
             errs.append(f"{where}: pinned {n} is not the versions.lock entry")
     for p in r["proof"]:
         f = Path(step_dir) / p["path"]
-        if ".." in Path(p["path"]).parts or not f.is_file():
+        if Path(p["path"]).is_absolute() or p["path"].startswith("/") or ".." in Path(p["path"]).parts:
+            errs.append(f"{where}: proof {p['path']} must be a relative path inside the step directory")
+        elif not f.is_file():
             errs.append(f"{where}: proof {p['path']} is not a file in the step directory")
         elif sha256(f) != p["sha256"]:
             errs.append(f"{where}: proof {p['path']} does not match its sha256")
@@ -105,6 +113,14 @@ def check_record(step_dir, r):
             errs.append(f"{where}: each not_checked entry is {{what, why, issue}}")
     if r["result"] == "NOT_CHECKED" and not r["not_checked"]:
         errs.append(f"{where}: NOT_CHECKED needs a not_checked entry saying what and why")
+    if r["result"] == "NOT_CHECKED":
+        for field in ("asserts", "detail"):
+            claim = CLAIMED_CHECK.search(NEGATED_CHECK.sub("", str(r[field])))
+            if claim:
+                errs.append(f"{where}: a NOT_CHECKED {field} may not claim {claim.group(0)!r}")
+    if r["result"] == "PASS" and r["not_checked"]:
+        errs.append(f"{where}: a PASS covers its assertion fully, so it has no not_checked entries; "
+                    "say what lies outside the assertion in detail")
     return errs
 
 

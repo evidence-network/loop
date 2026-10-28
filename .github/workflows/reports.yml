@@ -1,15 +1,12 @@
 name: reports
 
+# The reporter code and its tests, on every pull request. The reports themselves
+# live in evidence-network/loop-data, whose own reports workflow is the 09:00 UTC
+# watchdog for a missed day; this repository receives no reports.
 on:
   pull_request:
   push:
     branches: [main]
-  # The watchdog: the reporter runs at 06:00 UTC on its own node and pushes its
-  # report. At 09:00 UTC today's report (or its MISSED mark) must be here, so a
-  # reporter that stopped altogether turns this check red. It reads only this
-  # repository; it asks no node.
-  schedule:
-    - cron: "0 9 * * *"
 
 permissions:
   contents: read
@@ -20,11 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Reporter tests
-        if: github.event_name != 'schedule'
         run: python3 -m unittest discover -s tests -v
       - name: Check the reports
-        if: github.event_name != 'schedule'
         run: python3 scripts/check_reports.py reports/daily
-      - name: No day is silently missing
-        if: github.event_name == 'schedule'
-        run: python3 scripts/check_reports.py reports/daily --through "$(date -u +%F)" --reporter reporter/reporter.json

@@ -18,12 +18,27 @@ The finding:
   evidencebook has no witness-receipt verifier (D-14). The detail lists the
   checks that held. It never reads "witnessed".
 
+On the live population each node's own book is used: the book join.sh made
+under its book_dir, sealed with its own key from its data_dir (steps/live.py).
+The pinned capsulectl seals a record with that key, appends it to the book and
+cuts a checkpoint with the book's checkpoint key, then bundles the record;
+`capsulectl verify --bundle` checks the bundle offline (record identity and
+signature, membership under the signed checkpoint). The step then checks that the
+bundle's record is the one appended, at its position, signed by the node key,
+under a checkpoint signed by the key the book was created with. The live driver
+is capsulectl, not the rehearsal driver, and the witness part is NOT_CHECKED as
+on rehearsal. A node whose data_dir or book_dir is not set or not readable is
+NOT_CHECKED. One finding, the worst over the nodes, its detail listing each node.
+
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (no driver installed, unreadable population).
 """
 import argparse
+import base64
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,6 +47,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 import finding  # noqa: E402
+import live  # noqa: E402
 
 ASSERTS = ("the record is in the node's book at a stated position, under a signed checkpoint "
            "that verifies; the checkpoint's witness receipt verifies")
@@ -97,10 +113,213 @@ def decide(bin_, out, *, population, book_id, pub, started):
         return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
                              proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}",
                              started=started)
-    detail = (f"{where}: held on the proof bytes, checked by evidencebook: {', '.join(held)}. "
+    detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
               f"Witness part not checked ({verdict['witness_receipts']} receipts on the checkpoint).")
     return finding.write(out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=PINNED,
                          proof=proof, detail=detail, not_checked=[WITNESS_NOT_CHECKED], started=started)
+
+
+# --- The live population: each node's own book, by the pinned capsulectl -----
+LIVE_PINNED = ["capsulectl", "capsulectl-book"]
+LIVE_PROOF = ["capsule.json", "append.json", "checkpoint.json", "bundle.json", "book-record.json", "verify.json"]
+LIVE_WITNESS_NOT_CHECKED = {
+    "what": "a witness receipt on the book's checkpoint, and its verification",
+    "why": ("no witness is configured for a lab node's book, so its checkpoint carries no receipt; and the "
+            "pinned evidencebook has no witness-receipt verifier"),
+    "issue": WITNESS_NOT_CHECKED["issue"],
+}
+LIVE_SETUP = "none: steps/12-join.setup.sh has not installed it"
+PKCS8_ED25519 = bytes.fromhex("302e020100300506032b657004220420")
+
+
+def capsulectl():
+    """(capsulectl, [{what, why, issue}] for each tool missing or not at its pin)."""
+    tools = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop"))
+    cap = Path(os.environ.get("CAPSULECTL") or tools / "bin" / "capsulectl")
+    plugins = Path(os.environ.get("CAPSULECTL_PLUGIN_ROOTS") or cap.parent)
+    missing = []
+    for name, binary in (("capsulectl", cap), ("capsulectl-book", plugins / "capsulectl-book")):
+        want = finding.pins()[name][1].rsplit("/", 1)[-1]
+        if not (binary.is_file() and os.access(binary, os.X_OK)):
+            missing.append({"what": name, "why": f"{binary} is not installed", "issue": LIVE_SETUP})
+            continue
+        r = subprocess.run([str(binary), "--version"], capture_output=True, text=True)
+        got = (r.stdout.split() + ["", "unreadable"])[1]
+        if got != want:
+            missing.append({"what": name, "why": f"installed {got}, versions.lock pins {want}", "issue": LIVE_SETUP})
+    return cap, missing
+
+
+def jcs(obj):
+    """RFC 8785 for a book header: strings, integers, arrays and objects only."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def seed_of(pem):
+    """The 32-byte seed of an Ed25519 PKCS#8 PEM key, as the hex seed file capsulectl reads."""
+    der = base64.b64decode("".join(ln for ln in Path(pem).read_text().splitlines() if not ln.startswith("-----")))
+    if len(der) != 48 or not der.startswith(PKCS8_ED25519):
+        raise ValueError(f"{pem}: not an Ed25519 PKCS#8 private key")
+    return der[16:].hex()
+
+
+def bound_keys(book_dir, name):
+    """The node keys join.sh's profile for the book trusts: its top-level trusted_keys."""
+    keys, inside = [], False
+    for line in (book_dir / "config" / "capsule" / "profiles" / f"{name}.yaml").read_text().splitlines():
+        if not line.startswith(" "):
+            inside = line.strip() == "trusted_keys:"
+        elif inside and line.strip().startswith("- "):
+            keys.append(line.strip()[2:].strip())
+    return keys
+
+
+def live_book(cap, name, data_dir, book_dir, out, work, time):
+    """Append one record to the node's book and check it: (result, proof, detail)."""
+    out.mkdir(parents=True, exist_ok=True)
+    work.mkdir(mode=0o700, parents=True)
+    env = dict(os.environ, XDG_CONFIG_HOME=str(work / "config"),
+               CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
+    done = []
+
+    def cap_run(stem, *args, save=None):
+        r = subprocess.run([str(cap), *map(str, args)], capture_output=True, text=True, env=env)
+        if save:
+            (out / save).write_text(r.stdout)
+        if r.returncode != 0 and stem != "verify":
+            (out / f"{stem}.stderr.txt").write_text(r.stderr)
+            raise RuntimeError(stem)
+        return r
+
+    try:
+        # The node key's seed, for this run only: capsulectl reads a key from a 0600 file.
+        seed = work / "node.seed"
+        fd = os.open(seed, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(seed_of(data_dir / "keys" / "node-key.pem") + "\n")
+        node_pub = json.loads(cap_run("key", "key", "show-public", seed).stdout)["public_key"]
+        cp_pub = json.loads(cap_run("key", "key", "show-public", book_dir / "checkpoint.seed").stdout)["public_key"]
+        records = book_dir / "book" / "book" / "records"
+        first = json.loads((records / "checkpoints.jsonl").read_text().splitlines()[0])
+        book_id, book_key = first["log_id"], first["key_id"]
+        bound = bound_keys(book_dir, name)
+        cap_run("profile", "profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", book_dir / "book",
+                "--log-id", book_id, "--operator", name, "--trusted-key", node_pub, "--signing-key-file", seed,
+                "--checkpoint-signing-key-file", book_dir / "checkpoint.seed", "--checkpoint-trusted-key", cp_pub)
+        request = work / "request.json"
+        request.write_text(json.dumps({
+            "spec_version": "capsule-seal-request/v1",
+            "capsule": {"ActionID": f"{name}-loop-02-{time}", "ActionType": "fyi", "Operator": name,
+                        "Developer": "loop-step-02", "Timestamp": time},
+            "payload": {"loop": "step 02 book", "at": time}}))
+        cap_run("seal", "seal", "--profile", name, "--request", request, "--output", out / "capsule.json")
+        done.append("capsule.json")
+        capsule_id = json.loads((out / "capsule.json").read_text())["capsule_id"]
+        appended = json.loads(cap_run("append", "cll", "append", "--profile", name, "--capsule",
+                                      out / "capsule.json", save="append.json").stdout)
+        done.append("append.json")
+        cap_run("checkpoint", "cll", "checkpoint", "create", "--profile", name, save="checkpoint.json")
+        done.append("checkpoint.json")
+        cap_run("bundle", "book", "bundle", "--profile", name, "--root", capsule_id, "--out", out / "bundle.json")
+        done.append("bundle.json")
+    except RuntimeError as e:
+        proof = done + [f"{e}.stderr.txt"]
+        return "FAIL", proof, f"node {name}: capsulectl {e} did not run on the node's book (exit non-zero)"
+    except (OSError, ValueError, KeyError, IndexError) as e:
+        (out / "input.stderr.txt").write_text(f"{e}\n")
+        return "FAIL", done + ["input.stderr.txt"], f"node {name}: the node's key or book could not be read: {e}"
+
+    # The book record that carries the appended capsule.
+    line = next((ln for ln in (records / "records.jsonl").read_text().splitlines()
+                 if json.loads(ln)["header"].get("subject_ref") == capsule_id), None)
+    (out / "book-record.json").write_text((line or "null") + "\n")
+    r = cap_run("verify", "verify", "--bundle", out / "bundle.json", save="verify.json")
+    checks = live_checks(r.returncode, out, capsule_id, appended, node_pub, book_id, book_key)
+    checks["node_key"] = {"ok": node_pub in bound, "detail": f"node key {node_pub}; the book was bound to {bound}"}
+    (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
+    proof = LIVE_PROOF + ["checks.json"]
+    failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
+    where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
+    if failed:
+        return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}"
+    return "NOT_CHECKED", proof, (f"{where}: held on the proof bytes, checked by capsulectl verify --bundle and "
+                                  f"here: {', '.join(checks)}. Witness part not checked.")
+
+
+def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):
+    """The checks on one node's proof bytes: {name: {ok, detail}}."""
+    def bad(e):
+        return {"ok": False, "detail": f"unreadable: {e}"}
+    checks = {}
+    try:
+        v = json.loads((out / "verify.json").read_text())
+        ok = rc == 0 and v.get("verdict") == "VALID"
+        checks["bundle"] = {"ok": ok, "detail": f"capsulectl verify --bundle exit {rc}, verdict {v.get('verdict')}"}
+        parts = {k: (v.get(k) or {}).get("status") for k in ("checkpoint", "per_record_membership",
+                                                              "producer_signatures")}
+        checks["membership"] = {"ok": all(s == "pass" for s in parts.values()),
+                                "detail": ", ".join(f"{k} {s}" for k, s in parts.items())}
+    except (OSError, ValueError, AttributeError) as e:
+        checks["bundle"] = bad(e)
+    try:
+        b = json.loads((out / "bundle.json").read_text())
+        root = b["root"]
+        rec = next(r for r in b["records"] if r.get("capsule_id") == root)
+        book = json.loads((out / "book-record.json").read_text()) or {}
+        header = book.get("header", {})
+        digest = hashlib.sha256(jcs(header)).hexdigest()
+        bound = rec.get("model_attestation", {}).get("compute_attestation", {}).get("agent_input_digest")
+        ok = (book.get("record_id") == root and digest == bound and header.get("subject_ref") == capsule_id
+              and header.get("book_id") == book_id)
+        checks["record"] = {"ok": ok, "detail": f"book record {book.get('record_id')} (bundle root {root}) "
+                                                f"carries capsule {header.get('subject_ref')} in book "
+                                                f"{header.get('book_id')}; header digest {digest}, signed {bound}"}
+        coords = b["completeness_certificate"]["memberships"][root]["log_coordinates"]
+        ok = (coords.get("log_id") == book_id and coords.get("seq") == appended.get("sequence") == header.get("seq"))
+        checks["position"] = {"ok": ok, "detail": f"log {coords.get('log_id')} seq {coords.get('seq')}, "
+                                                  f"appended at {appended.get('sequence')}"}
+        producer = b.get("extensions", {}).get("producer-key/v1", {}).get("public_key")
+        ok = rec.get("key_id") == node_pub == producer
+        checks["signer"] = {"ok": ok, "detail": f"record key_id {rec.get('key_id')}, producer key {producer}, "
+                                                f"node key {node_pub}"}
+        cp = b["checkpoint"]
+        ok = cp.get("key_id") == book_key and cp.get("log_id") == book_id
+        checks["checkpoint"] = {"ok": ok, "detail": f"checkpoint over {cp.get('mmr_size')} nodes of "
+                                                    f"{cp.get('log_id')}, signed by {cp.get('key_id')}, the book's "
+                                                    f"checkpoint key {book_key}"}
+    except (OSError, ValueError, KeyError, StopIteration, AttributeError, TypeError) as e:
+        checks.setdefault("record", bad(e))
+    return checks
+
+
+def main_live(pop, out, started):
+    cap, missing = capsulectl()
+    results, proof, details, not_checked = [], [], [], list(missing)
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="02-book-") as tmp:
+        for entry in pop["nodes"]:
+            name = entry["name"]
+            data_dir = live.readable(entry, "data_dir", "keys/node-key.pem")
+            book_dir = live.readable(entry, "book_dir", "checkpoint.seed", "book/book/records/checkpoints.jsonl",
+                                     "book/book/records/records.jsonl", f"config/capsule/profiles/{name}.yaml")
+            unset = [f for f, d in (("data_dir", data_dir), ("book_dir", book_dir)) if d is None]
+            if unset or missing:
+                results.append("NOT_CHECKED")
+                not_checked += [live.not_checked(name, f) for f in unset]
+                why = f"{' and '.join(unset)} not set or unreadable" if unset else "a pinned tool is missing"
+                details.append(f"node {name}: not checked, {why}")
+                continue
+            if (out / name).exists():
+                shutil.rmtree(out / name)
+            result, files, detail = live_book(cap, name, data_dir, book_dir, out / name, Path(tmp) / name, started)
+            results.append(result)
+            proof += [f"{name}/{f}" for f in files if (out / name / f).is_file()]
+            details.append(detail)
+            if result == "NOT_CHECKED" and LIVE_WITNESS_NOT_CHECKED not in not_checked:
+                not_checked.append(LIVE_WITNESS_NOT_CHECKED)
+    finding.write(out, result=live.worst(results), population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                  proof=proof, detail="; ".join(details), not_checked=not_checked, started=started)
+    return 0
 
 
 def main(argv):
@@ -109,6 +328,9 @@ def main(argv):
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
     started = finding.now()
+    pop = json.loads((Path(a.population) / "population.json").read_text(encoding="utf-8"))
+    if pop["population"] == "live":
+        return main_live(pop, Path(a.out), started)
     bin_ = driver()
     if bin_ is None:
         print("02-book: the driver is not installed; run steps/02-book.setup.sh", file=sys.stderr)
