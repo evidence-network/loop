@@ -95,6 +95,15 @@ class LoopTest(unittest.TestCase):
         self.assertIn("no step executable", f["detail"])
         self.assertEqual(self.finding("01-seal")["result"], "PASS")
 
+    def test_files_beside_a_step_are_not_steps(self):
+        self.all_steps()
+        for name in ("01-seal.constraints.txt", "03-advertise.md", "12-join.setup.sh"):
+            (self.steps / name).write_text("not a step\n")
+        (self.steps / "02-book.d").mkdir()
+        r = self.loop("--out", str(self.out))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS"])
+
     def test_a_crashing_step_is_a_fail_finding_with_its_output(self):
         self.all_steps(**{"03-advertise": "crash"})
         r = self.loop("--out", str(self.out))

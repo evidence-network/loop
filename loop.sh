@@ -94,7 +94,8 @@ ran=()
 for nn in $steps; do
   found=()
   for f in "$STEPS_DIR/$nn"-*; do
-    [ -f "$f" ] && [[ "$f" != *.setup.sh ]] && found+=("$f")
+    # A step is a file named exactly <NN>-<name>; its setup.sh, docs and data sit beside it.
+    [ -f "$f" ] && [[ "$(basename "$f")" =~ ^[0-9]{2}-[a-z][a-z0-9-]*$ ]] && found+=("$f")
   done
   base=$nn-${NAMES[$nn]}
   [ ${#found[@]} -eq 1 ] && [[ $(basename "${found[0]}") =~ ^[0-9]{2}-[a-z][a-z0-9-]*$ ]] && base=$(basename "${found[0]}")
