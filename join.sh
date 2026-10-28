@@ -95,10 +95,15 @@ done
 node_pub="$(pubhex "$node_key")" controller_pub="$(pubhex "$controller_key")"
 [ "$node_pub" != "$controller_pub" ] || { echo "join.sh: the controller key must not be the node key" >&2; exit 2; }
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-doctor_has_probe=no
-cap book doctor --help 2>/dev/null | grep -q -- '--probe' && doctor_has_probe=yes
-[ "$doctor_has_probe" = yes ] || {
-  echo "join.sh: the installed capsulectl-book has no book doctor --probe (run steps/12-join.setup.sh)" >&2; exit 2; }
+doctor_help="$(cap book doctor --help 2>&1)" || true
+grep -q -- '--probe' <<<"$doctor_help" || {
+  # capsulectl's own words first: a refused plugin (group-writable, wrong owner) reads like a
+  # missing flag otherwise.
+  echo "join.sh: 'capsulectl book doctor --help' did not offer --probe; it said:" >&2
+  sed 's/^/  | /' <<<"$doctor_help" | tail -n 20 >&2
+  echo "join.sh: if that is a refusal of capsulectl-book, fix it (chmod go-w on it and its directory);" \
+       "if the flag is missing, run steps/12-join.setup.sh" >&2
+  exit 2; }
 
 # --- 1. Bind the node key to its controller (controller-binding/0) -----------
 python3 - "$node_pub" "$controller_pub" "$now" "$out/binding.json" <<'EOF'
