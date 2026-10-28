@@ -129,7 +129,7 @@ class DryRunTest(unittest.TestCase):
     def test_loop_from_the_reporter_console_and_pack_list(self):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813", self.out)
         self.assertIn("loop.sh --stage 1 --population live --out", self.out)
-        self.assertIn("would write nodes/<lab-1 node_id>.json", self.out)
+        self.assertRegex(self.out, r"would write nodes/<\S+ node_id>\.json")
         self.assertIn("would pack", self.out)
         for arc in ("population/live/population.json", "reporter/reporter.json"):
             self.assertIn(f"  {arc}  <-  ", self.out)
@@ -140,7 +140,7 @@ class DryRunTest(unittest.TestCase):
     def test_all_runs_check_then_tools_then_the_rest(self):
         marks = [("check", "merge-base --is-ancestor"), ("tools", "steps/01-seal.setup.sh"),
                  ("start", " serve --config "), ("exchange", "/v1/chat/completions"),
-                 ("join", "join.sh --name lab-1"), ("entries", "would write nodes/<lab-1 node_id>.json"),
+                 ("join", "join.sh --name lab-1"), ("entries", "would write nodes/<"),
                  ("loop", "loop.sh --stage 1"), ("pack", "would pack")]
         at = [(self.out.find(text), name) for name, text in marks]
         self.assertTrue(all(i >= 0 for i, _ in at), at)
@@ -328,7 +328,8 @@ class LabFixture(unittest.TestCase):
         self.lab, self.root = self.tmp / "lab", self.tmp / "root"
         for d in ("population/live", "reporter", "nodes"):
             (self.root / d).mkdir(parents=True)
-        shutil.copy(ROOT / "population/live/population.json", self.root / "population/live/population.json")
+        # The population before any lab run: names, and every id and dir null.
+        shutil.copy(ROOT / "tests/fixtures/live/null/population.json", self.root / "population/live/population.json")
         shutil.copy(ROOT / "reporter/reporter.json", self.root / "reporter/reporter.json")
         self.ids = {}
         for i, (name, test) in enumerate(TEST_PUB.items(), 1):
@@ -392,6 +393,28 @@ class EntriesTest(LabFixture):
     def test_refuses_an_email_for_operator(self):
         errs = self.entries(operator="someone@example.org")
         self.assertTrue(errs and "email" in errs[0], errs)
+
+
+class LabelTest(LabFixture):
+    """A node's name is its operator's label; its directories on the host keep lab-N (from data_dir)."""
+
+    def test_labelled_population_reads_and_packs_the_lab_n_directories(self):
+        pop_path = self.root / "population/live/population.json"
+        pop = json.loads(pop_path.read_text())
+        for i, n in enumerate(pop["nodes"], 1):
+            n["name"] = f"operator-{i}"
+            n["data_dir"] = f"$LAB_DIR/nodes/lab-{i}/.local/share/capsules"
+            n["book_dir"] = f"$LAB_DIR/nodes/lab-{i}/join-book"
+        pop_path.write_text(json.dumps(pop))
+        self.assertEqual(self.entries(), [])
+        written = json.loads(pop_path.read_text())["nodes"]
+        self.assertEqual([n["name"] for n in written], ["operator-1", "operator-2", "operator-3"])
+        self.assertEqual([n["node_id"] for n in written], [self.ids[f"lab-{i}"] for i in (1, 2, 3)])
+        self.assertTrue(all(n["data_dir"].startswith(f"$LAB_DIR/nodes/lab-{i}/") for i, n in enumerate(written, 1)))
+        (self.lab / "join" / "lab-1").mkdir(parents=True)
+        (self.lab / "join" / "lab-1" / "join.json").write_text("{}\n")
+        files, _ = pack.plan(self.root, self.lab, DAY)
+        self.assertIn(f"lab/runs/{DAY}/join/operator-1/join.json", [a for a, _ in files])
 
 
 class PackTest(LabFixture):

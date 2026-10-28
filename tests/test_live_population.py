@@ -86,13 +86,14 @@ class CommittedLiveTest(LiveCase):
 
     def test_committed_file_names_the_listed_lab_nodes(self):
         pop = json.loads((LIVE / "population.json").read_text())
-        self.assertEqual([n["name"] for n in pop["nodes"]], ["lab-1", "lab-2", "lab-3"])
-        for n in pop["nodes"]:
+        # The operator's labels; each node's directory on the lab host keeps its lab-N name.
+        self.assertEqual([n["name"] for n in pop["nodes"]], ["stevenmih-1", "stevenmih-2", "stevenmih-3"])
+        for i, n in enumerate(pop["nodes"], 1):
             self.assertRegex(n["node_id"], r"^[0-9a-f]{64}$")
             self.assertTrue((ROOT / "nodes" / f"{n['node_id']}.json").is_file(), n["name"])
             self.assertEqual(n["host"], "lab")
-            self.assertTrue(n["data_dir"].startswith(f"$LAB_DIR/nodes/{n['name']}/"), n)
-            self.assertTrue(n["book_dir"].startswith(f"$LAB_DIR/nodes/{n['name']}/"), n)
+            self.assertTrue(n["data_dir"].startswith(f"$LAB_DIR/nodes/lab-{i}/"), n)
+            self.assertTrue(n["book_dir"].startswith(f"$LAB_DIR/nodes/lab-{i}/"), n)
 
     def test_null_file_is_all_null(self):
         pop = json.loads((NULL / "population.json").read_text())
