@@ -153,9 +153,11 @@ def loop_section(rs, runs):
 def number_cell(nb, run):
     """status_page's number, out of the run's own length; a placeholder until it can be measured."""
     p = f'data-population="{run.population}"'
-    _, measured = status_page.number_value(nb, run)
+    text, measured = status_page.number_value(nb, run)
     if not measured:
-        return f'<td class="placeholder" {p}>not measured yet ({code(nb.milestone)})</td>'
+        if text == f"not measured yet ({nb.milestone})":
+            return f'<td class="placeholder" {p}>not measured yet ({code(nb.milestone)})</td>'
+        return f'<td class="placeholder" {p}>{e(text).replace("(run.json)", f"({code('run.json')})")}</td>'
     m, total = status_page.minutes(run, nb.step), run_minutes(run)
     part, whole = status_page.duration(m), status_page.duration(total)
     if part.endswith(" minutes"):
@@ -184,18 +186,21 @@ def timeline_svg(days):
     cal = stats_model.calendar(days)
     ids = node_ids(days)
     left = stats_model.left_on(days)
-    label_w, cell, top, row_h = 132, 16, 64, 30
+    # Sizes in px, drawn 1:1 (the SVG keeps its width and scrolls in its own box):
+    # a day is a 28 px column, each question a 24 x 14 mark; labels are 11-13 px.
+    label_w, cell, top, row_h, mark_h = 156, 28, 92, 48, 14
     width, height = label_w + cell * len(cal) + 8, top + row_h * len(ids) + 4
-    parts = []
+    parts = [f'<text class="key" x="0" y="{top - 26}">upper mark: <tspan class="code">checkpoints</tspan></text>',
+             f'<text class="key" x="0" y="{top - 10}">lower mark: <tspan class="code">history_card/1</tspan></text>']
     for i, (date, _) in enumerate(cal):
         x = label_w + i * cell + cell / 2
-        parts.append(f'<text class="code date" transform="translate({x + 3} {top - 6}) rotate(-90)">{e(date)}</text>')
+        parts.append(f'<text class="code date" transform="translate({x + 4} {top - 6}) rotate(-90)">{e(date)}</text>')
     for j, nid in enumerate(ids):
         y = top + j * row_h
-        parts.append(f'<g class="node" data-node="{e(nid)}"><text class="code id" x="0" y="{y + 12}">'
+        parts.append(f'<g class="node" data-node="{e(nid)}"><text class="code id" x="0" y="{y + 15}">'
                      f"{e(nid[:12])}…<title>{e(nid)}</title></text>")
         if nid in left:
-            parts.append(f'<text class="leftlabel" x="0" y="{y + 25}">left on '
+            parts.append(f'<text class="leftlabel" x="0" y="{y + 33}">left on '
                          f'<tspan class="code">{e(left[nid])}</tspan></text>')
         for i, (date, day) in enumerate(cal):
             x = label_w + i * cell
@@ -211,10 +216,11 @@ def timeline_svg(days):
                     state = node.answers[stem].state
                     kind, says = KIND[state], SAYS[state]
                 tip = f"{date} · {nid[:12]}… · {stats_model.QUESTIONS[stem]}: {says}"
-                parts.append(f'<rect class="t-{kind}" data-date="{date}" data-q="{stem}" x="{x + 1}" '
-                             f'y="{y + 1 + k * 10}" width="{cell - 2}" height="9"><title>{e(tip)}</title></rect>')
+                parts.append(f'<rect class="t-{kind}" data-date="{date}" data-q="{stem}" x="{x + 2}" '
+                             f'y="{y + 2 + k * (mark_h + 2)}" width="{cell - 4}" height="{mark_h}" rx="2">'
+                             f"<title>{e(tip)}</title></rect>")
             if left.get(nid) == date:
-                parts.append(f'<line class="leftmark" x1="{x}" y1="{y - 2}" x2="{x}" y2="{y + 22}"/>')
+                parts.append(f'<line class="leftmark" x1="{x}" y1="{y - 2}" x2="{x}" y2="{y + 2 * mark_h + 8}"/>')
         parts.append("</g>")
     return (f'<svg class="timeline" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" '
             f'aria-label="Each node, each day: answered, refused, absent, missed or not asked">{"".join(parts)}</svg>')
@@ -228,7 +234,7 @@ def legend():
              ("out", "not asked: not on the list that day, or after it left"),
              ("none", "no day file for that date")]
     return '<ul class="legend">' + "".join(
-        f'<li><svg width="14" height="12" aria-hidden="true"><rect class="t-{k}" x="1" y="1" width="12" height="10"/>'
+        f'<li><svg width="26" height="16" aria-hidden="true"><rect class="t-{k}" x="1" y="1" width="24" height="14" rx="2"/>'
         f"</svg> <strong>{k if k not in ('out', 'none') else {'out': 'not asked', 'none': 'no file'}[k]}</strong>: "
         f"{text}</li>" for k, text in items) + "</ul>"
 

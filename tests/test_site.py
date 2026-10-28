@@ -325,11 +325,44 @@ class SiteTest(unittest.TestCase):
         self.assertIn(f"{build.count(1, 6, 'day')} missed", nodes)
         self.assertIn(f"{build.count(1, 6, 'day')} with no day file", nodes)
 
+    def test_the_day_grid_is_large_enough_to_read(self):
+        svg = re.search(r'<div class="scroll">(<svg class="timeline" width="(\d+)" height="\d+".*?</svg>)</div>',
+                        self.section("nodes"), re.S)
+        self.assertIsNotNone(svg)  # drawn at its own size, in its own scroll box: the page itself never scrolls sideways
+        marks = re.findall(r'<rect class="t-[a-z]+" data-date="[^"]+" data-q="[^"]+" x="[\d.]+" y="[\d.]+" '
+                           r'width="(\d+)" height="(\d+)"', svg.group(1))
+        self.assertEqual(len(marks), 2 * 6 * len(build.node_ids(stats_model.load(DATA))))
+        self.assertTrue(all(int(w) >= 24 and int(h) >= 14 for w, h in marks), marks[:2])
+        css = (ROOT / "site" / "template.html").read_text()
+        sizes = dict(re.findall(r"svg\.timeline (text(?:\.\w+)?|\.leftlabel) \{[^}]*font-size: (\d+)px", css))
+        self.assertEqual(sizes, {"text": "13", "text.date": "11", "text.key": "11", ".leftlabel": "11"})
+        self.assertIn('upper mark: <tspan class="code">checkpoints</tspan>', svg.group(1))
+        # Six days plus the labels fit a 390 px phone inside its 16 px gutters.
+        self.assertLessEqual(int(svg.group(2)), 390 - 32)
+        self.assertIn(".scroll { overflow-x: auto; }", css)
+        # Every colour the grid uses is redefined for dark mode.
+        light, dark = css.split("@media (prefers-color-scheme: dark)")[0], css.split("@media (prefers-color-scheme: dark)")[1]
+        for var in ("--t-answered", "--t-refused", "--t-absent", "--t-missed", "--muted", "--fg", "--bg"):
+            self.assertIn(var + ":", light.split("}")[0])
+            self.assertIn(var + ":", dark.split("}")[0] + "}")
+
+    def test_a_pass_with_no_run_json_says_its_start_was_not_recorded(self):
+        with tempfile.TemporaryDirectory() as d:
+            findings = Path(d) / "findings"
+            make_findings(findings)
+            (findings / "2026-10-27-live" / "run.json").unlink()
+            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
+            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
+        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
+        self.assertIn('<td class="placeholder" data-population="live">not measured: this run did not record its '
+                      "start time (<code>run.json</code>)</td>", row)
+        self.assertIn('data-population="rehearsal"><span class="count">1.0 of', row)  # run.json there: measured
+
     def test_left_on(self):
         node = re.search(rf'<g class="node" data-node="{nid(3)}">(.*?)</g>', self.html, re.S).group(1)
         self.assertIn('left on <tspan class="code">2026-11-01</tspan>', node)
         x = re.search(r'<rect class="t-out" data-date="2026-11-01" data-q="checkpoints" x="([\d.]+)"', node).group(1)
-        self.assertRegex(node, rf'<line class="leftmark" x1="{float(x) - 1:g}"')
+        self.assertRegex(node, rf'<line class="leftmark" x1="{float(x) - 2:g}"')
         self.assertIn('left on <time datetime="2026-11-01">', self.day("2026-10-28"))
         self.assertNotIn("left on", re.search(rf'data-node="{nid(2)}">(.*?)</g>', self.html, re.S).group(1))
 

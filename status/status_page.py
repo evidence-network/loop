@@ -96,9 +96,10 @@ GAP = re.compile(r"Outside this step's assertion: (.*?)\b([\w.-]+/[\w.-]+)#(\d+)
 #   start = run.json `started`, which loop.sh writes before the run's first step;
 #   event = the `finished` of the marker step's finding, when that finding is a
 #           valid PASS.
-# minutes = event - start. A number with no marker step, a run with no valid
-# run.json for its population, or a marker step with no valid PASS reads
-# "not measured yet (<milestone>)", never 0.
+# minutes = event - start. A number with no marker step, or whose marker step has
+# no valid PASS, reads "not measured yet (<milestone>)". A marker step that is a
+# valid PASS in a run with no usable start time says exactly why (NO_START and
+# the rest of not_measured()). Never 0.
 @dataclass(frozen=True)
 class Number:
     key: str
@@ -303,12 +304,32 @@ def stamp(text):
     return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
 
 
-def minutes(run, step):
-    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
-    if run.started is None or step not in run.findings:
+NO_START = "not measured: this run did not record its start time (run.json)"
+
+
+def passed(run, step):
+    """`step`'s finding in run, when it is a valid PASS; else None."""
+    if step not in run.findings:
         return None
     _, r, problems = run.findings[step]
-    if r is None or problems or r["result"] != "PASS":
+    return r if r is not None and not problems and r["result"] == "PASS" else None
+
+
+def not_measured(run, step, milestone):
+    """Why a minutes number has no value: its milestone while the marker step has no PASS, else the start's fault."""
+    if run.path is None or passed(run, step) is None:
+        return f"not measured yet ({milestone})"
+    if not (run.path / "run.json").is_file():
+        return NO_START
+    if run.started is None:
+        return "not measured: this run's run.json gives no start time for this population"
+    return "not measured: this run's run.json start is after the step finished"
+
+
+def minutes(run, step):
+    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
+    r = passed(run, step)
+    if run.started is None or r is None:
         return None
     try:
         m = (stamp(r["finished"]) - stamp(run.started)).total_seconds() / 60
@@ -338,7 +359,7 @@ def number_value(number, run):
         return decided(None, None, number.milestone), False
     m = minutes(run, number.step) if run.path else None
     if m is None:
-        return f"not measured yet ({number.milestone})", False
+        return not_measured(run, number.step, number.milestone), False
     return duration(m), True
 
 
@@ -515,7 +536,7 @@ td.placeholder {{ color: var(--muted); }}
 dl {{ margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }}
 dt {{ color: var(--muted); }} dd {{ margin: 0; }}
 td p, td ul {{ margin: .2rem 0; }}
-p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; }}
+p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; overflow-wrap: anywhere; }}
 </style>
 </head>
 <body>

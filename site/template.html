@@ -40,6 +40,7 @@ td p { margin: .2rem 0; }
 ul.days { columns: 12rem; }
 ul.attempts { margin: .2rem 0; padding-left: 1rem; }
 ul.legend { list-style: none; padding: 0; font-size: .9rem; }
+ul.legend svg { vertical-align: middle; }
 .gap { border-left: 3px solid var(--accent); padding-left: .8rem; }
 .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.5rem; }
 figure.pop { margin: 0; }
@@ -56,19 +57,21 @@ svg.path .s-NOT_CHECKED circle { fill: var(--s-not); }
 svg.path .held circle { stroke: var(--fg); stroke-dasharray: 3 3; }
 svg.path .step circle.gapmark { fill: var(--bg); stroke: var(--gap); stroke-width: 2.5; stroke-dasharray: none; }
 ul.gaps { font-size: .9rem; padding-left: 1rem; }
-ul.gaps li { border-left: 3px solid var(--gap); padding-left: .5rem; list-style: none; margin: .2rem 0; }
+ul.gaps li { border-left: 3px solid var(--gap); padding-left: .5rem; list-style: none; margin: .2rem 0; overflow-wrap: anywhere; }
 svg.path text { text-anchor: middle; fill: var(--fg); }
 svg.path text.n { fill: #fff; font-size: 11px; font-weight: 600; }
 svg.path text.name { font-size: 8.5px; }
-svg.timeline text { fill: var(--fg); font-size: 10px; }
-svg.timeline text.date { font-size: 8.5px; fill: var(--muted); }
-svg.timeline .leftlabel { font-size: 9px; fill: var(--muted); }
+svg.timeline { display: block; }
+svg.timeline text { fill: var(--fg); font-size: 13px; }
+svg.timeline text.date { font-size: 11px; fill: var(--muted); }
+svg.timeline text.key { font-size: 11px; fill: var(--muted); }
+svg.timeline .leftlabel { font-size: 11px; fill: var(--muted); }
 svg.timeline .leftmark { stroke: var(--fg); stroke-width: 2; }
 .t-answered { fill: var(--t-answered); }
 .t-refused { fill: var(--t-refused); }
 .t-absent { fill: var(--t-absent); }
 .t-missed { fill: var(--t-missed); }
-.t-out { fill: none; stroke: var(--line); }
+.t-out { fill: none; stroke: var(--muted); stroke-width: 1; }
 .t-none { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
 footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem; }
 </style>

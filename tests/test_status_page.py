@@ -6,6 +6,7 @@ into findings/<date>-<population>/<NN>-<name>/. One test runs the real loop.sh.
 Run: python3 -B -m unittest discover -s tests -v
 """
 import contextlib
+import html
 import io
 import json
 import os
@@ -364,7 +365,8 @@ class StatusPageTest(unittest.TestCase):
 
     def number(self, key, population="rehearsal"):
         row = re.search(rf'<tr id="n-{key}">(.*?)</tr>', self.html).group(1)
-        return re.search(rf'<td class="(\w+)" data-population="{population}">([^<]*)</td>', row).groups()
+        cls, text = re.search(rf'<td class="(\w+)" data-population="{population}">([^<]*)</td>', row).groups()
+        return cls, html.unescape(text)
 
     def test_minutes_run_from_run_json_to_the_marker_steps_finished(self):
         self.run_json("2026-10-27T01:59:30Z")
@@ -391,19 +393,39 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(status_page.duration(59.6 / 60), "1.0 minutes")
         self.assertEqual(status_page.duration(1.5), "1.5 minutes")
 
-    def test_no_valid_run_json_is_not_measured(self):
+    def test_a_pass_with_no_run_json_says_the_run_did_not_record_its_start(self):
         self.write(1, "PASS")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # no run.json
+        self.assertEqual(self.number("first-sealed"),
+                         ("placeholder", "not measured: this run did not record its start time (run.json)"))
+        self.assertNotIn("not measured yet (M1)</td>", re.search(r'<tr id="n-first-sealed">.*?</tr>',
+                                                                 self.html).group(0).split('data-population="live"')[0])
+
+    def test_minutes_measured_no_run_json_and_no_pass_are_three_cases(self):
+        self.write(1, "PASS")
+        self.write(12, "NOT_CHECKED", not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
+        self.page()  # no run.json
+        self.assertEqual(self.number("first-sealed"), ("placeholder", status_page.NO_START))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))  # 12 no PASS
+        self.run_json("2026-10-27T02:00:00Z")
+        self.page()
+        self.assertEqual(self.number("first-sealed"), ("measured", "1.0 minutes"))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))
+
+    def test_an_unusable_run_json_says_why(self):
+        self.write(1, "PASS")
         self.run_json("2026-10-27T01:00:00Z", run_population="live")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # another population
+        self.assertEqual(self.number("first-sealed"),  # another population's run.json
+                         ("placeholder", "not measured: this run's run.json gives no start time for this population"))
         self.run_json("yesterday")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # not a UTC time
+        self.assertEqual(self.number("first-sealed"),  # not a UTC time
+                         ("placeholder", "not measured: this run's run.json gives no start time for this population"))
         self.run_json("2026-10-27T03:00:00Z")
         self.page()
-        self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))  # after the step
+        self.assertEqual(self.number("first-sealed"),
+                         ("placeholder", "not measured: this run's run.json start is after the step finished"))
 
     def test_the_countersigned_report_is_a_placeholder_until_m3(self):
         self.run_json("2026-10-27T02:00:00Z")

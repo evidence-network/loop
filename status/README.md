@@ -31,8 +31,10 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   countersigned report (step 11, a placeholder until M3), each the marker
   step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
   writes it before the first step), in seconds when under one minute; decisions limited or refused on evidence
-  (M3) and filtered volume beside raw (M2) are placeholders. A number that cannot be measured
-  reads `not measured yet (M1|M2|M3)`, never 0. `NUMBERS` in the source says
+  (M3) and filtered volume beside raw (M2) are placeholders. A number whose marker step has no
+  `PASS` reads `not measured yet (M1|M2|M3)`, never 0. When the marker step is a
+  `PASS` but the run has no start time, the cell says why: "not measured: this
+  run did not record its start time (run.json)" when `run.json` is missing. `NUMBERS` in the source says
   which finding fields each one reads.
 
 `tests/test_status_page.py` holds the page to this. The `stats` workflow runs
