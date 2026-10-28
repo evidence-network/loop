@@ -3,7 +3,7 @@ Description=evidence-network loop: daily reporter, once a day
 
 [Timer]
 # 00:30 UTC: the run asks again for up to 6 h (reporter.json retry_after_s), so it
-# settles and pushes well before the reports workflow's 09:00 UTC watchdog.
+# settles and pushes well before loop-data's 09:00 UTC watchdog.
 OnCalendar=*-*-* 00:30:00 UTC
 # A run missed while the node was down starts at the next boot.
 Persistent=true
