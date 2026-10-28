@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install step 02 Book's driver: steps/02-book.d built against the crates
-# versions.lock pins, and nothing else.
+# versions.lock pins; and, for the live population, capsulectl and
+# capsulectl-book at their pins (steps/12-join.setup.sh).
 #
 #   steps/02-book.setup.sh
 #
@@ -44,3 +45,7 @@ CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path 
 mkdir -p "$TOOLS/bin"
 install -m 0755 "$TOOLS/target/release/loop-step02-book" "$TOOLS/bin/loop-step02-book"
 echo "02-book.setup: installed $TOOLS/bin/loop-step02-book (evidencebook $(locked_version evidencebook), checkpointed-local-log $(locked_version checkpointed-local-log))"
+
+# On the live population the step drives each node's book with capsulectl and
+# capsulectl-book, at the versions.lock pins step 12's setup installs.
+"$ROOT/steps/12-join.setup.sh"

@@ -9,7 +9,7 @@ entries: for each node in population/live/population.json, reads its node id and
 plugin key id from the public files its capsules plugin wrote under
 DIR/nodes/<name>/.local/share/capsules (scripts/reporter_key.py), and writes
   - nodes/<node_id>.json, with the operator statement check_nodes.CONSENT;
-  - the node ids into population/live/population.json;
+  - the node ids, data_dir and book_dir into population/live/population.json;
   - the reporter node's ids into reporter/reporter.json.
 It refuses when DIR/build.json says the build is not the pinned one, and when the
 reporter's private key is readable beyond its user.
@@ -72,7 +72,7 @@ def entries(root, lab_dir, operator, reporter, dry_run=False):
         for node in load(pop_path)["nodes"]:
             print(f"would write nodes/<{node['name']} node_id>.json "
                   f"(operator {operator}, consent check_nodes.CONSENT, mesh lab, ask_route mesh)")
-        print("would write population/live/population.json (the node ids)")
+        print("would write population/live/population.json (the node ids, data_dir and book_dir)")
         print(f"would write reporter/reporter.json ({reporter}'s node_id and key_id)")
         return []
     if not build_path.is_file():
@@ -110,6 +110,10 @@ def entries(root, lab_dir, operator, reporter, dry_run=False):
             return errs
         writes.append((path, dump(entry)))
         node["node_id"] = identity["node_id"]
+        # Where steps 01 and 02 find the node's key and book on this host, named from $LAB_DIR
+        # (steps/live.py expands it) so no host path goes into the repository.
+        node["data_dir"] = f"$LAB_DIR/nodes/{node['name']}/.local/share/capsules"
+        node["book_dir"] = f"$LAB_DIR/nodes/{node['name']}/join-book"
         if node["name"] == reporter:
             try:
                 reporter_key.check_private_key(d)

@@ -11,7 +11,8 @@
 #   status    each node: pid, ports, node id, and the plugin keys its console lists
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
 #   join      ./join.sh for each node, with its plugin key and a new controller key
-#   entries   write nodes/<node_id>.json, population/live/population.json and reporter/reporter.json here
+#   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
+#             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
@@ -321,7 +322,8 @@ cmd_entries() {
 
 cmd_loop() {
   # The reporter's console, never the default 3131: other nodes on the lab host may answer there.
-  run env LOOP_CONSOLE="$(console "$REPORTER")" "$ROOT/loop.sh" --stage 1 --population live \
+  # LAB_DIR: population/live names each node's data_dir and book_dir from it.
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }

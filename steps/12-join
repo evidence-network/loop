@@ -301,8 +301,14 @@ def run_reporter(pop, out, console, timeout=30):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
     at = daily_report.utc_now()
     for node in pop["nodes"]:
-        entry = listed_entry(node)
         name = node["name"]
+        try:
+            entry = listed_entry(node)
+        except FileNotFoundError:
+            merge(not_checked, [{"what": f"live node {name}", "why": "node_id not set, or no nodes/<node_id>.json",
+                                 "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
+            lines.append(f"{name}: not asked, no nodes/ entry")
+            continue
         node_dir = out / name
         if node_dir.exists():
             shutil.rmtree(node_dir)
