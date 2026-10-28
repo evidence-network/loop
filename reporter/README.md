@@ -107,9 +107,16 @@ touches anything outside `reports/daily/` (a file added then deleted
 included), and holds a day that fails the personal-data check on the node,
 outside both checkouts, committing nothing.
 
+The run commits in `~/loop-data` with `git commit -s`, so that checkout needs a
+git identity of its own: the reporter's, never a person's. Without one, the run
+refuses before asking anyone (`no git identity to commit with`), and the next
+run marks that day or slot MISSED.
+
 ```sh
 git clone https://github.com/evidence-network/loop ~/loop
 git clone git@github.com:evidence-network/loop-data ~/loop-data   # with the deploy key
+git -C ~/loop-data config user.name "loop reporter (<the reporter node's label>)"
+git -C ~/loop-data config user.email "reporter-<the reporter node's label>@loop.invalid"
 cp reporter/systemd/loop-reporter.* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now loop-reporter.timer

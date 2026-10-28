@@ -584,6 +584,18 @@ class RunDailyTest(unittest.TestCase):
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
         self.assertEqual(self.origin_head(), before)
 
+    def test_no_git_identity_is_refused_before_asking_anyone(self):
+        before = self.origin_head()
+        self.git(self.data, "config", "--unset", "user.email")
+        self.git(self.data, "config", "--unset", "user.name")
+        self.git(self.data, "config", "user.useConfigOnly", "true")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("no git identity to commit with", done.stderr)
+        self.assertEqual(self.console.asked, [])
+        self.assertEqual(self.git(self.data, "status", "--porcelain"), "")
+        self.assertEqual(self.origin_head(), before)
+
     def test_it_runs_only_on_main(self):
         before = self.origin_head()
         self.git(self.data, "checkout", "--quiet", "-b", "other")
