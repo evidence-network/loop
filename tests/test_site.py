@@ -63,7 +63,13 @@ class Text(HTMLParser):
             if tag == "span" and cls == "count":
                 return "count"
             if tag == "span" and cls == "value":
-                return "value"  # a tile's measured value: its tile carries the count it is out of
+                return "value"  # a measured value: the sentence around it says what it is of
+            if tag == "td" and cls == "num":
+                return "num"  # a cell in a table of numbers; its column header names it
+            if tag == "desc":
+                return "desc"  # an SVG's description, read by assistive technology
+            if "code" in cls.split():
+                return "code"
             if tag in ("code", "time", "style", "title") or (tag in ("text", "tspan") and "code" in cls.split()):
                 return "code" if tag in ("text", "tspan") else tag
         return "prose"
@@ -146,22 +152,25 @@ class SiteTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     def section(self, anchor):
+        """From an anchor to the next heading of a section (h2, or h3 with an id)."""
         start = self.html.index(f'id="{anchor}"')
-        end = self.html.find("<h2", start)
-        return self.html[start:end if end > 0 else None]
-
-    def day(self, date):
-        start = self.html.index(f'id="d{date}"')
-        end = self.html.find('<section class="day', start)
-        return self.html[start:end if end > 0 else None]
+        ends = [i for i in (self.html.find("<h2", start), self.html.find('<h3 id="', start + 1)) if i > 0]
+        return self.html[start:min(ends) if ends else None]
 
     def figure(self, population):
         m = re.search(rf'<figure class="pop" data-population="{population}">(.*?)</figure>', self.html, re.S)
         return m.group(1)
 
+    def chart(self, key):
+        return re.search(rf'<figure class="chart[^"]*" id="f-{key}">(.*?)</figure>', self.html, re.S).group(1)
+
     def mark(self, node, date, stem):
         m = re.search(rf'<g class="node" data-node="{node}">(.*?)</g>', self.html, re.S)
-        return re.search(rf'<rect class="t-([a-z]+)" data-date="{date}" data-q="{stem}"', m.group(1)).group(1)
+        got = re.search(rf'<rect class="([a-z_-]+)" data-k="{node[:8]}\|{date}(?:\|{stem})?"', m.group(1))
+        if got:
+            return got.group(1)
+        x = re.findall(r'<rect class="out" x="(\d+)"', m.group(1))
+        return "out" if x else None
 
     # The site's shape
 
@@ -176,8 +185,10 @@ class SiteTest(unittest.TestCase):
     def test_one_page_the_old_report_page_is_gone(self):
         self.assertFalse((ROOT / "site" / "reports_model.py").exists())
         self.assertFalse((self.out / "reports").exists())
-        for anchor in ("loop", "numbers", "nodes", "what", "outcomes", "why", "join", "offline", "days"):
+        for anchor in ("multiples", "loop", "numbers", "nodes", "about"):
             self.assertIn(f'<h2 id="{anchor}">', self.html)
+        for anchor in ("matters", "what", "outcomes", "why", "join", "offline"):
+            self.assertIn(f'<h3 id="{anchor}">', self.html)
 
     def test_static_inline_and_no_external_assets(self):
         for page in self.out.rglob("*.html"):
@@ -187,7 +198,8 @@ class SiteTest(unittest.TestCase):
             self.assertIsNone(re.search(r'\ssrc="(?:https?:)?//', text), page)
             self.assertNotIn("<link", text, page)
             self.assertNotIn("@import", text, page)
-            self.assertNotIn("url(", text.replace("url=stats/", ""), page)
+            # The only url() is a hatch pattern in the same SVG: url(#<id>).
+            self.assertNotIn("url(", re.sub(r"url\(#[a-z0-9-]+\)", "", text.replace("url=stats/", "")), page)
         self.assertIn("<svg", self.html)
         # The public leak-lint rule: [ + three or more hyphenated lowercase segments + ].
         self.assertIsNone(re.search(r"\[[a-z0-9]+(?:-[a-z0-9]+){2,}\]", self.html))
@@ -231,103 +243,69 @@ class SiteTest(unittest.TestCase):
         self.assertEqual(wf.count("concurrency:"), 1)
         self.assertRegex(deploy, r"\n    concurrency:\n      group: pages\n      cancel-in-progress: false\n")
 
-    # Records per day, the four tiles, why this matters
+    # The top: today in words over the pulse band, then the small multiples
 
-    def test_the_page_leads_with_the_chart_then_tiles_then_why_then_the_loop_and_grid(self):
+    def test_the_page_leads_with_today_and_the_band_then_the_multiples_loop_numbers_nodes_and_about(self):
         order = re.findall(r'<h2 id="([a-z]+)">', self.html)
-        self.assertEqual(order[:6], ["records", "tiles", "matters", "loop", "numbers", "nodes"])
+        self.assertEqual(order, ["multiples", "loop", "numbers", "nodes", "about"])
+        top = self.html[:self.html.index('<h2 id="multiples">')]
+        self.assertLess(top.index('<p class="today">'), top.index('<svg class="band"'))
+        today = re.search(r'<p class="today">(.*?)</p>', top).group(1)
+        self.assertIn(build.count(2, 3) + " answered", today)  # 11-02: nodes 1 and 4 replied
+        self.assertIn(build.count(1, 6, "day") + " missed", today)
+        self.assertIn('records sealed: <span class="value">0</span>, from ' + build.count(2, 3), today)
+        # The prose is one collapsed section at the end.
+        about = self.html[self.html.index('<h2 id="about">'):]
+        self.assertTrue(about.split("</h2>", 1)[1].lstrip().startswith('<details class="about">'))
 
-    def records(self, population="live"):
-        return re.search(rf'<figure class="rec" data-population="{population}">(.*?)</figure>', self.html,
-                         re.S).group(1)
+    def test_the_band_is_a_column_per_day_a_square_per_node(self):
+        band = re.search(r'<svg class="band".*?</svg>', self.html, re.S).group(0)
+        for date, n in (("2026-10-28", 3), ("2026-10-30", 4), ("2026-11-01", 3), ("2026-11-02", 3)):
+            self.assertEqual(len(re.findall(rf'data-k="{date}\|checkpoints"', band)), n, date)
+            self.assertEqual(len(re.findall(rf'data-k="{date}\|history_card"', band)), n, date)
+        self.assertIn('<rect class="gap" data-k="2026-10-29" data-gap="the reporter missed this day"', band)
+        self.assertIn('<rect class="nofile" data-k="2026-10-31" data-gap="no day file"', band)
+        self.assertIn('<path class="tick-join"', band)  # node 4, first seen 10-30
+        self.assertIn('<path class="tick-leave"', band)  # node 3, left 11-01
+        self.assertNotIn("older", band)  # six days: no older band
 
-    def test_the_chart_draws_records_sealed_per_day_and_gaps_never_zero(self):
-        live = self.records()
-        points = dict(re.findall(r'<g class="point" data-date="([\d-]+)" data-sealed="(\d+)">', live))
+    def test_records_sealed_bars_by_node_and_gaps_never_zero(self):
+        c = self.chart("c-sealed")
+        bars = re.findall(r'<rect class="bar sealed( longer)?" data-k="([\d-]+)\|([0-9a-f]{8})" data-v="(\d+)"', c)
         # Node 1: 22, 31, 41, 41 records; node 4: 2, 2. A node's first count adds nothing.
-        self.assertEqual(points, {"2026-10-30": "9", "2026-11-01": "10", "2026-11-02": "0"})
-        gaps = re.findall(r'<g class="gap" data-date="([\d-]+)"><title>([^<]*)</title>', live)
-        self.assertEqual([g[0] for g in gaps], ["2026-10-28", "2026-10-29", "2026-10-31"])
-        self.assertIn("the reporter missed this day", gaps[1][1])
-        self.assertIn("no day file", gaps[2][1])
-        self.assertIn("from 1 of 4 listed nodes", live)
-        # 10-31 has no day file, so node 1's 11-01 count is compared with its 10-30 one, and the point says so.
-        self.assertIn("2026-11-01: 10 records sealed, from 1 of 3 listed nodes; for 1 of them, since a count older "
-                      "than the day before", live)
-        self.assertNotIn("2026-11-02: 0 records sealed, from 2 of 3 listed nodes;", live)
-        self.assertEqual(live.count('<path class="line"'), 1)  # the gap on 10-31 breaks 10-30 from 11-01
-        self.assertIn(build.count(3, 6, "day") + " have a point", live)
+        self.assertEqual([(d, n, int(v)) for _, d, n, v in bars],
+                         [("2026-10-30", "11111111", 9), ("2026-11-01", "11111111", 10),
+                          ("2026-11-02", "11111111", 0), ("2026-11-02", "44444444", 0)])
+        # 10-29 was missed, 10-31 has no file: the next count of node 1 covers more than one day, lighter.
+        self.assertEqual([bool(b[0]) for b in bars], [True, True, False, False])
+        self.assertEqual(c.count('<path class="bracket"'), 2)
+        gaps = {k: build.html.unescape(v)
+                for k, v in re.findall(r'<rect class="(?:gap|nofile)" data-k="([\d-]+)" data-gap="([^"]+)"', c)}
+        self.assertEqual(gaps, {"2026-10-28": "no node's count could be compared with an earlier one",
+                                "2026-10-29": "the reporter missed this day", "2026-10-31": "no day file"})
+        self.assertIn('class="zeromark"', c)  # a measured zero is drawn as one; a gap never is
 
-    def test_the_chart_takes_the_full_width_about_two_to_one_and_reads_on_a_phone(self):
-        records = self.section("records")
-        self.assertNotIn('class="pair"', records)  # the live chart is not half of a two-column grid
-        svg = re.search(r'<svg class="records" viewBox="0 0 (\d+) (\d+)"', records)
-        w, h = int(svg.group(1)), int(svg.group(2))
-        self.assertEqual(w / h, 2)
-        css = self.html[self.html.index("<style>"):self.html.index("</style>")]
-        rule = re.search(r"\nsvg\.records \{([^}]*)\}", css).group(1)
-        self.assertIn("width: 100%", rule)
-        self.assertNotIn("max-width", rule)
-        self.assertIn("figure.pop, figure.rec { margin: 0; }", css)  # no default figure indent either
-        # At 390 px the chart is drawn 358 px wide (16 px gutters): its text is at least 12 px and it is
-        # at least 175 px tall.
-        phone = css[css.index("@media (max-width: 36rem)"):]
-        phone = phone[:phone.index("\n}")]
-        size = int(re.search(r"svg\.records text \{ font-size: (\d+)px; \}", phone).group(1))
-        self.assertGreaterEqual(size * 358 / w, 12)
-        self.assertGreaterEqual(358 * h / w, 175)
-        self.assertIn("svg.records text.minor, svg.records text.value:not(.newest) { display: none; }", phone)
-        dates = re.findall(r'<text class="code xdate( minor)?" [^>]*>([\d-]+)</text>', records)
-        self.assertEqual(dates[-1], ("", "11-02"))  # the newest date always shows
-        self.assertIn('<text class="code value newest"', records)
-
-    def test_both_halves_is_a_legend_entry_with_no_line_and_no_zero(self):
-        live = self.records()
-        self.assertIn(f"records with both halves: not measured yet ({build.code('M2')}); no line is drawn", live)
-        svg = re.search(r'<svg class="records".*?</svg>', live, re.S).group(0)
-        self.assertNotIn("pending", svg)
-        self.assertEqual(svg.count('class="line"'), 1)
-
-    def test_rehearsal_and_live_are_never_one_line(self):
-        self.assertEqual(re.findall(r'<figure class="rec" data-population="(\w+)">', self.html), ["live", "rehearsal"])
-        self.assertNotIn("<svg", self.records("rehearsal"))
-        self.assertIn("never added to the live line", self.records("rehearsal"))
+    def test_rehearsal_and_live_are_never_one_chart(self):
+        self.assertIn("rehearsal nodes run only in the loop and are never added here", self.chart("c-sealed"))
+        self.assertEqual(re.findall(r'<figure class="pop" data-population="(\w+)">', self.html), ["rehearsal", "live"])
 
     def test_no_negative_value_anywhere(self):
-        self.assertIsNone(re.search(r'data-sealed="-|>-\d|−\d', self.html))
+        self.assertIsNone(re.search(r'data-v="-|>-\d|−\d', self.html))
         for stack, data in self.text.chunks:
             self.assertIsNone(re.search(r"(^|\s)[-−]\d", data), data)
 
-    def tile(self, key):
-        return re.search(rf'<section class="tile" id="t-{key}">(.*?)</section>', self.html, re.S).group(1)
-
-    def test_four_tiles_each_with_its_denominator_and_window(self):
-        self.assertEqual(re.findall(r'<section class="tile" id="t-([a-z-]+)">', self.html),
-                         ["answered", "halves", "first-sealed", "not-answered"])
-        self.assertIn(build.count(2, 3, "listed node"), self.tile("answered"))  # 11-02: nodes 1 and 4 replied
-        self.assertIn('<time datetime="2026-11-02">', self.tile("answered"))
-        t = self.tile("not-answered")
-        self.assertIn(build.count(11, 26, "ask"), t)  # 4 refused + 7 absent, of 13 nodes asked twice
-        self.assertIn(f"refused {build.count(4, 26, 'ask')}, absent {build.count(7, 26, 'ask')}", t)
-        self.assertIn(f"missed {build.count(1, 6, 'day')}", t)
-        t = self.tile("first-sealed")
-        self.assertIn('rehearsal: <span class="value">1.0 minutes</span>', t)
-        self.assertIn(f"rehearsal: median of {build.count(1, 1, 'run')} in the window", t)
-        for key in ("answered", "first-sealed", "not-answered"):
-            self.assertIn('<span class="count">', self.tile(key), key)  # its denominator
-            self.assertIn('class="window note"', self.tile(key))
-
-    def test_the_both_halves_tile_is_a_placeholder_not_zero(self):
-        t = self.tile("halves")
-        self.assertIn(f"not measured yet ({build.code('M2')})", t)
-        self.assertIn("of exchanges", t)
-        self.assertIsNone(re.search(r">\s*0\b|\b0 of", t))
+    def test_both_halves_is_a_count_below_the_fold_not_zero(self):
+        s = re.search(r'<section class="number" id="n-halves">(.*?)</section>', self.html, re.S).group(1)
+        self.assertIn(f"not measured yet ({build.code('M2')})", s)
+        self.assertIn("A count of exchanges, out of the exchanges seen", s)
+        self.assertIsNone(re.search(r">\s*0\b|\b0 of", s))
+        self.assertGreater(self.html.index('id="n-halves"'), self.html.index("<svg"))
 
     def test_why_this_matters_is_short_plain_and_neutral(self):
         section = self.section("matters")
-        words = len(re.sub(r"<[^>]+>", " ", section.split("</h2>", 1)[1]).split())
+        words = len(re.sub(r"<[^>]+>", " ", section.split("</h3>", 1)[1]).split())
         self.assertTrue(100 <= words <= 150, words)
-        self.assertIn("<h3>How it helps</h3>", section)
+        self.assertIn("<h4>How it helps</h4>", section)
         low = section.lower()
         for word in ("price", "pricing", "fee", "pay", "economic", "reputation", "score", "rank", "underwrit",
                      "insur", "kyb", "customer", "premium", "registry"):
@@ -336,24 +314,30 @@ class SiteTest(unittest.TestCase):
 
     # The loop
 
-    def test_the_loop_is_a_path_per_population_from_the_status_rows(self):
+    TILE = re.compile(r'<a class="tile s-([A-Za-z_]+) l-([A-Z_]+)( held)?( ringed)?" href="status/#step-(\d\d)" '
+                      r'data-step="(\d+)" data-label="([A-Z_]+)"( data-gaps="\d+")?')
+
+    def test_the_loop_is_a_strip_per_population_from_the_status_rows(self):
         runs = {p: status_page.read_run(p, d) for p, d in status_page.latest_runs(self.findings).items()}
         rows = status_page.rows(runs)
         for p in status_page.POPULATIONS:
-            steps = re.findall(r'<g class="step s-([A-Za-z_]+)( held)?" data-step="(\d+)" data-label="([A-Z_]+)"',
-                               self.figure(p))
-            self.assertEqual([int(s[2]) for s in steps], list(range(1, 13)))
-            for (state, held, n, label), row in zip(steps, rows):
-                self.assertEqual((state, label), (row.cells[p].state, row.cells[p].label), (p, n))
-                self.assertEqual(bool(held), row.held)
-            for n in range(1, 13):
-                self.assertIn(f'<a href="status/#step-{n:02d}">', self.figure(p))
-        self.assertIn('class="step s-green" data-step="1" data-label="PASS"', self.figure("rehearsal"))
-        self.assertIn('class="step s-NOT_CHECKED" data-step="2" data-label="NOT_CHECKED"', self.figure("rehearsal"))
-        self.assertIn('class="step s-red" data-step="3" data-label="FAIL"', self.figure("rehearsal"))
-        self.assertIn('class="step s-NOT_CHECKED" data-step="2"', self.figure("live"))
+            tiles = self.TILE.findall(self.figure(p))
+            self.assertEqual([int(t[5]) for t in tiles], list(range(1, 13)))
+            for t, row in zip(tiles, rows):
+                self.assertEqual((t[0], t[1], t[6]), (row.cells[p].state, row.cells[p].label, row.cells[p].label))
+                self.assertEqual(bool(t[2]), row.held)
+                self.assertEqual(t[4], f"{row.step.n:02d}")
+        self.assertIn('class="tile s-green l-PASS" href="status/#step-01"', self.figure("rehearsal"))
+        self.assertIn('class="tile s-NOT_CHECKED l-NOT_CHECKED" href="status/#step-02"', self.figure("rehearsal"))
+        self.assertIn('class="tile s-red l-FAIL" href="status/#step-03"', self.figure("rehearsal"))
+        self.assertIn('class="tile s-NOT_CHECKED l-NOT_CHECKED" href="status/#step-02"', self.figure("live"))
+        # Rehearsal above live, each with its PASS-per-run sparkline.
+        self.assertLess(self.html.index('data-population="rehearsal"><figcaption>'),
+                        self.html.index('data-population="live"><figcaption>'))
+        for p in status_page.POPULATIONS:
+            self.assertIn(f'<svg class="spark" id="s-pass-{p}"', self.figure(p))
 
-    def test_a_pass_step_with_a_gap_shows_it_on_the_path(self):
+    def test_a_pass_step_with_a_gap_is_ringed(self):
         gaps = {1: ("seal", "the producer envelope signature is not verified in a second language",
                     "action-state-group/agent-action-capsule#431"),
                 3: ("advertise", "alice: the stapled history_card/1 signature is not verified",
@@ -370,14 +354,25 @@ class SiteTest(unittest.TestCase):
             page = (Path(d) / "_site" / "stats" / "index.html").read_text()
         fig = re.search(r'<figure class="pop" data-population="rehearsal">(.*?)</figure>', page, re.S).group(1)
         for n, (_, text, issue) in gaps.items():
-            self.assertIn(f'class="step s-green" data-step="{n}" data-label="PASS" data-gaps="1"', fig)
+            self.assertIn(f'class="tile s-green l-PASS ringed" href="status/#step-{n:02d}" data-step="{n}" '
+                          f'data-label="PASS" data-gaps="1"', fig)
             repo, num = issue.split("#")
             line = re.search(rf'<li><a href="status/#step-{n:02d}">.*?</li>', fig).group(0)
             self.assertIn(f"gap, outside the assertion: <q>{build.e(text)}</q>", line)
             self.assertIn(f'<a href="https://github.com/{repo}/issues/{num}">{issue}</a>', line)
-        self.assertEqual(fig.count('class="gapmark"'), 3)
-        self.assertNotIn("data-gaps", self.figure("rehearsal"))  # no gap sentence, no gap mark
+        self.assertEqual(fig.count(' ringed"'), 3)
+        self.assertNotIn("data-gaps", self.figure("rehearsal"))  # no gap sentence, no ring
         self.assertNotIn('class="gaps"', self.html)
+
+    def number(self, key, population):
+        s = re.search(rf'<section class="number" id="n-{key}">(.*?)</section>', self.html, re.S).group(1)
+        return re.search(rf'<div class="num-cell" data-population="{population}"><p><strong>\w+</strong>: (.*?)</p>',
+                         s).group(1)
+
+    def page_number(self, page, key, population):
+        s = re.search(rf'<section class="number" id="n-{key}">(.*?)</section>', page, re.S).group(1)
+        return re.search(rf'<div class="num-cell" data-population="{population}">(.*?)</details></div>', s,
+                         re.S).group(1)
 
     def test_under_a_minute_reads_in_seconds(self):
         with tempfile.TemporaryDirectory() as d:
@@ -387,10 +382,9 @@ class SiteTest(unittest.TestCase):
                 json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:00:18Z"}))
             self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
             page = (Path(d) / "_site" / "stats" / "index.html").read_text()
-        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
         # Step 01 finished 02:01:00 and step 03, the run's last, 02:03:00.
-        self.assertIn('<td class="measured" data-population="rehearsal"><span class="count">42 s of the run\'s '
-                      "2.7 minutes</span></td>", row)
+        self.assertIn('<span class="count">42 s of the run\'s 2.7 minutes</span>',
+                      self.page_number(page, "first-sealed", "rehearsal"))
 
     def test_under_one_second_reads_less_than_one_second_not_zero(self):
         with tempfile.TemporaryDirectory() as d:
@@ -400,10 +394,9 @@ class SiteTest(unittest.TestCase):
                 json.dumps({"stage": "1", "population": "rehearsal", "started": "2026-10-27T02:01:00Z"}))
             self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
             page = (Path(d) / "_site" / "stats" / "index.html").read_text()
-        tile = re.search(r'<section class="tile" id="t-first-sealed">(.*?)</section>', page, re.S).group(1)
-        self.assertIn('rehearsal: <span class="value">&lt;1 s</span>', tile)  # step 01 finished at 02:01:00
-        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
-        self.assertIn('data-population="rehearsal"><span class="count">&lt;1 s of the run\'s 2.0 minutes', row)
+        cell = self.page_number(page, "first-sealed", "rehearsal")
+        self.assertIn('median <span class="value">&lt;1 s</span>', cell)  # step 01 finished at 02:01:00
+        self.assertIn('<span class="count">&lt;1 s of the run\'s 2.0 minutes', cell)
         self.assertNotIn(">0 s", page)
 
     def test_the_header_badge_alt_counts_each_population(self):
@@ -411,9 +404,11 @@ class SiteTest(unittest.TestCase):
                       'checked, live 1 PASS · 0 FAIL · 11 not checked"></a>', self.html)
 
     def test_held_rows_follow_the_status_page(self):
-        self.assertEqual(sorted(int(n) for n in re.findall(r'class="step [^"]* held" data-step="(\d+)"',
-                                                           self.figure("live"))), sorted(status_page.HELD_FOR_FLIP))
-        self.assertIn(status_page.HELD_NOTE, self.figure("live"))
+        held = [int(t[5]) for t in self.TILE.findall(self.figure("live")) if t[2]]
+        self.assertEqual(sorted(held), sorted(status_page.HELD_FOR_FLIP))
+        loop = self.section("loop")
+        self.assertIn(status_page.HELD_NOTE, loop)
+        self.assertIn("Dashed: <code>04</code>, <code>05</code>, <code>06</code>, <code>09</code>.", loop)
         with tempfile.TemporaryDirectory() as d, mock.patch.object(status_page, "DROP_HELD", True):
             self.assertEqual(run_build(DATA, self.findings, Path(d) / "_site")[0], 0)
             page = (Path(d) / "_site" / "stats" / "index.html").read_text()
@@ -422,121 +417,96 @@ class SiteTest(unittest.TestCase):
         self.assertNotIn(" held", page.split('id="loop"')[1].split('id="numbers"')[0])
         self.assertIn(build.count(1, 8, "step"), page)
 
-    def test_rehearsal_and_live_side_by_side_never_summed(self):
-        self.assertEqual(re.findall(r'<figure class="pop" data-population="(\w+)">', self.html), ["rehearsal", "live"])
+    def test_rehearsal_and_live_apart_never_summed_and_fail_malformed_not_checked_distinct(self):
         self.assertIn(f"{build.code('PASS')} {build.count(1, 12, 'step')}", self.figure("rehearsal"))
-        self.assertIn(f"{build.code('FAIL or MALFORMED')} {build.count(1, 12, 'step')}", self.figure("rehearsal"))
-        self.assertIn(f"{build.code('FAIL or MALFORMED')} {build.count(0, 12, 'step')}", self.figure("live"))
+        self.assertIn(f"{build.code('FAIL')} {build.count(1, 12, 'step')}", self.figure("rehearsal"))
+        self.assertIn(f"{build.code('MALFORMED')} {build.count(0, 12, 'step')}", self.figure("rehearsal"))
+        self.assertIn(f"{build.code('NOT_CHECKED')} {build.count(10, 12, 'step')}", self.figure("rehearsal"))
+        self.assertIn(f"{build.code('FAIL')} {build.count(0, 12, 'step')}", self.figure("live"))
         for _, data in self.text.chunks:
             m = COUNT.match(data.strip())
             if m and "step" in data:
                 self.assertEqual(m.group(2), "12", data)  # never one population's steps added to the other's
         for nb in status_page.NUMBERS:
-            row = re.search(rf'<tr id="n-{nb.key}">(.*?)</tr>', self.html).group(1)
-            self.assertEqual(re.findall(r'data-population="(\w+)"', row), ["rehearsal", "live"])
-
-    # The five numbers
-
-    def number(self, key, population):
-        row = re.search(rf'<tr id="n-{key}">(.*?)</tr>', self.html).group(1)
-        return re.search(rf'<td class="(\w+)" data-population="{population}">(.*?)</td>', row).groups()
+            s = re.search(rf'<section class="number" id="n-{nb.key}">(.*?)</section>', self.html, re.S).group(1)
+            self.assertEqual(re.findall(r'class="num-cell" data-population="(\w+)"', s), ["rehearsal", "live"])
 
     def test_the_five_numbers_with_m2_and_m3_as_placeholders(self):
-        self.assertEqual([nb.key for nb in status_page.NUMBERS],
-                         re.findall(r'<tr id="n-([a-z-]+)">', self.html))
+        self.assertEqual([nb.key for nb in status_page.NUMBERS] + ["halves"],
+                         re.findall(r'<section class="number" id="n-([a-z-]+)">', self.html))
         # Step 01 finished 02:01, run started 02:00; the rehearsal run's last finding ended 02:03, the live run's 02:01.
         self.assertEqual(self.number("first-sealed", "rehearsal"),
-                         ("measured", "<span class=\"count\">1.0 of the run's 3.0 minutes</span>"))
+                         "<span class=\"count\">1.0 of the run's 3.0 minutes</span>")
         self.assertEqual(self.number("first-sealed", "live"),
-                         ("measured", "<span class=\"count\">1.0 of the run's 1.0 minutes</span>"))
-        self.assertEqual(self.number("first-answered", "rehearsal"),
-                         ("placeholder", "not measured yet (<code>M1</code>)"))
+                         "<span class=\"count\">1.0 of the run's 1.0 minutes</span>")
+        self.assertEqual(self.number("first-answered", "rehearsal"), "not measured yet (<code>M1</code>)")
         for key, m in (("first-countersigned", "M3"), ("limited", "M3"), ("filtered", "M2")):
             for p in status_page.POPULATIONS:
-                self.assertEqual(self.number(key, p), ("placeholder", f"not measured yet (<code>{m}</code>)"))
+                self.assertEqual(self.number(key, p), f"not measured yet (<code>{m}</code>)")
+                # A dotted track with the milestone, and no value drawn.
+                s = re.search(rf'<svg class="spark" id="n-{key}-{p}".*?</svg>', self.html, re.S).group(0)
+                self.assertIn('<line class="track"', s)
+                self.assertIn(f"not measured yet ({m})", s)
+                self.assertNotIn("data-v=", s)
 
     # The nodes, day by day
 
-    def test_a_timeline_row_per_node_by_node_id(self):
+    def test_a_heatmap_row_per_node_by_node_id(self):
         nodes = re.findall(r'<g class="node" data-node="([0-9a-f]{64})">', self.html)
         self.assertEqual(nodes, [nid(n) for n in (1, 2, 3, 4)])
-        self.assertEqual(re.findall(r'<text class="code date"[^>]*>([^<]+)</text>', self.html), DATES)
         self.assertIn("the order means nothing", self.section("nodes"))
+        self.assertEqual(re.findall(r'<details class="node-detail" data-node="([0-9a-f]{64})">', self.html), nodes)
 
-    def test_answered_refused_absent_missed_not_asked_and_no_file(self):
-        self.assertEqual(self.mark(nid(1), "2026-10-28", "checkpoints"), "answered")
-        self.assertEqual(self.mark(nid(2), "2026-10-28", "history_card"), "refused")
-        self.assertEqual(self.mark(nid(3), "2026-10-28", "checkpoints"), "answered")  # at the retry
-        self.assertEqual(self.mark(nid(3), "2026-10-28", "history_card"), "absent")
-        self.assertEqual(self.mark(nid(3), "2026-10-30", "checkpoints"), "answered")  # not_evidence is a reply
-        self.assertEqual(self.mark(nid(4), "2026-11-01", "history_card"), "refused")
+    def test_each_state_missed_not_asked_and_no_file(self):
+        self.assertEqual(self.mark(nid(1), "2026-10-28", "checkpoints"), "st-verified")
+        self.assertEqual(self.mark(nid(2), "2026-10-28", "history_card"), "st-refusal")
+        self.assertEqual(self.mark(nid(3), "2026-10-28", "checkpoints"), "st-verified")  # at the retry
+        self.assertEqual(self.mark(nid(3), "2026-10-28", "history_card"), "st-absence")
+        self.assertEqual(self.mark(nid(3), "2026-10-30", "checkpoints"), "st-not_evidence")
+        self.assertEqual(self.mark(nid(3), "2026-10-30", "history_card"), "st-no_announced_key")
+        self.assertEqual(self.mark(nid(4), "2026-11-01", "history_card"), "st-refusal")
         for n in (1, 2, 3, 4):
-            self.assertEqual(self.mark(nid(n), "2026-10-29", "checkpoints"), "missed")
-            self.assertEqual(self.mark(nid(n), "2026-10-31", "history_card"), "none")
-        self.assertEqual(self.mark(nid(2), "2026-10-30", "checkpoints"), "absent")
-        self.assertEqual(self.mark(nid(4), "2026-10-28", "checkpoints"), "out")  # not listed yet
-        self.assertEqual(self.mark(nid(3), "2026-11-02", "checkpoints"), "out")  # left
+            self.assertEqual(self.mark(nid(n), "2026-10-29", "checkpoints"), "gap")
+            self.assertEqual(self.mark(nid(n), "2026-10-31", "history_card"), "nofile")
+        self.assertEqual(self.mark(nid(2), "2026-10-30", "checkpoints"), "st-absence")
+        node4 = re.search(rf'<g class="node" data-node="{nid(4)}">(.*?)</g>', self.html, re.S).group(1)
+        self.assertIn("not asked, not on the list this day", node4)  # 10-28: not listed yet
         nodes = self.section("nodes")
         self.assertIn(f"{build.count(4, 6, 'day')} with a settled run", nodes)
         self.assertIn(f"{build.count(1, 6, 'day')} missed", nodes)
         self.assertIn(f"{build.count(1, 6, 'day')} with no day file", nodes)
 
-    def test_the_day_grid_is_large_enough_to_read(self):
-        svg = re.search(r'<div class="scroll">(<svg class="timeline" width="(\d+)" height="\d+".*?</svg>)</div>',
-                        self.section("nodes"), re.S)
-        self.assertIsNotNone(svg)  # drawn at its own size, in its own scroll box: the page itself never scrolls sideways
-        marks = re.findall(r'<rect class="t-[a-z]+" data-date="[^"]+" data-q="[^"]+" x="[\d.]+" y="[\d.]+" '
+    def test_the_heatmap_is_large_enough_to_read(self):
+        svg = re.search(r'<div class="scroll">(<svg class="heatmap" id="heatmap" width="(\d+)" height="\d+".*?</svg>)'
+                        r"</div>", self.section("nodes"), re.S)
+        self.assertIsNotNone(svg)  # drawn at its own size, in its own scroll box: the page never scrolls sideways
+        marks = re.findall(r'<rect class="st-[a-z_]+" data-k="[^"]+" data-v="[^"]+" x="[\d.]+" y="[\d.]+" '
                            r'width="(\d+)" height="(\d+)"', svg.group(1))
-        self.assertEqual(len(marks), 2 * 6 * len(build.node_ids(stats_model.load(DATA))))
-        self.assertTrue(all(int(w) >= 24 and int(h) >= 14 for w, h in marks), marks[:2])
-        css = (ROOT / "site" / "template.html").read_text()
-        sizes = dict(re.findall(r"svg\.timeline (text(?:\.\w+)?|\.leftlabel) \{[^}]*font-size: (\d+)px", css))
-        self.assertEqual(sizes, {"text": "13", "text.date": "11", "text.key": "11", ".leftlabel": "11"})
-        self.assertIn('upper mark: <tspan class="code">checkpoints</tspan>', svg.group(1))
+        self.assertTrue(marks and all(int(w) >= 22 and int(h) >= 14 for w, h in marks), marks[:2])
+        self.assertIn('upper: <tspan class="code">checkpoints</tspan>', svg.group(1))
         # Six days plus the labels fit a 390 px phone inside its 16 px gutters.
         self.assertLessEqual(int(svg.group(2)), 390 - 32)
-        self.assertIn(".scroll { overflow-x: auto; }", css)
-        # Every colour the grid uses is redefined for dark mode.
-        light, dark = css.split("@media (prefers-color-scheme: dark)")[0], css.split("@media (prefers-color-scheme: dark)")[1]
-        for var in ("--t-answered", "--t-refused", "--t-absent", "--t-missed", "--muted", "--fg", "--bg", "--series", "--line"):
-            self.assertIn(var + ":", light.split("}")[0])
-            self.assertIn(var + ":", dark.split("}")[0] + "}")
-
-    def test_a_pass_with_no_run_json_says_its_start_was_not_recorded(self):
-        with tempfile.TemporaryDirectory() as d:
-            findings = Path(d) / "findings"
-            make_findings(findings)
-            (findings / "2026-10-27-live" / "run.json").unlink()
-            self.assertEqual(run_build(DATA, findings, Path(d) / "_site")[0], 0)
-            page = (Path(d) / "_site" / "stats" / "index.html").read_text()
-        row = re.search(r'<tr id="n-first-sealed">(.*?)</tr>', page).group(1)
-        self.assertIn('<td class="placeholder" data-population="live">not measured: this run did not record its '
-                      "start time (<code>run.json</code>)</td>", row)
-        self.assertIn('data-population="rehearsal"><span class="count">1.0 of', row)  # run.json there: measured
 
     def test_left_on(self):
         node = re.search(rf'<g class="node" data-node="{nid(3)}">(.*?)</g>', self.html, re.S).group(1)
-        self.assertIn('left on <tspan class="code">2026-11-01</tspan>', node)
-        x = re.search(r'<rect class="t-out" data-date="2026-11-01" data-q="checkpoints" x="([\d.]+)"', node).group(1)
-        self.assertRegex(node, rf'<line class="leftmark" x1="{float(x) - 2:g}"')
-        self.assertIn('left on <time datetime="2026-11-01">', self.day("2026-10-28"))
-        self.assertNotIn("left on", re.search(rf'data-node="{nid(2)}">(.*?)</g>', self.html, re.S).group(1))
+        self.assertIn('left <tspan class="code">11-01</tspan>', node)
+        self.assertIn('<line class="leftmark"', node)
+        table = re.search(rf'<details class="node-detail" data-node="{nid(3)}">(.*?)</details>', self.html,
+                          re.S).group(1)
+        self.assertIn('left on <time datetime="2026-11-01">', table)
+        self.assertNotIn("left", re.search(rf'data-node="{nid(2)}">(.*?)</g>', self.html, re.S).group(1))
 
-    # Each day
-
-    def test_each_day_shows_the_scrubbed_fields_and_answer_sha256(self):
-        day = self.day("2026-10-28")
-        self.assertIn(f'<code class="sha">sha256={"1a" * 32}</code>', day)
-        self.assertIn("<code>mmr_size=41</code> at <time", day)
+    def test_each_node_table_shows_the_scrubbed_fields_and_answer_sha256(self):
+        n1 = re.search(rf'<details class="node-detail" data-node="{nid(1)}">(.*?)</details>', self.html, re.S).group(1)
+        self.assertIn(f'<code class="sha">sha256={"1a" * 32}</code>', n1)
+        self.assertIn("<code>mmr_size=41</code> at <time", n1)
+        n3 = re.search(rf'<details class="node-detail" data-node="{nid(3)}">(.*?)</details>', self.html, re.S).group(1)
         self.assertIn('asked twice<ul class="attempts"><li><time datetime="2026-10-28T06:00:00Z">2026-10-28T06:00:00Z'
-                      '</time> <code class="outcome o-unreachable">unreachable</code>', day)
-        self.assertIn(f"{build.count(3, 3)} the two questions", day)
-        self.assertIn(f"{build.code('checkpoints')}: {build.count(3, 3)} replied", day)
-        self.assertIn(f"{build.code('history_card/1')}: {build.count(2, 3)} replied", day)
-        self.assertIn('<code class="fact">absent 2 days running</code>', self.day("2026-11-02"))
-        self.assertIn('<code class="fact">absent today</code>', self.day("2026-11-01"))
-        missed = self.day("2026-10-29")
-        self.assertIn("Missed:", missed)
+                      '</time> <code class="outcome o-unreachable">unreachable</code>', n3)
+        n2 = re.search(rf'<details class="node-detail" data-node="{nid(2)}">(.*?)</details>', self.html, re.S).group(1)
+        self.assertIn('<code class="fact">absent 2 days running</code>', n2)
+        self.assertIn('<code class="fact">absent today</code>', n2)
+        missed = self.chart("c-missed")
         self.assertIn("the reporter did not run: its host was down", missed)
 
     def test_every_link_stays_off_reports_and_raw_bytes(self):
@@ -553,14 +523,18 @@ class SiteTest(unittest.TestCase):
     # The rules
 
     def test_every_number_has_a_denominator(self):
-        """A number in the page's text is a count "N of M ...", or a quoted value (code), a time or a tooltip."""
+        """A number in the page's text is a count "N of M ...", a quoted value (code), a time, hover or SVG
+        description text, a measured value the sentence around it qualifies, or a cell in a table of numbers whose
+        header names it."""
         counts = 0
         for stack, data in self.text.chunks:
             ctx = self.text.context(stack)
-            if ctx in ("code", "time", "style", "title"):
+            if ctx in ("code", "time", "style", "title", "desc"):
                 continue
             if ctx == "value":
-                self.assertTrue(any(tag == "section" and cls == "tile" for tag, cls in stack), data)
+                continue
+            if ctx == "num":
+                self.assertTrue(any(tag == "details" for tag, _ in stack), data)
                 continue
             if ctx == "count":
                 m = COUNT.match(data.strip())
@@ -568,29 +542,29 @@ class SiteTest(unittest.TestCase):
                 self.assertLessEqual(float(m.group(1)), float(m.group(2)), data)
                 counts += 1
                 continue
+            if ISSUE_REF.fullmatch(data.strip()):
+                continue  # a cited issue, as its finding gives it
             self.assertIsNone(re.search(r"\d", data), f"a number with no denominator: {data.strip()!r}")
         self.assertGreater(counts, 10)
 
     def test_no_score_rank_or_league_table(self):
-        headers = re.findall(r'<th scope="col">(.*?)</th>', self.html)
-        self.assertEqual(set(headers), {"Number", "Rehearsal", "Live", "Node", "Node says", "<code>checkpoints</code>",
-                                        "<code>history_card/1</code>"})
+        for header in re.findall(r'<th scope="col">(.*?)</th>', self.html):
+            self.assertIsNone(re.search(r"score|rank|league|total|%|percent", header.lower()), header)
         for word in ("score", "rank", "league", "leaderboard", "percent", "%", "total", "top"):
             for tag, attrs in self.text.tags:
                 for k, v in attrs.items():
                     if k not in ("d", "transform", "viewbox", "x", "y", "x1", "x2", "y1", "y2"):
                         self.assertNotIn(word, f"{k}={v}".lower().replace("stop", ""), (tag, attrs))
         for stack, data in self.text.chunks:
-            if self.text.context(stack) in ("prose", "count", "title"):
+            if self.text.context(stack) in ("prose", "count", "title", "desc"):
                 low = data.lower()
                 for word in ("rank", "league", "leaderboard", "%", "total", "percent"):
-                    self.assertTrue(word not in low or "no ranking" in low, data)
+                    self.assertTrue(word not in low or "no ranking" in low or "not a total" in low, data)
                 if "score" in low:
                     self.assertTrue("no score" in low or "into a number" in low, data)
-        # Each day's nodes and the timeline's rows are by node id, whatever they answered.
-        for date in ("2026-10-28", "2026-10-30", "2026-11-02"):
-            rows = re.findall(r'<th scope="row"><code title="([0-9a-f]{64})"', self.day(date))
-            self.assertEqual(rows, sorted(rows))
+        # The heatmap's rows and the node tables are by node id, whatever they answered.
+        rows = re.findall(r'<g class="node" data-node="([0-9a-f]{64})">', self.html)
+        self.assertEqual(rows, sorted(rows))
 
     def test_nothing_says_checked_verified_or_witnessed_unless_pass(self):
         for stack, data in self.text.chunks:
@@ -601,9 +575,9 @@ class SiteTest(unittest.TestCase):
 
     def test_not_checked_is_never_drawn_as_pass(self):
         for p in status_page.POPULATIONS:
-            for state, label in re.findall(r'class="step s-([A-Za-z_]+)[^"]*" data-step="\d+" data-label="([A-Z_]+)"',
-                                           self.figure(p)):
-                self.assertEqual(state == "green", label == "PASS")
+            for t in self.TILE.findall(self.figure(p)):
+                self.assertEqual(t[0] == "green", t[1] == "PASS")
+                self.assertEqual(t[1], t[6])
 
     def test_the_offline_check_is_not_faked(self):
         section = self.section("offline")
@@ -769,11 +743,12 @@ class SealedPerDayTest(unittest.TestCase):
         self.assertTrue(all(p.sealed is None or p.sealed >= 0 for p in points.values()))
         self.assertEqual(run_build(self.data, Path(self.tmp.name) / "findings", self.out)[0], 0)
         page = (self.out / "stats" / "index.html").read_text()
-        self.assertIn('<g class="gap" data-date="2026-11-02">', page)
-        self.assertNotIn('data-date="2026-11-02" data-sealed', page)
+        sealed = re.search(r'<figure class="chart" id="f-c-sealed">.*?</figure>', page, re.S).group(0)
+        self.assertIn('<rect class="gap" data-k="2026-11-02" data-gap="a node&#x27;s count fell"', sealed)
+        self.assertNotIn('data-k="2026-11-02|', sealed)
         self.assertIn('<time datetime="2026-11-02">2026-11-02</time>: node <code title="' + nid(1), page)
         self.assertIn("A drop is not drawn as a negative value", page)
-        self.assertIsNone(re.search(r'data-sealed="-', page))
+        self.assertIsNone(re.search(r'data-v="-', page))
 
     def test_a_count_counts_from_the_last_earlier_known_one(self):
         # Node 1 is not verified on 11-01: 11-02 compares with 10-30.

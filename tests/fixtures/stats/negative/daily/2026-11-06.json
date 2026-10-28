@@ -1,0 +1,86 @@
+{
+  "date": "2026-11-06",
+  "listed": 2,
+  "missed_reason": null,
+  "nodes": [
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "5555555555555555555555555555555555555555555555555555555555555555",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+          "attempts": [
+            {
+              "at": "2026-11-06T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 41,
+            "timestamp": "2026-11-06T05:00:00Z"
+          },
+          "records_at_checkpoint": 22,
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+          "attempts": [
+            {
+              "at": "2026-11-06T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 41,
+            "timestamp": "2026-11-06T05:00:00Z"
+          },
+          "records_at_checkpoint": 22,
+          "state": "verified"
+        }
+      }
+    },
+    {
+      "absent_days_running": 0,
+      "left_on": null,
+      "node_id": "6666666666666666666666666666666666666666666666666666666666666666",
+      "node_line": "discloses: checkpoints, history_card/1",
+      "questions": {
+        "checkpoints": {
+          "answer_sha256": "6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a",
+          "attempts": [
+            {
+              "at": "2026-11-06T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 19,
+            "timestamp": "2026-11-06T05:00:00Z"
+          },
+          "records_at_checkpoint": 11,
+          "state": "verified"
+        },
+        "history_card": {
+          "answer_sha256": "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+          "attempts": [
+            {
+              "at": "2026-11-06T06:00:00Z",
+              "state": "verified"
+            }
+          ],
+          "log_size_at_checkpoint": {
+            "mmr_size": 19,
+            "timestamp": "2026-11-06T05:00:00Z"
+          },
+          "records_at_checkpoint": 11,
+          "state": "verified"
+        }
+      }
+    }
+  ],
+  "reporter_key_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "run": "settled",
+  "versions_lock_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+}

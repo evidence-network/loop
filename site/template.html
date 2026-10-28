@@ -6,169 +6,188 @@
 <title>Loop stats</title>
 <style>
 :root { --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
+        --weekend: #f0f0ea; --hatch: #5c5c57; --gap: #a86a00; --series: #2b5d8a;
         --o-ok: #e3efe3; --o-wait: #eef0f6; --o-no: #f6eee3; --o-none: #f3e6e6;
-        --s-green: #2e7d32; --s-red: #c62828; --s-not: #8a8a84;
-        --t-answered: #4f8f55; --t-refused: #c98a2b; --t-absent: #b5473f; --t-missed: #9a9a94; --gap: #a86a00;
-        --series: #2b5d8a; }
+        --st-verified: #1e6b3c; --st-partial: #79b58d; --st-no_checkpoint_yet: #e3b43c; --st-refusal: #9a5418;
+        --st-no_announced_key: #b9c4cf; --st-not_evidence: #c62828; --st-absence: #85857f;
+        --s-green: #2e7d32; --s-red: #c62828; --s-not: #5d6b78; --on-state: #ffffff; }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
+          --weekend: #222220; --hatch: #a3a39c; --gap: #e0a640; --series: #8db8e0;
           --o-ok: #1f3021; --o-wait: #23263a; --o-no: #362d1f; --o-none: #3a2222;
-          --s-green: #5fae64; --s-red: #e0675f; --s-not: #77776f;
-          --t-answered: #5fae64; --t-refused: #d9a04a; --t-absent: #d0645b; --t-missed: #6b6b66; --gap: #e0a640;
-          --series: #8db8e0; }
+          --st-verified: #52b672; --st-partial: #2c6a43; --st-no_checkpoint_yet: #e0b040; --st-refusal: #c47a3a;
+          --st-no_announced_key: #56626f; --st-not_evidence: #e0675f; --st-absence: #7a7a74;
+          --s-green: #5fae64; --s-red: #e0675f; --s-not: #9aa6b2; --on-state: #111111; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif;
+       font-variant-numeric: tabular-nums; }
 main { max-width: 72rem; margin: 0 auto; padding: 1.5rem 16px 4rem; }
-h1 { font-size: 1.7rem; margin: 0 0 .5rem; }
+h1 { font-size: 1.7rem; margin: 0 0 .3rem; }
 h2 { font-size: 1.3rem; margin: 2.5rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
-h3 { font-size: 1.1rem; margin: 2rem 0 .4rem; }
+h3 { font-size: 1.05rem; margin: 1.6rem 0 .3rem; }
+h4 { font-size: 1rem; margin: 1.2rem 0 .3rem; }
 p, li { max-width: 44rem; }
 a { color: var(--accent); }
 img { max-width: 100%; height: auto; }
-code { background: var(--code); padding: 0 .25em; border-radius: 3px; font-size: .9em; overflow-wrap: anywhere; }
-.note { color: var(--muted); font-size: .9rem; }
+code { background: var(--code); color: var(--fg); padding: 0 .25em; border-radius: 3px; font-size: .9em;
+       overflow-wrap: anywhere; }
+.note, .caption { color: var(--muted); font-size: .9rem; }
+.caption { margin: .1rem 0 .5rem; }
+.lede { margin: 0 0 1rem; }
+.today { font-size: 1.05rem; margin: .8rem 0 .6rem; }
+.today .count, .today .value { font-weight: 600; }
 .scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { border: 1px solid var(--line); padding: .5rem; vertical-align: top; text-align: left; }
+figure { margin: 0; }
+details { margin: .4rem 0; }
+summary { cursor: pointer; color: var(--accent); font-size: .9rem; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .4rem 0; }
+th, td { border: 1px solid var(--line); padding: .35rem .5rem; vertical-align: top; text-align: left; }
+td.num { text-align: right; }
+td.gapcell { color: var(--muted); }
 td.o-verified { background: var(--o-ok); }
 td.o-no_checkpoint_yet { background: var(--o-wait); }
 td.o-refusal, td.o-no_announced_key, td.o-not_evidence { background: var(--o-no); }
 td.o-absence { background: var(--o-none); }
-td.placeholder { color: var(--muted); }
+td p { margin: .2rem 0; }
 dl { margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }
 dt { color: var(--muted); } dd { margin: 0; }
-td p { margin: .2rem 0; }
-.missed p { background: var(--o-none); padding: .5rem; }
-ul.days { columns: 12rem; }
 ul.attempts { margin: .2rem 0; padding-left: 1rem; }
-ul.legend { list-style: none; padding: 0; font-size: .9rem; }
+ul.legend { list-style: none; padding: 0; margin: .3rem 0; font-size: .85rem; display: flex; flex-wrap: wrap;
+            gap: .2rem 1rem; }
 ul.legend svg { vertical-align: middle; }
-.gap { border-left: 3px solid var(--accent); padding-left: .8rem; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
-.tile { border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1rem; }
-.tile h3 { font-size: 1rem; margin: 0 0 .4rem; }
-.tile p { margin: .3rem 0; }
-.tile .value { font-size: 1.15rem; }
-.tile .count { font-weight: 600; }
-svg.records { width: 100%; height: auto; display: block; font-family: system-ui, sans-serif; }
-svg.records .axis { stroke: var(--muted); stroke-width: 1.5; }
-svg.records .grid { stroke: var(--line); stroke-width: 1; }
-svg.records text { fill: var(--muted); font-size: 12px; text-anchor: middle; }
-svg.records text.tick { text-anchor: end; }
-svg.records text.value { fill: var(--fg); font-weight: 600; }
-svg.records .line, ul.series .line { fill: none; stroke: var(--series); stroke-width: 3; stroke-linejoin: round; }
-ul.series .line.pending { stroke: var(--muted); stroke-dasharray: 3 4; stroke-width: 2; }
-svg.records .point circle { fill: var(--series); stroke: var(--bg); stroke-width: 2; }
-svg.records .gapmark { font-size: 11px; font-style: italic; }
-/* The chart's units scale with its width (720 units wide): larger text where it is drawn narrower. */
-@media (max-width: 56rem) {
-  svg.records text { font-size: 16px; }
-  svg.records .gapmark { font-size: 14px; }
-}
-@media (max-width: 36rem) {
-  svg.records text { font-size: 26px; }
-  svg.records .gapmark { font-size: 22px; }
-  svg.records text.minor, svg.records text.value:not(.newest) { display: none; }
-  svg.records .line { stroke-width: 5; }
-  svg.records .point circle { r: 12px; stroke-width: 3; }
-  svg.records .axis { stroke-width: 2.5; }
-}
-ul.series { list-style: none; padding: 0; font-size: .9rem; margin: .2rem 0 .4rem; }
-ul.series svg { vertical-align: middle; }
-ul.drops { font-size: .9rem; }
-.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1.5rem; }
-figure.pop, figure.rec { margin: 0; }
-figure.rec + figure.rec { margin-top: 1.5rem; }
-figure.pop figcaption { margin-bottom: .4rem; }
+ul.drops, ul.gaps { font-size: .9rem; padding-left: 1rem; }
+ul.gaps li { border-left: 3px solid var(--gap); padding-left: .5rem; list-style: none; margin: .2rem 0;
+             overflow-wrap: anywhere; }
+.gap-note { border-left: 3px solid var(--accent); padding-left: .8rem; }
+/* SVG: labels are 12px or larger; a scaled chart is never drawn below its own width. */
 svg { font-family: system-ui, sans-serif; }
+svg text { fill: var(--fg); font-size: 12px; }
 svg .code { font-family: ui-monospace, monospace; }
-svg.path { width: 100%; max-width: 26rem; height: auto; display: block; }
-svg.path .track { fill: none; stroke: var(--line); stroke-width: 4; }
-svg.path .track.back { stroke-dasharray: 3 5; }
-svg.path circle { stroke: var(--bg); stroke-width: 2; }
-svg.path .s-green circle { fill: var(--s-green); }
-svg.path .s-red circle { fill: var(--s-red); }
-svg.path .s-NOT_CHECKED circle { fill: var(--s-not); }
-svg.path .held circle { stroke: var(--fg); stroke-dasharray: 3 3; }
-svg.path .step circle.gapmark { fill: var(--bg); stroke: var(--gap); stroke-width: 2.5; stroke-dasharray: none; }
-ul.gaps { font-size: .9rem; padding-left: 1rem; }
-ul.gaps li { border-left: 3px solid var(--gap); padding-left: .5rem; list-style: none; margin: .2rem 0; overflow-wrap: anywhere; }
-svg.path text { text-anchor: middle; fill: var(--fg); }
-svg.path text.n { fill: #fff; font-size: 11px; font-weight: 600; }
-svg.path text.name { font-size: 8.5px; }
-svg.timeline { display: block; }
-svg.timeline text { fill: var(--fg); font-size: 13px; }
-svg.timeline text.date { font-size: 11px; fill: var(--muted); }
-svg.timeline text.key { font-size: 11px; fill: var(--muted); }
-svg.timeline .leftlabel { font-size: 11px; fill: var(--muted); }
-svg.timeline .leftmark { stroke: var(--fg); stroke-width: 2; }
-.t-answered { fill: var(--t-answered); }
-.t-refused { fill: var(--t-refused); }
-.t-absent { fill: var(--t-absent); }
-.t-missed { fill: var(--t-missed); }
-.t-out { fill: none; stroke: var(--muted); stroke-width: 1; }
-.t-none { fill: none; stroke: var(--muted); stroke-dasharray: 2 2; }
+svg text.tick { fill: var(--muted); text-anchor: end; }
+svg text.xdate { fill: var(--muted); text-anchor: middle; }
+svg text.xdate.newest { fill: var(--fg); font-weight: 600; }
+svg text.ylabel, svg text.key, svg text.older, svg text.leftlabel { fill: var(--muted); }
+svg text.none, svg text.milestone { fill: var(--muted); }
+svg text.none { text-anchor: middle; }
+svg text.end { text-anchor: end; }
+svg.multiple { width: 100%; min-width: 340px; height: auto; display: block; }
+svg.heatmap, svg.spark { display: block; }
+svg.band { display: block; width: 100%; min-width: 880px; height: auto; }
+svg.band text { font-size: 15px; }
+svg .axis { stroke: var(--muted); stroke-width: 1; }
+svg .grid { stroke: var(--line); stroke-width: 1; }
+svg .weekend { fill: var(--weekend); }
+svg .hatch { stroke: var(--hatch); stroke-width: 1.5; }
+svg .gap { stroke: var(--hatch); stroke-width: 1; }
+svg .nofile, .nofile { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+svg .newest-mark { fill: var(--fg); }
+svg .frame { fill: none; stroke: var(--line); }
+svg .listed, svg .asks { fill: none; stroke: var(--fg); stroke-width: 1.5; }
+svg .listed-pt, svg .asks-pt { fill: var(--fg); }
+svg .book, svg .spark { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; }
+svg .book-pt, svg .spark-pt { fill: var(--series); stroke: var(--bg); stroke-width: 1; }
+svg .nocheckpoint { stroke: var(--st-no_checkpoint_yet); stroke-width: 2.5; stroke-dasharray: 4 3; }
+svg .unmeasured { fill: var(--bg); stroke: var(--muted); stroke-width: 1.5; }
+svg .track { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 1 4; stroke-linecap: round; }
+svg .median { stroke: var(--fg); stroke-width: 3; }
+svg .sealed, .sealed { fill: var(--series); }
+svg .sealed.longer, .sealed.longer { fill: var(--series); fill-opacity: .45; }
+svg .bracket { fill: none; stroke: var(--fg); stroke-width: 1; }
+svg .zeromark { fill: var(--fg); }
+svg .tick-join, .join-key { fill: var(--st-verified); }
+svg .tick-leave, .leave-key { fill: var(--st-not_evidence); }
+svg .leftmark { stroke: var(--fg); stroke-width: 2; }
+svg .out, .out { fill: none; stroke: var(--line); stroke-width: 1; }
+svg .notasked, .notasked { fill: none; stroke: var(--muted); stroke-width: 1; }
+svg .settled, .settled { fill: var(--line); }
+.gap-key { fill: var(--line); stroke: var(--hatch); stroke-width: 2; stroke-dasharray: 2 2; }
+.listed-key { fill: var(--fg); }
+.book-key { fill: var(--series); }
+.nocheckpoint-key { fill: var(--st-no_checkpoint_yet); }
+.st-verified, .ask-answered { fill: var(--st-verified); }
+.st-partial { fill: var(--st-partial); }
+.st-no_checkpoint_yet { fill: var(--st-no_checkpoint_yet); }
+.st-refusal, .ask-refused { fill: var(--st-refusal); }
+.st-no_announced_key { fill: var(--st-no_announced_key); }
+.st-not_evidence { fill: var(--st-not_evidence); }
+.st-absence, .ask-absent { fill: var(--st-absence); }
+.band-box { border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+/* Where the band scrolls (a phone), the box opens at its right end: the newest day. */
+.band-box { direction: rtl; }
+.band-box svg { direction: ltr; }
+.multiples { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 2rem; }
+@media (max-width: 48rem) { .multiples { grid-template-columns: minmax(0, 1fr); } }
+.chart h3 { margin-top: .2rem; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: .5rem 2rem; }
+figure.pop { margin: 1rem 0 1.5rem; }
+figure.pop figcaption { margin-bottom: .4rem; }
+ol.strip { list-style: none; padding: 0; margin: .4rem 0; display: grid; gap: 4px;
+           grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr)); }
+ol.strip a.tile { display: flex; flex-direction: column; min-height: 44px; padding: 4px 6px; border-radius: 4px;
+                  text-decoration: none; border: 2px solid transparent; line-height: 1.25; }
+ol.strip .n { font-weight: 700; font-size: 13px; }
+ol.strip .name, ol.strip .lab { font-size: 12px; }
+ol.strip a.s-green { background: var(--s-green); color: var(--on-state); }
+ol.strip a.s-red { background: var(--s-red); color: var(--on-state); }
+ol.strip a.s-NOT_CHECKED { background: var(--s-not); color: var(--on-state); }
+ol.strip a.l-MALFORMED { border: 2px dotted var(--fg); }
+ol.strip a.held { border: 2px dashed var(--fg); }
+ol.strip a.ringed { box-shadow: inset 0 0 0 3px var(--gap); }
+section.number { border-top: 1px solid var(--line); padding-top: .2rem; }
+.num-cell p { margin: .3rem 0; }
 footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem; }
 </style>
 </head>
 <body>
 <main>
 <h1>Loop stats</h1>
+<p class="lede">This site is the evidence network's. It draws the network over time, from files in the network's
+public repository and nothing else; <a href="#about">how to read it</a> is at the end.</p>
 <p><a href="status/"><img src="status/badge.svg" alt="loop: $badge_alt"></a></p>
-<p>This site is the evidence network's. It shows, from files in the network's public repository and nothing else:
-how many records the listed nodes seal each day; four figures, each with what it is out of; why this record keeping
-matters; the loop, the steps a node goes through from sealing a record to a new node joining; and every node on the
-commitment list, day by day, as the daily reporter found it.</p>
-<p>New here? Read <a href="#matters">why this matters</a>, <a href="#what">what the reporter asks</a> and
-<a href="#outcomes">what each result means</a>. Then <a href="#loop">the loop</a>, <a href="#numbers">the five
-numbers</a>, <a href="#nodes">the nodes</a> and <a href="#days">each day</a>.</p>
+$pulse
 
-<h2 id="records">Records sealed per day</h2>
-<p>Each day the reporter reads every listed node's newest checkpoint, which says how many records the node's book
-holds. A node's records sealed that day are its count minus its last earlier count; after a missed day or an
-absence, that covers every day since, and the point says so. The line adds those up across the nodes for each
-day. Rehearsal and live are kept apart and never added together.</p>
-$records
+<h2 id="multiples">Day by day</h2>
+$multiples
 
-<h2 id="tiles">Four figures</h2>
-<p>Each figure says what it is out of and which days or runs it covers. A figure that cannot be measured yet says so;
-it is never shown as zero.</p>
-$tiles
+<h2 id="loop">The loop</h2>
+<p class="note">Twelve steps, one fact each. Rehearsal (demo nodes, test keys) above live (the lab nodes), never added
+together. Each tile links its row on the <a href="status/">status page</a>.</p>
+$loop
 
-<h2 id="matters">Why this matters</h2>
+<h2 id="numbers">Five numbers</h2>
+<p class="note">Per population, over its runs. A number that cannot be measured yet says so, with the milestone it
+waits for; it is never shown as zero. The <a href="status/#numbers">status page</a> says which finding each reads.</p>
+$numbers
+
+<h2 id="nodes">The nodes, day by day</h2>
+$nodes
+
+<h2 id="about">How to read this page</h2>
+<details class="about">
+<summary>Why this matters, what the reporter asks, what each result means, joining and leaving</summary>
+<p>Rehearsal and live are kept apart and never added together. A day with no point is a gap: a day with no day
+file, a missed run, a node whose count fell, or no node with an earlier count to compare with; it is never drawn as
+zero. A node's records sealed on a day are its count minus its last earlier count; after a missed day or an
+absence, that covers every day since, and the bar says so.</p>
+<p>The loop is the network's test harness: one step per fact, each writing a finding with its proof files. A step
+is green only when its finding says <code>PASS</code> and its proof files match; red is <code>FAIL</code>, or
+<code>MALFORMED</code> for a finding that does not pass the format check (dotted); slate is <code>NOT_CHECKED</code>,
+a step that could not establish its fact yet. A ringed step passed with a gap its finding names. A minutes figure
+runs from the run's start to the end of the step that marks the event.</p>
+
+<h3 id="matters">Why this matters</h3>
 <p>Each node on this network keeps a book: a sealed record of what it did, made when it did it. In an exchange
 between two nodes, each side seals its own half, so the record is held by both of them, not by one party alone.
 The records are built so that anyone can check a node's history against its signed checkpoints with only the
 records and the node's public key, without trusting the node, the reporter or the people who run this site. For
 the answers shown here that check is not yet available offline; see <a href="#offline">checking an answer
 yourself</a>.</p>
-<h3>How it helps</h3>
+<h4>How it helps</h4>
 <p>An operator can show its history as it was recorded at the time, instead of describing it. The other side of an
 exchange can look at that history for itself, holding its own half of each record they share.</p>
 
-<h2 id="loop">The loop</h2>
-<p>The loop is the network's test harness: one step per fact, each writing a finding with its proof files. The
-rehearsal run uses demo nodes and test keys; the live run uses the lab nodes. They are drawn side by side and never
-added together. A step is green only when its finding says <code>PASS</code> and its proof files match; red is
-<code>FAIL</code> or a finding that does not pass the format check; grey is <code>NOT_CHECKED</code>, a step that
-could not establish its fact yet. Each step links to its row on the <a href="status/">status page</a>, which lists
-what, why and the issue that owns it.</p>
-$loop
-
-<h2 id="numbers">Five numbers</h2>
-<p>Each number is per population, from that population's newest run. A minutes figure runs from the run's start to
-the end of the step that marks the event, and is shown out of the whole run's length. A number that cannot be
-measured yet says so, with the milestone it waits for; it is never shown as zero. The
-<a href="status/#numbers">status page</a> says which finding each one reads.</p>
-$numbers
-
-<h2 id="nodes">The nodes, day by day</h2>
-<p>Once a day the reporter asks every node on the commitment list the same two questions. Here is what came back,
-per node, per question, per day.</p>
-$nodes
-
-<h2 id="what">What the reporter asks</h2>
+<h3 id="what">What the reporter asks</h3>
 <p>Once a day, one node on the mesh, the <em>reporter</em>, asks every node on the commitment list
 the same two questions and saves exactly what came back. Those saved files are kept in a separate repository that is
 not published. This site shows a scrubbed record of them: per node per day, the result of each question, every
@@ -185,7 +204,7 @@ the proof that it extends the one before. Again, no record's contents.</li>
 <p>The reporter asks over the mesh, addressed by node id, and signs every request with its own published key,
 so each node can see who asked. It asks nothing else, and it never asks itself.</p>
 
-<h2 id="outcomes">What each result means</h2>
+<h3 id="outcomes">What each result means</h3>
 <p>Each question gets exactly one result per node per day. On the timeline, the first four are <em>answered</em>, a
 <code>refusal</code> is <em>refused</em> and an <code>absence</code> is <em>absent</em>.</p>
 <dl>
@@ -213,14 +232,14 @@ records.</dd>
 <p>Each node also has a <code>NODE</code> line: <code>discloses: ...</code> (the questions it answered with a signed
 answer that held), <code>joined, no checkpoint yet</code>, or <code>joined, discloses nothing</code>.</p>
 
-<h2 id="why">Why there is no score</h2>
+<h3 id="why">Why there is no score</h3>
 <p>Each result is a fact about one exchange on one day: what was asked, what came back, and how the reporter's check came out. Adding
 those up into a number per node would claim more than the records say. An absence can be the reporter's own path
 to the node; a refusal is a node using its policy. So the site has no score, no ranking and no table of nodes by
 result. Nodes are listed by node id, which is a key, so the order means nothing. The only numbers about nodes are
 counts for one day, and each says how many nodes it is out of: for example "<span class="count">2 of 3 listed nodes</span>".</p>
 
-<h2 id="join">How to join and how to leave</h2>
+<h3 id="join">How to join and how to leave</h3>
 <p><strong>Join:</strong> run a mesh node with the capsules plugin, then open a pull request that adds one file,
 <code>nodes/&lt;node_id&gt;.json</code>, to the commitment list repository (its <code>nodes/README.md</code> lists
 the fields). The list's check must pass. From the next daily run the reporter asks your node. While the network is
@@ -231,8 +250,8 @@ your node, and this site shows it as left on that day. Days already reported sta
 was asked and what came back, and is never rewritten.</p>
 <p>The list is discovery, not evidence: an entry says how to ask a node, and the answers are the evidence.</p>
 
-<h2 id="offline">Checking an answer yourself</h2>
-<div class="gap">
+<h3 id="offline">Checking an answer yourself</h3>
+<div class="gap-note">
 <p><strong>Not yet available.</strong> There is no command yet that re-checks one saved answer offline on a fresh
 machine, and this site will not show one until it works.</p>
 <p>Why: a signed answer is bound to the exact bytes of the request it answers (a <code>SHA-256</code> digest of them).
@@ -245,11 +264,7 @@ the answer, and a command-line checker for this answer format is published. Unti
 reporter's own node's result. The saved files themselves are not published; each day shows the <code>SHA-256</code>
 of every settled answer, so a copy of an answer can be matched to the one recorded here.</p>
 </div>
-
-<h2 id="days">Each day</h2>
-<p class="note">Newest first. A day with no run is marked missed, with the reason; a day is never silently absent.
-Each day links its scrubbed day file.</p>
-$days
+</details>
 
 <footer>
 <p class="note">The evidence network's loop stats, built by <code>site/build.py</code> from the scrubbed day files

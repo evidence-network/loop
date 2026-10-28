@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-05",
+  "listed": 2,
+  "missed_reason": "the reporter did not run: its host was down",
+  "nodes": [],
+  "reporter_key_id": null,
+  "run": "missed",
+  "versions_lock_sha256": null
+}
