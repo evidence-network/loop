@@ -2,8 +2,14 @@
 """Write the lab nodes' entries into this clone, and pack what goes back into the repository.
 
 Usage:
+  pack.py record check|tools --lab-dir DIR   (lab/lab.sh: one command's outcome, JSON on stdin)
   pack.py entries --lab-dir DIR --operator HANDLE [--reporter lab-3] [--root DIR] [--dry-run]
   pack.py pack --lab-dir DIR --date YYYY-MM-DD [--root DIR] [--dry-run]
+
+record: merges what `lab/lab.sh check` or `lab/lab.sh tools` found into DIR/build.json.
+`check` rewrites everything but the tools record; `tools` rewrites only that. `failures`
+is the check's failures then the setups' failures, and `ok` is true only when it is
+empty and the check has run.
 
 entries: for each node in population/live/population.json, reads its node id and
 plugin key id from the public files its capsules plugin wrote under
@@ -52,13 +58,39 @@ def data_dir(lab_dir, name):
     return Path(lab_dir) / "nodes" / name / ".local" / "share" / "capsules"
 
 
+def record(lab_dir, section, outcome):
+    """Merge one lab.sh command's outcome into lab_dir/build.json; returns the merged build."""
+    path = Path(lab_dir) / "build.json"
+    try:
+        build = load(path)
+    except (OSError, ValueError):
+        build = {}
+    if section == "check":
+        tools = build.get("tools")
+        build = dict(outcome)
+        build["check_failures"] = build.pop("failures", [])
+        if tools is not None:
+            build["tools"] = tools
+    else:
+        build["tools"] = outcome
+    check = build.get("check_failures", ["lab/lab.sh check has not run"])
+    build["failures"] = list(check) + list((build.get("tools") or {}).get("failures", []))
+    build["ok"] = not build["failures"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(dump(build), encoding="utf-8")
+    return build
+
+
 def build_strings(build):
     """(host_build, plugin_version) for the entries, from build.json."""
     m, c = build["mesh_llm"], build["capsules"]
     pins = ", ".join(f"{k} {v}" for k, v in sorted(m["contains"].items()) if v)
     host_build = (f"mesh-llm {m['source_head']} (contains {pins}), binary sha256 {m['binary_sha256']}; "
                   "no relay until Mesh-LLM/capsules-plugin#48 is closed")
-    return host_build, f"capsules {c['source_head']}, binary sha256 {c['binary_sha256']}"
+    # A tag pin names its commit too: the tag is what versions.lock says, the commit what was checked.
+    tag = c.get("pin") if c.get("pin") not in (None, c["source_head"]) else None
+    at = f"{tag} ({c['source_head']})" if tag else c["source_head"]
+    return host_build, f"capsules {at}, binary sha256 {c['binary_sha256']}"
 
 
 def entries(root, lab_dir, operator, reporter, dry_run=False):
@@ -222,6 +254,9 @@ def pack(root, lab_dir, day, dry_run=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("record")
+    r.add_argument("section", choices=("check", "tools"))
+    r.add_argument("--lab-dir", required=True, type=Path)
     e = sub.add_parser("entries")
     e.add_argument("--operator", required=True)
     e.add_argument("--reporter", default="lab-3")
@@ -232,6 +267,14 @@ def main(argv=None):
         s.add_argument("--root", type=Path, default=ROOT)
         s.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
+    if a.cmd == "record":
+        try:
+            outcome = json.load(sys.stdin)
+        except ValueError as e:
+            print(f"pack.py: record {a.section}: not JSON on stdin: {e}", file=sys.stderr)
+            return 1
+        record(a.lab_dir, a.section, outcome)
+        return 0
     if a.cmd == "entries":
         errs = entries(a.root, a.lab_dir, a.operator, a.reporter, a.dry_run)
     else:

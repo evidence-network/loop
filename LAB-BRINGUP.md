@@ -33,7 +33,7 @@ export LAB_DIR=$HOME/loop-lab          # any empty directory you own
 | `$LAB_DIR/join/<name>/` | what `join.sh` wrote (`--out`): binding, book, commitment, probe |
 | `$LAB_DIR/run/` | pid files, launch scripts and the mesh invite token (mode 0700) |
 | `$LAB_DIR/logs/<name>.log` | each node's log. It holds the invite token: never copy a log off the host |
-| `$LAB_DIR/build.json` | what `check` confirmed about the build |
+| `$LAB_DIR/build.json` | what `check` confirmed about the build, and each `tools` setup's exit code |
 | `$LAB_DIR/out/loop-lab-<date>.tgz` | the tarball you bring back |
 
 Ports: `LAB_PORT_BASE` (default 9800) gives each node an API port
@@ -91,9 +91,16 @@ It reads the three pins from `versions.lock` and checks, with git:
 - the capsules tree is exactly at the `capsules` pin (`git rev-parse HEAD`),
   with no uncommitted changes;
 
-then records both trees' HEADs, both binaries' sha256 and
-`mesh-llm --version` in `$LAB_DIR/build.json`, and exits 1 naming each
-mismatch. git proves what a tree is at, not what a binary was built from:
+A `capsules` pin that is a tag (such as `v0.1.5`) is resolved to its
+commit in the capsules tree (`git rev-parse <tag>^{commit}`, after
+`git fetch --tags` if the tree does not have the tag yet), and HEAD must be
+that commit; a full-SHA pin is compared as it is. `check` then records
+both trees' HEADs, the capsules pin and its commit, both binaries' sha256
+and `mesh-llm --version` in `$LAB_DIR/build.json`. It writes
+`build.json` on every outcome: when anything fails (a pin missing from a
+tree, an unset path, a binary that is not there), `build.json` reads
+`"ok": false` with each reason in `failures`, and `check` exits 1 naming
+each one. git proves what a tree is at, not what a binary was built from:
 compare the two sha256 lines it prints with the ones your build recorded
 when it was made. If they differ, or `check` exits 1, stop here and report
 what it printed; do not start nodes on a build the lock does not name.
@@ -108,6 +115,13 @@ against its release's checksums:
 ```sh
 lab/lab.sh tools
 ```
+
+`tools` runs every `steps/<NN>-<name>.setup.sh`, even after one fails,
+and records each one's exit code under `tools` in `$LAB_DIR/build.json`.
+If any setup failed, it names each one with its exit code, exits 1, and
+`build.json` reads `"ok": false` (as does every later `check`) until a
+`tools` run passes them all. `entries` refuses such a build. Report what it
+printed rather than starting nodes without a step's tools.
 
 ## 2. Three nodes on one host
 
@@ -228,7 +242,7 @@ This writes, in this clone (it commits nothing):
   `host_build` names the mesh-llm tree, the pins it contains, the binary's
   sha256, and that the node runs with no relay until
   Mesh-LLM/capsules-plugin#48 is closed; `plugin_version` names the plugin
-  tree and its binary's sha256. Then `scripts/check_nodes.py nodes` must say
+  pin, the commit the plugin tree is at, and its binary's sha256. Then `scripts/check_nodes.py nodes` must say
   `3 entries ok`;
 - **`population/live/population.json`** with the three real node ids;
 - **`reporter/reporter.json`** with the reporter node's values (below).
@@ -287,20 +301,55 @@ LOOP_CONSOLE=http://127.0.0.1:9813 ./loop.sh --stage 1 --population live --out f
 through it. `loop.sh` prints one line per step; the result is in each
 `findings/<date>-live/<NN>-<name>/finding.json`, not in the exit code.
 
-What to expect on the live population today, so a FAIL here is read for
-what it is:
+`loop.sh` runs one step per stage-1 number: the file in `steps/` named
+exactly `<NN>-<name>` (`01-seal`, `02-book`, `03-advertise`, `12-join`).
+The setup scripts, docs, constraints and data beside them
+(`01-seal.setup.sh`, `01-seal.constraints.txt`, `02-book.d/`,
+`03-advertise.md`, ...) are never run as steps.
 
+Steps 01 and 02 find each node's own key and book through
+`population/live/population.json`, which `lab/lab.sh entries` filled:
+
+- `data_dir`: `$LAB_DIR/nodes/<name>/.local/share/capsules`, the plugin's
+  data dir, holding `keys/node-key.pem` and `keys/node-key.pub.pem`;
+- `book_dir`: `$LAB_DIR/nodes/<name>/join-book`, the `--home` `join.sh`
+  made the node's book in.
+
+Both are written with `$LAB_DIR` unexpanded, so no host path goes into the
+repository; the steps expand it from the environment, which is why
+`lab/lab.sh loop` passes `LAB_DIR` to `loop.sh`. A node whose path is unset
+or not readable by the user running the loop is NOT_CHECKED with
+`data_dir` (or `book_dir`) `not set or unreadable`, never a FAIL.
+
+What to expect from each step on the live population today, so each
+result is read for what it is. Every step writes one finding, the worst
+over the three nodes, and its `detail` lists each node:
+
+- `01 seal`: each node seals one record with its own plugin key from its
+  `data_dir`, and the second-language verifier checks Class 1 on the
+  sealed bytes. PASS when every node's capsule verifies under that node's
+  key; the detail then says the producer signature is outside the
+  assertion. NOT_CHECKED for a node whose `data_dir` is unreadable or when
+  a pinned tool is missing (run `lab/lab.sh tools`). A FAIL names the node
+  and the check.
+- `02 book`: for each node, the pinned capsulectl appends a capsule sealed
+  with the node's key to the book under its `book_dir` and verifies it
+  under that book's checkpoint key. NOT_CHECKED at best: the book's
+  checkpoint carries no witness receipt on a lab node, and the pinned
+  evidencebook has no receipt verifier. A FAIL names the node and the
+  check.
+- `03 advertise`: reads each node's commitment from this repository's
+  `nodes/commitments/` and signs nothing for a live node. NOT_CHECKED
+  until each node publishes a commitment it signed itself
+  (Mesh-LLM/capsules-plugin#51).
 - `12 join`: asks each listed node `checkpoints` and `history_card/1` from
   lab-3 and judges each answer under the key the node's host announces. The
   join, the binding and the signed commitment read NOT_CHECKED on the
   plugin's issues, so the step reads NOT_CHECKED at best. A FAIL names the
   node and the answer.
-- `01 seal`, `02 book`, `03 advertise` read FAIL on a live run with this
-  version of `loop.sh` and the steps: steps 01 and 02 read a test key from
-  the population (live nodes have none), and `loop.sh` takes the
-  `steps/01-seal.constraints.txt` and `steps/03-advertise.md` files beside
-  those steps for a second executable. Each FAIL's `detail` says which. Do
-  not work around them on the host; they are reported with the tarball.
+
+A FAIL is reported with the tarball as it is; do not work around it on the
+host.
 
 ## 6. Pack and bring back
 
