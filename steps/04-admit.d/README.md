@@ -26,6 +26,6 @@ node's ledger (the lab grants the hook, `lab/lab.sh`). The step reads those
 records, read-only. It passes when every lab node reads, at least one decision
 is found and each is GO or NO, names its source, cites the operator policy by
 digest (a NO sealed with no readable policy has none) and names the peer by
-commitment only. Otherwise it is NOT_CHECKED. The plugin seals no rows yet
+commitment only. A decision found that is malformed is a FAIL; no decision, or a node that cannot be read, is NOT_CHECKED. The plugin seals no rows yet
 (Mesh-LLM/capsules-plugin#116), and the routing path does not enforce the
 decision (Mesh-LLM/mesh-llm#2061).

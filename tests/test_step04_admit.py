@@ -141,12 +141,13 @@ class Rehearsal(unittest.TestCase):
             f = pop / "step04/scenarios/go/decision.json"
             d = load(f)
             del d["source"]
-            f.write_text(json.dumps(d))
-            out = Path(tmp) / "f" / "04-admit"
-            r = run_step(pop, out)
-            self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(load(out / "finding.json")["result"], "FAIL")
-            self.assertIn(("go", "plugin_shape"), failed_checks(out))
+            for bad in (d, None, ["GO"], "GO"):
+                f.write_text(json.dumps(bad))
+                out = Path(tmp) / "f" / "04-admit"
+                r = run_step(pop, out)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(load(out / "finding.json")["result"], "FAIL", bad)
+                self.assertIn(("go", "plugin_shape"), failed_checks(out))
 
     def test_a_decision_altered_in_the_bundle_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,9 +287,9 @@ class StatusRefusedRow(unittest.TestCase):
         number = next(n for n in status_page.NUMBERS if n.key == "refused")
         return status_page.number_value(number, run)
 
-    def test_the_row_is_refused_on_terms(self):
+    def test_the_row_is_the_no_decisions(self):
         number = next(n for n in status_page.NUMBERS if n.key == "refused")
-        self.assertEqual((number.label, number.step), ("Decisions refused on terms", 4))
+        self.assertEqual((number.label, number.step), ("Admission decisions that were NO", 4))
         self.assertNotIn("limited", [n.key for n in status_page.NUMBERS])
 
     def test_a_pass_shows_both_numbers(self):

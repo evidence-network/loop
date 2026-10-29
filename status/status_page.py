@@ -64,8 +64,8 @@ STEPS = (
                     "witness receipt holds.", NODE_SIDE, "M1"),
     Step(3, "Advertise", "The node publishes a signed commitment (checkpoint, disclosure policy digest, predicate "
                          "classes, how to ask) and it is fetched back intact. It carries no counts.", NODE_SIDE, "M1"),
-    Step(4, "Admit", "Before an exchange, one node reads the other's history, decides GO, ASK, LIMIT or NO, and seals "
-                     "the decision.", NODE_SIDE, "M3"),
+    Step(4, "Admit", "Before the deal, the buyer's admission gate decides GO or NO and seals the decision first; the deal "
+                     "obeys it.", NODE_SIDE, "M3"),
     Step(5, "Deal and push", "Both sides seal halves that cite each other and push them at completion; the receiver "
                              "seals a record citing them.", NODE_SIDE, "M2"),
     Step(6, "Settle", "A settlement object for the exchange exists on the rail, with finality.", NODE_SIDE, "M2"),
@@ -117,7 +117,7 @@ NUMBERS = (
            "artifact or a signed refusal judged allowed), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
-    Number("refused", "Decisions refused on terms", "of all admission decisions", "M3", 4,
+    Number("refused", "Admission decisions that were NO", "of all admission decisions", "M3", 4,
            "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,
            "step 06 (Settle) finding's volume.json, when that finding is a valid PASS: raw counts the final "

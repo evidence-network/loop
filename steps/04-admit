@@ -43,7 +43,7 @@ node's ledger (the lab grants it the hook, lab/lab.sh). For each lab node whose
 data_dir is readable the step reads those blocks, read-only, and checks each is
 GO or NO, names its source, cites the operator policy by digest and names the
 peer by commitment only. PASS when every node reads and at least one is found
-and all hold; NOT_CHECKED otherwise. The five rows are
+and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The five rows are
 Mesh-LLM/capsules-plugin#116, not yet pinned.
 
 No spend: nothing is paid on either population.
@@ -53,7 +53,6 @@ step itself broke (capsulectl not installed, unreadable population).
 """
 import argparse
 import datetime as dt
-import hashlib
 import json
 import os
 import re
@@ -92,10 +91,6 @@ GAPS = " ".join([
 
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def sha256(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def capsulectl():
@@ -175,6 +170,8 @@ def node_keys(pop_dir):
 def decision_payload(deal_id, block, plant=None):
     """The payload the buyer seals for one decision block (one planted wrong verdict applied, when named)."""
     block = json.loads(json.dumps(block))
+    if not isinstance(block, dict):
+        return {"kind": DECISION, "deal_id": deal_id, DECISION: block}
     if plant == "ask-outcome":
         block["verdict"] = "ASK"
     if plant == "limit-outcome":
@@ -204,7 +201,7 @@ def run_buyer(book, scenarios, seller, out, plant=None):
         else:
             dec = book.seal(f"admission/{name}", decision)
             root = dec
-            if block.get("verdict") == "GO":
+            if verdict_of(block) == "GO":
                 root = book.seal(deal_id, deal_payload(name, seller, book.key), cites=[dec])
             elif p == "deal-after-no":
                 book.seal(deal_id, deal_payload(name, seller, book.key), cites=[dec])
@@ -216,6 +213,11 @@ def run_buyer(book, scenarios, seller, out, plant=None):
 
 
 # --- The judge ----------------------------------------------------------------
+def verdict_of(block):
+    """The verdict of a decision block, None when the block is not an object."""
+    return block.get("verdict") if isinstance(block, dict) else None
+
+
 def verify_bundle(bin_, home, bundle_path):
     """capsulectl's verdict on a bundle, offline, from the file alone (a fresh config home)."""
     r = subprocess.run([str(bin_), "book", "verify", "--bundle", str(bundle_path)], capture_output=True, text=True,
@@ -277,7 +279,7 @@ def judge(sd, verdict, buyer):
         return checks, None
     block = disclosed[dec_id].get(DECISION)
     bad = block_problems(block)
-    outcome = block.get("verdict") if isinstance(block, dict) else None
+    outcome = verdict_of(block)
     check("one_outcome", outcome in VERDICTS, f"verdict {outcome!r}")
     check("plugin_shape", not bad, "the decision has the shape the plugin seals" if not bad else "; ".join(bad))
     check("fixture_named", block == load(sd / "decision.json"), "the sealed decision is the scenario's decision.json")
@@ -323,7 +325,7 @@ def main_rehearsal(pop_dir, out, started, plant=None):
             checks, block = judge(sd, verdict, book.key)
             results[name] = checks
             if block is not None:
-                outcomes[name] = block.get("verdict")
+                outcomes[name] = verdict_of(block)
             proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json", "decision.json")]
     (out / "checks.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     refused = sorted(n for n, o in outcomes.items() if o == "NO")
