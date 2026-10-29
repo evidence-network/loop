@@ -361,9 +361,10 @@ node from `~/loop` (on `main`), with `~/loop-data` beside it, in this order.
 
 6. Install the daily units, with the drop-ins that give them the settings
    file (the second console; `reporter/systemd/reporter-env.conf`, copied as
-   `env.conf` into each `.service.d`), and enable the daily run. The rehearsal step
-   installed only `loop-reporter-rehearsal.*`; without the copy, `enable`
-   fails with `Unit loop-reporter.timer not found`:
+   `env.conf` into each `.service.d`), and enable the daily run. A node that
+   set up only the rehearsal has `loop-reporter-rehearsal.*` alone, and
+   `enable` then fails with `Unit loop-reporter.timer not found`; the copy
+   installs the daily units, or refreshes them if already there:
 
    ```sh
    cp ~/loop/reporter/systemd/loop-reporter.* ~/loop/reporter/systemd/loop-reporter-ask.* ~/.config/systemd/user/
