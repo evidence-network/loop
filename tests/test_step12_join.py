@@ -167,11 +167,12 @@ class DoctorBackendTest(Tmp):
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced, own=None):
+    def __init__(self, answers, announced, own=None, doctor=None, committed=None):
         """`own` is the node_id of the node this console belongs to. Like the real one, the console does
         not answer for its own node: a 502 with the absence text, for the key and for each question."""
         fake = self
         self.answers, self.announced, self.own = answers, announced, own
+        self.doctor, self.committed = doctor, committed
         self.asked = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -191,6 +192,19 @@ class FakeConsole:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path.endswith("/tools/doctor"):
+                    if fake.doctor is None:
+                        return self.reply(404, b"no such tool")
+                    state, digest = fake.doctor
+                    f = {"check": "controller_binding", "state": state, "detail": "d"}
+                    if digest:
+                        f["records"] = [digest]
+                    return self.reply(200, json.dumps({"findings": [{"check": "self_attested", "state": "x"}, f]}).encode())
+                if self.path.endswith("/tools/mesh_commitment_fetch"):
+                    c = {"node_id": body["peer_id"]}
+                    if fake.committed:
+                        c["controller_binding"] = {"digest": fake.committed}
+                    return self.reply(200, json.dumps({"commitment": c, "problems": []}).encode())
                 fake.asked.append(body["peer_id"])
                 if fake.own is not None and body["peer_id"] == fake.own:
                     return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
@@ -232,13 +246,14 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(finding.check(self.out.parent), [])
         return json.loads((self.out / "finding.json").read_text())
 
-    def run_lab(self, *flags, second=True):
+    def run_lab(self, *flags, second=True, doctor=None, committed=None):
         """Three lab nodes, lab-3 the reporter: --console is lab-3's, the second console lab-1's. Each
         console refuses its own node."""
         pop_dir = Path(self.tmp.name) / "lab"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
-        reporter, other = FakeConsole(VERIFIED, LISTED, own="3" * 64), FakeConsole(VERIFIED, LISTED, own="1" * 64)
+        reporter = FakeConsole(VERIFIED, LISTED, own="3" * 64, doctor=doctor)
+        other = FakeConsole(VERIFIED, LISTED, own="1" * 64, committed=committed)
         argv = ["--population", str(pop_dir), "--out", str(self.out), "--console", reporter.url]
         for flag in flags:
             argv += {"self": ["--self-node", "lab-3"], "second": ["--second-console", other.url]}[flag]
@@ -252,7 +267,7 @@ class ReporterBackendTest(Tmp):
         return json.loads((self.out / "finding.json").read_text())
 
     def per_node(self, r):
-        return [i for i in r["not_checked"] if i["what"].startswith("lab-")]
+        return [i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" not in i["what"]]
 
     def test_with_both_flags_the_reporter_node_is_asked_through_the_second_console(self):
         r = self.run_lab("self", "second")
@@ -312,6 +327,45 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(self.asked["second"], [])
         self.assertNotIn("3" * 64, self.asked["reporter"])
         self.assertIn("lab-3 (asked through a second node's console)", r["detail"])
+
+    D = "d" * 64
+
+    def test_a_bound_node_whose_commitment_names_the_same_digest_is_shown_bound(self):
+        r = self.run_lab("self", "second", doctor=("bound", self.D), committed=self.D)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn(f"lab-3: controller binding bound, the commitment names the same digest {self.D}", r["detail"])
+        self.assertNotIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_an_unbound_node_with_no_digest_in_its_commitment_holds_the_binding_is_optional(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None))
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("lab-3: no controller binding held, and the commitment names none", r["detail"])
+
+    def test_a_commitment_digest_other_than_the_held_binding_is_a_fail(self):
+        r = self.run_lab("self", "second", doctor=("bound", self.D), committed="e" * 64)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("the commitment names the controller binding " + "e" * 64, r["detail"])
+
+    def test_a_digest_in_the_commitment_with_no_binding_held_is_a_fail(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None), committed=self.D)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("no binding held", r["detail"])
+
+    def test_a_held_binding_the_commitment_does_not_name_is_a_fail(self):
+        r = self.run_lab("self", "second", doctor=("bound", self.D))
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("names the controller binding none", r["detail"])
+
+    def test_a_doctor_without_the_finding_is_not_checked_never_fail(self):
+        r = self.run_lab("self", "second")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_other_nodes_binding_is_not_checked(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None))
+        whats = [i["what"] for i in r["not_checked"]]
+        self.assertIn("lab-1: the controller binding", whats)
+        self.assertIn("lab-2: the controller binding", whats)
 
     def test_live_population_uses_the_reporter_backend(self):
         self.assertEqual(step.backend({"population": "live"}), "reporter")

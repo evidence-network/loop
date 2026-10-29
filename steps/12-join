@@ -46,6 +46,14 @@ listed one, does not verify, or refuses a subject the node lists as
 stranger-safe is a failure. Join, doctor, the binding and the signed
 commitment are NOT_CHECKED on the capsules plugin's issues.
 
+The controller binding is read for the one node whose own console the run holds (the
+self node, asked through the second console): its `doctor` through `--console` reports
+`controller_binding` bound with the binding digest, or unbound; its commitment, fetched through
+the second console (`mesh_commitment_fetch`), may name a binding by `controller_binding.digest`.
+The two must agree: the same digest, or neither (the binding is optional). Only the digest is
+read, never the operator's key. Other nodes' doctor is out of reach, so their binding is
+NOT_CHECKED.
+
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
 `--second-console`, another node's console, and every other node through
@@ -87,14 +95,15 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
 NO_BINDING_VERIFIER = {
-    "what": "the controller binding (controller-binding/0, same_controller_asserted, dual_signature/0)",
-    "why": "join.sh signs it with both keys, but no released implementation verifies controller-binding/0, "
-           "and doctor reports it NOT_CHECKED too",
+    "what": "the controller binding's own verification (controller-binding/0, both signatures) by a verifier "
+            "the loop can call",
+    "why": "no released implementation verifies controller-binding/0 outside the plugin; the loop reads the "
+           "plugin's doctor (bound or unbound) and compares digests, but does not check the signatures itself",
     "issue": "action-state-group/agent-action-capsule#432",
 }
 BINDING_OUTSIDE = finding.outside(
-    "the controller binding's own verification (controller-binding/0, both signatures), as no released "
-    "verifier checks it; doctor lists the binding naming the node key and reports its signatures not checked",
+    "the controller binding's own verification (controller-binding/0, both signatures) by a verifier the loop "
+    "can call; the loop compares digests only",
     NO_BINDING_VERIFIER["issue"])
 
 
@@ -352,11 +361,12 @@ def run_doctor(pop, out, tmp):
 # key the node's host announces, and the reporter writes that verdict as a line.
 LIVE_NOT_CHECKED = [
     {"what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
-     "why": "a Mesh node's book is the capsules plugin's; the plugin has no join or doctor yet, so join.sh "
-            "does not run against it",
+     "why": "a Mesh node's book is the capsules plugin's; join.sh does not run against it, and this step "
+            "does not drive the plugin's join",
      "issue": "Mesh-LLM/capsules-plugin#53"},
     {"what": "doctor --probe on a Mesh node",
-     "why": "the probe is the daily reporter's mesh_evidence_request path until the plugin has its own",
+     "why": "the probe is the daily reporter's mesh_evidence_request path until the loop drives the plugin's "
+            "doctor --probe",
      "issue": "Mesh-LLM/capsules-plugin#53"},
     NO_BINDING_VERIFIER,
     {"what": "the signed commitment and the policy digest the answers are matched against",
@@ -364,6 +374,52 @@ LIVE_NOT_CHECKED = [
             "listed key and stranger_safe subjects only",
      "issue": "Mesh-LLM/capsules-plugin#51"},
 ]
+
+
+DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
+COMMITMENT_ROUTE = "/api/plugins/capsules/tools/mesh_commitment_fetch"
+HEX64 = frozenset("0123456789abcdef")
+
+
+def post_json(url, body, timeout):
+    """The JSON a plugin tool answered, or None when nothing usable came back."""
+    try:
+        status, raw = daily_report.http("POST", url, body, timeout)
+        return json.loads(raw) if status == 200 else None
+    except (OSError, ValueError):
+        return None
+
+
+def check_binding(name, node_id, console, second_console, timeout=30):
+    """(failure or None, not_checked or None, line) for the controller binding of the self node.
+
+    Its doctor, asked through its own console, says bound (with the binding digest) or unbound; its commitment,
+    fetched through the second console, may name a binding by digest. Both agree, or neither names one: the
+    binding is optional. Only the digest is read, never the operator's key.
+    """
+    def unreadable(why):
+        return None, {"what": f"{name}: the controller binding", "why": why,
+                      "issue": "Mesh-LLM/capsules-plugin#54"}, f"{name}: binding not read"
+
+    doctor = post_json(console + DOCTOR_ROUTE, {}, timeout)
+    found = {f.get("check"): f for f in (doctor or {}).get("findings", []) if isinstance(f, dict)}
+    finding_ = found.get("controller_binding")
+    if finding_ is None or finding_.get("state") not in ("bound", "unbound"):
+        return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
+    held = (finding_.get("records") or [None])[0] if finding_["state"] == "bound" else None
+    if finding_["state"] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
+        return f"{name}: doctor reports the binding bound without a sha256 digest", None, ""
+    fetched = post_json(second_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
+    if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
+        return unreadable("its commitment could not be fetched and checked through the second console"
+                          + (f" ({'; '.join(map(str, fetched['problems']))})" if isinstance(fetched, dict)
+                             and fetched.get("problems") else ""))
+    named = (fetched["commitment"].get("controller_binding") or {}).get("digest")
+    if named != held:
+        return (f"{name}: the commitment names the controller binding {named or 'none'}, but doctor reports "
+                f"{('it bound as ' + held) if held else 'no binding held'}"), None, ""
+    return None, None, (f"{name}: controller binding bound, the commitment names the same digest {held}" if held
+                        else f"{name}: no controller binding held, and the commitment names none")
 
 
 def listed_entry(node):
@@ -443,6 +499,19 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 bad.append(f"{name}: {fail}")
             if nc:
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
+        if self_node and name == self_node:
+            fail, nc, line = check_binding(name, entry["node_id"], console, second_console)
+            if fail:
+                bad.append(fail)
+            if nc:
+                merge(not_checked, [nc])
+            if line:
+                lines.append(line)
+        else:
+            merge(not_checked, [{"what": f"{name}: the controller binding",
+                                 "why": "its doctor is reachable only through its own console, which this run "
+                                        "does not hold",
+                                 "issue": "Mesh-LLM/capsules-plugin#54"}])
         failures += bad
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
