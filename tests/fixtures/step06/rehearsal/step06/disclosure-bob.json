@@ -1,0 +1,13 @@
+{
+  "key_id": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
+  "node": "bob",
+  "rail": "mock",
+  "settlements": 3,
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "6ZTG1ESqh1hpfiNDNX_niznA6f9moVJtEcTaWQdtCfB-jF54fqeRzxIxz3xVtS_-MGiLelMWJtZSEbHOM7zGAw"
+  },
+  "through_sequence": 4,
+  "type": "settlement-disclosure/v1"
+}
