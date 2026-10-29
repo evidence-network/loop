@@ -52,11 +52,13 @@ rehearsal node without them gets stand-ins, and the finding says so.
 
 ## Fields
 
-Profile `evidence-commitment/0`. Exactly these members; any other is refused.
+Two profiles verify. `evidence-commitment/0` staples one history card;
+`evidence-commitment/1` staples one per evidence stream (see below). Exactly
+these members; any other is refused.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `profile` | string | `evidence-commitment/0` |
+| `profile` | string | `evidence-commitment/0` (or `/1`, below) |
 | `node_id` | 64 hex | the node's id in the list (`nodes/<node_id>.json`) |
 | `key_id` | 64 hex | the node's Ed25519 public key, raw, in hex |
 | `spki` | base64 | the same key as DER SubjectPublicKeyInfo; the signature is checked with it |
@@ -83,6 +85,40 @@ Profile `evidence-commitment/0`. Exactly these members; any other is refused.
 The staple must be presented by its subject: the answer's `responder` is the
 commitment's `key_id`.
 
+### evidence-commitment/1: one card per book
+
+A history card covers one evidence stream: the checkpoints of one book's log,
+the witness receipts on them, and the consistency proofs between them. A node
+that keeps more than one book staples one card for each. Profile
+`evidence-commitment/1` has every member above except `history_card`, which
+is replaced by:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `history_cards` | list, at least one entry, sorted by `stream` | one stapled card per evidence stream |
+| `history_cards[].stream` | string | the log id of the book the card covers |
+| `history_cards[].derivation` | string | `history_card/1` |
+| `history_cards[].bytes` | base64 | the card's `evidence-interop/0` answer, whole, as `history_card.bytes` in /0 |
+| `history_cards[].sha256` | 64 hex | sha256 of those bytes |
+
+Each card is checked as the /0 staple is (bytes against digest, the
+`evidence-interop/0` answer format, derivation `history_card/1`, presented by
+the commitment's own subject), and also: its `stream` is the card's own log
+id (the `evidence_stream` its result names), and no stream is stapled twice.
+Each refusal of a card is named, for example `history_cards.duplicate_stream`,
+`history_cards.bytes_mismatch` or `history_cards.stream_mismatch`.
+
+The witnesses a card carries are not a field of the commitment: a reader takes
+them from the receipts in the decoded card, and a card with none is
+unwitnessed. A reader treats a /0 commitment's `history_card` as a list of one,
+whose stream is the card's own log id. `scripts/history_cards.py` reads both
+profiles this way: `history_cards(doc)` returns `[{stream, derivation, sha256,
+witnesses}]`.
+
+`join.sh` writes /1, one card per book the node serves. The rehearsal
+harness of this step still signs /0 for its test nodes; a published /1
+commitment verifies here the same way.
+
 The policy file is `{"profile": "disclosure-policy/0", "key_id", "policy":
 {...}, "sig"}`, signed the same way by the same key.
 
@@ -108,7 +144,7 @@ A commitment is refused when, anywhere in its own members:
 - a value is a JSON number, or a string made only of decimal digits.
 
 No field above is a number; a duration is a string. The `bytes` of the
-checkpoint and of the staple are not scanned, by ruling: they are signed
+checkpoint and of each staple are not scanned, by ruling: they are signed
 artifacts the commitment carries whole, and a checkpoint or a history card
 may hold sizes of its own. The commitment itself never states one.
 
@@ -119,6 +155,7 @@ CI job) refuses a commitment with a missing or unknown field, a
 `controller_binding` that is not `{"digest": <64 hex>}`, a count, a bad
 signature, a policy digest that does not match the policy bytes, a policy not
 signed by the commitment's key, staple or checkpoint bytes that do not match
-their digest, a staple not presented by its subject, or a file not named
+their digest, a staple not presented by its subject, a /1 card whose stream is
+not its own log id or repeats another's, or a file not named
 `<node_id>.json`. A `policy_uri` with a scheme other than `file:` is reported
 as not fetched, not refused.

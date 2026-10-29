@@ -11,14 +11,16 @@
 #      the controller class, in binding.json and controller.json;
 #   2. creates the node's evidence book (a capsulectl book profile), seals a
 #      first record and cuts a checkpoint over it, in book.json;
-#   3. writes the node's commitment, commitment.json (evidence-commitment/0,
+#   3. writes the node's commitment, commitment.json (evidence-commitment/1,
 #      steps/03-advertise.md), signed by the node key, with its signed share
 #      policy in disclosure-policy.json, to open as a pull request to
-#      nodes/commitments/ (see publish_commitment below). It staples the
-#      history_card/1 answer the node gave a stranger: a throwaway stranger
-#      profile asks the two public requests (checkpoints, then history_card/1),
-#      the node answers them on the public path, and the requests and answers
-#      are kept in DIR/probe for a verifier;
+#      nodes/commitments/ (see publish_commitment below). It staples one
+#      history_card/1 answer per book the node serves, each given to a
+#      stranger: a throwaway stranger profile asks the public requests
+#      (checkpoints, then history_card/1 of each book), the node answers them
+#      on the public path, and the requests and answers are kept in DIR/probe
+#      for a verifier (the join's own book as probe/history_card.*, every
+#      other book as probe/cards/<log id>.*);
 #   4. probes the node as a stranger would: `capsulectl book doctor --probe`,
 #      into doctor.json.
 # join.json lists what was done, what is self-attested, unwitnessed,
@@ -31,6 +33,14 @@
 # both default to the setup script's install directory. Keys are Ed25519
 # PKCS#8 PEM. Profiles and the book live under --home (default
 # ~/.local/share/evidence-network/NAME), never in your own capsulectl config.
+#
+# The books the node serves are found with the CLI: every profile that
+# `capsulectl profile list` names under --home's config (XDG_CONFIG_HOME=
+# HOME/config), except the stranger's, whose trusted keys include the node
+# key; `capsulectl profile show` gives its log id, the card's stream. The
+# join's own book is always one. To serve another book, create its profile
+# under the same --home, signed by the node key, with a checkpoint, before
+# running join.sh.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")" && pwd)"
@@ -50,7 +60,7 @@ while [ $# -gt 0 ]; do
     --answers-within) answers_within="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --home) home="$2"; shift 2 ;;
-    -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "join.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -181,9 +191,9 @@ else
 fi
 
 # --- 3. Publish the commitment ----------------------------------------------
-# First the stranger's two public requests, answered by the node: the
-# history_card/1 answer is the commitment's staple, and the bytes stay in
-# DIR/probe for a verifier. The stranger is a throwaway profile with keys made
+# First the stranger's public requests, answered by the node: each book's
+# history_card/1 answer is one of the commitment's staples, and the bytes stay
+# in DIR/probe for a verifier. The stranger is a throwaway profile with keys made
 # here: its seeds sit in probe/stranger/ on purpose, and are not secrets.
 st="$out/probe/stranger"
 mkdir -p "$st"
@@ -198,16 +208,38 @@ cap store init --profile "$name-stranger" >/dev/null
 printf '{"log_id":"%s","operator":"stranger"}\n' "$name-stranger" >"$st/profile.json"
 # capsulectl's own output, without the local paths it names.
 keep() { python3 -c 'import json,sys; d=json.load(sys.stdin); d.pop("output",None); json.dump(d,sys.stdout,sort_keys=True); print()'; }
-ask() { # NAME REQUEST_JSON: the stranger asks; the node answers on the public path (no --requester)
+ask() { # NAME REQUEST_JSON [PROFILE BOOK]: the stranger asks; the node answers on the public path (no --requester)
+  local profile="${3:-$name}" responder="${4:-$book_id}"
+  mkdir -p "$(dirname "$home/$1")" "$(dirname "$out/probe/$1")"
   printf '%s\n' "$2" >"$home/$1.request.json"
-  cap book request --profile "$name-stranger" --request "$home/$1.request.json" --responder "$book_id" \
+  cap book request --profile "$name-stranger" --request "$home/$1.request.json" --responder "$responder" \
     --output "$out/probe/$1.request.json" | keep >"$out/probe/$1.asked.json"
-  cap book respond --profile "$name" --policy "$out/policy.json" --request "$out/probe/$1.request.json" \
+  cap book respond --profile "$profile" --policy "$out/policy.json" --request "$out/probe/$1.request.json" \
     --output "$out/probe/$1.answer.json" | keep >"$out/probe/$1.respond.json"
 }
+card_request='{"subject":{"checkpoints":null},"derivation":"history_card/1","coverage":{"min_freshness":1}}'
 ask checkpoints '{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}'
-ask history_card '{"subject":{"checkpoints":null},"derivation":"history_card/1","coverage":{"min_freshness":1}}'
-echo "join: a stranger asked the node for checkpoints and history_card/1" >&2
+ask history_card "$card_request"
+# The books this node serves (see the header): one line "PROFILE<TAB>LOG_ID" each, into books.tsv.
+: >"$home/books.tsv"
+for p in $(cap profile list | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["profiles"]))'); do
+  [ "$p" != "$name-stranger" ] || continue
+  cap profile show "$p" | python3 -c '
+import json, re, sys
+p, node = sys.argv[1:]
+d = json.load(sys.stdin)
+log_id = d.get("LogID") or ""
+if node in (d.get("TrustedKeys") or []):
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", log_id):
+        sys.exit("join.sh: book profile %s has log id %r, not a plain name" % (p, log_id))
+    print("%s\t%s" % (p, log_id))' "$p" "$node_pub" >>"$home/books.tsv"
+done
+grep -q "^$name	$book_id\$" "$home/books.tsv" || { echo "join.sh: the join's own book $book_id is not among the books found" >&2; exit 1; }
+while IFS=$'\t' read -r -u 3 p stream; do
+  [ "$p" != "$name" ] || continue
+  ask "cards/$stream" "$card_request" "$p" "$stream"
+done 3<"$home/books.tsv"
+echo "join: a stranger asked the node for checkpoints and the history_card/1 of each of its $(wc -l <"$home/books.tsv" | tr -d ' ') book(s)" >&2
 
 # The commitment, in step 03's format (steps/03-advertise.md), signed with
 # scripts/check_commitment.py's signer; step 12 verifies it with that checker. Its checkpoint member
@@ -218,9 +250,9 @@ echo "join: a stranger asked the node for checkpoints and history_card/1" >&2
 # Publishing it is a pull request adding both to nodes/commitments/; join.sh
 # never pushes.
 publish_commitment() {
-  python3 - "$root" "$out" "$node_key" "$book_id" "$node_pub" "$checkpoint_pub" "$answers_within" "$now" <<'EOF'
+  python3 - "$root" "$out" "$node_key" "$book_id" "$node_pub" "$checkpoint_pub" "$answers_within" "$now" "$home/books.tsv" <<'EOF'
 import base64, hashlib, json, sys
-root, out, key, book_id, node, checkpoint_key, within, now = sys.argv[1:]
+root, out, key, book_id, node, checkpoint_key, within, now, books = sys.argv[1:]
 sys.path.insert(0, f"{root}/scripts")
 import check_commitment as cc
 b64 = lambda raw: base64.b64encode(raw).decode("ascii")
@@ -231,9 +263,17 @@ open(f"{out}/disclosure-policy.json", "wb").write(policy_bytes)
 book = json.load(open(f"{out}/book.json"))
 attestation = (json.dumps({"book_id": book_id, "checkpoint_key": checkpoint_key,
                            "statement": book["checkpoint_statement"]}, indent=2, sort_keys=True) + "\n").encode()
-staple = open(f"{out}/probe/history_card.answer.json", "rb").read()
+cards = []
+for line in open(books).read().splitlines():
+    _, stream = line.split("\t")
+    staple = open(f"{out}/probe/" + ("history_card" if stream == book_id else f"cards/{stream}") + ".answer.json",
+                  "rb").read()
+    if "artifact" not in json.loads(staple):
+        sys.exit(f"join.sh: book {stream} did not answer history_card/1 with a card (does it have a checkpoint?)")
+    cards.append({"stream": stream, "derivation": "history_card/1", "sha256": hashlib.sha256(staple).hexdigest(),
+                  "bytes": b64(staple)})
 commitment = cc.sign({
-    "profile": cc.PROFILE,
+    "profile": cc.PROFILE_1,
     "node_id": node,
     "key_id": node,
     "spki": b64(cc.ED25519_SPKI + bytes.fromhex(node)),
@@ -245,8 +285,7 @@ commitment = cc.sign({
     "checkpoint": {"sha256": hashlib.sha256(attestation).hexdigest(), "bytes": b64(attestation)},
     "human_gated": False,
     "answers_within": within,
-    "history_card": {"derivation": "history_card/1", "sha256": hashlib.sha256(staple).hexdigest(),
-                     "bytes": b64(staple)},
+    "history_cards": sorted(cards, key=lambda c: c["stream"]),
 }, key)
 open(f"{out}/commitment.json", "w").write(json.dumps(commitment, indent=2, sort_keys=True) + "\n")
 EOF

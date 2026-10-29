@@ -43,6 +43,20 @@ Open a pull request adding `nodes/<node_id>.json`:
 The pull request is opened by the operator named in `operator`, or that
 operator approves it, so the statement is theirs.
 
+## Commitment
+
+Beside its entry, a node may publish a signed commitment in
+`nodes/commitments/<node_id>.json`: how it can be asked, what it answers, and
+a stapled history card for each book it keeps. `join.sh` writes one
+(`evidence-commitment/1`: one card per book, in `history_cards`, each naming
+its book's log id as `stream`); commitments in the earlier
+`evidence-commitment/0` form, with one `history_card`, still verify and read
+as one card. The format is in `steps/03-advertise.md`. A card that carries no
+witness receipt is unwitnessed; today's lab books are.
+
+`scripts/check_commitment.py nodes/commitments` checks them (the
+`commitments` check), and `scripts/history_cards.py` lists the cards of one.
+
 ## Leave
 
 Open a pull request that removes `nodes/<node_id>.json` and adds
