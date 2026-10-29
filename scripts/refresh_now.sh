@@ -17,9 +17,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 env_file="${LOOP_REPORTER_ENV:-$HOME/.config/loop-reporter/env}"
-declare -A given=()
+given=" "
 for name in LOOP_CONSOLE CAPSULES_DATA_DIR LOOP_DATA_DIR LOOP_SECOND_CONSOLE LOOP_SELF_NODE; do
-  [ -n "${!name+x}" ] && given[$name]=1
+  [ -n "${!name+x}" ] && given="$given$name "
 done
 # The env file is systemd's EnvironmentFile: NAME=value lines, read, never run.
 if [ -f "$env_file" ]; then
@@ -27,7 +27,7 @@ if [ -f "$env_file" ]; then
     case "$line" in
       LOOP_SECOND_CONSOLE=*|LOOP_SELF_NODE=*|LOOP_CONSOLE=*|CAPSULES_DATA_DIR=*|LOOP_DATA_DIR=*)
         name="${line%%=*}"
-        [ -n "${given[$name]:-}" ] || export "$name=${line#*=}" ;;
+        case "$given" in *" $name "*) ;; *) export "$name=${line#*=}" ;; esac ;;
     esac
   done < "$env_file"
 fi
