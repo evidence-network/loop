@@ -112,11 +112,12 @@ class StatusPageTest(unittest.TestCase):
                           started=started)
         return d
 
-    def answered(self, at, result="PASS", population="rehearsal", **kw):
+    def answered(self, at, result="PASS", population="rehearsal", sealed=None, **kw):
         """Step 07's finding, its first-answered.json saying the first ask was answered at `at`."""
         d = self.findings / f"2026-10-27-{population}" / "07-ask"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "first-answered.json").write_text(json.dumps({"answered_at": at, "ask": "bob asked alice exchange"}))
+        (d / "first-answered.json").write_text(json.dumps({"answered_at": at, "ask": "bob asked alice exchange",
+                                                              **({} if sealed is None else {"sealed": sealed})}))
         return self.write(7, result, population=population, proof=("first-answered.json",), name="ask", **kw)
 
     def run_json(self, started, population="rehearsal", date="2026-10-27", run_population=None):
@@ -415,6 +416,17 @@ class StatusPageTest(unittest.TestCase):
         self.page()
         self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
         self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s"))
+
+    def test_a_live_number_names_the_ask_and_says_it_was_not_sealed(self):
+        self.run_json("2026-10-27T02:00:00Z", population="live")
+        self.answered("2026-10-27T02:00:42Z", result="NOT_CHECKED", population="live", sealed=False,
+                      not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
+        self.run_json("2026-10-27T01:59:30Z")
+        self.answered("2026-10-27T02:04:00Z", sealed=True, started="2026-10-27T02:03:00Z")
+        self.page()
+        self.assertEqual(self.number("first-answered", "live"),
+                         ("measured", "42 s (bob asked alice exchange, answered but not sealed before it was sent)"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
 
     def test_first_answered_is_not_measured_without_an_answer_or_on_a_fail(self):
         self.run_json("2026-10-27T02:00:00Z")

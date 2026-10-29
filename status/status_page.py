@@ -114,7 +114,7 @@ NUMBERS = (
            "step 01 (Seal) finding's finished, minus run.json started"),
     Number("first-answered", "Minutes to the first answered request", "minutes from the run's start", "M2", 7,
            "step 07 (Ask) finding's first-answered.json answered_at (the first ask answered in time with a signed "
-           "artifact or an allowed signed refusal), minus run.json started"),
+           "artifact or a signed refusal judged allowed), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
     Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", None,
@@ -339,6 +339,16 @@ def first_answered(run, step):
         return None
 
 
+def unsealed_ask(run, step):
+    """The ask first-answered.json names when the step ran without sealing its requests (`sealed` false, as on
+    the live backend today), else None. The cell says so, so a live number does not read as row 7 done."""
+    try:
+        d = json.loads((run.findings[step][0] / FIRST_ANSWERED).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return str(d.get("ask")) if d.get("sealed") is False and d.get("ask") else None
+
+
 def not_measured(run, step, milestone):
     """Why a minutes number has no value: its milestone while the marker step has no event, else the start's
     fault."""
@@ -397,6 +407,9 @@ def number_value(number, run):
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False
+    ask = unsealed_ask(run, number.step) if number.step == ASK_STEP else None
+    if ask:
+        return f"{duration(m)} ({ask}, answered but not sealed before it was sent)", True
     return duration(m), True
 
 

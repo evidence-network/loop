@@ -61,8 +61,8 @@ as answered. Sealing before sending, the recorded absence and the exchange
 ask are NOT_CHECKED on Mesh-LLM/capsules-plugin#56. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
-first-answered.json names the first ask answered (a verified artifact or an
-allowed refusal, in time), for the status page's minutes number.
+first-answered.json names the first ask answered (a verified artifact or a
+refusal judged allowed, in time; a refusal that could only be NOT_CHECKED does not count), for the status page's minutes number.
 """
 import argparse
 import datetime as dt
@@ -124,17 +124,20 @@ ANSWERED = ("artifact", "refusal")
 DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
 SEAL_ISSUE = "Mesh-LLM/capsules-plugin#56"
+# #110 (seal each ask, and its absence when the window closes) and #112 (a refusal checked against the policy the
+# peer's commitment pins) fix it once the lab's pinned plugin (versions.lock) has them.
+SEAL_FIXES = "fixed by Mesh-LLM/capsules-plugin#110 and #112 once pinned"
 LIVE_NOT_CHECKED = [
     {"what": "the request sealed in the asker's book before it is sent",
      "why": "mesh_evidence_request records no evidence_request before it sends (only an adjudication request is "
-            "recorded first), so there is no seal time to set against the send",
+            "recorded first), so there is no seal time to set against the send ("+SEAL_FIXES+")",
      "issue": SEAL_ISSUE},
     {"what": "an absence recorded as a signed record when the window closes",
-     "why": "the plugin seals no recorded_absence; the reporter keeps an unsigned absence.txt",
+     "why": "the plugin seals no recorded_absence; the reporter keeps an unsigned absence.txt ("+SEAL_FIXES+")",
      "issue": SEAL_ISSUE},
     {"what": "a later exchange request on a Mesh node",
      "why": "the reporter asks only the stranger-safe questions; an exchange ask is the step 7 flow the plugin "
-            "does not seal yet",
+            "does not seal yet ("+SEAL_FIXES+")",
      "issue": SEAL_ISSUE},
 ]
 NO_COMMITMENT_ISSUE = "Mesh-LLM/capsules-plugin#51"
@@ -552,9 +555,11 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
             if verdict_r == "fail":
                 errs.append(f"{name}: {asked(request)} is refused ({st.get('reason')}), but the advertised policy "
                             f"lists it as {what}")
-            elif verdict_r == "not_checked" and not_checked is not None:
-                merge(not_checked, [refusal_not_checked(f"{name}: the refusal of {asked(request)}",
-                                                        st.get("reason"))])
+            elif verdict_r == "not_checked":
+                if not_checked is not None:
+                    merge(not_checked, [refusal_not_checked(f"{name}: the refusal of {asked(request)}",
+                                                            st.get("reason"))])
+                return errs, None  # not judged allowed, so not counted as answered
         answered = None if errs else recorded_at
         return errs, answered
     if out_h.get("record_type") != "recorded_absence" or st.get("outcome") != "recorded_absence":
@@ -666,13 +671,32 @@ def live_commitment(entry):
     return adv, None
 
 
-def judge_live_line(stem, line, entry, name):
+def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
+    """daily_report.ask_attempt for one question, noting in `posted` when its request went out: the attempt looks
+    the node's key up first, and that is not part of the answer time."""
+    real = daily_report.http
+
+    def http(method, *args):
+        if method == "POST":
+            posted.append(daily_report.utc_now())
+        return real(method, *args)
+
+    daily_report.http = http
+    try:
+        return daily_report.ask_attempt(console, entry, node_dir, [stem], at, "by=ask", timeout)
+    finally:
+        daily_report.http = real
+
+
+def judge_live_line(stem, line, entry):
     """step 12's verdict on a reporter line, except a refusal of a stranger-safe question: that is judged by its
     reason (refusal_verdict), as the book backend judges it."""
     qname = daily_report.QUESTION_NAMES[stem]
     safe = entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
     if line.split(" ", 1)[0] != "refusal" or qname not in safe:
         return step12.judge_reporter_line(stem, line, entry)
+    if "listed_key=match" not in line.split():  # a refusal is signed too: under the listed key, like an artifact
+        return f"the {qname} refusal is signed under a key that is not the listed key: {line}", None
     reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
     verdict = refusal_verdict(reason)
     if verdict == "fail":
@@ -714,10 +738,12 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 time.sleep(0.05)  # an attempt is named by its second: one per node per second
             at = last = daily_report.utc_now()
             last = last.replace(microsecond=0)
-            result = daily_report.ask_attempt(asker, entry, node_dir, [stem], at, "by=ask", timeout)
+            posted = []
+            result = ask_posted(asker, entry, node_dir, stem, at, timeout, posted)
             back = now()
             attempt = layout.attempts(node_dir)[-1]
-            sent_at = at.replace(microsecond=0) if at.tzinfo else at.replace(tzinfo=dt.timezone.utc, microsecond=0)
+            sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
+            sent_at = sent.replace(microsecond=0) if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc, microsecond=0)
             late = adv is not None and back > sent_at + adv["within"]
             timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
                       "answers_within": adv["answers_within"] if adv else None,
@@ -727,13 +753,13 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
             for stem, line in result.items():
                 qname = daily_report.QUESTION_NAMES[stem]
-                fail, nc2 = judge_live_line(stem, line, entry, name)
+                fail, nc2 = judge_live_line(stem, line, entry)
                 if fail:
                     failures.append(f"{name}: {fail}")
                 if nc2:
                     merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
                 state = line.split(" ", 1)[0]
-                if not fail and state in ("verified", "refusal"):
+                if not fail and not nc2 and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
                     if late:
                         said.append(f"{qname} back after the deadline, counted absent")
                         continue
@@ -756,7 +782,10 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     first = min(answered) if answered else None
     write_json(out / "first-answered.json",
                {"answered_at": stamp(first[0]) if first else None,
-                "ask": first[1] if first else None})
+                "ask": first[1] if first else None,
+                # whether the asker sealed each request before sending it: the book backend does, the plugin
+                # does not yet (capsules-plugin#56, fixed by #110 and #112 once pinned)
+                "sealed": which == "book"})
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     detail = f"ask backend: {which}. " + "; ".join(failures or lines) + "."

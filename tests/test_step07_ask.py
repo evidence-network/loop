@@ -17,6 +17,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -332,6 +333,35 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn("Mesh-LLM/capsules-plugin#114", self.issues(r))
+        # an unjudged refusal is not an answer: the first answer is the history card's
+        first = json.loads((self.out / "first-answered.json").read_text())
+        self.assertEqual(first["ask"], "lab-1 history_card/1")
+
+    def test_a_refusal_signed_under_a_key_other_than_the_listed_one_is_a_fail(self):
+        r = self.run_live({"checkpoints": "refusal_withheld", "history_card": "verified_history_card"},
+                          announced="3" * 64)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("refusal is signed under a key that is not the listed key", r["detail"])
+
+    def test_an_unjudged_refusal_signed_under_another_key_is_a_fail_too(self):
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, announced="3" * 64)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("refusal is signed under a key that is not the listed key", r["detail"])
+
+    def test_the_deadline_runs_from_the_request_not_from_the_key_lookup(self):
+        # A slow key lookup (GET) is not part of the answer time: only the POST's send time starts it.
+        real = step.daily_report.http
+
+        def slow_get(method, url, body, timeout):
+            if method == "GET":
+                time.sleep(2.5)
+            return real(method, url, body, timeout)
+
+        with mock.patch.object(step.daily_report, "http", slow_get):
+            self.run_live(VERIFIED)
+        t = json.loads(next((self.out / "lab-1" / "attempts").iterdir()).joinpath("timing.json").read_text())
+        gap = step.utc(t["back_at"]) - step.utc(t["asked_at"])
+        self.assertLess(gap, dt.timedelta(seconds=2))
 
     def test_each_question_has_its_own_attempt_and_answer_time(self):
         self.run_live(VERIFIED)
