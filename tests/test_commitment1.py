@@ -206,6 +206,15 @@ class CheckerTest(TwoBooks):
         errs, _ = self.verify(self.resigned(lambda d: d.__setitem__("profile", "evidence-commitment/2")))
         self.assertIn("profile must be evidence-commitment/0 or evidence-commitment/1", errs)
 
+    def test_a_controller_binding_digest_is_optional_on_one_too(self):
+        errs, _ = self.verify(self.resigned(lambda d: d.__setitem__("controller_binding", {"digest": "a" * 64})))
+        self.assertEqual(errs, [])
+        errs, _ = self.verify(self.resigned(lambda d: d.__setitem__("controller_binding", {"digest": "npub1x"})))
+        self.assertIn("controller_binding.digest is not a sha256 (64 lowercase hex)", errs)
+        errs, _ = self.verify(self.resigned(
+            lambda d: d.__setitem__("controller_binding", {"digest": "a" * 64, "npub": "npub1x"})))
+        self.assertIn("unknown field controller_binding.npub", errs)
+
     def test_a_card_altered_after_signing_breaks_the_signature(self):
         doc = copy.deepcopy(self.doc)
         doc["history_cards"][1]["stream"] = "alice-other"
