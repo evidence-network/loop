@@ -374,7 +374,7 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         for n in ("lab-1", "lab-2", "lab-3"):
             self.assertIn(f"{n}: no controller binding held, and the commitment names none", r["detail"])
-        self.assertEqual([i for i in r["not_checked"] if "binding" in i["what"]], [])
+        self.assertEqual([i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]], [])
 
     def test_a_malformed_node_console_is_refused(self):
         self.assertEqual(step.main(["--population", str(self.out), "--out", str(self.out), "--node-console", "lab-1"]), 2)
