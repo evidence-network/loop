@@ -183,10 +183,13 @@ def decide(out, *, population, nodes, started):
     (out / "adapter.json").write_text(json.dumps(adapter_out, indent=2, sort_keys=True) + "\n")
 
     by_key = {v: k for k, v in nodes.items()}
-    for f in sorted(out.glob("disclosure-*.json")):
-        name = f.stem[len("disclosure-"):]
-        d = read_json(f)
+    for name in sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
+        f = out / f"disclosure-{name}.json"
         key_id = nodes.get(name)
+        if not f.is_file():
+            checks[f"ledger_count:{name}"] = check(False, f"{name} made no disclosure of its settlement count")
+            continue
+        d = read_json(f)
         signed = key_id is not None and d.get("key_id") == key_id and cc.verify_sig(d, cc.ED25519_SPKI + bytes.fromhex(key_id))
         through = d.get("through_sequence")
         counted = sum(1 for o in objs if o and o["final"] is True and key_id in (o["payer"], o["payee"])
@@ -258,13 +261,14 @@ def main_live(pop, out, started):
     proof, details, not_checked = [], [], []
     for entry in pop["nodes"]:
         name = entry["name"]
+        shutil.rmtree(out / name, ignore_errors=True)  # a rerun must not keep an earlier run's file
         data_dir = live.readable(entry, "data_dir", "ledger/capsules.jsonl")
         if data_dir is None:
             not_checked.append(live.not_checked(name, "data_dir"))
             details.append(f"node {name}: not checked, data_dir or its ledger not set or unreadable")
             continue
         found = recorded(data_dir / "ledger" / "capsules.jsonl")
-        (out / name).mkdir(exist_ok=True)
+        (out / name).mkdir()
         (out / name / "recorded.json").write_text(json.dumps(found, indent=2, sort_keys=True) + "\n")
         proof.append(f"{name}/recorded.json")
         n_legs, n_obs = len(found["settlement_legs"]), len(found["settlement_observations"])
@@ -280,13 +284,13 @@ def main_live(pop, out, started):
         else:
             details.append(f"node {name}: no settlement recorded")
             not_checked.append({"what": f"a settlement for an exchange of node {name}",
-                                "why": "the node has recorded no settlement: no paid exchange has run on it (the lab has "
-                                       "no rail, so no coins move), so there is nothing for the adapter to report on",
+                                "why": "the node has recorded no settlement: no paid exchange has run on it, "
+                                       "so there is nothing for the adapter to report on",
                                 "issue": ADAPTER_ISSUE})
     if pop.get("rail") is None:
         details.append("the live population names no rail")
     not_checked.append({"what": "the live rail's settlement object for an exchange, its finality and its band",
-                        "why": "the lab has no rail and moves no coins; the pinned Lightning adapter checks the node's own "
+                        "why": "the live population names no rail; the pinned Lightning adapter checks the node's own "
                                "book, with no preimage and no settlement object by reference on a rail",
                         "issue": ADAPTER_ISSUE})
     finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,

@@ -252,6 +252,42 @@ class Step06SettleTest(unittest.TestCase):
         self.assert_only_failed(["ledger_count:bob"])
         self.assertIn("signature fails", self.checks()["ledger_count:bob"]["detail"])
 
+    def test_a_node_that_made_no_disclosure_fails(self):
+        self.gathered()
+        (self.out / "disclosure-bob.json").unlink()
+        self.assertEqual(self.decide()["result"], "FAIL")
+        self.assert_only_failed(["ledger_count:bob"])
+        self.assertIn("made no disclosure", self.checks()["ledger_count:bob"]["detail"])
+        self.assert_clean()
+
+    def test_a_settlement_signed_for_another_rail_fails(self):
+        self.gathered()
+        objs = self.ledger()
+        body = {k: v for k, v in objs[3].items() if k not in ("settlement_id", "sig")}
+        body["rail"] = "other"
+        body["settlement_id"] = mock_rail.body_digest(body)
+        old = objs[3]["settlement_id"]
+        objs[3] = cc.sign(body, RAIL_KEY)
+        self.write_ledger(objs)
+        ex = self.exchange()
+        ex["settlement_ref"]["settlement_id"] = objs[3]["settlement_id"]
+        dump(self.out / "exchange.json", ex)
+        self.assertNotEqual(old, objs[3]["settlement_id"])
+        self.assertEqual(self.decide()["result"], "FAIL")
+        self.assertIn("line 4: object_form", self.checks()["ledger"]["detail"])
+        self.assert_clean()
+
+    def test_an_amount_beyond_the_canonicalizer_is_a_fail_not_a_crash(self):
+        self.gathered()
+        lines = (self.out / "ledger.jsonl").read_bytes().splitlines()
+        obj = json.loads(lines[3])
+        obj["amount_atomic"] = 2 ** 53
+        lines[3] = json.dumps(obj).encode()
+        (self.out / "ledger.jsonl").write_bytes(b"\n".join(lines) + b"\n")
+        self.assertEqual(self.decide()["result"], "FAIL")
+        self.assertIn("line 4: object_form", self.checks()["ledger"]["detail"])
+        self.assert_clean()
+
     def test_a_settlement_altered_after_the_rail_signed_it_fails(self):
         self.gathered()
         objs = self.ledger()

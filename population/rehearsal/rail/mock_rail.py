@@ -105,7 +105,8 @@ def verify(line, decl, spki):
     form = (isinstance(obj, dict) and sorted(obj) == sorted(FIELDS) and obj["type"] == TYPE
             and all(isinstance(obj[k], int) and not isinstance(obj[k], bool)
                     for k in ("sequence", "amount_atomic", "decimals", "fee_atomic"))
-            and isinstance(obj["final"], bool))
+            and isinstance(obj["final"], bool) and obj["rail"] == decl.get("rail")
+            and all(abs(obj[k]) < 2 ** 53 for k in ("sequence", "amount_atomic", "decimals", "fee_atomic")))
     if not form:
         got = sorted(obj) if isinstance(obj, dict) else type(obj).__name__
         return [report("object_form", FAIL, f"members {got}")] + [
