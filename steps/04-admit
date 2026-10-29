@@ -425,7 +425,9 @@ def block_problems(blk):
     if sorted(set(blk) - KEYS):
         errs.append(f"unexpected members {', '.join(sorted(set(blk) - KEYS))}")
     reads = blk.get("reads")
-    pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
+    # Exactly the one operator-policy read the pinned plugin writes; a pin that adds reads (capsules-plugin#116)
+    # extends this check with it.
+    pol = reads[0] if isinstance(reads, list) and len(reads) == 1 and isinstance(reads[0], dict) else {}
     # With no readable operator policy the plugin seals a NO and no digest, whether the policy or the target
     # was unreadable first; every other decision cites the policy's digest.
     unread = blk.get("source") in ("unreadable_policy", "unreadable_target") and blk.get("verdict") == "NO" \

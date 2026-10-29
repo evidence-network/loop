@@ -335,7 +335,8 @@ class Live(unittest.TestCase):
                           (lambda d: d.update(peer="a" * 64), "unexpected members peer"),
                           (lambda d: d["peer_commitment"].update(peer="a" * 64), "peer_commitment"),
                           (lambda d: d["reads"][0].update(peer="a" * 64), "operator policy"),
-                          (lambda d: d["reads"][0].update(digest=None), "operator policy")):
+                          (lambda d: d["reads"][0].update(digest=None), "operator policy"),
+                          (lambda d: d["reads"].append({"peer": "a" * 64}), "operator policy")):
             cap = json.loads(good[0])
             edit(cap["model_attestation"]["compute_attestation"]["admission_decision"])
             _, f = self.live_run(self.lab_with([json.dumps(cap)]))
