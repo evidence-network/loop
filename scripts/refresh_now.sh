@@ -27,7 +27,13 @@ if [ -f "$env_file" ]; then
     case "$line" in
       LOOP_SECOND_CONSOLE=*|LOOP_SELF_NODE=*|LOOP_CONSOLE=*|CAPSULES_DATA_DIR=*|LOOP_DATA_DIR=*)
         name="${line%%=*}"
-        case "$given" in *" $name "*) ;; *) export "$name=${line#*=}" ;; esac ;;
+        value="${line#*=}"
+        # systemd drops one pair of surrounding quotes from a value.
+        case "$value" in
+          \"*\") value="${value#\"}"; value="${value%\"}" ;;
+          \'*\') value="${value#\'}"; value="${value%\'}" ;;
+        esac
+        case "$given" in *" $name "*) ;; *) export "$name=$value" ;; esac ;;
     esac
   done < "$env_file"
 fi

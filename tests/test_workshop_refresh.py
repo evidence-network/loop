@@ -579,7 +579,8 @@ class RefreshNowTest(unittest.TestCase):
         self.assertIn("--self-node '$(touch", done.stderr)
         self.assertFalse(flag.exists())
         self.assertEqual(self.console.asked, [])
-        env_file.write_text(f"LOOP_CONSOLE=http://127.0.0.1:9\nLOOP_DATA_DIR={self.data}\n")
+        # Surrounding quotes are dropped, as systemd's EnvironmentFile does.
+        env_file.write_text(f'LOOP_CONSOLE="http://127.0.0.1:9"\nLOOP_DATA_DIR=\'{self.data}\'\n')
         done = self.refresh()
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(len(self.pushed(before)), 1)
