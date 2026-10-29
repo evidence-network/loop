@@ -246,7 +246,7 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(finding.check(self.out.parent), [])
         return json.loads((self.out / "finding.json").read_text())
 
-    def run_lab(self, *flags, second=True, doctor=None, committed=None):
+    def run_lab(self, *flags, second=True, doctor=None, committed=None, node_consoles=()):
         """Three lab nodes, lab-3 the reporter: --console is lab-3's, the second console lab-1's. Each
         console refuses its own node."""
         pop_dir = Path(self.tmp.name) / "lab"
@@ -257,6 +257,8 @@ class ReporterBackendTest(Tmp):
         argv = ["--population", str(pop_dir), "--out", str(self.out), "--console", reporter.url]
         for flag in flags:
             argv += {"self": ["--self-node", "lab-3"], "second": ["--second-console", other.url]}[flag]
+        for n in node_consoles:
+            argv += ["--node-console", f"{n}={reporter.url}"]
         try:
             self.assertEqual(step.main(argv), 0)
         finally:
@@ -361,11 +363,21 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
 
-    def test_other_nodes_binding_is_not_checked(self):
+    def test_other_nodes_binding_without_a_console_is_not_checked(self):
         r = self.run_lab("self", "second", doctor=("unbound", None))
         whats = [i["what"] for i in r["not_checked"]]
         self.assertIn("lab-1: the controller binding", whats)
         self.assertIn("lab-2: the controller binding", whats)
+
+    def test_a_node_with_its_own_console_has_its_binding_read_too(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None), node_consoles=("lab-1", "lab-2"))
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        for n in ("lab-1", "lab-2", "lab-3"):
+            self.assertIn(f"{n}: no controller binding held, and the commitment names none", r["detail"])
+        self.assertEqual([i for i in r["not_checked"] if "binding" in i["what"]], [])
+
+    def test_a_malformed_node_console_is_refused(self):
+        self.assertEqual(step.main(["--population", str(self.out), "--out", str(self.out), "--node-console", "lab-1"]), 2)
 
     def test_live_population_uses_the_reporter_backend(self):
         self.assertEqual(step.backend({"population": "live"}), "reporter")
