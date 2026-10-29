@@ -254,6 +254,28 @@ class CheckCommitmentTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 1)
                 self.assertIn(f"missing {field}", r.stderr)
 
+    def test_a_controller_binding_digest_is_accepted_and_optional(self):
+        digest = "ab" * 32
+        self.edit(lambda d: d.__setitem__("controller_binding", {"digest": digest}))
+        r = self.cli()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("1 commitment ok", r.stdout)
+        self.edit(lambda d: d.pop("controller_binding"))
+        self.assertEqual(self.cli().returncode, 0)
+
+    def test_a_malformed_controller_binding_is_refused(self):
+        for value, says in [({"digest": "AB" * 32}, "controller_binding.digest is not a sha256"),
+                            ({"digest": "ab" * 32 + "\n"}, "controller_binding.digest is not a sha256"),
+                            ({}, "missing controller_binding.digest"),
+                            ({"digest": "ab" * 32, "keys": ["ab" * 32]}, "unknown field controller_binding.keys"),
+                            ("ab" * 32, "controller_binding must be an object")]:
+            with self.subTest(value=value):
+                self.setUp()
+                self.edit(lambda d: d.__setitem__("controller_binding", value))
+                r = self.cli()
+                self.assertEqual(r.returncode, 1)
+                self.assertIn(says, r.stderr)
+
     def test_missing_policy_field_is_refused(self):
         self.edit(lambda d: d["lcap"].pop("policy_digest"))
         r = self.cli()
