@@ -35,7 +35,9 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   NOT_CHECKED finding (never a FAIL or malformed one). Each is minus the run's
   `run.json` `started` (loop.sh writes it before the first step), in seconds
   when under one minute; decisions limited or refused on evidence
-  (M3) and filtered volume beside raw (M2) are placeholders. A number with no valid event (a marker step with no
+  (M3) is a placeholder; filtered volume beside raw (M2) reads `raw` and
+  `filtered` from `volume.json`, a proof file of step 06's PASS finding, and
+  shows both or neither. A number with no valid event (a marker step with no
   `PASS`; for step 07, no valid PASS or NOT_CHECKED finding naming an answered ask) reads
   `not measured yet (M1|M2|M3)`, never 0. When the marker step has its event but the run has no start time, the cell says why: "not measured: this
   run did not record its start time (run.json)" when `run.json` is missing. `NUMBERS` in the source says

@@ -191,6 +191,14 @@ class DryRunTest(unittest.TestCase):
         self.assertNotIn("/v1/chat/completions", r.stdout)
         self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
 
+    def test_settle_runs_step_06_on_the_live_population_into_the_days_findings(self):
+        r = lab_sh("--dry-run", "settle", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/06-settle --population "
+                                   rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/06-settle\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
     def test_ask_runs_step_07_on_the_live_population_asked_as_the_loop_asks(self):
         r = lab_sh("--dry-run", "ask", env={**self.env, "LAB_REPORTER": "lab-1"})
         self.assertEqual(r.returncode, 0, r.stderr)
