@@ -14,7 +14,11 @@ showing a guess.
 The rehearsal set (stats/data/rehearsal/, a test of the reporter) has the same
 format with one file per 10-minute UTC slot, `<YYYY-MM-DD>T<HHMM>Z.json`:
 load(root, layout.Rehearsal) reads it the same way, and slots() lays its slots
-out as calendar() lays out days. Standard library only.
+out as calendar() lays out days. The on-demand set (stats/data/ondemand/, runs
+made by hand between dailies) has it too, one file per run,
+`<YYYY-MM-DD>T<HHMMSS>Z.json`: load(root, layout.OnDemand) reads it, newest
+first. It is never part of the daily rows or their totals, and has no calendar:
+the time between two runs is no period. Standard library only.
 """
 import datetime as dt
 import json
@@ -32,6 +36,9 @@ DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 DAY_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
 SLOT_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{4}Z)\.json$")
+RUN_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{6}Z)\.json$")
+FILES = {"daily": (DAY_FILE, "<YYYY-MM-DD>.json day file"), "rehearsal": (SLOT_FILE, "<YYYY-MM-DD>T<HHMM>Z.json slot file"),
+         "ondemand": (RUN_FILE, "<YYYY-MM-DD>T<HHMMSS>Z.json on-demand run file")}
 SKIP = {".gitkeep", "README.md"}
 # Key -> the question as the reporter names it.
 QUESTIONS = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
@@ -197,10 +204,10 @@ def canonical(obj):
 def read_day(path, problems, period=layout.Daily):
     where = path.name
     n = len(problems)
-    m = DAY_FILE.match(path.name) if period is layout.Daily else SLOT_FILE.match(path.name)
+    pattern, form = FILES[period.set]
+    m = pattern.match(path.name)
     if not m:
-        problems.append(f"{where}: not a <YYYY-MM-DD>.json day file" if period is layout.Daily
-                        else f"{where}: not a <YYYY-MM-DD>T<HHMM>Z.json slot file")
+        problems.append(f"{where}: not a {form}")
         return None
     raw = path.read_bytes()
     try:
