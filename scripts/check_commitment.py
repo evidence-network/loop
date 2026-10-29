@@ -7,7 +7,8 @@ A commitment is one signed object saying what a node can be asked and how
 (steps/03-advertise.md is the schema). This refuses a commitment:
 
 - that is missing a required field or has an unknown one, or whose fields
-  have the wrong shape;
+  have the wrong shape (the one optional field, controller_binding, is
+  checked when present);
 - that carries a count (COUNT RULE below);
 - whose signature does not verify under the public key it names, over its
   RFC 8785 (JCS) canonical form without `sig`;
@@ -68,6 +69,10 @@ SCHEMA = {
     "history_card": {"derivation": str, "sha256": str, "bytes": str},
     "sig": {"alg": str, "canon": str, "value": str},
 }
+# Optional members, checked when present. controller_binding names the node
+# key's binding to its operator's key by its digest alone (AAC Controller
+# Binding v0 §4, §9.3): never the record, so never the operator's key.
+OPTIONAL = {"controller_binding": {"digest": str}}
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
 COUNT_WORDS = {"count", "counts", "total", "totals", "tally", "num", "number", "quantity", "size", "n", "nb"}
 DIGITS = re.compile(r"^\d+$")
@@ -197,9 +202,10 @@ def field_errors(doc):
     if not isinstance(doc, dict):
         return ["not a JSON object"]
     errs = []
-    for name, shape in SCHEMA.items():
+    for name, shape in {**SCHEMA, **OPTIONAL}.items():
         if name not in doc:
-            errs.append(f"missing {name}")
+            if name not in OPTIONAL:
+                errs.append(f"missing {name}")
             continue
         v = doc[name]
         if isinstance(shape, dict):
@@ -214,7 +220,7 @@ def field_errors(doc):
             errs += [f"unknown field {name}.{x}" for x in sorted(set(v) - set(shape))]
         elif not isinstance(v, shape):
             errs.append(f"{name} must be a {shape.__name__}")
-    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(SCHEMA))]
+    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(SCHEMA) - set(OPTIONAL))]
     if errs:
         return errs
 
@@ -231,6 +237,8 @@ def field_errors(doc):
                       ("answers.derivations", doc["answers"]["derivations"])):
         if not lst or not all(isinstance(x, str) and TOKEN.match(x) for x in lst):
             errs.append(f"{name} must be a non-empty list of names")
+    if "controller_binding" in doc and not HEX64.fullmatch(doc["controller_binding"]["digest"]):
+        errs.append("controller_binding.digest is not a sha256 (64 lowercase hex)")
     if not HEX64.match(doc["lcap"]["policy_digest"]):
         errs.append("lcap.policy_digest is not a sha256 (64 lowercase hex)")
     if not doc["lcap"]["policy_uri"].strip():
