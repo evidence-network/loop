@@ -265,6 +265,7 @@ class CheckCommitmentTest(unittest.TestCase):
 
     def test_a_malformed_controller_binding_is_refused(self):
         for value, says in [({"digest": "AB" * 32}, "controller_binding.digest is not a sha256"),
+                            ({"digest": "ab" * 32 + "\n"}, "controller_binding.digest is not a sha256"),
                             ({}, "missing controller_binding.digest"),
                             ({"digest": "ab" * 32, "keys": ["ab" * 32]}, "unknown field controller_binding.keys"),
                             ("ab" * 32, "controller_binding must be an object")]:

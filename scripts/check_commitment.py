@@ -237,7 +237,7 @@ def field_errors(doc):
                       ("answers.derivations", doc["answers"]["derivations"])):
         if not lst or not all(isinstance(x, str) and TOKEN.match(x) for x in lst):
             errs.append(f"{name} must be a non-empty list of names")
-    if "controller_binding" in doc and not HEX64.match(doc["controller_binding"]["digest"]):
+    if "controller_binding" in doc and not HEX64.fullmatch(doc["controller_binding"]["digest"]):
         errs.append("controller_binding.digest is not a sha256 (64 lowercase hex)")
     if not HEX64.match(doc["lcap"]["policy_digest"]):
         errs.append("lcap.policy_digest is not a sha256 (64 lowercase hex)")
