@@ -87,3 +87,74 @@ nightly (the `site` check), runs `.github/leak_lint.py` over the built site
 (staged in a scratch git repository, fail-closed without the `LEAK_LINT_TERMS`
 secret), and on main deploys it to GitHub Pages with `actions/deploy-pages`.
 Pages must first be enabled by a repository admin (Source: GitHub Actions).
+
+## The watch page
+
+`site/watch.py` builds a second page, served at
+`https://evidence-network.github.io/loop/watch/`: the network as a graph, one
+day at a time. It runs after `build.py` (which empties the output directory),
+from committed files only:
+
+```sh
+python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal --findings findings \
+    --nodes nodes --population population --out _site
+# writes _site/watch/index.html, _site/watch/data.json and _site/watch/watch.js
+```
+
+- The reporter sits in the middle; each node listed in the day's file is a
+  dot, by node id round a circle, in its day state. Each question the reporter
+  asked a node is an edge: **answered** (a reply came back: solid, a dot at the
+  end), **refused** (a signed `refusal`: dashed, a bar) or **absent** (an
+  `absence`: dotted, a ring). A node is ringed on the first day it is in a day
+  file; a node past its `left_on` is faded and dashed.
+- A slider steps through the days (or the rehearsal's 10-minute slots); *Play*
+  runs through them and *Replay* lights the shown day's edges in the order of
+  their attempts. Live and the rehearsal are a toggle, never one graph.
+- Tab to a node or hover it for its card: the operator handle, `host_build`
+  and `plugin_version` from `nodes/<node_id>.json`, the day files it is in, its
+  state and asks that day, and `records_at_checkpoint`. No amount or band.
+- Steps 05 (deal), 06 (settle) and 07 (ask) add node-to-node edges, only from a
+  finding of that step for the shown day that passes `steps/finding.py`'s
+  check, and only between two nodes of the shown set; otherwise the page says
+  "not measured yet" and names the step.
+- `watch.js` is the only script on the site: handwritten, no library, nothing
+  fetched. The page carries `data.json` inline. With scripts off, the tables
+  under the graph hold the same counts. The `/stats/` page is unchanged and has
+  no scripts. `tests/test_watch.py` holds the page to all of this, with
+  fixtures in `tests/fixtures/watch/` (`make_fixtures.py` there writes them).
+
+### data.json
+
+Sorted keys; the same JSON is in the page. Only fields of the scrubbed set,
+`nodes/` and findings: no answer bytes or hashes, no amount, no band.
+
+| key | value |
+|---|---|
+| `format` | `watch/1` |
+| `edge_kinds` | `ask`, `deal`, `settle`, `ask07`, each with what its edge is |
+| `outcomes` | `answered`, `refused`, `absent` |
+| `nodes` | node id → `{operator, host_build, plugin_version, listed: true}` from `nodes/`, or `{listed: false}` for a node no longer there |
+| `reporters` | each reporter key id the days name, with the node id whose `nodes/` entry holds that key (or `null`) |
+| `views` | `live` (the daily set) and `rehearsal` (the reporter rehearsal, a TEST), each `{label, unit, test, days}` |
+
+Each of a view's `days`, from the first to the last, with a gap day too:
+
+| key | value |
+|---|---|
+| `date` | the day, or the rehearsal slot `YYYY-MM-DDTHHMMZ` |
+| `run` | `settled`, `missed`, or `no_file` |
+| `file` | the day file under `stats/data/`, or `null` |
+| `listed` | the day file's `listed`, or `null` |
+| `reporter_key_id` | the day file's, on a settled day |
+| `nodes` | each node in the file: `node_id`, `state` (both questions read together, as the stats page reads them), `questions` (`checkpoints`, `history_card/1` → its state), `asks` (`answered`, `refused`, `absent`, of 2), `records_at_checkpoint`, `days_listed` (the day files it is in, to this day), `first_day`, `node_line`, `left_on`, `left`; then each node that left and is not in the file: `node_id`, `left_on`, `left: true`, `days_listed` |
+| `edges` | the reporter's asks: `kind: ask`, `from: reporter`, `to`, `question`, `state`, `outcome`, `at` (the settling attempt) and `attempts`; then step edges: `kind`, `from`, `to`, `outcome` |
+| `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, not_drawn}` with `why_not_drawn` when an end is not a node of the view |
+
+A step's edge, from its finding's own files: 05, a receiver holding the
+sender's half (answered), its refusal reply (refused) or nothing held (absent),
+with names mapped to node ids by `population/<population>/population.json`;
+06, the exchange's payer to its payee by key id in `nodes/`, answered when the
+finding's reference, finality and exchange checks held, else absent; 07, an
+`outcome.json` (`artifact`, `refusal`, `recorded_absence`) or the reporter
+backend's verification line. A rehearsal finding belongs to the slot its run
+started in.

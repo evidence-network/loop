@@ -1,0 +1,32 @@
+{
+  "asserts": "the fixture's step holds",
+  "detail": "a fixture for the watch page",
+  "finished": "2026-11-05T06:30:00Z",
+  "name": "ask",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#1",
+      "what": "a part of the fixture",
+      "why": "a fixture"
+    }
+  ],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "node-one/asks/node-two/exchange/outcome.json",
+      "sha256": "02ac88794d62423ff366cdc0f7ee34ea4724f215b7dc7be73265ba449df5e089"
+    },
+    {
+      "path": "node-one/asks/node-two/exchange_late/outcome.json",
+      "sha256": "5a2c5f737eb195a7c700489293cb384c94fc0ee69eefd257c5a7c203822d4074"
+    },
+    {
+      "path": "node-one/asks/node-two/history_card/outcome.json",
+      "sha256": "3943b26db430020990f998b38ee33c7c3665a24a8a46a72514f7caebbe718706"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-05T06:00:00Z",
+  "step": "07"
+}

@@ -33,6 +33,11 @@ jobs:
       # The reporter rehearsal's TEST page and its MISSED slots, kept apart from the daily rows.
       - name: Rehearsal page tests
         run: python3 -B -m unittest discover -s tests -p test_rehearsal.py -v
+      # The watch page (site/watch.py): each day's graph against its day file, a node joining and leaving,
+      # three distinct edge outcomes, no external URL, no amount or band, "not measured yet" without a finding,
+      # contrast in both schemes, and /stats/ unchanged by its build.
+      - name: Watch page tests
+        run: python3 -B -m unittest discover -s tests -p test_watch.py -v
       # The page built from the committed fixtures, byte for byte against the
       # committed expected page. It is built outside _site and never deployed.
       - name: Stats page against the committed expected page
@@ -60,6 +65,27 @@ jobs:
       # there are any, get their own page under a TEST label: _site/stats/rehearsal/.
       - name: Build the stats site
         run: python3 -B site/build.py stats/data/daily --findings findings --lock versions.lock --out _site --rehearsal stats/data/rehearsal
+      # The watch page, into _site/watch/ (Pages URL /loop/watch/), from the same committed files plus nodes/
+      # and population/. It runs after build.py, which empties _site. Its scripts run on this page only.
+      - name: Build the watch page
+        run: python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal --findings findings --nodes nodes --population population --out _site
+      # The page rendered headless in the Chrome that ubuntu-latest carries, one screenshot per view, kept as a
+      # workflow artifact. The page carries its data inline, so a file:// load draws it. A missing or
+      # near-empty image fails the step; whether the graph is right is for a reader of the screenshot.
+      - name: Render the watch page headless
+        run: |
+          shots="$RUNNER_TEMP/watch-screenshots"
+          mkdir -p "$shots"
+          for view in live rehearsal; do
+            google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1300,1400 \
+              --virtual-time-budget=5000 --screenshot="$shots/watch-$view.png" \
+              "file://$GITHUB_WORKSPACE/_site/watch/index.html#$view"
+            test "$(stat -c %s "$shots/watch-$view.png")" -gt 20000
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: watch-screenshots
+          path: ${{ runner.temp }}/watch-screenshots
       # The leak scan over the site as built. leak_lint.py scans a git tree's
       # tracked files, so the site is staged in a scratch repository outside the
       # checkout and scanned there; nothing is committed. Fail-closed exactly

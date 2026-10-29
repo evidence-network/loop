@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop watch</title>
+<style>
+:root { --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --card: #f3f3ee; --accent: #2b5d8a;
+        --e-answered: #1e6b3c; --e-refused: #9a5418; --e-absent: #6b6b66; --hub: #2b5d8a;
+        --st-verified: #1e6b3c; --st-partial: #79b58d; --st-no_checkpoint_yet: #e3b43c; --st-refusal: #9a5418;
+        --st-no_announced_key: #b9c4cf; --st-not_evidence: #c62828; --st-absence: #85857f;
+        --ring: #a86a00; --on-hub: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --card: #232321; --accent: #8db8e0;
+          --e-answered: #52b672; --e-refused: #d08a4c; --e-absent: #9a9a93; --hub: #8db8e0;
+          --st-verified: #52b672; --st-partial: #2c6a43; --st-no_checkpoint_yet: #e0b040; --st-refusal: #c47a3a;
+          --st-no_announced_key: #56626f; --st-not_evidence: #e0675f; --st-absence: #7a7a74;
+          --ring: #e0a640; --on-hub: #111111; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif;
+       font-variant-numeric: tabular-nums; }
+main { max-width: 72rem; margin: 0 auto; padding: 1.5rem 16px 4rem; }
+h1 { font-size: 1.7rem; margin: 0 0 .3rem; }
+h2 { font-size: 1.3rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .3rem; }
+h3 { font-size: 1.05rem; margin: .2rem 0 .3rem; }
+p, li { max-width: 46rem; }
+a { color: var(--accent); }
+code, .code { font-family: ui-monospace, monospace; }
+.note { color: var(--muted); font-size: .9rem; }
+.test { font-weight: 700; color: var(--fg); border: 2px solid var(--fg); padding: 0 .3em; border-radius: 3px; }
+.controls { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; margin: .8rem 0; }
+.controls button { font: inherit; font-size: .95rem; color: var(--fg); background: var(--card);
+                   border: 1px solid var(--muted); border-radius: 4px; padding: .3rem .8rem; cursor: pointer; }
+.controls button[aria-pressed="true"] { color: var(--on-hub); background: var(--hub); border-color: var(--hub); }
+.controls button:focus-visible, svg g:focus-visible { outline: 3px solid var(--ring); outline-offset: 2px; }
+.controls button[aria-pressed="true"] .test { color: var(--on-hub); border-color: var(--on-hub); background: var(--hub); }
+.controls .slider { display: inline-flex; gap: .5rem; align-items: center; flex: 1 1 18rem; }
+.controls input[type="range"] { flex: 1; min-width: 10rem; accent-color: var(--accent); }
+.controls label { font-size: .95rem; }
+#day-label { font-weight: 600; margin: 0 0 .4rem; }
+#summary, #status { font-size: .95rem; margin: .3rem 0; }
+#status { color: var(--muted); min-height: 1.5em; }
+.stage { position: relative; display: grid; grid-template-columns: minmax(0, 46rem) minmax(16rem, 1fr); gap: 1rem 1.5rem; align-items: start; }
+@media (max-width: 64rem) { .stage { grid-template-columns: minmax(0, 1fr); } }
+figure.graph { position: relative; margin: 0; overflow-x: auto; border: 1px solid var(--line);
+               border-radius: 6px; }
+svg#graph { display: block; width: 720px; height: auto; margin: 0 auto; font-family: system-ui, sans-serif; }
+svg text { fill: var(--fg); font-size: 12px; text-anchor: middle; }
+svg text.tag, svg text.steplabel { fill: var(--muted); }
+svg text.steplabel { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; font-weight: 600; }
+svg text.hublabel { fill: var(--on-hub); font-weight: 600; }
+svg .hub rect { fill: var(--hub); }
+svg .dot { stroke: var(--bg); stroke-width: 2; }
+svg .st-verified .dot { fill: var(--st-verified); }
+svg .st-partial .dot { fill: var(--st-partial); }
+svg .st-no_checkpoint_yet .dot { fill: var(--st-no_checkpoint_yet); }
+svg .st-refusal .dot { fill: var(--st-refusal); }
+svg .st-no_announced_key .dot { fill: var(--st-no_announced_key); }
+svg .st-not_evidence .dot { fill: var(--st-not_evidence); }
+svg .st-absence .dot { fill: var(--st-absence); }
+svg .left { opacity: .45; }
+svg .left .dot { fill: var(--bg); stroke: var(--muted); stroke-width: 2; stroke-dasharray: 4 3; }
+svg .ring { fill: none; stroke: var(--ring); stroke-width: 3; }
+svg .edge { fill: none; stroke-width: 2.5; }
+svg .edge.dim { opacity: .08; }
+svg .o-answered { stroke: var(--e-answered); }
+svg .o-refused { stroke: var(--e-refused); stroke-dasharray: 9 5; }
+svg .o-absent { stroke: var(--e-absent); stroke-dasharray: 2 5; stroke-linecap: round; }
+svg .k-deal, svg .k-settle, svg .k-ask07 { stroke-width: 3.5; }
+svg .m-answered { fill: var(--e-answered); }
+svg .m-refused { fill: none; stroke: var(--e-refused); stroke-width: 2.5; }
+svg .m-absent { fill: var(--bg); stroke: var(--e-absent); stroke-width: 2; }
+#card { position: absolute; z-index: 2; width: 22rem; background: var(--card); color: var(--fg);
+        border: 1px solid var(--muted); border-radius: 6px; padding: .5rem .7rem; font-size: .9rem;
+        overflow-wrap: anywhere; }
+#card dl { display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; margin: 0; }
+#card dt { color: var(--muted); }
+#card dd { margin: 0; }
+ul.measured { font-size: .95rem; padding-left: 1.1rem; }
+ul.measured li.unmeasured { color: var(--muted); }
+ul.legend { list-style: none; padding: 0; display: grid; gap: .3rem; font-size: .9rem; }
+ul.legend svg { vertical-align: middle; }
+.scroll { overflow-x: auto; }
+details { margin: .6rem 0; }
+summary { cursor: pointer; color: var(--accent); font-size: .95rem; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; margin: .4rem 0; }
+th, td { border: 1px solid var(--line); padding: .3rem .5rem; text-align: left; vertical-align: top; }
+td.num { text-align: right; }
+td.unmeasured { color: var(--muted); }
+footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+</style>
+</head>
+<body data-view="live">
+<main>
+<h1>Watch the network</h1>
+<p class="lede">This page is the evidence network's. It draws the network as a graph, one day at a time, from the
+same committed files as <a href="../stats/">the stats page</a>: the scrubbed day files, the commitment list in
+<code>nodes/</code> and the loop's findings. Nothing on it is made up: an edge kind with no finding for the shown day
+says so.</p>
+
+<div class="controls" id="controls" hidden>
+<span role="group" aria-label="Which set">
+<button type="button" data-view="live" aria-pressed="true">Live: the daily set</button>
+<button type="button" data-view="rehearsal" aria-pressed="false"><span class="test">TEST</span> Reporter rehearsal</button>
+</span>
+<span class="slider"><label for="day" id="day-name">Day</label>
+<input type="range" id="day" min="0" max="0" value="0" step="1"></span>
+<button type="button" id="play-days">Play the days</button>
+<button type="button" id="replay">Replay this day</button>
+</div>
+
+<div class="stage">
+<figure class="graph">
+<svg id="graph" viewBox="0 0 720 460" width="720" height="460" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-describedby="graph-desc">
+<defs>
+<marker id="m-answered" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto"><circle class="m-answered" cx="5" cy="5" r="5"/></marker>
+<marker id="m-refused" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto"><path class="m-refused" d="M5 0 L5 10"/></marker>
+<marker id="m-absent" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" markerUnits="userSpaceOnUse" orient="auto"><circle class="m-absent" cx="5" cy="5" r="3.5"/></marker>
+</defs>
+</svg>
+</figure>
+<div id="card" role="tooltip" hidden></div>
+<div class="side">
+<p id="day-label" aria-live="polite"></p>
+<p id="summary"></p>
+<p id="status" aria-live="polite"></p>
+<ul class="measured" id="measured"></ul>
+<ul class="legend">
+<li><svg width="60" height="16" aria-hidden="true"><path class="edge o-answered" d="M2 8 L48 8"/><circle class="m-answered" cx="52" cy="8" r="5"/></svg> answered: a reply came back (solid, dot)</li>
+<li><svg width="60" height="16" aria-hidden="true"><path class="edge o-refused" d="M2 8 L48 8"/><path class="m-refused" d="M52 2 L52 14"/></svg> refused: a signed refusal (dashed, bar)</li>
+<li><svg width="60" height="16" aria-hidden="true"><path class="edge o-absent" d="M2 8 L48 8"/><circle class="m-absent" cx="52" cy="8" r="4"/></svg> absent: nothing came back (dotted, ring)</li>
+<li>05, 06, 07 on a thicker edge between two nodes: a deal, a settlement or a later ask, from that step's finding</li>
+</ul>
+</div>
+</div>
+<p id="graph-desc" class="note">The reporter sits in the middle and asks each listed node two questions; each ask
+is an edge to the node. Tab to a node, or hover it, for its details. A node is ringed on the first day it is in a day
+file; a node that left is faded and dashed. Nodes keep their place on the circle by node id; the order means
+nothing.</p>
+<noscript><p class="note">Scripts are off: the graph is not drawn. The tables below hold the same counts.</p></noscript>
+
+<h2 id="tables">The same counts as text</h2>
+<p class="note">Live and rehearsal are two sets, never added together. Each count is out of what it counts: the
+nodes the reporter listed that day, or the asks it made. "Not measured yet" names the loop step whose finding would
+hold that edge kind.</p>
+$tables
+
+<h2 id="about">How to read this page</h2>
+<details>
+<summary>What the edges are, and what they are not</summary>
+<p>Each day the reporter asks every node on the commitment list the same two questions, <code>checkpoints</code>
+and <code>history_card/1</code>. Each question is one edge. It is drawn answered when a reply came back
+(<code>verified</code>, <code>no_checkpoint_yet</code>, <code>no_announced_key</code> or <code>not_evidence</code>),
+refused for a signed <code>refusal</code>, and absent for an <code>absence</code>. The stats page says what each
+result means.</p>
+<p>The loop's steps 05 (deal), 06 (settle) and 07 (ask) are node-to-node edges. They are drawn only from a finding
+of that step for the shown day, and only between two nodes of the shown set. Until a step has a finding, the page
+says "not measured yet" for its edges. There is no amount on this page, and no score, ranking or table of nodes by
+result.</p>
+<p>The rehearsal is a test of the reporter: the same questions to the same nodes every 10 minutes, one slot per
+step of the slider. It is never drawn on the same graph as the daily set.</p>
+</details>
+
+<footer>
+<p class="note">Built by <code>site/watch.py</code>. The data the graph draws is <a href="data.json">data.json</a>,
+also carried in this page.</p>
+</footer>
+</main>
+<script type="application/json" id="watch-data">$data</script>
+<script src="watch.js"></script>
+</body>
+</html>

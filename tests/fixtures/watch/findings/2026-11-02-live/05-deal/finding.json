@@ -1,0 +1,24 @@
+{
+  "asserts": "the fixture's step holds",
+  "detail": "a fixture for the watch page",
+  "finished": "2026-11-05T06:30:00Z",
+  "name": "deal",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#1",
+      "what": "a part of the fixture",
+      "why": "a fixture"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [
+    {
+      "path": "node-four/checks.json",
+      "sha256": "20725d313e7b6b38d70520f15d0af05ab8a47f7d0f6aa95a58a5996952ae2329"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-05T06:00:00Z",
+  "step": "05"
+}

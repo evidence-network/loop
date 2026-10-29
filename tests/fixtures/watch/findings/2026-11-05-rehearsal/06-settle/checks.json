@@ -1,0 +1,28 @@
+{
+  "checks": {
+    "adapter": {
+      "detail": "fixture",
+      "ok": true
+    },
+    "band": {
+      "detail": "PASS: band b2",
+      "ok": true
+    },
+    "exchange_match": {
+      "detail": "fixture",
+      "ok": true
+    },
+    "finality": {
+      "detail": "fixture",
+      "ok": true
+    },
+    "ledger": {
+      "detail": "fixture",
+      "ok": true
+    },
+    "reference": {
+      "detail": "fixture",
+      "ok": true
+    }
+  }
+}
