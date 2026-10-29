@@ -162,17 +162,20 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
                       "LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 ", r.stdout)
 
-    def test_no_node_pushes_unless_named(self):
+    def test_no_node_is_told_to_push_unless_named(self):
+        # Unnamed nodes keep the plugin's own default (on at the pin), not a value lab.sh sets.
         self.assertNotIn("CAPSULES_SHARE_RECORD_AT_COMPLETION", self.out)
 
     def test_share_at_completion_reaches_only_the_named_nodes(self):
-        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_SHARE_AT_COMPLETION": "lab-1 lab-2"})
-        self.assertEqual(r.returncode, 0, r.stderr)
-        launches = {n: l for l in r.stdout.splitlines() if " serve --config " in l
-                    for n in ("lab-1", "lab-2", "lab-3") if f"HOME={self.lab}/nodes/{n} " in l}
-        self.assertEqual(sorted(launches), ["lab-1", "lab-2", "lab-3"])
-        for n, line in launches.items():
-            self.assertEqual("CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in line, n != "lab-3", n)
+        for names in ("lab-1 lab-2", "lab-1\tlab-2", "\nlab-2\n lab-1 "):
+            r = lab_sh("--dry-run", "start", env={**self.env, "LAB_SHARE_AT_COMPLETION": names})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            launches = {n: l for l in r.stdout.splitlines() if " serve --config " in l
+                        for n in ("lab-1", "lab-2", "lab-3") if f"HOME={self.lab}/nodes/{n} " in l}
+            self.assertEqual(sorted(launches), ["lab-1", "lab-2", "lab-3"])
+            for n, line in launches.items():
+                self.assertEqual("CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in line, n != "lab-3",
+                                 (repr(names), n))
 
     def test_share_at_completion_refuses_an_unknown_node(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_SHARE_AT_COMPLETION": "lab-1 lab-9"})

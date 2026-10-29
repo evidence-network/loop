@@ -59,8 +59,13 @@ BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
 MODEL_NAME=${LAB_MODEL_NAME:-lab-model}
 SESSION=${LAB_TMUX_SESSION:-loop-lab}
-SHARE=" ${LAB_SHARE_AT_COMPLETION:-} "
-for n in $SHARE; do [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_SHARE_AT_COMPLETION names $n, not a lab node"; done
+# Split once, on any whitespace, and match against the same list the check used.
+SHARE=()
+read -r -d '' -a SHARE <<< "${LAB_SHARE_AT_COMPLETION:-}" || true
+for n in "${SHARE[@]+"${SHARE[@]}"}"; do
+  [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_SHARE_AT_COMPLETION names $n, not a lab node"
+done
+shares() { local n; for n in "${SHARE[@]+"${SHARE[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
@@ -275,7 +280,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   [ -n "${MESH_LLM_RUNTIME:-}" ] && envs+=(MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR="$MESH_LLM_RUNTIME")
   # The plugin reads share_record_at_completion from this env var before its config
   # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
-  [[ "$SHARE" == *" $name "* ]] && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
+  shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
     --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")
   local body
