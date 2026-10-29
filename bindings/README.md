@@ -16,6 +16,10 @@ so this folder holds no verdicts yet.
  "cites": null}
 ```
 
+- `controller_key_id` is the sha256 of the controller binding, the digest a
+  node's public commitment carries. It is never the controller's public key
+  (for a Nostr controller, never the npub or its hex). A binding is optional:
+  a node without one joins as usual and is not grouped.
 - `subjects` is sorted, has no repeats, and holds at least two subjects.
 - `status` is `verified`, `revoked` or `not_checked`.
 - `verified` needs `verifier` to name a tool and the exact pin `versions.lock`
