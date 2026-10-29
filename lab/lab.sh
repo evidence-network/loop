@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -22,6 +22,8 @@
 #             and pays nothing
 #   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
 #             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
+#   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
+#             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
@@ -473,20 +475,25 @@ cmd_entries() {
   run python3 -B "$ROOT/scripts/check_nodes.py" "$ROOT/nodes"
 }
 
-cmd_loop() {
-  # The reporter's console, never the default 3131: other nodes on the lab host may answer there.
-  # A node can't be asked through its own console, so step 12 asks the reporter node through a
-  # second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
-  # LAB_DIR: population/live names each node's data_dir and book_dir from it.
-  # LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
-  # host_name maps a label back to its lab-N directory the same way).
-  local second=lab-1 self
+# The reporter's console, never the default 3131: other nodes on the lab host may answer there.
+# A node can't be asked through its own console, so steps 12 and 07 ask the reporter node through a
+# second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
+# LAB_DIR: population/live names each node's data_dir and book_dir from it.
+# LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
+# host_name maps a label back to its lab-N directory the same way).
+ask_env() {
+  second=lab-1
   [ "$REPORTER" = lab-1 ] && second=lab-2
   self=$(python3 -c 'import json, sys
 for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
         print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+}
+
+cmd_loop() {
+  local second self
+  ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
     LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
@@ -509,6 +516,17 @@ cmd_settle() {
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+cmd_ask() {
+  # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
+  # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
+  local out=$ROOT/findings/$TODAY-live second self
+  ask_env
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
+    LAB_DIR="$LAB_DIR" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
 cmd_pack() {
   local day=$TODAY
   [ -s "$LAB_DIR/run/loop-date" ] && day=$(cat "$LAB_DIR/run/loop-date")
@@ -524,6 +542,6 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | deal | settle | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | entries | loop | deal | settle | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

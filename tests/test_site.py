@@ -431,6 +431,20 @@ class SiteTest(unittest.TestCase):
             s = re.search(rf'<section class="number" id="n-{nb.key}">(.*?)</section>', self.html, re.S).group(1)
             self.assertEqual(re.findall(r'class="num-cell" data-population="(\w+)"', s), ["rehearsal", "live"])
 
+    def test_an_unsealed_live_first_answer_says_so_in_the_number_cell(self):
+        nb = next(n for n in status_page.NUMBERS if n.key == "first-answered")
+        with mock.patch.object(status_page, "number_value", return_value=("42 s", True)), \
+                mock.patch.object(status_page, "minutes", return_value=0.7), \
+                mock.patch.object(build, "run_minutes", return_value=1.0), \
+                mock.patch.object(status_page, "unsealed_ask", return_value="lab-1 history_card/1"):
+            text = build.number_text(nb, object())
+        self.assertIn("lab-1 history_card/1, answered but not sealed before it was sent", text)
+        with mock.patch.object(status_page, "number_value", return_value=("42 s", True)), \
+                mock.patch.object(status_page, "minutes", return_value=0.7), \
+                mock.patch.object(build, "run_minutes", return_value=1.0), \
+                mock.patch.object(status_page, "unsealed_ask", return_value=None):
+            self.assertNotIn("not sealed", build.number_text(nb, object()))
+
     def test_the_five_numbers_with_m2_and_m3_as_placeholders(self):
         self.assertEqual([nb.key for nb in status_page.NUMBERS] + ["halves"],
                          re.findall(r'<section class="number" id="n-([a-z-]+)">', self.html))
@@ -439,7 +453,7 @@ class SiteTest(unittest.TestCase):
                          "<span class=\"count\">1.0 of the run's 3.0 minutes</span>")
         self.assertEqual(self.number("first-sealed", "live"),
                          "<span class=\"count\">1.0 of the run's 1.0 minutes</span>")
-        self.assertEqual(self.number("first-answered", "rehearsal"), "not measured yet (<code>M1</code>)")
+        self.assertEqual(self.number("first-answered", "rehearsal"), "not measured yet (<code>M2</code>)")
         for key, m in (("first-countersigned", "M3"), ("refused", "M3"), ("filtered", "M2")):
             for p in status_page.POPULATIONS:
                 self.assertEqual(self.number(key, p), f"not measured yet (<code>{m}</code>)")
