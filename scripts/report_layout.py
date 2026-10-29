@@ -24,10 +24,14 @@ An attempt's verification line starts with one of
 A question with no answer after its last attempt is the day's `absence`.
 
 A report set is a directory under reports/ holding one directory per period:
-`daily`, one per UTC day (<YYYY-MM-DD>), and `rehearsal`, a test of the
-reporter, one per 10-minute UTC slot (<YYYY-MM-DD>T<HHMM>Z, minutes a multiple
-of 10). A period's directory has the same layout in both; SETS has each set's
-period. Standard library only.
+`daily`, one per UTC day (<YYYY-MM-DD>), `rehearsal`, a test of the reporter,
+one per 10-minute UTC slot (<YYYY-MM-DD>T<HHMM>Z, minutes a multiple of 10),
+and `ondemand`, one per run made by hand between dailies, named by the second
+the run started (<YYYY-MM-DD>T<HHMMSS>Z, UTC). A period's directory has the
+same layout in all three; SETS has each set's period. `daily` and `rehearsal`
+are continuous: a period with no run is MISSED. `ondemand` is not: its runs
+are made by hand, so the time between two runs is no period at all, never
+MISSED, and nothing expects the next one. Standard library only.
 """
 import datetime as dt
 import json
@@ -50,6 +54,7 @@ class Daily:
     noun = "day"
     pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
     step = dt.timedelta(days=1)
+    continuous = True
 
     @staticmethod
     def name(period):
@@ -71,6 +76,7 @@ class Rehearsal:
     noun = "slot"
     pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])[0-5]0Z$")
     step = dt.timedelta(minutes=10)
+    continuous = True
 
     @staticmethod
     def name(period):
@@ -88,7 +94,50 @@ class Rehearsal:
         return at.replace(minute=at.minute - at.minute % 10, second=0, microsecond=0)
 
 
-SETS = {"daily": Daily, "rehearsal": Rehearsal}
+class OnDemand:
+    """The on-demand set: one directory per run made by hand, <YYYY-MM-DD>T<HHMMSS>Z, its start (UTC).
+
+    Not continuous: there is no step from one run to the next, so no run is
+    ever MISSED for want of another, and the run before a run is simply the
+    latest earlier one there is.
+    """
+    set = "ondemand"
+    noun = "run"
+    pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3])[0-5]\d[0-5]\dZ$")
+    step = None
+    continuous = False
+
+    @staticmethod
+    def name(period):
+        return period.strftime("%Y-%m-%dT%H%M%SZ")
+
+    @staticmethod
+    def parse(name):
+        if not OnDemand.pattern.match(name):
+            raise ValueError(f"{name!r} is not an on-demand run <YYYY-MM-DD>T<HHMMSS>Z")
+        return dt.datetime.strptime(name, "%Y-%m-%dT%H%M%SZ").replace(tzinfo=dt.timezone.utc)
+
+    @staticmethod
+    def of(at):
+        """The run that starts at a UTC time."""
+        return at.replace(microsecond=0)
+
+
+SETS = {"daily": Daily, "rehearsal": Rehearsal, "ondemand": OnDemand}
+
+
+def previous(out, name, period=Daily):
+    """The name of the period before `name` in the set at `out`, or None.
+
+    In a continuous set, the period one step earlier, whether or not it has a
+    directory; in the on-demand set, the latest earlier run directory there is.
+    """
+    if period.continuous:
+        return period.name(period.parse(name) - period.step)
+    out = Path(out)
+    earlier = sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.match(p.name)
+                     and p.name < name) if out.is_dir() else []
+    return earlier[-1] if earlier else None
 
 
 def iso(at):
@@ -171,22 +220,27 @@ def absent_days_running(out, node_id, day, period=Daily):
 
     Counts back day by day and stops at a day the node answered anything, was
     not asked, or had no run. A re-ask that got an answer ends the run of days.
-    In the rehearsal set it counts slots the same way.
+    In the rehearsal set it counts slots the same way; in the on-demand set,
+    runs, each one back to the latest earlier run.
     """
     n = 0
-    while True:
-        node_dir = Path(out) / period.name(day) / node_id
+    name = period.name(day)
+    while name is not None:
+        node_dir = Path(out) / name / node_id
         if not (node_dir.is_dir() and attempts(node_dir) and absent(node_dir)):
             return n
         n += 1
-        day -= period.step
+        name = previous(out, name, period)
+    return n
 
 
-def absence_fact(n):
-    """The count as a fact about the node, never a score."""
+def absence_fact(n, noun="day"):
+    """The count as a fact about the node, never a score. `noun` is the set's (Daily.noun, ...)."""
     if n == 0:
         return ""
-    return "absent today" if n == 1 else f"absent {n} days running"
+    if n == 1:
+        return "absent today" if noun == "day" else f"absent this {noun}"
+    return f"absent {n} {noun}s running"
 
 
 def read_attempt(attempt_dir):

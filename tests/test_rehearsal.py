@@ -52,7 +52,7 @@ class SlotTest(unittest.TestCase):
             self.assertIsNone(r.pattern.match(bad), bad)
             with self.assertRaises(ValueError):
                 r.parse(bad)
-        self.assertEqual(layout.SETS, {"daily": layout.Daily, "rehearsal": layout.Rehearsal})
+        self.assertEqual(layout.SETS, {"daily": layout.Daily, "rehearsal": layout.Rehearsal, "ondemand": layout.OnDemand})
 
 
 class RehearsalRunTest(unittest.TestCase):
