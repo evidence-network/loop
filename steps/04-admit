@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Step 04 Admit: the buyer checks the offer against its Terms Pack, decides GO or NO, and seals it before the deal.
+"""Step 04 Admit: the gate before the deal. The buyer's admission decision, GO or NO, is sealed before the deal and the deal obeys it.
 
-Usage: 04-admit --population DIR --out DIR [--terms FILE] [--plant NAME]
+Usage: 04-admit --population DIR --out DIR [--plant NAME]
 
-Admission at this level is a blocking yes/no on deterministic rules
-(steps/04-admit.d/README.md). Each rule of the Terms Pack compares one number
-on the offer with a bound; an unmet rule is NO, all rules met is GO. The pack
-is steps/04-admit.d/terms-pack.json unless --terms names the operator's own.
+Admission is the gate before step 05's action: it answers "may this deal
+happen?" with GO or NO and seals the answer. The loop keeps no Terms Pack and
+evaluates no rule; why a decision was NO belongs to Mesh's admission policy
+(Mesh-LLM/capsules-plugin). This step proves only that the gate ran first and
+that the deal obeyed it.
 
-Rehearsal. The population's `bob` buys from `alice`. For each scenario under
-`<population dir>/step04/scenarios/` (an offer, a stand-in of step 05's deal
-terms; a scenario may carry its own terms.json, an operator's pack as --terms
-would pass it), bob's admission evaluates the pack over the offer and:
+Rehearsal. The population's `bob` buys from `alice`. Each scenario under
+`<population dir>/step04/scenarios/<name>/decision.json` is an
+`admission_decision` block in the shape the capsules plugin seals (verdict,
+source, the operator policy it read by digest, the peer by commitment). bob's
+book (pinned capsulectl, signed with bob's TEST key):
 
-  - seals the decision in bob's book (pinned capsulectl, a book signed with
-    bob's TEST key): outcome, the rules row by row, the pack's id, version and
-    digest (sha256 of the pack bytes), and the offer's digest;
+  - seals the decision;
   - on GO, then seals bob's record of the deal, citing the decision; on NO,
     no deal record;
   - cuts a checkpoint and discloses each scenario as an Evidence Bundle: the
@@ -27,35 +27,32 @@ The judge then decides on the proof bytes:
   - the bundle verifies (`capsulectl book verify --bundle`): records signed by
     bob's key, each in the book under the signed checkpoint, the disclosed
     decision (and deal) match what was sealed;
-  - the outcome is exactly one of GO or NO;
-  - the decision recomputes, rule by rule, from the pack named and the offer;
-  - the decision names the digest of the pack it was taken under;
+  - the decision has the plugin's shape and is exactly one of GO or NO;
   - on GO the deal record comes after the decision (position and commit time)
     and cites it; on NO no record up to the checkpoint cites the decision.
 
-counts.json holds the decisions refused on terms (NO) out of all decisions,
-for the status page.
+counts.json holds the decisions that were NO out of all decisions, for the
+status page.
 
-`--plant` makes the buyer seal one wrong decision, for the tests:
-go-over-bound, ask-outcome, limit-outcome, unsealed, sealed-after,
-deal-after-no, digest-mismatch.
+`--plant` makes the buyer seal one wrong thing, for the tests:
+ask-outcome, limit-outcome, unsealed, sealed-after, deal-after-no.
 
 Live. The pinned capsules plugin's admission hook decides GO or NO from the
 operator's allow and deny lists and seals an admission_decision block in the
-node's ledger. For each lab node whose data_dir is readable the step reads those
-blocks, read-only, and checks each is GO or NO, names its source, cites the
-operator policy by digest and names the peer by commitment only. PASS when at
-least one is found and all hold; NOT_CHECKED when none is found. The five rows
-are Mesh-LLM/capsules-plugin#116, not yet pinned.
+node's ledger (the lab grants it the hook, lab/lab.sh). For each lab node whose
+data_dir is readable the step reads those blocks, read-only, and checks each is
+GO or NO, names its source, cites the operator policy by digest and names the
+peer by commitment only. PASS when every node reads and at least one is found
+and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The five rows are
+Mesh-LLM/capsules-plugin#116, not yet pinned.
 
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
-step itself broke (capsulectl not installed, unreadable population or pack).
+step itself broke (capsulectl not installed, unreadable population).
 """
 import argparse
 import datetime as dt
-import hashlib
 import json
 import os
 import re
@@ -72,34 +69,28 @@ sys.path.insert(0, str(HERE / "04-admit.d"))
 import book_keys  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
-import terms  # noqa: E402
 
-ASSERTS = ("the buyer's admission checks the offer against its Terms Pack and returns exactly one of GO or NO; the "
-           "decision recomputes rule by rule from the pack and the offer and names the pack's digest; it is sealed in "
-           "the buyer's book before the deal record that cites it; no deal record cites a NO")
+ASSERTS = ("the buyer's admission decision is exactly one of GO or NO, in the shape the capsules plugin seals; it is "
+           "sealed in the buyer's book before the deal record that cites it; no deal record cites a NO")
 PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PINNED = ["capsules", "mesh-llm"]
 ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the "
                 "node's own ledger, naming its source and the operator policy it read by digest")
-PLANTS = ("go-over-bound", "ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no",
-          "digest-mismatch")
-PLANT_SCENARIO = {"go-over-bound": "no-price", "ask-outcome": "go", "limit-outcome": "go", "unsealed": "go",
-                  "sealed-after": "go", "deal-after-no": "no-price", "digest-mismatch": "go"}
+PLANTS = ("ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no")
+PLANT_SCENARIO = {"ask-outcome": "go", "limit-outcome": "go", "unsealed": "go", "sealed-after": "go",
+                  "deal-after-no": "no-deny-list"}
 DECISION, DEAL = "admission_decision", "deal_record"
 NO_SPEND = "Spend: none; this step pays nothing (would spend 0 USD)."
 GAPS = " ".join([
-    finding.outside("the offer as a stand-in of step 05's deal terms; the buyer's deal record is not step 05's half",
+    finding.outside("the decision as the plugin seals it in its own ledger; the rehearsal seals a fixture of its "
+                    "shape in the buyer's book", "Mesh-LLM/capsules-plugin#55"),
+    finding.outside("the deal record as step 05's deal half; the buyer's deal record here is a stand-in",
                     "Mesh-LLM/capsules-plugin#49"),
-    finding.outside("the Terms Pack's format, the loop's own until the plugin ships one", "Mesh-LLM/capsules-plugin#105"),
 ])
 
 
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def sha256(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def capsulectl():
@@ -175,50 +166,45 @@ def node_keys(pop_dir):
     return pop["population"], keys
 
 
-# --- The buyer: decide and seal ------------------------------------------------
-def decide(pack, digest, offer, offer_digest, seller, buyer, plant=None):
-    """The decision payload the buyer seals (one planted failure applied, when named)."""
-    d = terms.evaluate(pack, offer)
-    if plant == "go-over-bound":
-        d["outcome"] = "GO"
+# --- The buyer: seal the decision, then the deal ------------------------------
+def decision_payload(deal_id, block, plant=None):
+    """The payload the buyer seals for one decision block (one planted wrong verdict applied, when named)."""
+    block = json.loads(json.dumps(block))
+    if not isinstance(block, dict):
+        return {"kind": DECISION, "deal_id": deal_id, DECISION: block}
     if plant == "ask-outcome":
-        d["outcome"] = "ASK"
+        block["verdict"] = "ASK"
     if plant == "limit-outcome":
-        d["outcome"] = "LIMIT"
-    if plant == "digest-mismatch":
-        digest = sha256(b"another pack")
-    return {"kind": DECISION, "pack": {"id": pack["pack"], "version": pack["version"], "digest": digest},
-            "deal_id": offer["deal_id"], "seller_key": seller, "buyer_key": buyer, "offer_digest": offer_digest, **d}
+        block["verdict"] = "LIMIT"
+    return {"kind": DECISION, "deal_id": deal_id, DECISION: block}
 
 
-def deal_payload(offer, seller, buyer):
-    return {"kind": DEAL, "deal_id": offer["deal_id"], "seller_key": seller, "buyer_key": buyer, "role": "buyer"}
+def deal_payload(deal_id, seller, buyer):
+    return {"kind": DEAL, "deal_id": deal_id, "seller_key": seller, "buyer_key": buyer, "role": "buyer"}
 
 
-def run_buyer(book, default_terms, scenarios, seller, out, plant=None):
+def run_buyer(book, scenarios, seller, out, plant=None):
     for name, d in scenarios:
         sd = out / "scenarios" / name
         sd.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(d / "offer.json", sd / "offer.json")
-        shutil.copyfile(d / "terms.json" if (d / "terms.json").is_file() else default_terms, sd / "terms.json")
-        pack, digest = terms.load(sd / "terms.json")
-        offer = load(sd / "offer.json")
+        shutil.copyfile(d / "decision.json", sd / "decision.json")
+        block = load(sd / "decision.json")
         p = plant if PLANT_SCENARIO.get(plant) == name else None
-        decision = decide(pack, digest, offer, sha256((sd / "offer.json").read_bytes()), seller, book.key, plant=p)
-        deal_id = f"deal/{offer['deal_id']}"
+        decision = decision_payload(name, block, plant=p)
+        deal_id = f"deal/{name}"
         if p == "unsealed":
             (sd / "unsealed-decision.json").write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
-            root = book.seal(deal_id, deal_payload(offer, seller, book.key))
+            root = book.seal(deal_id, deal_payload(name, seller, book.key))
         elif p == "sealed-after":
-            first = book.seal(deal_id, deal_payload(offer, seller, book.key))
-            root = book.seal(f"admission/{offer['deal_id']}", decision, cites=[first])
+            first = book.seal(deal_id, deal_payload(name, seller, book.key))
+            root = book.seal(f"admission/{name}", decision, cites=[first])
         else:
-            dec = book.seal(f"admission/{offer['deal_id']}", decision)
+            dec = book.seal(f"admission/{name}", decision)
             root = dec
-            if decision["outcome"] == "GO":
-                root = book.seal(deal_id, deal_payload(offer, seller, book.key), cites=[dec])
+            if verdict_of(block) == "GO":
+                root = book.seal(deal_id, deal_payload(name, seller, book.key), cites=[dec])
             elif p == "deal-after-no":
-                book.seal(deal_id, deal_payload(offer, seller, book.key), cites=[dec])
+                book.seal(deal_id, deal_payload(name, seller, book.key), cites=[dec])
         (sd / "root.txt").write_text(root + "\n")
     book.checkpoint()
     for name, _ in scenarios:
@@ -227,6 +213,11 @@ def run_buyer(book, default_terms, scenarios, seller, out, plant=None):
 
 
 # --- The judge ----------------------------------------------------------------
+def verdict_of(block):
+    """The verdict of a decision block, None when the block is not an object."""
+    return block.get("verdict") if isinstance(block, dict) else None
+
+
 def verify_bundle(bin_, home, bundle_path):
     """capsulectl's verdict on a bundle, offline, from the file alone (a fresh config home)."""
     r = subprocess.run([str(bin_), "book", "verify", "--bundle", str(bundle_path)], capture_output=True, text=True,
@@ -262,7 +253,7 @@ def when(t):
 
 
 def judge(sd, verdict, buyer):
-    """[{check, ok, detail}] for one scenario's proof bytes, and the sealed decision (or None)."""
+    """[{check, ok, detail}] for one scenario's proof bytes, and the sealed decision block (or None)."""
     checks = []
 
     def check(name, ok, detail):
@@ -273,11 +264,11 @@ def judge(sd, verdict, buyer):
     records = {r["capsule_id"]: r for r in bundle.get("records", [])}
     disclosed = {cid: (v or {}).get("agent_input") for cid, v in (bundle.get("disclosures") or {}).items()}
     check("bundle_verifies", verdict.get("verdict") == "VALID", f"capsulectl verify --bundle: {verdict.get('verdict')}")
-    offer = load(sd / "offer.json")
+    name = sd.name
 
     def find(kind):
         hits = [cid for cid, p in disclosed.items() if isinstance(p, dict) and p.get("kind") == kind
-                and p.get("deal_id") == offer["deal_id"] and status.get(cid) == "disclosure_match"
+                and p.get("deal_id") == name and status.get(cid) == "disclosure_match"
                 and records.get(cid, {}).get("key_id") == buyer]
         return hits[0] if len(hits) == 1 else None
 
@@ -286,24 +277,14 @@ def judge(sd, verdict, buyer):
           "and matched" if dec_id else "no sealed admission decision for this deal in the buyer's book")
     if dec_id is None:
         return checks, None
-    dec = disclosed[dec_id]
-    check("one_outcome", dec.get("outcome") in terms.OUTCOMES, f"outcome {dec.get('outcome')!r}")
-    pack_bytes = (sd / "terms.json").read_bytes()
-    check("pack_digest", (dec.get("pack") or {}).get("digest") == sha256(pack_bytes),
-          f"the decision names pack digest {str((dec.get('pack') or {}).get('digest'))[:16]}…, the pack's bytes "
-          f"hash to {sha256(pack_bytes)[:16]}…")
-    check("offer_named", dec.get("offer_digest") == sha256((sd / "offer.json").read_bytes()),
-          "the decision names the digest of the offer it read")
-    pack, _ = terms.load(sd / "terms.json")
-    want = terms.evaluate(pack, offer)
-    diff = sorted(k for k in want if dec.get(k) != want[k])
-    unmet = [r["id"] for r in want["rules"] if r["verdict"] == "unmet"]
-    check("follows_terms", not diff, f"rule by rule as the pack gives on the offer ({want['outcome']}"
-          f"{': unmet ' + ', '.join(unmet) if unmet else ''})" if not diff
-          else f"differs from the pack in {', '.join(diff)} (expected {want['outcome']}"
-               f"{': unmet ' + ', '.join(unmet) if unmet else ''})")
+    block = disclosed[dec_id].get(DECISION)
+    bad = block_problems(block)
+    outcome = verdict_of(block)
+    check("one_outcome", outcome in VERDICTS, f"verdict {outcome!r}")
+    check("plugin_shape", not bad, "the decision has the shape the plugin seals" if not bad else "; ".join(bad))
+    check("fixture_named", block == load(sd / "decision.json"), "the sealed decision is the scenario's decision.json")
     citing = [cid for cid, r in records.items() if cid != dec_id and dec_id in json.dumps(r)]
-    if dec.get("outcome") == "GO":
+    if outcome == "GO":
         deal_id = find(DEAL)
         check("deal_sealed", deal_id is not None, "the buyer's deal record is in the bundle, signed by the buyer's key"
               if deal_id else "no single deal record signed by the buyer, disclosed and matched")
@@ -317,10 +298,10 @@ def judge(sd, verdict, buyer):
         complete, why = to_the_checkpoint(bundle)
         check("no_deal_after_no", complete and not citing and find(DEAL) is None,
               f"{why}; {len(citing)} records cite the decision")
-    return checks, dec
+    return checks, block
 
 
-def main_rehearsal(pop_dir, out, started, default_terms, plant=None):
+def main_rehearsal(pop_dir, out, started, plant=None):
     bin_ = capsulectl()
     if not bin_.is_file():
         print(f"04-admit: {bin_} is not installed; run steps/04-admit.setup.sh", file=sys.stderr)
@@ -328,30 +309,28 @@ def main_rehearsal(pop_dir, out, started, default_terms, plant=None):
     population, keys = node_keys(pop_dir)
     step04 = Path(pop_dir) / "step04"
     scenarios = sorted((d.name, d) for d in (step04 / "scenarios").iterdir() if d.is_dir())
-    for _, d in scenarios:
-        terms.load(d / "terms.json" if (d / "terms.json").is_file() else default_terms)
     for f in ("finding.json", "checks.json", "counts.json"):
         (out / f).unlink(missing_ok=True)
     shutil.rmtree(out / "scenarios", ignore_errors=True)
     seller = book_keys.pub_hex(keys["alice"])
     with tempfile.TemporaryDirectory(prefix="04-admit-") as tmp:
         book = Book(Path(tmp) / "bob", keys["bob"], bin_)
-        run_buyer(book, default_terms, scenarios, seller, out, plant=plant)
+        run_buyer(book, scenarios, seller, out, plant=plant)
         # The judge reads only the proof files in out.
         results, proof, outcomes = {}, [], {}
         for name, _ in scenarios:
             sd = out / "scenarios" / name
             verdict = verify_bundle(book.bin, book.home, sd / "bundle.json")
             (sd / "verify.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
-            checks, dec = judge(sd, verdict, book.key)
+            checks, block = judge(sd, verdict, book.key)
             results[name] = checks
-            if dec is not None:
-                outcomes[name] = dec.get("outcome")
-            proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json", "offer.json", "terms.json")]
+            if block is not None:
+                outcomes[name] = verdict_of(block)
+            proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json", "decision.json")]
     (out / "checks.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     refused = sorted(n for n, o in outcomes.items() if o == "NO")
     counts = {"decisions": len(outcomes), "refused": len(refused),
-              "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in terms.OUTCOMES}}
+              "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in VERDICTS}}
     (out / "counts.json").write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
     proof += ["checks.json", "counts.json"]
     failed = [f"{n}: {c['check']} ({c['detail']})" for n, cs in results.items() for c in cs if not c["ok"]]
@@ -360,12 +339,10 @@ def main_rehearsal(pop_dir, out, started, default_terms, plant=None):
                       detail=f"did not hold: {'; '.join(failed)}. {NO_SPEND}", started=started)
         return 0
     by = ", ".join(f"{n} {o}" for n, o in sorted(outcomes.items()))
-    detail = (f"{len(outcomes)} admission decisions sealed in bob's book (TEST key), each GO before the deal record "
-              f"that cites it and each NO with no deal record citing it up to the checkpoint: {by}. For each, "
-              f"capsulectl found the bundle VALID and the judge recomputed the decision rule by rule from the pack "
-              f"whose digest it names (scenarios/*/terms.json; go-adjusted runs under an operator's adjusted pack) "
-              f"and found every check held (checks.json); {len(refused)} of {len(outcomes)} decisions refused on "
-              f"terms. {NO_SPEND} {GAPS}")
+    detail = (f"{len(outcomes)} admission decisions in the plugin's shape sealed in bob's book (TEST key), each GO "
+              f"before the deal record that cites it and each NO with no deal record citing it up to the "
+              f"checkpoint: {by}. For each, capsulectl found the bundle VALID and the judge found every check held "
+              f"(checks.json); {len(refused)} of {len(outcomes)} decisions were NO. {NO_SPEND} {GAPS}")
     finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                   detail=detail, started=started)
     return 0
@@ -436,7 +413,9 @@ def block_problems(blk):
             or not (unread or digest_ok(pol.get("digest"))):
         errs.append("reads does not cite the operator policy by digest")
     pc = blk.get("peer_commitment", ABSENT)
-    if not (pc is None or digest_ok(pc)):
+    # The plugin names no peer only for a NO on a target it could not read.
+    no_peer = blk.get("verdict") == "NO" and blk.get("source") == "unreadable_target"
+    if not (digest_ok(pc) or (pc is None and no_peer)):
         errs.append("peer_commitment is missing or not a commitment")
     return errs
 
@@ -516,8 +495,6 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--terms", default=str(terms.DEFAULT),
-                    help="the operator's Terms Pack (default: steps/04-admit.d/terms-pack.json)")
     ap.add_argument("--plant", choices=PLANTS, help="seal one wrong decision (tests only)")
     a = ap.parse_args(argv)
     started = finding.now()
@@ -526,12 +503,7 @@ def main(argv):
     pop = load(Path(a.population) / "population.json")
     if pop["population"] == "live":
         return main_live(pop, out, started)
-    try:
-        terms.load(a.terms)
-    except (OSError, ValueError) as e:
-        print(f"04-admit: --terms {a.terms}: {e}", file=sys.stderr)
-        return 2
-    return main_rehearsal(Path(a.population), out, started, Path(a.terms), plant=a.plant)
+    return main_rehearsal(Path(a.population), out, started, plant=a.plant)
 
 
 if __name__ == "__main__":

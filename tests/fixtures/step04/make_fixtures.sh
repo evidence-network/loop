@@ -3,7 +3,7 @@
 #
 # rehearsal/: Alice and Bob node TEST keys (Ed25519, PKCS#8 and SPKI PEM),
 #   population.json in the agreed shape, and step04/ copied from
-#   population/rehearsal/step04 (the offers and the adjusted pack).
+#   population/rehearsal/step04 (the admission decisions).
 # live/: two lab-shaped capsules plugin data dirs, under nodes/<name>/data, that
 #   population.json names through $LAB_DIR (the tests set it to this directory):
 #   lab-a's ledger holds two records with no admission decision and a GO and a NO
