@@ -16,13 +16,15 @@ writes nightly with `scripts/scrub_reports.py`.
 - `reporter.json`: the reporter's mesh node id and its capsules plugin key
   (Ed25519 public key, 64 hex), and `retry_after_s`: when a run asks a node
   that gave no answer again, in seconds after the run starts (now 3600, 10800,
-  21600: three more attempts over six hours; empty or absent, one attempt). **Placeholder until the reporter node exists:**
-  all zeros, and `daily_report.py run` refuses to run with it. Fill it on the
-  reporter node with `scripts/reporter_key.py --write reporter/reporter.json`
-  and open a pull request.
+  21600: three more attempts over six hours; empty or absent, one attempt). **It holds the lab's reporter node (lab-3).** A reporter
+  node set up anew starts from all zeros, which `daily_report.py run` refuses
+  to run with; fill it on that node with
+  `scripts/reporter_key.py --write reporter/reporter.json` and open a pull
+  request.
 - `systemd/`: the timer that runs `scripts/run_daily.sh` once a day on the
-  reporter node, and one that runs `scripts/ask_again.sh` after it. Not
-  installed anywhere yet. Beside them, `loop-reporter-rehearsal.*`, the
+  reporter node, and one that runs `scripts/ask_again.sh` after it. Install
+  them as [Going live](#going-live) step 6 says (the lab's reporter node runs
+  both). Beside them, `loop-reporter-rehearsal.*`, the
   10-minute rehearsal (see [The rehearsal](#the-rehearsal)), and
   `reporter-env.conf`, a drop-in that gives the daily units the same optional
   settings file (see [The reporter's own node](#the-reporters-own-node)).
@@ -358,7 +360,8 @@ node from `~/loop` (on `main`), with `~/loop-data` beside it, in this order.
    ```
 
 6. Install the daily units, with the drop-ins that give them the settings
-   file (the second console), and enable the daily run. The rehearsal step
+   file (the second console; `reporter/systemd/reporter-env.conf`, copied as
+   `env.conf` into each `.service.d`), and enable the daily run. The rehearsal step
    installed only `loop-reporter-rehearsal.*`; without the copy, `enable`
    fails with `Unit loop-reporter.timer not found`:
 
