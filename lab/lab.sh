@@ -295,7 +295,12 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     printf ' < /dev/null >> %q 2>&1\n' "$(logfile "$name")"
   )
   local config
-  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN")
+  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
+  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
+  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
+    printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
+    printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
+    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n')
   if [ "$DRY" = 1 ]; then
     echo "  > $home/config.toml:"; sed 's/^/    /' <<< "$config"
     echo "  > $launcher:"; sed 's/^/    /' <<< "$body"

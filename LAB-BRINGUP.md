@@ -42,6 +42,8 @@ export LAB_DIR=$HOME/loop-lab          # any empty directory you own
 | `$LAB_DIR/build.json` | what `check` confirmed about the build, and each `tools` setup's exit code |
 | `$LAB_DIR/out/loop-lab-<date>.tgz` | the tarball you bring back |
 
+`config.toml` also grants the capsules plugin the admission hook (`[plugin.openai_exchange_grant]`, `admission = true`, at `backend_selected`), which is what makes the routing node seal an `admission_decision` record for step 04. `start` writes it, so a lab started before this needs `stop` and then `start`.
+
 Ports: `LAB_PORT_BASE` (default 9800) gives each node an API port
 (base+1..3), a console (base+11..13) and a QUIC port (base+21..23):
 
