@@ -141,6 +141,30 @@ class BookBackendTest(Tmp):
         self.assertTrue(any("history_card: the carrier log has 2 sends" in f for f in self.carrier_log(edit)))
 
     @needs_capsulectl
+    def test_a_withholding_refusal_of_a_stranger_safe_subject_is_a_fail(self):
+        # The fixture's refusal is not_authorized (NOT_CHECKED); the same bundle with a withholding reason in its
+        # disclosed header, judged with the verdict the unedited bundle got, breaches the policy.
+        out = self.fixture("stranger-safe-refused")
+        d = out / "bob" / "asks" / "alice" / "history_card"
+        bundle_path = d / "outcome.bundle.json"
+        verdict, errs = step.verify_bundle(bundle_path, CAPSULECTL)
+        self.assertEqual(errs, [])
+        bundle = json.loads(bundle_path.read_text())
+        st = step.disclosed(bundle, bundle["root"])["statement"]
+        self.assertEqual(st["reason"], "not_authorized")
+        st["reason"] = "no_such_subject"
+        bundle_path.write_text(json.dumps(bundle))
+        adv, _ = step.advertisement(out / "alice" / "advertised")
+        events = [json.loads(x) for x in (d.parent / "carrier.jsonl").read_text().splitlines()]
+        events = [e for e in events if e["ask"] == "history_card"]
+        verifier = step.Verifier(Path(self.tmp.name) / "w2", CAPSULECTL)
+        not_checked = []
+        errs, answered = step.judge_ask(d, adv, BOB, events, verdict, verifier, not_checked)
+        self.assertTrue(any("is refused (no_such_subject), but the advertised policy lists it as stranger-safe" in e
+                            for e in errs), errs)
+        self.assertEqual(not_checked, [])
+
+    @needs_capsulectl
     def test_an_answer_delivered_in_time_but_recorded_absent_is_a_fail(self):
         out = self.fixture("good")
         log = out / "bob" / "asks" / "alice" / "carrier.jsonl"
@@ -215,8 +239,10 @@ class PolicyTest(unittest.TestCase):
             self.assertEqual(step.refusal_verdict(reason), "fail")
         for reason in ("policy_declined", "not_authorized"):
             self.assertEqual(step.refusal_verdict(reason), "not_checked")
-        for reason in ("coverage_unsatisfiable", "retention_expired", "request_expired", None):
+        for reason in ("coverage_unsatisfiable", "deadline_unmet", "request_malformed", "retention_expired"):
             self.assertEqual(step.refusal_verdict(reason), "ok")
+        for reason in ("request_expired", "made_up", None):  # not in the spec: a breach
+            self.assertEqual(step.refusal_verdict(reason), "fail")
 
     def test_what_the_advertised_policy_answers(self):
         hc = {"subject": {"checkpoints": None}, "derivation": "history_card/1"}
@@ -347,6 +373,17 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, announced="3" * 64)
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("refusal is signed under a key that is not the listed key", r["detail"])
+
+    def test_a_refusal_of_a_question_the_node_does_not_list_is_still_checked_for_its_key(self):
+        pop = Path(self.tmp.name) / "p"
+        pop.mkdir()
+        (pop / "population.json").write_text("{}")
+        line = "refusal reason=policy_declined key=" + "3" * 64 + " listed_key=differs"
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        fail, _ = step.judge_live_line("history_card", line, entry)
+        self.assertIn("not the listed key", fail)
+        ok = line.replace("differs", "match")
+        self.assertEqual(step.judge_live_line("history_card", ok, entry), (None, None))
 
     def test_the_deadline_runs_from_the_request_not_from_the_key_lookup(self):
         # A slow key lookup (GET) is not part of the answer time: only the POST's send time starts it.

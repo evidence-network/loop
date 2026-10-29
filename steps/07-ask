@@ -236,18 +236,22 @@ def policy_answers(request, adv, requester_authenticated=True):
 # Why a node refuses, against what its advertised policy answers (Mesh-LLM/capsules-plugin#112, #114): only
 # these two reasons withhold an answer the policy promises; policy_declined and not_authorized also cover limits
 # no policy promises past (a full stranger pool, an oversized answer, a full replay cache), so a refusal under
-# them cannot be judged; every other reason blames the request.
+# them cannot be judged.
+# Anything else, a reason the spec does not name included, is a breach (vectors/aac-evidence-request in
+# capsules-plugin). no_such_subject and derivation_unsupported withhold; the reasons below blame the request.
 WITHHOLDING_REASONS = ("no_such_subject", "derivation_unsupported")
+REQUEST_REASONS = ("coverage_unsatisfiable", "deadline_unmet", "request_malformed", "retention_expired")
 AMBIGUOUS_REASONS = ("policy_declined", "not_authorized")
 REFUSAL_ISSUE = "Mesh-LLM/capsules-plugin#114"
 
 
 def refusal_verdict(reason):
-    """"fail" if a refusal for `reason` of a subject the policy answers breaches the policy, "not_checked" if the
-    reason is one an honest node also sends, else "ok"."""
-    if reason in WITHHOLDING_REASONS:
-        return "fail"
-    return "not_checked" if reason in AMBIGUOUS_REASONS else "ok"
+    """"fail" if a refusal for `reason` of a subject the policy answers breaches the policy (a withholding reason, or
+    one the spec does not name), "not_checked" if the reason is one an honest node also sends, "ok" if it blames
+    the request."""
+    if reason in REQUEST_REASONS:
+        return "ok"
+    return "not_checked" if reason in AMBIGUOUS_REASONS else "fail"
 
 
 def refusal_not_checked(what, reason):
@@ -678,7 +682,7 @@ def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
 
     def http(method, *args):
         if method == "POST":
-            posted.append(daily_report.utc_now())
+            posted.append(dt.datetime.now(dt.timezone.utc))
         return real(method, *args)
 
     daily_report.http = http
@@ -693,10 +697,12 @@ def judge_live_line(stem, line, entry):
     reason (refusal_verdict), as the book backend judges it."""
     qname = daily_report.QUESTION_NAMES[stem]
     safe = entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
-    if line.split(" ", 1)[0] != "refusal" or qname not in safe:
+    if line.split(" ", 1)[0] != "refusal":
         return step12.judge_reporter_line(stem, line, entry)
     if "listed_key=match" not in line.split():  # a refusal is signed too: under the listed key, like an artifact
         return f"the {qname} refusal is signed under a key that is not the listed key: {line}", None
+    if qname not in safe:
+        return None, None
     reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
     verdict = refusal_verdict(reason)
     if verdict == "fail":
@@ -743,7 +749,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             back = now()
             attempt = layout.attempts(node_dir)[-1]
             sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
-            sent_at = sent.replace(microsecond=0) if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc, microsecond=0)
+            sent_at = sent if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc)
             late = adv is not None and back > sent_at + adv["within"]
             timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
                       "answers_within": adv["answers_within"] if adv else None,
