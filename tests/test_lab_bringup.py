@@ -162,6 +162,32 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
                       "LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 ", r.stdout)
 
+    def test_no_node_pushes_unless_named(self):
+        self.assertNotIn("CAPSULES_SHARE_RECORD_AT_COMPLETION", self.out)
+
+    def test_share_at_completion_reaches_only_the_named_nodes(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_SHARE_AT_COMPLETION": "lab-1 lab-2"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        launches = {n: l for l in r.stdout.splitlines() if " serve --config " in l
+                    for n in ("lab-1", "lab-2", "lab-3") if f"HOME={self.lab}/nodes/{n} " in l}
+        self.assertEqual(sorted(launches), ["lab-1", "lab-2", "lab-3"])
+        for n, line in launches.items():
+            self.assertEqual("CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in line, n != "lab-3", n)
+
+    def test_share_at_completion_refuses_an_unknown_node(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_SHARE_AT_COMPLETION": "lab-1 lab-9"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("names lab-9, not a lab node", r.stderr)
+
+    def test_deal_runs_step_05_on_the_live_population_into_the_days_findings(self):
+        r = lab_sh("--dry-run", "deal", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/05-deal --population "
+                                   rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/05-deal\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertNotIn("/v1/chat/completions", r.stdout)
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
 
 class LabRoot(unittest.TestCase):
     """A copy of lab/ and scripts/ in a scratch root with its own versions.lock and steps/,
