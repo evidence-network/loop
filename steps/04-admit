@@ -502,7 +502,8 @@ def main_live(pop, out, started):
                              f"as written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
     else:
         gap = {"what": "an admission decision on a lab node",
-               "why": "no ledger record carries one yet; no exchange with a peer has been admitted or refused",
+               "why": "no ledger record carries one: the host config grants the plugin no admission hook "
+                  "(lab/lab.sh writes the grant), or no peer exchange has run since it did",
                "issue": "evidence-network/loop: the live lab run, which fills population/live"}
         finding.write(out, result="NOT_CHECKED", proof=proof, not_checked=not_checked + ([] if decided else [gap]),
                       detail=f"{summary}. Not checked: "

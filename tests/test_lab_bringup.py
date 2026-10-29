@@ -148,6 +148,13 @@ class DryRunTest(unittest.TestCase):
         self.assertTrue(all(i >= 0 for i, _ in at), at)
         self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
 
+    def test_every_node_grants_the_plugin_its_admission_hook(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.count("[plugin.openai_exchange_grant]"), 3)
+        self.assertEqual(r.stdout.count("admission = true"), 3)
+        self.assertEqual(r.stdout.count('phases = ["backend_selected"]'), 3)
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)
