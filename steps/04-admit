@@ -79,7 +79,7 @@ ASSERTS = ("the buyer's admission checks the offer against its Terms Pack and re
            "the buyer's book before the deal record that cites it; no deal record cites a NO")
 PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PINNED = ["capsules", "mesh-llm"]
-ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, sealed in the "
+ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the "
                 "node's own ledger, naming its source and the operator policy it read by digest")
 PLANTS = ("go-over-bound", "ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no",
           "digest-mismatch")
@@ -380,10 +380,9 @@ LIVE_NOT_CHECKED = [
              "with each decision",
      "why": "the pinned plugin seals the verdict, its source and the operator policy it read, and no rows",
      "issue": "Mesh-LLM/capsules-plugin#116"},
-    {"what": "each record's signature, and that each decision precedes the exchange record it admits",
-     "why": "the step reads the node's ledger lines as written; it neither verifies their signatures nor pairs a "
-            "decision with an exchange record",
-     "issue": "evidence-network/loop: the live lab run, which fills population/live"},
+    {"what": "each ledger record's producer signature and capsule_id",
+     "why": "the step reads the node's ledger lines as written and verifies neither",
+     "issue": "action-state-group/agent-action-capsule#431"},
     {"what": "the routing path enforcing the decision when it chooses a candidate",
      "why": "the routing choice cannot yet require a property of a candidate beyond its identity",
      "issue": "Mesh-LLM/mesh-llm#2061"},
@@ -391,6 +390,7 @@ LIVE_NOT_CHECKED = [
 VERDICTS = ("GO", "NO")
 LIVE_GAPS = " ".join([
     finding.outside("the five base-policy rows sealed with each decision", "Mesh-LLM/capsules-plugin#116"),
+    finding.outside("each ledger record's producer signature and capsule_id", "action-state-group/agent-action-capsule#431"),
     finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
 ])
 
