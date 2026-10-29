@@ -20,8 +20,11 @@ A commitment is one signed object saying what a node can be asked and how
 
 Two profiles verify. evidence-commitment/0 staples one card, `history_card`.
 evidence-commitment/1 staples one card per evidence stream (one book's log),
-`history_cards`: a list of {stream, derivation, sha256, bytes}, sorted by
-stream. Each /1 refusal of a card starts with its name, `history_cards.<name>:`
+`history_cards`: a list of {stream, community, derivation, sha256, bytes},
+and optionally checkpoint_key, sorted by stream. `community` is one of
+history_cards.COMMUNITIES; `checkpoint_key` is the SPKI of the stream's
+checkpoint signer (DER, base64url; standard base64 is read too), so a
+verifier can check that card's signature. Each /1 refusal of a card starts with its name, `history_cards.<name>:`
 (the CARD_* constants below), so a reader can tell them apart.
 
 COUNT RULE. A commitment says what a node can answer, never what it has done.
@@ -85,7 +88,8 @@ OPTIONAL = {"controller_binding": {"digest": str}}
 # /1: the one history_card becomes history_cards; every other member is /0's.
 SCHEMA_1 = {("history_cards" if k == "history_card" else k): (list if k == "history_card" else v)
             for k, v in SCHEMA.items()}
-CARD_MEMBERS = {"stream": str, "derivation": str, "sha256": str, "bytes": str}
+CARD_MEMBERS = {"stream": str, "community": str, "derivation": str, "sha256": str, "bytes": str}
+CARD_OPTIONAL = {"checkpoint_key": str}
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
 
 # The named refusals of a /1 card.
@@ -99,6 +103,8 @@ CARD_NOT_SUBJECT = "history_cards.not_its_subject"
 CARD_ARTIFACT = "history_cards.artifact_digest"
 CARD_STREAM = "history_cards.stream_mismatch"
 CARD_DUPLICATE = "history_cards.duplicate_stream"
+CARD_COMMUNITY = "history_cards.unknown_community"
+CARD_CHECKPOINT_KEY = "history_cards.checkpoint_key"
 COUNT_WORDS = {"count", "counts", "total", "totals", "tally", "num", "number", "quantity", "size", "n", "nb"}
 DIGITS = re.compile(r"^\d+$")
 
@@ -226,6 +232,18 @@ def schema_of(doc):
     return SCHEMA_1 if doc.get("profile") == PROFILE_1 else SCHEMA
 
 
+def card_checkpoint_key(card):
+    """The raw 32-byte checkpoint key (hex) a /1 entry names, or None (absent or not an Ed25519 SPKI)."""
+    text = card.get("checkpoint_key")
+    if not isinstance(text, str) or not re.match(r"^[A-Za-z0-9_+/-]+=*$", text):
+        return None
+    try:
+        der = unb64url(text.replace("+", "-").replace("/", "_").rstrip("="))
+    except ValueError:
+        return None
+    return key_id_of(der) if len(der) == 44 and der.startswith(ED25519_SPKI) else None
+
+
 def card_field_errors(cards):
     """The shape of /1's history_cards: a non-empty list of {stream, derivation, sha256, bytes}, sorted."""
     if not cards:
@@ -237,9 +255,10 @@ def card_field_errors(cards):
             errs.append(f"{CARD_SHAPE}: {name} must be an object")
             continue
         errs += [f"{CARD_SHAPE}: missing {name}.{m}" for m in CARD_MEMBERS if m not in c]
-        errs += [f"{CARD_SHAPE}: {name}.{m} must be a str" for m in CARD_MEMBERS
+        errs += [f"{CARD_SHAPE}: {name}.{m} must be a str" for m in {**CARD_MEMBERS, **CARD_OPTIONAL}
                  if m in c and not isinstance(c[m], str)]
-        errs += [f"{CARD_SHAPE}: unknown field {name}.{x}" for x in sorted(set(c) - set(CARD_MEMBERS))]
+        errs += [f"{CARD_SHAPE}: unknown field {name}.{x}"
+                 for x in sorted(set(c) - set(CARD_MEMBERS) - set(CARD_OPTIONAL))]
         if errs:
             continue
         if not c["stream"].strip():
@@ -248,6 +267,11 @@ def card_field_errors(cards):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
         if c["derivation"] != "history_card/1":
             errs.append(f"{CARD_DERIVATION}: {name}.derivation must be history_card/1")
+        if c["community"] not in hc.COMMUNITIES:
+            errs.append(f"{CARD_COMMUNITY}: {name}.community {c['community']!r} is not one of "
+                        f"{', '.join(hc.COMMUNITIES)}")
+        if "checkpoint_key" in c and card_checkpoint_key(c) is None:
+            errs.append(f"{CARD_CHECKPOINT_KEY}: {name}.checkpoint_key is not an Ed25519 SubjectPublicKeyInfo")
     if not errs:
         streams = [c["stream"] for c in cards]
         if streams != sorted(streams):

@@ -20,7 +20,7 @@
     },
     {
       "state": "unbound",
-      "what": "the controller binding 645854fbf334a89eaedc285018f582dd22b2ed3b2dd476d244569172d63e5165 is signed by both keys, but no released verifier checks controller-binding/0, so a verifier holds the key unbound"
+      "what": "the controller binding 5e00b603d9dcacd7a537ec2c60d8cdfb7d6dbbc8e8efe7b0543e4b42431f46c4 is signed by both keys, but no released verifier checks controller-binding/0, so a verifier holds the key unbound"
     },
     {
       "state": "unshared",

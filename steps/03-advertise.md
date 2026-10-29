@@ -97,6 +97,8 @@ is replaced by:
 |---|---|---|
 | `history_cards` | list, at least one entry, sorted by `stream` | one stapled card per evidence stream |
 | `history_cards[].stream` | string | the log id of the book the card covers |
+| `history_cards[].community` | string | the community the stream belongs to: `mesh-llm` or `muse` (a closed list); `join.sh` writes `mesh-llm` |
+| `history_cards[].checkpoint_key` | base64url, optional | the SPKI (DER) of that stream's checkpoint signer; with it, a verifier can check the card's signature |
 | `history_cards[].derivation` | string | `history_card/1` |
 | `history_cards[].bytes` | base64 | the card's `evidence-interop/0` answer, whole, as `history_card.bytes` in /0 |
 | `history_cards[].sha256` | 64 hex | sha256 of those bytes |
@@ -104,16 +106,28 @@ is replaced by:
 Each card is checked as the /0 staple is (bytes against digest, the
 `evidence-interop/0` answer format, derivation `history_card/1`, presented by
 the commitment's own subject), and also: its `stream` is the card's own log
-id (the `evidence_stream` its result names), and no stream is stapled twice.
-Each refusal of a card is named, for example `history_cards.duplicate_stream`,
-`history_cards.bytes_mismatch` or `history_cards.stream_mismatch`.
+id (the `evidence_stream` its result names), no stream is stapled twice, its
+community is on the list, and a `checkpoint_key`, where present, is an Ed25519
+SPKI. Each refusal of a card is named, for example
+`history_cards.duplicate_stream`, `history_cards.bytes_mismatch`,
+`history_cards.stream_mismatch` or `history_cards.unknown_community`. Step 12
+verifies the signature of each card whose entry names a `checkpoint_key`; a
+card without one is listed as not checked.
 
 The witnesses a card carries are not a field of the commitment: a reader takes
 them from the receipts in the decoded card, and a card with none is
 unwitnessed. A reader treats a /0 commitment's `history_card` as a list of one,
-whose stream is the card's own log id. `scripts/history_cards.py` reads both
-profiles this way: `history_cards(doc)` returns `[{stream, derivation, sha256,
-witnesses}]`.
+whose stream is the card's own log id, in the `mesh-llm` community.
+`scripts/history_cards.py` reads both profiles this way: `history_cards(doc)`
+returns `[{stream, community, derivation, sha256, witnesses, stream_started,
+has_history}]`. `stream_started` is the date of the stream's first checkpoint;
+`has_history` is false when the stream's checkpoints cover no record yet.
+
+A node that clears a book's history starts a new stream, under a new log id,
+and staples that stream's card. A cleared stream and one never started read
+the same (`has_history: false`); nothing marks a clear. Rewriting or
+truncating the old log is not a clear: it fails the card's consistency check
+as before.
 
 `join.sh` writes /1, one card per book the node serves. The rehearsal
 harness of this step still signs /0 for its test nodes; a published /1

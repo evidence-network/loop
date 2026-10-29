@@ -24,3 +24,5 @@ jobs:
           grep -q '"result": "PASS"' "$RUNNER_TEMP/findings/03-advertise/finding.json"
       - name: Check the published commitments
         run: python3 -B scripts/check_commitment.py nodes/commitments
+      - name: Check the binding verdicts
+        run: python3 -B scripts/check_binding.py bindings

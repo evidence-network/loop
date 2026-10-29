@@ -37,7 +37,9 @@
 # The books the node serves are found with the CLI: every profile that
 # `capsulectl profile list` names under --home's config (XDG_CONFIG_HOME=
 # HOME/config), except the stranger's, whose trusted keys include the node
-# key; `capsulectl profile show` gives its log id, the card's stream. The
+# key; `capsulectl profile show` gives its log id, the card's stream, and
+# its checkpoint key, which the card's entry names (checkpoint_key). Every
+# card is in the mesh-llm community. The
 # join's own book is always one. To serve another book, create its profile
 # under the same --home, signed by the node key, with a checkpoint, before
 # running join.sh.
@@ -60,7 +62,7 @@ while [ $# -gt 0 ]; do
     --answers-within) answers_within="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --home) home="$2"; shift 2 ;;
-    -h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "join.sh: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -220,7 +222,7 @@ ask() { # NAME REQUEST_JSON [PROFILE BOOK]: the stranger asks; the node answers 
 card_request='{"subject":{"checkpoints":null},"derivation":"history_card/1","coverage":{"min_freshness":1}}'
 ask checkpoints '{"subject":{"checkpoints":null},"coverage":{"min_freshness":1}}'
 ask history_card "$card_request"
-# The books this node serves (see the header): one line "PROFILE<TAB>LOG_ID" each, into books.tsv.
+# The books this node serves (see the header): "PROFILE<TAB>LOG_ID<TAB>CHECKPOINT_KEY" each, into books.tsv.
 : >"$home/books.tsv"
 for p in $(cap profile list | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["profiles"]))'); do
   [ "$p" != "$name-stranger" ] || continue
@@ -229,13 +231,16 @@ import json, re, sys
 p, node = sys.argv[1:]
 d = json.load(sys.stdin)
 log_id = d.get("LogID") or ""
+checkpoint = ((d.get("Checkpoint") or {}).get("TrustedKeys") or [""])[0]
 if node in (d.get("TrustedKeys") or []):
     if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", log_id):
         sys.exit("join.sh: book profile %s has log id %r, not a plain name" % (p, log_id))
-    print("%s\t%s" % (p, log_id))' "$p" "$node_pub" >>"$home/books.tsv"
+    if not re.match(r"^[0-9a-f]{64}$", checkpoint):
+        sys.exit("join.sh: book profile %s names no Ed25519 checkpoint key" % p)
+    print("%s\t%s\t%s" % (p, log_id, checkpoint))' "$p" "$node_pub" >>"$home/books.tsv"
 done
-grep -q "^$name	$book_id\$" "$home/books.tsv" || { echo "join.sh: the join's own book $book_id is not among the books found" >&2; exit 1; }
-while IFS=$'\t' read -r -u 3 p stream; do
+grep -q "^$name	$book_id	" "$home/books.tsv" || { echo "join.sh: the join's own book $book_id is not among the books found" >&2; exit 1; }
+while IFS=$'\t' read -r -u 3 p stream _; do
   [ "$p" != "$name" ] || continue
   ask "cards/$stream" "$card_request" "$p" "$stream"
 done 3<"$home/books.tsv"
@@ -265,13 +270,14 @@ attestation = (json.dumps({"book_id": book_id, "checkpoint_key": checkpoint_key,
                            "statement": book["checkpoint_statement"]}, indent=2, sort_keys=True) + "\n").encode()
 cards = []
 for line in open(books).read().splitlines():
-    _, stream = line.split("\t")
+    _, stream, checkpoint = line.split("\t")
     staple = open(f"{out}/probe/" + ("history_card" if stream == book_id else f"cards/{stream}") + ".answer.json",
                   "rb").read()
     if "artifact" not in json.loads(staple):
         sys.exit(f"join.sh: book {stream} did not answer history_card/1 with a card (does it have a checkpoint?)")
-    cards.append({"stream": stream, "derivation": "history_card/1", "sha256": hashlib.sha256(staple).hexdigest(),
-                  "bytes": b64(staple)})
+    cards.append({"stream": stream, "community": "mesh-llm", "derivation": "history_card/1",
+                  "sha256": hashlib.sha256(staple).hexdigest(), "bytes": b64(staple),
+                  "checkpoint_key": cc.b64url(cc.ED25519_SPKI + bytes.fromhex(checkpoint))})
 commitment = cc.sign({
     "profile": cc.PROFILE_1,
     "node_id": node,

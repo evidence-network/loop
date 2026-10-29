@@ -1,0 +1,2 @@
+# versions.lock for these fixtures only: it pins a fake binding verifier.
+binding-verifier-fixture evidence-network/binding-verifier-fixture f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1

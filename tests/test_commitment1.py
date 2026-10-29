@@ -1,7 +1,9 @@
 """evidence-commitment/1: one stapled history card per book; /0 still reads, as one card.
 
-Fixtures: tests/fixtures/commitment1/two-books/ (made by its make_fixtures.py with join.sh and
-the pinned capsulectl), signed by alice's TEST key from tests/fixtures/step12/population.
+Also: communities, a cleared history read as a fresh stream, and binding verdicts (bound groups).
+Fixtures: tests/fixtures/commitment1/ (two-books/, cleared/, bound/, revoked/; made by its
+make_fixtures.py with join.sh and the pinned capsulectl), signed by TEST keys from
+tests/fixtures/step12/population.
 Run: python3 -B -m unittest tests.test_commitment1 -v
 """
 import base64
@@ -21,11 +23,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "tests" / "fixtures" / "commitment1"
 TWO = FIX / "two-books"
+CLEARED = FIX / "cleared"
 KEY = ROOT / "tests" / "fixtures" / "step12" / "population" / "keys" / "alice" / "node-key.pem"
 ZERO = sorted((ROOT / "lab" / "runs" / "2026-10-28" / "join").glob("*/commitment.json")) + \
     [ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice" / "commitment.json"]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "steps"))
+import check_binding as cb  # noqa: E402
 import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 import history_cards as hc  # noqa: E402
@@ -66,10 +70,10 @@ def answer(stream, responder, receipts=None):
             "subject": {"checkpoints": None}, "sig": "unverified"}
 
 
-def entry(stream, card):
+def entry(stream, card, community="mesh-llm"):
     raw = json.dumps(card).encode()
-    return {"stream": stream, "derivation": "history_card/1", "sha256": hashlib.sha256(raw).hexdigest(),
-            "bytes": base64.b64encode(raw).decode()}
+    return {"stream": stream, "community": community, "derivation": "history_card/1",
+            "sha256": hashlib.sha256(raw).hexdigest(), "bytes": base64.b64encode(raw).decode()}
 
 
 class TwoBooks(unittest.TestCase):
@@ -162,6 +166,34 @@ class CheckerTest(TwoBooks):
             with self.subTest(code=code):
                 self.assertRefused(self.resigned(change), code)
 
+    def test_an_unknown_community_is_refused_by_name(self):
+        for community in ("other", "Mesh-LLM", ""):
+            with self.subTest(community=community):
+                errs = self.assertRefused(
+                    self.resigned(lambda d: d["history_cards"][1].__setitem__("community", community)),
+                    cc.CARD_COMMUNITY)
+                self.assertEqual(len(errs), 1, errs)
+        errs, _ = self.verify(self.resigned(lambda d: d["history_cards"][1].pop("community")))
+        self.assertIn(f"{cc.CARD_SHAPE}: missing history_cards[1].community", errs)
+
+    def test_both_communities_are_accepted(self):
+        for community in hc.COMMUNITIES:
+            with self.subTest(community=community):
+                doc = self.resigned(lambda d: [c.__setitem__("community", community) for c in d["history_cards"]])
+                self.assertEqual(self.verify(doc), ([], []))
+
+    def test_the_checkpoint_key_is_optional_and_must_be_an_ed25519_spki(self):
+        self.assertTrue(all("checkpoint_key" in c for c in self.doc["history_cards"]))
+        self.assertEqual(self.verify(self.resigned(lambda d: d["history_cards"][1].pop("checkpoint_key"))), ([], []))
+        for bad in ("not-a-key", cc.b64url(b"\x00" * 44), self.doc["spki"][:-4]):
+            with self.subTest(bad=bad):
+                self.assertRefused(self.resigned(lambda d: d["history_cards"][1].__setitem__("checkpoint_key", bad)),
+                                   cc.CARD_CHECKPOINT_KEY)
+        # The commitment's own spki encoding (standard base64) reads as the same key.
+        key = self.doc["history_cards"][1]["checkpoint_key"]
+        std = base64.b64encode(cc.unb64url(key)).decode()
+        self.assertEqual(cc.card_checkpoint_key({"checkpoint_key": std}), cc.card_checkpoint_key({"checkpoint_key": key}))
+
     def test_answers_derivations_must_include_history_card(self):
         errs, _ = self.verify(self.resigned(lambda d: d["answers"].__setitem__("derivations", ["checkpoints"])))
         self.assertIn("answers.derivations must include history_card/1, the derivation stapled", errs)
@@ -197,9 +229,13 @@ class ZeroStillReads(unittest.TestCase):
                 self.assertEqual(doc["profile"], "evidence-commitment/0")
                 self.assertEqual(cc.verify(doc, cc.file_fetcher(path.parent)), ([], []))
                 book = json.loads((path.parent / "book.json").read_text())["book_id"]
-                self.assertEqual(hc.history_cards(doc), [{"stream": book, "derivation": "history_card/1",
-                                                          "sha256": doc["history_card"]["sha256"],
-                                                          "witnesses": []}])
+                cards = hc.history_cards(doc)
+                self.assertEqual(len(cards), 1)
+                self.assertEqual({k: cards[0][k] for k in ("stream", "community", "derivation", "sha256",
+                                                           "witnesses", "has_history")},
+                                 {"stream": book, "community": "mesh-llm", "derivation": "history_card/1",
+                                  "sha256": doc["history_card"]["sha256"], "witnesses": [], "has_history": True})
+                self.assertRegex(cards[0]["stream_started"], r"^2026-10-2[78]$")
 
 
 class HelperTest(unittest.TestCase):
@@ -208,7 +244,9 @@ class HelperTest(unittest.TestCase):
     def test_the_two_book_fixture_reads_two_unwitnessed_cards(self):
         doc = json.loads((TWO / "commitment.json").read_text())
         cards = hc.history_cards(doc)
-        self.assertEqual([(c["stream"], c["witnesses"]) for c in cards], [("alice-book", []), ("alice-ledger", [])])
+        self.assertEqual([(c["stream"], c["community"], c["witnesses"], c["has_history"]) for c in cards],
+                         [("alice-book", "mesh-llm", [], True), ("alice-ledger", "mesh-llm", [], True)])
+        self.assertTrue(all(c["stream_started"] for c in cards))
         self.assertEqual([c["sha256"] for c in cards], [c["sha256"] for c in doc["history_cards"]])
 
     def test_witnesses_are_read_from_the_receipts(self):
@@ -224,15 +262,19 @@ class HelperTest(unittest.TestCase):
         doc = {"profile": "evidence-commitment/0",
                "history_card": {"derivation": "history_card/1", "sha256": hashlib.sha256(raw).hexdigest(),
                                 "bytes": base64.b64encode(raw).decode()}}
-        self.assertEqual(hc.history_cards(doc), [{"stream": "s-a", "derivation": "history_card/1",
+        self.assertEqual(hc.history_cards(doc), [{"stream": "s-a", "community": "mesh-llm",
+                                                  "derivation": "history_card/1",
                                                   "sha256": hashlib.sha256(raw).hexdigest(),
-                                                  "witnesses": ["w-one"]}])
+                                                  "witnesses": ["w-one"], "stream_started": None,
+                                                  "has_history": False}])
 
     def test_undecodable_cards_read_without_stream_or_witnesses(self):
         doc = {"profile": "evidence-commitment/0", "history_card": {"derivation": "history_card/1",
                                                                     "sha256": "x", "bytes": "!!"}}
         self.assertEqual(hc.history_cards(doc)[0]["stream"], None)
         self.assertEqual(hc.history_cards(doc)[0]["witnesses"], [])
+        self.assertEqual(hc.history_cards(doc)[0]["stream_started"], None)
+        self.assertFalse(hc.history_cards(doc)[0]["has_history"])
         self.assertEqual(hc.history_cards({}), [])
 
 
@@ -263,9 +305,40 @@ class Step12Staple(unittest.TestCase):
         self.assertEqual(self.step.check_staple(d, self.step.advertised(d)),
                          ["the stapled card for stream alice-ledger is not the answer the stranger kept for that book"])
 
-    @needs_capsulectl
-    def test_step12_judges_the_two_book_join_and_names_the_second_cards_gap(self):
+    def resign(self, d, change):
+        doc = json.loads((d / "commitment.json").read_text())
+        change(doc)
+        (d / "commitment.json").write_text(json.dumps(cc.sign(doc, KEY), indent=2, sort_keys=True) + "\n")
+
+    def test_an_own_book_entry_naming_another_checkpoint_key_is_a_failure(self):
         d = self.node(TWO)
+        self.resign(d, lambda doc: doc["history_cards"][0].__setitem__(
+            "checkpoint_key", doc["history_cards"][1]["checkpoint_key"]))
+        self.assertEqual(self.step.check_staple(d, self.step.advertised(d)),
+                         ["the card entry for alice-book names a checkpoint key other than the book's checkpoint's"])
+
+    @needs_capsulectl
+    def test_step12_verifies_the_second_card_under_the_key_its_entry_names(self):
+        d = self.node(TWO)
+        errs, not_checked, proof = self.step.judge(d, self.step.tools(), self.tmp / "verify")
+        self.assertEqual((errs, not_checked), ([], []))
+        self.assertIn("probe/cards/alice-ledger.verified.json", proof)
+        verified = json.loads((d / "probe" / "cards" / "alice-ledger.verified.json").read_text())
+        self.assertEqual((verified["exit"], verified["result"]["outcome"]), (0, "artifact"))
+
+    @needs_capsulectl
+    def test_a_second_card_under_the_wrong_checkpoint_key_is_a_failure(self):
+        d = self.node(TWO)
+        self.resign(d, lambda doc: doc["history_cards"][1].__setitem__(
+            "checkpoint_key", cc.b64url(cc.ED25519_SPKI + bytes.fromhex("ab" * 32))))
+        errs, _, _ = self.step.judge(d, self.step.tools(), self.tmp / "verify")
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("the history_card of alice-ledger answer does not verify", errs[0])
+
+    @needs_capsulectl
+    def test_a_second_card_without_a_checkpoint_key_is_not_checked(self):
+        d = self.node(TWO)
+        self.resign(d, lambda doc: doc["history_cards"][1].pop("checkpoint_key"))
         errs, not_checked, proof = self.step.judge(d, self.step.tools(), self.tmp / "verify")
         self.assertEqual(errs, [])
         self.assertEqual([x["what"] for x in not_checked],
@@ -316,6 +389,123 @@ class Step03ReadsOne(unittest.TestCase):
             self.assertEqual(finding.check(out.parent), [])
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertEqual([c["stream"] for c in node["history_cards"]], ["alice-book", "alice-ledger"])
+
+
+@unittest.skipUnless(OPENSSL, NO_OPENSSL)
+class Cleared(unittest.TestCase):
+    """A clear starts a new stream: the fresh card checks clean and reads as no history, with its start date."""
+
+    def test_the_cleared_fixture_checks_clean_and_reads_no_history(self):
+        doc = json.loads((CLEARED / "commitment.json").read_text())
+        self.assertEqual(cc.verify(doc, cc.file_fetcher(CLEARED)), ([], []))
+        [card] = hc.history_cards(doc)
+        self.assertEqual((card["stream"], card["community"], card["has_history"]), ("alice-book-2", "mesh-llm", False))
+        self.assertRegex(card["stream_started"], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_no_cleared_flag_anywhere(self):
+        for path in [CLEARED / "commitment.json", ROOT / "scripts" / "history_cards.py",
+                     ROOT / "scripts" / "check_commitment.py"]:
+            with self.subTest(path=path.name):
+                text = path.read_text().lower()
+                self.assertNotIn('"cleared"', text)
+                self.assertNotIn("is_cleared", text)
+
+    def test_a_fresh_stream_and_a_cleared_one_read_the_same(self):
+        [cleared] = hc.history_cards(json.loads((CLEARED / "commitment.json").read_text()))
+        self.assertEqual(set(cleared), {"stream", "community", "derivation", "sha256", "witnesses",
+                                        "stream_started", "has_history"})
+
+
+class Bindings(unittest.TestCase):
+    """binding-verdict/0: only a verified verdict from a pinned verifier groups; revoked and not_checked never do."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        [self.verdict_path] = (FIX / "bound" / "bindings").glob("*.json")
+        self.verdict = json.loads(self.verdict_path.read_text())
+        self.lock = FIX / "bound" / "versions.lock"
+
+    def write(self, change, lock=None):
+        """A bindings dir holding the bound verdict, changed; returns (dir, lock)."""
+        d = self.tmp / "bindings"
+        d.mkdir(exist_ok=True)
+        v = copy.deepcopy(self.verdict)
+        change(v)
+        (d / self.verdict_path.name).write_text(json.dumps(v))
+        return d, lock or self.lock
+
+    def errors(self, change, lock=None):
+        d, lock = self.write(change, lock)
+        return cb.check_file(d / self.verdict_path.name, cb.read_lock(lock))[1]
+
+    def test_the_bound_fixture_groups_its_mesh_and_muse_subjects(self):
+        mesh = json.loads((FIX / "bound" / "mesh" / "commitment.json").read_text())
+        muse = json.loads((FIX / "bound" / "muse" / "commitment.json").read_text())
+        self.assertEqual([c["community"] for c in hc.history_cards(mesh)], ["mesh-llm"])
+        self.assertEqual([c["community"] for c in hc.history_cards(muse)], ["muse"])
+        if OPENSSL:
+            for doc, d in ((mesh, "mesh"), (muse, "muse")):
+                self.assertEqual(cc.verify(doc, cc.file_fetcher(FIX / "bound" / d)), ([], []))
+        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", self.lock), [
+            {"controller_key_id": self.verdict["controller_key_id"],
+             "subjects": sorted([mesh["node_id"], muse["node_id"]]), "verifier": self.verdict["verifier"]}])
+
+    def test_the_revoked_fixture_does_not_group(self):
+        [path] = (FIX / "revoked" / "bindings").glob("*.json")
+        self.assertEqual(cb.check_file(path, cb.read_lock(FIX / "revoked" / "versions.lock"))[1], [])
+        self.assertEqual(json.loads(path.read_text())["status"], "revoked")
+        self.assertEqual(hc.bound_groups(FIX / "revoked" / "bindings", FIX / "revoked" / "versions.lock"), [])
+
+    def test_revoked_and_not_checked_never_group_even_from_a_pinned_verifier(self):
+        for status, cites in (("revoked", None), ("not_checked", "action-state-group/agent-action-capsule#432")):
+            with self.subTest(status=status):
+                d, lock = self.write(lambda v: v.update(status=status, cites=cites))
+                self.assertEqual(cb.check_file(d / self.verdict_path.name, cb.read_lock(lock))[1], [])
+                self.assertEqual(hc.bound_groups(d, lock), [])
+
+    def test_verified_with_no_pinned_verifier_is_refused_on_main(self):
+        lock = ROOT / "versions.lock"  # this repository's: it pins no binding verifier today
+        errs = self.errors(lambda v: None, lock)
+        self.assertEqual([e.split(":")[0] for e in errs], [cb.UNPINNED])
+        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", lock), [])
+        r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_binding.py"),
+                            str(FIX / "bound" / "bindings")], capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn(cb.UNPINNED, r.stderr)
+
+    def test_verified_needs_the_exact_pin(self):
+        name, pin = self.verdict["verifier"].split("@")
+        for verifier in (None, f"{name}@{'0' * 40}", f"other@{pin}"):
+            with self.subTest(verifier=verifier):
+                self.assertIn(cb.UNPINNED, " ".join(self.errors(lambda v: v.__setitem__("verifier", verifier))))
+
+    def test_not_checked_cites_its_open_issue(self):
+        errs = self.errors(lambda v: v.update(status="not_checked", verifier=None, cites=None))
+        self.assertEqual([e.split(":")[0] for e in errs], [cb.NO_CITE])
+
+    def test_shape_refusals(self):
+        s1, s2 = self.verdict["subjects"]
+        cases = [lambda v: v.__setitem__("subjects", [s2, s1]), lambda v: v.__setitem__("subjects", [s1]),
+                 lambda v: v.__setitem__("subjects", [s1, s1]), lambda v: v.__setitem__("status", "bound"),
+                 lambda v: v.__setitem__("checked_at", "2026-10-28"), lambda v: v.__setitem__("cites", "issue 432"),
+                 lambda v: v.__setitem__("profile", "binding-verdict/1"), lambda v: v.pop("cites"),
+                 lambda v: v.__setitem__("extra", "x"), lambda v: v.__setitem__("controller_key_id", "AB" * 32)]
+        for i, change in enumerate(cases):
+            with self.subTest(case=i):
+                errs = self.errors(change)
+                self.assertTrue(errs and all(e.startswith((cb.SHAPE, cb.FILE_NAME)) for e in errs), errs)
+
+    def test_the_file_is_named_by_its_controller(self):
+        d, lock = self.write(lambda v: None)
+        moved = d / ("ab" * 32 + ".json")
+        (d / self.verdict_path.name).rename(moved)
+        self.assertEqual([e.split(":")[0] for e in cb.check_file(moved, cb.read_lock(lock))[1]], [cb.FILE_NAME])
+
+    def test_this_repository_has_no_bindings_to_refuse(self):
+        r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_binding.py"), "bindings"],
+                           capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 if __name__ == "__main__":

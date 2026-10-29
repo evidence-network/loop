@@ -7,10 +7,20 @@ Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py
                (alice-book) and a second one made here first (alice-ledger),
                both signed by the node key. commitment.json staples two
                history_card/1 answers, one per stream.
+  cleared/     a node whose mesh-llm card is a fresh stream (alice-book-2:
+               a checkpoint, no record), as after a clear: commitment.json
+               staples that card only, and disclosure-policy.json.
+  bound/       a Mesh subject (alice, mesh/) and a Muse subject (bob, muse/:
+               a fixture-only commitment, community muse), each with its own
+               /1 commitment; bindings/<controller>.json, a `verified`
+               binding-verdict/0 of both by a fake verifier that the
+               fixture's versions.lock pins. They group.
+  revoked/     the same pair, with a `revoked` verdict. They do not group.
 
-The node is alice of step 12's rehearsal population: TEST keys
-(tests/fixtures/step12/population/keys/alice), published on purpose, never
-used by a live node.
+The nodes are alice and bob of step 12's rehearsal population, and the
+controller key is alice's controller key there: TEST keys
+(tests/fixtures/step12/population/keys/), published on purpose, never used
+by a live node. The fake verifier exists only in these fixtures.
 """
 import json
 import os
@@ -22,9 +32,17 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-KEYS = ROOT / "tests/fixtures/step12/population/keys/alice"
+POPULATION = ROOT / "tests/fixtures/step12/population/keys"
+KEYS = POPULATION / "alice"
 NAME = "alice"
 SECOND = "alice-ledger"
+FRESH = "alice-book-2"
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_commitment as cc  # noqa: E402
+
+# A verifier that exists only in these fixtures, pinned only in their versions.lock.
+FAKE_VERIFIER = ("binding-verifier-fixture", "evidence-network/binding-verifier-fixture", "f1" * 20)
+CHECKED_AT = "2026-10-28T00:00:00Z"
 
 
 def capsulectl():
@@ -47,8 +65,9 @@ def public_of(pem):
     return der[-32:].hex()
 
 
-def second_book(home, name):
-    """A book profile `name` under home's config, signed by the node key, with one record and a checkpoint."""
+def second_book(home, name, record=True):
+    """A book profile `name` under home's config, signed by the node key, with a checkpoint over one record
+    (or, with record=False, over none: a fresh stream)."""
     env = dict(os.environ, XDG_CONFIG_HOME=str(home / "config"),
                CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(Path(capsulectl()).parent)))
 
@@ -65,6 +84,9 @@ def second_book(home, name):
         "--signing-key-file", str(d / "node.seed"), "--checkpoint-signing-key-file", str(d / "checkpoint.seed"),
         "--checkpoint-trusted-key", checkpoint_pub)
     cap("store", "init", "--profile", name)
+    if not record:
+        cap("cll", "checkpoint", "create", "--profile", name)
+        return
     (d / "request.json").write_text(json.dumps({
         "spec_version": "capsule-seal-request/v1",
         "capsule": {"ActionID": f"{name}-first", "ActionType": "fyi", "Operator": NAME,
@@ -75,10 +97,11 @@ def second_book(home, name):
     cap("cll", "checkpoint", "create", "--profile", name)
 
 
-def join(out, home):
-    subprocess.run([str(ROOT / "join.sh"), "--name", NAME, "--node-key", str(KEYS / "node-key.pem"),
-                    "--controller-key", str(KEYS / "controller-key.pem"), "--out", str(out), "--home", str(home)],
-                   check=True, env=dict(os.environ, CAPSULECTL=capsulectl()))
+def join(out, home, name=NAME):
+    keys = POPULATION / name
+    subprocess.run([str(ROOT / "join.sh"), "--name", name, "--node-key", str(keys / "node-key.pem"),
+                    "--controller-key", str(keys / "controller-key.pem"), "--out", str(out), "--home", str(home)],
+                   check=True, env=dict(os.environ, CAPSULECTL=capsulectl()), stderr=subprocess.DEVNULL)
 
 
 def make(out, home):
@@ -87,15 +110,63 @@ def make(out, home):
     join(out, home)
 
 
+def write_json(path, doc):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+
+
+def commitment_only(joined, out, change, name=NAME):
+    """joined's commitment, changed and signed again by the node's TEST key, with its policy, into out."""
+    doc = json.loads((joined / "commitment.json").read_text())
+    change(doc)
+    write_json(out / "commitment.json", cc.sign(doc, POPULATION / name / "node-key.pem"))
+    shutil.copy(joined / "disclosure-policy.json", out / "disclosure-policy.json")
+
+
+def make_cleared(out, tmp):
+    """A node that cleared: its mesh-llm card is a fresh stream, with a checkpoint and no record."""
+    home, joined = tmp / "cleared-home", tmp / "cleared-out"
+    second_book(home, FRESH, record=False)
+    join(joined, home)
+    commitment_only(joined, out, lambda d: d.__setitem__(
+        "history_cards", [c for c in d["history_cards"] if c["stream"] == FRESH]))
+
+
+def make_bound(bound, revoked, tmp):
+    """A Mesh subject and a Muse subject under one controller: verified (bound/) and revoked (revoked/)."""
+    join(tmp / "mesh-out", tmp / "mesh-home", "alice")
+    join(tmp / "muse-out", tmp / "muse-home", "bob")
+
+    def muse(d):
+        for c in d["history_cards"]:
+            c["community"] = "muse"
+    lock = ("# versions.lock for these fixtures only: it pins a fake binding verifier.\n"
+            + " ".join(FAKE_VERIFIER) + "\n")
+    controller = subprocess.run(["openssl", "pkey", "-in", str(KEYS / "controller-key.pem"), "-pubout", "-outform",
+                                 "DER"], check=True, capture_output=True).stdout[-32:].hex()
+    for d, status in ((bound, "verified"), (revoked, "revoked")):
+        commitment_only(tmp / "mesh-out", d / "mesh", lambda _: None, "alice")
+        commitment_only(tmp / "muse-out", d / "muse", muse, "bob")
+        subjects = sorted(json.loads((d / x / "commitment.json").read_text())["node_id"] for x in ("mesh", "muse"))
+        write_json(d / "bindings" / f"{controller}.json", {
+            "profile": "binding-verdict/0", "controller_key_id": controller, "subjects": subjects,
+            "status": status, "verifier": f"{FAKE_VERIFIER[0]}@{FAKE_VERIFIER[2]}", "checked_at": CHECKED_AT,
+            "cites": None})
+        (d / "versions.lock").write_text(lock)
+
+
 def main():
     if not Path(capsulectl()).is_file():
         print(f"make_fixtures: no capsulectl at {capsulectl()}; run steps/12-join.setup.sh", file=sys.stderr)
         return 2
+    for d in ("two-books", "cleared", "bound", "revoked"):
+        shutil.rmtree(HERE / d, ignore_errors=True)
     with tempfile.TemporaryDirectory() as tmp:
-        out = HERE / "two-books"
-        shutil.rmtree(out, ignore_errors=True)
-        make(out, Path(tmp) / "home")
-    print("make_fixtures: wrote two-books/", file=sys.stderr)
+        tmp = Path(tmp)
+        make(HERE / "two-books", tmp / "home")
+        make_cleared(HERE / "cleared", tmp)
+        make_bound(HERE / "bound", HERE / "revoked", tmp)
+    print("make_fixtures: wrote two-books/, cleared/, bound/ and revoked/", file=sys.stderr)
     return 0
 
 

@@ -1,0 +1,12 @@
+{
+  "checked_at": "2026-10-28T00:00:00Z",
+  "cites": null,
+  "controller_key_id": "3baf320254b3abce8fe60aeb2191f1a36ed524f23fd8182a7a0222b26c07ff96",
+  "profile": "binding-verdict/0",
+  "status": "verified",
+  "subjects": [
+    "3ec96d967474798400434e1554b8344f0d4a17601be6711a99cdbd7b20d81a0e",
+    "c1063e72f0efa92f87ebbdc7e59036af8d3ffea772bb497535366684adf6312c"
+  ],
+  "verifier": "binding-verifier-fixture@f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1"
+}

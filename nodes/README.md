@@ -54,8 +54,37 @@ its book's log id as `stream`); commitments in the earlier
 as one card. The format is in `steps/03-advertise.md`. A card that carries no
 witness receipt is unwitnessed; today's lab books are.
 
+Each card names its **community**: `mesh-llm` or `muse`. `join.sh` writes
+`mesh-llm`, and a `/0` card reads as `mesh-llm`.
+
+A card's witnesses are read from the witness receipts inside it, each naming
+its witness in a `witness` member (`RECEIPT_WITNESS` in
+`scripts/history_cards.py`). That name is **provisional** until a receipt
+producer exists; no card carries a receipt yet.
+
+**A cleared history is a new stream.** A node that clears a book starts a new
+stream, with a new log id, and staples the new stream's card. It reads like a
+stream that has just started: no history yet, and the date of its first
+checkpoint. Nothing marks it as cleared. Rewriting or truncating the old log
+is not a clear, and still fails the consistency check. Retention commitments
+the node made on the old stream still bind until their `until`.
+
 `scripts/check_commitment.py nodes/commitments` checks them (the
 `commitments` check), and `scripts/history_cards.py` lists the cards of one.
+
+## Controller bindings
+
+A controller binding says that several subjects (nodes, or a node and a
+personal agent) are under one controller. Only a verifier can say a binding
+holds, and none is released yet (Controller Binding v0,
+action-state-group/agent-action-capsule#432), so this repository verifies no
+binding itself. A verifier's verdict would be published as
+`bindings/<controller_key_id>.json` (`binding-verdict/0`; see
+`bindings/README.md`). Nothing produces one today.
+
+Subjects are shown as one only when their verdict is `verified` by a verifier
+that `versions.lock` pins. A `revoked` or `not_checked` verdict never joins
+them. `scripts/check_binding.py bindings` checks the verdicts.
 
 ## Leave
 
