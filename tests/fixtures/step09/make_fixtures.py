@@ -3,12 +3,10 @@
 
 Usage: python3 -B tests/fixtures/step09/make_fixtures.py [CAPSULES_PLUGIN_CLONE]
 
-- live/: population.json naming three nodes (data_dir "$LAB_DIR/nodes/lab-N/data")
+- live/: population.json naming four nodes (data_dir "$LAB_DIR/nodes/lab-N/data")
   and, for each, keys/node-key.pub.pem and the ledger/ files the rehearsal's acted
   adjudication left (steps/09-dispute's act(), on the rehearsal TEST keys): lab-1 is
-  the requester, lab-2 and lab-3 the twins (alice, bob), lab-4 the referee. (The real
-  lab has three nodes, so a live run needs a fourth key or reads the missing node's
-  checks as not run.) No private key is
+  the requester, lab-2 and lab-3 the twins (alice, bob), lab-4 the referee. No private key is
   copied.
 - keys/stranger/: a TEST key that is no node's, for the wrong-key plant. Made once
   with `openssl genpkey -algorithm ed25519`; this script leaves it as it is.

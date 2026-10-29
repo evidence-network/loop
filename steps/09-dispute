@@ -57,7 +57,7 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
 PASS when every check holds for every Result each party holds (and each
 party holds one); FAIL otherwise. outcome.json states, per Result, what it
 rules about the twins (`against:<node id>` of the twin the referee named,
-`corroborated` or `no_finding`); step 04's disputes row reads the plugin's
+`corroborated` or `no_finding`); step 04's disputes row is to read the plugin's
 verdict_counts fold of these same Results, not a role label the loop invents.
 
 On the live population each lab node's data dir is read (steps/live.py),
