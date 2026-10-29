@@ -128,14 +128,16 @@ class VerifierTest(unittest.TestCase):
         del b["half_b_node_id"]
         self.assertFalse(step.is_adjudication(v)["ok"])
 
-    def test_the_outcome_names_the_twin_ruled_against(self):
+    def test_the_outcome_puts_each_twin_in_the_plugins_bucket(self):
         b = self.capsule["model_attestation"]["compute_attestation"]["adjudication"]
-        self.assertEqual(step.outcome(self.capsule), "against:" + b["half_b_node_id"])
+        a_id, b_id = b["half_a_node_id"], b["half_b_node_id"]
+        self.assertEqual(step.outcome(self.capsule), {a_id: "corroborated", b_id: "contradicted"})
         v = json.loads(json.dumps(self.capsule))
-        v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = "corroborated"
-        self.assertEqual(step.outcome(v), "corroborated")
+        for ruling in ("corroborated", "inconclusive", "not_comparable"):
+            v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = ruling
+            self.assertEqual(step.outcome(v), {a_id: ruling, b_id: ruling})
         v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = "contradicted:" + "9" * 64
-        self.assertEqual(step.outcome(v), "no_finding")
+        self.assertEqual(step.outcome(v), {})
 
     def test_the_facts_carry_the_model_the_verdict_seals(self):
         v = json.loads(json.dumps(self.capsule))
@@ -175,13 +177,14 @@ class RehearsalTest(Tmp):
                   "referee/ledger/issued-adjudications.jsonl", "outcome.json", "checks.json"):
             self.assertIn(f, proof)
 
-    def test_the_outcome_is_what_the_result_rules_about_the_twins(self):
+    def test_the_outcome_is_what_the_result_rules_about_each_twin(self):
         self.rehearse()
         doc = json.loads((POP / "step09" / "dispute.json").read_text())
-        bob = doc["nodes"]["bob"]["node_id"]
+        alice, bob = doc["nodes"]["alice"]["node_id"], doc["nodes"]["bob"]["node_id"]
         rows = json.loads((self.out / "outcome.json").read_text())["results"]
-        self.assertEqual({(x["party"], x["outcome"], x["all_checks_held"]) for x in rows},
-                         {(p, "against:" + bob, True) for p in ("requester", "alice", "bob")})
+        self.assertEqual({(x["party"], json.dumps(x["twins"], sort_keys=True), x["all_checks_held"]) for x in rows},
+                         {(p, json.dumps({alice: "corroborated", bob: "contradicted"}, sort_keys=True), True)
+                          for p in ("requester", "alice", "bob")})
 
     def test_each_party_holds_the_referees_bytes(self):
         self.rehearse()

@@ -56,8 +56,9 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
   citing that Result and both halves.
 PASS when every check holds for every Result each party holds (and each
 party holds one); FAIL otherwise. outcome.json states, per Result, what it
-rules about the twins (`against:<node id>` of the twin the referee named,
-`corroborated` or `no_finding`); step 04's disputes row is to read the plugin's
+rules about each twin, in the plugin's buckets (`contradicted`, `corroborated`,
+`inconclusive`, `not_comparable`; verdict_counts.rs ruling_about), per twin node id;
+step 04's disputes row is to read the plugin's
 verdict_counts fold of these same Results, not a role label the loop invents.
 
 On the live population each lab node's data dir is read (steps/live.py),
@@ -356,17 +357,19 @@ def is_adjudication(v):
 
 
 def outcome(v):
-    """What Result v rules about the twins: `against:<node id>` (the twin the referee named),
-    `corroborated` (the twins agree) or `no_finding`."""
+    """What Result v rules about each twin, in the plugin's buckets (verdict_counts.rs ruling_about):
+    {twin node id: contradicted | corroborated | inconclusive | not_comparable}. A contradiction naming
+    one twin means the referee's answer matched the other, so the other is corroborated. A ruling the
+    plugin does not issue puts no twin in a bucket."""
     b = attestation(v).get("adjudication") or {}
     ruling = b.get("verdict")
-    if ruling == "corroborated":
-        return "corroborated"
+    nodes = [n for n in (b.get("half_a_node_id"), b.get("half_b_node_id")) if isinstance(n, str) and n]
     if isinstance(ruling, str) and ruling.startswith(CONTRADICTED):
-        against = ruling[len(CONTRADICTED):]
-        if against in (b.get("half_a_node_id"), b.get("half_b_node_id")):
-            return f"against:{against}"
-    return "no_finding"
+        named = ruling[len(CONTRADICTED):]
+        return {n: ("contradicted" if n == named else "corroborated") for n in nodes} if named in nodes else {}
+    if ruling in RULINGS:
+        return {n: ruling for n in nodes}
+    return {}
 
 
 def check_held(party, ledgers, announced, *, expected_referee=None):
@@ -528,7 +531,7 @@ def outcomes(per_party, held_results):
         for r in rs:
             rows.append({"party": p, "verdict_capsule_id": r["verdict_capsule_id"], "verdict": r["verdict"],
                          "referee_node_id": r["referee_node_id"],
-                         "outcome": outcome(held_results[(p, r["held"])]),
+                         "twins": outcome(held_results[(p, r["held"])]),
                          "all_checks_held": all(c is not None and c["ok"] for c in r["checks"].values())})
     return {"results": rows}
 
@@ -566,7 +569,7 @@ def decide(out, *, population, started):
     if failed:
         return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                              detail=f"{where}: did not hold: {'; '.join(failed)}. {SPEND}", started=started)
-    rulings = sorted({o["outcome"] for o in read_json(out / "outcome.json")["results"]})
+    rulings = sorted({f"{n[:8]} {b}" for o in read_json(out / "outcome.json")["results"] for n, b in o["twins"].items()})
     detail = (f"{where}: for each Result each party holds, these held on the proof bytes: {', '.join(CHECKS)}. "
               f"The Result rules {', '.join(rulings)} (outcome.json). {MESH_ONLY} Every key is a rehearsal TEST key. "
               f"{SPEND} "

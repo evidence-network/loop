@@ -16,8 +16,9 @@ There is no party-sealed `dispute`, `dispute_response` or `close` on Mesh
   - `requester`: the node that holds both served records and asks the referee.
   - `referee`: who the requester asks; it is neither twin.
   - `ruling`: what the referee rules, `contradicted:alice`, `contradicted:bob`,
-    `corroborated`, `inconclusive` or `not_comparable`. The outcome is stated per
-    twin (step 09's `outcome.json`).
+    `corroborated` (the referee found the twins' words the same), `inconclusive` or
+    `not_comparable`. The outcome is stated per twin, in the plugin's buckets
+    (step 09's `outcome.json`).
 - `keys/requester/`, `keys/referee/`: the rehearsal requester's and referee's TEST
   keys (Ed25519, PKCS#8 and SPKI). They are published on purpose and never used live.
 
