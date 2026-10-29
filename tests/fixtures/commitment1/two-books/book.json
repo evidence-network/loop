@@ -1,0 +1,9 @@
+{
+  "book_id": "alice-book",
+  "checkpoint": 4,
+  "checkpoint_key": "8488e0c52d7c1f32af03e29bee158ab54dadc616e08ae85f3ab3ca277d929358",
+  "checkpoint_statement": "0oRYZKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCCEiODFLXwfMq8D4pvuFYq1Ta3GFuCK6F86s8onfZKTWA+iAWphbGljZS1ib29rAmxhbGljZS1ib29rIzSgWLGmZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUEaWlzc3VlZF9hdHgYMjAyNi0xMC0yOVQwNTo1MDoyOS4yNDZaaXByZXZfc2l6ZQBqY29tbWl0bWVudFhFglgg3cGqjqTeQgJBXUBj8SkM/Wi/H6sOEhZ2tzQ+mgbAXbtYIN53KYDNwMvUjHQmo9i52692KdaK5lIP28PM3N0lKDMYb3ByZXZfY29tbWl0bWVudEBYQHckvVywCcaMNcK33hPRzF9QS7iHAryP1JRoaR2H3CwtWYhGCUM5HHjg7dytq6o7O2k/+gEStWZUKrjcYE3McQ4=",
+  "first_record": "ce33e43e5158467e48ad88206e137dbdf21eeba5fe1cfc53c4fa12fd01ec1acc",
+  "indexed_sequence": 3,
+  "node_key": "3ec96d967474798400434e1554b8344f0d4a17601be6711a99cdbd7b20d81a0e"
+}
