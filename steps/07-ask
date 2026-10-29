@@ -41,7 +41,8 @@ it cites. The judge checks, on those bytes:
     that withholds it: no_such_subject and derivation_unsupported are a FAIL;
     policy_declined and not_authorized are NOT_CHECKED, as an honest node also
     sends them for limits no policy promises past (capsules-plugin#112, #114);
-    the other reasons blame the request;
+    only coverage_unsatisfiable, deadline_unmet, request_malformed and
+    retention_expired blame the request, and any other reason, or none, is a FAIL;
   - an absence's window opens at the request record and closes no earlier
     than the deadline, and the carrier delivered no reply by the deadline; a
     sent request with no recorded outcome is a failure.
