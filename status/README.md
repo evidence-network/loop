@@ -34,8 +34,9 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   `first-answered.json` its finding names in `proof`, from a valid PASS or
   NOT_CHECKED finding (never a FAIL or malformed one). Each is minus the run's
   `run.json` `started` (loop.sh writes it before the first step), in seconds
-  when under one minute; decisions limited or refused on evidence
-  (M3) is a placeholder; filtered volume beside raw (M2) reads `raw` and
+  when under one minute. Decisions refused on terms
+  (M3) read step 04's `counts.json` proof (`refused` of `decisions`: the NO decisions) when its finding is a valid
+  `PASS`, and show both numbers or neither. Filtered volume beside raw (M2) reads `raw` and
   `filtered` from `volume.json`, a proof file of step 06's PASS finding, and
   shows both or neither. A number with no valid event (a marker step with no
   `PASS`; for step 07, no valid PASS or NOT_CHECKED finding naming an answered ask) reads

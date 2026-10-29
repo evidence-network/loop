@@ -1,0 +1,12 @@
+{
+  "deal_amount": {
+    "unit": "USDC",
+    "value": "2"
+  },
+  "deal_id": "rehearsal-admit-no-price",
+  "offered_at": "2026-10-28T12:00:00Z",
+  "price_per_inference": {
+    "unit": "USDC",
+    "value": "0.05"
+  }
+}
