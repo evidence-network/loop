@@ -133,8 +133,8 @@ class Step06SettleTest(unittest.TestCase):
         self.assertIn("3 filtered of 4 raw settlements", r["detail"])
         self.assertEqual(finding.gaps(r["detail"]), [
             ("the exchange's sealed halves, which this step reads as an unsigned stand-in, and the controller "
-             "declarations, which are rehearsal stand-ins", "Mesh-LLM/capsules-plugin#69"),
-            ("a settlement object on a real rail, verified with finality by its adapter", "Mesh-LLM/capsules-plugin#57")])
+             "declarations, which are rehearsal stand-ins", "Mesh-LLM/capsules-plugin#49"),
+            ("a settlement object on a real rail, verified with finality by its adapter", "Mesh-LLM/capsules-plugin#83")])
         v = json.loads((self.out / "volume.json").read_text())
         self.assertEqual((v["raw"], v["filtered"]), (4, 3))
         self.assertEqual(v["raw_by_band"], {"USDC:e-2": 1, "USDC:e-4": 1, "USDC:e0": 1, "USDC:e-3": 1})
