@@ -188,8 +188,8 @@ bytes, no amount, no band.
 | `edge_kinds` | `deal`, `settle`, `ask07`, each with what its edge is |
 | `outcomes` | `answered`, `refused`, `absent` |
 | `size` | the graph's width and height, in SVG units |
-| `nodes` | node id → `{operator, host_build, plugin_version, listed: true}` from `nodes/`, or `{listed: false}` for a node no longer there; with `seed` (its first place, from its node id), `commitment` (the committed file read, or `null`), `history_cards` (each `{stream, derivation, community, witnesses, history, since}`) and `binding` (`null`, `{status: verified, group}`, or `{status, says: "binding not verified", why, cites, verdict}`) |
-| `groups` | each bound group: `id` (`bound:<controller_key_id>`), `controller_key_id`, `subjects` (node ids), `verifier`, `checked_at`, `verdict` (the file read) |
+| `nodes` | node id → `{operator, host_build, plugin_version, listed: true}` from `nodes/`, or `{listed: false}` for a node no longer there; with `seed` (its first place, from its node id), `commitment` (the committed file read, or `null`), `history_cards` (each `{stream, derivation, community, witnesses, history, since}`) and `binding` (`null`, `{status: verified, group}`, or `{status, says: "binding not verified", why, cites}`) |
+| `groups` | each bound group: `id` (`bound:` and a hash of the controller key id: the key itself, an operator's, is never published), `subjects` (node ids), `verifier`, `checked_at` |
 | `views` | `live` (the daily set and its on-demand runs) and `rehearsal` (the reporter rehearsal, a TEST), each `{label, unit, test, days, metrics}` |
 
 Each of a view's `days`, from the first to the last, with a gap day too, and
@@ -208,7 +208,7 @@ each on-demand run in time order among them:
 | `nodes` | each node in the file: `node_id`, `state` (both questions read together, as the stats page reads them), `questions` (`checkpoints`, `history_card/1` → its state), `asked` (each ask: `question`, `state`, `outcome`, `at` (the settling attempt), `attempts`), `asks` (`answered`, `refused`, `absent`, of 2), `records_at_checkpoint`, `days_listed` (the day files it is in, to this day), `first_day`, `node_line`, `left_on`, `left`; then each node that left and is not in the file: `node_id`, `left_on`, `left: true`, `days_listed` |
 | `edges` | the step edges: `kind`, `from`, `to`, `outcome` |
 | `pairs` | every pair of shown nodes, `a` < `b`: `line` (`solid` or `dotted`) and `kinds`, the steps whose edges between the two brought something back |
-| `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, not_drawn}` with `why_not_drawn` when an end is not a node of the view |
+| `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, answered, not_drawn}` with `why_not_drawn` when an end is not a node of the view |
 | `drawn` | what the graph draws: each `{id, members, bound, left, rings}`, a node (`id` its node id) or a bound group's shown subjects (`id` the group's); `rings` one per community, `{community, history, streams, since}` |
 | `links` | the lines between what is drawn: `pairs` with each end mapped to its `drawn` id, a group's inner pairs left out, `solid` if any of its pairs is |
 

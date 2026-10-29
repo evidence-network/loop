@@ -308,7 +308,8 @@ def lines(path):
 def deal_edges(d, by_key, ok):
     """Step 05: one edge per side that should hold the other side's half: held, refused, or nothing held."""
     out = []
-    sides = [p.name for p in sorted(d.iterdir()) if p.is_dir()]
+    # A side is a directory holding at least one file the finding hashes; any other directory is not a participant.
+    sides = [p.name for p in sorted(d.iterdir()) if p.is_dir() and any(ok(f) for f in p.rglob("*") if f.is_file())]
     if ok(d / "deal.json"):  # the rehearsal driver's proof: <side>/push.json, refusal.json, held/
         for rx in sides:
             for tx in (s for s in sides if s != rx):

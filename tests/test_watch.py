@@ -548,8 +548,9 @@ class WatchTest(unittest.TestCase):
 
     def test_a_count_with_no_finding_reads_not_measured_yet_never_0(self):
         with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "no-findings").mkdir()
             data = run(Path(d), daily=ROOT / "stats" / "data" / "daily", rehearsal=ROOT / "stats" / "data" / "rehearsal",
-                       findings=ROOT / "findings", ondemand=None, nodes=ROOT / "nodes", commitments=ROOT / "lab" / "runs")
+                       findings=Path(d) / "no-findings", ondemand=None, nodes=ROOT / "nodes", commitments=ROOT / "lab" / "runs")
             page = (Path(d) / "watch" / "index.html").read_text(encoding="utf-8")
         p = Charts()
         p.feed(page)
@@ -621,6 +622,13 @@ class WatchTest(unittest.TestCase):
             stray.write_text('{"outcome": "artifact"}\n')  # not in the finding's proof: the format check ignores it
             data = run(Path(d) / "out", findings=f)
             base = run(Path(d) / "out2")
+        self.assertEqual(on(data, "rehearsal", "2026-11-05T0600Z")["edges"], on(base, "rehearsal", "2026-11-05T0600Z")["edges"])
+        with tempfile.TemporaryDirectory() as d:  # a stray directory is no participant either
+            f = Path(d) / "findings"
+            shutil.copytree(FIX / "findings", f)
+            (f / "2026-11-05-rehearsal" / "05-deal" / "carol").mkdir()
+            (f / "2026-11-05-rehearsal" / "05-deal" / "carol" / "x.txt").write_text("x\n")
+            data = run(Path(d) / "out", findings=f)
         self.assertEqual(on(data, "rehearsal", "2026-11-05T0600Z")["edges"], on(base, "rehearsal", "2026-11-05T0600Z")["edges"])
 
     def test_a_settlement_that_did_not_hold_is_drawn_but_not_counted(self):
