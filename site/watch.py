@@ -247,14 +247,14 @@ def bindings(bindings_dir, lock, by_id, by_key, rel):
         status = d.get("status")
         if status == "verified" and verifier in pinned and len(subjects) > 1 and not taken & set(subjects):
             taken |= set(subjects)
-            groups.append({"id": "bound:" + p.stem, "controller_key_id": p.stem, "subjects": subjects,
-                           "verifier": verifier, "checked_at": d.get("checked_at"), "verdict": rel(p)})
+            # The controller's key id names the operator's key: it stays out of the page, its id and its path.
+            groups.append({"id": "bound:" + hashlib.sha256(p.stem.encode()).hexdigest()[:16], "subjects": subjects,
+                           "verifier": verifier, "checked_at": d.get("checked_at")})
             continue
         why = ("its verifier is not pinned in the lock" if status == "verified" else f"its status is {status}")
         for nid in subjects:
             notes.setdefault(nid, {"status": status if isinstance(status, str) else None, "says": "binding not verified",
-                                   "why": why, "cites": d.get("cites") if isinstance(d.get("cites"), str) else None,
-                                   "verdict": rel(p)})
+                                   "why": why, "cites": d.get("cites") if isinstance(d.get("cites"), str) else None})
     return groups, notes
 
 
@@ -305,47 +305,47 @@ def lines(path):
         return []
 
 
-def deal_edges(d, by_key):
+def deal_edges(d, by_key, ok):
     """Step 05: one edge per side that should hold the other side's half: held, refused, or nothing held."""
     out = []
     sides = [p.name for p in sorted(d.iterdir()) if p.is_dir()]
-    if (d / "deal.json").is_file():  # the rehearsal driver's proof: <side>/push.json, refusal.json, held/
+    if ok(d / "deal.json"):  # the rehearsal driver's proof: <side>/push.json, refusal.json, held/
         for rx in sides:
             for tx in (s for s in sides if s != rx):
-                if (d / rx / "refusal.json").is_file():
+                if ok(d / rx / "refusal.json"):
                     got = "refused"
-                elif lines(d / rx / "held" / "received-provenance.jsonl"):
+                elif ok(d / rx / "held" / "received-provenance.jsonl") and lines(d / rx / "held" / "received-provenance.jsonl"):
                     got = "answered"
                 else:
                     got = "absent"
                 out.append((tx, rx, got))
         return out
     for rx in sides:  # the live step: <node>/checks.json, one entry per half the node holds
-        checks = read_json(d / rx / "checks.json") or {}
+        checks = (read_json(d / rx / "checks.json") if ok(d / rx / "checks.json") else None) or {}
         for held in checks.get("held", []):
             m = re.match(r"received from (\S+)", str((held.get("provenance") or {}).get("detail", "")))
             out.append((m.group(1) if m else None, rx, "answered"))
     return out
 
 
-def settle_edges(d, by_key):
+def settle_edges(d, by_key, ok):
     """Step 06: the exchange's payer to its payee, settled when the finding's checks on it held."""
-    ex = read_json(d / "exchange.json")
+    ex = read_json(d / "exchange.json") if ok(d / "exchange.json") else None
     if not isinstance(ex, dict):
         return []
-    checks = (read_json(d / "checks.json") or {}).get("checks", {})
+    checks = ((read_json(d / "checks.json") if ok(d / "checks.json") else None) or {}).get("checks", {})
     final = all((checks.get(k) or {}).get("ok") is True for k in ("reference", "finality", "exchange_match"))
     return [(by_key.get(ex.get("payer"), None), by_key.get(ex.get("payee"), None), "answered" if final else "absent")]
 
 
-def ask07_edges(d, by_key):
+def ask07_edges(d, by_key, ok):
     """Step 07: <asker>/asks/<asked>/<kind>/outcome.json, or the reporter backend's attempt per node and question."""
     out = []
-    for o in sorted(d.glob("*/asks/*/*/outcome.json")):
+    for o in sorted(x for x in d.glob("*/asks/*/*/outcome.json") if ok(x)):
         got = (read_json(o) or {}).get("outcome")
         out.append((o.parts[-5], o.parts[-3],
                     {"artifact": "answered", "refusal": "refused"}.get(got, "absent")))
-    for v in sorted(d.glob("*/attempts/*/*.verification")):
+    for v in sorted(x for x in d.glob("*/attempts/*/*.verification") if ok(x)):
         word = v.read_text(encoding="utf-8", errors="replace").split(" ", 1)[0].strip()
         out.append((REPORTER, v.parts[-4], attempt_outcome(word)))
     return out
@@ -388,14 +388,15 @@ def measured(kind, run, population, ids, by_key, shown, host, rel, date):
         return {"measured": False, "step": step, "finding": rel(d / "finding.json"),
                 "says": f"not measured yet: the step {step} finding does not pass the format check"}, []
     drawn, skipped = [], 0
-    for a, b, got in EDGES[kind](d, by_key):
+    declared = {p["path"] for p in rec["proof"]}  # only bytes the finding hashes may draw a line
+    for a, b, got in EDGES[kind](d, by_key, lambda f: f.relative_to(d).as_posix() in declared):
         a, b = (host if x == REPORTER else ids.get(x, x) for x in (a, b))
         if a in shown and b in shown and a != b:
             drawn.append({"kind": kind, "from": a, "to": b, "outcome": got})
         else:
             skipped += 1
     note = {"measured": True, "step": step, "finding": rel(d / "finding.json"), "result": rec["result"],
-            "drawn": len(drawn), "not_drawn": skipped}
+            "drawn": len(drawn), "answered": sum(x["outcome"] == "answered" for x in drawn), "not_drawn": skipped}
     if skipped:
         note["why_not_drawn"] = ("an end is not a node of this view on this " + ("slot" if population == "rehearsal" else "day")
                                  + ": not listed then, or a node of the loop's own TEST population")
@@ -442,9 +443,18 @@ def read_ondemand(path, problems):
         problems.append(f"{where}: date is {d['date']!r}, the file name says {path.name[:-5]}")
     if d["run"] not in ("settled", "missed"):
         problems.append(f"{where}: run must be settled or missed")
+    if (d["run"] == "missed") != isinstance(d["missed_reason"], str) or d["missed_reason"] == "":
+        problems.append(f"{where}: missed_reason is a non-empty string exactly when the run is missed")
+    for key in ("versions_lock_sha256", "reporter_key_id"):
+        if not stats_model._hex_or_null(d[key]):
+            problems.append(f"{where}: {key} is not 64 hex or null")
     if not stats_model._int(d["listed"]) or not isinstance(d["nodes"], list):
         problems.append(f"{where}: listed is not a whole number, or nodes is not a list")
         return None
+    if d["run"] == "missed" and d["nodes"]:
+        problems.append(f"{where}: a missed run has no nodes")
+    if len(d["nodes"]) > d["listed"]:
+        problems.append(f"{where}: {len(d['nodes'])} nodes but only {d['listed']} listed")
     nodes = [x for x in (stats_model.read_node(node, f"{where}: nodes[{i}]", problems)
                          for i, node in enumerate(d["nodes"])) if x]
     if [x.node_id for x in nodes] != sorted({x.node_id for x in nodes}):
@@ -584,7 +594,8 @@ def point(d, key):
         m = d["measured"]["deal" if key == "deals" else "settle"]
         if not m["measured"]:
             return {"value": None, "says": m["says"]}
-        return {"value": m["drawn"], "not_drawn": m["not_drawn"]}
+        # A settlement that did not hold is drawn (dashed or dotted) but is not counted as a settlement.
+        return {"value": m["answered"] if key == "settlements" else m["drawn"], "not_drawn": m["not_drawn"]}
     if d["run"] != "settled":
         return {"value": None, "says": "no file" if d["run"] == "no_file" else "the reporter missed it"}
     if key == "nodes":

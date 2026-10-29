@@ -506,9 +506,13 @@
     slider.max = String(Math.max(view().days.length - 1, 0));
     layoutView();
     if (!keep) { state.shown = null; hide(); }
-    if (!view().days.length) {
+    var none = !view().days.length;
+    playDays.disabled = replay.disabled = slider.disabled = none;
+    if (none) {
+      stop();
       dayLabel.textContent = "no " + view().unit + " files yet";
       notes.textContent = "";
+      summary.textContent = "";
       while (world.lastChild) world.removeChild(world.lastChild);
       charts();
       return;
@@ -523,6 +527,7 @@
 
   playDays.addEventListener("click", function () {
     if (state.timer) return stop();
+    if (!view().days.length) return;
     var i = 0;
     go(0);
     playDays.textContent = "Stop";
@@ -538,6 +543,7 @@
   // its node; then each exchange a finding holds travels along its pair's line.
   replay.addEventListener("click", function () {
     if (state.timer) return stop();
+    if (!view().days.length) return;
     var d = day();
     var order = [];
     d.nodes.forEach(function (n) {

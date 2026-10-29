@@ -74,6 +74,10 @@ jobs:
       # It runs after build.py, which empties _site. Its scripts (and the vendored d3) run on this page only.
       - name: Build the watch page
         run: python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal --ondemand stats/data/ondemand --findings findings --nodes nodes --population population --commitments lab/runs --bindings bindings --lock versions.lock --out _site
+      # What the page publishes holds no personal data: scanned after the build, since the page decodes the
+      # stapled history cards, so text inside their bytes reaches data.json without being in a committed file as text.
+      - name: No personal data in the watch page
+        run: python3 scripts/check_personal_data.py _site/watch/data.json _site/watch/index.html
       # The page rendered headless in the Chrome that ubuntu-latest carries, one screenshot per view and
       # scheme, kept as a workflow artifact. The page carries its data inline, so a file:// load draws it (its
       # minute re-read of data.json just fails there). A missing or near-empty image fails the step; whether

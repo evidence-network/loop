@@ -71,6 +71,9 @@ NODE = shutil.which("node") or os.path.expanduser("~/.local/opt/node-v22.23.3/bi
 MONEY = re.compile(r"amount|band|msat|currency|price|fee\b|usd|usdc|sats?\b|payment", re.I)
 
 
+BOUND = "bound:" + hashlib.sha256(("c" * 64).encode()).hexdigest()[:16]  # the group id: a hash, never the controller key
+
+
 def nid(n):
     return str(n) * 64
 
@@ -263,8 +266,8 @@ class WatchTest(unittest.TestCase):
             data = run(Path(d), daily=ROOT / "stats" / "data" / "daily", rehearsal=ROOT / "stats" / "data" / "rehearsal",
                        findings=ROOT / "findings", ondemand=None, nodes=ROOT / "nodes", commitments=ROOT / "lab" / "runs",
                        bindings=ROOT / "bindings", lock=ROOT / "versions.lock")
-        self.assertFalse((ROOT / "bindings").exists())  # none on main: every node its own dot
-        self.assertEqual(data["groups"], [])
+        # Whatever is committed (no bindings on main today), a group is only ever a verified, pinned verdict.
+        self.assertTrue(all(g["verifier"] in watch.pins(ROOT / "versions.lock") for g in data["groups"]))
         for view, root, period in (("live", ROOT / "stats" / "data" / "daily", stats_model.layout.Daily),
                                    ("rehearsal", ROOT / "stats" / "data" / "rehearsal", stats_model.layout.Rehearsal)):
             files = {d.date: d for d in stats_model.load(root, period)}
@@ -486,6 +489,24 @@ class WatchTest(unittest.TestCase):
         self.assertIn("unexpected extra", err.getvalue())
         self.assertIn("not a <YYYY-MM-DD>T<HHMMSS>Z.json on-demand file", err.getvalue())
 
+    def test_j_an_on_demand_file_is_held_to_the_day_file_checks(self):
+        for change, want in (({"reporter_key_id": "someone@example.org"}, "reporter_key_id is not 64 hex"),
+                             ({"listed": 1}, "nodes but only 1 listed"),
+                             ({"missed_reason": "x"}, "missed_reason")):
+            with tempfile.TemporaryDirectory() as d:
+                od = Path(d) / "ondemand"
+                shutil.copytree(FIX / "ondemand", od)
+                f = od / "2026-11-01T140509Z.json"
+                doc = json.loads(f.read_text())
+                f.write_bytes(stats_model.canonical(doc | change)[0])
+                err = io.StringIO()
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                    code = watch.main(["watch.py", "--daily", str(DAILY), "--rehearsal", str(FIX / "rehearsal"),
+                                       "--ondemand", str(od), "--findings", str(FIX / "findings"), "--nodes", str(FIX / "nodes"),
+                                       "--population", str(FIX / "population"), "--out", str(Path(d) / "out")])
+            self.assertEqual(code, 1, change)
+            self.assertIn(want, err.getvalue())
+
     # Counts over time
 
     def test_each_charts_table_holds_the_exports_numbers(self):
@@ -591,6 +612,38 @@ class WatchTest(unittest.TestCase):
                          [{"kind": "ask07", "from": nid(1), "to": nid(4), "outcome": "answered"}])
         self.assertEqual(next(p for p in day["pairs"] if (p["a"], p["b"]) == (nid(1), nid(4)))["kinds"], ["ask07", "deal"])
 
+    def test_a_file_the_finding_does_not_hash_draws_no_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "findings"
+            shutil.copytree(FIX / "findings", f)
+            stray = f / "2026-11-05-rehearsal" / "07-ask" / "node-two" / "asks" / "node-one" / "exchange" / "outcome.json"
+            stray.parent.mkdir(parents=True)
+            stray.write_text('{"outcome": "artifact"}\n')  # not in the finding's proof: the format check ignores it
+            data = run(Path(d) / "out", findings=f)
+            base = run(Path(d) / "out2")
+        self.assertEqual(on(data, "rehearsal", "2026-11-05T0600Z")["edges"], on(base, "rehearsal", "2026-11-05T0600Z")["edges"])
+
+    def test_a_settlement_that_did_not_hold_is_drawn_but_not_counted(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "findings"
+            shutil.copytree(FIX / "findings", f)
+            step = f / "2026-11-05-rehearsal" / "06-settle"
+            checks = json.loads((step / "checks.json").read_text())
+            checks["checks"]["finality"]["ok"] = False
+            (step / "checks.json").write_text(json.dumps(checks, indent=2, sort_keys=True) + "\n")
+            rec = json.loads((step / "finding.json").read_text())
+            for p in rec["proof"]:
+                if p["path"] == "checks.json":
+                    p["sha256"] = hashlib.sha256((step / "checks.json").read_bytes()).hexdigest()
+            (step / "finding.json").write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+            data = run(Path(d) / "out", findings=f)
+            base = run(Path(d) / "out2")
+        def settlements(x):
+            m = next(m for m in x["views"]["rehearsal"]["metrics"] if m["key"] == "settlements")
+            return [p["value"] for p in m["points"] if p["date"] == "2026-11-05T0600Z"]
+        self.assertEqual(settlements(base), [1])
+        self.assertEqual(settlements(data), [0])
+
     def test_a_finding_that_fails_the_format_check_is_not_measured(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "findings"
@@ -603,15 +656,20 @@ class WatchTest(unittest.TestCase):
         self.assertEqual([e for e in on(data, "live", "2026-11-02")["edges"] if e["kind"] == "deal"], [])
         self.assertTrue(all(p["line"] == "dotted" for p in on(data, "live", "2026-11-02")["pairs"]))
 
-    def test_on_the_committed_findings_05_06_07_are_not_measured_yet(self):
+    def test_the_committed_findings_05_06_07_draw_only_what_they_hold(self):
         with tempfile.TemporaryDirectory() as d:
             data = run(Path(d), daily=ROOT / "stats" / "data" / "daily", rehearsal=ROOT / "stats" / "data" / "rehearsal",
                        findings=ROOT / "findings", ondemand=None, nodes=ROOT / "nodes", commitments=ROOT / "lab" / "runs")
         for v in data["views"].values():
             for day in v["days"]:
                 for kind in watch.STEPS:
-                    self.assertFalse(day["measured"][kind]["measured"])
-                self.assertTrue(all(p["line"] == "dotted" for p in day["pairs"]))
+                    m = day["measured"][kind]
+                    if not m["measured"]:
+                        self.assertIn("not measured yet", m["says"])
+                    else:  # a finding committed since: every line drawn is an edge it holds
+                        self.assertEqual(m["drawn"], len([e for e in day["edges"] if e["kind"] == kind]))
+                held = {frozenset((e["from"], e["to"])) for e in day["edges"] if e["outcome"] in watch.EXCHANGED}
+                self.assertEqual({frozenset((p["a"], p["b"])) for p in day["pairs"] if p["line"] == "solid"}, held)
 
     # (e) Nothing from elsewhere; the one read is data.json
 
@@ -709,7 +767,7 @@ class WatchTest(unittest.TestCase):
 
     def test_e_the_bound_fixture_draws_one_dot_two_rings_and_bound(self):
         self.assertEqual([(g["id"], g["subjects"], g["verifier"]) for g in self.data["groups"]],
-                         [("bound:" + "c" * 64, [nid(1), nid(4)],
+                         [(BOUND, [nid(1), nid(4)],
                            "binding-verifier@0123456789abcdef0123456789abcdef01234567")])
         d = on(self.data, "live", "2026-11-02")
         bound = [x for x in d["drawn"] if x["bound"]]
@@ -720,11 +778,13 @@ class WatchTest(unittest.TestCase):
         # Before node 4 joins, the group's one shown subject is still drawn as the bound dot.
         self.assertTrue(self.dot(self.data, "2026-10-28", nid(1))["bound"])
         # Links run between what is drawn: the group's own pair is inside it, and its pairs to node 2 are one link.
-        self.assertEqual([(x["a"], x["b"], x["line"]) for x in d["links"]], [(nid(2), "bound:" + "c" * 64, "dotted")])
+        self.assertEqual([(x["a"], x["b"], x["line"]) for x in d["links"]], [tuple(sorted((nid(2), BOUND))) + ("dotted",)])
+        # The controller's key id (the operator's key) is nowhere in the export, in an id or in a path.
+        self.assertNotIn("c" * 64, json.dumps(self.data))
         self.assertIn('dot.bound ? "bound"', self.js)
         self.assertIn('"community c-" + r.community', self.js)
         self.assertIn('row(dl, "verifier", g.verifier);', self.js)
-        self.assertEqual(self.data["nodes"][nid(1)]["binding"], {"status": "verified", "group": "bound:" + "c" * 64})
+        self.assertEqual(self.data["nodes"][nid(1)]["binding"], {"status": "verified", "group": BOUND})
 
     def test_e_the_revoked_fixture_draws_two_separate_dots(self):
         with tempfile.TemporaryDirectory() as d:
