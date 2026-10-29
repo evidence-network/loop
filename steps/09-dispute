@@ -52,7 +52,8 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
   citing that Result and both halves.
 PASS when every check holds for every Result each party holds (and each
 party holds one); FAIL otherwise. outcome.json states, per Result, what it
-rules (`against_seller`, `for_seller` or `no_finding`): what step 04 reads.
+rules (`against_seller`, `for_seller` or `no_finding`): what step 04 reads. On the live
+population no seller is named, so the outcome is `against:<node id>`, `corroborated` or `no_finding`.
 
 On the live population each lab node's data dir is read (steps/live.py),
 never written. Each Result a node holds is checked as above, with the
@@ -96,6 +97,9 @@ MESH_ONLY = ("Mesh disputes are adjudications only: there is no party-sealed dis
 SCHEMA = "capsule-emit-mesh/adjudication/v1"
 RULINGS = ("corroborated", "inconclusive", "not_comparable")
 CONTRADICTED = "contradicted:"
+# The plugin's referee/verdict.rs status_for_verdict.
+STATUS = {"corroborated": "SATISFIED", "inconclusive": "UNKNOWN", "not_comparable": "UNKNOWN",
+          "contradicted": "CONTRADICTED"}
 PARTY_PATH = ("dispute", "dispute_response", "close")
 CHECKS = ("result_signed", "result_is_adjudication", "referee_signed", "cites_deal", "recorded_received",
           "matches_issued")
@@ -219,7 +223,7 @@ def half(node, other, deal, role, time, cite=None):
 
 def verdict(referee, seller_half, buyer_half, seller, buyer, ruling, time, *, bracket):
     block = {"schema": SCHEMA, "source": "rehearsal_referee", "capture_method": "rehearsal_stand_in",
-             "verdict": ruling, "status": ruling.split(":")[0].upper(),
+             "verdict": ruling, "status": STATUS[ruling.split(":")[0]],
              "half_a_capsule_id": seller_half, "half_b_capsule_id": buyer_half,
              "half_a_node_id": seller.node_id, "half_b_node_id": buyer.node_id,
              "referee_id": referee.node_id, "referee_node_id": referee.node_id, "twin_bracket_id": bracket}
@@ -238,8 +242,9 @@ def facts_block(v):
            "referee_node_id": b.get("referee_node_id"),
            "halves": [b.get("half_a_capsule_id"), b.get("half_b_capsule_id")],
            "half_node_ids": [b.get("half_a_node_id"), b.get("half_b_node_id")]}
-    if b.get("twin_bracket_id"):
-        out["twin_bracket_id"] = b["twin_bracket_id"]
+    for k in ("twin_bracket_id", "model_hash"):
+        if b.get(k):
+            out[k] = b[k]
     return out
 
 
@@ -341,9 +346,11 @@ def is_adjudication(v):
     nodes = (b.get("half_a_node_id"), b.get("half_b_node_id"))
     ruling = b.get("verdict")
     known = ruling in RULINGS or any(n and ruling == CONTRADICTED + n for n in nodes)
-    return check(b.get("schema") == SCHEMA and known,
+    distinct = bool(nodes[0]) and nodes[0] != nodes[1]  # the plugin's verdict_facts refuses one node for both halves
+    return check(b.get("schema") == SCHEMA and known and distinct,
                  f"schema {b.get('schema')!r}, ruling {ruling!r}"
-                 + ("" if known else ": not a ruling the plugin issues"))
+                 + ("" if known else ": not a ruling the plugin issues")
+                 + ("" if distinct else ": the halves are not from two distinct nodes"))
 
 
 def outcome(v, seller_node_id):
@@ -352,7 +359,7 @@ def outcome(v, seller_node_id):
     ruling = b.get("verdict")
     nodes = (b.get("half_a_node_id"), b.get("half_b_node_id"))
     if ruling == "corroborated":
-        return "for_seller"
+        return "for_seller" if seller_node_id is not None else "corroborated"
     if isinstance(ruling, str) and ruling.startswith(CONTRADICTED):
         against = ruling[len(CONTRADICTED):]
         if seller_node_id is None:
@@ -421,10 +428,15 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
             c["cites_deal"] = check(False, f"cites halves {halves}: not two distinct halves of a deal")
         else:
             problems, unrun = [], False
+            # The requester asked for the pair and holds both halves; a judged provider holds only its own
+            # served record (the plugin's referee/hold.rs hold_delivered_verdict), but at least that one.
+            if not asked_it and not any(h in own_book for h in halves):
+                problems.append("none of the cited halves is in the party's book")
             for h, node in zip(halves, half_nodes):
                 rec = own_book.get(h)
                 if rec is None:
-                    problems.append(f"half {h} is not in the party's book")
+                    if asked_it:
+                        problems.append(f"half {h} is not in the party's book")
                     continue
                 s, d = aac.verify(rec)
                 if s is None:
@@ -433,9 +445,11 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
                     unrun = True
                 elif announced[node] != s:
                     problems.append(f"half {h} is signed by {s}, not node {node}'s key {announced[node]}")
+            held_n = sum(h in own_book for h in halves)
             c["cites_deal"] = (check(False, "; ".join(problems)) if problems else None if unrun else
-                               check(True, f"both halves {', '.join(halves)} resolve by digest in the party's "
-                                           "book, each signed by the node the Result names for it"))
+                               check(True, f"{'both halves' if held_n == 2 else 'its own half'} "
+                                           f"{', '.join(h for h in halves if h in own_book)} resolve by digest in "
+                                           "the party's book, each signed by the node the Result names for it"))
 
         # recorded_received
         recs = [r for r in chain if isinstance(attestation(r).get("adjudication_received"), dict)
@@ -463,9 +477,13 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
         if rl is None:
             c["matches_issued"] = None
         else:
-            want = aac.canonical(v) if v else None
+            def same_bytes(x):
+                try:
+                    return aac.canonical(x) == aac.canonical(v)
+                except ValueError:  # a number JCS cannot represent exactly: not the same bytes
+                    return False
             same = [i for i in lines(rl / ISSUED) if i and isinstance(i.get("verdict_capsule"), dict)
-                    and aac.canonical(i["verdict_capsule"]) == want]
+                    and v and same_bytes(i["verdict_capsule"])]
             issued_recs = [r for r in lines(rl / OWN) if r and isinstance(attestation(r).get("adjudication_issued"), dict)
                            and attestation(r)["adjudication_issued"].get("verdict_capsule_id") == vid]
             problems = []
@@ -477,15 +495,20 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
             else:
                 r = issued_recs[0]
                 s, d = aac.verify(r)
-                if s is None or s != announced.get(referee):
+                if s is None or (referee in announced and s != announced[referee]):
                     problems.append(f"its adjudication_issued record does not verify under the referee's key ({d})")
+                ib = attestation(r)["adjudication_issued"]
+                differ = [k for k, x in facts_block(v).items() if ib.get(k) != x]
+                if differ:
+                    problems.append(f"its adjudication_issued facts differ from the Result's: {', '.join(differ)}")
                 missing = [h for h in [vid] + halves if h and not cites(r, h, "adjudication_verdict" if h == vid
                                                                          else "adjudicated_half")]
                 if missing:
                     problems.append(f"its adjudication_issued record does not cite {', '.join(missing)}")
-            c["matches_issued"] = check(not problems, "; ".join(problems) or
+            c["matches_issued"] = (None if not problems and referee not in announced else
+                                   check(not problems, "; ".join(problems) or
                                         f"the referee holds the same Result bytes and its adjudication_issued "
-                                        f"record cites the Result and both halves")
+                                        f"record cites the Result and both halves"))
         out.append({"held": n, "verdict_capsule_id": vid, "referee_node_id": referee, "verdict": b.get("verdict"),
                     "half_node_ids": half_nodes, "checks": c})
     return out
@@ -620,7 +643,7 @@ def main_live(pop, out, started):
             result = "FAIL"
             details.append(f"did not hold: {'; '.join(failed)}")
         not_checked += [unrun_entry(x) for x in unrun(per_party)]
-        if not per_party:
+        if not any(per_party.values()):
             not_checked.append(dict(NO_RESULT, why="a lab node holds a Result it issued, but no lab node holds one "
                                                    "delivered to it"))
         if result != "FAIL" and not not_checked:

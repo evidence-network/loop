@@ -108,6 +108,36 @@ class VerifierTest(unittest.TestCase):
         self.assertEqual(aac.verify(forged)[0], aac.key_id_of_pem(STRANGER / "node-key.pub.pem"))
         self.assertIsNone(aac.verify(dict(forged, key_id=self.key))[0])
 
+    def test_a_missing_or_truncated_signature_does_not_verify(self):
+        for sig in (None, "", "d284", "d28443a10127", 7):
+            capsule = dict(self.capsule, signature=sig)
+            self.assertIsNone(aac.verify(capsule)[0], sig)
+        self.assertIsNone(aac.verify({k: v for k, v in self.capsule.items() if k != "signature"})[0])
+
+    def test_the_plugins_verdict_passes_the_adjudication_check_with_the_plugins_fact_keys(self):
+        self.assertTrue(step.is_adjudication(self.capsule)["ok"], step.is_adjudication(self.capsule))
+        self.assertEqual(set(step.facts_block(self.capsule)),
+                         {"verdict", "verdict_capsule_id", "referee_node_id", "halves", "half_node_ids",
+                          "twin_bracket_id"})
+
+    def test_a_result_with_both_halves_from_one_node_is_not_an_adjudication(self):
+        v = json.loads(json.dumps(self.capsule))
+        b = v["model_attestation"]["compute_attestation"]["adjudication"]
+        b["half_b_node_id"] = b["half_a_node_id"]
+        self.assertFalse(step.is_adjudication(v)["ok"])
+
+    def test_the_live_outcome_names_no_seller(self):
+        self.assertTrue(step.outcome(self.capsule, None).startswith("against:"))
+        v = json.loads(json.dumps(self.capsule))
+        v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = "corroborated"
+        self.assertEqual(step.outcome(v, None), "corroborated")
+
+    def test_the_facts_carry_the_model_the_verdict_seals(self):
+        v = json.loads(json.dumps(self.capsule))
+        self.assertNotIn("model_hash", step.facts_block(v))
+        v["model_attestation"]["compute_attestation"]["adjudication"]["model_hash"] = "ab" * 32
+        self.assertEqual(step.facts_block(v)["model_hash"], "ab" * 32)
+
     def test_a_seal_reads_back_as_the_plugins_envelope(self):
         sealed = aac.seal(self.capsule, STRANGER)
         protected = aac._enc({3: aac.CONTENT_TYPE, 4: bytes.fromhex(sealed["key_id"]), 1: aac.EDDSA})
@@ -198,6 +228,53 @@ class PlantedFailureTest(Tmp):
         self.assertIn("alice Result", r["detail"])
         self.assertIn("result_signed", r["detail"])
 
+    def test_an_issued_record_stating_other_facts_than_the_result_fails(self):
+        self.rehearse()
+        path = self.out / "referee" / "ledger" / "capsules.jsonl"
+        recs = [json.loads(ln) for ln in path.read_text().splitlines()]
+        for i, r in enumerate(recs):
+            blk = r.get("model_attestation", {}).get("compute_attestation", {}).get("adjudication_issued")
+            if blk:
+                blk["verdict"] = "corroborated"
+                recs[i] = aac.seal(r, POP / "step09" / "keys" / "referee")
+        path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+        step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
+        r = self.finding()
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("adjudication_issued facts differ from the Result's: verdict", r["detail"])
+
+    def test_the_rehearsal_status_is_the_plugins_for_each_ruling(self):
+        self.assertEqual(step.STATUS["corroborated"], "SATISFIED")
+        self.assertEqual({step.STATUS[r] for r in ("inconclusive", "not_comparable")}, {"UNKNOWN"})
+        self.rehearse()
+        held = json.loads((self.out / "alice" / "ledger" / "received-adjudications.jsonl").read_text())
+        b = held["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]
+        self.assertEqual(b["status"], step.STATUS[b["verdict"].split(":")[0]])
+
+    def test_a_judged_provider_holding_only_its_own_half_passes(self):
+        self.rehearse()
+        for f in ("requested-adjudications.jsonl", "received-capsules.jsonl"):
+            (self.out / "bob" / "ledger" / f).unlink()
+        step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
+        r = self.finding()
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        checks = json.loads((self.out / "checks.json").read_text())
+        self.assertIn("its own half", checks["bob"][0]["checks"]["cites_deal"]["detail"])
+
+    def test_a_party_holding_none_of_the_cited_halves_fails(self):
+        self.rehearse()
+        for f in ("requested-adjudications.jsonl", "received-capsules.jsonl", "capsules.jsonl"):
+            p = self.out / "bob" / "ledger" / f
+            if f == "capsules.jsonl":  # keep the adjudication_received record only
+                keep = [ln for ln in p.read_text().splitlines() if "adjudication_received" in ln]
+                p.write_text("\n".join(keep) + "\n")
+            else:
+                p.unlink()
+        step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
+        r = self.finding()
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("none of the cited halves is in the party's book", r["detail"])
+
     def test_a_party_holding_no_result_fails(self):
         self.rehearse()
         (self.out / "alice" / "ledger" / "received-adjudications.jsonl").unlink()
@@ -254,6 +331,29 @@ class LiveTest(Tmp):
         whats = " ".join(n["what"] for n in r["not_checked"])
         self.assertIn("matches_issued", whats)
         self.assertIn("referee_signed", whats)
+
+    def test_a_result_the_referee_holds_with_an_inexact_number_is_a_failed_match_not_a_crash(self):
+        d = self.copy()
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / "received-adjudications.jsonl"
+        held = json.loads(path.read_text())
+        held["verdict_capsule"]["big"] = 2 ** 60
+        path.write_text(json.dumps(held) + "\n")
+        r = self.live(d)
+        self.assertEqual(r["result"], "FAIL")
+
+    def test_empty_received_files_hold_no_result_and_are_not_checked(self):
+        d = self.copy()
+        for f in d.rglob("received-adjudications.jsonl"):
+            f.write_text("")
+        r = self.live(d)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+
+    def test_a_referee_whose_key_is_unreadable_is_not_checked_not_failed(self):
+        d = self.copy()
+        key = d / "nodes" / "lab-3" / "data" / "keys" / "node-key.pub.pem"
+        key.unlink()
+        r = self.live(d)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
 
     def test_a_held_result_that_is_not_the_referees_fails(self):
         d = self.copy()

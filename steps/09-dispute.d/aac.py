@@ -226,7 +226,7 @@ def verify(capsule):
         hdr, end = _dec(protected)
         if end != len(protected) or not isinstance(hdr, dict):
             raise ValueError("protected header is not a map")
-    except ValueError as e:
+    except (ValueError, IndexError, TypeError) as e:  # a missing, mistyped or truncated signature is a failed check
         return None, f"signature is not a COSE_Sign1 envelope: {e}"
     kid = hdr.get(4)
     if hdr.get(1) != EDDSA or not (isinstance(kid, bytes) and len(kid) == 32):
