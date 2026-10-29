@@ -129,7 +129,11 @@ class DryRunTest(unittest.TestCase):
 
     def test_loop_from_the_reporter_console_and_pack_list(self):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=stevenmih-3 "
-                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LAB_DIR=", self.out)
+                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LOOP_NODE_CONSOLES=", self.out)
+        # Each node's own console, by its label in population/live, for step 12's doctor and join.
+        self.assertIn('LOOP_NODE_CONSOLES=\\{\\"stevenmih-1\\":\\"http://127.0.0.1:9811\\"\\,'
+                      '\\"stevenmih-2\\":\\"http://127.0.0.1:9812\\"\\,\\"stevenmih-3\\":'
+                      '\\"http://127.0.0.1:9813\\"\\} LAB_DIR=', self.out)
         self.assertIn("loop.sh --stage 1 --population live --out", self.out)
         self.assertRegex(self.out, r"would write nodes/<\S+ node_id>\.json")
         self.assertIn("would pack", self.out)

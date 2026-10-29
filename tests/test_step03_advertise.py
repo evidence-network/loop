@@ -141,7 +141,8 @@ class StepTest(unittest.TestCase):
 
 @unittest.skipUnless(TOOLS, SKIP_WHY)
 class LiveTest(unittest.TestCase):
-    """Live: the harness never signs; it reads a commitment the node published, or reports NOT_CHECKED on #51."""
+    """Live: the harness never signs; it reads a commitment the node published, or reports NOT_CHECKED on the
+    gap still open: the pinned plugin makes the commitment (capsules-plugin PR #75), nobody has published it."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -174,14 +175,19 @@ class LiveTest(unittest.TestCase):
     def test_live_today_is_not_checked_on_the_node_side_issue(self):
         f, out = self.run_live("live", ROOT)
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual({x["issue"] for x in f["not_checked"]}, {"Mesh-LLM/capsules-plugin#51"})
+        self.assertEqual({x["issue"] for x in f["not_checked"]}, {self.step.LIVE_ISSUE})
+        self.assertEqual(self.step.LIVE_ISSUE, "no open issue yet (to be filed)")
+        for x in f["not_checked"]:
+            self.assertIn("capsules-plugin PR #75, in the pin", x["why"])
+            self.assertIn("not been published to nodes/commitments/", x["why"])
         self.assertFalse(list(out.glob("*.commitment.json")))
         self.assertNotIn("carrier.bundle", [p["path"] for p in f["proof"]])
 
     def test_live_node_without_a_published_commitment_is_not_checked(self):
         f, _ = self.run_live("live-published", ROOT)  # this repository's HEAD lists no commitments yet
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual([x["issue"] for x in f["not_checked"]], ["Mesh-LLM/capsules-plugin#51"])
+        self.assertEqual([x["issue"] for x in f["not_checked"]], [self.step.LIVE_ISSUE])
+        self.assertIn(self.step.LIVE_GAP, f["not_checked"][0]["why"])
 
     def test_live_node_signed_commitment_verifies(self):
         carrier = self.published_carrier()

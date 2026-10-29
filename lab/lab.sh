@@ -456,15 +456,26 @@ cmd_loop() {
   # LAB_DIR: population/live names each node's data_dir and book_dir from it.
   # LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
   # host_name maps a label back to its lab-N directory the same way).
-  local second=lab-1 self
+  # LOOP_NODE_CONSOLES gives step 12 each node's own console, by the same label, for the plugin's
+  # doctor and join.
+  local second=lab-1 self consoles
   [ "$REPORTER" = lab-1 ] && second=lab-2
   self=$(python3 -c 'import json, sys
 for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
         print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+  consoles=$(python3 -c 'import json, sys
+urls = dict(a.split("=", 1) for a in sys.argv[2:])
+out = {}
+for n in json.load(open(sys.argv[1]))["nodes"]:
+    for host, url in urls.items():
+        if f"/nodes/{host}/" in (n.get("data_dir") or "") or n["name"] == host:
+            out[n["name"]] = url
+print(json.dumps(out, sort_keys=True, separators=(",", ":")))' "$ROOT/population/live/population.json" \
+    $(for n in "${NODES[@]}"; do echo "$n=$(console "$n")"; done))
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
-    LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
+    LOOP_NODE_CONSOLES="$consoles" LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }

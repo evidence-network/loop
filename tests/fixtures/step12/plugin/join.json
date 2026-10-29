@@ -1,0 +1,107 @@
+{
+  "joined": true,
+  "done": [
+    "the node key @KEY_ID@ exists",
+    "the book exists at @BOOK@",
+    "the book has a checkpoint",
+    "the commitment served on commitment/1 verifies"
+  ],
+  "pending": [],
+  "self_attested": [
+    {
+      "check": "self_attested",
+      "state": "self_attested",
+      "detail": "each of the 4 records is sealed by this node's own key and by no other party; its content is this node's own statement of its half of an exchange"
+    }
+  ],
+  "unwitnessed": [
+    {
+      "check": "witness",
+      "state": "unwitnessed",
+      "detail": "no witness is configured: no checkpoint is delivered to one"
+    }
+  ],
+  "unchecked": [
+    {
+      "check": "not_checked",
+      "detail": "answers this node received are kept apart from its book (the Evidence page lists them); doctor does not inspect them"
+    }
+  ],
+  "unbound": [
+    {
+      "check": "controller_binding",
+      "state": "unbound",
+      "detail": "no controller binding record names this node's key @KEY_ID@: the plugin holds none of its own"
+    }
+  ],
+  "not_shared": [],
+  "commitment": "@COMMITMENT_PAIR@",
+  "findings": [
+    {
+      "check": "self_attested",
+      "state": "self_attested",
+      "detail": "each of the 4 records is sealed by this node's own key and by no other party; its content is this node's own statement of its half of an exchange"
+    },
+    {
+      "check": "controller_binding",
+      "state": "unbound",
+      "detail": "no controller binding record names this node's key @KEY_ID@: the plugin holds none of its own"
+    },
+    {
+      "check": "checkpoint",
+      "state": "present",
+      "detail": "the latest checkpoint covers all 4 ledger entries",
+      "records": [
+        "@ANCHOR@"
+      ]
+    },
+    {
+      "check": "witness",
+      "state": "unwitnessed",
+      "detail": "no witness is configured: no checkpoint is delivered to one"
+    },
+    {
+      "check": "not_checked",
+      "state": "NOT_CHECKED",
+      "detail": "answers this node received are kept apart from its book (the Evidence page lists them); doctor does not inspect them"
+    },
+    {
+      "check": "unsupported",
+      "state": "unsupported",
+      "detail": "full_history record bodies are refused to everyone; full_history is answered only through history_card/1, exchange_corroboration/1, served_summary/1; other derivations are refused derivation_unsupported"
+    },
+    {
+      "check": "sharing",
+      "state": "on",
+      "detail": "share_record_at_completion=counterparty"
+    },
+    {
+      "check": "policy_in_commitment",
+      "state": "present",
+      "detail": "the commitment this node serves on commitment/1 verifies and its lcap.policy_digest is the digest of the policy it answers under",
+      "records": [
+        "@POLICY_DIGEST@"
+      ]
+    },
+    {
+      "check": "stranger_view",
+      "state": "answered",
+      "detail": "checkpoints and history_card/1 to anyone (commitments only, no record)"
+    },
+    {
+      "check": "identified_view",
+      "state": "answered",
+      "detail": "what a stranger receives; record and exchange subjects are answered only to a proven counterparty, which receives those records"
+    },
+    {
+      "check": "probe_checkpoints",
+      "state": "match",
+      "detail": "the stranger's checkpoints answer verifies under @KEY_ID@, the key the commitment advertises, and the node answers under the policy it signs"
+    },
+    {
+      "check": "probe_history_card",
+      "state": "match",
+      "detail": "the stranger's history_card/1 answer verifies under @KEY_ID@, the key the commitment advertises, and the node answers under the policy it signs"
+    }
+  ]
+}

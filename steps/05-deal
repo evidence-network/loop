@@ -29,13 +29,13 @@ ids recomputed, seals, checkpoint signatures and signers, inclusion. Its
 verdict is verify.json.
 
 The receiver records how it resolved each push's sender, `accepted_via`
-(the shape capsules-plugin#69 agreed): `controller_declaration` when a
-controller declaration binds the sender's evidence key, else
-`operator_stopgap`; a node set to `host_announced` records that. The
-declarations come from `<population dir>/step05/controllers.json`, each
-signed by its controller's TEST key; their format is the rehearsal's
-stand-in until the plugin's lands (#69). Refusals are replies that name the
-refused key_id and are not sealed.
+(the shape the pinned capsules plugin records, capsules-plugin PR #77):
+`controller_declaration` when a controller declaration binds the sender's
+evidence key, else `operator_stopgap`; a node set to `host_announced` records
+that. The declarations come from `<population dir>/step05/controllers.json`,
+each signed by its controller's TEST key; their format is the rehearsal's
+stand-in, not the controller-binding/0 the plugin reads. Refusals are replies
+that name the refused key_id and are not sealed.
 
 The finding:
 - FAIL when any check on the proof bytes does not hold (a half citing the
@@ -46,7 +46,7 @@ The finding:
   declaration that verifies and binds the sender's key.
 - NOT_CHECKED when every check held but a side accepted via
   `operator_stopgap` or `host_announced`: acceptance is then the one
-  not_checked entry (Mesh-LLM/capsules-plugin#69), never a pass.
+  not_checked entry (ACCEPTANCE_ISSUE), never a pass.
 
 On the live population each lab node's capsules plugin data dir is read
 (steps/live.py): the halves it holds from its counterparties
@@ -56,13 +56,19 @@ held half: the AAC Go verifier (step 01's pin) runs Class 1 on the held bytes
 and recomputes the capsule_id from them; the driver checks the half is
 included under the checkpoint it was pushed with, signed by the half's key;
 and the node's own chain carries a record citing it as `counterparty_half`,
-whose capsule_id recomputes. The parts the pinned plugin does not do are
-not_checked entries naming their issues: halves citing each other and the
-other side's checkpoint (#49), the push on by default (#68), acceptance under
-a controller declaration (#69), and the held half's signature in a second
-language (AAC#431). A node with no held half is NOT_CHECKED under #68. A node
-whose data_dir is not readable is NOT_CHECKED. One finding, the worst over the
-nodes.
+whose capsule_id recomputes. That citing record carries how the node accepted
+the half (`received_half.accepted_via` and `sender_key_id`, capsules-plugin
+PR #77, in the pin): a record naming a key other than the half's, an unknown
+`accepted_via`, or a declaration with no binding digest or anchored on the
+node's own key is a FAIL. A half accepted via `host_announced` or
+`operator_stopgap` leaves acceptance not_checked: no node sends a controller
+declaration yet (ACCEPTANCE_ISSUE). The other parts the pinned plugin does not
+do, or the loop cannot read, are not_checked entries: halves citing each other
+and the other side's checkpoint (#49), the push on by default, which the
+pinned plugin does (PR #72) but a data dir does not show, the declaration's
+own signatures (AAC#432), and the held half's signature in a second language
+(AAC#431). A node with no held half, or whose data_dir is not readable, is
+NOT_CHECKED. One finding, the worst over the nodes.
 
 No spend: this step starts no exchange and pays nothing on either population.
 On the live population it reads the halves the lab run's exchanges left; the
@@ -100,18 +106,23 @@ SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkp
               "held/received-inclusion.jsonl", "citing.json", "citing-inclusion.json", "checkpoint.json",
               "placement.json"]
 PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
-ISSUE_69 = "Mesh-LLM/capsules-plugin#69"
+# Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). What
+# is still open is a node sending a controller declaration: binding a node key to its operator.
+ACCEPTANCE_ISSUE = "Mesh-LLM/capsules-plugin#54"
+# No released verifier checks a controller-binding/0 record's signatures.
+BINDING_VERIFIER_ISSUE = "action-state-group/agent-action-capsule#432"
 ACCEPTANCE_WHAT = "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration"
 ACCEPT_MODES = ("controller_declaration", "operator_stopgap", "host_announced")
 STAND_IN = finding.outside("the controller declaration's format, which is the rehearsal's stand-in "
-                           "(steps/05-deal.d) until the capsules plugin's lands", ISSUE_69)
+                           "(steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, "
+                           "whose signatures no released verifier checks", BINDING_VERIFIER_ISSUE)
 
 
 def acceptance(vias):
     """The not_checked entry for sides accepted other than under a controller declaration."""
     return {"what": ACCEPTANCE_WHAT,
             "why": f"accepted via {', '.join(vias)}: only controller_declaration meets the assertion",
-            "issue": ISSUE_69}
+            "issue": ACCEPTANCE_ISSUE}
 NO_SPEND = "Spend: none; this step starts no exchange and pays nothing (would spend 0 USD)."
 
 
@@ -263,13 +274,26 @@ LIVE_HALVES = {
 }
 LIVE_DEFAULT = {
     "what": "each side pushing its half at completion by default",
-    "why": "share_record_at_completion is off by default in the pinned plugin, and a node's setting is not "
-           "in its data dir to read",
-    "issue": "Mesh-LLM/capsules-plugin#68",
+    "why": "the pinned plugin defaults share_record_at_completion to counterparty (capsules-plugin PR #72, in "
+           "the pin), but a node's setting is not in its data dir to read",
+    "issue": live.NO_ISSUE_YET,
 }
-LIVE_ACCEPTANCE = dict(what=ACCEPTANCE_WHAT, issue=ISSUE_69, why="the pinned capsules plugin accepts a push on the host-announced peer id "
-                                       "(or CAPSULES_PEER_KEYS), not on an evidence key under a controller "
-                                       "declaration")
+VIA_KEY = ("host_announced", "operator_stopgap")
+LIVE_DECLARATION = {
+    "what": "the controller declaration a node accepted a half under",
+    "why": "the citing record names the declaration's digest and anchor key; its bytes are not in the data dir, "
+           "and no released verifier checks controller-binding/0",
+    "issue": BINDING_VERIFIER_ISSUE,
+}
+LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
+
+
+def live_acceptance(vias):
+    """The not_checked entry for held halves accepted on the evidence key other than under a declaration."""
+    return {"what": ACCEPTANCE_WHAT, "issue": ACCEPTANCE_ISSUE,
+            "why": f"the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, "
+                   f"in the pin) and records how; the citing records say {', '.join(vias)}: no node sends a "
+                   f"controller declaration yet"}
 LIVE_SIGNATURE = {
     "what": "the held half's producer signature, in a second language",
     "why": "Class 1 does not include it and the pinned Go verifier has no envelope mode",
@@ -336,8 +360,41 @@ def cites(capsule, capsule_id):
                for r in capsule.get("references") or [])
 
 
+HEX64 = set("0123456789abcdef")
+
+
+def is_key(v):
+    return isinstance(v, str) and len(v) == 64 and set(v) <= HEX64
+
+
+def accepted(citing, half):
+    """How the node's citing record says it accepted the half (capsules-plugin PR #77): {ok, via, detail}.
+
+    Not ok when the record contradicts itself: a sender key other than the half's, an unknown
+    accepted_via, or a declaration with no binding digest or anchored on the node's own key.
+    """
+    rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
+    rh = rh if isinstance(rh, dict) else {}
+    via = rh.get("accepted_via")
+    if via is None:
+        return {"ok": True, "via": "none recorded", "detail": "the citing record names no accepted_via"}
+    if via not in ACCEPT_MODES:
+        return {"ok": False, "via": str(via), "detail": f"the citing record names an unknown accepted_via {via!r}"}
+    if rh.get("sender_key_id") != half.get("key_id"):
+        return {"ok": False, "via": via, "detail": f"the citing record accepted key {rh.get('sender_key_id')}, "
+                                                   f"not the half's key {half.get('key_id')}"}
+    if via == "controller_declaration":
+        digest, anchor = rh.get("controller_binding_digest"), rh.get("controller_anchor_key_id")
+        if not (is_key(digest) and is_key(anchor)):
+            return {"ok": False, "via": via, "detail": "a declaration with no binding digest or anchor key"}
+        if anchor == citing.get("key_id"):
+            return {"ok": False, "via": via, "detail": "a declaration anchored on the node's own key"}
+        return {"ok": True, "via": via, "detail": f"under declaration {digest}, anchored on {anchor}"}
+    return {"ok": True, "via": via, "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
+
+
 def live_node(bin_, name, data_dir, out, work):
-    """Check every half the node holds: (result, proof, detail, pairs)."""
+    """Check every half the node holds: (result, proof, detail, pairs, accepted_via values)."""
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
     ledger = data_dir / "ledger"
@@ -347,7 +404,7 @@ def live_node(bin_, name, data_dir, out, work):
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
     if not held:
-        return "NOT_CHECKED", [], f"node {name}: holds no pushed half", []
+        return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], []
     checks, proof = [], []
     for n, raw in enumerate(held, 1):
         stem = f"held-{n}"
@@ -382,18 +439,20 @@ def live_node(bin_, name, data_dir, out, work):
             proof.append(f"{stem}-citing.json")
             ok, detail = capsule_checks(citing[0])
             c["cited"] = {"ok": ok, "detail": f"record {parsed(citing[0]).get('capsule_id')} cites it: {detail}"}
+            c["accepted"] = accepted(parsed(citing[0]), capsule)
         checks.append(c)
     (out / "checks.json").write_text(json.dumps({"node": name, "held": checks}, indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
+    vias = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
     pairs = [(capsule.get("model_attestation", {}).get("compute_attestation", {}).get("agent_input_digest"),
               c["capsule_id"]) for c, capsule in zip(checks, map(lambda r: parsed(r) or {}, held))]
     if failed:
-        return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs
+        return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, vias
     return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
                                   f"the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was "
                                   f"pushed with (evidencebook), and cited as counterparty_half by the node's own "
-                                  f"record"), pairs
+                                  f"record, which says it accepted the half's key via {', '.join(vias)}"), pairs, vias
 
 
 def main_live(pop, out, started):
@@ -402,6 +461,7 @@ def main_live(pop, out, started):
     missing = live_tools(bin_)
     results, proof, details, not_checked = [], [], [], list(missing)
     own_inputs = {}
+    vias = set()
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
             name = entry["name"]
@@ -415,17 +475,29 @@ def main_live(pop, out, started):
                 continue
             if (out / name).exists():
                 shutil.rmtree(out / name)
-            result, files, detail, pairs = live_node(bin_, name, data_dir, out / name, Path(tmp) / name)
+            result, files, detail, pairs, node_vias = live_node(bin_, name, data_dir, out / name, Path(tmp) / name)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
             own_inputs[name] = {d for d, _ in pairs if d}
-            if not files and LIVE_DEFAULT not in not_checked:
-                not_checked.append(LIVE_DEFAULT)
+            vias |= set(node_vias)
+            if not files:
+                not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
+                                    "from the lab run's exchanges", "issue": live.ISSUE})
     seen = [d for ds in own_inputs.values() for d in ds]
     both = sorted({d for d in seen if seen.count(d) > 1})
     details.append(f"exchanges with a half held on each of two nodes: {len(both)}")
-    for nc in (LIVE_HALVES, LIVE_DEFAULT, LIVE_ACCEPTANCE, LIVE_SIGNATURE):
+    acceptance_gaps = [LIVE_DECLARATION] if "controller_declaration" in vias else []
+    if vias & set(VIA_KEY):
+        acceptance_gaps.append(live_acceptance(sorted(vias & set(VIA_KEY))))
+    if "none recorded" in vias:
+        acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": LIVE_NO_VIA,
+                                "why": "a citing record names no accepted_via, so it was sealed by a build "
+                                       "before the pinned one"})
+    if not vias:
+        acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": live.ISSUE,
+                                "why": "no node holds a half its own record cites, so there is no acceptance to read"})
+    for nc in (LIVE_HALVES, LIVE_DEFAULT, *acceptance_gaps, LIVE_SIGNATURE):
         if nc not in not_checked:
             not_checked.append(nc)
     result = live.worst(results + ["NOT_CHECKED"])

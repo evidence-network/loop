@@ -126,8 +126,11 @@ These are never shown as checked.
   (action-state-group/agent-action-capsule#432). join.sh signs it and doctor
   finds it naming your key, but nothing checks its signatures, so your key
   reads as unbound. Step 12 states this outside its assertion.
-- Mesh nodes keep their book in the capsules plugin. For them, join, doctor
-  and the probe come with Mesh-LLM/capsules-plugin#53, and the signed
-  commitment with Mesh-LLM/capsules-plugin#51. Until then the loop probes a
-  Mesh node through the daily reporter's ask.
+- Mesh nodes keep their book in the capsules plugin. The pinned plugin has
+  its own `join` and `doctor --probe` (capsules-plugin PR #81) and signs and
+  serves the commitment (PR #75); step 12 runs both through the node's own
+  console, and asks the node through the daily reporter too. It does not bind
+  the node key to a controller (Mesh-LLM/capsules-plugin#54). The join switch
+  that sends the reporter a signed join is fixed upstream in capsules-plugin
+  PR #85, not in the pinned build; loop re-pins next.
 - No witness is registered, so checkpoints are unwitnessed.

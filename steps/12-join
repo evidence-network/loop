@@ -29,13 +29,27 @@ The controller binding's own verification (controller-binding/0, both
 signatures) is outside the assertion: no released verifier checks it yet, and
 a PASS says so in detail, citing the issue that owns it.
 
-`reporter` (Mesh plugin nodes, which doctor --probe cannot reach): asks each
-node checkpoints and history_card/1 through the daily reporter's ask
-(scripts/daily_report.py), whose plugin verifies each answer under the key
-the node's host announces. An answer that verifies under a key other than the
-listed one, does not verify, or refuses a subject the node lists as
-stranger-safe is a failure. Join, doctor, the binding and the signed
-commitment are NOT_CHECKED on the capsules plugin's issues.
+`reporter` (Mesh plugin nodes, which capsulectl's doctor --probe cannot
+reach): asks each node checkpoints and history_card/1 through the daily
+reporter's ask (scripts/daily_report.py), whose plugin verifies each answer
+under the key the node's host announces. An answer that verifies under a key
+other than the listed one, does not verify, or refuses a subject the node
+lists as stranger-safe is a failure. Then, through the node's own console
+(--node-consoles), it runs the pinned capsules plugin's own `doctor` with
+`probe` and `join` (capsules-plugin PR #81, in the pin) and judges what they
+return:
+
+  - doctor's two in-process stranger probes match (a mismatch is a failure);
+  - doctor finds the commitment it serves on commitment/1 carrying the policy
+    it answers under (policy_in_commitment present);
+  - the commitment join returns verifies with step 03's checker, policy bytes
+    included, and is the listed node's, under its listed key;
+  - join reports the node joined (a pending part is NOT_CHECKED).
+
+What the pinned plugin does not do stays NOT_CHECKED: the controller binding
+(capsules-plugin#54), and the signed join the join switch sends the reporter,
+which is after the pin (AFTER_PIN). A node with no console given is
+NOT_CHECKED for doctor and join.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -62,6 +76,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as check_commitment_  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
+import live  # noqa: E402
 import report_layout as layout  # noqa: E402
 
 ASSERTS = ("one command on the pinned release records a controller binding for the node key (its controller "
@@ -69,6 +84,10 @@ ASSERTS = ("one command on the pinned release records a controller binding for t
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
            "advertised policy")
 PINNED = ["capsulectl", "capsulectl-book"]
+# Rows whose code is in the plugin after the pinned commit.
+AFTER_PIN = "fixed upstream in capsules-plugin PR #85, not in the pinned build; loop re-pins next"
+DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
+JOIN_ROUTE = "/api/plugins/capsules/tools/join"
 PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
          "doctor.json", "join.json"]
@@ -298,19 +317,16 @@ def run_doctor(pop, out, tmp):
 # capsules plugin), reused as it is: the plugin verifies each answer under the
 # key the node's host announces, and the reporter writes that verdict as a line.
 LIVE_NOT_CHECKED = [
-    {"what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
-     "why": "a Mesh node's book is the capsules plugin's; the plugin has no join or doctor yet, so join.sh "
-            "does not run against it",
-     "issue": "Mesh-LLM/capsules-plugin#53"},
-    {"what": "doctor --probe on a Mesh node",
-     "why": "the probe is the daily reporter's mesh_evidence_request path until the plugin has its own",
-     "issue": "Mesh-LLM/capsules-plugin#53"},
+    {"what": "a controller binding for a Mesh node's key, recorded by its one command",
+     "why": "the pinned capsules plugin's join records none, and its doctor reports the key unbound",
+     "issue": "Mesh-LLM/capsules-plugin#54"},
     NO_BINDING_VERIFIER,
-    {"what": "the signed commitment and the policy digest the answers are matched against",
-     "why": "nodes/ entries are unsigned and carry no policy digest; the probe is matched against the entry's "
-            "listed key and stranger_safe subjects only",
-     "issue": "Mesh-LLM/capsules-plugin#51"},
+    {"what": "the signed join/1 a Mesh node's join switch sends the reporter, which lists the node",
+     "why": "the pinned capsules plugin's join checks the node and returns its commitment but sends nothing",
+     "issue": AFTER_PIN},
 ]
+NODE_CONSOLE_ISSUE = "evidence-network/loop: lab/lab.sh loop gives each node's console (LOOP_NODE_CONSOLES)"
+REPORTER_ASK_ISSUE = "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"
 
 
 def listed_entry(node):
@@ -336,7 +352,7 @@ def judge_reporter_line(stem, line, entry):
                else "does not verify under the announced key")
         return f"the {name} answer {why}: {line}", None
     return None, {"what": f"the {name} probe answer", "why": f"the reporter got no verifiable answer: {line}",
-                  "issue": "Mesh-LLM/capsules-plugin#53"}
+                  "issue": REPORTER_ASK_ISSUE}
 
 
 def said(line):
@@ -344,6 +360,92 @@ def said(line):
     finding words it so, as a NOT_CHECKED detail may not claim a check (steps/finding.py)."""
     state = line.split(" ", 1)[0]
     return "answered under the listed key" if state == "verified" else state
+
+
+def tool(console, route, body, timeout):
+    """(reply object or None, the bytes, what went wrong or None) for one plugin tool call."""
+    try:
+        status, raw = daily_report.http("POST", console + route, body, timeout)
+    except OSError as e:
+        return None, json.dumps({"error": str(e)}).encode(), f"no reply ({e})"
+    if status != 200:
+        return None, raw, f"http {status}: {raw.decode('utf-8', 'replace')[:200]}"
+    try:
+        reply = json.loads(raw)
+    except ValueError:
+        return None, raw, "the reply is not JSON"
+    return (reply, raw, None) if isinstance(reply, dict) else (None, raw, "the reply is not a JSON object")
+
+
+def judge_doctor(reply):
+    """(failures, not_checked) for the plugin's doctor --probe findings."""
+    try:
+        found = {f["check"]: f for f in reply["findings"]}
+    except (KeyError, TypeError):
+        return ["doctor's reply carries no findings"], []
+    fails, nc = [], []
+    for check in DOCTOR_PROBES:
+        f = found.get(check, {})
+        state = f.get("state", "absent")
+        if state == "NOT_CHECKED":
+            nc.append({"what": f"doctor --probe {check}", "why": f"the plugin did not run it: {f.get('detail')}",
+                       "issue": live.ISSUE})
+        elif state != "match":
+            fails.append(f"doctor --probe {check}: {state} ({f.get('detail', 'no finding')})")
+    pic = found.get("policy_in_commitment", {})
+    if pic.get("state") != "present":
+        nc.append({"what": "the commitment the node serves on commitment/1, carrying the policy it answers under",
+                   "why": f"doctor: {pic.get('state', 'absent')} ({pic.get('detail', 'no finding')})",
+                   "issue": live.ISSUE})
+    return fails, nc
+
+
+def judge_join(reply, entry, node_dir):
+    """(failures, not_checked) for the plugin's join report; writes the commitment pair it returns."""
+    fails, nc = [], []
+    pair = reply.get("commitment")
+    if not isinstance(pair, dict):
+        nc.append({"what": "the commitment join returns", "why": "join returns none (the node serves no "
+                   "commitment yet)", "issue": live.ISSUE})
+    else:
+        try:
+            doc, policy = pair["commitment"], base64.b64decode(pair["policy"], validate=True)
+        except (KeyError, TypeError, ValueError) as e:
+            doc, policy = None, None
+            fails.append(f"join's commitment pair is not {{commitment, policy}} ({e})")
+        if doc is not None:
+            (node_dir / "commitment.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+            (node_dir / "disclosure-policy.json").write_bytes(policy)
+            errs, notes = check_commitment_.verify(doc, lambda uri: policy)
+            fails += [f"join's commitment does not verify: {e}" for e in errs + notes]
+            if isinstance(doc, dict) and doc.get("key_id") != entry.get("key_id"):
+                fails.append(f"join's commitment is under key {doc.get('key_id')}, not the listed key")
+            if isinstance(doc, dict) and doc.get("node_id") != entry.get("node_id"):
+                fails.append(f"join's commitment is for node {doc.get('node_id')}, not this node")
+    if reply.get("joined") is not True:
+        nc.append({"what": "the plugin's join", "why": "join reports pending: " +
+                   "; ".join(map(str, reply.get("pending") or ["(no pending list)"])), "issue": live.ISSUE})
+    return fails, nc
+
+
+def check_node_tools(console, entry, node_dir, timeout):
+    """(failures, not_checked, proof names in node_dir, line) for doctor --probe and join on the node's console."""
+    fails, nc, proof = [], [], []
+    for name, route, body, judge in (("doctor", DOCTOR_ROUTE, {"probe": True}, judge_doctor),
+                                     ("join", JOIN_ROUTE, {}, None)):
+        reply, raw, err = tool(console, route, body, timeout)
+        (node_dir / f"{name}.json").write_bytes(raw)
+        proof.append(f"{name}.json")
+        if err:
+            nc.append({"what": f"the plugin's {name} on the node's console", "why": err, "issue": live.ISSUE})
+            continue
+        f, n = judge(reply) if judge else judge_join(reply, entry, node_dir)
+        fails += f
+        nc += n
+    proof += [p for p in ("commitment.json", "disclosure-policy.json") if (node_dir / p).is_file()]
+    line = ("doctor --probe: both probes match; join: joined, its commitment holds under the listed key"
+            if not fails and not nc else f"doctor and join: {len(fails)} failure(s), {len(nc)} part(s) not checked")
+    return fails, nc, proof, line
 
 
 NO_SECOND_CONSOLE_ISSUE = "evidence-network/loop: step 12 asks the reporter's own node through a second console"
@@ -356,8 +458,9 @@ def no_second_console(name):
             "issue": NO_SECOND_CONSOLE_ISSUE}
 
 
-def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None):
+def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, node_consoles=None):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
+    node_consoles = node_consoles or {}
     at = daily_report.utc_now()
     for node in pop["nodes"]:
         name = node["name"]
@@ -392,8 +495,19 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         failures += bad
         asked = f" (asked through {via})" if self_node else ""
-        lines.append(f"{name}{asked}: " +
-                     "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
+        line = f"{name}{asked}: " + "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items())
+        own = node_consoles.get(name)
+        if own:
+            fails, nc, files, said_tools = check_node_tools(own, entry, node_dir, timeout)
+            failures += [f"{name}: {f}" for f in fails]
+            merge(not_checked, [{**n, "what": f"{name}: {n['what']}"} for n in nc])
+            proof += [f"{name}/{f}" for f in files]
+            line += f"; {said_tools}"
+        else:
+            merge(not_checked, [{"what": f"{name}: the plugin's doctor --probe and join on the node",
+                                 "why": "no console was given for the node (--node-consoles, or LOOP_NODE_CONSOLES)",
+                                 "issue": NODE_CONSOLE_ISSUE}])
+        lines.append(line)
     return failures, not_checked, proof, lines
 
 
@@ -412,6 +526,8 @@ def main(argv=None):
                     help="the population node whose console --console is; it is asked through --second-console")
     ap.add_argument("--second-console", default=os.environ.get("LOOP_SECOND_CONSOLE") or None,
                     help="another node's console, to ask the self node through")
+    ap.add_argument("--node-consoles", default=os.environ.get("LOOP_NODE_CONSOLES") or "{}",
+                    help='each node\'s own console, for its doctor and join: JSON {"<node name>": "<url>"}')
     a = ap.parse_args(argv)
     started = finding.now()
     pop = load(a.population / "population.json")
@@ -426,8 +542,16 @@ def main(argv=None):
             print(f"12-join: --self-node {a.self_node!r} is not a node in the population "
                   f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
             return 2
+        try:
+            node_consoles = json.loads(a.node_consoles)
+            if not (isinstance(node_consoles, dict) and all(isinstance(v, str) for v in node_consoles.values())):
+                raise ValueError("not an object of strings")
+        except ValueError as e:
+            print(f"12-join: --node-consoles is JSON {{\"<node name>\": \"<url>\"}} ({e})", file=sys.stderr)
+            return 2
         failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
-                                                           second_console=a.second_console)
+                                                           second_console=a.second_console,
+                                                           node_consoles=node_consoles)
     else:
         print(f"12-join: unknown probe backend {which!r}", file=sys.stderr)
         return 2
