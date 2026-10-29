@@ -40,9 +40,10 @@
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
 #   LAB_REPORTER        the reporter node (default lab-3)
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
-#   LAB_SHARE_AT_COMPLETION  the nodes whose plugin pushes its record of each completed exchange to
-#             the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2"; default
-#             none, the plugin's own default (off). Read by start: restart a node to change it
+#   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
+#             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
+#             A node not named keeps the plugin's default, which is on at the pinned plugin unless the
+#             node's config sets it off. Read by start: restart a node to change it
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -273,7 +274,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     CAPSULES_HOST_CONSOLE_URL="$(console "$name")")
   [ -n "${MESH_LLM_RUNTIME:-}" ] && envs+=(MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR="$MESH_LLM_RUNTIME")
   # The plugin reads share_record_at_completion from this env var before its config
-  # (capsules-plugin share_policy.rs); unset is its default, off.
+  # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
   [[ "$SHARE" == *" $name "* ]] && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
     --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")

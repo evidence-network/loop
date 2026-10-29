@@ -382,24 +382,38 @@ host.
 
 ### Step 05, both halves of a deal
 
-Stage 1 does not include step 05. To record one deal's two halves, each held
-by the other side, turn on `share_record_at_completion` (`counterparty`) on
-both nodes of an exchange before it runs. `exchange` has lab-2 and lab-3 ask
-lab-1, so lab-1 and lab-2 make one deal whose halves both cross:
+Stage 1 does not include step 05. It needs one deal whose two halves were each
+pushed to and held by the other side, so both nodes of an exchange must have
+`share_record_at_completion` on (`counterparty`) when it runs. At the pinned
+plugin that is its default, so nodes whose config leaves it unset may already
+hold halves from earlier exchanges. Try that first:
 
 ```sh
-lab/lab.sh stop
-LAB_SHARE_AT_COMPLETION="lab-1 lab-2" lab/lab.sh start
-lab/lab.sh exchange
 lab/lab.sh --dry-run deal
 lab/lab.sh deal
 ```
 
+If the finding reads NOT_CHECKED for want of a held half, restart with the
+push forced on for both sides of one exchange, and run one. `exchange` has
+lab-2 and lab-3 ask lab-1, so lab-1 and lab-2 make one deal whose halves both
+cross. The reporter's timers ask these nodes, so stop them while the nodes are
+down, or their slots read MISSED:
+
+```sh
+systemctl --user stop loop-reporter.timer loop-reporter-rehearsal.timer
+lab/lab.sh stop
+LAB_SHARE_AT_COMPLETION="lab-1 lab-2" lab/lab.sh start
+systemctl --user start loop-reporter.timer   # and loop-reporter-rehearsal.timer, if it was running
+lab/lab.sh exchange
+lab/lab.sh deal
+```
+
 `start` passes `CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty` to each named
-node's plugin, which reads it before its config; a node not named keeps the
-plugin's default, off. The setting is read at start, so restart to change it.
-Each side pushes its record when the exchange completes, provided it knows the
-other side's key (the host announces it).
+node's plugin, which reads it before its config, so a config that turned the
+push off does not apply to those nodes. A node not named keeps the plugin's
+default, on at the pin, unless its config sets it off. The setting is read at
+start, so restart to change it. Each side pushes its record when the exchange
+completes, provided it knows the other side's key (the host announces it).
 
 `deal` runs `steps/05-deal` on `population/live` into the same
 `findings/<date>-live/` as stage 1, as `05-deal/`, then checks the finding
