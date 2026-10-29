@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Step 09 Dispute: the referee's signed Result on a deal, held by the party it concerns, with the same bytes.
+"""Step 09 Dispute: the referee's signed Result on a twin pair, held by each node it concerns, with the same bytes.
 
 Usage: 09-dispute --population DIR --out DIR
 
 On Mesh a dispute is an adjudication only: the referee seals a Result about
-a deal's exchange and delivers it to the nodes it concerns, each of which
+a pair of twins' answers to one request (a twin comparison, as the plugin's
+referee does) and delivers it to the nodes it concerns, each of which
 holds it and seals its own `adjudication_received` record citing it. There
 is no party-to-party path (no party-sealed `dispute`, `dispute_response` or
 `close`; Mesh-LLM/capsules-plugin#58 dropped it for Mesh, and #102 seals the
@@ -16,19 +17,20 @@ Records are AAC capsules as the pinned capsules plugin seals them
 laid out as a plugin data dir's `ledger/` holds them:
 
 - `capsules.jsonl`: the node's own chain;
-- `received-capsules.jsonl`: the halves other nodes pushed to it;
+- `received-capsules.jsonl`: the twins' served records other nodes pushed to it;
 - `requested-adjudications.jsonl`: the referee it asked, about which halves;
 - `issued-adjudications.jsonl` (the referee) and `received-adjudications.jsonl`
   (a party): each held Result, `{verdict_capsule_id, verdict_capsule, ...}`.
 
 The rehearsal population acts out one adjudication from
-`<population dir>/step09/dispute.json`, with alice, bob and the referee's
-TEST keys: alice (seller) and bob (buyer) seal their halves of the deal and
-push them to each other (a stand-in of step 05's halves); bob asks the
-referee about the pair; the referee seals the Result (the plugin's
+`<population dir>/step09/dispute.json`, with TEST keys for the twins alice and
+bob, the requester and the referee: alice and bob each seal their served
+record of one request, answering it differently, and the requester holds both;
+it asks the referee about the pair; the referee seals the Result (the plugin's
 `adjudication` block, `ruling` from dispute.json), holds it, seals its
 `adjudication_issued` record citing the Result and both halves, and delivers
-it to both parties, who hold it and seal `adjudication_received`. Each
+it to the requester and to each judged twin, who hold it and seal
+`adjudication_received`. Each
 node's ledger is then a proof directory beside the finding.
 
 The checks, per Result a party holds (checks.json), on those bytes alone:
@@ -41,10 +43,10 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
   referee is neither half's node; the party asked that referee about exactly
   that pair, or one half is the party's own record; on rehearsal the referee
   is dispute.json's;
-- cites_deal: the Result cites two halves by digest; the party's book (its
+- cites_halves: the Result cites two halves by digest; the party's book (its
   chain or its held pushes) resolves both when the party asked the referee
-  about the pair, and at least the party's own half when it is a judged
-  provider (the plugin's hold door); each half it holds recomputes and
+  about the pair (the requester), and at least the party's own half when it
+  is a judged twin (the plugin's hold door); each half it holds recomputes and
   verifies under the key of the node the Result names for it;
 - recorded_received: the party's chain carries one `adjudication_received`
   record citing the Result (`adjudication_verdict`) whose facts are the
@@ -54,8 +56,9 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
   citing that Result and both halves.
 PASS when every check holds for every Result each party holds (and each
 party holds one); FAIL otherwise. outcome.json states, per Result, what it
-rules (`against_seller`, `for_seller` or `no_finding`): what step 04 reads. On the live
-population no seller is named, so the outcome is `against:<node id>`, `corroborated` or `no_finding`.
+rules about the twins (`against:<node id>` of the twin the referee named,
+`corroborated` or `no_finding`); step 04's disputes row reads the plugin's
+verdict_counts fold of these same Results, not a role label the loop invents.
 
 On the live population each lab node's data dir is read (steps/live.py),
 never written. Each Result a node holds is checked as above, with the
@@ -84,10 +87,10 @@ import aac  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
-ASSERTS = ("the referee seals an adjudication Result on a deal that cites the deal's exchange halves by digest; "
+ASSERTS = ("the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; "
            "the party's book holds the matching adjudication_received with the same Result bytes as the referee's "
            "adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked "
-           "the referee, at least its own for a judged provider) resolve by digest to records in the book, and the outcome it states for or against the seller is recorded")
+           "the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded")
 PINNED = []
 LIVE_PINNED = ["capsules"]
 ISSUE_102 = "Mesh-LLM/capsules-plugin#102"
@@ -103,7 +106,7 @@ CONTRADICTED = "contradicted:"
 STATUS = {"corroborated": "SATISFIED", "inconclusive": "UNKNOWN", "not_comparable": "UNKNOWN",
           "contradicted": "CONTRADICTED"}
 PARTY_PATH = ("dispute", "dispute_response", "close")
-CHECKS = ("result_signed", "result_is_adjudication", "referee_signed", "cites_deal", "recorded_received",
+CHECKS = ("result_signed", "result_is_adjudication", "referee_signed", "cites_halves", "recorded_received",
           "matches_issued")
 OWN, PUSHED, REQUESTED = "capsules.jsonl", "received-capsules.jsonl", "requested-adjudications.jsonl"
 ISSUED, RECEIVED = "issued-adjudications.jsonl", "received-adjudications.jsonl"
@@ -203,35 +206,32 @@ def key_dir_of(population_dir, name, entry):
     return p if p.is_absolute() else ROOT / p
 
 
-def ruling_for(ruling, seller, buyer):
-    """The plugin's verdict string for dispute.json's ruling."""
-    if ruling == "contradicted:seller":
-        return CONTRADICTED + seller.node_id
-    if ruling == "contradicted:buyer":
-        return CONTRADICTED + buyer.node_id
+def ruling_for(ruling, nodes):
+    """The plugin's verdict string for dispute.json's ruling: `contradicted:<twin name>` names the twin."""
+    if ruling.startswith(CONTRADICTED) and ruling[len(CONTRADICTED):] in nodes:
+        return CONTRADICTED + nodes[ruling[len(CONTRADICTED):]].node_id
     if ruling in RULINGS:
         return ruling
-    raise ValueError(f"ruling {ruling!r} is contradicted:seller, contradicted:buyer or one of {', '.join(RULINGS)}")
+    raise ValueError(f"ruling {ruling!r} is contradicted:<twin> or one of {', '.join(RULINGS)}")
 
 
-def half(node, other, deal, role, time, cite=None):
-    block = {"deal_id": deal["deal_id"], "role": role, "request_digest": deal["request_digest"],
-             "response_digest": deal["response_digest"], "node_id": node.node_id,
-             "counterparty_node_id": other.node_id}
-    refs = [ref(cite, "counterparty_half")] if cite else None
-    return node.seal(record(f"deal/{deal['deal_id']}/{role}", time, "deal_half", block,
-                            epistemic_type="observation", references=refs))
+def half(node, exchange, time):
+    """One twin's served record of the exchange's request: the request digest is shared, the answer is its own."""
+    block = {"exchange_id": exchange["exchange_id"], "request_digest": exchange["request_digest"],
+             "response_digest": exchange["response_digests"][node.name], "node_id": node.node_id}
+    return node.seal(record(f"exchange/{exchange['exchange_id']}/{node.name}", time, "served", block,
+                            epistemic_type="observation"))
 
 
-def verdict(referee, seller_half, buyer_half, seller, buyer, ruling, time, *, bracket):
+def verdict(referee, half_a, half_b, twin_a, twin_b, ruling, time, *, bracket):
     block = {"schema": SCHEMA, "source": "rehearsal_referee", "capture_method": "rehearsal_stand_in",
              "verdict": ruling, "status": STATUS[ruling.split(":")[0]],
-             "half_a_capsule_id": seller_half, "half_b_capsule_id": buyer_half,
-             "half_a_node_id": seller.node_id, "half_b_node_id": buyer.node_id,
+             "half_a_capsule_id": half_a, "half_b_capsule_id": half_b,
+             "half_a_node_id": twin_a.node_id, "half_b_node_id": twin_b.node_id,
              "referee_id": referee.node_id, "referee_node_id": referee.node_id, "twin_bracket_id": bracket}
     block = {k: v for k, v in block.items() if v is not None}
     body = record(f"adjudicate/{bracket}", time, "adjudication", block, epistemic_type="adjudication",
-                  parent=seller_half, relation="confirms", provenance="referee")
+                  parent=half_a, relation="confirms", provenance="referee")
     body["disposition"] = {"decision": "accept", "approver": "policy", "human_disposed": False,
                            "verdict_class": "assessed"}
     return body
@@ -253,11 +253,13 @@ def facts_block(v):
 def act(population_dir, out, time, plant=None, stranger=None):
     """Act out one adjudication on the rehearsal population into out/<node>/ledger/.
 
-    `plant` (tests only) makes one participant misbehave: "uncited" (the Result cites no
-    deal), "foreign_deal" (it cites a deal not in the book), "wrong_key" (signed by the
-    key in `stranger`, not the referee's), "received_differs" (the referee issues one
-    Result and delivers another) or "party_close" (the buyer seals a close record and
-    holds it as the adjudication).
+    Two twins served the same request and answered it differently; the requester holds both
+    served records, asks the referee about the pair, and the referee rules. `plant` (tests
+    only) makes one participant misbehave: "uncited" (the Result cites no halves),
+    "foreign_exchange" (it cites halves not in the books), "wrong_key" (signed by the key in
+    `stranger`, not the referee's), "received_differs" (the referee issues one Result and
+    delivers another) or "party_close" (the requester seals a close record and holds it as
+    the adjudication).
     """
     out = Path(out)
     doc = read_json(Path(population_dir) / "step09" / "dispute.json")
@@ -266,30 +268,28 @@ def act(population_dir, out, time, plant=None, stranger=None):
              for name, e in doc["nodes"].items()}
     announced = {n.node_id: aac.key_id_of_pem(n.key_dir / "node-key.pub.pem") for n in nodes.values()}
     (out / "announced.json").write_text(json.dumps({"announced_keys": announced}, indent=2, sort_keys=True) + "\n")
-    deal = doc["deal"]
-    seller, buyer, referee = nodes[deal["seller"]], nodes[deal["buyer"]], nodes[doc["referee"]]
-    requester = nodes[doc["requester"]]
-    bracket = f"{deal['deal_id']}/dispute-1"
+    ex = doc["exchange"]
+    twin_a, twin_b = (nodes[t] for t in ex["twins"])
+    referee, requester = nodes[doc["referee"]], nodes[doc["requester"]]
+    bracket = f"{ex['exchange_id']}/pair-1"
 
-    # The deal: each side seals its half and pushes it to the other.
-    a = half(seller, buyer, deal, "seller", time)
-    seller.append(a)
-    b = half(buyer, seller, deal, "buyer", time, cite=a["capsule_id"])
-    buyer.append(b)
-    append(buyer.ledger / PUSHED, a)
-    append(seller.ledger / PUSHED, b)
+    # The twins each seal their served record; the requester holds both (the plugin's received-capsules).
+    a, b = half(twin_a, ex, time), half(twin_b, ex, time)
+    twin_a.append(a)
+    twin_b.append(b)
+    append(requester.ledger / PUSHED, a)
+    append(requester.ledger / PUSHED, b)
     cited = (a["capsule_id"], b["capsule_id"])
-    if plant == "foreign_deal":
-        other = dict(deal, deal_id=deal["deal_id"] + "-elsewhere")
-        cited = (half(seller, buyer, other, "seller", time)["capsule_id"],
-                 half(buyer, seller, other, "buyer", time)["capsule_id"])
+    if plant == "foreign_exchange":
+        other = dict(ex, exchange_id=ex["exchange_id"] + "-elsewhere")
+        cited = (half(twin_a, other, time)["capsule_id"], half(twin_b, other, time)["capsule_id"])
 
     # The requester asks the referee about the pair.
     append(requester.ledger / REQUESTED, {"referee": referee.node_id, "halves": list(cited), "requested_at": time})
 
     # The referee seals the Result, holds it, and records it on its chain.
-    ruling = ruling_for(doc["ruling"], seller, buyer)
-    body = verdict(referee, *cited, seller, buyer, ruling, time, bracket=bracket)
+    ruling = ruling_for(doc["ruling"], {t.name: t for t in (twin_a, twin_b)})
+    body = verdict(referee, *cited, twin_a, twin_b, ruling, time, bracket=bracket)
     if plant == "uncited":
         b_ = body["model_attestation"]["compute_attestation"]["adjudication"]
         for k in ("half_a_capsule_id", "half_b_capsule_id"):
@@ -304,16 +304,16 @@ def act(population_dir, out, time, plant=None, stranger=None):
 
     delivered = issued
     if plant == "received_differs":
-        other_ruling = "corroborated" if ruling != "corroborated" else CONTRADICTED + seller.node_id
-        delivered = aac.seal(verdict(referee, *cited, seller, buyer, other_ruling, time, bracket=bracket),
+        other_ruling = "corroborated" if ruling != "corroborated" else CONTRADICTED + twin_a.node_id
+        delivered = aac.seal(verdict(referee, *cited, twin_a, twin_b, other_ruling, time, bracket=bracket),
                              referee.key_dir)
 
-    # Delivery: each party holds the Result and seals its adjudication_received.
-    for party, held_half in ((buyer, a), (seller, b)):
+    # Delivery: the requester and each judged twin hold the Result and seal an adjudication_received.
+    for party, held_half in ((requester, a), (twin_a, a), (twin_b, b)):
         result = delivered
-        if plant == "party_close" and party is buyer:
-            result = party.seal(record(f"close/{deal['deal_id']}", time, "close",
-                                       {"state": "AGREED", "deal_id": deal["deal_id"], "halves": list(cited),
+        if plant == "party_close" and party is requester:
+            result = party.seal(record(f"close/{ex['exchange_id']}", time, "close",
+                                       {"state": "AGREED", "exchange_id": ex["exchange_id"], "halves": list(cited),
                                         "closed_by": party.node_id}, epistemic_type="close",
                                        references=[ref(h, "disputed_half") for h in cited]))
         rfacts = facts_block(result)
@@ -355,21 +355,17 @@ def is_adjudication(v):
                  + ("" if distinct else ": the halves are not from two distinct nodes"))
 
 
-def outcome(v, seller_node_id):
-    """against_seller, for_seller or no_finding: what Result v rules about the seller."""
+def outcome(v):
+    """What Result v rules about the twins: `against:<node id>` (the twin the referee named),
+    `corroborated` (the twins agree) or `no_finding`."""
     b = attestation(v).get("adjudication") or {}
     ruling = b.get("verdict")
-    nodes = (b.get("half_a_node_id"), b.get("half_b_node_id"))
     if ruling == "corroborated":
-        return "for_seller" if seller_node_id is not None else "corroborated"
+        return "corroborated"
     if isinstance(ruling, str) and ruling.startswith(CONTRADICTED):
         against = ruling[len(CONTRADICTED):]
-        if seller_node_id is None:
+        if against in (b.get("half_a_node_id"), b.get("half_b_node_id")):
             return f"against:{against}"
-        if against == seller_node_id:
-            return "against_seller"
-        if against in nodes:
-            return "for_seller"
     return "no_finding"
 
 
@@ -425,9 +421,9 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
                                         + ("the party asked it about this pair" if asked_it
                                            else "one half is the party's own record"))
 
-        # cites_deal
+        # cites_halves
         if not all(isinstance(h, str) and h for h in halves) or halves[0] == halves[1]:
-            c["cites_deal"] = check(False, f"cites halves {halves}: not two distinct halves of a deal")
+            c["cites_halves"] = check(False, f"cites halves {halves}: not two distinct halves of a pair")
         else:
             problems, unrun = [], False
             # The requester asked for the pair and holds both halves; a judged provider holds only its own
@@ -448,7 +444,7 @@ def check_held(party, ledgers, announced, *, expected_referee=None):
                 elif announced[node] != s:
                     problems.append(f"half {h} is signed by {s}, not node {node}'s key {announced[node]}")
             held_n = sum(h in own_book for h in halves)
-            c["cites_deal"] = (check(False, "; ".join(problems)) if problems else None if unrun else
+            c["cites_halves"] = (check(False, "; ".join(problems)) if problems else None if unrun else
                                check(True, f"{'both halves' if held_n == 2 else 'its own half'} "
                                            f"{', '.join(h for h in halves if h in own_book)} resolve by digest in "
                                            "the party's book, each signed by the node the Result names for it"))
@@ -526,13 +522,13 @@ def unrun(per_party):
             for k, c in r["checks"].items() if c is None]
 
 
-def outcomes(per_party, held_results, seller_node_id):
+def outcomes(per_party, held_results):
     rows = []
     for p, rs in per_party.items():
         for r in rs:
             rows.append({"party": p, "verdict_capsule_id": r["verdict_capsule_id"], "verdict": r["verdict"],
-                         "referee_node_id": r["referee_node_id"], "seller_node_id": seller_node_id,
-                         "outcome": outcome(held_results[(p, r["held"])], seller_node_id),
+                         "referee_node_id": r["referee_node_id"],
+                         "outcome": outcome(held_results[(p, r["held"])]),
                          "all_checks_held": all(c is not None and c["ok"] for c in r["checks"].values())})
     return {"results": rows}
 
@@ -554,8 +550,7 @@ def decide(out, *, population, started):
     ids = {name: e["node_id"] for name, e in doc["nodes"].items()}
     ledgers = {ids[name]: out / name / "ledger" for name in ids if (out / name / "ledger").is_dir()}
     referee = ids[doc["referee"]]
-    seller = ids[doc["deal"]["seller"]]
-    parties = [doc["deal"]["seller"], doc["deal"]["buyer"]]
+    parties = [doc["requester"], *doc["exchange"]["twins"]]
     per_party = {p: check_held((ids[p], out / p / "ledger"), ledgers, announced, expected_referee=referee)
                  for p in parties}
     failed = failures(per_party)
@@ -563,10 +558,11 @@ def decide(out, *, population, started):
     failed += [f"{x}: not run" for x in unrun(per_party)]
     (out / "checks.json").write_text(json.dumps(per_party, indent=2, sort_keys=True) + "\n")
     (out / "outcome.json").write_text(json.dumps(
-        outcomes(per_party, held_by(per_party, {p: out / p / "ledger" for p in parties}), seller),
+        outcomes(per_party, held_by(per_party, {p: out / p / "ledger" for p in parties})),
         indent=2, sort_keys=True) + "\n")
     proof = proof_files(out)
-    where = f"deal {doc['deal']['deal_id']} ({doc['deal']['seller']} sells to {doc['deal']['buyer']}), referee {doc['referee']}"
+    where = (f"exchange {doc['exchange']['exchange_id']} (twins {' and '.join(doc['exchange']['twins'])}, "
+             f"asked by {doc['requester']}), referee {doc['referee']}")
     if failed:
         return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                              detail=f"{where}: did not hold: {'; '.join(failed)}. {SPEND}", started=started)
@@ -574,9 +570,9 @@ def decide(out, *, population, started):
     detail = (f"{where}: for each Result each party holds, these held on the proof bytes: {', '.join(CHECKS)}. "
               f"The Result rules {', '.join(rulings)} (outcome.json). {MESH_ONLY} Every key is a rehearsal TEST key. "
               f"{SPEND} "
-              + finding.outside("the deal's halves, which this step reads as a committed stand-in of step 05's "
-                                "halves (AAC capsules under the rehearsal TEST keys), not step 05's own output",
-                                ISSUE_49) + " "
+              + finding.outside("the twins' served records, which this step reads as committed stand-ins of the "
+                                "records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not "
+                                "a node's own output", ISSUE_49) + " "
               + finding.outside("the referee, its announced key and its delivery, which are rehearsal stand-ins "
                                 "until the lab nodes run an adjudication (the plugin's own two-node e2e seals one, as of #102)", ISSUE_102))
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
@@ -592,7 +588,7 @@ def clean(out):
 
 # --- the live population: what the lab nodes hold, read only ----------------------
 
-NO_RESULT = {"what": "an adjudication Result on a deal, held by a lab node with its adjudication_received",
+NO_RESULT = {"what": "an adjudication Result on a twin pair, held by a lab node with its adjudication_received",
              "why": "no lab node's data dir holds a Result (no issued-adjudications.jsonl or "
                     "received-adjudications.jsonl line): the referee has not run an adjudication end to end on "
                     "the lab nodes, and this step never seals one on a live node",
@@ -653,7 +649,7 @@ def main_live(pop, out, started):
             details.append(f"for each Result a lab node holds, these held on the copied ledgers: {', '.join(CHECKS)}")
         (out / "checks.json").write_text(json.dumps(per_party, indent=2, sort_keys=True) + "\n")
         (out / "outcome.json").write_text(json.dumps(
-            outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party}), None),
+            outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party})),
             indent=2, sort_keys=True) + "\n")
     detail = "; ".join(details) + f". {MESH_ONLY} {SPEND}"
     finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,

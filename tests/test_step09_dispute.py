@@ -1,4 +1,4 @@
-"""steps/09-dispute: the referee's signed Result on a deal, held by each party with the same bytes, or FAIL.
+"""steps/09-dispute: the referee's signed Result on a twin pair, held by each node it concerns with the same bytes, or FAIL.
 
 The step needs only the openssl command (3.0 or later) beside the standard
 library; without it these tests SKIP and say why, or, with LOOP_REQUIRE_TOOLS=1
@@ -128,11 +128,14 @@ class VerifierTest(unittest.TestCase):
         del b["half_b_node_id"]
         self.assertFalse(step.is_adjudication(v)["ok"])
 
-    def test_the_live_outcome_names_no_seller(self):
-        self.assertTrue(step.outcome(self.capsule, None).startswith("against:"))
+    def test_the_outcome_names_the_twin_ruled_against(self):
+        b = self.capsule["model_attestation"]["compute_attestation"]["adjudication"]
+        self.assertEqual(step.outcome(self.capsule), "against:" + b["half_b_node_id"])
         v = json.loads(json.dumps(self.capsule))
         v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = "corroborated"
-        self.assertEqual(step.outcome(v, None), "corroborated")
+        self.assertEqual(step.outcome(v), "corroborated")
+        v["model_attestation"]["compute_attestation"]["adjudication"]["verdict"] = "contradicted:" + "9" * 64
+        self.assertEqual(step.outcome(v), "no_finding")
 
     def test_the_facts_carry_the_model_the_verdict_seals(self):
         v = json.loads(json.dumps(self.capsule))
@@ -168,24 +171,22 @@ class RehearsalTest(Tmp):
         self.assertIn("Spend: none", r["detail"])
         self.assertIn("adjudications only", r["detail"])
         proof = {p["path"] for p in r["proof"]}
-        for f in ("alice/ledger/received-adjudications.jsonl", "bob/ledger/capsules.jsonl",
+        for f in ("requester/ledger/received-adjudications.jsonl", "bob/ledger/capsules.jsonl",
                   "referee/ledger/issued-adjudications.jsonl", "outcome.json", "checks.json"):
             self.assertIn(f, proof)
 
-    def test_the_outcome_is_what_the_result_rules_about_the_seller(self):
+    def test_the_outcome_is_what_the_result_rules_about_the_twins(self):
         self.rehearse()
+        doc = json.loads((POP / "step09" / "dispute.json").read_text())
+        bob = doc["nodes"]["bob"]["node_id"]
         rows = json.loads((self.out / "outcome.json").read_text())["results"]
         self.assertEqual({(x["party"], x["outcome"], x["all_checks_held"]) for x in rows},
-                         {("alice", "against_seller", True), ("bob", "against_seller", True)})
-        doc = json.loads((POP / "step09" / "dispute.json").read_text())
-        v = json.loads((self.out / "bob" / "ledger" / "received-adjudications.jsonl").read_text())["verdict_capsule"]
-        self.assertEqual(step.outcome(v, doc["nodes"]["alice"]["node_id"]), "against_seller")
-        self.assertEqual(step.outcome(v, doc["nodes"]["bob"]["node_id"]), "for_seller")
+                         {(p, "against:" + bob, True) for p in ("requester", "alice", "bob")})
 
     def test_each_party_holds_the_referees_bytes(self):
         self.rehearse()
         issued = json.loads((self.out / "referee" / "ledger" / "issued-adjudications.jsonl").read_text())
-        for party in ("alice", "bob"):
+        for party in ("requester", "alice", "bob"):
             held = json.loads((self.out / party / "ledger" / "received-adjudications.jsonl").read_text())
             self.assertEqual(aac.canonical(held["verdict_capsule"]), aac.canonical(issued["verdict_capsule"]))
 
@@ -193,7 +194,7 @@ class RehearsalTest(Tmp):
 class PlantedFailureTest(Tmp):
     """Each planted failure turns the finding FAIL, on the check that owns it."""
 
-    def assert_fails(self, plant, check, parties=("alice", "bob")):
+    def assert_fails(self, plant, check, parties=("requester", "alice", "bob")):
         r, failed = self.rehearse(plant)
         self.assertEqual(r["result"], "FAIL", r["detail"])
         for p in parties:
@@ -201,11 +202,11 @@ class PlantedFailureTest(Tmp):
         self.assertIn(check, r["detail"])
         return r
 
-    def test_an_adjudication_that_cites_no_deal_fails(self):
-        self.assert_fails("uncited", "cites_deal")
+    def test_an_adjudication_that_cites_no_halves_fails(self):
+        self.assert_fails("uncited", "cites_halves")
 
-    def test_an_adjudication_citing_a_deal_not_in_the_book_fails(self):
-        r = self.assert_fails("foreign_deal", "cites_deal")
+    def test_an_adjudication_citing_halves_not_in_the_book_fails(self):
+        r = self.assert_fails("foreign_exchange", "cites_halves")
         self.assertIn("is not in the party's book", r["detail"])
 
     def test_an_adjudication_signed_by_a_key_not_the_referees_fails(self):
@@ -217,7 +218,7 @@ class PlantedFailureTest(Tmp):
         self.assertIn("the referee holds no Result with these bytes", r["detail"])
 
     def test_a_party_sealed_close_presented_as_the_adjudication_fails(self):
-        r = self.assert_fails("party_close", "result_is_adjudication", parties=("bob",))
+        r = self.assert_fails("party_close", "result_is_adjudication", parties=("requester",))
         self.assertIn("party-path block close", r["detail"])
 
     def test_altered_proof_bytes_fail(self):
@@ -253,25 +254,26 @@ class PlantedFailureTest(Tmp):
         b = held["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]
         self.assertEqual(b["status"], step.STATUS[b["verdict"].split(":")[0]])
 
-    def test_a_judged_provider_holding_only_its_own_half_passes(self):
-        self.rehearse()
-        for f in ("requested-adjudications.jsonl", "received-capsules.jsonl"):
-            (self.out / "bob" / "ledger" / f).unlink()
-        step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
-        r = self.finding()
+    def test_a_judged_twin_holds_only_its_own_half_and_passes(self):
+        r, failed = self.rehearse()
         self.assertEqual(r["result"], "PASS", r["detail"])
         checks = json.loads((self.out / "checks.json").read_text())
-        self.assertIn("its own half", checks["bob"][0]["checks"]["cites_deal"]["detail"])
+        self.assertIn("its own half", checks["bob"][0]["checks"]["cites_halves"]["detail"])
+        self.assertIn("both halves", checks["requester"][0]["checks"]["cites_halves"]["detail"])
 
-    def test_a_party_holding_none_of_the_cited_halves_fails(self):
+    def test_the_requester_missing_a_half_fails(self):
         self.rehearse()
-        for f in ("requested-adjudications.jsonl", "received-capsules.jsonl", "capsules.jsonl"):
-            p = self.out / "bob" / "ledger" / f
-            if f == "capsules.jsonl":  # keep the adjudication_received record only
-                keep = [ln for ln in p.read_text().splitlines() if "adjudication_received" in ln]
-                p.write_text("\n".join(keep) + "\n")
-            else:
-                p.unlink()
+        p = self.out / "requester" / "ledger" / "received-capsules.jsonl"
+        p.write_text(p.read_text().splitlines()[0] + "\n")
+        step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
+        r = self.finding()
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("is not in the party's book", r["detail"])
+
+    def test_a_twin_holding_none_of_the_cited_halves_fails(self):
+        self.rehearse()
+        p = self.out / "bob" / "ledger" / "capsules.jsonl"  # keep the adjudication_received record only
+        p.write_text("\n".join(ln for ln in p.read_text().splitlines() if "adjudication_received" in ln) + "\n")
         step.decide(self.out, population="rehearsal", started="2026-10-28T12:00:00Z")
         r = self.finding()
         self.assertEqual(r["result"], "FAIL")
@@ -326,7 +328,7 @@ class LiveTest(Tmp):
     def test_a_result_needing_an_unreadable_referee_is_not_checked(self):
         d = self.copy()
         pop = json.loads((d / "population.json").read_text())
-        pop["nodes"][2]["data_dir"] = None
+        pop["nodes"][3]["data_dir"] = None
         (d / "population.json").write_text(json.dumps(pop))
         r = self.live(d)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
@@ -352,7 +354,7 @@ class LiveTest(Tmp):
 
     def test_a_referee_whose_key_is_unreadable_is_not_checked_not_failed(self):
         d = self.copy()
-        key = d / "nodes" / "lab-3" / "data" / "keys" / "node-key.pub.pem"
+        key = d / "nodes" / "lab-4" / "data" / "keys" / "node-key.pub.pem"
         key.unlink()
         r = self.live(d)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
