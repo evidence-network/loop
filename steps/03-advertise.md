@@ -77,6 +77,7 @@ Profile `evidence-commitment/0`. Exactly these members; any other is refused.
 | `history_card.derivation` | string | `history_card/1` |
 | `history_card.bytes` | base64 | the stapled `history_card/1` answer, whole, in the capsules plugin's `evidence-interop/0` answer format |
 | `history_card.sha256` | 64 hex | sha256 of those bytes |
+| `controller_binding.digest` | 64 hex | optional: the binding digest (AAC Controller Binding v0 §4) of the record that binds the node key to its operator's key. Only the digest: the record, which names the operator's key, goes only to the counterparties that verify it. A node with no binding leaves the member out |
 | `sig.alg` | string | `Ed25519` |
 | `sig.canon` | string | `jcs` |
 | `sig.value` | base64url | the signature |
@@ -116,7 +117,8 @@ may hold sizes of its own. The commitment itself never states one.
 ## The check
 
 `python3 -B scripts/check_commitment.py nodes/commitments` (the `commitments`
-CI job) refuses a commitment with a missing or unknown field, a count, a bad
+CI job) refuses a commitment with a missing or unknown field, a
+`controller_binding` that is not `{"digest": <64 hex>}`, a count, a bad
 signature, a policy digest that does not match the policy bytes, a policy not
 signed by the commitment's key, staple or checkpoint bytes that do not match
 their digest, a staple not presented by its subject, or a file not named
