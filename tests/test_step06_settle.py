@@ -375,6 +375,8 @@ class Step06SettleTest(unittest.TestCase):
         issues = [n["issue"] for n in r["not_checked"]]
         self.assertIn(step.ADAPTER_ISSUE, issues)  # node 1 recorded settlements: the adapter gap
         self.assertIn(step.WALLET_ISSUE, issues)   # node 2 recorded none: no wallet yet
+        # a node recorded legs, so the closing rail entry is not appended
+        self.assertFalse([n for n in r["not_checked"] if n["what"].startswith("the live rail's")])
         self.assertEqual(set(r["pinned"]), {"capsules", "mesh-llm-pr-2620"})
         self.assert_clean()
 
