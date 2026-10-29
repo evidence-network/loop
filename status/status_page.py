@@ -115,8 +115,8 @@ NUMBERS = (
            "step 12 (Join) finding's finished (its probe asks the node's own responder), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
-    Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", None,
-           "step 04 (Admit): no finding carries the decision counts yet"),
+    Number("refused", "Decisions refused on terms", "of all admission decisions", "M3", 4,
+           "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,
            "step 06 (Settle) finding's volume.json, when that finding is a valid PASS: raw counts the final "
            "settlement records on the rail's public ledger, filtered keeps those on a fee-paying rail whose payer and "
@@ -361,10 +361,25 @@ def settled_volume(run, step):
     return (raw, filtered) if counts and filtered <= raw else (None, None)
 
 
-def decided(limited, total, milestone="M3"):
-    if limited is None or total is None:
+def decided(refused, total, milestone="M3"):
+    if refused is None or total is None:
         return f"not measured yet ({milestone})"
-    return f"{limited} of {total} decisions"
+    return f"{refused} of {total} decisions"
+
+
+def refused_counts(run):
+    """(refused, decisions) from step 04's counts.json proof when its finding is a valid PASS, else
+    (None, None): both numbers or neither."""
+    r = passed(run, 4) if run.path else None
+    if r is None or "counts.json" not in [x["path"] for x in r["proof"]]:
+        return None, None
+    try:
+        c = json.loads((run.findings[4][0] / "counts.json").read_text(encoding="utf-8"))
+        refused, total = c["refused"], c["decisions"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    ok = all(isinstance(x, int) and not isinstance(x, bool) for x in (refused, total)) and 0 <= refused <= total
+    return (refused, total) if ok and total > 0 else (None, None)
 
 
 def number_value(number, run):
@@ -372,8 +387,9 @@ def number_value(number, run):
     if number.key == "filtered":
         raw, filtered = settled_volume(run, number.step) if run.path else (None, None)
         return volume(raw, filtered, number.milestone), raw is not None
-    if number.key == "limited":
-        return decided(None, None, number.milestone), False
+    if number.key == "refused":
+        refused, total = refused_counts(run)
+        return decided(refused, total, number.milestone), total is not None
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False

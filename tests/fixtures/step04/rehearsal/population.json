@@ -1,0 +1,1 @@
+{"population":"rehearsal","nodes":[{"name":"alice","key_dir":"tests/fixtures/step04/rehearsal/keys/alice"},{"name":"bob","key_dir":"tests/fixtures/step04/rehearsal/keys/bob"}],"rail":"mock"}

@@ -45,7 +45,7 @@ jobs:
       - name: Step tests with the pinned tools
         env:
           LOOP_REQUIRE_TOOLS: "1"
-        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step05_deal tests.test_step06_settle tests.test_step12_join tests.test_commitment1 -v
+        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step12_join tests.test_commitment1 -v
       # --strict: a rehearsal FAIL or MALFORMED finding fails the job (exit 3, or 1 for a refused finding).
       - name: Run stage 1 on the rehearsal population
         run: |

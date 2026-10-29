@@ -463,7 +463,7 @@ class StatusPageTest(unittest.TestCase):
         self.write(1, "PASS")
         self.page()
         self.assertEqual(self.number("first-countersigned"), ("placeholder", "not measured yet (M3)"))
-        self.assertEqual(self.number("limited"), ("placeholder", "not measured yet (M3)"))
+        self.assertEqual(self.number("refused"), ("placeholder", "not measured yet (M3)"))
         self.assertEqual(self.number("filtered"), ("placeholder", "not measured yet (M2)"))
         numbers = self.html[self.html.index('id="numbers"'):self.html.index('id="pins"')]
         self.assertNotRegex(numbers, r">\s*0(\.0)?( |<)")
@@ -472,7 +472,7 @@ class StatusPageTest(unittest.TestCase):
         for nb in status_page.NUMBERS:
             self.assertTrue(nb.unit and nb.source, nb.key)
         self.assertEqual([nb.key for nb in status_page.NUMBERS],
-                         ["first-sealed", "first-answered", "first-countersigned", "limited", "filtered"])
+                         ["first-sealed", "first-answered", "first-countersigned", "refused", "filtered"])
 
     def test_raw_volume_is_never_shown_without_the_filtered_figure(self):
         self.assertEqual(status_page.volume(120, None), "not measured yet (M2)")

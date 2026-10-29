@@ -1,0 +1,11 @@
+{
+  "pack": "loop-terms-default",
+  "version": "1",
+  "about": "The mini Terms Pack step 04 ships as the default. Each rule compares one number on the offer with a bound; an unmet rule is NO, all rules met is GO. The bounds are round defaults the operator adjusts with --terms FILE.",
+  "rules": [
+    {"id": "price-usdc", "field": "price_per_inference", "op": "<=", "bound": "0.01", "unit": "USDC"},
+    {"id": "price-sats", "field": "price_per_inference", "op": "<=", "bound": "10", "unit": "sats"},
+    {"id": "amount-usdc", "field": "deal_amount", "op": "<=", "bound": "10", "unit": "USDC"},
+    {"id": "amount-sats", "field": "deal_amount", "op": "<=", "bound": "10000", "unit": "sats"}
+  ]
+}
