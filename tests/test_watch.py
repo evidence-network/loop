@@ -629,7 +629,8 @@ class WatchTest(unittest.TestCase):
             (f / "2026-11-05-rehearsal" / "05-deal" / "carol").mkdir()
             (f / "2026-11-05-rehearsal" / "05-deal" / "carol" / "x.txt").write_text("x\n")
             data = run(Path(d) / "out", findings=f)
-        self.assertEqual(on(data, "rehearsal", "2026-11-05T0600Z")["edges"], on(base, "rehearsal", "2026-11-05T0600Z")["edges"])
+        # not_drawn counts every edge the extractor found, so a stray participant changes it even when no line shows
+        self.assertEqual(on(data, "rehearsal", "2026-11-05T0600Z")["measured"], on(base, "rehearsal", "2026-11-05T0600Z")["measured"])
 
     def test_a_settlement_that_did_not_hold_is_drawn_but_not_counted(self):
         with tempfile.TemporaryDirectory() as d:
