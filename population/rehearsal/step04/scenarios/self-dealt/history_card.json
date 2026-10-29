@@ -1,0 +1,41 @@
+{
+  "body": {
+    "checkpoint_at": "2026-10-28T06:00:00Z",
+    "deals": [
+      {
+        "counterparty_half": {
+          "body": {
+            "counterparty_key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+            "deal_id": "rehearsal-past-3-carol",
+            "exchange_digest": "51445be622c589dcda6542b1f828ae143776d964627ff10702fad996acbc9fb5",
+            "kind": "deal_half",
+            "seller_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+          },
+          "key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+          "sig": "8eaff9fc34868b6fd1e54e1f343f82378ce957605d15ba54177e5973bd7b05bd31be8ee726e80fbbac3cd60f0d472f9a0bbceaf2f72e36b1fba552271d812607"
+        },
+        "counterparty_key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+        "deal_id": "rehearsal-past-3-carol"
+      },
+      {
+        "counterparty_half": {
+          "body": {
+            "counterparty_key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+            "deal_id": "rehearsal-past-4-carol",
+            "exchange_digest": "4037d96a7fbb9e5a5f315d5d3c28e39138b1aa95efbf93082540bf911264f2ea",
+            "kind": "deal_half",
+            "seller_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+          },
+          "key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+          "sig": "ba3f669f0093fe981ca7fc539ab999cbcdc4d2112dde10737cc903b3952c5723d22ed231ec817b4166313560f54176d69b6f4520bc6f43cd79453c5c3fee3401"
+        },
+        "counterparty_key": "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938",
+        "deal_id": "rehearsal-past-4-carol"
+      }
+    ],
+    "derivation": "history_card/1",
+    "subject_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+  },
+  "key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+  "sig": "19054cfb98ffad3c39d36b27e5796f6b61beeb1068adacf76b60620e9a00604a7fc73010b080d919aa17bb7fe4b36c2cccd82163006b795105cae381bfd6990c"
+}

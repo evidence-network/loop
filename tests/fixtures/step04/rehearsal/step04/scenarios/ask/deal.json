@@ -1,0 +1,10 @@
+{
+  "band": {
+    "currency": "USDC",
+    "decade": 0
+  },
+  "buyer_key": "f667cc2e0cc4727462a5459c8abcfda996f7c895db4e7a63d8a0ed5d75861844",
+  "deal_id": "rehearsal-admit-ask",
+  "offered_at": "2026-10-28T12:00:00Z",
+  "seller_key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6"
+}

@@ -115,8 +115,8 @@ NUMBERS = (
            "step 12 (Join) finding's finished (its probe asks the node's own responder), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
-    Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", None,
-           "step 04 (Admit): no finding carries the decision counts yet"),
+    Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", 4,
+           "step 04 (Admit) finding's counts.json, limited_or_refused of decisions, when the finding is a valid PASS"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", None,
            "no finding carries either volume yet; the raw figure is never shown without the filtered one"),
 )
@@ -349,12 +349,28 @@ def decided(limited, total, milestone="M3"):
     return f"{limited} of {total} decisions"
 
 
+def limited_counts(run):
+    """(limited or refused, decisions) from step 04's counts.json proof when its finding is a valid PASS, else
+    (None, None): both numbers or neither."""
+    r = passed(run, 4) if run.path else None
+    if r is None or "counts.json" not in [x["path"] for x in r["proof"]]:
+        return None, None
+    try:
+        c = json.loads((run.findings[4][0] / "counts.json").read_text(encoding="utf-8"))
+        limited, total = c["limited_or_refused"], c["decisions"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    ok = all(isinstance(x, int) and not isinstance(x, bool) for x in (limited, total)) and 0 <= limited <= total
+    return (limited, total) if ok and total > 0 else (None, None)
+
+
 def number_value(number, run):
     """(text, measured?) for one number in one population's run."""
     if number.key == "filtered":
         return volume(None, None, number.milestone), False
     if number.key == "limited":
-        return decided(None, None, number.milestone), False
+        limited, total = limited_counts(run)
+        return decided(limited, total, number.milestone), total is not None
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False

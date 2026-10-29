@@ -1,0 +1,21 @@
+{
+  "pack": "loop-base-admission",
+  "version": "0",
+  "about": "The loop's base admission policy for step 04. It is not admission-baseline@1, which is still to be ruled (action-state-group/evidencebook-skills#51).",
+  "tiers": [
+    {"tier": "T0", "max_decade": -1, "claims_held": 0},
+    {"tier": "T1", "max_decade": 0, "claims_held": 1},
+    {"tier": "T2", "max_decade": 2, "claims_held": 3}
+  ],
+  "decade_offset": {"USDC": 0, "sats": -4},
+  "card_fresh_within_seconds": 86400,
+  "rows": [
+    {"id": "card", "statement": "above T0 the seller's history card is present and signed by the seller's key", "unmet": "LIMIT"},
+    {"id": "fresh", "statement": "the card's checkpoint is within the freshness window of the offer", "unmet": "ASK"},
+    {"id": "no_half", "statement": "no half, no deal above T0: above T0 at least one claim is held on a verified counterparty half", "unmet": "LIMIT"},
+    {"id": "claims_held", "statement": "claims held reach the tier's count; halves from keys under the seller's own controller declaration are not claims held", "unmet": "LIMIT"},
+    {"id": "disputes", "statement": "an adjudication against the seller is never ignored: with this buyer it refuses, with anyone else it limits to T0", "unmet": "NO or LIMIT"}
+  ],
+  "resolution": ["NO", "LIMIT", "ASK", "GO"],
+  "ask": {"derivation": "history_card/1", "subject": {"checkpoints": null}, "coverage": {"min_freshness": 1}}
+}

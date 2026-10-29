@@ -1,0 +1,10 @@
+{
+  "body": {
+    "checkpoint_at": "2026-10-28T06:00:00Z",
+    "deals": [],
+    "derivation": "history_card/1",
+    "subject_key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6"
+  },
+  "key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6",
+  "sig": "0af645fc3cdec9c01cba67c34450352d2f6ab0bafc5a7ecdde28a736f5891dd3705397dc05cf17e3df1fee1a421652eeaf54994680fa81c967e49db19d97ac06"
+}

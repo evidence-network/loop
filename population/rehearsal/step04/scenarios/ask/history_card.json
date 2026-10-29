@@ -1,0 +1,41 @@
+{
+  "body": {
+    "checkpoint_at": "2026-10-25T00:00:00Z",
+    "deals": [
+      {
+        "counterparty_half": {
+          "body": {
+            "counterparty_key": "bb5fb659cb3385a605c3fce31abe00cbdc6b8e98e5072ddedbcbce188ba0f3fd",
+            "deal_id": "rehearsal-past-1-dave",
+            "exchange_digest": "2f100e58f3fbb544966b804a7023ade8059dc2f096e1c5df09245558b33acd94",
+            "kind": "deal_half",
+            "seller_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+          },
+          "key": "bb5fb659cb3385a605c3fce31abe00cbdc6b8e98e5072ddedbcbce188ba0f3fd",
+          "sig": "c562d6863e20e439cf5521e40d4c93066045b84d01e88c7b05d835724703aaf183db0792d37db87a0a3a33ed895130cfe38bbd8973902767914dc345a8c76108"
+        },
+        "counterparty_key": "bb5fb659cb3385a605c3fce31abe00cbdc6b8e98e5072ddedbcbce188ba0f3fd",
+        "deal_id": "rehearsal-past-1-dave"
+      },
+      {
+        "counterparty_half": {
+          "body": {
+            "counterparty_key": "cb5d722616861a5b0aebd066405bd54d7cd6cf4719bb97d71da9807cecaa4119",
+            "deal_id": "rehearsal-past-2-erin",
+            "exchange_digest": "f0b2a388ecf23611c8e45fcf4a5ecfeb032023c2a50e3fb0a9585f9fd720076f",
+            "kind": "deal_half",
+            "seller_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+          },
+          "key": "cb5d722616861a5b0aebd066405bd54d7cd6cf4719bb97d71da9807cecaa4119",
+          "sig": "9f14b7439d9bded292aa9e30f123b49639b9d0ef3a9d8b99dc321594091959cab7dc873638d13a5e37eefe7805e53b0cbf5ed54ff7921bb2af6db4bf6dc4b608"
+        },
+        "counterparty_key": "cb5d722616861a5b0aebd066405bd54d7cd6cf4719bb97d71da9807cecaa4119",
+        "deal_id": "rehearsal-past-2-erin"
+      }
+    ],
+    "derivation": "history_card/1",
+    "subject_key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+  },
+  "key": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+  "sig": "121f1fee7db12afc5ee3e5bed559661f117bb4e14050842fd224a6b7c45892b247ffc272111df6d1f172724f933ff172281007987d2ec5f0fd18957766cecc05"
+}

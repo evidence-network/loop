@@ -1,0 +1,27 @@
+[
+  {
+    "body": {
+      "controller": "1827bf5c02d23cff0ba5a7d27e5f63659db6bbf4ca5bfd9272f54c94c8e17447",
+      "issued_at": "2026-10-20T00:00:00Z",
+      "keys": [
+        "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+        "673bbdf412aae57f057561c10b7a52709b5435acf1518769003ed597aa2d2938"
+      ],
+      "kind": "controller_declaration"
+    },
+    "key": "1827bf5c02d23cff0ba5a7d27e5f63659db6bbf4ca5bfd9272f54c94c8e17447",
+    "sig": "e084466b108bc5dc5e6baaa910096979d1aa1046f33325dfa66d0eebb9e424a92e8e0c087dd19313fc6fb4d920b00774e1d46ac1285d0e9aaeb34ed8ef950808"
+  },
+  {
+    "body": {
+      "controller": "d4fbb4404fd38266010c859818b161b5542eade0430362be02033b01e69f0573",
+      "issued_at": "2026-10-20T00:00:00Z",
+      "keys": [
+        "bb5fb659cb3385a605c3fce31abe00cbdc6b8e98e5072ddedbcbce188ba0f3fd"
+      ],
+      "kind": "controller_declaration"
+    },
+    "key": "d4fbb4404fd38266010c859818b161b5542eade0430362be02033b01e69f0573",
+    "sig": "e5b9ffd3cea62eff7dca0f4bec2c11714600d91fa3f65b20d74555457ecdf8d648d4e97bba447343a05a1576c3601e330515cd98da5e2350c27dcca1af90c703"
+  }
+]

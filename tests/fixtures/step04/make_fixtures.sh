@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Make step 04's test fixtures once.
+#
+# rehearsal/: Alice and Bob node TEST keys (Ed25519, PKCS#8 and SPKI PEM),
+#   population.json in the agreed shape, and step04/ as
+#   population/rehearsal/step04/make_standins.py writes it for this population
+#   (its own TEST keys for the other parties, and the signed stand-ins).
+# live/: two lab-shaped capsules plugin data dirs, under nodes/<name>/data, that
+#   population.json names through $LAB_DIR (the tests set it to this directory):
+#   lab-a's ledger holds two records with no admission decision, lab-b's is
+#   empty; lab-c has no data_dir.
+# These keys are test keys, committed on purpose, never used by a live node.
+#   tests/fixtures/step04/make_fixtures.sh   (needs openssl and python3)
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../../.." && pwd)
+REL=tests/fixtures/step04/rehearsal
+key() { # DIR STEM
+  mkdir -p "$1"
+  openssl genpkey -algorithm ed25519 -out "$1/$2.pem"
+  openssl pkey -in "$1/$2.pem" -pubout -out "$1/$2.pub.pem"
+}
+
+rm -rf "$HERE/rehearsal" "$HERE/live"
+for n in alice bob; do key "$HERE/rehearsal/keys/$n" node-key; done
+cat > "$HERE/rehearsal/population.json" <<JSON
+{"population":"rehearsal","nodes":[{"name":"alice","key_dir":"$REL/keys/alice"},{"name":"bob","key_dir":"$REL/keys/bob"}],"rail":"mock"}
+JSON
+python3 -B "$ROOT/population/rehearsal/step04/make_standins.py" "$HERE/rehearsal"
+
+for n in lab-a lab-b; do
+  mkdir -p "$HERE/live/nodes/$n/data/ledger" "$HERE/live/nodes/$n/data/keys"
+  : > "$HERE/live/nodes/$n/data/ledger/capsules.jsonl"
+done
+printf '%s\n' '{"capsule_id":"00","action_type":"fyi","admission_policy":{"decision":"allow"}}' \
+  '{"capsule_id":"01","action_type":"fyi"}' > "$HERE/live/nodes/lab-a/data/ledger/capsules.jsonl"
+cat > "$HERE/live/population.json" <<'JSON'
+{"population":"live","nodes":[
+  {"name":"lab-a","data_dir":"$LAB_DIR/nodes/lab-a/data","book_dir":null},
+  {"name":"lab-b","data_dir":"$LAB_DIR/nodes/lab-b/data","book_dir":null},
+  {"name":"lab-c","data_dir":null,"book_dir":null}],"rail":null}
+JSON

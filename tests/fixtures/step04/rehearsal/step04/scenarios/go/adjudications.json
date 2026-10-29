@@ -1,0 +1,40 @@
+[
+  {
+    "body": {
+      "cites": [
+        "2f100e58f3fbb544966b804a7023ade8059dc2f096e1c5df09245558b33acd94"
+      ],
+      "issued_at": "2026-10-27T00:00:00Z",
+      "kind": "adjudication_issued",
+      "referee": "9aaeccbc6b028ab9a4badec992d30941a6d80fe57675eae6ea1c276e61cdc672",
+      "result": {
+        "buyer_key": "925c0c6125be0d681dad445f3f308234bd956592c1c45e2621c5e16819d2b20a",
+        "deal_id": "rehearsal-past-1-dave",
+        "exchange_digest": "2f100e58f3fbb544966b804a7023ade8059dc2f096e1c5df09245558b33acd94",
+        "outcome": "for_seller",
+        "seller_key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6"
+      }
+    },
+    "key": "9aaeccbc6b028ab9a4badec992d30941a6d80fe57675eae6ea1c276e61cdc672",
+    "sig": "8d2b988c29c84d5fecf6ece168634a163d6005311a188db76ea0c1ab1b36ec8d73606d95fc233c651d4ea232858e81e8c911222351c2bae9a1e1e4a389cfae0c"
+  },
+  {
+    "body": {
+      "cites": [
+        "f0b2a388ecf23611c8e45fcf4a5ecfeb032023c2a50e3fb0a9585f9fd720076f"
+      ],
+      "issued_at": "2026-10-27T00:00:00Z",
+      "kind": "adjudication_issued",
+      "referee": "da220d4ad21e66889769c5f93249bba798c1de55d13defcfa2f50ffba5f5fea4",
+      "result": {
+        "buyer_key": "adc86c7fbb327ba1ad5eb76c063048d1a59954d3fad7a38ca776276f89044a97",
+        "deal_id": "rehearsal-past-2-erin",
+        "exchange_digest": "f0b2a388ecf23611c8e45fcf4a5ecfeb032023c2a50e3fb0a9585f9fd720076f",
+        "outcome": "against_seller",
+        "seller_key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6"
+      }
+    },
+    "key": "da220d4ad21e66889769c5f93249bba798c1de55d13defcfa2f50ffba5f5fea4",
+    "sig": "3e89816761e55f4497061149a8c239f6746e9d8d85787b8b2605bd8a5fa50f572fa137e890cde85418866bf770c620ae3f167d66d8df98d363294301a4099703"
+  }
+]

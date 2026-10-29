@@ -1,0 +1,21 @@
+[
+  {
+    "body": {
+      "cites": [
+        "f0b2a388ecf23611c8e45fcf4a5ecfeb032023c2a50e3fb0a9585f9fd720076f"
+      ],
+      "issued_at": "2026-10-27T00:00:00Z",
+      "kind": "adjudication_issued",
+      "referee": "9aaeccbc6b028ab9a4badec992d30941a6d80fe57675eae6ea1c276e61cdc672",
+      "result": {
+        "buyer_key": "adc86c7fbb327ba1ad5eb76c063048d1a59954d3fad7a38ca776276f89044a97",
+        "deal_id": "rehearsal-past-2-erin",
+        "exchange_digest": "f0b2a388ecf23611c8e45fcf4a5ecfeb032023c2a50e3fb0a9585f9fd720076f",
+        "outcome": "against_seller",
+        "seller_key": "ad0d4809fde65cf9dddb538c5f0e229909453dd3a3bc7e5620b07a17a74fd0d6"
+      }
+    },
+    "key": "9aaeccbc6b028ab9a4badec992d30941a6d80fe57675eae6ea1c276e61cdc672",
+    "sig": "d145ed1a5520273736a54092ec476186dfe82e00cee8b308a69f8fd4b90ea70e2270a6a41424eaba28c2706e3b71a7d6c9cd31708f4d8d9dbe62e1b0dd43ab04"
+  }
+]
