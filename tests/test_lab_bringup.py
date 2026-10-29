@@ -191,6 +191,16 @@ class DryRunTest(unittest.TestCase):
         self.assertNotIn("/v1/chat/completions", r.stdout)
         self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
 
+    def test_ask_runs_step_07_on_the_live_population_asked_as_the_loop_asks(self):
+        r = lab_sh("--dry-run", "ask", env={**self.env, "LAB_REPORTER": "lab-1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
+                                   rf"LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LAB_DIR={re.escape(str(self.lab))} "
+                                   rf"\S+/steps/07-ask --population \S+/population/live --out "
+                                   rf"\S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/07-ask\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
 
 class LabRoot(unittest.TestCase):
     """A copy of lab/ and scripts/ in a scratch root with its own versions.lock and steps/,

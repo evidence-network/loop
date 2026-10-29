@@ -69,8 +69,10 @@ class Tmp(unittest.TestCase):
     def judge(self, name):
         """(failures, answered, proof, lines) for one fixture run, then its finding, which must be well formed."""
         out = self.fixture(name)
-        failures, answered, proof, lines = step.judge_run(out, {"bob": BOB}, CAPSULECTL, Path(self.tmp.name) / "w")
-        r = step.conclude(out, "rehearsal", failures, [], answered, proof, lines, finding.now())
+        not_checked = []
+        failures, answered, proof, lines = step.judge_run(out, {"bob": BOB}, CAPSULECTL, Path(self.tmp.name) / "w",
+                                                          not_checked)
+        r = step.conclude(out, "rehearsal", failures, not_checked, answered, proof, lines, finding.now())
         self.assertEqual(finding.check(out.parent), [])
         return failures, answered, r
 
@@ -108,12 +110,47 @@ class BookBackendTest(Tmp):
         self.assertTrue(any("not before it was sent" in f for f in failures), failures)
 
     @needs_capsulectl
-    def test_a_refusal_of_a_stranger_safe_subject_is_a_fail(self):
-        failures, answered, r = self.judge("stranger-safe-refused")
-        self.assertEqual(r["result"], "FAIL")
-        self.assertTrue(any("refused (not_authorized), but the advertised policy lists it as stranger-safe" in f
-                            for f in failures), failures)
-        self.assertEqual(answered, [])
+    def test_a_refusal_of_a_stranger_safe_subject_for_a_reason_an_honest_node_sends_is_not_checked(self):
+        failures, answered, r = self.judge("stranger-safe-refused")  # reason not_authorized
+        self.assertEqual(failures, [])
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertEqual({i["issue"] for i in r["not_checked"]}, {"Mesh-LLM/capsules-plugin#114"})
+
+    def carrier_log(self, edit):
+        out = self.fixture("good")
+        log = out / "bob" / "asks" / "alice" / "carrier.jsonl"
+        lines = edit([json.loads(x) for x in log.read_text().splitlines()])
+        log.write_text("".join(json.dumps(e, sort_keys=True) + "\n" for e in lines))
+        failures, _, _, _ = step.judge_run(out, {"bob": BOB}, CAPSULECTL, Path(self.tmp.name) / "w")
+        return failures
+
+    @needs_capsulectl
+    def test_a_carrier_that_sent_other_bytes_than_the_request_record_holds_is_a_fail(self):
+        def edit(lines):
+            for e in lines:
+                if e["ask"] == "history_card" and e["event"] == "sent":
+                    e["request_sha256"] = "0" * 64
+            return lines
+        self.assertTrue(any("history_card: the carrier sent other bytes" in f for f in self.carrier_log(edit)))
+
+    @needs_capsulectl
+    def test_a_request_sent_twice_is_a_fail(self):
+        def edit(lines):
+            return lines + [e for e in lines if e["ask"] == "history_card" and e["event"] == "sent"]
+        self.assertTrue(any("history_card: the carrier log has 2 sends" in f for f in self.carrier_log(edit)))
+
+    @needs_capsulectl
+    def test_an_answer_delivered_in_time_but_recorded_absent_is_a_fail(self):
+        out = self.fixture("good")
+        log = out / "bob" / "asks" / "alice" / "carrier.jsonl"
+        lines = [json.loads(x) for x in log.read_text().splitlines()]
+        for e in lines:
+            if e["ask"] == "exchange_late" and e["event"] == "delivered":
+                e["at"] = "2026-10-28T07:49:30.000000Z"  # the deadline is 07:50:09
+        log.write_text("".join(json.dumps(e, sort_keys=True) + "\n" for e in lines))
+        failures, _, _, _ = step.judge_run(out, {"bob": BOB}, CAPSULECTL, Path(self.tmp.name) / "w")
+        self.assertTrue(any("exchange_late: the reply was delivered by the deadline" in f for f in failures),
+                        failures)
 
     @needs_capsulectl
     def test_an_answer_signed_by_a_key_other_than_the_listed_one_is_a_fail(self):
@@ -171,6 +208,14 @@ class PolicyTest(unittest.TestCase):
         for bad in ("P", "PT", "1H", "PT1.5H", "", None):
             with self.assertRaises(ValueError):
                 step.duration(bad)
+
+    def test_a_refusal_is_judged_by_its_reason(self):
+        for reason in ("no_such_subject", "derivation_unsupported"):
+            self.assertEqual(step.refusal_verdict(reason), "fail")
+        for reason in ("policy_declined", "not_authorized"):
+            self.assertEqual(step.refusal_verdict(reason), "not_checked")
+        for reason in ("coverage_unsatisfiable", "retention_expired", "request_expired", None):
+            self.assertEqual(step.refusal_verdict(reason), "ok")
 
     def test_what_the_advertised_policy_answers(self):
         hc = {"subject": {"checkpoints": None}, "derivation": "history_card/1"}
@@ -278,10 +323,22 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("not the listed key", r["detail"])
 
-    def test_a_refusal_of_a_listed_stranger_safe_subject_is_a_fail(self):
-        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"})
+    def test_a_withholding_refusal_of_a_listed_stranger_safe_subject_is_a_fail(self):
+        r = self.run_live({"checkpoints": "refusal_withheld", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "FAIL")
-        self.assertIn("refused, but the node lists it as stranger-safe", r["detail"])
+        self.assertIn("refused (no_such_subject), but the node lists it as stranger-safe", r["detail"])
+
+    def test_a_policy_declined_refusal_of_a_listed_stranger_safe_subject_is_not_checked(self):
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"})
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("Mesh-LLM/capsules-plugin#114", self.issues(r))
+
+    def test_each_question_has_its_own_attempt_and_answer_time(self):
+        self.run_live(VERIFIED)
+        attempts = sorted((self.out / "lab-1" / "attempts").iterdir())
+        self.assertEqual(len(attempts), 2)
+        for a in attempts:
+            self.assertTrue(json.loads((a / "timing.json").read_text())["back_at"])
 
     def test_no_answer_is_not_checked_and_not_answered(self):
         r = self.run_live({"checkpoints": "absence", "history_card": "absence"})

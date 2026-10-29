@@ -35,17 +35,27 @@ it cites. The judge checks, on those bytes:
     listed key (the commitment's key_id) and checkpoint key, recorded by the
     deadline, and its reply bytes verify again under those keys in a fresh
     verifier book (pinned capsulectl-book);
-  - a refusal is not of a subject the asked node's advertised policy answers:
-    its stranger-safe subjects and derivations (answers in the commitment),
-    or an exchange or record subject under history_segments "peers";
+  - a refusal is not of a subject the asked node's advertised policy answers
+    (its stranger-safe subjects and derivations, answers in the commitment, or
+    an exchange or record subject under history_segments "peers") for a reason
+    that withholds it: no_such_subject and derivation_unsupported are a FAIL;
+    policy_declined and not_authorized are NOT_CHECKED, as an honest node also
+    sends them for limits no policy promises past (capsules-plugin#112, #114);
+    the other reasons blame the request;
   - an absence's window opens at the request record and closes no earlier
-    than the deadline; a sent request with no recorded outcome is a failure.
+    than the deadline, and the carrier delivered no reply by the deadline; a
+    sent request with no recorded outcome is a failure.
+    Not judged: a refusal of a request from a real counterparty (the deal half
+    of step 05 is not the exchange subject yet); the rehearsal's exchange ask
+    is about the asker's own first record, so only a stranger-safe refusal is
+    checked.
 
 `reporter` (Mesh plugin nodes): asks each node checkpoints and history_card/1
 through the daily reporter's ask (scripts/daily_report.py), judged as step 12
 judges it (scripts and steps/12-join reused: the answer verifies under the
 key the node's host announces, which must be the listed key; a stranger-safe
-subject is not refused). The deadline is the node's signed join commitment's
+subject is not refused for a withholding reason, as above). Each question is
+its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
 `answers_within` (lab/runs/*/join/), and an answer not in by it is not counted
 as answered. Sealing before sending, the recorded absence and the exchange
 ask are NOT_CHECKED on Mesh-LLM/capsules-plugin#56. A node cannot be asked
@@ -218,6 +228,28 @@ def policy_answers(request, adv, requester_authenticated=True):
         # every record the subject names names as its counterparty; "off" no one.
         return requester_authenticated and adv["policy"].get("history_segments") == "peers"
     return False
+
+
+# Why a node refuses, against what its advertised policy answers (Mesh-LLM/capsules-plugin#112, #114): only
+# these two reasons withhold an answer the policy promises; policy_declined and not_authorized also cover limits
+# no policy promises past (a full stranger pool, an oversized answer, a full replay cache), so a refusal under
+# them cannot be judged; every other reason blames the request.
+WITHHOLDING_REASONS = ("no_such_subject", "derivation_unsupported")
+AMBIGUOUS_REASONS = ("policy_declined", "not_authorized")
+REFUSAL_ISSUE = "Mesh-LLM/capsules-plugin#114"
+
+
+def refusal_verdict(reason):
+    """"fail" if a refusal for `reason` of a subject the policy answers breaches the policy, "not_checked" if the
+    reason is one an honest node also sends, else "ok"."""
+    if reason in WITHHOLDING_REASONS:
+        return "fail"
+    return "not_checked" if reason in AMBIGUOUS_REASONS else "ok"
+
+
+def refusal_not_checked(what, reason):
+    return {"what": what, "why": f"the refusal's reason {reason} is also sent for limits no policy promises past, "
+            "so it cannot be judged against the policy", "issue": REFUSAL_ISSUE}
 
 
 # --- Backend "book": asks between joined rehearsal books ---------------------
@@ -452,8 +484,8 @@ def disclosed(bundle, capsule_id):
     return (bundle.get("disclosures", {}).get(capsule_id) or {}).get("agent_input")
 
 
-def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier):
-    """(errors, answered_at or None) for one ask, on its proof bytes."""
+def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=None):
+    """(errors, answered_at or None) for one ask, on its proof bytes; parts it cannot judge go to `not_checked`."""
     ask_dir = Path(ask_dir)
     name = ask_dir.name
     errs = []
@@ -516,8 +548,13 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier):
                             f"{refused or outcome}")
         if st.get("outcome") == "refusal" and policy_answers(request, adv):
             what = "stranger-safe" if stranger_safe(request, adv) else "answered to this asker"
-            errs.append(f"{name}: {asked(request)} is refused ({st.get('reason')}), but the advertised policy "
-                        f"lists it as {what}")
+            verdict_r = refusal_verdict(st.get("reason"))
+            if verdict_r == "fail":
+                errs.append(f"{name}: {asked(request)} is refused ({st.get('reason')}), but the advertised policy "
+                            f"lists it as {what}")
+            elif verdict_r == "not_checked" and not_checked is not None:
+                merge(not_checked, [refusal_not_checked(f"{name}: the refusal of {asked(request)}",
+                                                        st.get("reason"))])
         answered = None if errs else recorded_at
         return errs, answered
     if out_h.get("record_type") != "recorded_absence" or st.get("outcome") != "recorded_absence":
@@ -533,6 +570,10 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier):
     if closed < deadline:
         errs.append(f"{name}: the absence was recorded with its window closing at {window.get('closed')}, before "
                     f"the deadline {stamp(deadline)}")
+    delivered = [utc(e["at"]) for e in events if e["event"] == "delivered"]
+    if any(at <= deadline for at in delivered):
+        errs.append(f"{name}: the reply was delivered by the deadline {stamp(deadline)}, but the outcome is an "
+                    "absence")
     return errs, None
 
 
@@ -540,7 +581,7 @@ def asked(request):
     return "+".join([*request.get("subject", {}), *([request["derivation"]] if "derivation" in request else [])])
 
 
-def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work):
+def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work, not_checked=None):
     """(errors, [(answered_at, ask)], proof paths relative to pair_dir, line) for one asker's asks of one node."""
     pair_dir = Path(pair_dir)
     adv, errs = advertisement(adv_dir)
@@ -561,7 +602,7 @@ def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work):
         if verrs:
             errs += [f"{name}: {e}" for e in verrs]
             continue
-        e, at = judge_ask(d, adv, asker_key, [x for x in events if x["ask"] == name], verdict, verifier)
+        e, at = judge_ask(d, adv, asker_key, [x for x in events if x["ask"] == name], verdict, verifier, not_checked)
         errs += e
         if at is not None:
             answered.append((at, name))
@@ -570,16 +611,18 @@ def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work):
     return errs, answered, proof, ", ".join(outcomes)
 
 
-def judge_run(out, nodes_keys, capsulectl, tmp):
+def judge_run(out, nodes_keys, capsulectl, tmp, not_checked=None):
     """Judge every <asker>/asks/<asked>/ under out. Returns (failures, answered, proof, lines)."""
     out = Path(out)
     failures, answered, proof, lines = [], [], [], []
     for asker, key in nodes_keys.items():
+        if not (out / asker / "asks").is_dir():
+            continue
         for pair_dir in sorted((out / asker / "asks").iterdir()):
             asked_name = pair_dir.name
             adv_dir = out / asked_name / "advertised"
             errs, ans, p, line = judge_pair(pair_dir, adv_dir, key, capsulectl,
-                                            Path(tmp) / f"verify-{asker}-{asked_name}")
+                                            Path(tmp) / f"verify-{asker}-{asked_name}", not_checked)
             failures += [f"{asker} asked {asked_name}: {e}" for e in errs]
             answered += [(at, f"{asker} asked {asked_name} {name}") for at, name in ans]
             proof += [f"{asker}/asks/{asked_name}/{x}" for x in p]
@@ -593,11 +636,14 @@ def run_book(pop, out, tmp):
     capsulectl = tools()
     if not capsulectl.is_file():
         raise SystemExit(f"07-ask: no capsulectl at {capsulectl}; run steps/07-ask.setup.sh")
+    for n in pop["nodes"]:  # a rerun into the same --out starts clean, as the reporter backend does
+        shutil.rmtree(Path(out) / n["name"], ignore_errors=True)
     nodes = [join(n, tmp, capsulectl, out) for n in pop["nodes"]]
     asks = {name: (spec, Ask) for name, spec in ASKS.items()}
     run_asks([(out, asker, asked, asks) for asker in nodes for asked in nodes if asker is not asked])
-    failures, answered, proof, lines = judge_run(out, {n.name: n.key for n in nodes}, capsulectl, tmp)
-    return failures, [], answered, proof, lines
+    not_checked = []
+    failures, answered, proof, lines = judge_run(out, {n.name: n.key for n in nodes}, capsulectl, tmp, not_checked)
+    return failures, not_checked, answered, proof, lines
 
 
 # --- Backend "reporter": Mesh nodes, asked through the daily reporter ---------
@@ -616,8 +662,24 @@ def live_commitment(entry):
     adv, errs = advertisement(found[-1].parent)
     if adv is None:
         return None, {"what": "the deadline (answers_within)", "why": "; ".join(errs), "issue": NO_COMMITMENT_ISSUE}
-    adv["commitment"] = str(found[-1].relative_to(LAB_RUNS.parent))
+    adv["commitment"] = str(found[-1].relative_to(LAB_RUNS.parent.parent))
     return adv, None
+
+
+def judge_live_line(stem, line, entry, name):
+    """step 12's verdict on a reporter line, except a refusal of a stranger-safe question: that is judged by its
+    reason (refusal_verdict), as the book backend judges it."""
+    qname = daily_report.QUESTION_NAMES[stem]
+    safe = entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
+    if line.split(" ", 1)[0] != "refusal" or qname not in safe:
+        return step12.judge_reporter_line(stem, line, entry)
+    reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
+    verdict = refusal_verdict(reason)
+    if verdict == "fail":
+        return f"the {qname} answer is refused ({reason}), but the node lists it as stranger-safe: {line}", None
+    if verdict == "not_checked":
+        return None, refusal_not_checked(f"the refusal of {qname}", reason)
+    return None, None
 
 
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None):
@@ -645,35 +707,39 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         if node_dir.exists():
             shutil.rmtree(node_dir)
         node_dir.mkdir(parents=True)
-        at = daily_report.utc_now()
-        result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
-                                          timeout)
-        back = now()
-        attempt = layout.attempts(node_dir)[-1]
-        sent_at = at.replace(microsecond=0) if at.tzinfo else at.replace(tzinfo=dt.timezone.utc, microsecond=0)
-        late = adv is not None and back > sent_at + adv["within"]
-        timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
-                  "answers_within": adv["answers_within"] if adv else None,
-                  "deadline": stamp(sent_at + adv["within"]) if adv else None,
-                  "commitment": adv["commitment"] if adv else None, "late": late}
-        write_json(attempt / "timing.json", timing)
-        proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
-        said = []
-        for stem, line in result.items():
-            fail, nc2 = step12.judge_reporter_line(stem, line, entry)
-            qname = daily_report.QUESTION_NAMES[stem]
-            if fail:
-                failures.append(f"{name}: {fail}")
-            if nc2:
-                merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
-            state = line.split(" ", 1)[0]
-            if not fail and state in ("verified", "refusal"):
-                if late:
-                    said.append(f"{qname} back after the deadline, counted absent")
-                    continue
-                if adv is not None:
-                    answered.append((back, f"{name} {qname}"))
-            said.append(f"{qname} {step12.said(line)}")
+        # One attempt per question, so each answer has its own send and receive times.
+        said, last = [], None
+        for stem in daily_report.QUESTIONS:
+            while last is not None and daily_report.utc_now().replace(microsecond=0) <= last:
+                time.sleep(0.05)  # an attempt is named by its second: one per node per second
+            at = last = daily_report.utc_now()
+            last = last.replace(microsecond=0)
+            result = daily_report.ask_attempt(asker, entry, node_dir, [stem], at, "by=ask", timeout)
+            back = now()
+            attempt = layout.attempts(node_dir)[-1]
+            sent_at = at.replace(microsecond=0) if at.tzinfo else at.replace(tzinfo=dt.timezone.utc, microsecond=0)
+            late = adv is not None and back > sent_at + adv["within"]
+            timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
+                      "answers_within": adv["answers_within"] if adv else None,
+                      "deadline": stamp(sent_at + adv["within"]) if adv else None,
+                      "commitment": adv["commitment"] if adv else None, "late": late}
+            write_json(attempt / "timing.json", timing)
+            proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
+            for stem, line in result.items():
+                qname = daily_report.QUESTION_NAMES[stem]
+                fail, nc2 = judge_live_line(stem, line, entry, name)
+                if fail:
+                    failures.append(f"{name}: {fail}")
+                if nc2:
+                    merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
+                state = line.split(" ", 1)[0]
+                if not fail and state in ("verified", "refusal"):
+                    if late:
+                        said.append(f"{qname} back after the deadline, counted absent")
+                        continue
+                    if adv is not None:
+                        answered.append((back, f"{name} {qname}"))
+                said.append(f"{qname} {step12.said(line)}")
         asked_via = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked_via}: " + "; ".join(said))
     return failures, not_checked, answered, proof, lines

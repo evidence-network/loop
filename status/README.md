@@ -28,10 +28,13 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
 - Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,
   until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record
-  (step 01), to the first answered request (step 12) and to the first
-  countersigned report (step 11, a placeholder until M3), each the marker
-  step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
-  writes it before the first step), in seconds when under one minute; decisions limited or refused on evidence
+  (step 01), to the first answered request (step 07) and to the first
+  countersigned report (step 11, a placeholder until M3). Steps 01 and 11 use
+  the marker step's PASS finding `finished`; step 07 uses `answered_at` in the
+  `first-answered.json` its finding names in `proof`, from a valid PASS or
+  NOT_CHECKED finding (never a FAIL or malformed one). Each is minus the run's
+  `run.json` `started` (loop.sh writes it before the first step), in seconds
+  when under one minute; decisions limited or refused on evidence
   (M3) and filtered volume beside raw (M2) are placeholders. A number whose marker step has no
   `PASS` reads `not measured yet (M1|M2|M3)`, never 0. When the marker step is a
   `PASS` but the run has no start time, the cell says why: "not measured: this
@@ -39,6 +42,6 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   which finding fields each one reads.
 
 `tests/test_status_page.py` holds the page to this. The `stats` workflow runs
-stage 1 on the rehearsal population itself and builds the page into
+stage 1 and then step 07 (not in stage 1) on the rehearsal population itself and builds the page into
 `_site/stats/status/` on every pull request, push to main, and nightly after the
 loop run. Later it can read the loop run's findings artifact instead.
