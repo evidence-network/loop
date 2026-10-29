@@ -15,3 +15,4 @@ deal obeyed it.
 | `no-deny-list` | NO | `deny_list` |
 | `no-default` | NO | `default` |
 | `no-unreadable-policy` | NO | `unreadable_policy` (no policy digest) |
+| `no-unreadable-target` | NO | `unreadable_target` (no peer commitment) |

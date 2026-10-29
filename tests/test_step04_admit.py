@@ -44,7 +44,8 @@ if not HAS_BIN:
         raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_BIN}")
     print(f"\ntest_step04_admit: {NO_BIN}", file=sys.stderr)
 
-EXPECTED = {"go": "GO", "go-allow-list": "GO", "no-deny-list": "NO", "no-default": "NO", "no-unreadable-policy": "NO"}
+EXPECTED = {"go": "GO", "go-allow-list": "GO", "no-deny-list": "NO", "no-default": "NO", "no-unreadable-policy": "NO",
+            "no-unreadable-target": "NO"}
 # Each planted failure, the scenario it is planted in, and the check that must catch it.
 PLANTED = {
     "ask-outcome": ("go", "one_outcome"),
@@ -94,19 +95,19 @@ class Rehearsal(unittest.TestCase):
             self.assertEqual([d["admission_decision"]["verdict"] for d in self.sealed(self.out, name)], [want], name)
         self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
         self.assertIn("would spend 0 USD", f["detail"])
-        self.assertIn("Mesh-LLM/capsules-plugin#64", f["detail"])
+        self.assertIn("Mesh-LLM/capsules-plugin#55", f["detail"])
         self.assertTrue(finding.gaps(f["detail"]))
 
     def test_a_no_has_no_deal_record(self):
-        for name in ("no-deny-list", "no-default", "no-unreadable-policy"):
+        for name in ("no-deny-list", "no-default", "no-unreadable-policy", "no-unreadable-target"):
             bundle = load(self.out / "scenarios" / name / "bundle.json")
             kinds = [d["agent_input"].get("kind") for d in bundle["disclosures"].values()]
             self.assertNotIn("deal_record", kinds, name)
 
     def test_counts_give_both_numbers(self):
         c = load(self.out / "counts.json")
-        self.assertEqual((c["refused"], c["decisions"]), (3, 5))
-        self.assertEqual(c["by_outcome"], {"GO": 2, "NO": 3})
+        self.assertEqual((c["refused"], c["decisions"]), (4, 6))
+        self.assertEqual(c["by_outcome"], {"GO": 2, "NO": 4})
         self.assertIn("counts.json", [p["path"] for p in load(self.out / "finding.json")["proof"]])
 
     def test_the_finding_passes_the_check(self):
@@ -257,6 +258,7 @@ class Live(unittest.TestCase):
                           (lambda d: d.pop("source"), "no source"),
                           (lambda d: d["reads"][0].update(digest={}), "operator policy"),
                           (lambda d: d["peer_commitment"].update(digest=""), "peer_commitment"),
+                          (lambda d: d.update(peer_commitment=None), "peer_commitment"),
                           (lambda d: d.update(peer="a" * 64), "unexpected members peer"),
                           (lambda d: d["peer_commitment"].update(peer="a" * 64), "peer_commitment"),
                           (lambda d: d["reads"][0].update(peer="a" * 64), "operator policy"),
