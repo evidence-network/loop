@@ -1,0 +1,4 @@
+{"controllers": [
+  {"id": "rehearsal-controller-alice", "key_dir": "population/rehearsal/step05/keys/controller-alice", "nodes": ["alice"]},
+  {"id": "rehearsal-controller-bob", "key_dir": "population/rehearsal/step05/keys/controller-bob", "nodes": ["bob"]}
+]}

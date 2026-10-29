@@ -1,0 +1,4 @@
+{
+  "alice": {"share_record_at_completion": "counterparty"},
+  "bob": {"share_record_at_completion": "counterparty"}
+}

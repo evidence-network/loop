@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check the daily reports: their layout, and that no day is silently missing.
 
-Usage: check_reports.py [DIR] [--through YYYY-MM-DD [--reporter FILE]]
-       (default DIR: reports/daily)
+Usage: check_reports.py [DIR] [--set daily|rehearsal] [--through PERIOD [--reporter FILE]]
+       (default DIR: reports/<set>, default set: daily)
 
 Every entry of DIR is a <YYYY-MM-DD> directory holding either RUN.json (a run:
 one <node_id>/ per node it asked, and the sha256 of the versions.lock it ran
@@ -16,9 +16,12 @@ land beside them.
 With --through, every day from the first report to that date must be present:
 a day nobody marked is refused. With --reporter too, a reporter.json that
 names a key (not the all-zero placeholder) and no report at all is refused:
-the reporter is deployed but has never run. Standard library only. Exit 0 = clean, 1 = refused.
+the reporter is deployed but has never run. With --set rehearsal, the same
+checks hold for the rehearsal set, a test of the reporter: every entry is a
+10-minute UTC slot <YYYY-MM-DD>T<HHMM>Z instead of a day, and --through names
+a slot. Standard library only. Exit 0 = clean, 1 = refused.
 """
-import datetime as dt
+import datetime as dt  # noqa: F401  (tests build --through dates from it)
 import json
 import re
 import sys
@@ -27,7 +30,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import report_layout as layout  # noqa: E402
 
-DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 STEMS = layout.STEMS
 STATES = layout.DAY_STATES
@@ -162,47 +164,56 @@ def deployed(reporter):
     return isinstance(key, str) and HEX64.match(key) is not None and key != "0" * 64
 
 
-def check(root, through=None, reporter=None):
+def check(root, through=None, reporter=None, period=layout.Daily):
     errs = []
     days = []
+    form = "<YYYY-MM-DD>" if period is layout.Daily else "<YYYY-MM-DD>T<HHMM>Z 10-minute slot"
     for p in sorted(root.iterdir()) if root.is_dir() else []:
         if p.name in (".gitkeep", "README.md"):
             continue
-        if not (p.is_dir() and DATE.match(p.name)):
-            errs.append(f"{p.name}: not a <YYYY-MM-DD> directory")
+        if not (p.is_dir() and period.pattern.match(p.name)):
+            errs.append(f"{p.name}: not a {form} directory")
             continue
         days.append(p.name)
         errs += check_day(p)
     if not days and through is not None and reporter is not None and deployed(reporter):
         errs.append(f"{reporter} names a reporter key, but {root} holds no report")
     if days and through is not None:
-        day = dt.date.fromisoformat(days[0])
+        day = period.parse(days[0])
         while day <= through:
-            if day.isoformat() not in days:
-                errs.append(f"{day.isoformat()}: no report and no MISSED mark")
-            day += dt.timedelta(days=1)
+            if period.name(day) not in days:
+                errs.append(f"{period.name(day)}: no report and no MISSED mark")
+            day += period.step
     return errs, days
 
 
 def main(argv):
     args = argv[1:]
+    period = layout.Daily
+    if "--set" in args:
+        i = args.index("--set")
+        if args[i + 1] not in layout.SETS:
+            print(f"--set must be one of {', '.join(sorted(layout.SETS))}", file=sys.stderr)
+            return 1
+        period = layout.SETS[args[i + 1]]
+        del args[i:i + 2]
     through = None
     if "--through" in args:
         i = args.index("--through")
-        through = dt.date.fromisoformat(args[i + 1])
+        through = period.parse(args[i + 1])
         del args[i:i + 2]
     reporter = None
     if "--reporter" in args:
         i = args.index("--reporter")
         reporter = Path(args[i + 1])
         del args[i:i + 2]
-    root = Path(args[0] if args else "reports/daily")
-    errs, days = check(root, through, reporter)
+    root = Path(args[0] if args else f"reports/{period.set}")
+    errs, days = check(root, through, reporter, period)
     for e in errs:
         print(e, file=sys.stderr)
     if errs:
         return 1
-    print(f"{root}: {len(days)} day{'' if len(days) == 1 else 's'} ok")
+    print(f"{root}: {len(days)} {period.noun}{'' if len(days) == 1 else 's'} ok")
     return 0
 
 

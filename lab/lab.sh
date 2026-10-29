@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -17,6 +17,9 @@
 #             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #             (and the reporter node itself from a second node's console)
+#   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
+#             halves the nodes in LAB_SHARE_AT_COMPLETION pushed after `exchange`. Starts no exchange
+#             and pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
@@ -37,6 +40,10 @@
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
 #   LAB_REPORTER        the reporter node (default lab-3)
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
+#   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
+#             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
+#             A node not named keeps the plugin's default, which is on at the pinned plugin unless the
+#             node's config sets it off. Read by start: restart a node to change it
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -52,6 +59,13 @@ BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
 MODEL_NAME=${LAB_MODEL_NAME:-lab-model}
 SESSION=${LAB_TMUX_SESSION:-loop-lab}
+# Split once, on any whitespace, and match against the same list the check used.
+SHARE=()
+read -r -d '' -a SHARE <<< "${LAB_SHARE_AT_COMPLETION:-}" || true
+for n in "${SHARE[@]+"${SHARE[@]}"}"; do
+  [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_SHARE_AT_COMPLETION names $n, not a lab node"
+done
+shares() { local n; for n in "${SHARE[@]+"${SHARE[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
@@ -264,6 +278,9 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     MESH_LLM_NATIVE_RUNTIME_CACHE_DIR="$home/.mesh-llm/runtime-cache"
     CAPSULES_HOST_CONSOLE_URL="$(console "$name")")
   [ -n "${MESH_LLM_RUNTIME:-}" ] && envs+=(MESH_LLM_NATIVE_RUNTIME_BUNDLE_DIR="$MESH_LLM_RUNTIME")
+  # The plugin reads share_record_at_completion from this env var before its config
+  # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
+  shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
     --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")
   local body
@@ -469,6 +486,15 @@ for n in json.load(open(sys.argv[1]))["nodes"]:
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+cmd_deal() {
+  # Step 05 is not in loop.sh's stage 1, so it runs on its own, into the day's live findings
+  # beside stage 1's, and the finding contract is checked over the whole directory.
+  local out=$ROOT/findings/$TODAY-live
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/05-deal" --population "$ROOT/population/live" --out "$out/05-deal"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
 cmd_pack() {
   local day=$TODAY
   [ -s "$LAB_DIR/run/loop-date" ] && day=$(cat "$LAB_DIR/run/loop-date")
@@ -484,6 +510,6 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | entries | loop | deal | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
