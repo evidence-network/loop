@@ -48,5 +48,13 @@ ASK and LIMIT, and the higher disclosure levels, belong to a later level. So do
 the reads of the seller's history: its history card, the counterparty halves,
 the claims held and the adjudications (Mesh-LLM/capsules-plugin#64).
 
-The routing path does not enforce the pack yet. The plugin side is
-Mesh-LLM/capsules-plugin#105, and the routing choice is Mesh-LLM/mesh-llm#2061.
+## Live
+
+On the lab the pinned plugin's admission hook decides GO or NO from the
+operator's allow and deny lists and seals an `admission_decision` record in the
+node's ledger. The step reads those records, read-only. It passes when every
+lab node reads, at least one decision is found and each is GO or NO, names its
+source, cites the operator policy by digest and names the peer by commitment
+only. It evaluates no Terms Pack there. The plugin seals no rows yet
+(Mesh-LLM/capsules-plugin#116), and the routing path does not enforce the
+decision (Mesh-LLM/mesh-llm#2061).

@@ -40,13 +40,13 @@ for the status page.
 go-over-bound, ask-outcome, limit-outcome, unsealed, sealed-after,
 deal-after-no, digest-mismatch.
 
-Live. The pinned capsules plugin's admission hook allows or denies by model
-prefix and evaluates no Terms Pack; nothing in the routing path enforces one
-yet. The finding is NOT_CHECKED, citing Mesh-LLM/capsules-plugin#105 (the
-terms pack in the routing path, the decision sealed) and Mesh-LLM/mesh-llm#2061
-(enforcement in the routing choice). For each lab node whose data_dir is
-readable it counts the ledger records that carry an admission decision,
-read-only.
+Live. The pinned capsules plugin's admission hook decides GO or NO from the
+operator's allow and deny lists and seals an admission_decision block in the
+node's ledger. For each lab node whose data_dir is readable the step reads those
+blocks, read-only, and checks each is GO or NO, names its source, cites the
+operator policy by digest and names the peer by commitment only. PASS when at
+least one is found and all hold; NOT_CHECKED when none is found. The five rows
+are Mesh-LLM/capsules-plugin#116, not yet pinned.
 
 No spend: nothing is paid on either population.
 
@@ -77,7 +77,9 @@ ASSERTS = ("the buyer's admission checks the offer against its Terms Pack and re
            "decision recomputes rule by rule from the pack and the offer and names the pack's digest; it is sealed in "
            "the buyer's book before the deal record that cites it; no deal record cites a NO")
 PINNED = ["capsulectl", "capsulectl-book"]
-LIVE_PINNED = ["capsules", "mesh-llm", "mesh-llm-pr-2620"]
+LIVE_PINNED = ["capsules", "mesh-llm"]
+ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, sealed in the "
+                "node's own ledger, naming its source and the operator policy it read by digest")
 PLANTS = ("go-over-bound", "ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no",
           "digest-mismatch")
 PLANT_SCENARIO = {"go-over-bound": "no-price", "ask-outcome": "go", "limit-outcome": "go", "unsealed": "go",
@@ -364,51 +366,115 @@ def main_rehearsal(pop_dir, out, started, default_terms, plant=None):
 
 
 # --- Live ----------------------------------------------------------------------
+# The pinned plugin's admission hook decides GO or NO from the operator's allow and deny lists and seals an
+# admission_decision block in the node's own ledger before the exchange (capsules-plugin admission.rs).
+# The step reads those blocks, read-only, and checks their shape; it evaluates no Terms Pack.
 LIVE_NOT_CHECKED = [
-    {"what": "a GO or NO decision from the Terms Pack sealed as an admission_decision record before the exchange, "
-             "on a lab node",
-     "why": "the pinned capsules plugin's admission hook (admission_policy.v1) allows or denies by model prefix, "
-            "evaluates no Terms Pack and seals no admission_decision record",
-     "issue": "Mesh-LLM/capsules-plugin#105"},
+    {"what": "the five base-policy rows (identity, key age, performed-and-settled, disputes, corroboration) sealed "
+             "with each decision",
+     "why": "the pinned plugin seals the verdict, its source and the operator policy it read, and no rows",
+     "issue": "Mesh-LLM/capsules-plugin#116"},
+    {"what": "each record's signature, and that each decision precedes the exchange record it admits",
+     "why": "the step reads the node's ledger lines as written; it neither verifies their signatures nor pairs a "
+            "decision with an exchange record",
+     "issue": "evidence-network/loop: the live lab run, which fills population/live"},
     {"what": "the routing path enforcing the decision when it chooses a candidate",
      "why": "the routing choice cannot yet require a property of a candidate beyond its identity",
      "issue": "Mesh-LLM/mesh-llm#2061"},
 ]
+VERDICTS = ("GO", "NO")
+LIVE_GAPS = " ".join([
+    finding.outside("the five base-policy rows sealed with each decision", "Mesh-LLM/capsules-plugin#116"),
+    finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
+])
 
 
-def decision_records(data_dir):
-    """How many records in the node's own ledger carry an admission decision member, and how many records."""
-    n = total = 0
+def decision_block(ln):
+    """The admission_decision member of one ledger line, or None."""
+    try:
+        return json.loads(ln)["model_attestation"]["compute_attestation"][DECISION]
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def block_problems(blk):
+    """Why a sealed admission_decision block is not the shape the plugin promises; [] when it is."""
+    if not isinstance(blk, dict):
+        return ["not an object"]
+    errs = []
+    if blk.get("verdict") not in VERDICTS:
+        errs.append(f"verdict {blk.get('verdict')!r} is not GO or NO")
+    if not (isinstance(blk.get("source"), str) and blk["source"]):
+        errs.append("no source")
+    reads = blk.get("reads")
+    pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
+    if pol.get("kind") != "operator_policy" or not isinstance(pol.get("digest"), dict):
+        errs.append("reads does not cite the operator policy by digest")
+    pc = blk.get("peer_commitment", "absent")
+    if not (pc is None or (isinstance(pc, dict) and isinstance(pc.get("digest"), str))):
+        errs.append("peer_commitment is missing or not a commitment")
+    return errs
+
+
+def node_decisions(data_dir):
+    """([(line, block)], [problem], total) over the node's ledger lines that carry an admission decision."""
+    found, problems, total = [], [], 0
     try:
         lines = (data_dir / "ledger" / "capsules.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
-        return 0, 0
+        return [], [], 0
     for ln in lines:
         if not ln.strip():
             continue
         total += 1
-        n += ('"admission_decision"' in ln)
-    return n, total
+        blk = decision_block(ln) if DECISION in ln else None
+        if blk is None:
+            continue
+        found.append((ln, blk))
+        problems += [f"record {total}: {e}" for e in block_problems(blk)]
+    return found, problems, total
 
 
 def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     (out / "finding.json").unlink(missing_ok=True)
-    details, not_checked = [], list(LIVE_NOT_CHECKED)
+    details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [], [], 0, False
     for entry in pop["nodes"]:
         name = entry["name"]
         data_dir = live.readable(entry, "data_dir", "ledger")
         if data_dir is None:
             not_checked.append(live.not_checked(name, "data_dir"))
             details.append(f"node {name}: data_dir not set or unreadable")
+            unreadable = True
             continue
-        n, total = decision_records(data_dir)
-        details.append(f"node {name}: {n} of {total} ledger records carry an admission decision member, read-only "
-                       f"(the pinned plugin seals none)")
-    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
-                  proof=[], detail="; ".join(details) + f". Not checked on the lab nodes: the pinned plugin evaluates "
-                  f"no Terms Pack and seals no admission decision. {NO_SPEND}",
-                  not_checked=not_checked, started=started)
+        found, bad, total = node_decisions(data_dir)
+        by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
+        details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
+                       f"({by['GO']} GO, {by['NO']} NO), read-only")
+        problems += [f"node {name} {b}" for b in bad]
+        decided += len(found)
+        if found:
+            (out / name).mkdir(exist_ok=True)
+            (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for ln, _ in found), encoding="utf-8")
+            proof.append(f"{name}/decisions.jsonl")
+    base = dict(population=pop["population"], asserts=ASSERTS_LIVE, pinned=LIVE_PINNED, started=started)
+    summary = "; ".join(details)
+    if problems:
+        finding.write(out, result="FAIL", proof=proof, not_checked=[],
+                      detail=f"{summary}. Did not hold: {'; '.join(problems)}. {NO_SPEND}", **base)
+    elif decided and not unreadable:
+        finding.write(out, result="PASS", proof=proof, not_checked=[],
+                      detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
+                             f"read by digest and names the peer by commitment only; the step read the ledger lines "
+                             f"as written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
+    else:
+        gap = {"what": "an admission decision on a lab node",
+               "why": "no ledger record carries one yet; no exchange with a peer has been admitted or refused",
+               "issue": "evidence-network/loop: the live lab run, which fills population/live"}
+        finding.write(out, result="NOT_CHECKED", proof=proof, not_checked=not_checked + ([] if decided else [gap]),
+                      detail=f"{summary}. Not checked: "
+                             f"{'a node could not be read' if decided else 'no admission decision was found'}. "
+                             f"{NO_SPEND}", **base)
     return 0
 
 

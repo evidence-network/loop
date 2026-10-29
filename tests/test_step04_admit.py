@@ -249,20 +249,60 @@ class Rehearsal(unittest.TestCase):
 
 
 class Live(unittest.TestCase):
-    def test_live_is_not_checked_under_its_issues(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "f" / "04-admit"
-            r = run_step(LIVE, out, env=dict(os.environ, LAB_DIR=str(LIVE)))
-            self.assertEqual(r.returncode, 0, r.stderr)
-            f = load(out / "finding.json")
-            self.assertEqual(f["result"], "NOT_CHECKED")
-            issues = [x["issue"] for x in f["not_checked"]]
-            for issue in ("Mesh-LLM/capsules-plugin#105", "Mesh-LLM/mesh-llm#2061"):
-                self.assertIn(issue, issues)
-            self.assertIn("live node lab-c", [x["what"] for x in f["not_checked"]])
-            self.assertIn("node lab-a: 0 of 2 ledger records", f["detail"])
-            self.assertEqual(sorted(f["pinned"]), ["capsules", "mesh-llm", "mesh-llm-pr-2620"])
-            self.assertEqual(finding.check(out.parent), [])
+    def live_run(self, lab):
+        """Step 04 on `lab` (a dir holding population.json); a committed fixture dir is its own LAB_DIR."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        out = Path(tmp.name) / "f" / "04-admit"
+        r = run_step(lab, out, env=dict(os.environ, LAB_DIR=str(lab)))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return out, load(out / "finding.json")
+
+    def lab_with(self, lines):
+        """A two-node lab whose lab-a ledger holds `lines`; every node reads."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        for n in ("lab-a", "lab-b"):
+            d = Path(tmp.name) / "nodes" / n / "data" / "ledger"
+            d.mkdir(parents=True)
+            (d / "capsules.jsonl").write_text("\n".join(lines if n == "lab-a" else []) + "\n")
+        (Path(tmp.name) / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [
+            {"name": n, "data_dir": f"$LAB_DIR/nodes/{n}/data", "book_dir": None} for n in ("lab-a", "lab-b")]}))
+        return Path(tmp.name)
+
+    def test_decisions_in_the_ledger_pass(self):
+        out, f = self.live_run(self.lab_with((LIVE / 'nodes/lab-a/data/ledger/capsules.jsonl').read_text().splitlines()))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("node lab-a: 2 of 4 ledger records carry an admission decision (1 GO, 1 NO)", f["detail"])
+        self.assertEqual([p["path"] for p in f["proof"]], ["lab-a/decisions.jsonl"])
+        for issue in ("Mesh-LLM/capsules-plugin#116", "Mesh-LLM/mesh-llm#2061"):
+            self.assertIn(issue, f["detail"])
+        self.assertEqual(sorted(f["pinned"]), ["capsules", "mesh-llm"])
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_an_unreadable_node_keeps_it_not_checked(self):
+        _, f = self.live_run(LIVE)
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("live node lab-c", [x["what"] for x in f["not_checked"]])
+        self.assertIn("Mesh-LLM/capsules-plugin#116", [x["issue"] for x in f["not_checked"]])
+
+    def test_no_decision_is_not_checked(self):
+        _, f = self.live_run(self.lab_with(['{"capsule_id":"00","action_type":"fyi"}']))
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("an admission decision on a lab node", [x["what"] for x in f["not_checked"]])
+
+    def test_a_malformed_decision_fails(self):
+        good = [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
+                if "admission_decision" in ln]
+        for edit, why in ((lambda d: d.update(verdict="ASK"), "is not GO or NO"),
+                          (lambda d: d.update(reads=[]), "operator policy"),
+                          (lambda d: d.update(peer_commitment="a" * 64), "peer_commitment"),
+                          (lambda d: d.pop("source"), "no source")):
+            cap = json.loads(good[0])
+            edit(cap["model_attestation"]["compute_attestation"]["admission_decision"])
+            _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+            self.assertEqual(f["result"], "FAIL")
+            self.assertIn(why, f["detail"])
 
 
 class StatusRefusedRow(unittest.TestCase):
