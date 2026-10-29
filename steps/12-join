@@ -23,7 +23,16 @@ join.sh wrote:
     (`book request --for ... --response`), on the answer bytes;
   - the answers match the advertised policy: the node answers under the
     policy the commitment's signed policy carries, and both public subjects
-    come back as artifacts for exactly what was asked.
+    come back as artifacts for exactly what was asked;
+  - the commitment staples a history_card/1 for the join's own book, and
+    every stapled card (evidence-commitment/0 or /1) is, byte for byte, the
+    answer the stranger kept for that book.
+
+A card of a book other than the join's own is verified the same way, by the
+pinned capsulectl-book, under the node key and the checkpoint key its
+evidence-commitment/1 entry names (checkpoint_key). A card whose entry names
+none is a not_checked entry. The own book's entry, where it names a
+checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding's own verification (controller-binding/0, both
 signatures) is outside the assertion: no released verifier checks it yet, and
@@ -60,6 +69,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as check_commitment_  # noqa: E402
+import history_cards as hc  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
 import report_layout as layout  # noqa: E402
@@ -73,6 +83,8 @@ PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
          "doctor.json", "join.json"]
 DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
+# No released verifier the loop can call for a stapled history_card/1 (as step 03).
+STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
 NO_BINDING_VERIFIER = {
     "what": "the controller binding (controller-binding/0, same_controller_asserted, dual_signature/0)",
@@ -111,7 +123,34 @@ def advertised(node_dir):
     return {"node_key": c["key_id"], "checkpoint_key": attestation["checkpoint_key"],
             "book_id": attestation["book_id"], "policy_digest": c["lcap"]["policy_digest"],
             "policy_uri": c["lcap"]["policy_uri"], "subjects": c["answers"]["subjects"],
-            "derivations": c["answers"]["derivations"]}
+            "derivations": c["answers"]["derivations"], "streams": [x["stream"] for x in hc.history_cards(c)],
+            "card_keys": {e.get("stream"): check_commitment_.card_checkpoint_key(e) for e in hc.entries(c)}}
+
+
+def card_probe(adv, stream):
+    """Where join.sh keeps the stranger's history_card/1 request and answer for a stream (no suffix)."""
+    return "probe/history_card" if stream == adv["book_id"] else f"probe/cards/{stream}"
+
+
+def check_staple(node_dir, adv):
+    """The join's own book is stapled, and each stapled card is the kept answer for its book. Returns what is not."""
+    node_dir = Path(node_dir)
+    errs = []
+    if adv["book_id"] not in adv["streams"]:
+        errs.append(f"the commitment staples no history_card/1 for the join's own book {adv['book_id']}")
+    own_key = adv["card_keys"].get(adv["book_id"])
+    if own_key is not None and own_key != adv["checkpoint_key"]:
+        errs.append(f"the card entry for {adv['book_id']} names a checkpoint key other than the book's checkpoint's")
+    for e in hc.entries(load(node_dir / "commitment.json")):
+        stream = e.get("stream")
+        kept = node_dir / f"{card_probe(adv, stream)}.answer.json" if stream else None
+        try:
+            same = kept is not None and base64.b64decode(e["bytes"]) == kept.read_bytes()
+        except (OSError, KeyError, TypeError, ValueError):
+            same = False
+        if not same:
+            errs.append(f"the stapled card for stream {stream} is not the answer the stranger kept for that book")
+    return errs
 
 
 def check_commitment(node_dir):
@@ -203,11 +242,15 @@ def verify_answers(node_dir, adv, capsulectl, work):
     if r.returncode != 0:
         raise RuntimeError(f"could not make the stranger's profile again: {r.stderr.strip()}")
     errs = []
-    for probe in PROBES:
-        rid = load(node_dir / "probe" / f"{probe}.asked.json")["record_id"]
+    # The own book's two answers under its checkpoint key; each other card under the key its entry names.
+    asked = [(f"probe/{probe}", probe, adv["checkpoint_key"]) for probe in PROBES]
+    asked += [(card_probe(adv, stream), f"history_card of {stream}", key)
+              for stream, key in sorted(adv["card_keys"].items()) if stream and stream != adv["book_id"] and key]
+    for base, probe, checkpoint_key in asked:
+        rid = load(node_dir / f"{base}.asked.json")["record_id"]
         r = cap("book", "request", "--profile", "stranger", "--for", rid,
-                "--response", str(node_dir / "probe" / f"{probe}.answer.json"),
-                "--responder-key", adv["node_key"], "--responder-checkpoint-key", adv["checkpoint_key"])
+                "--response", str(node_dir / f"{base}.answer.json"),
+                "--responder-key", adv["node_key"], "--responder-checkpoint-key", checkpoint_key)
         out = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
         try:
             verdict = json.loads(out) if out else {}
@@ -217,7 +260,7 @@ def verify_answers(node_dir, adv, capsulectl, work):
         verdict.pop("output", None)
         record = {"verifier": "capsulectl book request --for --response", "exit": r.returncode,
                   "result": verdict, "refused": r.stderr.strip().splitlines()[0] if r.returncode else ""}
-        (node_dir / "probe" / f"{probe}.verified.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+        (node_dir / f"{base}.verified.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
         if r.returncode != 0 or verdict.get("outcome") != "artifact":
             errs.append(f"the {probe} answer does not verify under the advertised node and checkpoint keys: "
                         f"{record['refused'] or verdict}")
@@ -234,11 +277,21 @@ def judge(node_dir, capsulectl, work):
         return errs + [f"the commitment does not advertise the node's keys and policy ({e})"], [], list(PROOF)
     errs += check_doctor(node_dir, adv)
     errs += check_policy_match(node_dir, adv)
+    errs += check_staple(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
     not_checked = []
     proof = list(PROOF)
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
+    for stream in sorted({x for x in adv["streams"] if x and x != adv["book_id"]}):
+        if adv["card_keys"].get(stream) is None:
+            not_checked.append({"what": f"the stapled history_card/1 of book {stream} verifies under the node key "
+                                        "and that book's checkpoint key",
+                                "why": "its card entry names no checkpoint_key; this card's bytes are matched to "
+                                       "the stranger's kept answer",
+                                "issue": STAPLE_ISSUE})
+        proof += [f"{card_probe(adv, stream)}.{k}.json" for k in ("request", "asked", "answer", "respond", "verified")
+                  if (node_dir / f"{card_probe(adv, stream)}.{k}.json").is_file()]
     return errs, not_checked, proof
 
 

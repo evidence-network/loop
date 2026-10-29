@@ -2,7 +2,7 @@
 """The daily reporter: ask every listed node the two stranger-safe questions.
 
 Usage:
-  daily_report.py run   [--set daily|rehearsal] [--date D] [--console URL]
+  daily_report.py run   [--set daily|rehearsal|ondemand] [--date D] [--console URL]
                         [--nodes DIR] [--out DIR] [--reporter FILE]
                         [--data-dir DIR] [--timeout S] [--self-node NAME]
                         [--second-console URL] [--population FILE]
@@ -53,6 +53,16 @@ a day, and its retries bounded so the run settles inside its slot: it asks
 again at REHEARSAL_RETRY_AFTER_S instead of `retry_after_s`, gives no request
 more than REHEARSAL_TIMEOUT_S, and starts nothing after REHEARSAL_BUDGET_S
 into the slot. The default set is `daily`, unchanged.
+
+`--set ondemand` is a run made by hand between dailies (scripts/refresh_now.sh):
+one report per run under <out> = reports/ondemand, named by the second it
+started (D is <YYYY-MM-DD>T<HHMMSS>Z, UTC; default: now), and RUN.json says
+"set": "ondemand". Its runs are not continuous: nothing is ever marked MISSED
+for the time between two runs, and a run that cannot reach its own node writes
+nothing at all (exit 2). An earlier run that stopped before it finished, never
+committed, is removed. Its retries are bounded so the run settles in about two
+minutes: it asks again at ONDEMAND_RETRY_AFTER_S, gives no request more than
+ONDEMAND_TIMEOUT_S, and starts nothing after ONDEMAND_BUDGET_S into the run.
 
 A node can't be asked through its own console, so the reporter's own node
 (reporter.json `node_id`) is left out unless a second console is given:
@@ -133,6 +143,14 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 REHEARSAL_RETRY_AFTER_S = [120, 240]
 REHEARSAL_TIMEOUT_S = 20.0
 REHEARSAL_BUDGET_S = 420
+# The on-demand set settles in about two minutes, the same way: the budget is
+# counted from the run's start, and a request started near its end waits at most 1 s.
+ONDEMAND_RETRY_AFTER_S = [30, 60]
+ONDEMAND_TIMEOUT_S = 20.0
+ONDEMAND_BUDGET_S = 90
+# Per set: (retry_after_s, timeout_s, budget_s), in place of reporter.json's schedule.
+BOUNDED = {"rehearsal": (REHEARSAL_RETRY_AFTER_S, REHEARSAL_TIMEOUT_S, REHEARSAL_BUDGET_S),
+           "ondemand": (ONDEMAND_RETRY_AFTER_S, ONDEMAND_TIMEOUT_S, ONDEMAND_BUDGET_S)}
 DEFAULT_POPULATION = "population/live/population.json"
 
 
@@ -366,11 +384,20 @@ def mark_missed(out, today, why, period=layout.Daily):
     other day (earlier, or later after a clock that ran ahead) whose run
     stopped before writing RUN.json, which would otherwise fail
     check_reports on every later run. Today's is replaced by today's run.
-    In the rehearsal set, the same for every 10-minute slot.
+    In the rehearsal set, the same for every 10-minute slot. The on-demand
+    set is not continuous: nothing is marked, and an earlier run that stopped
+    before it finished (never committed: only a finished run is) is removed.
     """
     days = report_days(out, period)
     now = period.name(today)
     if not days:
+        return []
+    if not period.continuous:
+        for name in days:
+            d = out / name
+            if name != now and not (d / "RUN.json").exists() and not (d / "MISSED").exists():
+                shutil.rmtree(d)
+                print(f"{name}: removed, its run stopped before it finished")
         return []
     marked = []
     for name in days:
@@ -416,6 +443,7 @@ def reporter_up(console, reporter, timeout):
 def run(args, now, sleep):
     period = layout.SETS[args.set]
     rehearsal = period is layout.Rehearsal
+    ondemand = period is layout.OnDemand
     start = now()
     today = period.parse(args.date) if args.date else period.of(start)
     name = period.name(today)
@@ -423,10 +451,12 @@ def run(args, now, sleep):
     reporter = load_reporter(args.reporter, args.data_dir)
     schedule = retry_schedule(reporter, args.reporter)
     timeout, time_left = args.timeout, None
-    if rehearsal:
-        # Bounded so the run settles inside its slot, whatever reporter.json says.
-        schedule, timeout = REHEARSAL_RETRY_AFTER_S, min(args.timeout, REHEARSAL_TIMEOUT_S)
-        deadline = today + dt.timedelta(seconds=REHEARSAL_BUDGET_S)
+    if args.set in BOUNDED:
+        # Bounded so the run settles inside its slot (or, on demand, in about
+        # two minutes from its start), whatever reporter.json says.
+        schedule, cap, budget = BOUNDED[args.set]
+        timeout = min(args.timeout, cap)
+        deadline = today + dt.timedelta(seconds=budget)
         time_left = lambda: (deadline - now()).total_seconds()  # noqa: E731
     errs, _ = check_nodes.check_dir(Path(args.nodes))
     if errs:
@@ -434,6 +464,8 @@ def run(args, now, sleep):
     day_dir = out / name
     if (day_dir / "RUN.json").exists():
         raise ValueError(f"{day_dir} already holds a run")
+    if ondemand and day_dir.exists():
+        raise ValueError(f"{day_dir} already exists: one on-demand run per second")
     console = args.console.rstrip("/")
     second = self_node(args, reporter, console)
     for missed in mark_missed(out, today, f"the reporter did not run; noticed by the run of {name}", period):
@@ -467,7 +499,7 @@ def run(args, now, sleep):
         if n > 1:
             wait = (start + dt.timedelta(seconds=after) - now()).total_seconds()
             if time_left is not None and time_left() - max(wait, 0) <= 0:
-                print(f"no time left in the slot to ask {sum(1 for v in owed.values() if v)} node(s) again")
+                print(f"no time left in the {period.noun} to ask {sum(1 for v in owed.values() if v)} node(s) again")
                 break
             print(f"asking {sum(1 for v in owed.values() if v)} node(s) again in {max(wait, 0):.0f}s (attempt {n})")
             if wait > 0:
@@ -489,18 +521,24 @@ def run(args, now, sleep):
         "asked": sorted(lines),
         "versions_lock_sha256": versions_lock_sha256(),
     }
+    if ondemand:
+        record["set"] = period.set
     asked_via = sorted(n for n in via if n in lines)
     if asked_via:
         record["asked_through_second_console"] = asked_via
     again = ", ".join(f"+{s:g}s" for s in schedule) or "never"
-    title = f"# Rehearsal report {name} (TEST)" if rehearsal else f"# Daily report {name}"
+    title = (f"# Rehearsal report {name} (TEST)" if rehearsal else f"# On-demand report {name}" if ondemand
+             else f"# Daily report {name}")
     readme = [title, "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
               " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.",
               f"A question with no answer was asked again at {again} after the run started;"
               " each node's `attempts/` holds every time it was asked.", ""]
+    if ondemand:
+        readme += ["A run made by hand between the daily runs; it is never counted as a day.", ""]
     for node_id, line in sorted(lines.items()):
-        fact = layout.absence_fact(layout.absent_days_running(out, node_id, today, period))
+        n = layout.absent_days_running(out, node_id, today, period)
+        fact = layout.absence_fact(n, period.noun) if ondemand else layout.absence_fact(n)
         if node_id in via:
             fact = "; ".join(x for x in ("the reporter's own node, asked through a second node's console", fact) if x)
         readme.append(f"- `{node_id}`: {line}" + (f"; {fact}" if fact else ""))
@@ -579,8 +617,10 @@ def main(argv, now=utc_now, sleep=time.sleep):
     sub = parser.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("run")
     r.add_argument("--set", choices=sorted(layout.SETS), default=os.environ.get("LOOP_REPORT_SET") or "daily",
-                   help="daily (default), or rehearsal: one report per 10-minute slot, a test")
-    r.add_argument("--date", help="UTC date to report as (default: today, UTC); in rehearsal, the slot")
+                   help="daily (default); rehearsal: one report per 10-minute slot, a test; "
+                        "ondemand: one report per run made by hand")
+    r.add_argument("--date", help="UTC date to report as (default: today, UTC); in rehearsal, the slot; "
+                                  "on demand, the run's start <YYYY-MM-DD>T<HHMMSS>Z")
     r.add_argument("--console", default=DEFAULT_CONSOLE, help="the reporter node's mesh-llm console")
     r.add_argument("--nodes", default="nodes")
     r.add_argument("--out", help="default: reports/<set>")
@@ -617,6 +657,10 @@ def main(argv, now=utc_now, sleep=time.sleep):
         d = Path(args.out) / day
         if args.cmd == "ask":
             print(f"{day}: not asked again: the reporter could not reach its own node: {e}", file=sys.stderr)
+            return 2
+        if not period.continuous:
+            # No continuity, so nothing to mark: the run is simply not there.
+            print(f"{day}: no on-demand run: the reporter could not reach its own node: {e}", file=sys.stderr)
             return 2
         if d.exists() and any(p.name != "MISSED" for p in d.iterdir()):
             # Attempts from a run cut short today stand; the day is not marked over them.

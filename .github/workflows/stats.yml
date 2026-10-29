@@ -53,6 +53,10 @@ jobs:
           done
       - name: Run stage 1 on the rehearsal population
         run: ./loop.sh --stage 1 --population rehearsal --out "findings/$(date -u +%F)-rehearsal" || echo "::warning::loop.sh exited $?"
+      # Step 07 (Ask) is not in stage 1 yet; it runs beside stage 1's findings, and the status page reads its
+      # first answered request for "minutes to the first answered request".
+      - name: Run step 07 on the rehearsal population
+        run: ./steps/07-ask --population population/rehearsal --out "findings/$(date -u +%F)-rehearsal/07-ask" || echo "::warning::07-ask exited $?"
       # The site from the scrubbed day files (stats/data/daily/) and the
       # findings only, into _site/stats/: the Pages URL ends /loop/stats/. A day
       # file the site cannot read fails this step, and nothing is deployed.

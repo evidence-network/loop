@@ -18,9 +18,18 @@ A commitment is one signed object saying what a node can be asked and how
 - whose stapled history_card/1 or checkpoint bytes do not match their sha256,
   or whose staple is not presented by its own subject.
 
+Two profiles verify. evidence-commitment/0 staples one card, `history_card`.
+evidence-commitment/1 staples one card per evidence stream (one book's log),
+`history_cards`: a list of {stream, community, derivation, sha256, bytes},
+and optionally checkpoint_key, sorted by stream. `community` is one of
+history_cards.COMMUNITIES; `checkpoint_key` is the SPKI of the stream's
+checkpoint signer (DER, base64url; standard base64 is read too), so a
+verifier can check that card's signature. Each /1 refusal of a card starts with its name, `history_cards.<name>:`
+(the CARD_* constants below), so a reader can tell them apart.
+
 COUNT RULE. A commitment says what a node can answer, never what it has done.
 It is refused when, anywhere in its own members (the opaque `bytes` of the
-checkpoint and the staple are not its members; they are signed artifacts it
+checkpoint and of each staple are not its members; they are signed artifacts it
 carries whole):
   - a key's name contains a count word as a token (split on `_`, `-`, `.`
     and camelCase): count, counts, total, totals, tally, num, number,
@@ -42,10 +51,15 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
-PROFILE = "evidence-commitment/0"
+import history_cards as hc
+
+PROFILE = hc.PROFILE_0
+PROFILE_1 = hc.PROFILE_1
 POLICY_PROFILE = "disclosure-policy/0"
 STAPLE_PROFILE = "evidence-interop/0"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+# A /1 card's stream: a book's log id as join.sh accepts one, a plain name (step 12 makes file names from it).
+STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410): 32 key bytes follow.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -73,7 +87,26 @@ SCHEMA = {
 # key's binding to its operator's key by its digest alone (AAC Controller
 # Binding v0 §4, §9.3): never the record, so never the operator's key.
 OPTIONAL = {"controller_binding": {"digest": str}}
+# /1: the one history_card becomes history_cards; every other member is /0's.
+SCHEMA_1 = {("history_cards" if k == "history_card" else k): (list if k == "history_card" else v)
+            for k, v in SCHEMA.items()}
+CARD_MEMBERS = {"stream": str, "community": str, "derivation": str, "sha256": str, "bytes": str}
+CARD_OPTIONAL = {"checkpoint_key": str}
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
+
+# The named refusals of a /1 card.
+CARD_EMPTY = "history_cards.empty"
+CARD_SHAPE = "history_cards.malformed"
+CARD_DERIVATION = "history_cards.derivation"
+CARD_UNSORTED = "history_cards.unsorted"
+CARD_BYTES = "history_cards.bytes_mismatch"
+CARD_NOT_ANSWER = "history_cards.not_an_answer"
+CARD_NOT_SUBJECT = "history_cards.not_its_subject"
+CARD_ARTIFACT = "history_cards.artifact_digest"
+CARD_STREAM = "history_cards.stream_mismatch"
+CARD_DUPLICATE = "history_cards.duplicate_stream"
+CARD_COMMUNITY = "history_cards.unknown_community"
+CARD_CHECKPOINT_KEY = "history_cards.checkpoint_key"
 COUNT_WORDS = {"count", "counts", "total", "totals", "tally", "num", "number", "quantity", "size", "n", "nb"}
 DIGITS = re.compile(r"^\d+$")
 
@@ -182,7 +215,7 @@ def count_errors(doc, path=()):
     if isinstance(doc, dict):
         for k, v in doc.items():
             where = path + (k,)
-            if where in OPAQUE:
+            if where in OPAQUE or (len(where) == 3 and where[0] == "history_cards" and where[2] == "bytes"):
                 continue
             if COUNT_WORDS & set(tokens(k)):
                 errs.append(f"{'.'.join(where)}: a key named as a count; a commitment carries no counts")
@@ -197,12 +230,65 @@ def count_errors(doc, path=()):
     return errs
 
 
+def schema_of(doc):
+    return SCHEMA_1 if doc.get("profile") == PROFILE_1 else SCHEMA
+
+
+def card_checkpoint_key(card):
+    """The raw 32-byte checkpoint key (hex) a /1 entry names, or None (absent or not an Ed25519 SPKI)."""
+    text = card.get("checkpoint_key")
+    if not isinstance(text, str) or not re.match(r"^[A-Za-z0-9_+/-]+=*$", text):
+        return None
+    try:
+        der = unb64url(text.replace("+", "-").replace("/", "_").rstrip("="))
+    except ValueError:
+        return None
+    return key_id_of(der) if len(der) == 44 and der.startswith(ED25519_SPKI) else None
+
+
+def card_field_errors(cards):
+    """The shape of /1's history_cards: a non-empty list of {stream, derivation, sha256, bytes}, sorted."""
+    if not cards:
+        return [f"{CARD_EMPTY}: history_cards must hold at least one card"]
+    errs = []
+    for i, c in enumerate(cards):
+        name = f"history_cards[{i}]"
+        if not isinstance(c, dict):
+            errs.append(f"{CARD_SHAPE}: {name} must be an object")
+            continue
+        shape = [f"{CARD_SHAPE}: missing {name}.{m}" for m in CARD_MEMBERS if m not in c]
+        shape += [f"{CARD_SHAPE}: {name}.{m} must be a str" for m in {**CARD_MEMBERS, **CARD_OPTIONAL}
+                  if m in c and not isinstance(c[m], str)]
+        shape += [f"{CARD_SHAPE}: unknown field {name}.{x}"
+                  for x in sorted(set(c) - set(CARD_MEMBERS) - set(CARD_OPTIONAL))]
+        errs += shape
+        if shape:
+            continue
+        if not STREAM.match(c["stream"]):
+            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
+        if not HEX64.match(c["sha256"]):
+            errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
+        if c["derivation"] != "history_card/1":
+            errs.append(f"{CARD_DERIVATION}: {name}.derivation must be history_card/1")
+        if c["community"] not in hc.COMMUNITIES:
+            errs.append(f"{CARD_COMMUNITY}: {name}.community {c['community']!r} is not one of "
+                        f"{', '.join(hc.COMMUNITIES)}")
+        if "checkpoint_key" in c and card_checkpoint_key(c) is None:
+            errs.append(f"{CARD_CHECKPOINT_KEY}: {name}.checkpoint_key is not an Ed25519 SubjectPublicKeyInfo")
+    if not errs:
+        streams = [c["stream"] for c in cards]
+        if streams != sorted(streams):
+            errs.append(f"{CARD_UNSORTED}: history_cards must be sorted by stream")
+    return errs
+
+
 def field_errors(doc):
     """Missing, unknown and malformed fields."""
     if not isinstance(doc, dict):
         return ["not a JSON object"]
     errs = []
-    for name, shape in {**SCHEMA, **OPTIONAL}.items():
+    schema = schema_of(doc)
+    for name, shape in {**schema, **OPTIONAL}.items():
         if name not in doc:
             if name not in OPTIONAL:
                 errs.append(f"missing {name}")
@@ -220,12 +306,12 @@ def field_errors(doc):
             errs += [f"unknown field {name}.{x}" for x in sorted(set(v) - set(shape))]
         elif not isinstance(v, shape):
             errs.append(f"{name} must be a {shape.__name__}")
-    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(SCHEMA) - set(OPTIONAL))]
+    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(schema) - set(OPTIONAL))]
+    if doc.get("profile") not in (PROFILE, PROFILE_1):
+        errs.append(f"profile must be {PROFILE} or {PROFILE_1}")
     if errs:
         return errs
 
-    if doc["profile"] != PROFILE:
-        errs.append(f"profile must be {PROFILE}")
     for name in ("node_id", "key_id"):
         if not HEX64.match(doc[name]):
             errs.append(f"{name} is not 64 lowercase hex")
@@ -248,7 +334,9 @@ def field_errors(doc):
         errs.append("lcap.predicate_classes must be a non-empty list of <kind>:<source>")
     if not DURATION.match(doc["answers_within"]):
         errs.append("answers_within must be an ISO 8601 duration (PnD, PTnH, PTnM, PTnS)")
-    if doc["history_card"]["derivation"] != "history_card/1":
+    if doc["profile"] == PROFILE_1:
+        errs += card_field_errors(doc["history_cards"])
+    elif doc["history_card"]["derivation"] != "history_card/1":
         errs.append("history_card.derivation must be history_card/1")
     if "history_card/1" not in doc["answers"]["derivations"]:
         errs.append("answers.derivations must include history_card/1, the derivation stapled")
@@ -278,30 +366,50 @@ def _decoded(member, name):
     return raw, []
 
 
-def staple_errors(doc):
-    """The stapled history_card/1: its bytes match, it is the plugin's answer format, presented by its subject.
+def card_errors(member, name, key_id):
+    """One stapled history_card/1: its bytes match, it is the plugin's answer format, presented by its subject.
 
-    Its signature is not verified here (no pinned verifier yet; see steps/03-advertise.md).
+    Returns (errors as (code, text), the decoded answer or None). Its signature
+    is not verified here (no pinned verifier yet; see steps/03-advertise.md).
     """
-    raw, errs = _decoded(doc["history_card"], "history_card")
+    raw, errs = _decoded(member, name)
     if errs:
-        return errs
+        return [(CARD_BYTES, e) for e in errs], None
     try:
         card = json.loads(raw)
     except ValueError:
-        return ["history_card.bytes are not a JSON answer"]
+        return [(CARD_NOT_ANSWER, f"{name}.bytes are not a JSON answer")], None
     if not isinstance(card, dict) or card.get("profile") != STAPLE_PROFILE:
-        return [f"history_card is not an {STAPLE_PROFILE} answer"]
+        return [(CARD_NOT_ANSWER, f"{name} is not an {STAPLE_PROFILE} answer")], None
+    found = []
     if card.get("derivation") != "history_card/1":
-        errs.append("history_card answer's derivation is not history_card/1")
-    if card.get("responder") != doc["key_id"]:
-        errs.append("history_card is not presented by its subject: its responder is not key_id")
+        found.append((CARD_DERIVATION, f"{name} answer's derivation is not history_card/1"))
+    if card.get("responder") != key_id:
+        found.append((CARD_NOT_SUBJECT, f"{name} is not presented by its subject: its responder is not key_id"))
     try:
         artifact = unb64url(card.get("artifact", ""))
     except ValueError:
         artifact = None
     if artifact is None or hashlib.sha256(artifact).hexdigest() != card.get("artifact_digest"):
-        errs.append("history_card answer's artifact_digest is not the sha256 of its artifact")
+        found.append((CARD_ARTIFACT, f"{name} answer's artifact_digest is not the sha256 of its artifact"))
+    return found, card
+
+
+def staple_errors(doc):
+    """The stapled history_card/1 (/0), or each of history_cards (/1), and no stream stapled twice."""
+    if doc["profile"] != PROFILE_1:
+        return [text for _, text in card_errors(doc["history_card"], "history_card", doc["key_id"])[0]]
+    errs, seen = [], {}
+    for i, member in enumerate(doc["history_cards"]):
+        name, stream = f"history_cards[{i}]", member["stream"]
+        found, card = card_errors(member, name, doc["key_id"])
+        if card is not None and hc.card_stream(card) != stream:
+            found.append((CARD_STREAM, f"{name}.stream {stream} is not the card's own log id "
+                                       f"({hc.card_stream(card) or 'none named'})"))
+        if stream in seen:
+            found.append((CARD_DUPLICATE, f"{name} staples stream {stream} again (first at history_cards[{seen[stream]}])"))
+        seen.setdefault(stream, i)
+        errs += [f"{code}: {text}" for code, text in found]
     return errs
 
 

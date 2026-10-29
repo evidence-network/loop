@@ -148,6 +148,13 @@ class DryRunTest(unittest.TestCase):
         self.assertTrue(all(i >= 0 for i, _ in at), at)
         self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
 
+    def test_every_node_grants_the_plugin_its_admission_hook(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.count("[plugin.openai_exchange_grant]"), 3)
+        self.assertEqual(r.stdout.count("admission = true"), 3)
+        self.assertEqual(r.stdout.count('phases = ["backend_selected"]'), 3)
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -189,6 +196,24 @@ class DryRunTest(unittest.TestCase):
                                    rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/05-deal\n")
         self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
         self.assertNotIn("/v1/chat/completions", r.stdout)
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
+    def test_settle_runs_step_06_on_the_live_population_into_the_days_findings(self):
+        r = lab_sh("--dry-run", "settle", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/06-settle --population "
+                                   rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/06-settle\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
+    def test_ask_runs_step_07_on_the_live_population_asked_as_the_loop_asks(self):
+        r = lab_sh("--dry-run", "ask", env={**self.env, "LAB_REPORTER": "lab-1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
+                                   rf"LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LAB_DIR={re.escape(str(self.lab))} "
+                                   rf"\S+/steps/07-ask --population \S+/population/live --out "
+                                   rf"\S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/07-ask\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
         self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
 
 

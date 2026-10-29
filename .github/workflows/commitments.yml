@@ -16,7 +16,7 @@ jobs:
       - name: Step 03 tools
         run: steps/03-advertise.setup.sh
       - name: Checker and step tests
-        run: python3 -B -m unittest tests.test_step03_advertise -v
+        run: python3 -B -m unittest tests.test_step03_advertise tests.test_commitment1 -v
       - name: Step 03 on the test population
         run: |
           python3 -B steps/03-advertise --population tests/fixtures/step03/population/rehearsal --out "$RUNNER_TEMP/findings/03-advertise"
@@ -24,3 +24,5 @@ jobs:
           grep -q '"result": "PASS"' "$RUNNER_TEMP/findings/03-advertise/finding.json"
       - name: Check the published commitments
         run: python3 -B scripts/check_commitment.py nodes/commitments
+      - name: Check the binding verdicts
+        run: python3 -B scripts/check_binding.py bindings

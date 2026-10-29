@@ -14,6 +14,15 @@ its own page under a TEST label, never among the daily rows. The rehearsal's
 wipe removes the whole directory (`scripts/wipe_rehearsal.sh`, or loop-data's
 publish of an empty set); `stats/data/daily/` is never touched by it.
 
+`stats/data/ondemand/<YYYY-MM-DD>T<HHMMSS>Z.json` is the on-demand set: one
+extra ask round run by hand between dailies (`scripts/refresh_now.sh`), the
+same format, one file per run (`date` is the run's name, the second it
+started, UTC; `absent_days_running` counts runs, each back to the latest
+earlier one). Runs are made by hand, so the time between two is never a
+missed run. loop-data publishes it on every push of a run
+(`scrub_reports.py scrub --set ondemand`). The stats page does not show it,
+and the daily rows and totals never include it.
+
 One file per day: JSON with sorted keys, a 2-space indent and a trailing
 newline. The file holds no bytes of any answer, request, peer key or
 verification text.

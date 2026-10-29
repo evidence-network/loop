@@ -278,6 +278,50 @@ systemctl --user enable --now loop-reporter.timer
 To go live with the rehearsal's last clean slot as day one, follow
 [Going live](#going-live) instead of the switch above.
 
+## Workshop refresh
+
+One extra live ask round between dailies, for a room watching the page. Run
+it by hand on the reporter node, as the reporter's user, from its clone:
+
+```sh
+~/loop/scripts/refresh_now.sh
+```
+
+No systemd and no new secret: it reads `~/.config/loop-reporter/env` (the file
+the units read) for `LOOP_CONSOLE`, `LOOP_SECOND_CONSOLE` and `LOOP_SELF_NODE`,
+then your own environment, which wins. `LOOP_CONSOLE` is the reporter node's
+own console URL and has no default here: the units' `127.0.0.1:3131` is
+mesh-llm's default port, and on a shared host another node may answer there,
+so it refuses until you name the console. It is `run_daily.sh --set ondemand`:
+
+1. it refuses while `loop-reporter.service`, `loop-reporter-ask.service` or
+   `loop-reporter-rehearsal.service` is active, while another run holds the
+   loop-data checkout, or with anything staged there;
+2. it pulls loop-data, then asks every listed node `checkpoints` and
+   `history_card/1` once more, the reporter's own node through the second
+   console as the daily run does. Retries are bounded: again at +30 s and
+   +60 s, no request longer than 20 s, no retry pass started after 90 s (a node
+   still owed an answer then is asked once more with a 1 s timeout), so the
+   run settles in about two minutes (seconds, when every node answers at once);
+3. it checks the run (`check_reports.py --set ondemand`) and holds it on the
+   node, committing nothing, if it fails the personal-data check (exit 3);
+4. it commits `reports/ondemand/<YYYY-MM-DD>T<HHMMSS>Z/` and nothing else,
+   `report: on-demand <run>`, and pushes it with the deploy key under the same
+   guards as the daily run.
+
+The run is named by the second it started (UTC) and its `RUN.json` says
+`"set": "ondemand"`. It is never a daily row: the daily reports, their MISSED
+marks and the watchdog are untouched, and the time between two refreshes is
+never MISSED. A reporter that cannot reach its own node commits nothing and
+exits 2; run it again.
+
+Afterwards, loop-data's `publish-scrubbed` publishes the run to
+`stats/data/ondemand/<run>.json` here, and the `stats` workflow rebuilds and
+deploys Pages. The files are published, but no page reads them yet: showing
+the run as its own point, labelled with its time and never added to the daily
+days, needs loop#46. The stats page, `/stats/`, and its daily rows and totals
+do not change.
+
 ## Going live
 
 The rehearsal ends, and the daily run starts, with the last clean rehearsal

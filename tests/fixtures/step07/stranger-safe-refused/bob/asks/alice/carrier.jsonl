@@ -1,0 +1,2 @@
+{"ask": "history_card", "at": "2026-10-28T07:49:12.463569Z", "event": "sent", "request_sha256": "0cc60ee81cf75f3907dfc0639426f3b77999ecfce4109a9b21dd486c6eea3946", "to": "alice-book"}
+{"ask": "history_card", "at": "2026-10-28T07:49:12.498671Z", "event": "delivered", "reply_sha256": "45fa5ab892eac5199eea8c95d4d9cac966602da9ae1de44dcebf4f1645ec3704"}

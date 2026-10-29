@@ -1,0 +1,2 @@
+{"ask": "exchange", "at": "2026-10-28T07:49:09.577512Z", "event": "sent", "request_sha256": "3eebb327478e6883a47d4041c8eefb37234a08469ec8fd69fd61ab5bb42c6164", "to": "alice-book"}
+{"ask": "exchange", "at": "2026-10-28T07:49:11.539046Z", "event": "delivered", "reply_sha256": "3d96c4843db3e359f1ee832e2f9e63bea97dfd211d6ef69503bf1fdc7218aa28"}
