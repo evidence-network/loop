@@ -82,8 +82,9 @@ binding itself. A verifier's verdict would be published as
 `bindings/<controller_key_id>.json` (`binding-verdict/0`; see
 `bindings/README.md`). Nothing produces one today.
 
-Subjects are shown as one only when their verdict is `verified` by a verifier
-that `versions.lock` pins. A `revoked` or `not_checked` verdict never joins
+Subjects are shown as one only when their verdict is `verified` by the
+binding verifier that `versions.lock` pins, and each subject's commitment
+carries the verdict's binding digest as `controller_binding.digest`. A `revoked` or `not_checked` verdict never joins
 them. `scripts/check_binding.py bindings` checks the verdicts.
 
 ## Leave

@@ -22,11 +22,17 @@ so this folder holds no verdicts yet.
   a node without one joins as usual and is not grouped.
 - `subjects` is sorted, has no repeats, and holds at least two subjects.
 - `status` is `verified`, `revoked` or `not_checked`.
-- `verified` needs `verifier` to name a tool and the exact pin `versions.lock`
-  gives it.
+- `verified` needs `verifier` to be `binding-verifier@<pin>`, at the exact pin
+  `versions.lock` gives `binding-verifier`. No other pinned tool is a binding
+  verifier.
 - `not_checked` cites the open issue that owns the verifier
   (`<owner/repo#N>`).
 - Only `verified` groups the subjects (`bound_groups` in
-  `scripts/history_cards.py`). `revoked` and `not_checked` never do.
+  `scripts/history_cards.py`), and only when each subject's commitment
+  carries `controller_binding.digest` equal to `controller_key_id`.
+  `revoked` and `not_checked` never do.
+- A verdict carries no signature of its verifier. Until a verifier signs its
+  verdicts, a verdict is trusted on the review of the pull request that adds
+  it.
 
 Check: `python3 -B scripts/check_binding.py bindings`.

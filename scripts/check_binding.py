@@ -19,10 +19,14 @@ file, profile binding-verdict/0, is exactly:
 
 It is refused when a member is missing, unknown or malformed; when its file
 is not named <controller_key_id>.json; when it is `verified` and `verifier`
-is not a tool versions.lock pins (a line `<name> <repository> <pin>`); or
-when it is `not_checked` without the open issue it cites. Only a `verified`
-verdict from a pinned verifier groups its subjects (history_cards.bound_groups);
-`revoked` and `not_checked` never do.
+is not BINDING_VERIFIER at the pin versions.lock gives it (a line
+`<name> <repository> <pin>`); or when it is `not_checked` without the open
+issue it cites. Only a `verified` verdict from the pinned verifier groups its
+subjects, and only when each subject's commitment carries the verdict's
+controller_key_id as its controller_binding digest (history_cards.bound_groups);
+`revoked` and `not_checked` never do. A verdict carries no signature of its
+verifier, so until a verifier signs its verdicts, one is trusted on the review
+of the pull request that adds it.
 Exit 0 = clean, 1 = refused.
 """
 import json
@@ -31,6 +35,9 @@ import sys
 from pathlib import Path
 
 PROFILE = "binding-verdict/0"
+# The one tool whose verdict is `verified`: the Controller Binding v0 verifier, once versions.lock pins it.
+# Any other pinned tool (the reporter, capsulectl) is not a binding verifier.
+BINDING_VERIFIER = "binding-verifier"
 STATUSES = ("verified", "revoked", "not_checked")
 MEMBERS = ("profile", "controller_key_id", "subjects", "status", "verifier", "checked_at", "cites")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -57,9 +64,9 @@ def read_lock(path):
 
 
 def pinned(verifier, pins):
-    """True when verifier is `<name>@<pin>` and the lock pins name at exactly pin."""
+    """True when verifier is `binding-verifier@<pin>` and the lock pins binding-verifier at exactly pin."""
     m = VERIFIER.match(verifier) if isinstance(verifier, str) else None
-    return bool(m) and pins.get(m.group(1)) == m.group(2)
+    return bool(m) and m.group(1) == BINDING_VERIFIER and pins.get(BINDING_VERIFIER) == m.group(2)
 
 
 def verdict_errors(doc, pins):
@@ -88,7 +95,7 @@ def verdict_errors(doc, pins):
     if doc["cites"] is not None and not (isinstance(doc["cites"], str) and ISSUE.match(doc["cites"])):
         errs.append(f"{SHAPE}: cites must be <owner/repo#N> or null")
     if doc["status"] == "verified" and not pinned(doc["verifier"], pins):
-        errs.append(f"{UNPINNED}: a verified verdict needs a verifier versions.lock pins; "
+        errs.append(f"{UNPINNED}: a verified verdict needs {BINDING_VERIFIER} at the pin versions.lock gives it; "
                     f"{doc['verifier'] or 'none'} is not pinned there")
     if doc["status"] == "not_checked" and doc["cites"] is None:
         errs.append(f"{NO_CITE}: a not_checked verdict cites the open issue that owns the verifier")

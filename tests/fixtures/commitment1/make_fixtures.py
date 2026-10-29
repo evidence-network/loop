@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make the evidence-commitment/1 fixtures, once. Needs openssl and the pinned capsulectl (steps/12-join.setup.sh).
 
-Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py
+Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py [two-books] [cleared] [bound]   (default: all)
 
   two-books/   what join.sh wrote for a node serving two books: its own
                (alice-book) and a second one made here first (alice-ledger),
@@ -12,16 +12,19 @@ Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py
                staples that card only, and disclosure-policy.json.
   bound/       a Mesh subject (alice, mesh/) and a Muse subject (bob, muse/:
                a fixture-only commitment, community muse), each with its own
-               /1 commitment; bindings/<controller>.json, a `verified`
-               binding-verdict/0 of both by a fake verifier that the
-               fixture's versions.lock pins. They group.
+               /1 commitment carrying controller_binding.digest, the
+               binding digest (AAC Controller Binding v0 §4) of one
+               controller-binding/0 record over both node keys, kept as
+               binding.json; bindings/<digest>.json, a `verified`
+               binding-verdict/0 of both by binding-verifier at a fake pin
+               that only the fixture's versions.lock gives. They group.
   revoked/     the same pair, with a `revoked` verdict. They do not group.
 
-The nodes are alice and bob of step 12's rehearsal population, and the
-controller key is alice's controller key there: TEST keys
+The nodes are alice and bob of step 12's rehearsal population: TEST keys
 (tests/fixtures/step12/population/keys/), published on purpose, never used
-by a live node. The fake verifier exists only in these fixtures.
+by a live node. The fake verifier pin exists only in these fixtures.
 """
+import hashlib
 import json
 import os
 import shutil
@@ -40,8 +43,8 @@ FRESH = "alice-book-2"
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
 
-# A verifier that exists only in these fixtures, pinned only in their versions.lock.
-FAKE_VERIFIER = ("binding-verifier-fixture", "evidence-network/binding-verifier-fixture", "f1" * 20)
+# The binding verifier at a fake pin, given only in these fixtures' versions.lock.
+FAKE_VERIFIER = ("binding-verifier", "evidence-network/binding-verifier-fixture", "f1" * 20)
 CHECKED_AT = "2026-10-28T00:00:00Z"
 
 
@@ -132,24 +135,50 @@ def make_cleared(out, tmp):
         "history_cards", [c for c in d["history_cards"] if c["stream"] == FRESH]))
 
 
+def raw_sign(pem, data, tmp):
+    """Ed25519 signature (hex) by the key at pem over data."""
+    (tmp / "msg").write_bytes(data)
+    subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(pem), "-rawin", "-in", str(tmp / "msg"), "-out",
+                    str(tmp / "sig")], check=True, capture_output=True)
+    return (tmp / "sig").read_bytes().hex()
+
+
+def binding_record(tmp):
+    """A controller-binding/0 record over alice's and bob's node keys, signed by both, and its binding digest:
+    the sha256 of the JCS form without sigs (AAC Controller Binding v0 §4)."""
+    keys = [(public_of(POPULATION / n / "node-key.pem"), POPULATION / n / "node-key.pem") for n in ("alice", "bob")]
+    record = {"binding_version": "controller-binding/0", "claim": "same_controller_asserted",
+              "method": "dual_signature/0", "keys": [k for k, _ in keys], "issued_at": CHECKED_AT,
+              "not_before": CHECKED_AT, "not_after": "2027-10-28T00:00:00Z", "nonce": "f1" * 16,
+              "revocation": "revocation_statement/0"}
+    signing_input = cc.canonical(record)
+    record["sigs"] = [{"key_id": k, "sig": raw_sign(pem, signing_input, tmp)} for k, pem in keys]
+    return record, hashlib.sha256(signing_input).hexdigest()
+
+
 def make_bound(bound, revoked, tmp):
     """A Mesh subject and a Muse subject under one controller: verified (bound/) and revoked (revoked/)."""
     join(tmp / "mesh-out", tmp / "mesh-home", "alice")
     join(tmp / "muse-out", tmp / "muse-home", "bob")
 
+    record, digest = binding_record(tmp)
+
+    def mesh(d):
+        d["controller_binding"] = {"digest": digest}
+
     def muse(d):
+        mesh(d)
         for c in d["history_cards"]:
             c["community"] = "muse"
     lock = ("# versions.lock for these fixtures only: it pins a fake binding verifier.\n"
             + " ".join(FAKE_VERIFIER) + "\n")
-    controller = subprocess.run(["openssl", "pkey", "-in", str(KEYS / "controller-key.pem"), "-pubout", "-outform",
-                                 "DER"], check=True, capture_output=True).stdout[-32:].hex()
     for d, status in ((bound, "verified"), (revoked, "revoked")):
-        commitment_only(tmp / "mesh-out", d / "mesh", lambda _: None, "alice")
+        commitment_only(tmp / "mesh-out", d / "mesh", mesh, "alice")
         commitment_only(tmp / "muse-out", d / "muse", muse, "bob")
         subjects = sorted(json.loads((d / x / "commitment.json").read_text())["node_id"] for x in ("mesh", "muse"))
-        write_json(d / "bindings" / f"{controller}.json", {
-            "profile": "binding-verdict/0", "controller_key_id": controller, "subjects": subjects,
+        write_json(d / "binding.json", record)
+        write_json(d / "bindings" / f"{digest}.json", {
+            "profile": "binding-verdict/0", "controller_key_id": digest, "subjects": subjects,
             "status": status, "verifier": f"{FAKE_VERIFIER[0]}@{FAKE_VERIFIER[2]}", "checked_at": CHECKED_AT,
             "cites": None})
         (d / "versions.lock").write_text(lock)
@@ -159,14 +188,18 @@ def main():
     if not Path(capsulectl()).is_file():
         print(f"make_fixtures: no capsulectl at {capsulectl()}; run steps/12-join.setup.sh", file=sys.stderr)
         return 2
-    for d in ("two-books", "cleared", "bound", "revoked"):
+    only = sys.argv[1:] or ["two-books", "cleared", "bound"]  # e.g. `bound` remakes bound/ and revoked/ only
+    for d in only + (["revoked"] if "bound" in only else []):
         shutil.rmtree(HERE / d, ignore_errors=True)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        make(HERE / "two-books", tmp / "home")
-        make_cleared(HERE / "cleared", tmp)
-        make_bound(HERE / "bound", HERE / "revoked", tmp)
-    print("make_fixtures: wrote two-books/, cleared/, bound/ and revoked/", file=sys.stderr)
+        if "two-books" in only:
+            make(HERE / "two-books", tmp / "home")
+        if "cleared" in only:
+            make_cleared(HERE / "cleared", tmp)
+        if "bound" in only:
+            make_bound(HERE / "bound", HERE / "revoked", tmp)
+    print(f"make_fixtures: wrote {', '.join(only)}", file=sys.stderr)
     return 0
 
 

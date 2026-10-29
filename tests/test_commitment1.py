@@ -166,6 +166,26 @@ class CheckerTest(TwoBooks):
             with self.subTest(code=code):
                 self.assertRefused(self.resigned(change), code)
 
+    def test_a_stream_that_is_not_a_plain_log_id_is_refused_by_name(self):
+        for stream in ("../../x", "a/b", " alice-book", "-a", ""):
+            with self.subTest(stream=stream):
+                errs = self.assertRefused(self.resigned(lambda d: d["history_cards"][0].__setitem__("stream", stream)),
+                                          cc.CARD_SHAPE)
+                self.assertIn("history_cards[0].stream must be a plain log id", " ".join(errs))
+
+    def test_every_bad_card_is_reported_not_only_the_first(self):
+        def two_bad(d):
+            d["history_cards"][0]["community"] = "other"
+            d["history_cards"][1].pop("derivation")
+        errs = self.assertRefused(self.resigned(two_bad), cc.CARD_COMMUNITY)
+        self.assertIn("missing history_cards[1].derivation", " ".join(errs))
+
+        def shape_then_content(d):
+            d["history_cards"][0].pop("derivation")
+            d["history_cards"][1]["community"] = "other"
+        errs = self.assertRefused(self.resigned(shape_then_content), cc.CARD_COMMUNITY)
+        self.assertIn("missing history_cards[0].derivation", " ".join(errs))
+
     def test_an_unknown_community_is_refused_by_name(self):
         for community in ("other", "Mesh-LLM", ""):
             with self.subTest(community=community):
@@ -285,6 +305,18 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(hc.history_cards(doc)[0]["stream_started"], None)
         self.assertFalse(hc.history_cards(doc)[0]["has_history"])
         self.assertEqual(hc.history_cards({}), [])
+
+
+class DeepCbor(unittest.TestCase):
+    def test_a_checkpoint_nested_past_the_recursion_limit_reads_as_unreadable(self):
+        self.assertIsNone(hc.checkpoint_payload("c0" * 5000 + "00"))
+        self.assertIsNone(hc.checkpoint_payload("81" * 5000 + "00"))
+        card = answer("s-a", "ab" * 32)
+        result = json.loads(cc.unb64url(card["artifact"]))
+        result["history"] = [{"checkpoint": "c0" * 5000 + "00", "receipts": []}]
+        card["artifact"] = cc.b64url(json.dumps(result).encode())
+        [read] = hc.history_cards({"profile": "evidence-commitment/1", "history_cards": [entry("s-a", card)]})
+        self.assertEqual((read["stream_started"], read["has_history"]), (None, False))
 
 
 class Step12Staple(unittest.TestCase):
@@ -434,6 +466,7 @@ class Bindings(unittest.TestCase):
         [self.verdict_path] = (FIX / "bound" / "bindings").glob("*.json")
         self.verdict = json.loads(self.verdict_path.read_text())
         self.lock = FIX / "bound" / "versions.lock"
+        self.commitments = [json.loads((FIX / "bound" / d / "commitment.json").read_text()) for d in ("mesh", "muse")]
 
     def write(self, change, lock=None):
         """A bindings dir holding the bound verdict, changed; returns (dir, lock)."""
@@ -456,28 +489,54 @@ class Bindings(unittest.TestCase):
         if OPENSSL:
             for doc, d in ((mesh, "mesh"), (muse, "muse")):
                 self.assertEqual(cc.verify(doc, cc.file_fetcher(FIX / "bound" / d)), ([], []))
-        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", self.lock), [
+        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", self.lock, self.commitments), [
             {"controller_key_id": self.verdict["controller_key_id"],
              "subjects": sorted([mesh["node_id"], muse["node_id"]]), "verifier": self.verdict["verifier"]}])
+
+    def test_the_verdict_is_named_by_the_binding_digest_both_commitments_carry(self):
+        record = json.loads((FIX / "bound" / "binding.json").read_text())
+        digest = hashlib.sha256(cc.canonical({k: v for k, v in record.items() if k != "sigs"})).hexdigest()
+        self.assertEqual(self.verdict["controller_key_id"], digest)
+        self.assertEqual(self.verdict_path.name, f"{digest}.json")
+        self.assertEqual([c["controller_binding"] for c in self.commitments], [{"digest": digest}] * 2)
+        self.assertEqual(sorted(record["keys"]), self.verdict["subjects"])
+
+    def test_a_verified_verdict_groups_only_subjects_whose_commitments_carry_its_digest(self):
+        mesh, muse = self.commitments
+        other = dict(muse, controller_binding={"digest": "ab" * 32})
+        bare = {k: v for k, v in muse.items() if k != "controller_binding"}
+        for commitments in ([mesh, other], [mesh, bare], [mesh], []):
+            with self.subTest(n=len(commitments)):
+                self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", self.lock, commitments), [])
+
+    def test_only_the_binding_verifier_is_a_verifier_whatever_else_the_lock_pins(self):
+        name, repo, pin = ("reporter", "evidence-network/loop", "4d00c42c9856fc892f7309ee9b434dca1bb69202")
+        lock = self.tmp / "versions.lock"
+        lock.write_text(f"{name} {repo} {pin}\n")
+        errs = self.errors(lambda v: v.__setitem__("verifier", f"{name}@{pin}"), lock)
+        self.assertEqual([e.split(":")[0] for e in errs], [cb.UNPINNED])
+        d, _ = self.write(lambda v: v.__setitem__("verifier", f"{name}@{pin}"))
+        self.assertEqual(hc.bound_groups(d, lock, self.commitments), [])
 
     def test_the_revoked_fixture_does_not_group(self):
         [path] = (FIX / "revoked" / "bindings").glob("*.json")
         self.assertEqual(cb.check_file(path, cb.read_lock(FIX / "revoked" / "versions.lock"))[1], [])
         self.assertEqual(json.loads(path.read_text())["status"], "revoked")
-        self.assertEqual(hc.bound_groups(FIX / "revoked" / "bindings", FIX / "revoked" / "versions.lock"), [])
+        revoked = [json.loads((FIX / "revoked" / d / "commitment.json").read_text()) for d in ("mesh", "muse")]
+        self.assertEqual(hc.bound_groups(FIX / "revoked" / "bindings", FIX / "revoked" / "versions.lock", revoked), [])
 
     def test_revoked_and_not_checked_never_group_even_from_a_pinned_verifier(self):
         for status, cites in (("revoked", None), ("not_checked", "action-state-group/agent-action-capsule#432")):
             with self.subTest(status=status):
                 d, lock = self.write(lambda v: v.update(status=status, cites=cites))
                 self.assertEqual(cb.check_file(d / self.verdict_path.name, cb.read_lock(lock))[1], [])
-                self.assertEqual(hc.bound_groups(d, lock), [])
+                self.assertEqual(hc.bound_groups(d, lock, self.commitments), [])
 
     def test_verified_with_no_pinned_verifier_is_refused_on_main(self):
         lock = ROOT / "versions.lock"  # this repository's: it pins no binding verifier today
         errs = self.errors(lambda v: None, lock)
         self.assertEqual([e.split(":")[0] for e in errs], [cb.UNPINNED])
-        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", lock), [])
+        self.assertEqual(hc.bound_groups(FIX / "bound" / "bindings", lock, self.commitments), [])
         r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_binding.py"),
                             str(FIX / "bound" / "bindings")], capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(r.returncode, 1)

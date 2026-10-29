@@ -5,7 +5,7 @@ Usage: history_cards.py COMMITMENT.json   (prints the cards as JSON)
 
     history_cards(doc) -> [{"stream", "community", "derivation", "sha256", "witnesses": [...],
                             "stream_started", "has_history"}, ...]
-    bound_groups(bindings_dir, lock) -> [{"controller_key_id", "subjects", "verifier"}, ...]
+    bound_groups(bindings_dir, lock, commitments) -> [{"controller_key_id", "subjects", "verifier"}, ...]
 
 - evidence-commitment/1 carries `history_cards`, one entry per evidence stream
   (one book's log), sorted by stream; each names its stream and community.
@@ -96,8 +96,8 @@ def checkpoint_payload(statement_hex):
     try:
         sign1, _ = _cbor(bytes.fromhex(statement_hex))
         payload, _ = _cbor(sign1[2])
-    except (ValueError, TypeError, IndexError, KeyError, UnicodeDecodeError, AttributeError):
-        return None
+    except (ValueError, TypeError, IndexError, KeyError, UnicodeDecodeError, AttributeError, RecursionError):
+        return None  # RecursionError: tags or arrays nested past Python's limit read as unreadable
     return payload if isinstance(payload, dict) else None
 
 
@@ -194,20 +194,29 @@ def history_cards(doc):
 
 # --- bound groups -------------------------------------------------------------
 
-def bound_groups(bindings_dir, lock):
-    """The subjects that may be drawn as one: verdicts that are `verified` by a verifier `lock` pins.
+def bound_groups(bindings_dir, lock, commitments):
+    """The subjects that may be drawn as one: verdicts that are `verified` by the binding verifier `lock` pins.
 
     bindings_dir holds bindings/<controller_key_id>.json (binding-verdict/0);
-    lock is the path of a versions.lock. A verdict scripts/check_binding.py
-    refuses, and every `revoked` or `not_checked` one, never groups.
+    lock is the path of a versions.lock; commitments are the subjects'
+    commitment documents. A verdict groups only when every subject it names
+    has a commitment here whose controller_binding digest is the verdict's
+    controller_key_id. A verdict scripts/check_binding.py refuses, and every
+    `revoked` or `not_checked` one, never groups.
     """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import check_binding as cb
     pins = cb.read_lock(lock)
+    digests = {}
+    for doc in commitments:
+        binding = doc.get("controller_binding") if isinstance(doc, dict) else None
+        if isinstance(binding, dict) and isinstance(doc.get("node_id"), str):
+            digests[doc["node_id"]] = binding.get("digest")
     groups = []
     for path in sorted(Path(bindings_dir).glob("*.json")) if Path(bindings_dir).is_dir() else []:
         verdict, errs = cb.check_file(path, pins)
-        if not errs and verdict["status"] == "verified" and cb.pinned(verdict["verifier"], pins):
+        if not errs and verdict["status"] == "verified" and cb.pinned(verdict["verifier"], pins) and \
+                all(digests.get(s) == verdict["controller_key_id"] for s in verdict["subjects"]):
             groups.append({"controller_key_id": verdict["controller_key_id"], "subjects": verdict["subjects"],
                            "verifier": verdict["verifier"]})
     return groups

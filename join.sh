@@ -233,8 +233,9 @@ d = json.load(sys.stdin)
 log_id = d.get("LogID") or ""
 checkpoint = ((d.get("Checkpoint") or {}).get("TrustedKeys") or [""])[0]
 if node in (d.get("TrustedKeys") or []):
-    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", log_id):
-        sys.exit("join.sh: book profile %s has log id %r, not a plain name" % (p, log_id))
+    # A plain name, as check_commitment.py STREAM; only digits would read as a count there.
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]*$", log_id) or log_id.isdigit():
+        sys.exit("join.sh: book profile %s has log id %r, not a plain name with a letter" % (p, log_id))
     if not re.match(r"^[0-9a-f]{64}$", checkpoint):
         sys.exit("join.sh: book profile %s names no Ed25519 checkpoint key" % p)
     print("%s\t%s\t%s" % (p, log_id, checkpoint))' "$p" "$node_pub" >>"$home/books.tsv"

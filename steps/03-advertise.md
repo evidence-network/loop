@@ -96,7 +96,7 @@ is replaced by:
 | Field | Type | Meaning |
 |---|---|---|
 | `history_cards` | list, at least one entry, sorted by `stream` | one stapled card per evidence stream |
-| `history_cards[].stream` | string | the log id of the book the card covers |
+| `history_cards[].stream` | string | the log id of the book the card covers: a plain name (letters, digits, `.`, `_`, `-`, starting with a letter or digit) |
 | `history_cards[].community` | string | the community the stream belongs to: `mesh-llm` or `muse` (a closed list); `join.sh` writes `mesh-llm` |
 | `history_cards[].checkpoint_key` | base64url, optional | the SPKI (DER) of that stream's checkpoint signer; with it, a verifier can check the card's signature |
 | `history_cards[].derivation` | string | `history_card/1` |

@@ -58,6 +58,8 @@ PROFILE_1 = hc.PROFILE_1
 POLICY_PROFILE = "disclosure-policy/0"
 STAPLE_PROFILE = "evidence-interop/0"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+# A /1 card's stream: a book's log id as join.sh accepts one, a plain name (step 12 makes file names from it).
+STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410): 32 key bytes follow.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -254,15 +256,16 @@ def card_field_errors(cards):
         if not isinstance(c, dict):
             errs.append(f"{CARD_SHAPE}: {name} must be an object")
             continue
-        errs += [f"{CARD_SHAPE}: missing {name}.{m}" for m in CARD_MEMBERS if m not in c]
-        errs += [f"{CARD_SHAPE}: {name}.{m} must be a str" for m in {**CARD_MEMBERS, **CARD_OPTIONAL}
-                 if m in c and not isinstance(c[m], str)]
-        errs += [f"{CARD_SHAPE}: unknown field {name}.{x}"
-                 for x in sorted(set(c) - set(CARD_MEMBERS) - set(CARD_OPTIONAL))]
-        if errs:
+        shape = [f"{CARD_SHAPE}: missing {name}.{m}" for m in CARD_MEMBERS if m not in c]
+        shape += [f"{CARD_SHAPE}: {name}.{m} must be a str" for m in {**CARD_MEMBERS, **CARD_OPTIONAL}
+                  if m in c and not isinstance(c[m], str)]
+        shape += [f"{CARD_SHAPE}: unknown field {name}.{x}"
+                  for x in sorted(set(c) - set(CARD_MEMBERS) - set(CARD_OPTIONAL))]
+        errs += shape
+        if shape:
             continue
-        if not c["stream"].strip():
-            errs.append(f"{CARD_SHAPE}: {name}.stream must be non-empty")
+        if not STREAM.match(c["stream"]):
+            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
         if not HEX64.match(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
         if c["derivation"] != "history_card/1":
