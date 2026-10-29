@@ -1,0 +1,112 @@
+{
+  "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
+  "detail": "node stevenmih-1: 2 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; node stevenmih-2: 1 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; node stevenmih-3: 1 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; exchanges with a half held on each of two nodes: 1. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
+  "finished": "2026-10-29T22:16:32Z",
+  "name": "deal",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#49",
+      "what": "halves that cite each other and the other side's checkpoint",
+      "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's checkpoint; only the receiver's citing record cites the half it holds"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#68",
+      "what": "each side pushing its half at completion by default",
+      "why": "share_record_at_completion is off by default in the pinned plugin, and a node's setting is not in its data dir to read"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#69",
+      "what": "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration",
+      "why": "the pinned capsules plugin accepts a push on the host-announced peer id (or CAPSULES_PEER_KEYS), not on an evidence key under a controller declaration"
+    },
+    {
+      "issue": "action-state-group/agent-action-capsule#431",
+      "what": "the held half's producer signature, in a second language",
+      "why": "Class 1 does not include it and the pinned Go verifier has no envelope mode"
+    }
+  ],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.14.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsules": {
+      "ref": "01f0921e19f12f6bf9267a916ed286b938fd9652",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/held-1.json",
+      "sha256": "07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9"
+    },
+    {
+      "path": "stevenmih-1/held-1-inclusion.json",
+      "sha256": "f252e1720b5a51516ba7ec8e69cb9605628a493f61cc83296aa8a102a1c8b811"
+    },
+    {
+      "path": "stevenmih-1/held-1-citing.json",
+      "sha256": "314d54d90dc2d8e313acb0c57d5494b6b3574d8bf4eedbf8a7c56def64bccaa4"
+    },
+    {
+      "path": "stevenmih-1/held-2.json",
+      "sha256": "808746916d9de3b8c9ce6dae366bd6929bbde07b543750cb7078549fa29471ea"
+    },
+    {
+      "path": "stevenmih-1/held-2-inclusion.json",
+      "sha256": "fdb2db0c9b193a456400a68e8c94eb700fe9130caf213961789439b1ec2aef47"
+    },
+    {
+      "path": "stevenmih-1/held-2-citing.json",
+      "sha256": "d662a60e27261399ac2ad45fba10a7639020b44fdb9ba34c95ca591dbe46e1e4"
+    },
+    {
+      "path": "stevenmih-1/checks.json",
+      "sha256": "b96e991fa50f4c4b2a6196ffc418d6484558ce851f0138e9b8787e27105cf0cb"
+    },
+    {
+      "path": "stevenmih-2/held-1.json",
+      "sha256": "3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694"
+    },
+    {
+      "path": "stevenmih-2/held-1-inclusion.json",
+      "sha256": "07b6a1bec0545ea5be8dccffacb8999c7aad1479b650d3b48e699e9d0a42d451"
+    },
+    {
+      "path": "stevenmih-2/held-1-citing.json",
+      "sha256": "2fa153cfc0549864cbb9cb8420447cfcc3ea58dff9e5f99a21b23253aface154"
+    },
+    {
+      "path": "stevenmih-2/checks.json",
+      "sha256": "7f02f94ec73ffa92b0c47ba99f4f516ba3bb93dd8144a22ccea39e70f0b76896"
+    },
+    {
+      "path": "stevenmih-3/held-1.json",
+      "sha256": "f59bb27d2939c729fda5379fd2e5dd2607b94d29722830a1dcfbf2b89d46df1f"
+    },
+    {
+      "path": "stevenmih-3/held-1-inclusion.json",
+      "sha256": "0cd9395d238f9b18ddc415121bb9749de416ac69da266b4ba584e90eb7bf236e"
+    },
+    {
+      "path": "stevenmih-3/held-1-citing.json",
+      "sha256": "22d5b139138d952a126017c2a6c0fef2ee7717493563bdc067b18896043059e5"
+    },
+    {
+      "path": "stevenmih-3/checks.json",
+      "sha256": "51ed00fb16f1e88de9740c42bd22d52cdcf9a3a4e75af1dd2bba4c990dfac6a8"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-29T22:16:32Z",
+  "step": "05"
+}

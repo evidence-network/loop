@@ -1,0 +1,43 @@
+{
+  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest",
+  "detail": "node stevenmih-1: 0 of 128 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: 0 of 96 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-3: 0 of 96 ledger records carry an admission decision (0 GO, 0 NO), read-only. Not checked: no admission decision was found. Spend: none; this step pays nothing (would spend 0 USD).",
+  "finished": "2026-10-29T22:41:37Z",
+  "name": "admit",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#116",
+      "what": "the five base-policy rows (identity, key age, performed-and-settled, disputes, corroboration) sealed with each decision",
+      "why": "the pinned plugin seals the verdict, its source and the operator policy it read, and no rows"
+    },
+    {
+      "issue": "action-state-group/agent-action-capsule#431",
+      "what": "each ledger record's producer signature and capsule_id",
+      "why": "the step reads the node's ledger lines as written and verifies neither"
+    },
+    {
+      "issue": "Mesh-LLM/mesh-llm#2061",
+      "what": "the routing path enforcing the decision when it chooses a candidate",
+      "why": "the routing choice cannot yet require a property of a candidate beyond its identity"
+    },
+    {
+      "issue": "evidence-network/loop: the live lab run, which fills population/live",
+      "what": "an admission decision on a lab node",
+      "why": "no ledger record carries one yet; no exchange with a peer has been admitted or refused"
+    }
+  ],
+  "pinned": {
+    "capsules": {
+      "ref": "01f0921e19f12f6bf9267a916ed286b938fd9652",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "2809443345ea8134db62a8b433f5bb2bb5f1d123",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-29T22:41:37Z",
+  "step": "04"
+}
