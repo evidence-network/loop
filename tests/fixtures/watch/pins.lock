@@ -1,0 +1,2 @@
+# a fixture lock: the binding verifier's pin
+binding-verifier evidence-network/loop 0123456789abcdef0123456789abcdef01234567

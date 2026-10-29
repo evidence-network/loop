@@ -9,7 +9,7 @@
     ]
   },
   "host_build": "mesh-llm build 1",
-  "key_id": "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+  "key_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   "mesh": "lab",
   "node_id": "1111111111111111111111111111111111111111111111111111111111111111",
   "operator": "operator-one",

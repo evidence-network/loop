@@ -96,65 +96,133 @@ day at a time. It runs after `build.py` (which empties the output directory),
 from committed files only:
 
 ```sh
-python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal --findings findings \
-    --nodes nodes --population population --out _site
-# writes _site/watch/index.html, _site/watch/data.json and _site/watch/watch.js
+python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal \
+    --ondemand stats/data/ondemand --findings findings --nodes nodes --population population \
+    --commitments lab/runs --bindings bindings --lock versions.lock --out _site
+# writes _site/watch/index.html, data.json, watch.js, watch-layout.js and vendor/d3-7.9.0/
 ```
 
-- The reporter sits in the middle; each node listed in the day's file is a
-  dot, by node id round a circle, in its day state. Each question the reporter
-  asked a node is an edge: **answered** (a reply came back: solid, a dot at the
-  end), **refused** (a signed `refusal`: dashed, a bar) or **absent** (an
-  `absence`: dotted, a ring). A node is ringed on the first day it is in a day
+- The graph sits on a dark, full-width canvas (dark in both colour schemes,
+  with its own `--cv-*` tokens); the text is below it. Each node listed in
+  the day's file is a glowing dot in its day state. The reporter's two asks to
+  it are two rings, inner `checkpoints` and outer `history_card/1`:
+  **answered** (solid), **refused** (a signed `refusal`: dashed) or **absent**
+  (an `absence`: dotted). A node has a bright edge on its first day in a day
   file; a node past its `left_on` is faded and dashed.
-- A slider steps through the days (or the rehearsal's 10-minute slots); *Play*
-  runs through them and *Replay* lights the shown day's edges in the order of
-  their attempts. Live and the rehearsal are a toggle, never one graph.
-- Tab to a node or hover it for its card: the operator handle, `host_build`
-  and `plugin_version` from `nodes/<node_id>.json`, the day files it is in, its
-  state and asks that day, and `records_at_checkpoint`. No amount or band.
-- Steps 05 (deal), 06 (settle) and 07 (ask) add node-to-node edges, only from a
-  finding of that step for the shown day that passes `steps/finding.py`'s
-  check, and only between two nodes of the shown set; otherwise the page says
-  "not measured yet" and names the step.
-- `watch.js` is the only script on the site: handwritten, no library, nothing
-  fetched. The page carries `data.json` inline. With scripts off, the tables
-  under the graph hold the same counts. The `/stats/` page is unchanged and has
-  no scripts. `tests/test_watch.py` holds the page to all of this, with
-  fixtures in `tests/fixtures/watch/` (`make_fixtures.py` there writes them).
+- Every pair of shown nodes is joined by a dotted line. A pair is solid only
+  where a finding of step 05 (deal), 06 (settle) or 07 (ask) for the shown
+  day, passing `steps/finding.py`'s check, holds an exchange between the two
+  that brought something back (a reply or a signed refusal); the line is
+  labelled with the steps. Otherwise that step says "not measured yet". The
+  reporter is not drawn: the card names the node it runs on.
+- A slider steps through the days (or the rehearsal's 10-minute slots). *Play*
+  runs through them; *Replay* settles the day's asks one at a time in the
+  order of their attempts, a ring spreading from the node, then sends a pulse
+  along each solid pair. Under `prefers-reduced-motion` nothing travels or
+  spreads: the state just changes. Live and the rehearsal are a toggle, never
+  one graph.
+- Zoom, pan and rotate (d3-zoom): wheel or pinch zooms, drag pans, Shift and
+  drag rotates the layout about its middle. With the graph focused, `+` and
+  `-` zoom, the arrow keys pan, `[` and `]` rotate, `0` resets; buttons do the
+  same. The layout (d3-force, `watch-layout.js`) starts each node at a seed
+  from its node id, so it is the same on every load. Days are laid out in
+  order; when a node joins, the nodes already placed are pinned while it
+  settles, so they never move, and it eases in.
+- Tab to a node or hover it for its card, in its own slot beside the graph
+  (never over it): the operator handle, `host_build` and `plugin_version`
+  from `nodes/<node_id>.json`, its history cards, the day files it is in, its
+  state and asks, `records_at_checkpoint`, and the node the reporter runs on.
+  No amount or band.
+- A node's badge is the number of history cards stapled to its commitment;
+  its card lists each one's stream (log id) and the witnesses whose receipts
+  the card carries, or "unwitnessed". The commitment is read where it is
+  committed: `nodes/commitments/<node_id>.json` when there is one (the carrier
+  step 03 reads), else the join's `lab/runs/<date>/join/<name>/commitment.json`
+  whose `key_id` is the node's. `evidence-commitment/1`'s `history_cards` list
+  counts its entries; `/0`'s single `history_card` counts 1, its stream the
+  card's own `evidence_stream`. A card's witnesses are the `witness` of each
+  receipt on a checkpoint of the decoded card's `history`.
+- Each community a node's cards cover is a ring round it: `mesh-llm`, or
+  `personal-agents` (a `/1` card's `community`; `/0` reads as `mesh-llm`).
+  A card with no checkpoint in its history draws its ring thin, with "no
+  history since" the day its stream started (the card's `stream_started`,
+  else the day it was issued): a new stream and a cleared one started again
+  look the same, with no warning and no score.
+- Bound groups: `bindings/<controller_key_id>.json`, a `binding-verdict/0`
+  (`controller_key_id`, `subjects`, `status`, `verifier`, `checked_at`,
+  `cites`). Its subjects are drawn as one dot labelled "bound", a ring per
+  community, only when `status` is `verified` and `verifier` (`<name>@<pin>`)
+  is a line of the lock the build reads (`--lock`). Revoked, not checked, or
+  verified by a tool the lock does not pin: each subject is its own dot, and
+  its card says "binding not verified" and cites the verdict's issue. With no
+  `--bindings` directory there are no groups; main has none today.
+- Under the graph, one small chart per count, x = day: nodes listed, records
+  sealed (at each node's checkpoint, all nodes), asks answered, refused and
+  absent, deals (05) and settlements (06), each with a table of the same
+  numbers. A count with no finding reads "not measured yet", never 0.
+- On-demand runs (`stats/data/ondemand/<YYYY-MM-DD>T<HHMMSS>Z.json`, the
+  scrubbed format with `date` the run's name) are, in the live view, points
+  of their own between the days, labelled with their time (`on-demand
+  14:05:09Z`), with their own table. They are never a day's row and never in a
+  day's count. With no `--ondemand` directory there are none.
+- `watch.js` and `watch-layout.js` are handwritten. d3 7.9.0 is vendored in
+  `site/vendor/d3-7.9.0/` with its ISC licence; nothing is loaded from
+  elsewhere. The page carries `data.json` inline, so a `file://` load draws
+  it; served, it reads its own `data.json` (a relative URL, the only one it
+  reads) every 60 seconds and redraws in place, keeping the view and the day.
+  A failed read keeps what is drawn and says when it last updated. With
+  scripts off, the tables under the graph hold the same counts. The `/stats/`
+  page is unchanged and has no scripts. `tests/test_watch.py` holds the page
+  to all of this, with fixtures in `tests/fixtures/watch/` (`make_fixtures.py`
+  there writes them).
 
 ### data.json
 
-Sorted keys; the same JSON is in the page. Only fields of the scrubbed set,
-`nodes/` and findings: no answer bytes or hashes, no amount, no band.
+Sorted keys; the same JSON is in the page. Only fields of the scrubbed sets,
+`nodes/`, the commitments and findings: no answer bytes or hashes, no card
+bytes, no amount, no band.
 
 | key | value |
 |---|---|
-| `format` | `watch/1` |
-| `edge_kinds` | `ask`, `deal`, `settle`, `ask07`, each with what its edge is |
+| `format` | `watch/2` |
+| `edge_kinds` | `deal`, `settle`, `ask07`, each with what its edge is |
 | `outcomes` | `answered`, `refused`, `absent` |
-| `nodes` | node id → `{operator, host_build, plugin_version, listed: true}` from `nodes/`, or `{listed: false}` for a node no longer there |
-| `reporters` | each reporter key id the days name, with the node id whose `nodes/` entry holds that key (or `null`) |
-| `views` | `live` (the daily set) and `rehearsal` (the reporter rehearsal, a TEST), each `{label, unit, test, days}` |
+| `size` | the graph's width and height, in SVG units |
+| `nodes` | node id → `{operator, host_build, plugin_version, listed: true}` from `nodes/`, or `{listed: false}` for a node no longer there; with `seed` (its first place, from its node id), `commitment` (the committed file read, or `null`), `history_cards` (each `{stream, derivation, community, witnesses, history, since}`) and `binding` (`null`, `{status: verified, group}`, or `{status, says: "binding not verified", why, cites, verdict}`) |
+| `groups` | each bound group: `id` (`bound:<controller_key_id>`), `controller_key_id`, `subjects` (node ids), `verifier`, `checked_at`, `verdict` (the file read) |
+| `views` | `live` (the daily set and its on-demand runs) and `rehearsal` (the reporter rehearsal, a TEST), each `{label, unit, test, days, metrics}` |
 
-Each of a view's `days`, from the first to the last, with a gap day too:
+Each of a view's `days`, from the first to the last, with a gap day too, and
+each on-demand run in time order among them:
 
 | key | value |
 |---|---|
-| `date` | the day, or the rehearsal slot `YYYY-MM-DDTHHMMZ` |
+| `date` | the day, the rehearsal slot `YYYY-MM-DDTHHMMZ`, or the on-demand run `YYYY-MM-DDTHHMMSSZ` |
+| `set` | `daily`, `rehearsal` or `ondemand` |
+| `label` | the date, or `on-demand HH:MM:SSZ` |
 | `run` | `settled`, `missed`, or `no_file` |
-| `file` | the day file under `stats/data/`, or `null` |
-| `listed` | the day file's `listed`, or `null` |
-| `reporter_key_id` | the day file's, on a settled day |
-| `nodes` | each node in the file: `node_id`, `state` (both questions read together, as the stats page reads them), `questions` (`checkpoints`, `history_card/1` → its state), `asks` (`answered`, `refused`, `absent`, of 2), `records_at_checkpoint`, `days_listed` (the day files it is in, to this day), `first_day`, `node_line`, `left_on`, `left`; then each node that left and is not in the file: `node_id`, `left_on`, `left: true`, `days_listed` |
-| `edges` | the reporter's asks: `kind: ask`, `from: reporter`, `to`, `question`, `state`, `outcome`, `at` (the settling attempt) and `attempts`; then step edges: `kind`, `from`, `to`, `outcome` |
+| `file` | the file under `stats/data/`, or `null` |
+| `listed` | the file's `listed`, or `null` |
+| `reporter_key_id` | the file's, when settled |
+| `reporter_runs_on` | the node whose `nodes/` entry holds the reporter's key, or `null` |
+| `nodes` | each node in the file: `node_id`, `state` (both questions read together, as the stats page reads them), `questions` (`checkpoints`, `history_card/1` → its state), `asked` (each ask: `question`, `state`, `outcome`, `at` (the settling attempt), `attempts`), `asks` (`answered`, `refused`, `absent`, of 2), `records_at_checkpoint`, `days_listed` (the day files it is in, to this day), `first_day`, `node_line`, `left_on`, `left`; then each node that left and is not in the file: `node_id`, `left_on`, `left: true`, `days_listed` |
+| `edges` | the step edges: `kind`, `from`, `to`, `outcome` |
+| `pairs` | every pair of shown nodes, `a` < `b`: `line` (`solid` or `dotted`) and `kinds`, the steps whose edges between the two brought something back |
 | `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, not_drawn}` with `why_not_drawn` when an end is not a node of the view |
+| `drawn` | what the graph draws: each `{id, members, bound, left, rings}`, a node (`id` its node id) or a bound group's shown subjects (`id` the group's); `rings` one per community, `{community, history, streams, since}` |
+| `links` | the lines between what is drawn: `pairs` with each end mapped to its `drawn` id, a group's inner pairs left out, `solid` if any of its pairs is |
+
+A view's `metrics`: one `{key, label, points}` per chart (`nodes`, `records`,
+`answered`, `refused`, `absent`, `deals`, `settlements`), each point
+`{date, set, label, value}`, with `says` when `value` is `null` and
+`not_drawn` for a step's count. `deals` and `settlements` have no on-demand
+points: those steps run in the daily loop only.
 
 A step's edge, from its finding's own files: 05, a receiver holding the
 sender's half (answered), its refusal reply (refused) or nothing held (absent),
 with names mapped to node ids by `population/<population>/population.json`;
 06, the exchange's payer to its payee by key id in `nodes/`, answered when the
 finding's reference, finality and exchange checks held, else absent; 07, an
-`outcome.json` (`artifact`, `refusal`, `recorded_absence`) or the reporter
-backend's verification line. A rehearsal finding belongs to the slot its run
-started in.
+`outcome.json` (`artifact`, `refusal`, `recorded_absence`), or the reporter
+backend's verification line, from the node the reporter runs on. A rehearsal
+finding belongs to the slot its run started in.
