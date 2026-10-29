@@ -47,8 +47,10 @@ return:
   - join reports the node joined (a pending part is NOT_CHECKED).
 
 What the pinned plugin does not do stays NOT_CHECKED: the controller binding
-(capsules-plugin#54), and the signed join the join switch sends the reporter,
-which is after the pin (AFTER_PIN). A node with no console given is
+(capsules-plugin#54). The signed join/1 the pinned plugin's join switch sends
+the reporter node (capsules-plugin PR #85, in the pin; the switch is off by
+default) is NOT_CHECKED too, because this step does not yet read what the
+reporter received (JOIN_RECORD_ISSUE). A node with no console given is
 NOT_CHECKED for doctor and join.
 
 A node cannot be asked through its own console. `--self-node` names the
@@ -84,8 +86,8 @@ ASSERTS = ("one command on the pinned release records a controller binding for t
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
            "advertised policy")
 PINNED = ["capsulectl", "capsulectl-book"]
-# Rows whose code is in the plugin after the pinned commit.
-AFTER_PIN = "fixed upstream in capsules-plugin PR #85, not in the pinned build; loop re-pins next"
+# The signed join/1 is the pinned plugin's (PR #85); reading what the reporter received is this step's gap.
+JOIN_RECORD_ISSUE = "evidence-network/loop: step 12 reads the join/1 the reporter node received"
 DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
 JOIN_ROUTE = "/api/plugins/capsules/tools/join"
 PROBES = ("checkpoints", "history_card")
@@ -322,8 +324,9 @@ LIVE_NOT_CHECKED = [
      "issue": "Mesh-LLM/capsules-plugin#54"},
     NO_BINDING_VERIFIER,
     {"what": "the signed join/1 a Mesh node's join switch sends the reporter, which lists the node",
-     "why": "the pinned capsules plugin's join checks the node and returns its commitment but sends nothing",
-     "issue": AFTER_PIN},
+     "why": "the pinned capsules plugin sends it from its join switch, off by default, to the reporter node, "
+            "which keeps it; this step does not read what the reporter received",
+     "issue": JOIN_RECORD_ISSUE},
 ]
 NODE_CONSOLE_ISSUE = "evidence-network/loop: lab/lab.sh loop gives each node's console (LOOP_NODE_CONSOLES)"
 REPORTER_ASK_ISSUE = "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"

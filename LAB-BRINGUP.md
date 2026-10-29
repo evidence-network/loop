@@ -376,8 +376,9 @@ over the three nodes, and its `detail` lists each node:
   Through each node's own console (`LOOP_NODE_CONSOLES`, which `loop` sets)
   it runs the plugin's `doctor` with `probe` and `join`: both probes must
   match, and the commitment join returns must verify under the listed key.
-  The controller binding (Mesh-LLM/capsules-plugin#54) and the signed join
-  the join switch sends (after the pin) read NOT_CHECKED, so the step reads
+  The controller binding (Mesh-LLM/capsules-plugin#54) and the signed join/1
+  the join switch sends the reporter (in the pin; step 12 does not read it
+  yet) read NOT_CHECKED, so the step reads
   NOT_CHECKED at best. A FAIL names the node and the check.
 
 A FAIL is reported with the tarball as it is; do not work around it on the

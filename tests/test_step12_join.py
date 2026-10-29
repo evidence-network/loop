@@ -324,9 +324,9 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertTrue({"Mesh-LLM/capsules-plugin#54", step.AFTER_PIN, step.NODE_CONSOLE_ISSUE} <= issues, issues)
-        self.assertEqual(step.AFTER_PIN,
-                         "fixed upstream in capsules-plugin PR #85, not in the pinned build; loop re-pins next")
+        self.assertTrue({"Mesh-LLM/capsules-plugin#54", step.JOIN_RECORD_ISSUE, step.NODE_CONSOLE_ISSUE} <= issues, issues)
+        self.assertEqual(step.JOIN_RECORD_ISSUE,
+                         "evidence-network/loop: step 12 reads the join/1 the reporter node received")
         self.assertIn("lab-1/attempts", " ".join(p["path"] for p in r["proof"]))
 
     def test_an_answer_verified_under_a_key_other_than_the_listed_one_is_a_fail(self):
@@ -434,7 +434,7 @@ class NodeToolsTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertEqual(r["not_checked"], step.LIVE_NOT_CHECKED)
         self.assertEqual({i["issue"] for i in r["not_checked"]},
-                         {"Mesh-LLM/capsules-plugin#54", "action-state-group/agent-action-capsule#432", step.AFTER_PIN})
+                         {"Mesh-LLM/capsules-plugin#54", "action-state-group/agent-action-capsule#432", step.JOIN_RECORD_ISSUE})
         self.assertEqual(self.asked, [(step.DOCTOR_ROUTE, {"probe": True}), (step.JOIN_ROUTE, {})])
         self.assertIn("doctor --probe: both probes match; join: joined, its commitment holds under the listed key",
                       r["detail"])

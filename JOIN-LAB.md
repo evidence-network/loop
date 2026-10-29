@@ -130,7 +130,7 @@ These are never shown as checked.
   its own `join` and `doctor --probe` (capsules-plugin PR #81) and signs and
   serves the commitment (PR #75); step 12 runs both through the node's own
   console, and asks the node through the daily reporter too. It does not bind
-  the node key to a controller (Mesh-LLM/capsules-plugin#54). The join switch
-  that sends the reporter a signed join is fixed upstream in capsules-plugin
-  PR #85, not in the pinned build; loop re-pins next.
+  the node key to a controller (Mesh-LLM/capsules-plugin#54). The pinned plugin's
+  join switch (capsules-plugin PR #85, off by default) sends the reporter node
+  a signed join/1; step 12 does not read what the reporter received yet.
 - No witness is registered, so checkpoints are unwitnessed.
