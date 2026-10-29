@@ -31,7 +31,13 @@ if [ -f "$env_file" ]; then
     esac
   done < "$env_file"
 fi
-export LOOP_CONSOLE="${LOOP_CONSOLE:-http://127.0.0.1:3131}"
+# No default console: 3131 is mesh-llm's default port, and on a shared host
+# another node may answer there. The reporter's own console must be named.
+[ -n "${LOOP_CONSOLE:-}" ] || {
+  echo "LOOP_CONSOLE is not set (in $env_file or the environment): name the reporter node's console" >&2
+  exit 1
+}
+export LOOP_CONSOLE
 export CAPSULES_DATA_DIR="${CAPSULES_DATA_DIR:-$HOME/.local/share/capsules}"
 export LOOP_DATA_DIR="${LOOP_DATA_DIR:-$HOME/loop-data}"
 unset LOOP_REPORT_SET

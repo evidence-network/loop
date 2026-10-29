@@ -555,6 +555,16 @@ class RefreshNowTest(unittest.TestCase):
         self.assertEqual(len(held), 1)
         self.assertTrue((held[0] / "RUN.json").is_file())
 
+    def test_no_console_named_refuses_and_never_falls_back_to_3131(self):
+        before = self.origin_head()
+        del self.env["LOOP_CONSOLE"]
+        self.env["LOOP_REPORTER_ENV"] = str(Path(self.tmp.name) / "no-such-env")
+        done = self.refresh()
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertIn("LOOP_CONSOLE is not set", done.stderr)
+        self.assertEqual(self.console.asked, [])
+        self.assertEqual(self.origin_head(), before)
+
     def test_settings_come_from_the_env_file_and_the_caller_wins(self):
         env_file = Path(self.tmp.name) / "reporter.env"
         flag = Path(self.tmp.name) / "ran"
