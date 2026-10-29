@@ -409,8 +409,8 @@ def decision_block(ln):
 
 
 def digest_ok(d):
-    return isinstance(d, dict) and d.get("alg") == "SHA-256" and isinstance(d.get("digest"), str) \
-        and bool(HEX64.match(d["digest"]))
+    return isinstance(d, dict) and set(d) == {"alg", "digest"} and d["alg"] == "SHA-256" \
+        and isinstance(d["digest"], str) and bool(HEX64.match(d["digest"]))
 
 
 def block_problems(blk):
@@ -426,9 +426,12 @@ def block_problems(blk):
         errs.append(f"unexpected members {', '.join(sorted(set(blk) - KEYS))}")
     reads = blk.get("reads")
     pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
-    # An unreadable operator policy is sealed as NO with no digest; any other decision cites the policy's.
-    unread = blk.get("source") == "unreadable_policy" and blk.get("verdict") == "NO" and pol.get("digest") is None
-    if pol.get("kind") != "operator_policy" or not (unread or digest_ok(pol.get("digest"))):
+    # With no readable operator policy the plugin seals a NO and no digest, whether the policy or the target
+    # was unreadable first; every other decision cites the policy's digest.
+    unread = blk.get("source") in ("unreadable_policy", "unreadable_target") and blk.get("verdict") == "NO" \
+        and pol.get("digest") is None
+    if pol.get("kind") != "operator_policy" or set(pol) != {"kind", "policy", "digest"} \
+            or not (unread or digest_ok(pol.get("digest"))):
         errs.append("reads does not cite the operator policy by digest")
     pc = blk.get("peer_commitment", ABSENT)
     if not (pc is None or digest_ok(pc)):
@@ -492,7 +495,7 @@ def main_live(pop, out, started):
     elif decided and not unreadable:
         finding.write(out, result="PASS", proof=proof, not_checked=[],
                       detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
-                             f"read by digest (or is a NO for an unreadable policy), carries no member beyond the plugin's own and "
+                             f"read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and "
                              f"names the peer by commitment only; the step read the ledger lines "
                              f"as written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
     else:

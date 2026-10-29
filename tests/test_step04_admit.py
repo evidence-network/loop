@@ -298,6 +298,14 @@ class Live(unittest.TestCase):
         _, f = self.live_run(self.lab_with([json.dumps(cap)]))
         self.assertEqual(f["result"], "PASS", f["detail"])
 
+    def test_an_unreadable_target_no_passes(self):
+        cap = json.loads(self.good()[0])
+        d = cap["model_attestation"]["compute_attestation"]["admission_decision"]
+        d.update(verdict="NO", source="unreadable_target", peer_commitment=None)
+        d["reads"][0]["digest"] = None
+        _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
     def test_an_explicit_null_decision_fails(self):
         cap = json.loads(self.good()[0])
         cap["model_attestation"]["compute_attestation"]["admission_decision"] = None
@@ -324,7 +332,10 @@ class Live(unittest.TestCase):
                           (lambda d: d.pop("source"), "no source"),
                           (lambda d: d["reads"][0].update(digest={}), "operator policy"),
                           (lambda d: d["peer_commitment"].update(digest=""), "peer_commitment"),
-                          (lambda d: d.update(peer="a" * 64), "unexpected members peer")):
+                          (lambda d: d.update(peer="a" * 64), "unexpected members peer"),
+                          (lambda d: d["peer_commitment"].update(peer="a" * 64), "peer_commitment"),
+                          (lambda d: d["reads"][0].update(peer="a" * 64), "operator policy"),
+                          (lambda d: d["reads"][0].update(digest=None), "operator policy")):
             cap = json.loads(good[0])
             edit(cap["model_attestation"]["compute_attestation"]["admission_decision"])
             _, f = self.live_run(self.lab_with([json.dumps(cap)]))
