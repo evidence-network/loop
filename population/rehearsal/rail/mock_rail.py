@@ -32,7 +32,7 @@ FIELDS = ("type", "rail", "sequence", "settlement_id", "exchange_id", "payer", "
 PASS, FAIL, NOT_PRESENT, NOT_CHECKED, INCONCLUSIVE = "PASS", "FAIL", "NOT_PRESENT", "NOT_CHECKED", "INCONCLUSIVE"
 
 METHODS = {
-    "object_form": f"{TYPE}: JSON object with exactly its members, integer amounts, boolean final",
+    "object_form": f"{TYPE}: JSON object with exactly its members, integer amounts, boolean final, rail is the declared rail, integers below 2**53",
     "rail_signature": "Ed25519 over the JCS form without sig, under the key rail.json names (openssl pkeyutl)",
     "settlement_id": "settlement_id = SHA-256 of the JCS form without settlement_id and sig",
     "finality": "final is true in the signed object",

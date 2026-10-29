@@ -64,7 +64,7 @@ foreign-evidence adapters (evidencebook v0.8.1, `adapter/adapter.go`).
 
 | Property | PASS when |
 |---|---|
-| `object_form` | the line is an object with exactly the members above, integer amounts, boolean `final` |
+| `object_form` | the line is an object with exactly the members above, integer amounts, boolean `final`, `rail` the declared rail, integers below 2**53 |
 | `rail_signature` | `sig` verifies under the declared rail key |
 | `settlement_id` | `settlement_id` is the digest above |
 | `finality` | `final` is `true` |

@@ -346,7 +346,7 @@ class Step06SettleTest(unittest.TestCase):
         r = self.run_step(ROOT / "population" / "live", env={k: v for k, v in os.environ.items() if k != "LAB_DIR"})
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("Spend: none", r["detail"])
-        self.assertIn(step.ADAPTER_ISSUE, [n["issue"] for n in r["not_checked"]])
+        self.assertIn(step.WALLET_ISSUE, [n["issue"] for n in r["not_checked"]])
         self.assertEqual(len([n for n in r["not_checked"] if n["what"].startswith("live node")]), 3)
         self.assert_clean()
 
@@ -372,6 +372,9 @@ class Step06SettleTest(unittest.TestCase):
         rec = json.loads((self.out / "stevenmih-1" / "recorded.json").read_text())
         self.assertEqual(rec["settlement_observations"][0]["payment_hash"], hash_)
         self.assertEqual(rec["settlement_legs"][0]["leg"], "terms")
+        issues = [n["issue"] for n in r["not_checked"]]
+        self.assertIn(step.ADAPTER_ISSUE, issues)  # node 1 recorded settlements: the adapter gap
+        self.assertIn(step.WALLET_ISSUE, issues)   # node 2 recorded none: no wallet yet
         self.assertEqual(set(r["pinned"]), {"capsules", "mesh-llm-pr-2620"})
         self.assert_clean()
 
