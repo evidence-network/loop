@@ -31,8 +31,8 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   (step 01), to the first answered request (step 12) and to the first
   countersigned report (step 11, a placeholder until M3), each the marker
   step's PASS finding `finished` minus the run's `run.json` `started` (loop.sh
-  writes it before the first step), in seconds when under one minute. Decisions limited or refused on evidence
-  (M3) read step 04's `counts.json` proof (`limited_or_refused` of `decisions`) when its finding is a valid
+  writes it before the first step), in seconds when under one minute. Decisions refused on terms
+  (M3) read step 04's `counts.json` proof (`refused` of `decisions`: the NO decisions) when its finding is a valid
   `PASS`, and show both numbers or neither. Filtered volume beside raw (M2) is a placeholder. A number whose marker step has no
   `PASS` reads `not measured yet (M1|M2|M3)`, never 0. When the marker step is a
   `PASS` but the run has no start time, the cell says why: "not measured: this

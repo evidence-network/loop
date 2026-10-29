@@ -1,60 +1,57 @@
 #!/usr/bin/env python3
-"""Step 04 Admit: the buyer reads the seller's history, decides GO, ASK, LIMIT or NO, and seals it before the deal.
+"""Step 04 Admit: the buyer checks the offer against its Terms Pack, decides GO or NO, and seals it before the deal.
 
-Usage: 04-admit --population DIR --out DIR [--plant NAME]
+Usage: 04-admit --population DIR --out DIR [--terms FILE] [--plant NAME]
+
+Admission at this level is a blocking yes/no on deterministic rules
+(steps/04-admit.d/README.md). Each rule of the Terms Pack compares one number
+on the offer with a bound; an unmet rule is NO, all rules met is GO. The pack
+is steps/04-admit.d/terms-pack.json unless --terms names the operator's own.
 
 Rehearsal. The population's `bob` buys from `alice`. For each scenario under
-`<population dir>/step04/scenarios/` (a deal's terms, the seller's history
-card, the adjudication Results naming the seller; all stand-ins, see
-population/rehearsal/step04/README.md), bob's admission runs the loop's base
-policy (steps/04-admit.d/base-policy.json, not admission-baseline@1) and:
+`<population dir>/step04/scenarios/` (an offer, a stand-in of step 05's deal
+terms; a scenario may carry its own terms.json, an operator's pack as --terms
+would pass it), bob's admission evaluates the pack over the offer and:
 
   - seals the decision in bob's book (pinned capsulectl, a book signed with
-    bob's TEST key): outcome, tier, rows, derived asks, claims held, the
-    pack's id and digest, and the digests of the inputs it read;
-  - then seals bob's record of the deal, citing the decision;
-  - cuts a checkpoint and discloses the deal record with its citation closure
-    as an Evidence Bundle.
+    bob's TEST key): outcome, the rules row by row, the pack's id, version and
+    digest (sha256 of the pack bytes), and the offer's digest;
+  - on GO, then seals bob's record of the deal, citing the decision; on NO,
+    no deal record;
+  - cuts a checkpoint and discloses each scenario as an Evidence Bundle: the
+    deal record with its citation closure on GO, the decision on NO. A
+    bundle is complete from its first record to the checkpoint's last.
 
 The judge then decides on the proof bytes:
 
   - the bundle verifies (`capsulectl book verify --bundle`): records signed by
     bob's key, each in the book under the signed checkpoint, the disclosed
-    decision and deal match what was sealed;
-  - the decision is in the book, at an earlier position and commit time than
-    the deal record, and the deal record cites it;
-  - the outcome is exactly one of GO, ASK, LIMIT, NO; an ASK carries exactly one
-    derived Evidence Request (history_card/1 of the seller) and any other
-    outcome none;
-  - no half, no deal above T0: with no verified counterparty half on the
-    seller's history, a deal above T0 is NO or LIMIT;
-  - halves from keys under the seller's own controller declaration are not
-    claims held;
-  - an adjudication against the seller, signed by a referee the buyer trusts,
-    is read: the decision is not GO and names it among its inputs;
-  - the decision is what the base policy gives on the verified inputs
-    (signatures with openssl), row for row.
+    decision (and deal) match what was sealed;
+  - the outcome is exactly one of GO or NO;
+  - the decision recomputes, rule by rule, from the pack named and the offer;
+  - the decision names the digest of the pack it was taken under;
+  - on GO the deal record comes after the decision (position and commit time)
+    and cites it; on NO no record up to the checkpoint cites the decision.
 
-counts.json holds the decisions limited or refused (LIMIT or NO) out of all
-decisions, for the status page.
+counts.json holds the decisions refused on terms (NO) out of all decisions,
+for the status page.
 
 `--plant` makes the buyer seal one wrong decision, for the tests:
-go-no-half, ask-two, ask-none, unsealed, sealed-after, self-dealt-counted,
-adjudication-ignored.
+go-over-bound, ask-outcome, limit-outcome, unsealed, sealed-after,
+deal-after-no, digest-mismatch.
 
 Live. The pinned capsules plugin's admission hook allows or denies by model
-prefix and seals no admission decision; no shipped pack evaluates
-admission-baseline@1. The finding is NOT_CHECKED, citing
-Mesh-LLM/capsules-plugin#55 (GO/NO sealed as `admission_decision`), #64 (ASK,
-LIMIT, the history card read, the disputes row) and
-action-state-group/evidencebook-skills#51 (the baseline). For each lab node
-whose data_dir is readable it counts the ledger records that carry an
-admission decision, read-only.
+prefix and evaluates no Terms Pack; nothing in the routing path enforces one
+yet. The finding is NOT_CHECKED, citing Mesh-LLM/capsules-plugin#105 (the
+terms pack in the routing path, the decision sealed) and Mesh-LLM/mesh-llm#2061
+(enforcement in the routing choice). For each lab node whose data_dir is
+readable it counts the ledger records that carry an admission decision,
+read-only.
 
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
-step itself broke (capsulectl not installed, unreadable population).
+step itself broke (capsulectl not installed, unreadable population or pack).
 """
 import argparse
 import datetime as dt
@@ -71,34 +68,26 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "04-admit.d"))
-import base_policy  # noqa: E402
+import book_keys  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
-import standin  # noqa: E402
+import terms  # noqa: E402
 
-ASSERTS = ("the buyer's admission reads the seller's history and the adjudication Results naming it, and returns "
-           "exactly one of GO, ASK, LIMIT or NO; an ASK is one derived Evidence Request; the decision is sealed in the "
-           "buyer's book before the deal; with no counterparty half that holds on the seller's history, a deal above "
-           "T0 is NO or LIMIT; halves from keys under the seller's controller declaration are not claims held; an "
-           "adjudication against the seller is never ignored")
+ASSERTS = ("the buyer's admission checks the offer against its Terms Pack and returns exactly one of GO or NO; the "
+           "decision recomputes rule by rule from the pack and the offer and names the pack's digest; it is sealed in "
+           "the buyer's book before the deal record that cites it; no deal record cites a NO")
 PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PINNED = ["capsules", "mesh-llm", "mesh-llm-pr-2620"]
-PLANTS = ("go-no-half", "ask-two", "ask-none", "unsealed", "sealed-after", "self-dealt-counted",
-          "adjudication-ignored")
-PLANT_SCENARIO = {"go-no-half": "no-half", "ask-two": "ask", "ask-none": "ask", "unsealed": "go",
-                  "sealed-after": "go", "self-dealt-counted": "self-dealt", "adjudication-ignored": "adverse-with-buyer"}
+PLANTS = ("go-over-bound", "ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no",
+          "digest-mismatch")
+PLANT_SCENARIO = {"go-over-bound": "no-price", "ask-outcome": "go", "limit-outcome": "go", "unsealed": "go",
+                  "sealed-after": "go", "deal-after-no": "no-price", "digest-mismatch": "go"}
 DECISION, DEAL = "admission_decision", "deal_record"
-INPUTS = ("deal.json", "history_card.json", "adjudications.json")
 NO_SPEND = "Spend: none; this step pays nothing (would spend 0 USD)."
 GAPS = " ".join([
-    finding.outside("the seller's history as a history_card/1 stand-in carrying counterparty-signed halves "
-                    "(population/rehearsal/step04), until the plugin's decision cites the card it read",
-                    "Mesh-LLM/capsules-plugin#64"),
-    finding.outside("the adjudication Results as stand-ins of step 09's adjudication_issued", "Mesh-LLM/capsules-plugin#58"),
-    finding.outside("the controller declaration's format, a rehearsal stand-in", "Mesh-LLM/capsules-plugin#69"),
-    finding.outside("the deal as a stand-in of step 05's deal terms; the buyer's deal record is not step 05's half",
+    finding.outside("the offer as a stand-in of step 05's deal terms; the buyer's deal record is not step 05's half",
                     "Mesh-LLM/capsules-plugin#49"),
-    finding.outside("the base policy, which is not admission-baseline@1", "action-state-group/evidencebook-skills#51"),
+    finding.outside("the Terms Pack's format, the loop's own until the plugin ships one", "Mesh-LLM/capsules-plugin#105"),
 ])
 
 
@@ -128,9 +117,9 @@ class Book:
         self.home, self.bin, self.name = Path(home), Path(capsulectl_bin), name
         self.home.mkdir(parents=True, exist_ok=True)
         seed = self.home / "node.seed"
-        seed.write_text(standin.seed_hex(key_pem) + "\n")
+        seed.write_text(book_keys.seed_hex(key_pem) + "\n")
         seed.chmod(0o600)
-        self.key = standin.pub_hex(key_pem)
+        self.key = book_keys.pub_hex(key_pem)
         cp = json.loads(self.cap("key", "generate", "--output", str(self.home / "checkpoint.seed")).stdout)
         self.cap("profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", str(self.home / "store"),
                  "--log-id", f"{name}-book", "--operator", name, "--trusted-key", self.key,
@@ -183,66 +172,50 @@ def node_keys(pop_dir):
     return pop["population"], keys
 
 
-def scenario_inputs(d):
-    """(deal, card or None, adjudications) of one scenario directory."""
-    card = d / "history_card.json"
-    return load(d / "deal.json"), (load(card) if card.is_file() else None), load(d / "adjudications.json")
-
-
-def trust(step04):
-    """(controller declarations, referee keys)."""
-    return load(step04 / "controllers.json"), [r["key"] for r in load(step04 / "referees.json")["referees"]]
-
-
-def input_digests(d):
-    return {f: sha256((d / f).read_bytes()) for f in INPUTS if (d / f).is_file()}
-
-
 # --- The buyer: decide and seal ------------------------------------------------
-def decide(policy, digest, deal, card, adjs, decls, referees, buyer, inputs, plant=None):
+def decide(pack, digest, offer, offer_digest, seller, buyer, plant=None):
     """The decision payload the buyer seals (one planted failure applied, when named)."""
-    if plant == "self-dealt-counted":
-        decls = []
-    if plant == "adjudication-ignored":
-        adjs = []
-    d = base_policy.evaluate(policy, deal, card, adjs, decls, referees, buyer)
-    d.pop("facts")
-    if plant == "go-no-half":
-        d["outcome"], d["limit_to"] = "GO", None
-    if plant == "ask-two":
-        d["asks"] = d["asks"] * 2
-    if plant == "ask-none":
-        d["asks"] = []
-    return {"kind": DECISION, "pack": {"id": policy["pack"], "version": policy["version"], "digest": digest},
-            "deal_id": deal["deal_id"], "seller_key": deal["seller_key"], "buyer_key": buyer,
-            "band": deal["band"], "inputs": inputs, **d}
+    d = terms.evaluate(pack, offer)
+    if plant == "go-over-bound":
+        d["outcome"] = "GO"
+    if plant == "ask-outcome":
+        d["outcome"] = "ASK"
+    if plant == "limit-outcome":
+        d["outcome"] = "LIMIT"
+    if plant == "digest-mismatch":
+        digest = sha256(b"another pack")
+    return {"kind": DECISION, "pack": {"id": pack["pack"], "version": pack["version"], "digest": digest},
+            "deal_id": offer["deal_id"], "seller_key": seller, "buyer_key": buyer, "offer_digest": offer_digest, **d}
 
 
-def deal_payload(deal, buyer):
-    return {"kind": DEAL, "deal_id": deal["deal_id"], "seller_key": deal["seller_key"], "buyer_key": buyer,
-            "band": deal["band"], "role": "buyer"}
+def deal_payload(offer, seller, buyer):
+    return {"kind": DEAL, "deal_id": offer["deal_id"], "seller_key": seller, "buyer_key": buyer, "role": "buyer"}
 
 
-def run_buyer(book, policy, digest, scenarios, step04, out, plant=None):
-    decls, referees = trust(step04)
+def run_buyer(book, default_terms, scenarios, seller, out, plant=None):
     for name, d in scenarios:
-        deal, card, adjs = scenario_inputs(d)
         sd = out / "scenarios" / name
-        (sd / "inputs").mkdir(parents=True, exist_ok=True)
-        for f in INPUTS:
-            if (d / f).is_file():
-                shutil.copyfile(d / f, sd / "inputs" / f)
+        sd.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(d / "offer.json", sd / "offer.json")
+        shutil.copyfile(d / "terms.json" if (d / "terms.json").is_file() else default_terms, sd / "terms.json")
+        pack, digest = terms.load(sd / "terms.json")
+        offer = load(sd / "offer.json")
         p = plant if PLANT_SCENARIO.get(plant) == name else None
-        decision = decide(policy, digest, deal, card, adjs, decls, referees, book.key, input_digests(d), plant=p)
+        decision = decide(pack, digest, offer, sha256((sd / "offer.json").read_bytes()), seller, book.key, plant=p)
+        deal_id = f"deal/{offer['deal_id']}"
         if p == "unsealed":
             (sd / "unsealed-decision.json").write_text(json.dumps(decision, indent=2, sort_keys=True) + "\n")
-            root = book.seal(f"deal/{deal['deal_id']}", deal_payload(deal, book.key))
+            root = book.seal(deal_id, deal_payload(offer, seller, book.key))
         elif p == "sealed-after":
-            deal_id = book.seal(f"deal/{deal['deal_id']}", deal_payload(deal, book.key))
-            root = book.seal(f"admission/{deal['deal_id']}", decision, cites=[deal_id])
+            first = book.seal(deal_id, deal_payload(offer, seller, book.key))
+            root = book.seal(f"admission/{offer['deal_id']}", decision, cites=[first])
         else:
-            dec_id = book.seal(f"admission/{deal['deal_id']}", decision)
-            root = book.seal(f"deal/{deal['deal_id']}", deal_payload(deal, book.key), cites=[dec_id])
+            dec = book.seal(f"admission/{offer['deal_id']}", decision)
+            root = dec
+            if decision["outcome"] == "GO":
+                root = book.seal(deal_id, deal_payload(offer, seller, book.key), cites=[dec])
+            elif p == "deal-after-no":
+                book.seal(deal_id, deal_payload(offer, seller, book.key), cites=[dec])
         (sd / "root.txt").write_text(root + "\n")
     book.checkpoint()
     for name, _ in scenarios:
@@ -262,7 +235,25 @@ def verify_bundle(bin_, home, bundle_path):
         return {"verdict": "UNREADABLE", "stderr": r.stderr.strip()}
 
 
-def judge(sd, verdict, policy, digest, buyer, decls, referees):
+def mmr_leaves(size):
+    """The number of leaves of a Merkle mountain range of `size` nodes, or None when no count gives that size."""
+    for n in range(size + 1):
+        if 2 * n - bin(n).count("1") == size:
+            return n
+    return None
+
+
+def to_the_checkpoint(bundle):
+    """(ok, detail): the bundle holds every record from its first to the last one under its checkpoint."""
+    cert, size = bundle.get("completeness_certificate") or {}, (bundle.get("checkpoint") or {}).get("mmr_size")
+    rp = cert.get("range_proof") or {}
+    leaves = mmr_leaves(size) if isinstance(size, int) else None
+    ok = ((bundle.get("completeness") or {}).get("records_mode") == "complete" and leaves is not None
+          and rp.get("size") == size and rp.get("to_index") == leaves - 1)
+    return ok, f"records complete through leaf {rp.get('to_index')} of the checkpoint's {leaves}"
+
+
+def judge(sd, verdict, buyer):
     """[{check, ok, detail}] for one scenario's proof bytes, and the sealed decision (or None)."""
     checks = []
 
@@ -274,61 +265,54 @@ def judge(sd, verdict, policy, digest, buyer, decls, referees):
     records = {r["capsule_id"]: r for r in bundle.get("records", [])}
     disclosed = {cid: (v or {}).get("agent_input") for cid, v in (bundle.get("disclosures") or {}).items()}
     check("bundle_verifies", verdict.get("verdict") == "VALID", f"capsulectl verify --bundle: {verdict.get('verdict')}")
-    deal, card, adjs = scenario_inputs(sd / "inputs")
+    offer = load(sd / "offer.json")
 
     def find(kind):
         hits = [cid for cid, p in disclosed.items() if isinstance(p, dict) and p.get("kind") == kind
-                and p.get("deal_id") == deal["deal_id"] and status.get(cid) == "disclosure_match"
+                and p.get("deal_id") == offer["deal_id"] and status.get(cid) == "disclosure_match"
                 and records.get(cid, {}).get("key_id") == buyer]
         return hits[0] if len(hits) == 1 else None
 
-    dec_id, deal_id = find(DECISION), find(DEAL)
-    check("deal_sealed", deal_id is not None, "the buyer's deal record is in the bundle, signed by the buyer's key"
-          if deal_id else "no single deal record signed by the buyer, disclosed and matched")
+    dec_id = find(DECISION)
     check("decision_sealed", dec_id is not None, "the decision is in the buyer's book, signed by its key, disclosed "
           "and matched" if dec_id else "no sealed admission decision for this deal in the buyer's book")
-    if dec_id is None or deal_id is None:
+    if dec_id is None:
         return checks, None
-    dh, kh = records[dec_id]["evidence_record_header"], records[deal_id]["evidence_record_header"]
-    check("sealed_before_deal", dh["seq"] < kh["seq"] and dh["committed_at"] < kh["committed_at"],
-          f"decision at seq {dh['seq']} ({dh['committed_at']}), deal at seq {kh['seq']} ({kh['committed_at']})")
-    cites = [ln["target"] for ln in kh.get("links", []) if ln.get("type") == "cites"]
-    check("deal_cites_decision", dec_id in cites, f"the deal record cites {len(cites)} records")
     dec = disclosed[dec_id]
-
-    check("one_outcome", dec.get("outcome") in base_policy.OUTCOMES, f"outcome {dec.get('outcome')!r}")
-    want = base_policy.evaluate(policy, deal, card, adjs, decls, referees, buyer)
-    asks = dec.get("asks")
-    if dec.get("outcome") == "ASK":
-        check("ask_is_one_request", isinstance(asks, list) and len(asks) == 1 and asks == want["asks"],
-              f"ASK with {len(asks) if isinstance(asks, list) else asks!r} derived requests")
+    check("one_outcome", dec.get("outcome") in terms.OUTCOMES, f"outcome {dec.get('outcome')!r}")
+    pack_bytes = (sd / "terms.json").read_bytes()
+    check("pack_digest", (dec.get("pack") or {}).get("digest") == sha256(pack_bytes),
+          f"the decision names pack digest {str((dec.get('pack') or {}).get('digest'))[:16]}…, the pack's bytes "
+          f"hash to {sha256(pack_bytes)[:16]}…")
+    check("offer_named", dec.get("offer_digest") == sha256((sd / "offer.json").read_bytes()),
+          "the decision names the digest of the offer it read")
+    pack, _ = terms.load(sd / "terms.json")
+    want = terms.evaluate(pack, offer)
+    diff = sorted(k for k in want if dec.get(k) != want[k])
+    unmet = [r["id"] for r in want["rules"] if r["verdict"] == "unmet"]
+    check("follows_terms", not diff, f"rule by rule as the pack gives on the offer ({want['outcome']}"
+          f"{': unmet ' + ', '.join(unmet) if unmet else ''})" if not diff
+          else f"differs from the pack in {', '.join(diff)} (expected {want['outcome']}"
+               f"{': unmet ' + ', '.join(unmet) if unmet else ''})")
+    citing = [cid for cid, r in records.items() if cid != dec_id and dec_id in json.dumps(r)]
+    if dec.get("outcome") == "GO":
+        deal_id = find(DEAL)
+        check("deal_sealed", deal_id is not None, "the buyer's deal record is in the bundle, signed by the buyer's key"
+              if deal_id else "no single deal record signed by the buyer, disclosed and matched")
+        if deal_id is not None:
+            dh, kh = records[dec_id]["evidence_record_header"], records[deal_id]["evidence_record_header"]
+            check("sealed_before_deal", dh["seq"] < kh["seq"] and dh["committed_at"] < kh["committed_at"],
+                  f"decision at seq {dh['seq']} ({dh['committed_at']}), deal at seq {kh['seq']} ({kh['committed_at']})")
+            cites = [ln["target"] for ln in kh.get("links", []) if ln.get("type") == "cites"]
+            check("deal_cites_decision", dec_id in cites, f"the deal record cites {len(cites)} records")
     else:
-        check("ask_is_one_request", asks == [], f"{dec.get('outcome')} with {len(asks or [])} derived requests")
-    above_t0 = want["tier"] != policy["tiers"][0]["tier"]
-    no_half = above_t0 and not want["facts"]["held"]
-    check("no_half_above_t0", not no_half or dec.get("outcome") in ("NO", "LIMIT"),
-          f"tier {want['tier']}, {len(want['facts']['held'])} verified halves; outcome {dec.get('outcome')}")
-    check("self_dealt_excluded", dec.get("claims_held") == len(want["facts"]["held"])
-          and dec.get("self_dealt_excluded") == len(want["facts"]["self_dealt"]),
-          f"sealed {dec.get('claims_held')} held / {dec.get('self_dealt_excluded')} self-dealt; recounted "
-          f"{len(want['facts']['held'])} / {len(want['facts']['self_dealt'])}")
-    against = want["facts"]["adjudications_against"]
-    check("adjudication_read", not against or (dec.get("outcome") != "GO"
-                                               and dec.get("inputs", {}).get("adjudications.json")
-                                               == sha256((sd / "inputs" / "adjudications.json").read_bytes())),
-          f"{len(against)} adjudications against the seller from a trusted referee; outcome {dec.get('outcome')}")
-    check("pack_digest", dec.get("pack", {}).get("digest") == digest, "the decision names the base policy's digest")
-    check("inputs_named", dec.get("inputs") == input_digests(sd / "inputs"),
-          "the decision names the digests of the inputs it read")
-    got = {k: dec.get(k) for k in ("tier", "outcome", "limit_to", "rows", "asks")}
-    exp = {k: want[k] for k in got}
-    diff = sorted(k for k in got if got[k] != exp[k])
-    check("follows_policy", not diff, "row for row as the base policy gives on the verified inputs"
-          if not diff else f"differs from the base policy in {', '.join(diff)} (expected outcome {want['outcome']})")
+        complete, why = to_the_checkpoint(bundle)
+        check("no_deal_after_no", complete and not citing and find(DEAL) is None,
+              f"{why}; {len(citing)} records cite the decision")
     return checks, dec
 
 
-def main_rehearsal(pop_dir, out, started, plant=None):
+def main_rehearsal(pop_dir, out, started, default_terms, plant=None):
     bin_ = capsulectl()
     if not bin_.is_file():
         print(f"04-admit: {bin_} is not installed; run steps/04-admit.setup.sh", file=sys.stderr)
@@ -336,35 +320,30 @@ def main_rehearsal(pop_dir, out, started, plant=None):
     population, keys = node_keys(pop_dir)
     step04 = Path(pop_dir) / "step04"
     scenarios = sorted((d.name, d) for d in (step04 / "scenarios").iterdir() if d.is_dir())
-    policy, digest = base_policy.load_policy()
-    for f in ("finding.json", "policy.json", "controllers.json", "referees.json", "checks.json", "counts.json"):
+    for _, d in scenarios:
+        terms.load(d / "terms.json" if (d / "terms.json").is_file() else default_terms)
+    for f in ("finding.json", "checks.json", "counts.json"):
         (out / f).unlink(missing_ok=True)
     shutil.rmtree(out / "scenarios", ignore_errors=True)
-    shutil.copyfile(base_policy.POLICY_FILE, out / "policy.json")
-    shutil.copyfile(step04 / "controllers.json", out / "controllers.json")
-    shutil.copyfile(step04 / "referees.json", out / "referees.json")
+    seller = book_keys.pub_hex(keys["alice"])
     with tempfile.TemporaryDirectory(prefix="04-admit-") as tmp:
         book = Book(Path(tmp) / "bob", keys["bob"], bin_)
-        run_buyer(book, policy, digest, scenarios, step04, out, plant=plant)
+        run_buyer(book, default_terms, scenarios, seller, out, plant=plant)
         # The judge reads only the proof files in out.
-        policy_j = load(out / "policy.json")
-        digest_j = sha256((out / "policy.json").read_bytes())
-        decls, referees = trust(out)
-        results, proof, outcomes = {}, ["policy.json", "controllers.json", "referees.json"], {}
+        results, proof, outcomes = {}, [], {}
         for name, _ in scenarios:
             sd = out / "scenarios" / name
             verdict = verify_bundle(book.bin, book.home, sd / "bundle.json")
             (sd / "verify.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
-            checks, dec = judge(sd, verdict, policy_j, digest_j, book.key, decls, referees)
+            checks, dec = judge(sd, verdict, book.key)
             results[name] = checks
             if dec is not None:
                 outcomes[name] = dec.get("outcome")
-            proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json") + tuple(f"inputs/{i}" for i in INPUTS)
-                      if (sd / f).is_file()]
+            proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json", "offer.json", "terms.json")]
     (out / "checks.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
-    limited = sorted(n for n, o in outcomes.items() if o in ("LIMIT", "NO"))
-    counts = {"decisions": len(outcomes), "limited_or_refused": len(limited),
-              "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in base_policy.OUTCOMES}}
+    refused = sorted(n for n, o in outcomes.items() if o == "NO")
+    counts = {"decisions": len(outcomes), "refused": len(refused),
+              "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in terms.OUTCOMES}}
     (out / "counts.json").write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
     proof += ["checks.json", "counts.json"]
     failed = [f"{n}: {c['check']} ({c['detail']})" for n, cs in results.items() for c in cs if not c["ok"]]
@@ -373,11 +352,12 @@ def main_rehearsal(pop_dir, out, started, plant=None):
                       detail=f"did not hold: {'; '.join(failed)}. {NO_SPEND}", started=started)
         return 0
     by = ", ".join(f"{n} {o}" for n, o in sorted(outcomes.items()))
-    detail = (f"{len(outcomes)} admission decisions sealed in bob's book (TEST key), each before the deal record that "
-              f"cites it: {by}. For each, capsulectl found the bundle VALID and the judge found every check held on "
-              f"the proof bytes (checks.json); {len(limited)} of {len(outcomes)} decisions limited or refused on "
-              f"evidence. The base policy's rows: card, fresh, no_half, claims_held, disputes (policy.json). "
-              f"{NO_SPEND} {GAPS}")
+    detail = (f"{len(outcomes)} admission decisions sealed in bob's book (TEST key), each GO before the deal record "
+              f"that cites it and each NO with no deal record citing it up to the checkpoint: {by}. For each, "
+              f"capsulectl found the bundle VALID and the judge recomputed the decision rule by rule from the pack "
+              f"whose digest it names (scenarios/*/terms.json; go-adjusted runs under an operator's adjusted pack) "
+              f"and found every check held (checks.json); {len(refused)} of {len(outcomes)} decisions refused on "
+              f"terms. {NO_SPEND} {GAPS}")
     finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                   detail=detail, started=started)
     return 0
@@ -385,19 +365,14 @@ def main_rehearsal(pop_dir, out, started, plant=None):
 
 # --- Live ----------------------------------------------------------------------
 LIVE_NOT_CHECKED = [
-    {"what": "a GO or NO decision sealed as an admission_decision record before the exchange, on a lab node "
-             "(the mesh-llm routing hook's answer counts the same way)",
-     "why": "the pinned capsules plugin's admission hook (admission_policy.v1) allows or denies by model prefix "
-            "and seals no admission_decision record",
-     "issue": "Mesh-LLM/capsules-plugin#55"},
-    {"what": "ASK and LIMIT, the decision reading the seller's history card, and the disputes row reading "
-             "adjudication Results",
-     "why": "the pinned capsules plugin has none of them",
-     "issue": "Mesh-LLM/capsules-plugin#64"},
-    {"what": "admission-baseline@1",
-     "why": "no shipped pack evaluates it: it is not in the pinned capsules plugin, evidencebook v0.8.1 or "
-            "evidencebook-skills",
-     "issue": "action-state-group/evidencebook-skills#51"},
+    {"what": "a GO or NO decision from the Terms Pack sealed as an admission_decision record before the exchange, "
+             "on a lab node",
+     "why": "the pinned capsules plugin's admission hook (admission_policy.v1) allows or denies by model prefix, "
+            "evaluates no Terms Pack and seals no admission_decision record",
+     "issue": "Mesh-LLM/capsules-plugin#105"},
+    {"what": "the routing path enforcing the decision when it chooses a candidate",
+     "why": "the routing choice cannot yet require a property of a candidate beyond its identity",
+     "issue": "Mesh-LLM/mesh-llm#2061"},
 ]
 
 
@@ -431,8 +406,8 @@ def main_live(pop, out, started):
         details.append(f"node {name}: {n} of {total} ledger records carry an admission decision member, read-only "
                        f"(the pinned plugin seals none)")
     finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
-                  proof=[], detail="; ".join(details) + f". Not checked on the lab nodes: the pinned plugin seals no "
-                  f"admission decision and no shipped pack evaluates the baseline. {NO_SPEND}",
+                  proof=[], detail="; ".join(details) + f". Not checked on the lab nodes: the pinned plugin evaluates "
+                  f"no Terms Pack and seals no admission decision. {NO_SPEND}",
                   not_checked=not_checked, started=started)
     return 0
 
@@ -441,6 +416,8 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--terms", default=str(terms.DEFAULT),
+                    help="the operator's Terms Pack (default: steps/04-admit.d/terms-pack.json)")
     ap.add_argument("--plant", choices=PLANTS, help="seal one wrong decision (tests only)")
     a = ap.parse_args(argv)
     started = finding.now()
@@ -449,7 +426,12 @@ def main(argv):
     pop = load(Path(a.population) / "population.json")
     if pop["population"] == "live":
         return main_live(pop, out, started)
-    return main_rehearsal(Path(a.population), out, started, plant=a.plant)
+    try:
+        terms.load(a.terms)
+    except (OSError, ValueError) as e:
+        print(f"04-admit: --terms {a.terms}: {e}", file=sys.stderr)
+        return 2
+    return main_rehearsal(Path(a.population), out, started, Path(a.terms), plant=a.plant)
 
 
 if __name__ == "__main__":

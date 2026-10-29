@@ -1,0 +1,35 @@
+{
+  "pack": "loop-terms-default",
+  "version": "1-adjusted",
+  "about": "An operator's adjustment of the default pack, as passed with --terms: the price per inference in USDC may be up to 0.1.",
+  "rules": [
+    {
+      "id": "price-usdc",
+      "field": "price_per_inference",
+      "op": "<=",
+      "bound": "0.1",
+      "unit": "USDC"
+    },
+    {
+      "id": "price-sats",
+      "field": "price_per_inference",
+      "op": "<=",
+      "bound": "10",
+      "unit": "sats"
+    },
+    {
+      "id": "amount-usdc",
+      "field": "deal_amount",
+      "op": "<=",
+      "bound": "10",
+      "unit": "USDC"
+    },
+    {
+      "id": "amount-sats",
+      "field": "deal_amount",
+      "op": "<=",
+      "bound": "10000",
+      "unit": "sats"
+    }
+  ]
+}
