@@ -125,6 +125,8 @@ class VerifierTest(unittest.TestCase):
         b = v["model_attestation"]["compute_attestation"]["adjudication"]
         b["half_b_node_id"] = b["half_a_node_id"]
         self.assertFalse(step.is_adjudication(v)["ok"])
+        del b["half_b_node_id"]
+        self.assertFalse(step.is_adjudication(v)["ok"])
 
     def test_the_live_outcome_names_no_seller(self):
         self.assertTrue(step.outcome(self.capsule, None).startswith("against:"))

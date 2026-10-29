@@ -41,9 +41,11 @@ The checks, per Result a party holds (checks.json), on those bytes alone:
   referee is neither half's node; the party asked that referee about exactly
   that pair, or one half is the party's own record; on rehearsal the referee
   is dispute.json's;
-- cites_deal: the Result cites two halves by digest, each resolving to a
-  record in the party's book (its chain or its held pushes) that recomputes
-  and verifies under the key of the node the Result names for it;
+- cites_deal: the Result cites two halves by digest; the party's book (its
+  chain or its held pushes) resolves both when the party asked the referee
+  about the pair, and at least the party's own half when it is a judged
+  provider (the plugin's hold door); each half it holds recomputes and
+  verifies under the key of the node the Result names for it;
 - recorded_received: the party's chain carries one `adjudication_received`
   record citing the Result (`adjudication_verdict`) whose facts are the
   Result's, signed by the party's own key;
@@ -84,8 +86,8 @@ import live  # noqa: E402
 
 ASSERTS = ("the referee seals an adjudication Result on a deal that cites the deal's exchange halves by digest; "
            "the party's book holds the matching adjudication_received with the same Result bytes as the referee's "
-           "adjudication_issued; the Result verifies under the referee's key, every citation resolves by digest to "
-           "a record in the book, and the outcome it states for or against the seller is recorded")
+           "adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked "
+           "the referee, at least its own for a judged provider) resolve by digest to records in the book, and the outcome it states for or against the seller is recorded")
 PINNED = []
 LIVE_PINNED = ["capsules"]
 ISSUE_102 = "Mesh-LLM/capsules-plugin#102"
@@ -346,7 +348,7 @@ def is_adjudication(v):
     nodes = (b.get("half_a_node_id"), b.get("half_b_node_id"))
     ruling = b.get("verdict")
     known = ruling in RULINGS or any(n and ruling == CONTRADICTED + n for n in nodes)
-    distinct = bool(nodes[0]) and nodes[0] != nodes[1]  # the plugin's verdict_facts refuses one node for both halves
+    distinct = all(isinstance(n, str) and n for n in nodes) and nodes[0] != nodes[1]  # the plugin's verdict_facts refuses one node for both halves
     return check(b.get("schema") == SCHEMA and known and distinct,
                  f"schema {b.get('schema')!r}, ruling {ruling!r}"
                  + ("" if known else ": not a ruling the plugin issues")
