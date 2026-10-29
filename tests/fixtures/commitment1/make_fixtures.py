@@ -188,7 +188,12 @@ def main():
     if not Path(capsulectl()).is_file():
         print(f"make_fixtures: no capsulectl at {capsulectl()}; run steps/12-join.setup.sh", file=sys.stderr)
         return 2
-    only = sys.argv[1:] or ["two-books", "cleared", "bound"]  # e.g. `bound` remakes bound/ and revoked/ only
+    sets = ["two-books", "cleared", "bound"]
+    only = sys.argv[1:] or sets  # e.g. `bound` remakes bound/ and revoked/ only
+    if set(only) - set(sets):
+        print(f"make_fixtures: unknown set {', '.join(sorted(set(only) - set(sets)))}; one of {', '.join(sets)}"
+              " (bound also remakes revoked)", file=sys.stderr)
+        return 2
     for d in only + (["revoked"] if "bound" in only else []):
         shutil.rmtree(HERE / d, ignore_errors=True)
     with tempfile.TemporaryDirectory() as tmp:
