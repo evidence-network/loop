@@ -28,7 +28,9 @@ if [ -f "$env_file" ]; then
       LOOP_SECOND_CONSOLE=*|LOOP_SELF_NODE=*|LOOP_CONSOLE=*|CAPSULES_DATA_DIR=*|LOOP_DATA_DIR=*)
         name="${line%%=*}"
         value="${line#*=}"
-        # systemd drops one pair of surrounding quotes from a value.
+        # systemd trims the whitespace around a value, then one pair of quotes.
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
         case "$value" in
           \"*\") value="${value#\"}"; value="${value%\"}" ;;
           \'*\') value="${value#\'}"; value="${value%\'}" ;;

@@ -580,7 +580,8 @@ class RefreshNowTest(unittest.TestCase):
         self.assertFalse(flag.exists())
         self.assertEqual(self.console.asked, [])
         # Surrounding quotes are dropped, as systemd's EnvironmentFile does.
-        env_file.write_text(f'LOOP_CONSOLE="http://127.0.0.1:9"\nLOOP_DATA_DIR=\'{self.data}\'\n')
+        # and the whitespace around them; LOOP_CONSOLE comes from the file here.
+        env_file.write_text(f'LOOP_CONSOLE= "{self.env.pop("LOOP_CONSOLE")}" \nLOOP_DATA_DIR=\'{self.data}\'\n')
         done = self.refresh()
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(len(self.pushed(before)), 1)
