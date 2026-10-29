@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -20,6 +20,8 @@
 #   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
 #             halves the nodes in LAB_SHARE_AT_COMPLETION pushed after `exchange`. Starts no exchange
 #             and pays nothing
+#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
+#             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
@@ -495,6 +497,13 @@ cmd_deal() {
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+cmd_settle() {
+  local out=$ROOT/findings/$TODAY-live
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/06-settle" --population "$ROOT/population/live" --out "$out/06-settle"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
 cmd_pack() {
   local day=$TODAY
   [ -s "$LAB_DIR/run/loop-date" ] && day=$(cat "$LAB_DIR/run/loop-date")
@@ -510,6 +519,6 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | deal | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | entries | loop | deal | settle | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

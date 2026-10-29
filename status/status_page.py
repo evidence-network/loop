@@ -117,8 +117,10 @@ NUMBERS = (
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
     Number("refused", "Decisions refused on terms", "of all admission decisions", "M3", 4,
            "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
-    Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", None,
-           "no finding carries either volume yet; the raw figure is never shown without the filtered one"),
+    Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,
+           "step 06 (Settle) finding's volume.json, when that finding is a valid PASS: raw counts the final "
+           "settlement records on the rail's public ledger, filtered keeps those on a fee-paying rail whose payer and "
+           "payee are declared under different controllers; the raw figure is never shown without the filtered one"),
 )
 
 e = html.escape
@@ -343,6 +345,22 @@ def volume(raw, filtered, milestone="M2"):
     return f"{filtered} filtered of {raw} raw records"
 
 
+def settled_volume(run, step):
+    """(raw, filtered) from `step`'s volume.json, a proof file of its valid PASS finding; (None, None) otherwise.
+
+    Both or neither: a volume.json without one of them, or with filtered above raw, gives neither."""
+    r = passed(run, step)
+    if r is None or "volume.json" not in [p["path"] for p in r["proof"]]:
+        return None, None
+    try:
+        v = json.loads((run.findings[step][0] / "volume.json").read_text(encoding="utf-8"))
+        raw, filtered = v["raw"], v["filtered"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    counts = all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in (raw, filtered))
+    return (raw, filtered) if counts and filtered <= raw else (None, None)
+
+
 def decided(refused, total, milestone="M3"):
     if refused is None or total is None:
         return f"not measured yet ({milestone})"
@@ -367,7 +385,8 @@ def refused_counts(run):
 def number_value(number, run):
     """(text, measured?) for one number in one population's run."""
     if number.key == "filtered":
-        return volume(None, None, number.milestone), False
+        raw, filtered = settled_volume(run, number.step) if run.path else (None, None)
+        return volume(raw, filtered, number.milestone), raw is not None
     if number.key == "refused":
         refused, total = refused_counts(run)
         return decided(refused, total, number.milestone), total is not None
