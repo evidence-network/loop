@@ -430,7 +430,9 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(check_reports.check(self.out, through, self.reporter)[0],
                          [f"{self.reporter} names a reporter key, but {self.out} holds no report"])
         placeholder = self.dir / "placeholder.json"
-        placeholder.write_text((ROOT / "reporter" / "reporter.json").read_text())
+        # The placeholder's shape, with the all-zero ids it had before the reporter node existed.
+        shape = json.loads((ROOT / "reporter" / "reporter.json").read_text())
+        placeholder.write_text(json.dumps(dict(shape, node_id="0" * 64, key_id="0" * 64)))
         self.assertEqual(check_reports.check(self.out, through, placeholder)[0], [])
 
     def test_check_reports_requires_peer_key_and_the_day_readme(self):
@@ -580,6 +582,18 @@ class RunDailyTest(unittest.TestCase):
         self.git(self.data, "config", "user.useConfigOnly", "true")
         done = self.run_daily()
         self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertEqual(self.origin_head(), before)
+
+    def test_no_git_identity_is_refused_before_asking_anyone(self):
+        before = self.origin_head()
+        self.git(self.data, "config", "--unset", "user.email")
+        self.git(self.data, "config", "--unset", "user.name")
+        self.git(self.data, "config", "user.useConfigOnly", "true")
+        done = self.run_daily()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("no git identity to commit with", done.stderr)
+        self.assertEqual(self.console.asked, [])
+        self.assertEqual(self.git(self.data, "status", "--porcelain"), "")
         self.assertEqual(self.origin_head(), before)
 
     def test_it_runs_only_on_main(self):

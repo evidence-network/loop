@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build the stats site from the scrubbed daily set and the loop findings.
 
-Usage: build.py [DATA] [--findings DIR] [--lock FILE] [--out DIR]
-       (defaults: stats/data/daily, findings, versions.lock, _site)
+Usage: build.py [DATA] [--findings DIR] [--lock FILE] [--out DIR] [--rehearsal DIR]
+       (defaults: stats/data/daily, findings, versions.lock, _site, none)
 
 Writes DIR/stats/index.html, a static page (no scripts, inline SVG and CSS, no
 external assets), served at <pages root>/stats/. It reads as the network over
@@ -23,6 +23,15 @@ The loop's states and numbers are status/status_page.py's: this module calls
 its functions and builds the status page itself into DIR/stats/status/. The
 day files are read by site/stats_model.py and copied to DIR/stats/data/daily/.
 A day file it cannot read fails the build (exit 1) and nothing is written.
+
+With --rehearsal DIR (stats/data/rehearsal/: the reporter rehearsal, a test,
+one scrubbed file per 10-minute UTC slot) holding any slot file, a second page,
+DIR/stats/rehearsal/index.html, shows those slots under a TEST label, one row
+per slot from the first to the last, newest first; a slot marked missed, and a
+slot with no file, reads MISSED. The daily page then carries one TEST line
+linking it, and no rehearsal row: the two sets are never mixed. With no slot
+file the site is exactly as without --rehearsal. Its files are copied to
+DIR/stats/data/rehearsal/.
 
 Rehearsal and live are drawn apart and never added. A missed day, a day with
 no file and a count that fell are gaps, never zero. Every count reads "N of M
@@ -46,6 +55,8 @@ import status_page  # noqa: E402
 
 SITE = "stats"
 DATA = "data/daily"
+REHEARSAL = "rehearsal"
+REHEARSAL_DATA = "data/rehearsal"
 STATUS = "status"
 WORDS = {1: "once", 2: "twice"}
 RUNS = 30  # the newest runs a sparkline draws, per population
@@ -1092,9 +1103,76 @@ def nodes_section(days):
             f"means nothing.</p></figcaption><div class=\"scroll\">{svg_html}</div>{keys}{tables}</figure>")
 
 
-def render(days, rs, runs, all_runs):
+def rehearsal_link(slots):
+    """The daily page's one line about the rehearsal: a TEST label and a link, never its rows."""
+    if not slots:
+        return ""
+    return ('\n<p class="note"><strong>TEST</strong>: the reporter rehearsal, a test of the daily run every 10 '
+            'minutes, is on <a href="rehearsal/">its own page</a>, apart from the daily rows here.</p>')
+
+
+# The rehearsal page's own rules, after the daily page's: the TEST label and MISSED stand out in both schemes.
+REHEARSAL_STYLE = """<style>
+.test { display: inline-block; border: 2px solid var(--s-red); color: var(--fg); font-weight: 700;
+        padding: 0 .4em; border-radius: 3px; letter-spacing: .05em; }
+td.missed { background: var(--o-none); font-weight: 600; }
+</style>"""
+
+
+def slot_cell(node):
+    states = " / ".join(code(node.answers[stem].state, f"outcome o-{node.answers[stem].state}")
+                        for stem in stats_model.QUESTIONS)
+    return f'<td class="o-{stats_model.node_day(node)}">{short(node.node_id)} {states}</td>'
+
+
+def slot_row(slot, day):
+    when_ = f'<td>{when(slot)}</td>'
+    if day is None:
+        return (f'<tr data-slot="{e(slot)}">{when_}<td class="missed">MISSED</td>'
+                '<td colspan="2">no report and no MISSED mark for this slot</td></tr>')
+    if day.missed:
+        return (f'<tr data-slot="{e(slot)}">{when_}<td class="missed">MISSED</td>'
+                f'<td colspan="2">the reporter says {code(day.missed_reason)}</td></tr>')
+    answered = sum(1 for n in day.nodes if all(a.state in stats_model.layout.ANSWERED for a in n.answers.values()))
+    cells = "".join(slot_cell(n) for n in day.nodes) or "<td>no node is listed</td>"
+    return (f'<tr data-slot="{e(slot)}">{when_}<td>settled</td><td>{count(answered, day.listed)} answered both '
+            f'questions</td><td><table class="slot-nodes"><tr>{cells}</tr></table></td></tr>')
+
+
+def render_rehearsal(slots):
+    """The rehearsal page: TEST, one row per 10-minute slot, newest first; MISSED where no run settled."""
+    head = (HERE / "template.html").read_text(encoding="utf-8").split("</head>", 1)[0]
+    head = head.replace("<title>Loop stats</title>", "<title>Loop stats: TEST reporter rehearsal</title>")
+    cal = stats_model.slots(slots)
+    settled = sum(1 for _, d in cal if d is not None and not d.missed)
+    rows = "\n".join(slot_row(slot, day) for slot, day in reversed(cal))
+    return f"""{head}{REHEARSAL_STYLE}
+</head>
+<body>
+<main>
+<h1><span class="test">TEST</span> Reporter rehearsal</h1>
+<p class="lede"><strong>TEST data.</strong> The daily reporter's run, rehearsed every 10 minutes: the same questions to
+the same nodes, one report per 10-minute UTC slot. These rows are not the daily set, are never added to it, and are
+removed when the rehearsal ends. The daily rows are on <a href="../">the stats page</a>.</p>
+<p class="today">{count(settled, len(cal), 'slot')} with a settled run, from {when(cal[0][0])} to {when(cal[-1][0])}
+(UTC). A slot with no settled run reads MISSED, as a missed day does.</p>
+<table class="rehearsal">
+<caption><span class="test">TEST</span> One row per 10-minute slot, newest first. Nodes by node id; the order
+means nothing.</caption>
+<tr><th scope="col">slot (UTC)</th><th scope="col">run</th><th scope="col">nodes</th>
+<th scope="col">each node: checkpoints / history_card/1</th></tr>
+{rows}
+</table>
+</main>
+</body>
+</html>
+"""
+
+
+def render(days, rs, runs, all_runs, slots=()):
     template = Template((HERE / "template.html").read_text(encoding="utf-8"))
-    return template.substitute(badge_alt=e(status_page.badge_label(rs)), pulse=pulse_section(days),
+    return template.substitute(badge_alt=e(status_page.badge_label(rs)), rehearsal=rehearsal_link(slots),
+                               pulse=pulse_section(days),
                                multiples=multiples_section(days), loop=loop_section(rs, runs, all_runs),
                                numbers=numbers_section(runs, all_runs), nodes=nodes_section(days))
 
@@ -1114,8 +1192,11 @@ ROOT_PAGE = """<!doctype html>
 """
 
 
-def build(data, findings, lock, out):
+def build(data, findings, lock, out, rehearsal=None):
     days = stats_model.load(data)  # raise before anything is written
+    slots = []
+    if rehearsal is not None and Path(rehearsal).is_dir():
+        slots = stats_model.load(rehearsal, stats_model.layout.Rehearsal)
     runs = {p: status_page.read_run(p, d) for p, d in status_page.latest_runs(findings).items()}
     rs = status_page.rows(runs)
     out = Path(out)
@@ -1130,14 +1211,20 @@ def build(data, findings, lock, out):
     (site / DATA).mkdir(parents=True)
     for d in days:
         shutil.copyfile(Path(data) / d.file, site / DATA / d.file)
-    (site / "index.html").write_text(render(days, rs, runs, runs_of(findings)), encoding="utf-8")
+    (site / "index.html").write_text(render(days, rs, runs, runs_of(findings), slots), encoding="utf-8")
+    if slots:
+        (site / REHEARSAL_DATA).mkdir(parents=True)
+        for d in slots:
+            shutil.copyfile(Path(rehearsal) / d.file, site / REHEARSAL_DATA / d.file)
+        (site / REHEARSAL).mkdir()
+        (site / REHEARSAL / "index.html").write_text(render_rehearsal(slots), encoding="utf-8")
     (out / "index.html").write_text(ROOT_PAGE, encoding="utf-8")
     return days
 
 
 def main(argv):
     args = argv[1:]
-    opts = {"--out": "_site", "--findings": "findings", "--lock": "versions.lock"}
+    opts = {"--out": "_site", "--findings": "findings", "--lock": "versions.lock", "--rehearsal": None}
     for opt in opts:
         if opt in args:
             i = args.index(opt)
@@ -1145,7 +1232,7 @@ def main(argv):
             del args[i:i + 2]
     data = Path(args[0] if args else "stats/data/daily")
     try:
-        days = build(data, opts["--findings"], opts["--lock"], opts["--out"])
+        days = build(data, opts["--findings"], opts["--lock"], opts["--out"], opts["--rehearsal"])
     except (stats_model.StatsError, status_page.StatusError) as err:
         for p in err.problems:
             print(p, file=sys.stderr)

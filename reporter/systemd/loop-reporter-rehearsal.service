@@ -1,0 +1,24 @@
+# The reporter rehearsal: the daily run's path, as a test, every 10 minutes, into
+# loop-data's reports/rehearsal (one directory per 10-minute UTC slot). Install as a
+# user unit on the reporter node beside loop-reporter.*, not here; see reporter/README.md,
+# "The rehearsal". Run either this timer or the daily one, never both.
+[Unit]
+Description=evidence-network loop: reporter rehearsal (TEST), one 10-minute slot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/loop
+Environment=LOOP_CONSOLE=http://127.0.0.1:3131
+Environment=CAPSULES_DATA_DIR=%h/.local/share/capsules
+Environment=LOOP_DATA_DIR=%h/loop-data
+Environment=LOOP_REPORT_SET=rehearsal
+# LOOP_SECOND_CONSOLE (another lab node's console, to ask the reporter's own node
+# through) and LOOP_SELF_NODE (the reporter's label in population/live). Optional.
+EnvironmentFile=-%h/.config/loop-reporter/env
+ExecStart=%h/loop/scripts/run_daily.sh
+# Exit 2 is a missed slot, already committed: not a unit failure to retry.
+SuccessExitStatus=2
+# The run bounds its own retries to settle inside the slot; this is the backstop.
+TimeoutStartSec=9min

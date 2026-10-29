@@ -3,18 +3,28 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: mesh-llm main b5ed6bd8 merged into the #2620 branch (#2620 is still open).
-# 4e98fd86 is the commit the lab host binary was built from; it contains b5ed6bd8.
-mesh-llm Mesh-LLM/mesh-llm b5ed6bd8ca825e223a65adc9736fb7b422cc9e3e
-mesh-llm-pr-2620 Mesh-LLM/mesh-llm 4e98fd8608c049f6c3b3d5e148a2a1d61a19f3f8
-# The capsules plugin (the repo was Mesh-LLM/capsules). main after v0.1.5: it adds the controller
-# declaration (#77), share at completion by default (#72) and the signed commitment (#75) that live
-# step 05 needs. No release carries them yet; its manifests and dependencies are v0.1.5's.
-capsules Mesh-LLM/capsules-plugin 5d2d1021337f70eabc191366dd4617b3a8f0d2f0
+# Lab host build: one tree (fc35ee49) that contains mesh-llm main 2809443, #2620 at its head
+# 1d96a020 and #2649 at its head 9c8cf6e8. #2620 is still open: a plugin the host restarts gets
+# the mesh snapshot again, and a plugin whose start was cancelled is restarted. #2649 is still
+# open: it pins the capsules plugin the host builds. lab/lab.sh check requires the lab source to
+# contain mesh-llm and mesh-llm-pr-2620; mesh-llm-pr-2649 records the third commit, which check
+# does not test.
+mesh-llm Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123
+mesh-llm-pr-2620 Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e
+mesh-llm-pr-2649 Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8
+# The capsules plugin (the repo was Mesh-LLM/capsules). main after v0.1.5 through #102: it adds the
+# controller declaration (#77), share at completion by default (#72), the signed commitment (#75),
+# the Lightning settlement adapter (#82, for #57), the signed join/1 and leave/1 (#85), evidence
+# answers built on the evidencebook crate (#87, #89 to #94), basic admission (#100) and the referee's
+# verdict sealed on both nodes (#102). No release carries them yet.
+capsules Mesh-LLM/capsules-plugin 01f0921e19f12f6bf9267a916ed286b938fd9652
 # The answer format the plugin verifies with today: the evidence-request crate,
 # pinned =0.2.0 in the plugin's Cargo.toml at that commit. crates.io 0.2.0 is published from
 # this tag (its .cargo_vcs_info.json names the tag's commit, dd64efe7).
 evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.2.0
+# The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), 0.0.9 in the
+# plugin's Cargo.lock at that commit; crates.io 0.0.9 is published from this tag.
+evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.9
 # The daily reporter: scripts/daily_report.py as of this commit (main after #3).
 reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # What a verifier re-checks saved answers with, offline: evidencebook, and capsulectl

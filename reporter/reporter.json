@@ -1,10 +1,10 @@
 {
-  "node_id": "0000000000000000000000000000000000000000000000000000000000000000",
-  "key_id": "0000000000000000000000000000000000000000000000000000000000000000",
-  "operator": "<GitHub handle of the person who runs the reporter node>",
+  "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+  "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+  "operator": "StevenMih",
   "mesh": "lab",
-  "host_build": "<mesh-llm build with plugin key announcement (#2299)>",
-  "plugin_version": "capsules 0.1.5",
+  "host_build": "mesh-llm 3f84d41e77052f4fecab9cfd4a4b076b57c99396 (contains mesh-llm 3947de0cbc73fe5cbcaae548b297f03a401532d7, mesh-llm-pr-2620 5fc649c888b7ac4b3e75865de06a901b476629c0), binary sha256 645893c23cbf8833a4fbcb72e8825cf7178b68c9d4c64ccf07bee2291b1d2a81; no relay until Mesh-LLM/capsules-plugin#48 is closed",
+  "plugin_version": "capsules 06532ef981b345118e0a6fe142fb896acbc18e5b, binary sha256 42ce97b6df505ff7604ad56f57f94d584307cc170a562705a3207d7b8444025d",
   "retry_after_s": [
     3600,
     10800,
