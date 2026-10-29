@@ -258,6 +258,10 @@ class Live(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return out, load(out / "finding.json")
 
+    def good(self):
+        return [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
+                if "admission_decision" in ln]
+
     def lab_with(self, lines):
         """A two-node lab whose lab-a ledger holds `lines`; every node reads."""
         tmp = tempfile.TemporaryDirectory()
@@ -286,18 +290,41 @@ class Live(unittest.TestCase):
         self.assertIn("live node lab-c", [x["what"] for x in f["not_checked"]])
         self.assertIn("Mesh-LLM/capsules-plugin#116", [x["issue"] for x in f["not_checked"]])
 
+    def test_an_unreadable_policy_no_passes(self):
+        cap = json.loads(self.good()[0])
+        d = cap["model_attestation"]["compute_attestation"]["admission_decision"]
+        d.update(verdict="NO", source="unreadable_policy")
+        d["reads"][0]["digest"] = None
+        _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_an_explicit_null_decision_fails(self):
+        cap = json.loads(self.good()[0])
+        cap["model_attestation"]["compute_attestation"]["admission_decision"] = None
+        _, f = self.live_run(self.lab_with(self.good() + [json.dumps(cap)]))
+        self.assertEqual(f["result"], "FAIL")
+
+    def test_an_unreadable_ledger_file_keeps_it_not_checked(self):
+        lab = self.lab_with(self.good())
+        (lab / "nodes/lab-b/data/ledger/capsules.jsonl").unlink()
+        _, f = self.live_run(lab)
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("live node lab-b", [x["what"] for x in f["not_checked"]])
+
     def test_no_decision_is_not_checked(self):
         _, f = self.live_run(self.lab_with(['{"capsule_id":"00","action_type":"fyi"}']))
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("an admission decision on a lab node", [x["what"] for x in f["not_checked"]])
 
     def test_a_malformed_decision_fails(self):
-        good = [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
-                if "admission_decision" in ln]
+        good = self.good()
         for edit, why in ((lambda d: d.update(verdict="ASK"), "is not GO or NO"),
                           (lambda d: d.update(reads=[]), "operator policy"),
                           (lambda d: d.update(peer_commitment="a" * 64), "peer_commitment"),
-                          (lambda d: d.pop("source"), "no source")):
+                          (lambda d: d.pop("source"), "no source"),
+                          (lambda d: d["reads"][0].update(digest={}), "operator policy"),
+                          (lambda d: d["peer_commitment"].update(digest=""), "peer_commitment"),
+                          (lambda d: d.update(peer="a" * 64), "unexpected members peer")):
             cap = json.loads(good[0])
             edit(cap["model_attestation"]["compute_attestation"]["admission_decision"])
             _, f = self.live_run(self.lab_with([json.dumps(cap)]))

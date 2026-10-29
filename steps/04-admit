@@ -58,6 +58,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -255,6 +256,11 @@ def to_the_checkpoint(bundle):
     return ok, f"records complete through leaf {rp.get('to_index')} of the checkpoint's {leaves}"
 
 
+def when(t):
+    """A record's commit time as a datetime (the fraction's length is not fixed)."""
+    return dt.datetime.fromisoformat(t.replace("Z", "+00:00"))
+
+
 def judge(sd, verdict, buyer):
     """[{check, ok, detail}] for one scenario's proof bytes, and the sealed decision (or None)."""
     checks = []
@@ -303,7 +309,7 @@ def judge(sd, verdict, buyer):
               if deal_id else "no single deal record signed by the buyer, disclosed and matched")
         if deal_id is not None:
             dh, kh = records[dec_id]["evidence_record_header"], records[deal_id]["evidence_record_header"]
-            check("sealed_before_deal", dh["seq"] < kh["seq"] and dh["committed_at"] < kh["committed_at"],
+            check("sealed_before_deal", dh["seq"] < kh["seq"] and when(dh["committed_at"]) < when(kh["committed_at"]),
                   f"decision at seq {dh['seq']} ({dh['committed_at']}), deal at seq {kh['seq']} ({kh['committed_at']})")
             cites = [ln["target"] for ln in kh.get("links", []) if ln.get("type") == "cites"]
             check("deal_cites_decision", dec_id in cites, f"the deal record cites {len(cites)} records")
@@ -389,12 +395,22 @@ LIVE_GAPS = " ".join([
 ])
 
 
+ABSENT = object()
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+KEYS = {"peer_commitment", "verdict", "source", "reads", "request_id", "attempt", "model"}
+
+
 def decision_block(ln):
-    """The admission_decision member of one ledger line, or None."""
+    """The admission_decision member of one ledger line (None when sealed as null), or ABSENT."""
     try:
         return json.loads(ln)["model_attestation"]["compute_attestation"][DECISION]
     except (ValueError, KeyError, TypeError):
-        return None
+        return ABSENT
+
+
+def digest_ok(d):
+    return isinstance(d, dict) and d.get("alg") == "SHA-256" and isinstance(d.get("digest"), str) \
+        and bool(HEX64.match(d["digest"]))
 
 
 def block_problems(blk):
@@ -406,29 +422,34 @@ def block_problems(blk):
         errs.append(f"verdict {blk.get('verdict')!r} is not GO or NO")
     if not (isinstance(blk.get("source"), str) and blk["source"]):
         errs.append("no source")
+    if sorted(set(blk) - KEYS):
+        errs.append(f"unexpected members {', '.join(sorted(set(blk) - KEYS))}")
     reads = blk.get("reads")
     pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
-    if pol.get("kind") != "operator_policy" or not isinstance(pol.get("digest"), dict):
+    # An unreadable operator policy is sealed as NO with no digest; any other decision cites the policy's.
+    unread = blk.get("source") == "unreadable_policy" and blk.get("verdict") == "NO" and pol.get("digest") is None
+    if pol.get("kind") != "operator_policy" or not (unread or digest_ok(pol.get("digest"))):
         errs.append("reads does not cite the operator policy by digest")
-    pc = blk.get("peer_commitment", "absent")
-    if not (pc is None or (isinstance(pc, dict) and isinstance(pc.get("digest"), str))):
+    pc = blk.get("peer_commitment", ABSENT)
+    if not (pc is None or digest_ok(pc)):
         errs.append("peer_commitment is missing or not a commitment")
     return errs
 
 
 def node_decisions(data_dir):
-    """([(line, block)], [problem], total) over the node's ledger lines that carry an admission decision."""
+    """([(line, block)], [problem], total) over the node's ledger lines that carry an admission decision;
+    None when the ledger file cannot be read."""
     found, problems, total = [], [], 0
     try:
         lines = (data_dir / "ledger" / "capsules.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
-        return [], [], 0
+        return None
     for ln in lines:
         if not ln.strip():
             continue
         total += 1
-        blk = decision_block(ln) if DECISION in ln else None
-        if blk is None:
+        blk = decision_block(ln) if DECISION in ln else ABSENT
+        if blk is ABSENT:
             continue
         found.append((ln, blk))
         problems += [f"record {total}: {e}" for e in block_problems(blk)]
@@ -447,7 +468,13 @@ def main_live(pop, out, started):
             details.append(f"node {name}: data_dir not set or unreadable")
             unreadable = True
             continue
-        found, bad, total = node_decisions(data_dir)
+        read = node_decisions(data_dir)
+        if read is None:
+            not_checked.append(live.not_checked(name, "ledger"))
+            details.append(f"node {name}: ledger not readable")
+            unreadable = True
+            continue
+        found, bad, total = read
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
         details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
                        f"({by['GO']} GO, {by['NO']} NO), read-only")
@@ -465,7 +492,8 @@ def main_live(pop, out, started):
     elif decided and not unreadable:
         finding.write(out, result="PASS", proof=proof, not_checked=[],
                       detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
-                             f"read by digest and names the peer by commitment only; the step read the ledger lines "
+                             f"read by digest (or is a NO for an unreadable policy), carries no member beyond the plugin's own and "
+                             f"names the peer by commitment only; the step read the ledger lines "
                              f"as written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
     else:
         gap = {"what": "an admission decision on a lab node",
