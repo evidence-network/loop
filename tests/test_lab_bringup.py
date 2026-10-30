@@ -220,6 +220,78 @@ class DryRunTest(unittest.TestCase):
         (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "d1"))
         self.assertEqual(held(), 0)
 
+    def test_start_waits_for_the_announced_keys_and_takes_the_advertised_name(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for n in ("lab-1", "lab-2", "lab-3", "lab-4"):
+            self.assertIn(f"{n}'s host announces the other nodes' plugin keys", r.stdout)
+        self.assertIn("LAB_KEY_SETTLE", r.stdout)
+        text = (ROOT / "lab" / "lab.sh").read_text()
+        self.assertIn("advertised_name", text)
+
+    def _bash(self, body, status):
+        script = ('eval "$(sed -n "/^keys_announced()/,/^}/p;/^advertised_name()/,/^}/p" "$LAB")"; console() { echo "http://x/$1"; }; '
+                  f'curl() {{ cat <<\'J\'\n{status}\nJ\n}}; NODES=(lab-1 lab-2 lab-3); {body}')
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB)})
+
+    def test_keys_announced_needs_every_other_nodes_plugin_key(self):
+        keys = lambda n: json.dumps({"node_id": "a", "peers": {f"p{i}": {"capsules": "a" * 64} for i in range(n)}})
+        self.assertEqual(self._bash("keys_announced lab-1", keys(1)).returncode, 1)
+        self.assertEqual(self._bash("keys_announced lab-1", keys(2)).returncode, 0)
+        withdrawn = json.dumps({"peers": {"p0": {"capsules": "a" * 64}, "p1": {}}})
+        self.assertEqual(self._bash("keys_announced lab-1", withdrawn).returncode, 1)
+        not_a_key = json.dumps({"peers": {"p0": {"capsules": "a" * 64}, "p1": {"capsules": "K" * 64}}})
+        self.assertEqual(self._bash("keys_announced lab-1", not_a_key).returncode, 1)  # the plugin keeps only 64 lowercase hex
+
+    def test_rejected_pushes_are_counted_and_explained_without_shell_noise(self):
+        f = self.tmp / "rej.jsonl"
+        script = ('eval "$(sed -n "/^rejected_count()/p;/^rejected_reasons()/,/^}/p" "$LAB")"; '
+                  'echo "count=$(rejected_count "$F")"; rejected_reasons "$F" 1')
+        run = lambda: subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                     env={**os.environ, "LAB": str(LAB), "F": str(f)})
+        r = run()  # no file: zero, silent
+        self.assertEqual((r.stdout.strip(), r.stderr), ("count=0", ""))
+        f.write_text('{"reason":"old"}\n{"reason":"signature_unverified"}\n{"reason":"model_mismatch"}\n')
+        r = run()
+        self.assertEqual(r.stdout.split(), ["count=3", "signature_unverified", "model_mismatch"])  # only lines past the first
+
+    def test_twins_wait_explains_a_timeout_by_the_refusals_logged_during_the_run(self):
+        f = self.tmp / "rej.jsonl"
+        script = ('eval "$(sed -n "/^rejected_count()/p;/^rejected_reasons()/,/^}/p;/^twins_wait()/,/^}/p" "$LAB")"; DRY=0; '
+                  f'wait_for() {{ return $WAIT; }}; TWINS_REJ="$F"; TWINS_REJ_BEFORE=1; twins_wait 1 "the halves" true; echo "rc=$?"')
+        def run(wait):
+            return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                  env={**os.environ, "LAB": str(LAB), "F": str(f), "WAIT": str(wait)})
+        self.assertEqual(run(0).stdout.strip(), "rc=0")  # the wait passed: nothing said
+        r = run(1)  # timed out, no rejections: just the failure
+        self.assertEqual((r.stdout.strip(), r.stderr), ("rc=1", ""))
+        f.write_text('{"reason":"stale_reason"}\n{"reason":"model_mismatch"}\n')
+        r = run(1)  # another reason: reported, but no key advice
+        self.assertIn("model_mismatch", r.stderr)
+        self.assertNotIn("had not read each other's keys", r.stderr)
+        self.assertNotIn("stale_reason", r.stderr)  # earlier than this run
+        f.write_text('{"reason":"stale_reason"}\n{"reason":"signature_unverified"}\n')
+        r = run(1)
+        self.assertIn("signature_unverified", r.stderr)
+        self.assertIn("had not read each other's keys", r.stderr)
+        self.assertEqual(r.stdout.strip(), "rc=1")
+
+    def test_the_asking_node_is_the_requester_with_twins_and_lab_2_otherwise(self):
+        text = (ROOT / "lab" / "lab.sh").read_text()
+        self.assertIn("asker=lab-2", text)
+        self.assertIn("asker=$REQUESTER", text)
+        self.assertNotIn("REQUESTER_OR_REPORTER", text)
+
+    def test_the_key_settle_default_covers_one_plugin_read(self):
+        self.assertIn("KEY_SETTLE=${LAB_KEY_SETTLE:-40}", (ROOT / "lab" / "lab.sh").read_text())
+
+    def test_the_advertised_name_is_the_first_a_peer_serves(self):
+        status = json.dumps({"peers": [{"serving_models": []},
+                                       {"serving_models": ["Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m"]}]})
+        r = self._bash("advertised_name lab-3", status)
+        self.assertEqual(r.stdout.strip(), "Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m", r.stderr)
+        self.assertEqual(self._bash("advertised_name lab-3", json.dumps({"peers": []})).returncode, 1)
+
     def test_join_skips_a_node_that_has_already_joined(self):
         # join.sh fails on a node with a book profile already: a second `join` must not repeat lab-1..3.
         script = 'eval "$(sed -n "/^cmd_join()/,/^}/p" "$LAB")"; die() { echo "$*"; exit 2; }; DRY=0; ROOT=/nonexistent; ' \
