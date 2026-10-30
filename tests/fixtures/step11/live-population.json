@@ -1,0 +1,13 @@
+{
+  "population": "live",
+  "nodes": [
+    {
+      "name": "lab-a",
+      "node_id": "stand-in",
+      "host": "lab",
+      "data_dir": "$LOOP_TEST_LAB/lab-a/data",
+      "book_dir": "$LOOP_TEST_LAB/lab-a/join-book"
+    }
+  ],
+  "rail": null
+}

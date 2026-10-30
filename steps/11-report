@@ -1,0 +1,510 @@
+#!/usr/bin/env python3
+"""Step 11 Report: the lab's report page renders only from step 08's manifest and step 10's Results, every number on
+it has a denominator, nothing on it is a score, and the page's byte digest is sealed in the reporting node's book.
+
+Usage: 11-report --population DIR --out RUN/11-report
+
+RUN is the loop run (the parent of --out). This step reads no record bytes:
+
+  inputs        08's finding passes steps/finding.py's check and names its
+                manifest in proof. 10's finding does too, and is PASS. Each of
+                10's bundles is VALID under `capsulectl verify --bundle` and
+                under the repository's judge key, the roll-up cites exactly the
+                finer Results, and every record they cite has the sha256 08's
+                manifest gives it, in a step 08 reproduced. An input that does
+                not hold is a FAIL and nothing is rendered.
+  figures       counted from those inputs: records and steps per kind, each
+                pack term's outcomes, the roll-up, and paid exchanges, each
+                from the payer's sealed deal, the only deal record there is
+                (capsules-plugin#134 owns the provider's). Each figure cites
+                its records by digest.
+  page          the figures are sealed as one report Result, and the pinned
+                `capsulectl book report build --seal` renders it and seals the
+                page's sha256 in the reporting book.
+  checks        seal         `book report check` says match, and the disclosed
+                             seal record holds the page's sha256;
+                denominators every number in a figure is "k of n", k <= n;
+                no score     no score, rank, rating or leaderboard field or word
+                             in the page's data. The builder's viewer script is
+                             pinned code and is not scanned.
+
+The reporting book is, on rehearsal, a scratch book under the repository's TEST
+reporter key (population/<p>/step11/keys). On live it is the first node's join
+book (book_dir, profile named for the node), under its key in data_dir.
+
+A rehearsal run with neither 08-verify/ nor 10-judge/ runs step 10 into
+OUT/standin/10-judge, which judges the committed stand-in run, and the detail
+says so. Live records are collected by the operator from the lab's own nodes,
+never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
+The design is steps/11-report.md. Exit 0 once the finding is written.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import finding  # noqa: E402
+import live  # noqa: E402
+
+_loader = importlib.machinery.SourceFileLoader("step10_judge_for_report", str(HERE / "10-judge"))
+_spec = importlib.util.spec_from_loader(_loader.name, _loader)
+judge10 = importlib.util.module_from_spec(_spec)
+_loader.exec_module(judge10)
+
+ISSUE = "evidence-network/loop#24"
+PACK_ISSUE = judge10.PACK_ISSUE
+VIEWER_ISSUE = "action-state-group/capsule-viewer#158"
+PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
+PINNED = ["capsulectl", "capsulectl-book"]
+ASSERTS = ("the report page renders only from step 08's manifest and step 10's Results, every number on it has a "
+           "denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book")
+CONTRACT = "loop-report@v0"
+LIVE_LABEL = ("The records are operator-collected from the lab's own nodes; this proves the report, not how an operator "
+              "gets bundles from peers.")
+PLURAL = {"deal": "Deals", "settlement": "Settlements", "ask": "Asks", "dispute": "Disputes"}
+# Outside "k of n", a figure may hold digits only inside a step's name or a term id.
+FRACTION = re.compile(r"\b(\d+) of (\d+)\b")
+IDENTIFIER = re.compile(r"\bstep \d{2}\b|\b\d{2}-[a-z][a-z-]*\b|\bterm-\d+\b")
+SCORE_WORD = re.compile(r"(?<![A-Za-z0-9+/=])(?:score|rank|rating|leaderboard)s?(?![A-Za-z0-9+/=])", re.I)
+SCORE_KEY = re.compile(r"score|rank|rating|leaderboard", re.I)
+BUNDLE_SCRIPT = re.compile(r"<script[^>]*>\s*window\.__BUNDLE__ = (.*?);?\s*</script>", re.S)
+SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
+
+
+class NotChecked(Exception):
+    """The report cannot run here; args are (what, why)."""
+
+
+class Refused(Exception):
+    """An input does not hold, so nothing is rendered."""
+
+
+load, dump = judge10.load, judge10.dump
+
+
+# --- The inputs ---------------------------------------------------------------------------
+def read_judge(judged):
+    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on."""
+    record = load(judged / "finding.json")
+    errs = finding.check_record(judged, record) if isinstance(record, dict) else ["finding.json is not an object"]
+    if errs:
+        raise Refused(f"step 10's finding does not hold: {'; '.join(errs)}")
+    if record["result"] == "FAIL":
+        raise Refused("step 10's finding is FAIL, so its Results are not reported")
+    if record["result"] == "NOT_CHECKED":
+        why = "; ".join(x["why"] for x in record["not_checked"])
+        raise NotChecked("the report over step 10's Results", f"step 10 is NOT_CHECKED, so there is no Result to report: {why}")
+    return record
+
+
+def check_records(manifest, cited):
+    """Every record a Result cites has the sha256 08's manifest gives it, in a step 08 reproduced."""
+    listed = {f"{e['dir']}/{f['path']}": f["sha256"] for e in manifest["steps"] if e["status"] == "reproduced"
+              for f in e.get("files", [])}
+    return [f"{k} is cited with sha256 {s[:12]}, but 08's manifest gives {listed[k][:12] if k in listed else 'it nothing'}"
+            for k, s in sorted(cited.items()) if listed.get(k) != s]
+
+
+def read_results(judged, manifest, capsulectl, judge_key, tmp):
+    """(finer {dir: statement}, rollup statement, cited {ref: sha256}, problems) from 10's bundles."""
+    problems, finer, finer_valid, cited = [], {}, set(), {}
+    rollup, rollup_cites = None, []
+    bundles = sorted((judged / "bundles").glob("*.bundle.json"))
+    for path in bundles:
+        root, statement, disclosed, probs = judge10.open_bundle(path, judge10.verify_bundle(capsulectl, path, tmp), judge_key)
+        problems += probs
+        name = path.name.replace(".bundle.json", "")
+        if name == "rollup":
+            rollup, rollup_cites = statement, judge10.evidence(statement)
+            continue
+        finer[name] = statement
+        if not probs:
+            finer_valid.add(root)
+        for digest in judge10.evidence(statement):
+            p = disclosed.get(digest) or {}
+            if not {"step", "path", "sha256"} <= set(p):
+                problems.append(f"{path.name}: cited record {digest[:12]} is not a disclosed record capsule")
+                continue
+            cited[f"{p['step']}/{p['path']}"] = p["sha256"]
+    if rollup is None:
+        problems.append("step 10 left no roll-up bundle")
+    problems += judge10.check_rollup(rollup_cites, finer_valid)
+    problems += check_records(manifest, cited)
+    return finer, rollup, cited, problems
+
+
+# --- The figures: counted from the inputs, each with its denominator ----------------------
+def figure(fid, section, text, verdict, evidence):
+    return {"id": fid, "section": section, "text": text, "verdict": verdict, "evidence": sorted(evidence)}
+
+
+def render_figures(manifest, finer, rollup, cited, pack):
+    """The page's figures. `evidence` holds record refs until the report Result is sealed."""
+    figures = []
+    kinds = {nn: k["kind"] for nn, k in pack["kinds"].items()}
+    steps = [e for e in manifest["steps"] if e["status"] == "reproduced" and e["step"] in kinds]
+    for nn, k in pack["kinds"].items():
+        mine = [e for e in steps if e["step"] == nn]
+        refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])]
+        hit = [r for r in refs if r in cited]
+        counted = any(t.get("counted") for t in k["terms"])
+        figures.append(figure(
+            f"count:{k['kind']}", "adjudications",
+            f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
+            f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps.",
+            "met", hit))
+    for nn, k in pack["kinds"].items():
+        dirs = sorted(d for d in finer if d[:2] == nn)
+        for t in k["terms"]:
+            claims = [c for d in dirs for c in finer[d].get("claims", []) if c.get("requirement_ref") == t["id"]]
+            n = len(claims)
+            count = {v: sum(c["verdict"] == v for c in claims) for v in ("met", "not_met", "not_evaluable")}
+            said = next((c["presentation"]["narrative"] for c in claims if c["presentation"].get("narrative")), None)
+            worst = next((v for v in ("not_met", "not_evaluable", "met") if count[v]), "not_evaluable")
+            refs = [r for r in cited if r[:2] == nn]
+            figures.append(figure(
+                f"term:{t['id']}", "outcomes",
+                f"{t['id']} ({t['name']}): met in {count['met']} of {n}, not met in {count['not_met']} of {n}, not "
+                f"evaluable in {count['not_evaluable']} of {n} {k['kind']} Results."
+                + (f" {said}." if said else ""), worst, refs))
+    claims = (rollup or {}).get("claims", [])
+    n = len(claims)
+    count = {v: sum(c["verdict"] == v for c in claims) for v in ("met", "not_met", "not_evaluable")}
+    figures.append(figure(
+        "decisions:rollup", "decisions",
+        f"The roll-up cites {len(judge10.evidence(rollup or {}))} of {len(finer)} finer Results: met in {count['met']} "
+        f"of {n}, not met in {count['not_met']} of {n}, not evaluable in {count['not_evaluable']} of {n}.",
+        next((v for v in ("not_met", "not_evaluable", "met") if count[v]), "not_evaluable"), []))
+    exchanges = [r for r in cited if Path(r).name == "exchange.json"]
+    deals = [r for r in cited if Path(r).name == "deal.json"]
+    if exchanges:
+        figures.append(figure(
+            "exchanges:deals", "exchanges",
+            f"Paid exchanges, each counted from the payer's sealed deal: {len(deals)} of {len(exchanges)} exchanges in "
+            "the window. A free exchange gets no deal and no receipt, by design: it stays in this denominator and is "
+            "no gap.",
+            "met", exchanges + deals))
+    return figures
+
+
+def report_doc(figures, digests, rollup):
+    """The report Result: one claim per figure, the figure's text shown as its summary."""
+    claims, buckets = [], {"met": [], "not_met": [], "not_evaluable": []}
+    for f in figures:
+        refs = [{"digest_alg": "SHA-256", "digest": digests[r]} for r in f["evidence"]]
+        status = {"met": "SATISFIED", "not_met": "CONTRADICTED", "not_evaluable": "INSUFFICIENT"}[f["verdict"]]
+        claims.append({"id": f["id"], "contract_ref": CONTRACT, "requirement_ref": f["id"], "tier": "recomputed",
+                       "grade": "self-attested", "verdict": f["verdict"], "evidence": refs, "proofs": [],
+                       "sufficiency": "SATISFIED" if f["verdict"] != "not_evaluable" else "INSUFFICIENT",
+                       "presentation": {"kind": "analysis", "status": status, "summary": f["text"]}})
+        buckets[f["verdict"]].append(f["id"])
+    doc = {"result_version": "evidence-result-v0", "generated_at": finding.now(), "claims": claims,
+           "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
+                                      "unknown_count": 0}, "buckets": buckets},
+           "x-report": {"figures": figures}}
+    if (rollup or {}).get("x-window"):
+        doc["x-window"] = rollup["x-window"]
+    return doc
+
+
+# --- The reporting book -------------------------------------------------------------------
+class Reporter:
+    """A book profile driven through the pinned capsulectl: a scratch one, or a node's own join book."""
+
+    def __init__(self, home, capsulectl, profile):
+        self.home, self.capsulectl, self.profile = Path(home), Path(capsulectl), profile
+        self.work = self.home
+
+    @classmethod
+    def scratch(cls, home, capsulectl, keys):
+        book = cls(home, capsulectl, "reporter")
+        book.home.mkdir(parents=True, exist_ok=True)
+        for k in ("reporter", "checkpoint"):
+            f = book.home / f"{k}.seed"
+            f.write_text(judge10.seed_hex(keys / f"{k}.pem"))
+            f.chmod(0o600)
+        book.cap("profile", "create", "--name", "reporter", "--type", "jsonl", "--jsonl-path", str(book.home / "store"),
+                 "--log-id", "reporter", "--operator", "loop-reporter",
+                 "--trusted-key", judge10.pub_hex(keys / "reporter.pub.pem"),
+                 "--signing-key-file", str(book.home / "reporter.seed"),
+                 "--checkpoint-signing-key-file", str(book.home / "checkpoint.seed"),
+                 "--checkpoint-trusted-key", judge10.pub_hex(keys / "checkpoint.pub.pem"))
+        book.cap("store", "init", "--profile", "reporter")
+        return book
+
+    def run(self, *args):
+        env = dict(os.environ, XDG_CONFIG_HOME=str(self.home / "config"),
+                   CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(self.capsulectl.parent)))
+        return subprocess.run([str(self.capsulectl), *args], env=env, capture_output=True, text=True, timeout=300)
+
+    def cap(self, *args):
+        r = self.run(*args)
+        if r.returncode != 0:
+            raise RuntimeError(f"capsulectl {' '.join(args[:3])}: {(r.stderr.strip() or r.stdout)[:400]}")
+        lines = r.stdout.strip().splitlines()
+        return json.loads(lines[-1]) if lines else {}
+
+    def publish(self, step, path, sha):
+        """A capsule for one cited record; its payload is the record's {step, path, sha256}."""
+        req = {"spec_version": "capsule-seal-request/v1",
+               "capsule": {"ActionID": f"loop-report-record:{step}/{path}", "ActionType": "fyi",
+                           "Operator": self.profile, "Developer": "evidence-network/loop", "Timestamp": finding.now()},
+               "payload": {"step": step, "path": path, "sha256": sha}, "agent_output": {"ok": True}}
+        f = self.work / "request.json"
+        dump(f, req)
+        return self.cap("publish", "--profile", self.profile, "--request", str(f))["capsule_id"]
+
+    def seal_result(self, doc, out):
+        f = self.work / "report.input.json"
+        dump(f, doc)
+        rid = self.cap("book", "result", "build", "--profile", self.profile, "--result", str(f),
+                       "--out", str(self.work / "report.result.json"))["record_id"]
+        self.disclose(rid, out)
+        return rid
+
+    def disclose(self, rid, path):
+        self.cap("book", "disclose", "--profile", self.profile, "--root", rid, "--payloads", "selected", "--out", str(path))
+
+    def seal_page(self, bundle, page):
+        """The pinned builder: it renders the page from the bundle and seals the page's digest in this book."""
+        return self.cap("book", "report", "build", "--profile", self.profile, "--bundle", str(bundle), "--card", "outcome",
+                        "--out", str(page), "--seal")
+
+    def check_page(self, page):
+        """`book report check` as JSON, whatever it exits with: a mismatch is an answer, not a broken tool."""
+        r = self.run("book", "report", "check", "--profile", self.profile, "--page", str(page))
+        try:
+            return json.loads(r.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return {"page": "no answer", "error": (r.stderr.strip() or r.stdout)[:300]}
+
+
+# --- The checks, on the page's bytes ------------------------------------------------------
+def page_bundle(page):
+    """The Evidence Bundle the page embeds."""
+    m = BUNDLE_SCRIPT.search(Path(page).read_text(encoding="utf-8"))
+    if not m:
+        raise ValueError("the page embeds no Evidence Bundle")
+    return json.loads(m.group(1))
+
+
+def page_statement(page):
+    b = page_bundle(page)
+    return b["disclosures"][b["root"]]["agent_input"]["statement"]
+
+
+def check_seal(page, answer, seal_bundle, verdict, key):
+    """`book report check` says match, and the disclosed seal record, under the book's key, holds the page's sha256."""
+    problems = []
+    digest = f"sha256:{finding.sha256(page)}"
+    if answer.get("page") != "match":
+        problems.append(f"the page's bytes do not match the sealed digest: book report check says "
+                        f"{answer.get('page')}, the page is {digest[:19]}")
+    b = load(seal_bundle)
+    record = (b.get("disclosures", {}).get(b.get("root")) or {}).get("agent_input") or {}
+    sealed = (record.get("statement") or {}).get("page_digest")
+    if record.get("record_type") != "report_page_seal" or sealed != digest:
+        problems.append(f"the disclosed seal record holds {str(sealed)[:19]}, the page is {digest[:19]}")
+    if verdict.get("verdict") != "VALID":
+        problems.append(f"the seal record's bundle does not verify: {verdict.get('verdict') or 'no verdict'}")
+    if b.get("extensions", {}).get("producer-key/v1", {}).get("public_key") != key:
+        problems.append("the seal record is not under the reporting book's key")
+    return problems
+
+
+def bad_number(text):
+    """Why a figure's text has a number with no denominator, or None."""
+    for k, n in FRACTION.findall(text):
+        if int(k) > int(n):
+            return f"{k} of {n}"
+    rest = IDENTIFIER.sub("", FRACTION.sub("", text))
+    m = re.search(r"\d+", rest)
+    return m.group(0) if m else None
+
+
+def check_denominators(statement):
+    """Every number the page's figures show is "k of n", with k <= n."""
+    problems = []
+    for c in statement.get("claims", []):
+        bad = bad_number(c["presentation"].get("summary", ""))
+        if bad:
+            problems.append(f"{c['id']}: {bad!r} has no denominator: {c['presentation'].get('summary')}")
+    return problems
+
+
+def score_like(x, where=""):
+    """Each score-like key or word in a JSON value, by where it is."""
+    out = []
+    if isinstance(x, dict):
+        for k, v in x.items():
+            if SCORE_KEY.search(str(k)):
+                out.append(f"{where}/{k}")
+            out += score_like(v, f"{where}/{k}")
+    elif isinstance(x, list):
+        for i, v in enumerate(x):
+            out += score_like(v, f"{where}/{i}")
+    elif isinstance(x, str) and SCORE_WORD.search(x):
+        out.append(f"{where}: {x[:80]}")
+    return out
+
+
+def check_no_score(page, figures):
+    """No score-like field or word in the page's bundle, its HTML outside scripts, or the figures it renders from."""
+    hits = score_like(page_bundle(page), "page") + score_like(figures, "figures")
+    html = SCRIPT.sub("", Path(page).read_text(encoding="utf-8"))
+    hits += [f"page html: {m.group(0)}" for m in SCORE_WORD.finditer(html)]
+    return [f"a score-like field: {h}" for h in hits]
+
+
+# --- The run ------------------------------------------------------------------------------
+def run_inputs(run, out, population, population_dir):
+    """(10's dir, the dir holding 08's manifest, is it the stand-in), running 10 on the stand-in where it applies."""
+    judged = run / "10-judge"
+    standin = population_dir / "step10" / "run"
+    if not (judged / "finding.json").is_file():
+        if population == "rehearsal" and not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir():
+            shutil.rmtree(out / "standin", ignore_errors=True)
+            judge10.main(["--population", str(population_dir), "--out", str(out / "standin" / "10-judge")])
+            return out / "standin" / "10-judge", standin, True
+        raise NotChecked("the report page, over step 08's manifest and step 10's Results",
+                         f"{run.name} holds no 10-judge/ output to render from" +
+                         (" and the live population lists no judge key and no stand-in; this step never fetches "
+                          "records through a peer" if population == "live" else ""))
+    if not (judged / "window.json").is_file():
+        return judged, run, False
+    is_standin = load(judged / "window.json").get("source") == "stand-in"
+    return judged, (standin if is_standin else run), is_standin
+
+
+def reporting_book(population, pop, keys, tmp, capsulectl):
+    """(Reporter, its key) for this population, or raise NotChecked."""
+    if population != "live":
+        if not (keys / "reporter.pem").is_file():
+            raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)")
+        return Reporter.scratch(Path(tmp) / "book", capsulectl, keys), judge10.pub_hex(keys / "reporter.pub.pem")
+    node = pop["nodes"][0]
+    data_dir = live.readable(node, "data_dir", "keys/node-key.pub.pem")
+    if data_dir is None:
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "data_dir not set or unreadable")
+    book_dir = live.readable(node, "book_dir", "config")
+    if book_dir is None:
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable")
+    book = Reporter(book_dir, capsulectl, node["name"])
+    book.work = Path(tmp)
+    return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
+
+
+def report(run, out, population, pop, population_dir, proof, tmp):
+    """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
+    judged, source, is_standin = run_inputs(run, out, population, population_dir)
+    read_judge(judged)
+    try:
+        manifest, _ = judge10.read_manifest(source)
+    except judge10.NotChecked as e:
+        raise NotChecked(*e.args)
+    except ValueError as e:
+        raise Refused(str(e))
+    if manifest.get("population") != population:
+        raise Refused(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
+    judge_pub = population_dir / "step10" / "keys" / "judge.pub.pem"
+    if not judge_pub.is_file():
+        raise NotChecked("step 10's Results, under the judge key", f"the {population} population lists no judge key")
+    capsulectl, plugin = judge10.tools()
+    if not (capsulectl.is_file() and plugin.is_file()):
+        raise NotChecked("the report page, built and sealed", f"capsulectl and capsulectl-book are not installed "
+                         f"({capsulectl.parent}); steps/11-report.setup.sh installs them")
+    finer, rollup, cited, problems = read_results(judged, manifest, capsulectl, judge10.pub_hex(judge_pub), tmp)
+    if problems:
+        raise Refused("; ".join(problems))
+    figures = render_figures(manifest, finer, rollup, cited, load(judge10.PACK))
+    book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl)
+    digests = {}
+    for ref, sha in sorted(cited.items()):
+        step, path = ref.split("/", 1)
+        digests[ref] = book.publish(step, path, sha)
+    rollup_ref = "10-judge/bundles/rollup.bundle.json"
+    digests[rollup_ref] = book.publish("10-judge", "bundles/rollup.bundle.json", finding.sha256(judged / "bundles" / "rollup.bundle.json"))
+    for f in figures:  # a Result's claim cites at least one record; a figure with none rests on the roll-up
+        f["evidence"] = f["evidence"] or [rollup_ref]
+    page, bundle, seal = out / "report.html", out / "result.bundle.json", out / "seal.bundle.json"
+    book.seal_result(report_doc(figures, digests, rollup), bundle)
+    built = book.seal_page(bundle, page)
+    page.chmod(0o644)
+    book.disclose(built["page_seal"]["record_id"], seal)
+    answer = book.check_page(page)
+    verdict = judge10.verify_bundle(capsulectl, seal, tmp)
+    dump(out / "report.json", {"source": "stand-in" if is_standin else "run", "figures": figures,
+                               "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
+                               "rollup_sha256": finding.sha256(judged / "bundles" / "rollup.bundle.json")})
+    dump(out / "check.json", {"build": {k: built.get(k) for k in ("bundle_digest", "root", "page_seal", "verdict")},
+                              "check": answer, "seal_verdict": verdict.get("verdict")})
+    proof += ["report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"]
+    if is_standin:
+        proof += [f"standin/10-judge/{p.relative_to(judged)}" for p in sorted(judged.rglob("*")) if p.is_file()]
+    problems = check_seal(page, answer, seal, verdict, key)
+    statement = page_statement(page)
+    problems += check_denominators(statement)
+    problems += check_no_score(page, figures)
+    return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    out = a.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    for p in ("finding.json", "report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"):
+        (out / p).unlink(missing_ok=True)
+    population_dir = a.population.resolve()
+    pop = load(population_dir / "population.json")
+    population = pop["population"]
+    problems, not_checked, lines, proof, pinned, is_standin = [], [], [], [], [], False
+    try:
+        with tempfile.TemporaryDirectory(prefix="11-report-") as tmp:
+            problems, lines, is_standin = report(out.parent, out, population, pop, population_dir, proof, tmp)
+        pinned = PINNED
+    except NotChecked as e:
+        what, why = e.args
+        not_checked.append({"what": what, "why": why, "issue": ISSUE})
+    except Refused as e:
+        problems = [f"refused, nothing rendered: {e}"]
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError, subprocess.SubprocessError) as e:
+        problems = [f"the report did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
+    result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
+    what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this run's "
+            f"records" if is_standin else f"run {out.parent.name}")
+    detail = f"{what}: "
+    detail += (" ".join(lines) + " " if lines else "no page rendered. " if result != "PASS" else "")
+    detail += f"Did not hold: {'; '.join(problems)}. " if problems else ""
+    if result == "PASS":
+        detail += ("The page is the pinned builder's, its digest sealed in the reporting book by book report build "
+                   "--seal and matched by book report check; the builder's viewer script is pinned code and was not "
+                   "scanned for score-like words. ")
+        detail += (LIVE_LABEL + " " if population == "live" else "")
+        detail += finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
+                                  "evidencebook-skills pack", PACK_ISSUE) + " "
+        detail += finding.outside("the page's text naming its two questions (did the evidence verify, is this the "
+                                  "page the publisher issued)", VIEWER_ISSUE) + " "
+        detail += finding.outside("a check that both sides' deals agree: only the payer seals a deal for now",
+                                  PROVIDER_DEAL_ISSUE)
+    proof = [p for p in proof if (out / p).is_file()]
+    finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
+                  detail=detail.strip(), not_checked=[] if result == "PASS" else not_checked, started=started)
+    print(f"11-report: {result}: {detail.strip()}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

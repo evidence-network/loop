@@ -1,0 +1,498 @@
+"""steps/11-report: a page from 08's manifest and 10's Results, every number with a denominator, its digest sealed.
+
+The base run is a copy of population/rehearsal/step10/run with step 10 run over it. The StandIn tests give 11 an
+empty run, so it reports on the committed stand-in. Sealing and verifying need the pinned capsulectl and
+capsulectl-book (steps/11-report.setup.sh); without them those tests SKIP, saying so, and LOOP_REQUIRE_TOOLS=1 makes
+that an error. Each planted failure has a mutant check: with that check switched off, the plant goes through.
+"""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parent.parent
+STEPS = ROOT / "steps"
+POPULATION = ROOT / "population" / "rehearsal"
+BASE = POPULATION / "step10" / "run"
+FIXTURES = ROOT / "tests" / "fixtures" / "step11"
+
+sys.path.insert(0, str(STEPS))
+sys.path.insert(0, str(ROOT / "status"))
+import finding  # noqa: E402
+
+_loader = importlib.machinery.SourceFileLoader("step11_report", str(STEPS / "11-report"))
+_spec = importlib.util.spec_from_loader("step11_report", _loader)
+step = importlib.util.module_from_spec(_spec)
+_loader.exec_module(step)
+
+HAS_TOOLS = all(p.is_file() for p in step.judge10.tools())
+NO_TOOLS = "SKIPPED LOUDLY: capsulectl and capsulectl-book are not installed; run steps/11-report.setup.sh"
+if not HAS_TOOLS:
+    if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":
+        raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_TOOLS}")
+    print(f"\ntest_step11_report: {NO_TOOLS}", file=sys.stderr)
+
+
+def load(path):
+    return json.loads(Path(path).read_text())
+
+
+def dump(path, obj):
+    Path(path).write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-step11-")
+        self.run = Path(self.tmp.name) / "run"
+        shutil.copytree(BASE, self.run)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def judge(self, population=POPULATION):
+        step.judge10.main(["--population", str(population), "--out", str(self.run / "10-judge")])
+
+    def report(self, population=POPULATION):
+        out = self.run / "11-report"
+        step.main(["--population", str(population), "--out", str(out)])
+        f = load(out / "finding.json")
+        self.assertEqual(finding.check_record(out, f), [], f["detail"])
+        return f
+
+    def statement(self):
+        return step.page_statement(self.run / "11-report" / "report.html")
+
+    def summaries(self):
+        return {c["id"]: c["presentation"]["summary"] for c in self.statement()["claims"]}
+
+    def change_record_digest(self, reseal):
+        """Change one record's sha256 in 08's manifest, after 10 sealed its Results; optionally reseal 08's proof."""
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        entry = next(e for e in m["steps"] if e["dir"] == "06-settle")
+        next(x for x in entry["files"] if x["path"] == "ledger.jsonl")["sha256"] = "0" * 64
+        dump(v / "verified.json", m)
+        if reseal:
+            f = load(v / "finding.json")
+            f["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+            dump(v / "finding.json", f)
+
+
+class InputsTest(Base):
+    """What 11 refuses before it renders; none of this needs capsulectl."""
+
+    def test_a_run_with_08_but_no_10_is_not_checked(self):
+        f = self.report()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("holds no 10-judge/", f["not_checked"][0]["why"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_a_live_run_with_no_inputs_is_not_checked_and_never_uses_a_stand_in(self):
+        shutil.rmtree(self.run / "08-verify")
+        population = ROOT / "population" / "live"
+        with mock.patch.object(step.judge10, "main") as ran_10:
+            f = self.report(population)
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual(f["population"], "live")
+        self.assertIn("never fetches records through a peer", f["not_checked"][0]["why"])
+        ran_10.assert_not_called()
+
+    def plant_10(self, result, **fields):
+        d = self.run / "10-judge"
+        d.mkdir()
+        dump(d / "finding.json", {"step": "10", "name": "judge", "result": result, "population": "rehearsal",
+                                  "asserts": "a stand-in", "pinned": {}, "proof": [], "detail": "a stand-in",
+                                  "not_checked": [], "started": "2026-10-02T09:00:00Z",
+                                  "finished": "2026-10-02T09:01:00Z", **fields})
+
+    def test_a_not_checked_10_is_not_checked_and_renders_nothing(self):
+        self.plant_10("NOT_CHECKED", not_checked=[{"what": "the pack", "why": "all in the open month", "issue": "o/r#1"}])
+        f = self.report()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("all in the open month", f["not_checked"][0]["why"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_a_failed_10_is_refused(self):
+        self.plant_10("FAIL")
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("refused, nothing rendered: step 10's finding is FAIL", f["detail"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_a_10_finding_that_does_not_hold_is_refused(self):
+        self.plant_10("PASS", proof=[{"path": "gone.json", "sha256": "0" * 64}])
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("step 10's finding does not hold", f["detail"])
+
+    def test_a_score_like_word_is_found_and_a_longer_word_is_not(self):
+        self.assertEqual(step.score_like({"a": {"trust_score": 1}}), ["/a/trust_score"])
+        self.assertEqual(step.score_like({"rank": 1, "b": [{"rating": 2}]}), ["/rank", "/b/0/rating"])
+        self.assertEqual(len(step.score_like({"a": ["their rank is 2"]})), 1)
+        self.assertEqual(step.score_like({"a": "generating a frank corroborating note"}), [])
+
+    def test_a_number_needs_its_denominator(self):
+        self.assertIsNone(step.bad_number("term-2: met in 1 of 1, from step 08 and 05-deal."))
+        self.assertEqual(step.bad_number("3 paid exchanges"), "3")
+        self.assertEqual(step.bad_number("5 of 3 records"), "5 of 3")
+
+
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+class ReportTest(Base):
+    @classmethod
+    def setUpClass(cls):
+        # 10's run is shared: each test copies its bundles in, since sealing them takes seconds per test.
+        cls.judged = tempfile.TemporaryDirectory(prefix="test-step11-judged-")
+        run = Path(cls.judged.name) / "run"
+        shutil.copytree(BASE, run)
+        step.judge10.main(["--population", str(POPULATION), "--out", str(run / "10-judge")])
+        cls.judged_dir = run / "10-judge"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.judged.cleanup()
+
+    def setUp(self):
+        super().setUp()
+        shutil.copytree(self.judged_dir, self.run / "10-judge")
+
+    def test_passes_offline_with_a_figure_for_each_part_of_the_page(self):
+        def no_network(*a, **k):
+            raise OSError("network disabled by the test")
+        with mock.patch.object(socket, "socket", side_effect=no_network), \
+                mock.patch.object(socket, "create_connection", side_effect=no_network), \
+                mock.patch.object(socket, "getaddrinfo", side_effect=no_network):
+            f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual(f["not_checked"], [])
+        self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
+        self.assertEqual([i for _, i in finding.gaps(f["detail"])],
+                         [step.PACK_ISSUE, step.VIEWER_ISSUE, step.PROVIDER_DEAL_ISSUE])
+        self.assertNotIn("stand-in", f["detail"])
+        s = self.summaries()
+        self.assertIn("Deals judged: 4 of 4 deal records", s["count:deal"])
+        self.assertIn("Settlements judged: 3 of 3", s["count:settlement"])
+        self.assertIn("Asks judged: 3 of 3", s["count:ask"])
+        self.assertIn("Disputes counted as found: 3 of 3", s["count:dispute"])
+        self.assertIn("term-2 (served as agreed): met in 1 of 1", s["term:term-2"])
+        self.assertIn("not evaluable in 1 of 1", s["term:term-3"])
+        self.assertIn("provider states", s["term:term-3"])
+        self.assertIn("The roll-up cites 4 of 4 finer Results", s["decisions:rollup"])
+        self.assertIn("Paid exchanges, each counted from the payer's sealed deal: 1 of 1 exchanges", s["exchanges:deals"])
+
+    def test_each_figure_cites_its_records_by_digest(self):
+        self.report()
+        b = step.page_bundle(self.run / "11-report" / "report.html")
+        statement = b["disclosures"][b["root"]]["agent_input"]["statement"]
+        deal = next(c for c in statement["claims"] if c["id"] == "count:deal")
+        cited = [b["disclosures"][e["digest"]]["agent_input"] for e in deal["evidence"]]
+        manifest = next(e for e in load(self.run / "08-verify" / "verified.json")["steps"] if e["dir"] == "05-deal")
+        self.assertEqual({(c["path"], c["sha256"]) for c in cited}, {(x["path"], x["sha256"]) for x in manifest["files"]})
+        rollup = next(c for c in statement["claims"] if c["id"] == "decisions:rollup")
+        payload = b["disclosures"][rollup["evidence"][0]["digest"]]["agent_input"]
+        self.assertEqual(payload["sha256"], finding.sha256(self.run / "10-judge" / "bundles" / "rollup.bundle.json"))
+
+    def test_the_seal_is_checkable_from_its_bundle(self):
+        self.report()
+        out = self.run / "11-report"
+        seal = load(out / "seal.bundle.json")
+        record = seal["disclosures"][seal["root"]]["agent_input"]
+        self.assertEqual(record["record_type"], "report_page_seal")
+        self.assertEqual(record["statement"]["page_digest"], "sha256:" + finding.sha256(out / "report.html"))
+        self.assertEqual(load(out / "check.json")["check"]["page"], "match")
+
+    def test_a_free_exchange_stays_in_the_denominator_and_is_no_gap(self):
+        d = self.run / "06-settle" / "free"
+        d.mkdir()
+        (d / "exchange.json").write_text('{"exchange": "fixture-free-1"}\n')
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        next(e for e in m["steps"] if e["dir"] == "06-settle")["files"].append(
+            {"path": "free/exchange.json", "sha256": finding.sha256(d / "exchange.json")})
+        dump(v / "verified.json", m)
+        f = load(v / "finding.json")
+        f["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", f)
+        self.judge()
+        self.assertEqual(self.report()["result"], "PASS")
+        text = self.summaries()["exchanges:deals"]
+        self.assertIn("1 of 2 exchanges", text)
+        self.assertIn("no gap", text)
+        for word in ("missing", "absent", "lacks"):
+            self.assertNotIn(word, json.dumps(self.statement()))
+
+    def test_only_the_payers_deal_is_needed_and_no_provider_deal_is_expected(self):
+        # The stand-in holds one deal.json and no provider-side deal: that is the whole record, not a gap.
+        names = [x["path"] for e in load(self.run / "08-verify" / "verified.json")["steps"] for x in e["files"]
+                 if Path(x["path"]).name == "deal.json"]
+        self.assertEqual(names, ["deal.json"])
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        statement = json.dumps(self.statement())
+        for word in ("provider's deal", "provider-side", "both sides", "both copies", "missing"):
+            self.assertNotIn(word, statement)
+        self.assertIn(("a check that both sides' deals agree: only the payer seals a deal for now",
+                       step.PROVIDER_DEAL_ISSUE), finding.gaps(f["detail"]))
+
+    def test_a_step_outside_the_window_stays_in_the_denominator(self):
+        d = self.run / "07-ask" / "finding.json"
+        dump(d, {**load(d), "finished": "2026-10-01T00:00:00Z"})
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        next(e for e in m["steps"] if e["dir"] == "07-ask")["files"][0]["sha256"] = finding.sha256(d)
+        dump(v / "verified.json", m)
+        f = load(v / "finding.json")
+        f["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", f)
+        self.judge()
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertIn("Asks judged: 0 of 3 ask records", self.summaries()["count:ask"])
+        self.assertIn("from 0 of 1 ask steps", self.summaries()["count:ask"])
+
+    def test_a_10_bundle_altered_after_sealing_is_refused(self):
+        j = self.run / "10-judge"
+        p = j / "bundles" / "06-settle.bundle.json"
+        b = load(p)
+        b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"][0]["verdict"] = "not_met"
+        dump(p, b)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("step 10's finding does not hold", f["detail"])
+        # With 10's proof digest resealed too, the bundle's own verdict refuses it.
+        record = load(j / "finding.json")
+        for x in record["proof"]:
+            x["sha256"] = finding.sha256(j / x["path"])
+        dump(j / "finding.json", record)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("06-settle.bundle.json does not verify", f["detail"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    # --- Planted failures, each with its mutant ---------------------------------------------------
+    def page_changed_after_sealing(self):
+        real = step.Reporter.seal_page
+
+        def tamper(book, bundle, page):
+            built = real(book, bundle, page)
+            data = Path(page).read_bytes()
+            Path(page).write_bytes(data.replace(b"</title>", b" </title>", 1))
+            return built
+        return mock.patch.object(step.Reporter, "seal_page", tamper)
+
+    def test_planted_a_page_whose_bytes_differ_from_the_sealed_digest_fails(self):
+        with self.page_changed_after_sealing():
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("do not match the sealed digest: book report check says mismatch", f["detail"])
+        self.assertIn("the disclosed seal record holds", f["detail"])
+
+    def test_mutant_without_the_seal_check_the_changed_page_passes(self):
+        with self.page_changed_after_sealing(), mock.patch.object(step, "check_seal", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+    def test_planted_a_manifest_with_one_sha256_changed_is_refused(self):
+        self.change_record_digest(reseal=True)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("refused, nothing rendered: 06-settle/ledger.jsonl is cited with sha256", f["detail"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_planted_a_manifest_changed_without_its_proof_is_refused(self):
+        self.change_record_digest(reseal=False)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("does not match its sha256", f["detail"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_mutant_without_the_records_check_the_changed_manifest_passes(self):
+        self.change_record_digest(reseal=True)
+        with mock.patch.object(step, "check_records", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+    def with_figure(self, **fields):
+        real = step.render_figures
+
+        def plant(*a, **k):
+            figures = real(*a, **k)
+            figures.append({**step.figure("plant:one", "outcomes", "A planted figure.", "met", []), **fields})
+            return figures
+        return mock.patch.object(step, "render_figures", side_effect=plant)
+
+    def test_planted_a_number_with_no_denominator_fails(self):
+        with self.with_figure(text="3 paid exchanges"):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("plant:one: '3' has no denominator", f["detail"])
+
+    def test_mutant_without_the_denominator_check_the_bare_number_passes(self):
+        with self.with_figure(text="3 paid exchanges"), mock.patch.object(step, "check_denominators", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+    def test_planted_a_score_field_fails(self):
+        with self.with_figure(score=9):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a score-like field: page/", f["detail"])
+        self.assertIn("/score", f["detail"])
+
+    def test_planted_a_score_word_in_a_figure_fails(self):
+        with self.with_figure(text="The node's rating is high."):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a score-like field", f["detail"])
+
+    def test_mutant_without_the_score_check_the_score_field_passes(self):
+        with self.with_figure(score=9), mock.patch.object(step, "check_no_score", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+class StandInTest(unittest.TestCase):
+    """The gate exactly: the repository's population, an empty run."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-step11-standin-")
+        self.run = Path(self.tmp.name) / "run"
+        self.run.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def report(self):
+        out = self.run / "11-report"
+        step.main(["--population", str(POPULATION), "--out", str(out)])
+        self.assertEqual(finding.check(self.run), [])
+        return load(out / "finding.json")
+
+    def test_rehearsal_passes_on_the_committed_stand_in_and_says_so(self):
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("the committed stand-in run population/rehearsal/step10/run (dated in a closed month), not this "
+                      "run's records", f["detail"])
+        out = self.run / "11-report"
+        self.assertEqual(load(out / "report.json")["source"], "stand-in")
+        self.assertTrue((out / "standin" / "10-judge" / "bundles" / "rollup.bundle.json").is_file())
+        self.assertFalse((self.run / "10-judge").exists())
+
+    def test_a_second_run_replaces_the_first(self):
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertEqual(self.report()["result"], "PASS")
+
+    def test_status_page_row_11_reads_the_pass(self):
+        run = Path(self.tmp.name) / "findings" / "2026-10-30-rehearsal"
+        run.mkdir(parents=True)
+        step.main(["--population", str(POPULATION), "--out", str(run / "11-report")])
+        dump(run / "run.json", {"stage": "1", "population": "rehearsal", "started": "2026-10-30T00:00:00Z"})
+        import status_page
+        site = Path(self.tmp.name) / "site"
+        rs = status_page.build(run.parent, ROOT / "versions.lock", site)
+        cell = next(r for r in rs if r.step.n == 11).cells["rehearsal"]
+        self.assertEqual(cell.label, "PASS", cell.reason if hasattr(cell, "reason") else "")
+        self.assertTrue(any(path == "report.html" for path, _ in cell.proofs))
+
+
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+class LiveFixtureTest(unittest.TestCase):
+    """Fixtures only: a live population whose one lab node has a book made the way join.sh makes it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-step11-live-")
+        root = Path(self.tmp.name)
+        self.lab = root / "lab"
+        self.population = root / "live"
+        self.population.mkdir()
+        shutil.copy(FIXTURES / "live-population.json", self.population / "population.json")
+        shutil.copytree(POPULATION / "step10" / "keys", self.population / "step10" / "keys")
+        patch = mock.patch.dict(os.environ, {"LOOP_TEST_LAB": str(self.lab)})
+        patch.start()
+        self.addCleanup(patch.stop)
+        keys = POPULATION / "keys" / "alice"
+        data = self.lab / "lab-a" / "data" / "keys"
+        data.mkdir(parents=True)
+        shutil.copy(keys / "node-key.pub.pem", data / "node-key.pub.pem")
+        self.home = self.lab / "lab-a" / "join-book"
+        self.home.mkdir(parents=True)
+        self.make_book(keys)
+        self.run = root / "run"
+        shutil.copytree(BASE, self.run)
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        m["population"] = "live"
+        dump(v / "verified.json", m)
+        f = load(v / "finding.json")
+        f["population"] = "live"
+        f["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", f)
+        step.judge10.main(["--population", str(self.population), "--out", str(self.run / "10-judge")])
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def make_book(self, keys):
+        capsulectl = step.judge10.tools()[0]
+        env = dict(os.environ, XDG_CONFIG_HOME=str(self.home / "config"),
+                   CAPSULECTL_PLUGIN_ROOTS=str(capsulectl.parent))
+        (self.home / "config").mkdir()
+
+        def cap(*args):
+            r = subprocess.run([str(capsulectl), *args], env=env, capture_output=True, text=True, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return r.stdout
+        (self.home / "node.seed").write_text(step.judge10.seed_hex(keys / "node-key.pem"))
+        (self.home / "node.seed").chmod(0o600)
+        cap("key", "generate", "--output", str(self.home / "checkpoint.seed"))
+        checkpoint = json.loads(cap("key", "show-public", str(self.home / "checkpoint.seed")))["public_key"]
+        cap("profile", "create", "--name", "lab-a", "--type", "jsonl", "--jsonl-path", str(self.home / "book"),
+            "--log-id", "lab-a-book", "--operator", "lab-a",
+            "--trusted-key", step.judge10.pub_hex(keys / "node-key.pub.pem"),
+            "--signing-key-file", str(self.home / "node.seed"),
+            "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),
+            "--checkpoint-trusted-key", checkpoint)
+        cap("store", "init", "--profile", "lab-a")
+
+    def report(self):
+        out = self.run / "11-report"
+        step.main(["--population", str(self.population), "--out", str(out)])
+        f = load(out / "finding.json")
+        self.assertEqual(finding.check_record(out, f), [], f["detail"])
+        return f
+
+    def test_live_passes_on_the_lab_nodes_own_records_and_labels_them(self):
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual(f["population"], "live")
+        self.assertIn("operator-collected from the lab's own nodes", f["detail"])
+        self.assertIn("this proves the report, not how an operator gets bundles from peers", f["detail"])
+        self.assertNotIn("stand-in", f["detail"])
+        # The seal is in the node's own book, under its own key.
+        seal = load(self.run / "11-report" / "seal.bundle.json")
+        self.assertEqual(seal["extensions"]["producer-key/v1"]["public_key"],
+                         step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
+        self.assertIn("report_page_seal", seal["disclosures"][seal["root"]]["agent_input"]["record_type"])
+
+    def test_a_seal_under_another_key_fails(self):
+        (self.lab / "lab-a" / "data" / "keys" / "node-key.pub.pem").write_bytes(
+            (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("not under the reporting book's key", f["detail"])
+
+    def test_a_node_with_no_readable_book_is_not_checked(self):
+        shutil.rmtree(self.home)
+        f = self.report()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("book_dir not set or unreadable", f["not_checked"][0]["why"])
+
+
+if __name__ == "__main__":
+    unittest.main()
