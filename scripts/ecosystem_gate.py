@@ -18,8 +18,10 @@ added since changes no recorded result, so it is not a bump; a changed or remove
 `check` compares the base branch's baseline with the pull request's: a pin set that moved
 must come with a findings directory that moved too, and a step that was
 PASS and is now FAIL, malformed or missing fails, and so does PASS -> NOT_CHECKED while the old
-baseline's `not_checked_is_regression` is true (default true, until Steven rules; the old file's
-setting decides, so a pull request cannot turn it off for itself). Progress passes.
+baseline's `not_checked_is_regression` is true. Steven ruled that PASS -> NOT_CHECKED counts as going
+red (buzz://message?channel=054513b2-0a66-4c1e-885e-2af75c56233c&id=d07765e74e23b2b946a35d96316ce12951118fa1825d1d111d824d737dee0da2); the switch stays, default true, and the old file's setting decides, so a pull request
+cannot turn it off for itself. A step with no live finding (step 08 today) has no baseline entry and
+gates nothing. Progress passes.
 Standard library only. Exit 0 = clean, 1 = refused, 2 = usage.
 """
 import argparse
