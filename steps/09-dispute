@@ -66,9 +66,9 @@ never written. Each Result a node holds is checked as above, with the
 announced keys being the population's nodes' own public keys; a check that
 needs a node whose data dir is not readable (the referee's, or a half's
 signer) is not run. When no lab node holds a Result, the finding is
-NOT_CHECKED (the plugin seals one in its two-node e2e, #102, but the live twin trigger
-on real traffic is Mesh-LLM/capsules-plugin#126 and the lab has not run one): this step never seals a record on
-a live node to make one.
+NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
+but the live twin trigger on real traffic is Mesh-LLM/capsules-plugin#126 and the
+lab has not run one): this step never seals a record on a live node to make one.
 
 No spend: this step pays nothing on either population, with or without
 LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;
@@ -577,7 +577,7 @@ def decide(out, *, population, started):
                                 "records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not "
                                 "a node's own output", ISSUE_49) + " "
               + finding.outside("the referee, its announced key and its delivery, which are rehearsal stand-ins "
-                                "until the lab nodes run an adjudication (the plugin's two-node e2e seals one, #102; the live trigger is open)", ISSUE_LIVE_TWINS))
+                                "until the lab nodes run an adjudication (the plugin's two-node e2e seals one, Mesh-LLM/capsules-plugin#102; the live trigger is open)", ISSUE_LIVE_TWINS))
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                          detail=detail, started=started)
 
