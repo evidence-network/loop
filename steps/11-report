@@ -25,13 +25,18 @@ are the deal and settlement records 10's Results cite, for the exchanges figure:
                 nothing. Each figure cites its records by digest.
   page          the figures are sealed as one report Result, and the pinned
                 `capsulectl book report build --seal` renders it and seals the
-                page's sha256 in the reporting book.
+                page's sha256 in the reporting book. The finding commits
+                report.json and the page's sha256, not the page (--page leaves
+                a local copy); report.json names the pinned builder versions.
   checks        seal         `book report check` says match, and the disclosed
                              seal record holds the page's sha256;
                 denominators every number in a figure is "k of n", k <= n;
                 no score     no score, rank, rating or leaderboard field or word
                              in the page's data. The builder's viewer script is
                              pinned code and is not scanned.
+                rebuilds     two rebuilds of the page have the same bytes, and
+                             they are the sealed bytes;
+                no paid product  no enterprise or paid-product text in the page.
 
 The reporting book is, on rehearsal, a scratch book under the repository's TEST
 reporter key (population/<p>/step11/keys). On live it is the first node's join
@@ -44,6 +49,7 @@ never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
 The design is steps/11-report.md. Exit 0 once the finding is written.
 """
 import argparse
+import fnmatch
 import importlib.machinery
 import importlib.util
 import json
@@ -81,6 +87,7 @@ FRACTION = re.compile(r"\b(\d+) of (\d+)\b")
 IDENTIFIER = re.compile(r"\bstep \d{2}\b|\b\d{2}-[a-z][a-z-]*\b|\bterm-\d+\b")
 SCORE_WORD = re.compile(r"(?<![A-Za-z0-9+/=])(?:score|rank|rating|leaderboard)s?(?![A-Za-z0-9+/=])", re.I)
 SCORE_KEY = re.compile(r"score|rank|rating|leaderboard", re.I)
+PAID_WORD = re.compile(r"enterprise|premium|pricing|upgrade|subscri(?:be|ption)|contact sales|paid (?:plan|tier|product)", re.I)
 BUNDLE_SCRIPT = re.compile(r"<script[^>]*>\s*window\.__BUNDLE__ = (.*?);?\s*</script>", re.S)
 SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
 
@@ -209,7 +216,10 @@ def render_figures(manifest, finer, rollup, cited, pack, found):
     steps = [e for e in manifest["steps"] if e["status"] == "reproduced" and e["step"] in kinds]
     for nn, k in pack["kinds"].items():
         mine = [e for e in steps if e["step"] == nn]
-        refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])]
+        # The same definition 10 judges by: a record is a primary record file (pack.json `records`), so a count means
+        # deals, settlements, asks or disputes, not the bundles and proof files beside them.
+        refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])
+                if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
         hit = [r for r in refs if r in cited]
         counted = any(t.get("counted") for t in k["terms"])
         figures.append(figure(
@@ -333,6 +343,11 @@ class Reporter:
         return self.cap("book", "report", "build", "--profile", self.profile, "--bundle", str(bundle), "--card", "outcome",
                         "--out", str(page), "--seal")
 
+    def rebuild(self, bundle, page):
+        """The same page again from the same bundle, sealing nothing: the pinned builder is deterministic."""
+        return self.cap("book", "report", "build", "--profile", self.profile, "--bundle", str(bundle), "--card",
+                        "outcome", "--out", str(page))
+
     def check_page(self, page):
         """`book report check` as JSON, whatever it exits with: a mismatch is an answer, not a broken tool."""
         r = self.run("book", "report", "check", "--profile", self.profile, "--page", str(page))
@@ -354,6 +369,29 @@ def page_bundle(page):
 def page_statement(page):
     b = page_bundle(page)
     return b["disclosures"][b["root"]]["agent_input"]["statement"]
+
+
+def tool_versions(capsulectl, plugin):
+    """What the page was built by: each pinned binary's own `--version` line. The viewer is built into capsulectl-book."""
+    def version(binary):
+        r = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+        return r.stdout.strip().splitlines()[0] if r.returncode == 0 and r.stdout.strip() else "unknown"
+    return {"capsulectl": version(capsulectl), "capsulectl-book": version(plugin),
+            "viewer": "the capsule-viewer script built into capsulectl-book, at its version"}
+
+
+def check_rebuilds(pages, seal_bundle):
+    """Two rebuilds of the page from the Result's bundle have the same bytes, and those are the bytes the seal holds."""
+    digests = [f"sha256:{finding.sha256(p)}" for p in pages]
+    problems = []
+    if len(set(digests)) > 1:
+        problems.append(f"two rebuilds of the page from result.bundle.json differ: {' and '.join(d[:19] for d in digests)}")
+    b = load(seal_bundle)
+    record = (b.get("disclosures", {}).get(b.get("root")) or {}).get("agent_input") or {}
+    sealed = (record.get("statement") or {}).get("page_digest")
+    if digests[0] != sealed:
+        problems.append(f"the rebuilt page is {digests[0][:19]}, the seal holds {str(sealed)[:19]}")
+    return problems
 
 
 def check_seal(page, answer, seal_bundle, verdict, key):
@@ -419,6 +457,12 @@ def check_no_score(page, figures):
     return [f"a score-like field: {h}" for h in hits]
 
 
+def check_no_paid_product(page, figures):
+    """No enterprise or paid-product text in the page's bundle, its HTML outside scripts, or the figures it renders from."""
+    texts = json.dumps(page_bundle(page)) + json.dumps(figures) + SCRIPT.sub("", Path(page).read_text(encoding="utf-8"))
+    return [f"paid-product text: {m.group(0)!r}" for m in PAID_WORD.finditer(texts)][:5]
+
+
 # --- The run ------------------------------------------------------------------------------
 def run_inputs(run, out, population, population_dir):
     """(10's dir, the dir holding 08's manifest, is it the stand-in), running 10 on the stand-in where it applies."""
@@ -457,7 +501,7 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 
 
-def report(run, out, population, pop, population_dir, proof, tmp):
+def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
     judged, source, is_standin = run_inputs(run, out, population, population_dir)
     read_judge(judged)
@@ -490,25 +534,35 @@ def report(run, out, population, pop, population_dir, proof, tmp):
     digests[rollup_ref] = book.publish("10-judge", "bundles/rollup.bundle.json", finding.sha256(judged / "bundles" / "rollup.bundle.json"))
     for f in figures:  # a Result's claim cites at least one record; a figure with none rests on the roll-up
         f["evidence"] = f["evidence"] or [rollup_ref]
-    page, bundle, seal = out / "report.html", out / "result.bundle.json", out / "seal.bundle.json"
+    built_page, bundle, seal = Path(tmp) / "report.html", out / "result.bundle.json", out / "seal.bundle.json"
+    page_out = page
+    page = built_page
     book.seal_result(report_doc(figures, digests, rollup), bundle)
     built = book.seal_page(bundle, page)
     page.chmod(0o644)
     book.disclose(built["page_seal"]["record_id"], seal)
     answer = book.check_page(page)
     verdict = judge10.verify_bundle(capsulectl, seal, tmp)
+    rebuilt = [Path(tmp) / f"rebuild-{i}.html" for i in (1, 2)]
+    for r in rebuilt:
+        book.rebuild(bundle, r)
     dump(out / "report.json", {"source": "stand-in" if is_standin else "run", "figures": figures,
+                               "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
+                               "built_by": tool_versions(capsulectl, plugin),
                                "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
                                "rollup_sha256": finding.sha256(judged / "bundles" / "rollup.bundle.json")})
     dump(out / "check.json", {"build": {k: built.get(k) for k in ("bundle_digest", "root", "page_seal", "verdict")},
                               "check": answer, "seal_verdict": verdict.get("verdict")})
-    proof += ["report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"]
+    proof += ["report.json", "result.bundle.json", "seal.bundle.json", "check.json"]
     if is_standin:
         proof += [f"standin/10-judge/{p.relative_to(judged)}" for p in sorted(judged.rglob("*")) if p.is_file()]
-    problems = check_seal(page, answer, seal, verdict, key)
+    problems = check_seal(page, answer, seal, verdict, key) + check_rebuilds(rebuilt, seal)
     statement = page_statement(page)
     problems += check_denominators(statement)
     problems += check_no_score(page, figures)
+    problems += check_no_paid_product(page, figures)
+    if page_out:
+        shutil.copyfile(page, page_out)
     return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin
 
 
@@ -516,6 +570,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--page", type=Path, help="also leave the rendered page here, a local copy to look at: the finding "
+                    "commits report.json and the page's sha256, not the page")
     a = ap.parse_args(argv)
     started = finding.now()
     out = a.out.resolve()
@@ -528,7 +584,8 @@ def main(argv=None):
     problems, not_checked, lines, proof, pinned, is_standin = [], [], [], [], [], False
     try:
         with tempfile.TemporaryDirectory(prefix="11-report-") as tmp:
-            problems, lines, is_standin = report(out.parent, out, population, pop, population_dir, proof, tmp)
+            problems, lines, is_standin = report(out.parent, out, population, pop, population_dir, proof, tmp,
+                                                  a.page.resolve() if a.page else None)
         pinned = PINNED
     except NotChecked as e:
         what, why = e.args

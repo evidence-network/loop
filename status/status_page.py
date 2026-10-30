@@ -122,7 +122,8 @@ NUMBERS = (
            "step 07 (Ask) finding's first-answered.json answered_at (the first ask answered in time with a signed "
            "artifact or a signed refusal judged allowed), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
-           11, "held at its placeholder, even when step 11 (Report) passes: nothing is countersigned yet"),
+           11, "held at its placeholder, even when step 11 (Report) passes: a report is countersigned when a second signer, "
+           "holding a key the reporting operator does not control, signs its page seal, and nothing is yet"),
     Number("refused", "Admission decisions that were NO", "of all admission decisions", "M3", 4,
            "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,

@@ -43,7 +43,10 @@ There is no score, rank, rating or leaderboard.
 
 ## Sealing
 
-The pinned `capsulectl book report build --seal` renders the page from the report Result's bundle and seals the page's
+The finding commits `report.json` and the page's sha256 (`report_html_sha256`), not the page: it is about 800 KB and
+the pinned builder rebuilds it byte for byte from `result.bundle.json`. `--page PATH` leaves a local copy to look at.
+`report.json` names what built it (`built_by`: the `--version` line of the pinned `capsulectl` and `capsulectl-book`,
+whose build holds the viewer script). The pinned `capsulectl book report build --seal` renders the page from the report Result's bundle and seals the page's
 sha256, the bundle digest and the Result root as a `report_page_seal` record, under a checkpoint. `book report check
 --page` answers match or mismatch. The seal record is disclosed as `seal.bundle.json`, so the sealed digest stays
 checkable after a scratch book is gone. Page text that names the two questions (did the evidence verify, is this the
@@ -57,12 +60,18 @@ page the publisher issued) is capsule-viewer#158, and a PASS names that gap.
 | records | each record 10's Results cite has 08's sha256 | a manifest with one record's sha256 changed, with 08's proof digest resealed; without the reseal it fails 08's integrity check |
 | denominators | outside "k of n" with k <= n, a figure's text holds a digit only in a step's name or a term id | a figure reading "3 paid exchanges" |
 | cited only | the exchanges figure counts only records a Result cites, each matching 08's digest | an extra deal-like file in the step dir, not cited; a cited deal record changed after 10 sealed |
+| rebuilds | two rebuilds of the page from `result.bundle.json` have the same bytes, and those are the bytes the seal holds | a rebuild that differs from the other, and rebuilds that are not the sealed bytes |
+| no paid product | no enterprise or paid-product text in the page's bundle, its HTML outside scripts, or `report.json` | a figure reading "Upgrade to Enterprise" |
 | no score | no score-like field or word in the page's bundle, its HTML outside scripts, or `report.json` | a figure with a `score` field |
 
 Each plant has a mutant test: with that check switched off, the plant reads PASS. The builder's viewer script is
 pinned code and isn't scanned. It holds a `rank` variable and the sentence "there is no overall score".
 
-The proof is `report.html`, `report.json`, `result.bundle.json`, `seal.bundle.json` and `check.json`, plus
+Countersigned means a second signer, holding a key the reporting operator does not control, signs the page seal. Step 11
+seals under the reporting node's own key, so it countersigns nothing: the status page's "Minutes to the first
+countersigned report" row stays at its placeholder even when 11 passes.
+
+The proof is `report.json`, `result.bundle.json`, `seal.bundle.json` and `check.json`, plus
 `standin/10-judge/` on the stand-in path.
 
 ## Rehearsal

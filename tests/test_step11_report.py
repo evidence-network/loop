@@ -5,6 +5,7 @@ empty run, so it reports on the committed stand-in. Sealing and verifying need t
 capsulectl-book (steps/11-report.setup.sh); without them those tests SKIP, saying so, and LOOP_REQUIRE_TOOLS=1 makes
 that an error. Each planted failure has a mutant check: with that check switched off, the plant goes through.
 """
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -54,6 +55,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="test-step11-")
         self.run = Path(self.tmp.name) / "run"
+        self.page = Path(self.tmp.name) / "report.html"  # the local copy; the finding commits only its sha256
         shutil.copytree(BASE, self.run)
 
     def tearDown(self):
@@ -64,25 +66,26 @@ class Base(unittest.TestCase):
 
     def report(self, population=POPULATION):
         out = self.run / "11-report"
-        step.main(["--population", str(population), "--out", str(out)])
+        step.main(["--population", str(population), "--out", str(out), "--page", str(self.page)])
         f = load(out / "finding.json")
         self.assertEqual(finding.check_record(out, f), [], f["detail"])
         return f
 
     def statement(self):
-        return step.page_statement(self.run / "11-report" / "report.html")
+        return step.page_statement(self.page)
 
     def summaries(self):
         return {c["id"]: c["presentation"]["summary"] for c in self.statement()["claims"]}
 
-    def add_record(self, base, path, obj):
-        """A new record in a step, listed by 08 and judged again by 10, so 10's Results cite it."""
+    def add_record(self, base, path, *objs):
+        """Lines added to a step's primary record file, 08's manifest given its new digest and 10 run again, so 10's
+        Results cite the new bytes. The stand-in's record definition (pack.json `records`) names the files that count."""
         f = self.run / base / path
-        f.parent.mkdir(parents=True, exist_ok=True)
-        dump(f, obj)
+        with f.open("a") as out:
+            out.writelines(json.dumps(o, sort_keys=True) + "\n" for o in objs)
         v = self.run / "08-verify"
         m = load(v / "verified.json")
-        next(e for e in m["steps"] if e["dir"] == base)["files"].append({"path": path, "sha256": finding.sha256(f)})
+        next(x for e in m["steps"] if e["dir"] == base for x in e["files"] if x["path"] == path)["sha256"] = finding.sha256(f)
         dump(v / "verified.json", m)
         record = load(v / "finding.json")
         record["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
@@ -109,7 +112,7 @@ class InputsTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("holds no 10-judge/", f["not_checked"][0]["why"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_a_live_run_with_no_inputs_is_not_checked_and_never_uses_a_stand_in(self):
         shutil.rmtree(self.run / "08-verify")
@@ -134,14 +137,14 @@ class InputsTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("all in the open month", f["not_checked"][0]["why"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_a_failed_10_is_refused(self):
         self.plant_10("FAIL")
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("refused, nothing rendered: step 10's finding is FAIL", f["detail"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_a_10_finding_that_does_not_hold_is_refused(self):
         self.plant_10("PASS", proof=[{"path": "gone.json", "sha256": "0" * 64}])
@@ -212,24 +215,25 @@ class ReportTest(Base):
                          [step.PACK_ISSUE, step.VIEWER_ISSUE, step.PROVIDER_DEAL_ISSUE])
         self.assertNotIn("stand-in", f["detail"])
         s = self.summaries()
-        self.assertIn("Deals judged: 4 of 4 deal records", s["count:deal"])
-        self.assertIn("Settlements judged: 3 of 3", s["count:settlement"])
-        self.assertIn("Asks judged: 3 of 3", s["count:ask"])
-        self.assertIn("Disputes counted as found: 3 of 3", s["count:dispute"])
+        self.assertIn("Deals judged: 1 of 1 deal records", s["count:deal"])
+        self.assertIn("Settlements judged: 1 of 1", s["count:settlement"])
+        self.assertIn("Asks judged: 6 of 6", s["count:ask"])
+        self.assertIn("Disputes counted as found: 2 of 2", s["count:dispute"])
         self.assertIn("term-2 (served as agreed): met in 1 of 1", s["term:term-2"])
         self.assertIn("not evaluable in 1 of 1", s["term:term-3"])
         self.assertIn("provider states", s["term:term-3"])
         self.assertIn("The roll-up cites 4 of 4 finer Results", s["decisions:rollup"])
-        self.assertIn("Paid exchanges, each counted from the payer's sealed deal: 1 of 1 exchanges", s["exchanges:deals"])
+        self.assertIn("Paid exchanges, each counted from the payer's sealed deal: 1 of 4 exchanges", s["exchanges:deals"])
 
     def test_each_figure_cites_its_records_by_digest(self):
         self.report()
-        b = step.page_bundle(self.run / "11-report" / "report.html")
+        b = step.page_bundle(self.page)
         statement = b["disclosures"][b["root"]]["agent_input"]["statement"]
         deal = next(c for c in statement["claims"] if c["id"] == "count:deal")
         cited = [b["disclosures"][e["digest"]]["agent_input"] for e in deal["evidence"]]
         manifest = next(e for e in load(self.run / "08-verify" / "verified.json")["steps"] if e["dir"] == "05-deal")
-        self.assertEqual({(c["path"], c["sha256"]) for c in cited}, {(x["path"], x["sha256"]) for x in manifest["files"]})
+        record = next(x for x in manifest["files"] if x["path"] == "deal.json")
+        self.assertEqual({(c["path"], c["sha256"]) for c in cited}, {(record["path"], record["sha256"])})
         rollup = next(c for c in statement["claims"] if c["id"] == "decisions:rollup")
         payload = b["disclosures"][rollup["evidence"][0]["digest"]]["agent_input"]
         self.assertEqual(payload["sha256"], finding.sha256(self.run / "10-judge" / "bundles" / "rollup.bundle.json"))
@@ -240,14 +244,75 @@ class ReportTest(Base):
         seal = load(out / "seal.bundle.json")
         record = seal["disclosures"][seal["root"]]["agent_input"]
         self.assertEqual(record["record_type"], "report_page_seal")
-        self.assertEqual(record["statement"]["page_digest"], "sha256:" + finding.sha256(out / "report.html"))
+        self.assertEqual(record["statement"]["page_digest"], "sha256:" + finding.sha256(self.page))
         self.assertEqual(load(out / "check.json")["check"]["page"], "match")
 
+    def test_the_finding_commits_report_json_and_the_pages_sha256_not_the_page(self):
+        f = self.report()
+        out = self.run / "11-report"
+        self.assertFalse((out / "report.html").exists())
+        self.assertNotIn("report.html", [p["path"] for p in f["proof"]])
+        record = load(out / "report.json")
+        self.assertEqual(record["report_html_sha256"], finding.sha256(self.page))
+        self.assertEqual(record["report_html_bytes"], self.page.stat().st_size)
+        self.assertRegex(record["built_by"]["capsulectl"], r"^capsulectl v\S+ \(commit [0-9a-f]{40}\)$")
+        self.assertRegex(record["built_by"]["capsulectl-book"], r"^capsulectl-book v\S+ \(commit [0-9a-f]{40}\)$")
+        self.assertIn("capsulectl-book", record["built_by"]["viewer"])
+
+    def test_the_page_rebuilds_to_the_same_bytes_twice_and_those_are_the_sealed_bytes(self):
+        self.report()
+        out = self.run / "11-report"
+        built = {}
+        real = step.Reporter.rebuild
+
+        def keep(book, bundle, page):
+            real(book, bundle, page)
+            built[len(built)] = Path(page).read_bytes()
+        with mock.patch.object(step.Reporter, "rebuild", keep):
+            self.report()
+        self.assertEqual(len(built), 2)
+        self.assertEqual(built[0], built[1])
+        sealed = load(out / "seal.bundle.json")
+        sealed = sealed["disclosures"][sealed["root"]]["agent_input"]["statement"]["page_digest"]
+        self.assertEqual(sealed, "sha256:" + hashlib.sha256(built[0]).hexdigest())
+
+    def rebuild_that(self, change):
+        real = step.Reporter.rebuild
+        count = []
+
+        def plant(book, bundle, page):
+            real(book, bundle, page)
+            count.append(page)
+            change(len(count), Path(page))
+        return mock.patch.object(step.Reporter, "rebuild", plant)
+
+    def test_planted_two_rebuilds_that_differ_fail(self):
+        def second_differs(n, page):
+            if n == 2:
+                page.write_bytes(page.read_bytes() + b"<!-- different -->")
+        with self.rebuild_that(second_differs):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("two rebuilds of the page from result.bundle.json differ", f["detail"])
+
+    def test_planted_rebuilds_that_are_not_the_sealed_bytes_fail(self):
+        with self.rebuild_that(lambda n, page: page.write_bytes(page.read_bytes() + b"<!-- not sealed -->")):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("the rebuilt page is sha256:", f["detail"])
+        self.assertNotIn("two rebuilds", f["detail"])
+
+    def test_mutant_without_the_rebuild_check_the_unsealed_rebuild_passes(self):
+        def second_differs(n, page):
+            page.write_bytes(page.read_bytes() + b"<!-- different -->" * n)
+        with self.rebuild_that(second_differs), mock.patch.object(step, "check_rebuilds", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
     def test_a_free_exchange_stays_in_the_denominator_and_is_no_gap(self):
-        self.add_record("06-settle", "free/held.json", {"exchange": "fixture-free-1"})
+        # The stand-in settles four exchanges and seals one deal: the other three are free, and no gap.
         self.assertEqual(self.report()["result"], "PASS")
         text = self.summaries()["exchanges:deals"]
-        self.assertIn("1 of 2 exchanges", text)
+        self.assertIn("1 of 4 exchanges", text)
         self.assertIn("no gap", text)
         for word in ("missing", "absent", "lacks"):
             self.assertNotIn(word, json.dumps(self.statement()))
@@ -266,22 +331,22 @@ class ReportTest(Base):
                        step.PROVIDER_DEAL_ISSUE), finding.gaps(f["detail"]))
 
     def test_the_count_comes_from_contents_not_names(self):
-        self.add_record("05-deal", "deal-copy/deal.json", {"note": "named like a deal, and not one"})
-        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        self.add_record("06-settle", "ledger.jsonl", {"note": "named like a deal, and not one", "deal": "x"},
+                        {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("sealed deal: 2 of 2 exchanges", self.summaries()["exchanges:deals"])
+        self.assertIn("sealed deal: 2 of 5 exchanges", self.summaries()["exchanges:deals"])
 
     def test_one_deal_of_several_sealed_steps_counts_once(self):
-        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
-        self.add_record("05-deal", "steps/close.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        line = {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"}
+        self.add_record("06-settle", "ledger.jsonl", line, line)
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("sealed deal: 2 of 2 exchanges", self.summaries()["exchanges:deals"])
+        self.assertIn("sealed deal: 2 of 5 exchanges", self.summaries()["exchanges:deals"])
 
     def test_more_deals_than_exchanges_fails_the_denominator_check(self):
-        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2"})
+        self.add_record("06-settle", "ledger.jsonl", *({"deal_id": f"deal-random-{i}"} for i in range(2, 6)))
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("'2 of 1' has no denominator", f["detail"])
+        self.assertIn("'5 of 4' has no denominator", f["detail"])
 
     def uncited_deal(self):
         """A deal-like file and an exchange in the step dirs, which no Result cites and 08 does not list."""
@@ -291,7 +356,7 @@ class ReportTest(Base):
     def test_planted_an_uncited_deal_like_file_does_not_change_the_count(self):
         self.uncited_deal()
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("sealed deal: 1 of 1 exchanges", self.summaries()["exchanges:deals"])
+        self.assertIn("sealed deal: 1 of 4 exchanges", self.summaries()["exchanges:deals"])
         self.assertNotIn("uncited", json.dumps(self.statement()))
 
     def test_mutant_counting_the_step_dirs_the_uncited_file_changes_the_count(self):
@@ -306,10 +371,14 @@ class ReportTest(Base):
         cited = {f"{e['dir']}/{x['path']}": x["sha256"] for e in load(self.run / "08-verify" / "verified.json")["steps"]
                  for x in e["files"]}
         pack = load(step.judge10.PACK)
-        counted = lambda: {k: len(v) for k, v in step.count_exchanges(self.run, cited, pack).items()}  # noqa: E731
-        self.assertEqual(counted(), {"deals": 1, "exchanges": 1})
+        counted = lambda: step.count_exchanges(self.run, cited, pack)  # noqa: E731
+        found = counted()
+        self.assertEqual((len(found["deals"]), len(found["exchanges"])), (1, 4))
+        self.assertNotIn("uncited-deal", found["deals"])
         with mock.patch.object(step, "cited_records", side_effect=every_file):
-            self.assertEqual(counted(), {"deals": 2, "exchanges": 2})
+            found = counted()
+        self.assertIn("uncited-deal", found["deals"])
+        self.assertIn("uncited-exchange", found["exchanges"])
 
     def change_cited_deal(self):
         dump(self.run / "05-deal" / "deal.json", {"buyer": "alice", "deal": "fixture-deal-1", "provider": "mallory"})
@@ -319,7 +388,7 @@ class ReportTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("refused, nothing rendered: 05-deal/deal.json does not match the sha256", f["detail"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_mutant_without_the_digest_check_the_changed_deal_passes(self):
         self.change_cited_deal()
@@ -338,7 +407,7 @@ class ReportTest(Base):
         dump(v / "finding.json", f)
         self.judge()
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("Asks judged: 0 of 3 ask records", self.summaries()["count:ask"])
+        self.assertIn("Asks judged: 0 of 6 ask records", self.summaries()["count:ask"])
         self.assertIn("from 0 of 1 ask steps", self.summaries()["count:ask"])
 
     def test_a_10_bundle_altered_after_sealing_is_refused(self):
@@ -358,7 +427,7 @@ class ReportTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("06-settle.bundle.json does not verify", f["detail"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     # --- Planted failures, each with its mutant ---------------------------------------------------
     def page_changed_after_sealing(self):
@@ -387,14 +456,14 @@ class ReportTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("refused, nothing rendered: 06-settle/ledger.jsonl is cited with sha256", f["detail"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_planted_a_manifest_changed_without_its_proof_is_refused(self):
         self.change_record_digest(reseal=False)
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("does not match its sha256", f["detail"])
-        self.assertFalse((self.run / "11-report" / "report.html").exists())
+        self.assertFalse(self.page.exists())
 
     def test_mutant_without_the_records_check_the_changed_manifest_passes(self):
         self.change_record_digest(reseal=True)
@@ -432,6 +501,21 @@ class ReportTest(Base):
             f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("a score-like field", f["detail"])
+
+    def test_planted_enterprise_text_in_a_figure_fails(self):
+        with self.with_figure(text="Upgrade to Enterprise: 1 of 1 plans."):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("paid-product text: 'Upgrade'", f["detail"])
+
+    def test_mutant_without_the_paid_product_check_the_text_passes(self):
+        with self.with_figure(text="Upgrade to Enterprise: 1 of 1 plans."), \
+                mock.patch.object(step, "check_no_paid_product", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+    def test_the_real_page_holds_no_paid_product_text(self):
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertEqual(step.check_no_paid_product(self.page, load(self.run / "11-report" / "report.json")["figures"]), [])
 
     def test_mutant_without_the_score_check_the_score_field_passes(self):
         with self.with_figure(score=9), mock.patch.object(step, "check_no_score", return_value=[]):
@@ -480,7 +564,7 @@ class StandInTest(unittest.TestCase):
         rs = status_page.build(run.parent, ROOT / "versions.lock", site)
         cell = next(r for r in rs if r.step.n == 11).cells["rehearsal"]
         self.assertEqual(cell.label, "PASS", cell.reason if hasattr(cell, "reason") else "")
-        self.assertTrue(any(path == "report.html" for path, _ in cell.proofs))
+        self.assertTrue(any(path == "report.json" for path, _ in cell.proofs))
 
 
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
