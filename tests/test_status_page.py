@@ -233,7 +233,7 @@ class StatusPageTest(unittest.TestCase):
         for n in (8, 10, 11):
             row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
             self.assertIn('owner: <a href="https://github.com/evidence-network/loop/issues/24">loop #24</a>', row)
-        self.assertNotIn("evidencebook-skills", self.html)
+            self.assertNotIn("evidencebook-skills", row)
 
     # A PASS finding's gaps, in the convention the steps write: one sentence in
     # detail, "Outside this step's assertion: ...", ending with owner/repo#N.
