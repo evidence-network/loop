@@ -51,6 +51,53 @@ def run_step(population, out, env=None):
     return r
 
 
+class Step05ExchangePairingTest(unittest.TestCase):
+    """Halves join on client_nonce, never on agent_input_digest (loop#66); no verifier needed."""
+    OUT_A, OUT_B = "a" * 64, "b" * 64
+
+    def test_two_exchanges_sharing_a_prompt_count_as_two(self):
+        halves = {"n1": [("x1", "requested", self.OUT_A), ("x2", "requested", self.OUT_B)],
+                  "n2": [("x1", "served", self.OUT_A)],
+                  "n3": [("x2", "served", self.OUT_B)]}
+        paired, notes = step.paired_exchanges(halves)
+        self.assertEqual(paired, {"x1", "x2"})
+        self.assertEqual(notes, [])
+
+    def test_a_half_on_one_node_only_is_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "requested", self.OUT_A)], "n2": []})
+        self.assertEqual(paired, set())
+        self.assertIn("nonce x1 is not one exchange held on two nodes: n1 requested", notes)
+
+    def test_two_halves_of_one_role_are_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "served", self.OUT_A)],
+                                               "n2": [("x1", "served", self.OUT_A)]})
+        self.assertEqual(paired, set())
+        self.assertEqual(len(notes), 1)
+
+    def test_two_halves_with_different_outputs_are_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "requested", self.OUT_A)],
+                                               "n2": [("x1", "served", self.OUT_B)]})
+        self.assertEqual(paired, set())
+        self.assertIn("output digests differ", notes[0])
+
+    def test_a_half_with_no_nonce_is_named_not_dropped(self):
+        paired, notes = step.paired_exchanges({"n1": [(None, "requested", self.OUT_A)]})
+        self.assertEqual(paired, set())
+        self.assertEqual(notes, ["a half held by n1 carries no client_nonce"])
+
+    def test_the_2026_10_29_live_halves_are_two_exchanges(self):
+        root = ROOT / "findings" / "2026-10-29-live" / "05-deal"
+        files = sorted(root.glob("stevenmih-*/held-?.json"))
+        if not files:
+            self.skipTest("the 2026-10-29 live proof files are not in this checkout")
+        halves = {}
+        for f in files:
+            halves.setdefault(f.parent.name, []).append(step.exchange_key(json.loads(f.read_text())))
+        paired, notes = step.paired_exchanges(halves)
+        self.assertEqual(paired, {"26c09646-1582-4ee4-a0f8-f030163f917f", "de9cf398-1203-47d5-abc5-5ea0d7b5c25a"})
+        self.assertEqual(notes, [])
+
+
 @unittest.skipIf(BIN is None, NO_DRIVER)
 class Step05DealRehearsalTest(unittest.TestCase):
     def setUp(self):

@@ -394,6 +394,39 @@ def accepted(citing, half):
     return {"ok": True, "via": via, "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
 
 
+def exchange_key(capsule):
+    """(client_nonce, role, agent_output_digest) of a held half: what joins its two halves into one exchange.
+
+    Not agent_input_digest: every exchange that sends the same prompt shares it (loop#66)."""
+    ca = capsule.get("model_attestation", {}).get("compute_attestation", {})
+    x = next((v for k, v in ca.items() if k.startswith("x-mesh-poc-v1") and isinstance(v, dict)), {})
+    return x.get("client_nonce"), x.get("role"), ca.get("agent_output_digest")
+
+
+def paired_exchanges(halves):
+    """({client_nonce}, [why not]) for {node: [(client_nonce, role, agent_output_digest)]}.
+
+    An exchange is a nonce held by two different nodes as one requested and one served half with the same
+    output digest. Any other nonce, and any half with no nonce, is named in the second list."""
+    by_nonce, notes = {}, []
+    for node, keys in sorted(halves.items()):
+        for nonce, role, out in keys:
+            if not nonce:
+                notes.append(f"a half held by {node} carries no client_nonce")
+            else:
+                by_nonce.setdefault(nonce, []).append((node, role, out))
+    paired = set()
+    for nonce, hs in sorted(by_nonce.items()):
+        nodes, roles, outs = {h[0] for h in hs}, {h[1] for h in hs}, {h[2] for h in hs}
+        if len(hs) == 2 and len(nodes) == 2 and roles == {"requested", "served"} and len(outs) == 1:
+            paired.add(nonce)
+        else:
+            notes.append(f"nonce {nonce} is not one exchange held on two nodes: "
+                         + ", ".join(f"{n} {r or 'no role'}" for n, r, _ in hs)
+                         + ("" if len(outs) == 1 else " (output digests differ)"))
+    return paired, notes
+
+
 def live_node(bin_, name, data_dir, out, work):
     """Check every half the node holds: (result, proof, detail, pairs, accepted_via values)."""
     out.mkdir(parents=True, exist_ok=True)
@@ -446,8 +479,7 @@ def live_node(bin_, name, data_dir, out, work):
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
     vias = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
-    pairs = [(capsule.get("model_attestation", {}).get("compute_attestation", {}).get("agent_input_digest"),
-              c["capsule_id"]) for c, capsule in zip(checks, map(lambda r: parsed(r) or {}, held))]
+    pairs = [exchange_key(capsule) for capsule in map(lambda r: parsed(r) or {}, held)]
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, vias
     return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
@@ -461,7 +493,7 @@ def main_live(pop, out, started):
     bin_ = driver()
     missing = live_tools(bin_)
     results, proof, details, not_checked = [], [], [], list(missing)
-    own_inputs = {}
+    halves = {}
     vias = set()
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
@@ -480,14 +512,14 @@ def main_live(pop, out, started):
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
-            own_inputs[name] = {d for d, _ in pairs if d}
+            halves[name] = pairs
             vias |= set(node_vias)
             if not files:
                 not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
                                     "from the lab run's exchanges", "issue": live.ISSUE})
-    seen = [d for ds in own_inputs.values() for d in ds]
-    both = sorted({d for d in seen if seen.count(d) > 1})
-    details.append(f"exchanges with a half held on each of two nodes: {len(both)}")
+    both, unpaired = paired_exchanges(halves)
+    details.append(f"exchanges with a half held on each of two nodes (joined on client_nonce): {len(both)}"
+                   + (f" ({'; '.join(unpaired)})" if unpaired else ""))
     acceptance_gaps = [LIVE_DECLARATION] if "controller_declaration" in vias else []
     if vias & set(VIA_KEY):
         acceptance_gaps.append(live_acceptance(sorted(vias & set(VIA_KEY))))
