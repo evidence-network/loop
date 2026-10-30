@@ -329,6 +329,8 @@ through it. A node can't be asked through its own console, so
 `LOOP_SELF_NODE` names the reporter node and step 12 asks it through
 `LOOP_SECOND_CONSOLE`, lab-1's console (lab-2's when lab-1 is the reporter).
 Without a second console the reporter node's probe is NOT_CHECKED, not FAIL.
+`lab/lab.sh loop` also sets `LOOP_NODE_CONSOLES` (`NAME=URL` per node, comma separated), each node's own
+console, so step 12 reads each node's `doctor` for its controller binding.
 The finding's detail says which console asked each node. `loop.sh` prints one line per step; the result is in each
 `findings/<date>-live/<NN>-<name>/finding.json`, not in the exit code.
 
