@@ -25,7 +25,7 @@ ORG="${REPO%%/*}"
 # PLACEHOLDER team, as in .github/CODEOWNERS: it must exist before this runs.
 TEAM="${TEAM:-loop-maintainers}"
 # Job names of the checks a pull request must pass (keep in step with .github/workflows/).
-REQUIRED_CHECKS=(nodes reports personal-data leak-lint dco site versions)
+REQUIRED_CHECKS=(nodes reports personal-data leak-lint dco site versions gate)
 GITHUB_ACTIONS_APP_ID=15368
 
 history_ruleset() {

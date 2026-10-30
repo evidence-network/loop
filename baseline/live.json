@@ -1,0 +1,60 @@
+{
+  "ecosystems": {
+    "mesh": {
+      "findings": "findings/2026-10-30-live",
+      "pins": {
+        "aac-go": "action-state-group/agent-action-capsule go/v0.15.0",
+        "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
+        "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
+        "capsulectl": "action-state-group/evidencebook v0.8.1",
+        "capsulectl-book": "action-state-group/evidencebook v0.8.1",
+        "capsules": "Mesh-LLM/capsules-plugin d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+        "capsules-evidence-request": "action-state-group/agent-action-capsule a8f7ac7f9d4b76d96796885e5eac795211c28180",
+        "checkpointed-local-log": "action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1",
+        "evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.2.0",
+        "evidencebook": "action-state-group/evidencebook v0.8.1",
+        "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.9",
+        "inference-deals": "action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf",
+        "mesh-llm": "Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123",
+        "mesh-llm-pr-2620": "Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e",
+        "mesh-llm-pr-2649": "Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8",
+        "reporter": "evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202"
+      },
+      "steps": {
+        "01": {
+          "finding_sha256": "1e2ba88cd5f1326807e08d1ac857e558f0b18c52654d7950fded61f929d88e28",
+          "result": "PASS"
+        },
+        "02": {
+          "finding_sha256": "95a901b4b7f43564f97b26f70b0aaf7c72bc69da3958c0079ac6214705de07a4",
+          "result": "NOT_CHECKED"
+        },
+        "03": {
+          "finding_sha256": "e36fca2ef2953220b27707b68d6d05e134d54a103dd403e1292be4f4ea5df61c",
+          "result": "PASS"
+        },
+        "04": {
+          "finding_sha256": "c5c4033ec91dd0ac7c1f6ae1110d30f6a34c642e665628e2935eecf55b24c7f3",
+          "result": "PASS"
+        },
+        "05": {
+          "finding_sha256": "0c2dd208534f42c177298351e08ea971a3714b363de368ec055d3da6bc3c15cb",
+          "result": "NOT_CHECKED"
+        },
+        "07": {
+          "finding_sha256": "c669b54c88873c7765877550159d9594905622115f5f81bfd8bbf21ce9f9ccea",
+          "result": "NOT_CHECKED"
+        },
+        "09": {
+          "finding_sha256": "b2e08f9bcb41dc6347b98cb5906739f9c30a9f7d68ef5401e42849cfe18cba6c",
+          "result": "PASS"
+        },
+        "12": {
+          "finding_sha256": "0518105877342220dc65ca20c21c5ae29f9e73b62dbfcba5f8ac602e0119ad92",
+          "result": "NOT_CHECKED"
+        }
+      }
+    }
+  },
+  "not_checked_is_regression": true
+}

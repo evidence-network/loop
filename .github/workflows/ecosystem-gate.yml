@@ -1,0 +1,32 @@
+# The ecosystem gate (loop#149): a pin bump may not turn a step that was PASS in the live
+# baseline into FAIL, missing or (while baseline/live.json says so) NOT_CHECKED. See scripts/ecosystem_gate.py.
+name: ecosystem-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gate tests
+        run: python3 -B -m unittest tests.test_ecosystem_gate -v
+      - name: The baseline matches its committed findings and the current pins
+        run: python3 -B scripts/ecosystem_gate.py verify
+      - name: No step goes green to red against the base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          set -e
+          if git cat-file -e "${{ github.event.pull_request.base.sha }}:baseline/live.json" 2>/dev/null; then
+            git show "${{ github.event.pull_request.base.sha }}:baseline/live.json" > "$RUNNER_TEMP/old.json"
+            python3 -B scripts/ecosystem_gate.py check --old "$RUNNER_TEMP/old.json" --new baseline/live.json
+          fi
