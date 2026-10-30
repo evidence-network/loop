@@ -12,10 +12,9 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
    finding `finished`.
 2. **The window.** It covers 12 whole closed calendar months before the as-of month, `[first of as-of month
    minus 12 months, first of as-of month)`. It is never rolling: it moves only when a month closes. The
-   period and count are in `steps/10-judge.d/pack.json`.
-3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05, `ledger.jsonl` for 06, each `request.json` of an ask for 07, `dispute.json` for 09 (the referee's `outcome.json` stays 08's, beside it; `records` in `steps/10-judge.d/pack.json`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
-   A settlement is one step 06's ledger: its `ledger.jsonl` holds one line per exchange, and 11 counts those
-   exchanges. The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
+   The length (12 months) is the pinned pack's `window.months`; the period (a calendar month) is the step's.
+3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05, `ledger.jsonl` for 06, each `request.json` of an ask for 07, `dispute.json` for 09 (the referee's `outcome.json` stays 08's, beside it; `records` in `steps/10-judge.d/binding.json`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
+   The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
    step's `finding.json` is read only after its bytes match 08's digest, and only for its `finished`. The
    step's records are in the window when that instant is, not when the dates inside a record's bytes say, since
    a record's own clock is the operator's. A Result's `generated_at` is the window's end, so a rerun over the same
@@ -27,17 +26,25 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
 
 ## The pack
 
-The pack is deterministic, with no model call. It uses the terms of the evidencebook-skills `inference-deals`
-pack (all `must_have`) on the rehearsal stand-ins. That pack's own code is not pinned in `versions.lock`, so it
-does not run here. A PASS names that as a gap on evidence-network/loop#111; pinning the pack is its own PR.
+The pack is deterministic, with no model call. It is the evidencebook-skills `inference-deals` pack at the
+commit `versions.lock` pins (`inference-deals`; the repository has no release tags). `10-judge.setup.sh` fetches
+that commit's contract and `compiled.json` into `$LOOP_TOOLS/packs/inference-deals-<sha>`, and the step reads
+the terms (`come_through.paid_as_agreed`, `served_as_agreed`, `served_named_model`), their tier (all `must_have`)
+and the window length from there. A pinned pack whose terms the binding does not bind, or with a term that is not
+`must_have`, is NOT_CHECKED. The loop's own claims (07 asks, 09 disputes, the roll-up) carry the loop's own
+`own_contract_ref`, never the pack's. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
+says which stand-in record files feed which term. When the pinned pack is not fetched, the step is NOT_CHECKED,
+never a PASS. The pack's own evaluator reads a node's real Mesh book records, which the rehearsal stand-ins are
+not, so it does not run here: the step applies the pack's terms to the results 08 re-derived. A PASS names that
+as a gap on evidence-network/loop#157.
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
 
 | Step | Claim | Verdict |
 |---|---|---|
-| 06 | term 1, paid as agreed | from the result 08 re-derived: PASS `met`, FAIL `not_met`, NOT_CHECKED `not_evaluable` |
-| 05 | term 2, served as agreed | the same |
-| 05 | term 3, served the model it named | "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match; where one does, a not_checked entry, since the pack has no recomputation for it yet |
+| 06 | `come_through.paid_as_agreed` | from the result 08 re-derived: PASS `met`, FAIL `not_met`, NOT_CHECKED `not_evaluable` |
+| 05 | `come_through.served_as_agreed` | the same |
+| 05 | `come_through.served_named_model` | "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match; where one does, a not_checked entry, since the pack has no recomputation for it yet |
 | 07 | an ask is answered or its absence recorded | from the result 08 re-derived |
 | 09 | the referee's sealed Result | cited and counted as found, never judged again |
 

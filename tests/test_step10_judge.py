@@ -37,8 +37,17 @@ step = importlib.util.module_from_spec(_spec)
 _loader.exec_module(step)
 
 TOOLS_DIR = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
-HAS_TOOLS = all(p.is_file() for p in step.tools())
-NO_TOOLS = "SKIPPED LOUDLY: capsulectl and capsulectl-book are not installed; run steps/10-judge.setup.sh"
+def _has_pack():
+    try:
+        step.load_pack()
+        return True
+    except step.NotChecked:
+        return False
+
+
+HAS_TOOLS = all(p.is_file() for p in step.tools()) and _has_pack()
+NO_TOOLS = ("SKIPPED LOUDLY: capsulectl, capsulectl-book and the pinned inference-deals pack are not installed; "
+            "run steps/10-judge.setup.sh")
 if not HAS_TOOLS:
     if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":
         raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_TOOLS}")
@@ -99,7 +108,7 @@ class Base(unittest.TestCase):
         self.reseal_manifest(m)
 
     def window_records(self):
-        """{dir/path: sha256} of every record file (pack.json `records`) 08 lists for the base run's four steps."""
+        """{dir/path: sha256} of every record file (binding.json `records`) 08 lists for the base run's four steps."""
         return records_of(self.manifest())
 
     def cited(self):
@@ -131,6 +140,7 @@ class WindowTest(unittest.TestCase):
         self.assertNotEqual(first, step.window_of(utc("2026-11-01T00:00:00Z")))
 
 
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 class ManifestTest(Base):
     """What 10 reads before it seals anything; none of this needs capsulectl."""
 
@@ -180,9 +190,80 @@ class ManifestTest(Base):
 
 def records_of(manifest):
     """{dir/path: sha256} of the primary record files of each kind that the manifest lists."""
-    kinds = json.loads((ROOT / "steps" / "10-judge.d" / "pack.json").read_text())["kinds"]
+    kinds = json.loads((ROOT / "steps" / "10-judge.d" / "binding.json").read_text())["kinds"]
     return {f"{e['dir']}/{x['path']}": x["sha256"] for e in manifest["steps"] if e["step"] in kinds
             for x in e["files"] if any(fnmatch.fnmatchcase(x["path"], g) for g in kinds[e["step"]]["records"])}
+
+
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+class PinnedPackTest(Base):
+    """The terms, tiers and window are the pinned pack's, read from where 10-judge.setup.sh fetches it."""
+
+    def test_terms_tiers_and_window_come_from_the_pinned_pack(self):
+        pack = step.load_pack()
+        repo, ref = step.pin("inference-deals")
+        self.assertEqual(pack["pin"], f"{repo} {ref}")
+        self.assertEqual(pack["window"]["periods"], 12)
+        terms = {t["id"]: t for k in pack["kinds"].values() for t in k["terms"] if not t.get("own")}
+        self.assertEqual(sorted(terms), ["come_through.paid_as_agreed", "come_through.served_as_agreed",
+                                         "come_through.served_named_model"])
+        self.assertTrue(all(t["must_have"] for t in terms.values()))
+
+    def test_no_copy_of_the_pack_is_left_in_the_step(self):
+        for p in (ROOT / "steps").glob("10-judge*"):
+            for x in ([p] if p.is_file() else [q for q in p.rglob("*") if q.is_file()]):
+                self.assertNotIn("Paid as agreed", x.read_text(), x)
+                if x.suffix == ".json":
+                    self.assertNotIn("served the model it named", x.read_text().lower(), x)
+
+    def pack_dir(self):
+        repo, ref = step.pin("inference-deals")
+        return step.tools_dir() / "packs" / f"inference-deals-{ref}"
+
+    def with_pack(self, edit):
+        """A scratch LOOP_TOOLS holding a copy of the fetched pack that `edit(dir)` has changed."""
+        tools = Path(self.tmp.name) / "tools"
+        shutil.copytree(self.pack_dir(), tools / "packs" / self.pack_dir().name)
+        edit(tools / "packs" / self.pack_dir().name)
+        return mock.patch.dict(os.environ, {"LOOP_TOOLS": str(tools)})
+
+    def test_a_term_the_binding_does_not_bind_is_not_checked(self):
+        def add(d):
+            f = d / "contracts" / "inference-deals" / "0.1.0.json"
+            c = load(f)
+            c["requirements"].append({**c["requirements"][0], "id": "come_through.new_term"})
+            dump(f, c)
+        with self.with_pack(add), self.assertRaises(step.NotChecked) as e:
+            step.load_pack()
+        self.assertIn("come_through.new_term", e.exception.args[1])
+
+    def test_a_term_that_is_not_must_have_is_not_checked(self):
+        def soften(d):
+            f = d / "contracts" / "inference-deals" / "0.1.0.json"
+            c = load(f)
+            c["requirements"][0]["tier"] = "informational"
+            dump(f, c)
+        with self.with_pack(soften), self.assertRaises(step.NotChecked) as e:
+            step.load_pack()
+        self.assertIn("must_have", e.exception.args[1])
+
+    def test_the_loops_own_claims_do_not_carry_the_packs_contract(self):
+        pack = step.load_pack()
+        self.judge()
+        refs = {}
+        for path in (self.run / "10-judge" / "bundles").glob("*.bundle.json"):
+            b = load(path)
+            for c in b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"]:
+                refs[c["requirement_ref"]] = c["contract_ref"]
+        self.assertEqual(refs["come_through.paid_as_agreed"], pack["contract_ref"])
+        self.assertEqual(refs["ask-answered"], pack["own_contract_ref"])
+        self.assertNotEqual(pack["own_contract_ref"], pack["contract_ref"])
+
+    def test_a_pack_not_fetched_is_not_checked_not_a_pass(self):
+        with tempfile.TemporaryDirectory() as empty, mock.patch.dict(os.environ, {"LOOP_TOOLS": empty}):
+            f = self.judge()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("10-judge.setup.sh", json.dumps(f["not_checked"]))
 
 
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
@@ -196,7 +277,7 @@ class JudgeTest(Base):
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertEqual(f["not_checked"], [])
-        self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
+        self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book", "inference-deals"])
         self.assertEqual(self.cited(), self.window_records())
         out = self.run / "10-judge"
         names = sorted(p.name for p in (out / "bundles").iterdir())
@@ -208,20 +289,20 @@ class JudgeTest(Base):
         cites = {e["digest"] for c in rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["claims"]
                  for e in c["evidence"]}
         self.assertEqual(cites, {load(out / "bundles" / f"{b}.bundle.json")["root"] for b in WINDOW_STEPS})
-        self.assertEqual(finding.gaps(f["detail"])[0][1], step.PACK_ISSUE)
+        self.assertEqual(finding.gaps(f["detail"])[0][1], step.GAP_ISSUE)
 
     def test_term_3_reads_provider_states_without_model_attestation(self):
         self.judge()
         b = load(self.run / "10-judge" / "bundles" / "05-deal.bundle.json")
         claims = {c["requirement_ref"]: c for c in b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"]}
-        self.assertEqual(claims["term-2"]["verdict"], "met")
-        self.assertEqual(claims["term-3"]["verdict"], "not_evaluable")
-        self.assertEqual(claims["term-3"]["grade"], "self-attested")
-        self.assertIn("provider states", claims["term-3"]["presentation"]["narrative"])
+        self.assertEqual(claims["come_through.served_as_agreed"]["verdict"], "met")
+        self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_evaluable")
+        self.assertEqual(claims["come_through.served_named_model"]["grade"], "self-attested")
+        self.assertIn("provider states", claims["come_through.served_named_model"]["presentation"]["narrative"])
         # Never a judged match: not SATISFIED, and in no met or not_met bucket.
-        self.assertNotEqual(claims["term-3"]["sufficiency"], "SATISFIED")
+        self.assertNotEqual(claims["come_through.served_named_model"]["sufficiency"], "SATISFIED")
         buckets = b["disclosures"][b["root"]]["agent_input"]["statement"]["aggregate"]["buckets"]
-        self.assertIn("05-deal:term-3", buckets["not_evaluable"])
+        self.assertIn("05-deal:come_through.served_named_model", buckets["not_evaluable"])
 
     def test_term_3_with_model_attestation_is_not_checked(self):
         d = self.run / "05-deal" / "deal.json"
@@ -235,7 +316,7 @@ class JudgeTest(Base):
         f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual([x["issue"] for x in f["not_checked"]], [step.ISSUE])
-        self.assertIn("term-3", f["not_checked"][0]["what"])
+        self.assertIn("come_through.served_named_model", f["not_checked"][0]["what"])
 
     def test_a_reproduced_step_with_no_record_file_fails(self):
         m = self.manifest()
@@ -254,7 +335,7 @@ class JudgeTest(Base):
         f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])  # a not_met deal is a judged outcome, not a broken judge
         n06 = sum(1 for k in records_of(m) if k.startswith("06-settle/"))
-        self.assertIn(f"06-settle: 1 claim(s), {n06} records cited, term-1 not_met", f["detail"])
+        self.assertIn(f"06-settle: 1 claim(s), {n06} records cited, come_through.paid_as_agreed not_met", f["detail"])
         rollup = load(self.run / "10-judge" / "bundles" / "rollup.bundle.json")
         claims = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["claims"]
         self.assertEqual({c["id"]: c["verdict"] for c in claims}["window:06-settle"], "not_met")
@@ -386,7 +467,7 @@ class JudgeTest(Base):
             if name == "rollup":
                 stray = json.loads(json.dumps(doc["claims"][0]))
                 twin = step.result_doc([{**stray, "id": "stray", "evidence": stray["evidence"]}],
-                                       step.load(step.PACK), *step.window_of(utc("2026-10-02T09:01:00Z")))
+                                       step.load_pack(), *step.window_of(utc("2026-10-02T09:01:00Z")))
                 twin["generated_at"] = "2026-10-02T00:00:00Z"
                 rid = real(book, twin, "stray")
                 doc["claims"].append({**doc["claims"][0], "id": "window:stray",
@@ -495,8 +576,9 @@ class StandInTest(unittest.TestCase):
         for r in records:
             by_step[r["step"]] = by_step.get(r["step"], 0) + 1
         self.assertEqual(by_step, {"05": 1, "06": 1, "07": 6, "09": 1})
-        self.assertEqual(finding.gaps(f["detail"]), [("the pack is loop's own deterministic copy of terms 1-3, not a "
-                                                      "pinned evidencebook-skills pack", step.PACK_ISSUE)])
+        self.assertEqual(finding.gaps(f["detail"]), [("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
+                                                      "this step applies the pack's terms to the results 08 re-derived",
+                                                      step.GAP_ISSUE)])
 
     @unittest.skipUnless((TOOLS_DIR / "05-deal" / "bin" / "loop-step05-deal").is_file(),
                          "SKIPPED LOUDLY: step 05's driver is not installed; run steps/05-deal.setup.sh")

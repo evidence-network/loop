@@ -14,7 +14,7 @@ its detail says the records are that stand-in, not this run's:
              verified.json in its proof with the sha256 the file has. The
              as-of instant is 08's finding `finished`.
   window     12 whole closed calendar months before the as-of month, never
-             rolling (steps/10-judge.d/pack.json). A record is a primary record file (pack.json `records`) that 08 lists
+             rolling (the pinned pack's window.months). A record is a primary record file (binding.json `records`) that 08 lists
              for a reproduced step of one of the pack's kinds (05 deals, 06
              settlements, 07 asks, 09 disputes) whose step finished in the
              window. Its bytes must still match 08's digest. A file 08 does
@@ -24,9 +24,10 @@ its detail says the records are that stand-in, not this run's:
   pack       deterministic, no model: one claim per term of the step's kind,
              citing every record of the step; the verdict is recomputed from
              the result 08 re-derived (PASS met, FAIL not_met, NOT_CHECKED
-             not_evaluable). Term 3 reads "provider states" where no record
+             not_evaluable). The served_named_model term reads "provider states" where no record
              carries model_attestation. 09's referee Result is cited and
-             counted as found, never judged again.
+             counted as found, never judged again. The pack is the one versions.lock
+             pins (`inference-deals`), fetched by 10-judge.setup.sh; not fetched is NOT_CHECKED.
   seal       a fresh book under the repository's rehearsal TEST judge key
              (population/<p>/step10/keys): each record is published as a
              capsule whose payload is {step, path, sha256}; `capsulectl book
@@ -67,9 +68,11 @@ import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 
 ISSUE = "evidence-network/loop#24"
-# The pack is loop's own deterministic copy of terms 1-3, not a pinned evidencebook-skills pack.
-PACK_ISSUE = "evidence-network/loop#111"
-PACK = HERE / "10-judge.d" / "pack.json"
+# The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
+# fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
+GAP_ISSUE = "evidence-network/loop#157"
+BINDING = HERE / "10-judge.d" / "binding.json"
+COMPILED = "packs/inference-deals/compiled/compiled.json"
 PINNED = ["capsulectl", "capsulectl-book"]
 ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 "
            "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
@@ -99,9 +102,69 @@ def stamp(t):
     return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def pin(name):
+    """(repository, ref) of a versions.lock line."""
+    for line in (ROOT / "versions.lock").read_text().splitlines():
+        f = line.split()
+        if len(f) == 3 and f[0] == name:
+            return f[1], f[2]
+    raise RuntimeError(f"versions.lock does not pin {name}")
+
+
+def tools_dir():
+    return Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
+
+
+def load_pack():
+    """The pinned inference-deals pack read onto BINDING, as {pack, contract_ref, window, verdicts, kinds, pin}.
+
+    Terms, tiers and the window length are the pinned pack's own (its contract and compiled.json); the
+    binding names which stand-in record files feed which term. NotChecked when the pinned pack is not fetched."""
+    repo, ref = pin("inference-deals")
+    where = tools_dir() / "packs" / f"inference-deals-{ref}"
+    missing = NotChecked("the pinned inference-deals pack", f"{repo} {ref} is not fetched into {where}; "
+                                                            "steps/10-judge.setup.sh fetches it")
+    if not (where / COMPILED).is_file():
+        raise missing
+    compiled = load(where / COMPILED)
+    name, _, version = compiled["contract_ref"].partition("@")
+    if not (where / "contracts" / name / f"{version}.json").is_file():
+        raise missing
+    contract = load(where / "contracts" / name / f"{version}.json")
+    if f"{contract['id']}@{contract['version']}" != compiled["contract_ref"]:
+        raise NotChecked("the pinned inference-deals pack", f"its contract {contract['id']}@{contract['version']} "
+                                                            f"is not the {compiled['contract_ref']} its compiled.json names")
+    reqs = {r["id"]: r for r in contract["requirements"]}
+    binding = load(BINDING)
+    bound = {t["requirement"] for k in binding["kinds"].values() for t in k["terms"] if "requirement" in t}
+    if set(reqs) != bound:
+        raise NotChecked("the pinned inference-deals pack's terms", f"binding.json binds {sorted(bound)}, the pinned pack "
+                                                                    f"has {sorted(reqs)}; bind each term before pinning it")
+    soft = sorted(r["id"] for r in reqs.values() if r["tier"] != "must_have")
+    if soft:
+        raise NotChecked("the pinned inference-deals pack's terms", f"{soft} are not must_have; this step judges "
+                                                                    "must_have terms only")
+    kinds = {}
+    for nn, k in binding["kinds"].items():
+        terms = []
+        for t in k["terms"]:
+            if "requirement" in t:
+                r = reqs[t["requirement"]]
+                terms.append({"id": r["id"], "name": r["statement"], "must_have": True,
+                              **({"model_attestation": True} if t.get("model_attestation") else {})})
+            else:
+                terms.append({"id": t["id"], "name": t["name"], "must_have": True, "own": True,
+                              **({"counted": True} if t.get("counted") else {})})
+        kinds[nn] = {"kind": k["kind"], "records": k["records"], "terms": terms}
+    return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
+            "own_contract_ref": binding["own_contract_ref"],
+            "window": {"period": "month", "periods": compiled["window"]["months"]},
+            "verdicts": binding["verdicts"], "kinds": kinds, "pin": f"{repo} {ref}"}
+
+
 def tools():
     """capsulectl and its book plugin, where the setup scripts install them."""
-    bin_ = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "bin"
+    bin_ = tools_dir() / "bin"
     return bin_ / "capsulectl", bin_ / "capsulectl-book"
 
 
@@ -131,7 +194,7 @@ def read_manifest(run):
 def select(run, manifest, start, end, pack):
     """(records, refused, not_checked, problems) over 08's manifest.
 
-    A record is {dir, step, path, sha256, kind, result}: a primary record file (pack.json `records`) that 08 lists for a reproduced step of the pack's kinds
+    A record is {dir, step, path, sha256, kind, result}: a primary record file (binding.json `records`) that 08 lists for a reproduced step of the pack's kinds
     whose step finished in [start, end). Only finding.json is read before that is known, and only after its
     bytes match 08's digest.
     """
@@ -199,10 +262,10 @@ def attested(path):
     return False
 
 
-def claim(cid, requirement, verdict, refs, narrative=None):
+def claim(cid, requirement, verdict, refs, contract_ref, narrative=None):
     """One claim; `evidence` holds record refs until seal() puts the capsule digests in."""
     sufficiency = "SATISFIED" if verdict in ("met", "not_met") else "INSUFFICIENT"
-    c = {"id": cid, "contract_ref": None, "requirement_ref": requirement, "tier": "recomputed",
+    c = {"id": cid, "contract_ref": contract_ref, "requirement_ref": requirement, "tier": "recomputed",
          "grade": "self-attested", "sufficiency": sufficiency, "verdict": verdict, "evidence": list(refs),
          "proofs": []}
     if narrative:
@@ -216,7 +279,6 @@ def claim(cid, requirement, verdict, refs, narrative=None):
 def result_doc(claims, pack, start, end, extra=None):
     buckets = {"met": [], "not_met": [], "not_evaluable": []}
     for c in claims:
-        c["contract_ref"] = pack["contract_ref"]
         buckets[c["verdict"]].append(c["id"])
     doc = {"result_version": "evidence-result-v0", "generated_at": stamp(end), "claims": claims,
            "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
@@ -237,19 +299,20 @@ def judge_records(records, run, pack, start, end, not_checked):
         claims = []
         for t in pack["kinds"][nn]["terms"]:
             cid = f"{d}:{t['id']}"
+            cref = pack["own_contract_ref"] if t.get("own") else pack["contract_ref"]
             if t.get("model_attestation"):
                 if any(attested(Path(run) / d / r["path"]) for r in mine):
                     not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
                                         "why": "a record carries model_attestation and this pack has no "
                                                "recomputation for it yet", "issue": ISSUE})
-                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "model_attestation is present; this "
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, cref, "model_attestation is present; this "
                                         "pack does not recompute it yet, so the term is not judged"))
                 else:
-                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "provider states the model it "
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, cref, "provider states the model it "
                                         "served (self-attested); no record carries model_attestation, so this is "
                                         "never a judged match"))
             else:
-                claims.append(claim(cid, t["id"], verdict, refs))
+                claims.append(claim(cid, t["id"], verdict, refs, cref))
         docs[d] = result_doc(claims, pack, start, end)
     return docs
 
@@ -260,7 +323,7 @@ def rollup_doc(finer, pack, start, end):
     for d, (rid, doc) in sorted(finer.items()):
         verdicts = {c["verdict"] for c in doc["claims"]}
         worst = next(v for v in ("not_met", "not_evaluable", "met") if v in verdicts)
-        claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid]))
+        claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid], pack["own_contract_ref"]))
     return result_doc(claims, pack, start, end)
 
 
@@ -466,7 +529,6 @@ def main(argv=None):
     for p in ("bundles", "verify"):
         shutil.rmtree(out / p, ignore_errors=True)
     population = load(a.population / "population.json")["population"]
-    pack = load(PACK)
     keys = a.population.resolve() / "step10" / "keys"
     run = out.parent
     # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
@@ -477,6 +539,7 @@ def main(argv=None):
     problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
     start = end = None
     pinned = []
+    pack = None
     try:
         try:
             manifest, as_of = read_manifest(source)
@@ -484,6 +547,7 @@ def main(argv=None):
             raise RuntimeError(str(e))
         if manifest.get("population") != population:
             raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
+        pack = load_pack()
         start, end = window_of(as_of, pack["window"]["periods"])
         records, refused, not_checked, problems = select(source, manifest, start, end, pack)
         dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
@@ -504,7 +568,7 @@ def main(argv=None):
             raise NotChecked("the pack's Results, sealed and verified offline",
                              f"capsulectl and capsulectl-book are not installed ({capsulectl.parent}); "
                              "steps/10-judge.setup.sh installs them")
-        pinned = PINNED
+        pinned = PINNED + ["inference-deals"]
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
             docs = judge_records(records, source, pack, start, end, not_checked)
             book = Book(Path(tmp) / "book", capsulectl, keys)
@@ -523,17 +587,18 @@ def main(argv=None):
 
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
     window = f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)" if start else "no window"
+    packname = f"{pack['pack']} ({pack['pin']})" if pack else "inference-deals (not loaded)"
     what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "
             f"run's records" if standin else f"run {run.name}")
-    detail = (f"{what}, {window}, deterministic pack {pack['pack']} (no model): "
+    detail = (f"{what}, {window}, deterministic pack {packname} (no model): "
               f"{len(records)} records in the window from {len({r['dir'] for r in records})} steps. "
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
               + (f"Refused, not read: {'; '.join(refused)}. " if refused else "")
               + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each.")
     if result == "PASS":
-        detail += " " + finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
-                                        "evidencebook-skills pack", PACK_ISSUE)
+        detail += " " + finding.outside("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
+                                        "this step applies the pack's terms to the results 08 re-derived", GAP_ISSUE)
     finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned,
                   proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)
