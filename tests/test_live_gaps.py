@@ -93,6 +93,13 @@ class SourcesTest(unittest.TestCase):
                  for r in closed_refs(p.read_text(encoding="utf-8"))]
         self.assertEqual(found, [])
 
+    def test_no_test_pins_a_closed_issue(self):
+        # A test that asserts a closed issue as a gap owner would pass only while the step still cites it.
+        # This file plants one on purpose, so it is the one exception.
+        found = [f"{p.relative_to(ROOT)}: {r}" for p in sorted((ROOT / "tests").glob("test_*.py"))
+                 if p.name != "test_live_gaps.py" for s in string_constants(p) for r in closed_refs(s)]
+        self.assertEqual(found, [])
+
     def test_no_doc_names_a_closed_issue(self):
         found = [f"{p.relative_to(ROOT)}: {r}" for p in DOCS if p.is_file()
                  for r in closed_refs(p.read_text(encoding="utf-8"))]
