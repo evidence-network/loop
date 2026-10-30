@@ -256,12 +256,61 @@ class PolicyTest(unittest.TestCase):
         self.assertFalse(step.policy_answers(exchange, peers, requester_authenticated=False))
 
 
+def iso(t):
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def ask_record(rid, header):
+    """One line of a node's ledger/capsules.jsonl holding an ask-book record (capsules-plugin ask_book.rs)."""
+    return json.dumps({"capsule_id": rid, "model_attestation": {"compute_attestation": {
+        step.BOOK_BLOCK: header}}}) + "\n"
+
+
+def seal_records(ledger, peer, asked, outcome):
+    """What the pinned plugin appends to the asker's ledger for one ask: the sealed evidence_request, then, as
+    `outcome` says, the record of what came of it. Whole-second times, as the plugin writes them."""
+    at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    sent = {**asked, "audience": peer, "nonce": f"n-{time.time_ns()}", "requester_auth": {"sig": "x"}}
+    path = ledger / "ledger" / "capsules.jsonl"
+    n = len(path.read_text().splitlines()) if path.exists() else 0
+    rid = f"{n:064x}"
+    lines = [ask_record(rid, {"record_type": "evidence_request", "epistemic_type": "observed_event", "links": [],
+                              "statement": {"request": sent, "responder_ref": peer}, "committed_at": iso(at)})]
+    digest = step.request_digest(sent)
+    cites = [{"type": "cites", "target": rid}]
+    close = at + dt.timedelta(seconds=60)
+    window = {"opened": iso(at), "closed": iso(close)}
+    verification = {"state": "artifact"}
+    if outcome in ("response", "wrong_digest"):
+        lines.append(ask_record(f"{n + 1:064x}", {
+            "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
+            "statement": {"outcome": "artifact", "request_digest": "0" * 64 if outcome == "wrong_digest" else digest,
+                          "verification": verification}, "committed_at": iso(at)}))
+    elif outcome == "refusal_mismatch":
+        lines.append(ask_record(f"{n + 1:064x}", {
+            "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
+            "statement": {"outcome": "refusal", "request_digest": digest,
+                          "verification": {"state": "refusal", "reason": "policy_declined",
+                                           "policy_check": {"state": "MISMATCH"}}}, "committed_at": iso(at)}))
+    elif outcome in ("absence", "early_absence", "late_open"):
+        if outcome == "early_absence":
+            window["closed"] = iso(at + dt.timedelta(seconds=20))
+        lines.append(ask_record(f"{n + 1:064x}", {
+            "record_type": "recorded_absence", "epistemic_type": "observed_event", "links": cites,
+            "statement": {"outcome": "recorded_absence", "request_digest": digest, "window": window,
+                          "recorded_at": iso(close)}, "committed_at": iso(close)}))
+    ledger.joinpath("ledger").mkdir(parents=True, exist_ok=True)
+    with ledger.joinpath("ledger", "capsules.jsonl").open("a") as f:
+        f.write("".join(lines))
+
+
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced):
+    def __init__(self, answers, announced, ledger=None, sealed=None):
         fake = self
         self.answers, self.announced = answers, announced
+        self.ledger, self.sealed = ledger, sealed or {}
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -280,6 +329,8 @@ class FakeConsole:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 what = fake.answers[stem]
+                if fake.ledger is not None:
+                    seal_records(fake.ledger, body["peer_id"], body["request"], fake.sealed.get(stem, "response"))
                 if what == "absence":
                     return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
                 self.reply(200, (REPORTER_FIX / f"{what}.json").read_bytes())
@@ -307,16 +358,17 @@ class ReporterBackendTest(Tmp):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def run_live(self, answers, announced=LISTED, key=LISTED, flags=()):
+    def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [{
             "name": "lab-1", "node_id": "1" * 64, "key_id": key,
             "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}]}))
-        console = FakeConsole(answers, announced)
+        console = FakeConsole(answers, announced, ledger, sealed)
+        extra = ["--console-data-dir", str(ledger)] if ledger is not None else []
         try:
             self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out),
-                                        "--console", console.url, *flags]), 0)
+                                        "--console", console.url, *extra, *flags]), 0)
         finally:
             console.close()
         self.assertEqual(finding.check(self.out.parent), [])
@@ -328,7 +380,7 @@ class ReporterBackendTest(Tmp):
     def test_verified_answers_in_time_read_not_checked_on_the_sealing_issue_and_count_as_answered(self):
         r = self.run_live(VERIFIED)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertEqual(self.issues(r), [step.SEAL_ISSUE])
+        self.assertEqual(self.issues(r), sorted([step.SEAL_ISSUE, step.EXCHANGE_ISSUE]))
         self.assertEqual(sorted(r["pinned"]), ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"])
         first = json.loads((self.out / "first-answered.json").read_text())
         self.assertTrue(first["answered_at"])
@@ -422,6 +474,77 @@ class ReporterBackendTest(Tmp):
         r = self.run_live(VERIFIED, flags=("--self-node", "lab-1"))
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("lab-1: not asked, the reporter's own node and no second console", r["detail"])
+
+    # --- the asker's sealed records, read from its ledger (evidence-network/loop#80) ---
+    def ledger(self):
+        d = Path(self.tmp.name) / "asker"
+        d.mkdir()
+        return d
+
+    def only_exchange_left(self, r):
+        self.assertEqual([i["what"] for i in r["not_checked"] if i["issue"] in (step.SEAL_ISSUE, step.EXCHANGE_ISSUE)],
+                         [step.LIVE_NOT_CHECKED[0]["what"]], r["not_checked"])
+
+    def test_sealed_requests_and_their_responses_are_read(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger())
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.only_exchange_left(r)
+        self.assertTrue(json.loads((self.out / "first-answered.json").read_text())["sealed"])
+        kept = json.loads(next(self.out.glob("lab-1/attempts/*/checkpoints.ledger.json")).read_text())
+        self.assertEqual(kept["outcome"]["header"]["record_type"], "evidence_response")
+
+    def test_a_response_for_another_request_digest_is_a_fail(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "wrong_digest"})
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("names another request than the one sealed", r["detail"])
+
+    def test_an_ask_with_no_sealed_request_is_a_fail(self):
+        with mock.patch.object(step, "ask_records", return_value=[]):
+            r = self.run_live(VERIFIED, ledger=self.ledger())
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("holds 0 sealed evidence_request records for this ask", r["detail"])
+
+    def test_a_request_sealed_but_never_given_an_outcome_is_a_fail_once_its_window_closed(self):
+        late = step.now() + dt.timedelta(minutes=5)
+        with mock.patch.object(step, "now", side_effect=lambda: late):
+            r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "none"})
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("no outcome sealed for the request", r["detail"])
+
+    def test_an_open_window_is_not_checked_not_failed(self):
+        with mock.patch.object(step, "OPEN_WINDOW_WAIT", dt.timedelta(0)):
+            r = self.run_live({"checkpoints": "absence", "history_card": "absence"}, ledger=self.ledger(),
+                              sealed={"checkpoints": "none", "history_card": "none"})
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertTrue(any("not sealed yet" in i["why"] for i in r["not_checked"]))
+
+    def test_a_recorded_absence_for_an_ask_the_reporter_saw_unanswered_is_read(self):
+        r = self.run_live({"checkpoints": "absence", "history_card": "absence"}, ledger=self.ledger(),
+                          sealed={"checkpoints": "absence", "history_card": "absence"})
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.only_exchange_left(r)
+
+    def test_an_absence_that_closes_its_window_early_is_a_fail(self):
+        r = self.run_live({"checkpoints": "absence", "history_card": "absence"}, ledger=self.ledger(),
+                          sealed={"checkpoints": "early_absence", "history_card": "absence"})
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("absence closes its window", r["detail"])
+
+    def test_an_absence_recorded_for_an_ask_the_reporter_saw_answered_is_a_fail(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "absence"})
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("recorded an absence, but the reporter saw a signed answer", r["detail"])
+
+    def test_a_refusal_the_sealed_record_checks_against_the_pinned_policy_and_finds_mismatched_is_a_fail(self):
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"},
+                          ledger=self.ledger(), sealed={"checkpoints": "refusal_mismatch"})
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("does not match", r["detail"])
+
+    def test_an_unreadable_ledger_is_not_checked_on_the_issue(self):
+        r = self.run_live(VERIFIED)
+        self.assertIn(step.LEDGER_GAP, [i["why"] for i in r["not_checked"]])
+        self.assertFalse(json.loads((self.out / "first-answered.json").read_text())["sealed"])
 
     def test_a_self_node_not_in_the_population_is_refused(self):
         pop_dir = Path(self.tmp.name) / "live"

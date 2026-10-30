@@ -58,10 +58,18 @@ key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
 `answers_within` (lab/runs/*/join/), and an answer not in by it is not counted
-as answered. Sealing before sending, the recorded absence and the exchange
-ask are NOT_CHECKED on evidence-network/loop#80: the pinned plugin seals each
-ask and its absence (capsules-plugin PR #110), and this step does not read
-those records yet. A node cannot be asked
+as answered.
+
+The pinned plugin seals each ask as an evidence_request before it sends it, and the reply as an evidence_response
+or the silence as a recorded_absence (capsules-plugin PR #110; a refusal's policy_check is PR #112). This step reads
+those records from the asker's ledger (<data_dir>/ledger/capsules.jsonl: the reporter node's, `--console-data-dir`
+or the --self-node's data_dir, and the second node's `--second-data-dir` for the reporter's own node) and checks, per
+ask (judge_sealed): one evidence_request for the node and the question, sealed within the ask; an outcome record
+citing it, after it in the ledger, for the digest of the sealed request; a response where the reporter saw an
+answer, an absence (opened at the request, closed no earlier than its window and the commitment's answers_within)
+where it did not; a refusal's policy_check is not MISMATCH. A window still open at read time is waited out up to 90 s,
+then NOT_CHECKED. An unreadable ledger is NOT_CHECKED. The exchange ask is NOT_CHECKED on evidence-network/loop#94:
+the reporter asks only stranger-safe questions. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
 first-answered.json names the first ask answered (a verified artifact or a
@@ -90,6 +98,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
+import live  # noqa: E402
 import report_layout as layout  # noqa: E402
 
 
@@ -127,20 +136,15 @@ ANSWERED = ("artifact", "refusal")
 DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
 # The pinned plugin seals each ask before it sends it, and its absence when the window closes (capsules-plugin
-# PR #110); reading those sealed records is this step's gap.
+# PR #110); the live path reads those sealed records from the asker's ledger (ask_records, judge_sealed).
 SEAL_ISSUE = "evidence-network/loop#80"
-SEAL_FIXES = "the pinned plugin seals it (capsules-plugin PR #110); this step does not read it yet"
+EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node; it needs step 05's deal half as subject
+LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
 LIVE_NOT_CHECKED = [
-    {"what": "the request sealed in the asker's book before it is sent",
-     "why": "the step sets no seal time against the send ("+SEAL_FIXES+")",
-     "issue": SEAL_ISSUE},
-    {"what": "an absence recorded as a signed record when the window closes",
-     "why": "the reporter keeps an unsigned absence.txt ("+SEAL_FIXES+")",
-     "issue": SEAL_ISSUE},
     {"what": "a later exchange request on a Mesh node",
      "why": "the reporter asks only the stranger-safe questions; the step drives no exchange ask on a Mesh node "
-            "yet",
-     "issue": SEAL_ISSUE},
+            "yet (it needs a two-sided deal record from step 05 as its subject)",
+     "issue": EXCHANGE_ISSUE},
 ]
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
@@ -715,17 +719,152 @@ def judge_live_line(stem, line, entry):
     return None, None
 
 
-def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None):
+# --- The asker's sealed records (the pinned plugin's ask book, capsules-plugin PR #110) -------------
+BOOK_BLOCK = "evidence_book_entry"
+ABSENCE_RECORD = "recorded_absence"
+MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENCE_WINDOW_SECONDS
+OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
+
+
+def ask_records(ledger):
+    """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
+    ledger cannot be read."""
+    try:
+        text = Path(ledger).joinpath("capsules.jsonl").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    records = []
+    for line in text.splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        header = ((rec.get("model_attestation") or {}).get("compute_attestation") or {}).get(BOOK_BLOCK)
+        if isinstance(header, dict) and isinstance(rec.get("capsule_id"), str):
+            records.append((rec["capsule_id"], header))
+    return records
+
+
+def request_digest(request):
+    try:
+        return sha256(check_commitment.canonical(request))
+    except ValueError:
+        return None
+
+
+def judge_sealed(ledger, node_id, request, posted, back, answered, within):
+    """(errors, not_checked reasons, evidence) for one live ask, from the asker's own sealed records: its
+    evidence_request is in the book, and an evidence_response or a recorded_absence citing it agrees with what the
+    reporter saw. `posted` and `back` bracket the ask; `answered` is whether the reporter saw a signed artifact or
+    refusal; `within` is the commitment's answers_within as a timedelta, or None. The wire send is after the seal, so
+    the true deadline is no earlier than the seal plus `within`: an absence must close no earlier than that.
+
+    The plugin seals a request before it writes it to the stream, and the response it seals cites that request's
+    record and the digest of the bytes sent: the digest the sealed request hashes to, which is checked here."""
+    errs, notes = [], []
+    records = ask_records(ledger) if ledger else None
+    if records is None:
+        return errs, [LEDGER_GAP], None
+    lo, hi = posted - dt.timedelta(seconds=1), back + dt.timedelta(seconds=1)  # committed_at has whole seconds
+
+    def mine(h):
+        st = h.get("statement") or {}
+        sent = st.get("request") or {}
+        try:
+            at = utc(h.get("committed_at"))
+        except ValueError:
+            return False
+        return (h.get("record_type") == REQUEST_RECORD and lo <= at <= hi
+                and (st.get("responder_ref") == node_id or sent.get("audience") == node_id)
+                and sent.get("subject") == request.get("subject") and sent.get("derivation") == request.get("derivation"))
+
+    found = [(i, rid, h) for i, (rid, h) in enumerate(records) if mine(h)]
+    if len(found) != 1:
+        if not found and not answered:
+            return errs, ["the ask did not reach the plugin's ask book (no evidence_request in the asker's ledger "
+                          "for it)"], None
+        return [f"the asker's ledger holds {len(found)} sealed evidence_request records for this ask, not one"], [], None
+    index, rid, req_h = found[0]
+    sealed = utc(req_h["committed_at"])
+    digest = request_digest(req_h["statement"]["request"])
+    close = sealed + MINIMUM_ABSENCE_WINDOW  # the later of this and the request's own deadline
+    if req_h["statement"]["request"].get("deadline"):
+        close = max(close, utc(req_h["statement"]["request"]["deadline"]))
+
+    def outcomes(recs):
+        return [(i, orid, h) for i, (orid, h) in enumerate(recs)
+                if h.get("record_type") in (RESPONSE_RECORD, ABSENCE_RECORD)
+                and any(l.get("type") == "cites" and l.get("target") == rid for l in h.get("links") or [])]
+
+    got = outcomes(records)
+    while not got and not answered and now() < close + dt.timedelta(seconds=5) and close - now() <= OPEN_WINDOW_WAIT:
+        time.sleep(max(1.0, min(5.0, (close - now()).total_seconds())))
+        records = ask_records(ledger) or records
+        got = outcomes(records)
+    evidence = {"request_record": rid, "request": req_h, "window_closes": stamp(close), "outcome": None}
+    if len(got) > 1:
+        return [f"{len(got)} outcome records cite the request, not one"], [], evidence
+    if not got:
+        if now() < close:
+            return errs, [f"the ask's window closes at {stamp(close)}, after this read; its outcome is not sealed yet"], evidence
+        return [f"no outcome sealed for the request: its window closed at {stamp(close)} with no evidence_response "
+                "or recorded_absence"], [], evidence
+    oi, orid, out_h = got[0]
+    evidence["outcome"] = {"record": orid, "header": out_h}
+    st = out_h.get("statement") or {}
+    if oi <= index:
+        errs.append("the outcome record precedes the request record in the ledger")
+    if digest is None or st.get("request_digest") != digest:
+        errs.append("the outcome record names another request than the one sealed (request_digest differs)")
+    if out_h.get("record_type") == RESPONSE_RECORD:
+        if st.get("outcome") not in ANSWERED:
+            errs.append(f"the response was recorded as {st.get('outcome')}, neither an artifact nor a refusal")
+        if not answered:
+            notes.append("the plugin sealed a reply after the reporter's call returned")
+        check = (st.get("verification") or {}).get("policy_check")
+        if st.get("outcome") == "refusal":
+            if check == "MISMATCH" or (isinstance(check, dict) and check.get("state") == "MISMATCH"):
+                errs.append("the refusal is checked against the policy the peer's commitment pins and does not match")
+            elif check in (None, "NOT_CHECKED") or (isinstance(check, dict) and check.get("state") == "NOT_CHECKED"):
+                notes.append("the refusal's policy check (capsules-plugin PR #112) is NOT_CHECKED in the sealed record")
+        elif st.get("outcome") == "artifact" and not answered:
+            pass
+    else:
+        window = st.get("window") or {}
+        try:
+            opened, closed = utc(window.get("opened")), utc(window.get("closed"))
+        except ValueError as e:
+            return errs + [f"the absence window is malformed ({e})"], notes, evidence
+        if opened != sealed:
+            errs.append(f"the absence window opens at {window.get('opened')}, not at the request record {req_h['committed_at']}")
+        if closed < close:
+            errs.append(f"the absence closes its window at {window.get('closed')}, before {stamp(close)}")
+        if answered:
+            errs.append("the plugin recorded an absence, but the reporter saw a signed answer")
+        if within is not None and closed < sealed + within:
+            errs.append(f"the absence closes its window at {window.get('closed')}, before the request's answers_within "
+                        f"deadline {stamp(sealed + within)}")
+    return errs, notes, evidence
+
+
+
+def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, console_data_dir=None,
+                 second_data_dir=None):
     failures, not_checked, answered, proof, lines = [], list(LIVE_NOT_CHECKED), [], [], []
+    console_data_dir, second_data_dir = (Path(os.path.expandvars(d)) if d else None
+                                         for d in (console_data_dir, second_data_dir))
+    if console_data_dir is None and self_node:  # the reporter's console is its own node's: the node's data_dir
+        own = next((n for n in pop["nodes"] if n["name"] == self_node), {})
+        console_data_dir = live.readable(own, "data_dir", "ledger/capsules.jsonl")
     for node in pop["nodes"]:
         name = node["name"]
-        asker, via = console, "the reporter's console"
+        asker, via, ledger = console, "the reporter's console", console_data_dir
         if self_node and name == self_node:
             if not second_console:
                 merge(not_checked, [step12.no_second_console(name)])
                 lines.append(f"{name}: not asked, the reporter's own node and no second console")
                 continue
-            asker, via = second_console, "a second node's console"
+            asker, via, ledger = second_console, "a second node's console", second_data_dir
         try:
             entry = step12.listed_entry(node)
         except FileNotFoundError:
@@ -759,6 +898,17 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                       "deadline": stamp(sent_at + adv["within"]) if adv else None,
                       "commitment": adv["commitment"] if adv else None, "late": late}
             write_json(attempt / "timing.json", timing)
+            for stem, line in result.items():
+                saw = line.split(" ", 1)[0] in ("verified", "refusal")
+                errs, notes, evidence = judge_sealed(
+                    Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
+                    sent_at, back, saw, adv["within"] if adv else None)
+                qn = daily_report.QUESTION_NAMES[stem]
+                failures += [f"{name}: {qn}: {e}" for e in errs]
+                merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,
+                                     "issue": SEAL_ISSUE} for n in notes])
+                if evidence is not None:
+                    write_json(attempt / f"{stem}.ledger.json", evidence)
             proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
             for stem, line in result.items():
                 qname = daily_report.QUESTION_NAMES[stem]
@@ -784,6 +934,12 @@ def backend(pop):
     return pop.get("ask") or ("reporter" if pop["population"] == "live" else "book")
 
 
+def sealed_all(out):
+    """Every reporter ask in `out` has the sealed request read from the asker's ledger (<stem>.ledger.json)."""
+    asks = list(Path(out).glob("*/attempts/*/*.request.json"))
+    return bool(asks) and all(Path(str(a)[:-len(".request.json")] + ".ledger.json").is_file() for a in asks)
+
+
 def conclude(out, population, failures, not_checked, answered, proof, lines, started, which="book"):
     """Write first-answered.json and the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any
     part is unchecked, else PASS."""
@@ -792,9 +948,9 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     write_json(out / "first-answered.json",
                {"answered_at": stamp(first[0]) if first else None,
                 "ask": first[1] if first else None,
-                # whether this step saw each request sealed before it was sent: the book backend does; the
-                # pinned plugin seals them too (capsules-plugin PR #110), and reading them is evidence-network/loop#80
-                "sealed": which == "book"})
+                # whether this step read each request sealed in the asker's book: the book backend does; the
+                # reporter backend does when every ask has its sealed record read from the asker's ledger
+                "sealed": which == "book" or sealed_all(out)})
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     detail = f"ask backend: {which}. " + "; ".join(failures or lines) + "."
@@ -809,6 +965,11 @@ def main(argv=None):
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--console", default=os.environ.get("LOOP_CONSOLE", daily_report.DEFAULT_CONSOLE),
                     help="the reporter node's console, for the reporter backend")
+    ap.add_argument("--console-data-dir", default=os.environ.get("LOOP_CONSOLE_DATA_DIR") or None,
+                    help="the data dir of the node --console is (its ledger/capsules.jsonl holds the asker's sealed "
+                         "records); default: the --self-node's data_dir in the population")
+    ap.add_argument("--second-data-dir", default=os.environ.get("LOOP_SECOND_DATA_DIR") or None,
+                    help="the data dir of the node --second-console is")
     ap.add_argument("--self-node", default=os.environ.get("LOOP_SELF_NODE") or None,
                     help="the population node whose console --console is; it is asked through --second-console")
     ap.add_argument("--second-console", default=os.environ.get("LOOP_SECOND_CONSOLE") or None,
@@ -827,7 +988,9 @@ def main(argv=None):
                   f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
             return 2
         failures, not_checked, answered, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
-                                                                     second_console=a.second_console)
+                                                                     second_console=a.second_console,
+                                                                     console_data_dir=a.console_data_dir,
+                                                                     second_data_dir=a.second_data_dir)
     else:
         print(f"07-ask: unknown ask backend {which!r}", file=sys.stderr)
         return 2
