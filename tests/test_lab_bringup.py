@@ -264,7 +264,7 @@ class DryRunTest(unittest.TestCase):
         # Stock mesh-llm passes plugins no exchange text: the client supplies the pair's request and answers.
         self.assertIn("referee_supply_twin_texts", r.stdout)
         # Each run has its own request digest: the bracket (a timestamp) is in the prompt.
-        self.assertRegex(r.stdout, r"Name\\ one\\ colour\.\\ \\(run\\ lab-twins-\d{8}T\d{6}Z\\\)")
+        self.assertRegex(r.stdout, r"colour\.\\ \\\(run\\ lab-twins-\d{8}T\d{6}Z")
 
     def test_dispute_runs_step_09_read_only_on_the_live_population(self):
         r = lab_sh("--dry-run", "dispute", env=self.env)
