@@ -9,6 +9,7 @@ and LOOP_REQUIRE_TOOLS=1 makes that an error. Each planted failure runs on a cop
 check shows which part of 10 catches it: with that part of 10 switched off, the plant goes through.
 """
 import datetime as dt
+import fnmatch
 import importlib.machinery
 import importlib.util
 import json
@@ -98,8 +99,8 @@ class Base(unittest.TestCase):
         self.reseal_manifest(m)
 
     def window_records(self):
-        """{dir/path: sha256} of every file 08 lists for the base run's four steps."""
-        return {f"{e['dir']}/{x['path']}": x["sha256"] for e in self.manifest()["steps"] for x in e["files"]}
+        """{dir/path: sha256} of every record file (pack.json `records`) 08 lists for the base run's four steps."""
+        return records_of(self.manifest())
 
     def cited(self):
         """{dir/path: sha256} the finer bundles cite, read from their disclosed record capsules."""
@@ -178,6 +179,13 @@ class ManifestTest(Base):
 
 
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+def records_of(manifest):
+    """{dir/path: sha256} of the primary record files of each kind that the manifest lists."""
+    kinds = json.loads((ROOT / "steps" / "10-judge.d" / "pack.json").read_text())["kinds"]
+    return {f"{e['dir']}/{x['path']}": x["sha256"] for e in manifest["steps"] if e["step"] in kinds
+            for x in e["files"] if any(fnmatch.fnmatchcase(x["path"], g) for g in kinds[e["step"]]["records"])}
+
+
 class JudgeTest(Base):
     def test_passes_offline_citing_every_record_in_the_window(self):
         def no_network(*a, **k):
@@ -229,6 +237,15 @@ class JudgeTest(Base):
         self.assertEqual([x["issue"] for x in f["not_checked"]], [step.ISSUE])
         self.assertIn("term-3", f["not_checked"][0]["what"])
 
+    def test_a_reproduced_step_with_no_record_file_fails(self):
+        m = self.manifest()
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        e05["files"] = [x for x in e05["files"] if x["path"] != "deal.json"]
+        self.reseal_manifest(m)
+        f = self.judge()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("05-deal: 08 lists no deal record (deal.json)", f["detail"])
+
     def test_a_verdict_comes_from_the_result_08_rederived(self):
         m = self.manifest()
         e06 = next(e for e in m["steps"] if e["dir"] == "06-settle")
@@ -236,7 +253,8 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])  # a not_met deal is a judged outcome, not a broken judge
-        self.assertIn(f"06-settle: 1 claim(s), {len(e06['files'])} records cited, term-1 not_met", f["detail"])
+        n06 = sum(1 for k in records_of(m) if k.startswith("06-settle/"))
+        self.assertIn(f"06-settle: 1 claim(s), {n06} records cited, term-1 not_met", f["detail"])
         rollup = load(self.run / "10-judge" / "bundles" / "rollup.bundle.json")
         claims = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["claims"]
         self.assertEqual({c["id"]: c["verdict"] for c in claims}["window:06-settle"], "not_met")
@@ -264,7 +282,7 @@ class JudgeTest(Base):
 
     def test_a_step_outside_the_window_is_refused_not_read(self):
         self.edit_step("07-ask", finished="2026-10-01T00:00:00Z")
-        n07 = len(next(e for e in self.manifest()["steps"] if e["dir"] == "07-ask")["files"])
+        n07 = len(next(e for e in self.manifest()["steps"] if e["dir"] == "07-ask")["files"])  # files 08 lists, not records
         with mock.patch.object(step, "attested", wraps=step.attested) as read:
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
@@ -286,8 +304,8 @@ class JudgeTest(Base):
 
         def omit(*a, **k):
             docs = real(*a, **k)
-            for c in docs["06-settle"]["claims"]:
-                c["evidence"] = [e for e in c["evidence"] if e != "06-settle/ledger.jsonl"]
+            for c in docs["09-dispute"]["claims"]:
+                c["evidence"] = [e for e in c["evidence"] if e != "09-dispute/outcome.json"]
             return docs
         return mock.patch.object(step, "judge_records", side_effect=omit)
 
@@ -295,7 +313,7 @@ class JudgeTest(Base):
         with self.omit_one():
             f = self.judge()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("no Result cites 06-settle/ledger.jsonl", f["detail"])
+        self.assertIn("no Result cites 09-dispute/outcome.json", f["detail"])
 
     def test_mutant_without_the_complete_check_the_omission_passes(self):
         with self.omit_one(), mock.patch.object(step, "check_complete", return_value=[]):
@@ -442,8 +460,13 @@ class StandInTest(unittest.TestCase):
                       "this run's records", f["detail"])
         self.assertEqual(load(self.run / "10-judge" / "window.json")["source"], "stand-in")
         manifest = load(POPULATION / "step10" / "run" / "08-verify" / "verified.json")
-        self.assertEqual(len(load(self.run / "10-judge" / "window.json")["records"]),
-                         sum(len(e["files"]) for e in manifest["steps"]))
+        records = load(self.run / "10-judge" / "window.json")["records"]
+        self.assertEqual(len(records), len(records_of(manifest)))
+        # Counts are of deals, settlements, asks and disputes, not of the bundles and proof files beside them.
+        by_step = {}
+        for r in records:
+            by_step[r["step"]] = by_step.get(r["step"], 0) + 1
+        self.assertEqual(by_step, {"05": 1, "06": 1, "07": 6, "09": 2})
         self.assertEqual(finding.gaps(f["detail"]), [("the pack is loop's own deterministic copy of terms 1-3, not a "
                                                       "pinned evidencebook-skills pack", step.PACK_ISSUE)])
 

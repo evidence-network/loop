@@ -14,7 +14,7 @@ its detail says the records are that stand-in, not this run's:
              verified.json in its proof with the sha256 the file has. The
              as-of instant is 08's finding `finished`.
   window     12 whole closed calendar months before the as-of month, never
-             rolling (steps/10-judge.d/pack.json). A record is a file 08 lists
+             rolling (steps/10-judge.d/pack.json). A record is a primary record file (pack.json `records`) that 08 lists
              for a reproduced step of one of the pack's kinds (05 deals, 06
              settlements, 07 asks, 09 disputes) whose step finished in the
              window. Its bytes must still match 08's digest. A file 08 does
@@ -50,6 +50,7 @@ steps/10-judge.md. Exit 0 once the finding is written, whatever the result.
 import argparse
 import base64
 import datetime as dt
+import fnmatch
 import json
 import os
 import shutil
@@ -130,7 +131,7 @@ def read_manifest(run):
 def select(run, manifest, start, end, pack):
     """(records, refused, not_checked, problems) over 08's manifest.
 
-    A record is {dir, step, path, sha256, kind, result}: a file 08 lists for a reproduced step of the pack's kinds
+    A record is {dir, step, path, sha256, kind, result}: a primary record file (pack.json `records`) that 08 lists for a reproduced step of the pack's kinds
     whose step finished in [start, end). Only finding.json is read before that is known, and only after its
     bytes match 08's digest.
     """
@@ -158,7 +159,15 @@ def select(run, manifest, start, end, pack):
                           and str(p.relative_to(d)) not in files and p.name != "loop-step.log")
         refused += [f"{e['dir']}/{p}: not in 08's manifest" for p in unlisted]
         kind = pack["kinds"][e["step"]]["kind"]
-        for path, sha in sorted(files.items()):
+        patterns = pack["kinds"][e["step"]]["records"]
+        # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
+        # disputes; the bundles and proof files beside them are 08's, not counted.
+        wanted = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
+        if not wanted:
+            refused.append(f"{e['dir']}: {len(files)} files, none is a {kind} record ({', '.join(patterns)})")
+            problems.append(f"{e['dir']}: 08 lists no {kind} record ({', '.join(patterns)})")
+            continue
+        for path, sha in sorted(wanted.items()):
             if not (d / path).is_file() or finding.sha256(d / path) != sha:
                 problems.append(f"{e['dir']}/{path} does not match the sha256 08's manifest gives it")
                 continue
@@ -515,7 +524,7 @@ def main(argv=None):
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
               + (f"Refused, not read: {'; '.join(refused)}. " if refused else "")
-              + "Records are the files step 08's manifest lists, cited by sha256 through one capsule each.")
+              + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each.")
     if result == "PASS":
         detail += " " + finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
                                         "evidencebook-skills pack", PACK_ISSUE)
