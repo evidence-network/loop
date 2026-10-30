@@ -10,7 +10,7 @@ baseline/live.json holds, for each ecosystem, the last accepted live result of e
 findings directory it was taken from, and the pins it ran under. It moves only
 through `update`, which refuses a findings directory steps/finding.py refuses (that includes a
 finding whose pinned entries differ from versions.lock), a rehearsal finding, a repeated step
-number, and a regression against the baseline already committed. `verify` re-reads the committed
+number, a run.json of another ecosystem (none means mesh), and a regression against the baseline already committed. `verify` re-reads the committed
 findings with steps/finding.py (records, proof and pins against the current versions.lock), refuses
 a hand-edited baseline or a non-canonical findings path, and requires the baseline's pins
 to hold under the current versions.lock: every pin it records is still there at the same ref (a pin
@@ -114,8 +114,9 @@ def moved_pins(recorded, now):
 def cmd_verify(baseline):
     doc = load(baseline)
     errs = []
-    if not isinstance(doc.get("not_checked_is_regression"), bool):
-        errs.append("not_checked_is_regression must be true or false")
+    if doc.get("not_checked_is_regression") is not True:
+        errs.append("not_checked_is_regression must be true (Steven's ruling: PASS -> NOT_CHECKED is red); "
+                    "an accepted regression has no override")
     for eco, entry in sorted(doc["ecosystems"].items()):
         canonical = str((ROOT / entry["findings"]).resolve().relative_to(ROOT.resolve()))
         if entry["findings"] != canonical:
@@ -132,8 +133,19 @@ def cmd_verify(baseline):
     return errs
 
 
+def run_ecosystem(findings_dir):
+    """The ecosystem loop.sh recorded in the run's run.json; a run.json without one is a mesh run."""
+    try:
+        return json.loads((Path(findings_dir) / "run.json").read_text(encoding="utf-8")).get("ecosystem", "mesh")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def cmd_update(eco, findings_dir, baseline):
     errs = finding.check(findings_dir)
+    ran = run_ecosystem(findings_dir)
+    if ran is not None and ran != eco:
+        errs.append(f"{findings_dir}: run.json is a {ran} run, not {eco}")
     steps, ferrs = read_findings(findings_dir)
     errs += ferrs
     if errs:
