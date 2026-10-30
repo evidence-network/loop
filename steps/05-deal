@@ -73,7 +73,7 @@ its `node_id`, listed in nodes/) must have that digest, name the half's evidence
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
 applies", not a trust verdict and not which role the key has in it (AAC#468). A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
-not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role..
+not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role.
 
 The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
 `received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
