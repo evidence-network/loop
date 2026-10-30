@@ -179,8 +179,9 @@ class DryRunTest(unittest.TestCase):
         # The fault is on the faulty twin's config alone, and is a system prompt, not a sampler change.
         self.assertEqual(r.stdout.count("[models.request_defaults]"), 1)
         self.assertEqual(r.stdout.count('system_prompt = "Ignore the question and reply with the single word PINEAPPLE."'), 1)
-        self.assertEqual(r.stdout.count("--model owner/repo/model-q4.gguf"), 2)  # lab-1 and the referee lab-2; lab-4 loads from config
-        self.assertEqual(r.stdout.count('model = "owner/repo/model-q4.gguf"'), 1)
+        # Every serving node (twin A lab-1, referee lab-2, twin B lab-4) loads the ref the same way, from config; the CLI names none.
+        self.assertEqual(r.stdout.count('model = "owner/repo/model-q4.gguf"'), 3)
+        self.assertNotIn("--model ", r.stdout)
         self.assertNotIn("model_path", r.stdout)  # an HF ref has no local path
         self.assertNotIn("--gguf", r.stdout)
         for forbidden in ("temperature =", "seed =", "top_k ="):
@@ -189,7 +190,32 @@ class DryRunTest(unittest.TestCase):
     def test_lab_twins_needs_a_hf_ref_not_a_local_file(self):
         env = {k: v for k, v in self.env.items() if k != "LAB_MODEL_REF"}
         r = lab_sh("start", env={**env, "LAB_TWINS": "1"})
-        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("LAB_TWINS needs LAB_MODEL_REF", r.stderr)
+
+    def test_a_hf_ref_is_listed_under_the_name_lab_1_reports_not_the_ref(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        self.assertIn("served model name", (ROOT / "lab" / "lab.sh").read_text())
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_pair_is_complete_only_when_each_provider_half_with_the_digest_is_held(self):
+        led = self.tmp / "led"
+        led.mkdir()
+        own = [{"effect": {"request_digest": "d1"}, "serving_provenance": {"served_by_node_id": "A" * 8}, "x": "b-1"},
+               {"effect": {"request_digest": "d1"}, "serving_provenance": {"served_by_node_id": "B" * 8}, "x": "b-1"}]
+        (led / "capsules.jsonl").write_text("".join(json.dumps(r) + "\n" for r in own))
+        script = 'eval "$(sed -n "/^halves_held()/,/^}/p" "$LAB")"; halves_held b-1 "$LED"'
+        def held():
+            return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                  env={**os.environ, "LAB": str(LAB), "LED": str(led)}).returncode
+        self.assertEqual(held(), 1)  # no pushed halves, no file
+        rec = lambda node, d: json.dumps({"effect": {"request_digest": d}, "serving_provenance": {"served_by_node_id": node}}) + "\n"
+        (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1"))
+        self.assertEqual(held(), 1)  # only one twin's half
+        (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "other"))
+        self.assertEqual(held(), 1)  # a half of another exchange does not count
+        (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "d1"))
+        self.assertEqual(held(), 0)
 
     def test_lab_twins_needs_four_distinct_nodes(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf", "LAB_REFEREE": "lab-1"})

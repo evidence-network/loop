@@ -43,11 +43,12 @@
 #   MESH_LLM_RUNTIME    its native runtimes directory (optional)
 #   CAPSULES_BIN        the capsules plugin binary
 #   CAPSULES_SRC        the plugin source tree that binary was built from (check)
-#   LAB_MODEL           a GGUF model file for lab-1 to serve (start); with LAB_TWINS the other serving nodes too
+#   LAB_MODEL           a GGUF model file for lab-1 to serve (start); not with LAB_MODEL_REF
 #   LAB_MODEL_REF       a Hugging Face model ref (owner/repo/file.gguf) to serve instead of LAB_MODEL's local file. A local
 #             GGUF path gets no identity hash from mesh-llm (local_gguf_identity_from_source), and the referee then
 #             refuses the pair as not_comparable/model_hash_unknown; an HF ref gets one. Every serving node uses the
-#             same ref (a download, no spend). Needed for LAB_TWINS; start then takes it in place of --gguf
+#             same ref (a download, no spend). Needed for LAB_TWINS. Every serving node then loads it from its own config.toml
+#             [[models]] and the CLI names no model; start saves the name lab-1's /v1/models lists to run/model-name
 #   LAB_MODEL_NAME      the name it is served under (default lab-model; with LAB_MODEL_REF, the name /v1/models lists,
 #             default the ref itself)
 #   LAB_OPERATOR        the GitHub handle of whoever runs the nodes (entries)
@@ -56,7 +57,7 @@
 #   LAB_TWINS           1 adds lab-4 and the four step 09 roles (default off; the lab is then the three nodes
 #             it always was). Twin A is LAB_TWIN_A (default lab-1), the faulty twin B is LAB_TWIN_B
 #             (default lab-4), the referee is LAB_REFEREE (default lab-2) and the requester is
-#             LAB_REQUESTER (default lab-3). Twin A, twin B and the referee each serve LAB_MODEL; the
+#             LAB_REQUESTER (default lab-3). Twin A, twin B and the referee each serve LAB_MODEL_REF (all from config.toml [[models]]); the
 #             requester only routes. The requester gets CAPSULES_ADJUDICATE_DIFFERING_TWINS=on (the plugin's
 #             switch, off by default; it sends the twins' request and both answers to the referee). Twin B
 #             alone gets `system_prompt = LAB_FAULT_SYSTEM_PROMPT` (default: reply with the single word PINEAPPLE) in its
@@ -96,7 +97,7 @@ if [ "$TWINS" = 1 ]; then
   [ "$TWIN_B" != lab-1 ] || die "LAB_TWIN_B cannot be lab-1: it loads its model from --gguf, which skips the injected config"
   # These go into config.toml inside double quotes; refuse what would need escaping.
   case "$FAULT_PROMPT${LAB_MODEL:-}$MODEL_REF" in
-    *\"* | *\\* | *$'\n'*) die "LAB_FAULT_SYSTEM_PROMPT and LAB_MODEL must not contain a double quote, a backslash or a newline" ;;
+    *\"* | *\\* | *$'\n'*) die "LAB_FAULT_SYSTEM_PROMPT, LAB_MODEL and LAB_MODEL_REF must not contain a double quote, a backslash or a newline" ;;
   esac
 fi
 if [ "$TWINS" = 1 ] && [ -z "$MODEL_REF" ] && [ -n "${LAB_MODEL:-}" ]; then
@@ -110,6 +111,10 @@ LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
 MODEL_NAME=${LAB_MODEL_NAME:-${MODEL_REF:-lab-model}}
+# With an HF ref the name is the one lab-1 listed at start (run/model-name), unless LAB_MODEL_NAME says otherwise.
+if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ -s "${LAB_DIR:-/nonexistent}/run/model-name" ]; then
+  MODEL_NAME=$(cat "$LAB_DIR/run/model-name")
+fi
 SESSION=${LAB_TMUX_SESSION:-loop-lab}
 # Split once, on any whitespace, and match against the same list the check used.
 SHARE=()
@@ -168,8 +173,29 @@ wait_for() {
 
 # At least two records of the chain carry the bracket; wait_for calls it again on every retry.
 sealed_twice() { [ "$(grep -c -- "$1" "$2" 2> /dev/null)" -ge 2 ] 2> /dev/null; }
-# Past line N of FILE, a line naming each of the two node ids (the twins' pushed halves).
-halves_arrived() { tail -n +"$(($1 + 1))" "$2" 2> /dev/null | grep -q -- "$3" && tail -n +"$(($1 + 1))" "$2" 2> /dev/null | grep -q -- "$4"; }
+# The pair is complete here when, for each of this bracket's own records, the requester holds the provider's signed half with
+# the same effect.request_digest (the plugin's referee/live.rs assemble, which does not look again if it asked too early).
+halves_held() { # BRACKET LEDGER_DIR
+  python3 -B - "$1" "$2" << 'PY'
+import json, sys
+bracket, led = sys.argv[1:]
+def rows(name):
+    try:
+        return [json.loads(l) for l in open(f"{led}/{name}") if l.strip()]
+    except (OSError, ValueError):
+        return []
+def digest(r):
+    return ((r.get("effect") or {}).get("request_digest"))
+def provider(r):
+    return (r.get("serving_provenance") or {}).get("served_by_node_id")
+own = [r for r in rows("capsules.jsonl") if bracket in json.dumps(r) and digest(r) and provider(r)]
+held = rows("received-capsules.jsonl")
+need = {(provider(r), digest(r)) for r in own}
+have = {(n, digest(h)) for h in held for n in {json.dumps(h)} if digest(h)}
+ok = len(need) >= 2 and all(any(p in text and d == hd for text, hd in have) for p, d in need)
+sys.exit(0 if ok else 1)
+PY
+}
 node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 routes_model() {
@@ -365,13 +391,11 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
     # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
     # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
-    if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
-      if [ -n "$MODEL_REF" ]; then
-        printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
-      else
-        printf '\n[[models]]\nmodel = "%s"\n\n[models.hardware]\nmodel_path = "%s"\n' "$MODEL_NAME" "$LAB_MODEL"
+    if [ -n "$MODEL_REF" ] && serves_model "$name"; then
+      printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
+      if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
+        printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
       fi
-      printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
     fi)
   if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
     # The label comes from the config this node was started with, not from whatever `twins` is run with.
@@ -451,13 +475,21 @@ cmd_start() {
     [ -n "$MODEL_REF" ] || [ "$DRY" = 1 ] || die "LAB_TWINS needs LAB_MODEL_REF (a Hugging Face ref): a local GGUF gets no identity hash and the referee answers not_comparable"
   fi
   [ -n "$MODEL_REF" ] || need LAB_MODEL
+  # With an HF ref every serving node loads it the same way, from its own config.toml [[models]]; the CLI names no model.
   local -a model_args=(--gguf "${LAB_MODEL:-<LAB_MODEL>}" --model "$MODEL_NAME")
-  [ -z "$MODEL_REF" ] || model_args=(--model "$MODEL_REF")
+  [ -z "$MODEL_REF" ] || model_args=()
   [ "$DRY" = 1 ] || [ -f "$LAB_DIR/build.json" ] || die "run lab/lab.sh check first"
   run mkdir -p "$LAB_DIR/run" "$LAB_DIR/logs"
   run chmod 700 "$LAB_DIR/run"
-  start_node lab-1 "${model_args[@]}"
+  start_node lab-1 ${model_args[@]+"${model_args[@]}"}
   wait_for 600 "lab-1 has loaded the model" model_ready
+  # An HF ref is listed by /v1/models under its public id (owner/repo:selector), not as the ref: take what lab-1 lists.
+  if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ "$DRY" = 0 ]; then
+    MODEL_NAME=$(curl -fsS "http://127.0.0.1:$(api_port lab-1)/v1/models" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])') \
+      || die "lab-1 lists no model"
+    echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
+    echo "served model name: $MODEL_NAME"
+  fi
   # The invite token goes from lab-1's status into a 0600 file: never a screen or an argument.
   if [ "$DRY" = 1 ]; then
     say curl -fsS "$(console lab-1)/api/status"; echo "  .token > $(token_file) (0600)"
@@ -468,8 +500,9 @@ cmd_start() {
   fi
   local n
   for n in "${NODES[@]:1}"; do
-    if [ "$TWINS" = 1 ] && [ "$n" = "$TWIN_B" ]; then
-      # The faulty twin loads its model from its [[models]] entry (config.toml), which carries the injected system prompt.
+    if [ -n "$MODEL_REF" ] && serves_model "$n"; then
+      start_node "$n" --join-file "$(token_file)"
+    elif [ "$TWINS" = 1 ] && [ "$n" = "$TWIN_B" ]; then
       start_node "$n" --join-file "$(token_file)"
     elif serves_model "$n"; then
       start_node "$n" "${model_args[@]}" --join-file "$(token_file)"
@@ -651,8 +684,6 @@ cmd_twins() {
     -H "x-mesh-target: $ref" -d "$body" "$api"
   wait_for 180 "the requester holds a record pushed by the referee" grep -q "$ref" "$led/received-capsules.jsonl"
   # 2. The same temperature-0 request to both twins under one bracket (the host never pairs on its own).
-  local before
-  before=$(wc -l < "$led/received-capsules.jsonl" 2> /dev/null | tr -d ' ') || before=0
   run curl -fsS --max-time 180 -o "$LAB_DIR/twins/twin-a.json" -H 'content-type: application/json' \
     -H "x-mesh-target: $a" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
   run curl -fsS --max-time 180 -o "$LAB_DIR/twins/twin-b.json" -H 'content-type: application/json' \
@@ -662,7 +693,7 @@ cmd_twins() {
   wait_for 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
   # The plugin considers the pair when the texts are supplied and does not look again when a half lands later, so
   # supply them only after each twin's own signed half has been pushed to the requester.
-  wait_for 180 "the requester holds a new half from each twin" halves_arrived "${before:-0}" "$led/received-capsules.jsonl" "$a" "$b"
+  wait_for 180 "the requester holds each twin's signed half of this pair" halves_held "$bracket" "$led"
   if [ "$DRY" = 1 ]; then
     say curl -fsS -X POST "$(console "$REQUESTER")/api/plugins/capsules/tools/referee_supply_twin_texts" \
       "(twin_bracket_id $bracket, request_body, response_bodies twin-a.json twin-b.json)"
