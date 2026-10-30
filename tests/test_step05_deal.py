@@ -376,6 +376,42 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "unsupported", detail)
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
+    def with_key_types(self, types, key=None):
+        # INTERIM (loop#140): remove with step.UNSUPPORTED_KEY_TYPE_ISSUE.
+        keys = BINDINGS["valid-same-controller"]["keys"]
+        text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": types})
+        BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
+        self.addCleanup(BINDINGS.pop, "with-key-types", None)
+        return self.check("with-key-types", key=key)
+
+    def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_bad(self):
+        state, detail = self.with_key_types(["ed25519", "bip340"])
+        self.assertEqual(state, "unsupported_key_type", detail)
+        self.assertIn("bip340", detail)
+        self.assertIn(step.UNSUPPORTED_KEY_TYPE_ISSUE, detail)
+        self.assertIn("signatures not verified", detail)
+
+    def test_a_binding_declaring_only_ed25519_key_types_goes_to_the_verifier(self):
+        state, detail = self.with_key_types(["ed25519"])
+        self.assertEqual(state, "bad", detail)  # no unsupported type declared: the extra member is a bad binding, as before
+
+    def test_an_unsupported_key_type_does_not_hide_a_key_the_binding_does_not_name(self):
+        state, detail = self.with_key_types(["ed25519", "bip340"], key="ab" * 32)
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("does not name the half's key", detail)
+
+    def test_a_malformed_key_type_is_bad_not_unsupported(self):
+        for types in (["ed25519", "rsa"], ["ed25519", "bip340", "rsa"]):
+            state, detail = self.with_key_types(types)
+            self.assertEqual(state, "bad", detail)
+
+    def test_unsupported_key_types_reads_only_a_key_types_list(self):
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}'), ["bip340"])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}'), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", 7]}'), [])
+        for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
+            self.assertEqual(step.unsupported_key_types(raw), [], raw)
+
     def test_no_file_no_listing_or_another_binding_is_unread_never_bad(self):
         state, detail = self.check("valid-same-controller", file=False)
         self.assertEqual(state, "unread", detail)
@@ -420,6 +456,9 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",
                                             step.BINDING_ROLE_ISSUE)])
         self.assertEqual(len(es), 4)
+        es = step.live_declarations({"unsupported_key_type": 2}, set())
+        self.assertEqual([(e["issue"], e["why"][:1]) for e in es], [(step.UNSUPPORTED_KEY_TYPE_ISSUE, "2")])
+        self.assertIn("signatures were not verified", es[0]["why"])
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
 

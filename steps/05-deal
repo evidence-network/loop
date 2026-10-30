@@ -73,7 +73,9 @@ its `node_id`, listed in nodes/) must have that digest, name the half's evidence
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
 applies", not a trust verdict and not which role the key has in it (AAC#468). A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
-not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role.
+not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role. Interim
+(loop#140): a binding the verifier rejects that declares a `key_types` entry it lacks (bip340, AAC#457) is also a
+not_checked entry, not a FAIL.
 
 The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
 `received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
@@ -338,6 +340,10 @@ def live_declarations(counts, unread):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.NO_ISSUE_YET,
                     "why": f"{counts['unsupported']} cited bindings use a method `cross_language binding` does not "
                            f"implement"})
+    if counts.get("unsupported_key_type"):
+        out.append({"what": LIVE_DECLARATION_WHAT, "issue": UNSUPPORTED_KEY_TYPE_ISSUE,
+                    "why": f"{counts['unsupported_key_type']} cited bindings declare a key type (AAC#457) the pinned "
+                           f"`cross_language binding` does not implement, so their signatures were not verified: not checked, neither PASS nor bad"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
                     "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no revocation "
@@ -563,6 +569,26 @@ def utc_second(value):
 
 BINDING_VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
 
+# INTERIM (loop#140): the plugin writes bindings with key_types ["ed25519", "bip340"] (AAC#457, spec PR AAC#458), which
+# the pinned aac-go (Ed25519-only controller binding v0) cannot check. The verifier then says FAIL, but it lacks the
+# key type; it did not find a bad binding. Remove this, the branch in binding_check, its declaration and its tests
+# once AAC#458 merges, aac-go ships bip340, the loop repins and step 05 reruns.
+UNSUPPORTED_KEY_TYPE_ISSUE = "action-state-group/agent-action-capsule#457"
+KNOWN_KEY_TYPES = {"ed25519", "bip340"}  # AAC#457 defines these two; any other token makes the list malformed (bad)
+UNSUPPORTED_KEY_TYPES = {"bip340"}
+
+
+def unsupported_key_types(raw):
+    """The key types a binding declares in `key_types` that the pinned verifier lacks, sorted; none when any
+    declared type is not one AAC#457 defines (the binding is then malformed, not unsupported)."""
+    try:
+        types = json.loads(raw).get("key_types")
+    except (ValueError, AttributeError):
+        return []
+    if not isinstance(types, list) or not all(isinstance(t, str) and t in KNOWN_KEY_TYPES for t in types):
+        return []
+    return sorted(set(types) & UNSUPPORTED_KEY_TYPES)
+
 
 def binding_check(digest, half, citing, peers):
     """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.15.0) on the controller
@@ -576,7 +602,8 @@ def binding_check(digest, half, citing, peers):
     which role the key has in it (agent-action-capsule#468). Revocation is NOT_CHECKED: nothing in the lab carries
     a revocation statement.
 
-    state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key); "unread"
+    state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key);
+    "unsupported_key_type" (the verifier rejects it and it declares a key type the verifier lacks); "unread"
     (its bytes are not available, or are not the binding the record names); "unsupported" (a method the verifier
     does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
     binding the record names: "unread"."""
@@ -609,6 +636,9 @@ def binding_check(digest, half, citing, peers):
         return "unread", (f"{name}'s {BINDING_FILE} is binding {report.get('binding_digest')}, not the {digest} the "
                           f"citing record names (the node may have bound again since)")
     props = report.get("properties") or {}
+    if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw)):
+        return "unsupported_key_type", (f"binding {digest} ({name}) declares key type {', '.join(lacking)}, which the "
+                                        f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE}); signatures not verified")
     if verdict == "bad":
         why = ("does not name the half's key" if key not in (report.get("keys") or []) else
                ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s == "FAIL"))
