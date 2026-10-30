@@ -427,10 +427,11 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
         self.assertIn(step.LIVE_UNBOUND_ISSUE, issues)
-        # the held half's signature is checked in a second language, so no entry names a missing check
-        self.assertNotIn("the held half's producer signature, in a second language", {n["what"] for n in f["not_checked"]})
+        # authored and accepted, but lab-b has no nodes/ listing: the key is only self-attested, so it is listed
         [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
-        self.assertEqual(c["signature"]["state"], "ok")
+        self.assertEqual(c["signature"]["state"], "unlisted")
+        self.assertIn("no nodes/<node_id>.json listing", self.names(f)[
+            "the held half's producer signature, in a second language"]["why"])
         self.assertIn("producer signature that verifies in a second language", f["asserts"])
         # the closed refs are gone, and a tied, bound-or-unbound lab is not a plugin gap
         closed = json.loads((ROOT / "tests" / "fixtures" / "closed_issues.json").read_text())["closed"]
@@ -598,6 +599,37 @@ class Step05DealLiveTest(unittest.TestCase):
     def held_path(self):
         return self.ledger() / "received-capsules.jsonl"
 
+    def list_sender(self, key=None):
+        """lab-b, the node lab-a received the half from, publishes a listing with this key (default the half's)."""
+        key = key or json.loads(self.held_path().read_text())["key_id"]
+        (self.nodes / "lab-b.json").write_text(json.dumps({"node_id": "lab-b", "key_id": key}))
+
+    def test_live_a_half_authored_under_the_key_its_sender_publishes_is_ok(self):
+        self.list_sender()
+        f = self.run_live()
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertEqual(c["signature"]["state"], "ok")
+        self.assertNotIn("the held half's producer signature, in a second language", self.names(f))
+
+    def test_live_a_half_authored_under_another_key_than_its_sender_publishes_fails(self):
+        self.list_sender("cd" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("not the key " + "cd" * 32 + " the sender publishes", f["detail"])
+
+    def test_live_a_half_the_verifier_cannot_decode_is_bad_not_a_stopped_step(self):
+        old = Path(self.tmp.name) / "strict-verifier"
+        old.write_text("#!/bin/sh\necho 'invalid UTF-8 in input' >&2\nexit 2\n")
+        os.chmod(old, 0o755)
+        real = step.cross_language
+        step.cross_language = lambda: old
+        try:
+            state, detail = step.signature_check(self.held_path().read_text(), "00" * 32, None)
+        finally:
+            step.cross_language = real
+        self.assertEqual(state, "bad")
+        self.assertIn("cannot read the record", detail)
+
     def test_live_an_invalid_producer_signature_fails(self):
         held = json.loads(self.held_path().read_text())
         sig = held["signature"]
@@ -648,7 +680,7 @@ class Step05DealLiveTest(unittest.TestCase):
         step.cross_language = lambda: old
         try:
             with self.assertRaises(RuntimeError) as e:
-                step.signature_check(self.held_path().read_text(), "00" * 32)
+                step.signature_check(self.held_path().read_text(), "00" * 32, None)
         finally:
             step.cross_language = real
         self.assertIn("steps/01-seal.setup.sh", str(e.exception))

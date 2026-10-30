@@ -88,7 +88,8 @@ whose published commitment carries no equal operator binding are their own entry
 unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
 read, are not_checked entries: the declaration's own signatures (AAC#432). Each held half's producer signature is checked in
 a second language (`cross_language signature`, AAC#463, aac-go go/v0.15.0): authored under the key the
-node's citing record accepted (`received_half.sender_key_id`) is ok; authored under another key or
+node's citing record accepted (`received_half.sender_key_id`) and, where the sender has a `nodes/<node_id>.json`
+listing, the key it publishes is ok (an unlisted sender is a not_checked entry: the key is self-attested); authored under another key or
 invalid is a FAIL; unclaimed (no signature) is a not_checked entry; any other exit stops the step. A node with no held half,
 or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over the nodes.
 
@@ -127,7 +128,7 @@ ASSERTS = ("both sides seal halves of one deal, each citing the other half and t
 LIVE_ASSERTS = ("each node seals records naming both halves and citing the other side's checkpoint; "
                 "each pushes its half at completion with share_record_at_completion on; the receiver holds the "
                 "foreign bytes by digest, with a producer signature that verifies in a second language under the "
-                "sender's key, and seals a record citing them; acceptance is keyed on the evidence key "
+                "key the receiver accepted for the sender, and seals a record citing them; acceptance is keyed on the evidence key "
                 "under a controller declaration")
 PINNED = ["evidencebook", "checkpointed-local-log"]
 POLICY_ON = "counterparty"
@@ -353,15 +354,19 @@ def live_ambiguous(n):
 SIGNATURE_VERDICT_EXIT = {0: "authored", 1: "invalid", 3: "unclaimed"}
 
 
-def live_unclaimed(unclaimed, unkeyed):
-    """The not_checked entry for held halves whose producer signature could not be checked against a key."""
+def live_unclaimed(unclaimed, unkeyed, unlisted):
+    """The not_checked entry for held halves whose producer signature could not be held to a key."""
     parts = []
     if unclaimed:
         parts.append(f"{unclaimed} are unclaimed: `cross_language signature` finds no producer signature on them")
     if unkeyed:
-        parts.append(f"{unkeyed} verify but their citing record names no sender_key_id (sealed by a build before the pinned one), so the key was not compared")
+        parts.append(f"{unkeyed} verify but their citing record names no sender_key_id (sealed by a build before the "
+                     f"pinned one), so the key was not compared")
+    if unlisted:
+        parts.append(f"{unlisted} verify under the key the node accepted, but the sender they were received from has "
+                     f"no nodes/<node_id>.json listing to hold that key to, so it is only self-attested")
     return {"what": "the held half's producer signature, in a second language",
-            "issue": LIVE_NO_VIA if not unclaimed else live.NO_ISSUE_YET,
+            "issue": LIVE_NO_VIA if unkeyed and not unclaimed and not unlisted else live.NO_ISSUE_YET,
             "why": "held halves: " + "; ".join(parts)}
 
 
@@ -421,26 +426,47 @@ def capsule_checks(raw):
                 + ("" if v.returncode == 0 else f" ({v.stderr.decode(errors='replace').strip()})"))
 
 
-def signature_check(raw, expected_key):
+def listed_key(node_id):
+    """The evidence key `nodes/<node_id>.json` publishes for the node the half was received from; None when there is
+    no such listing."""
+    try:
+        key = json.loads((nodes_dir() / f"{node_id}.json").read_text(encoding="utf-8")).get("key_id")
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+    return key if is_key(key) else None
+
+
+def signature_check(raw, accepted_key, listed):
     """The producer-signature verdict of the held record by the AAC Go verifier (`cross_language signature`), and
-    that it was authored under `expected_key`: (state, detail) with state "ok", "unclaimed", "unkeyed" (authored,
-    no key to compare it to) or "bad". Any exit
-    other than authored, invalid or unclaimed means the step cannot run, not that the half is bad."""
+    the key it was authored under: (state, detail). The key must be the one the node's citing record accepted
+    (`accepted_key`) and, where the sender has a published listing, the key it publishes (`listed`).
+
+    state: "ok"; "unclaimed" (no signature); "unkeyed" (authored, no accepted key to compare); "unlisted" (authored
+    under the accepted key, but the sender has no listing to hold it to: the key is only self-attested); "bad".
+    Usage exit 2 (an old verifier) means the step cannot run; exit 2 for a half the verifier cannot decode is a bad
+    half."""
     v = subprocess.run([str(cross_language()), "signature"], input=raw.encode(), capture_output=True, timeout=120)
+    err = v.stderr.decode(errors="replace").strip()
     verdict = SIGNATURE_VERDICT_EXIT.get(v.returncode)
+    if verdict is None and v.returncode == 2 and err and not err.startswith("usage"):
+        return "bad", f"the verifier cannot read the record: {err}"
     if verdict is None:
-        raise RuntimeError(f"cross_language signature exited {v.returncode} ({v.stderr.decode(errors='replace').strip()}); "
+        raise RuntimeError(f"cross_language signature exited {v.returncode} ({err}); "
                            f"run steps/01-seal.setup.sh for the pinned aac-go")
     key = (parsed(raw) or {}).get("key_id")
     if verdict == "unclaimed":
         return "unclaimed", "the record carries no producer signature"
     if verdict == "invalid":
-        return "bad", f"the producer signature does not verify: {v.stderr.decode(errors='replace').strip()}"
-    if expected_key is None:
+        return "bad", f"the producer signature does not verify: {err}"
+    if accepted_key is None:
         return "unkeyed", f"authored under {key}; the citing record names no sender_key_id to compare it to"
-    if key != expected_key:
-        return "bad", f"authored under key {key}, not the sender key the node accepted ({expected_key})"
-    return "ok", f"authored under {key}, the sender key the node's citing record accepted"
+    if key != accepted_key:
+        return "bad", f"authored under key {key}, not the sender key the node accepted ({accepted_key})"
+    if listed is None:
+        return "unlisted", f"authored under {key}, the key the node accepted; the sender has no published listing"
+    if key != listed:
+        return "bad", f"authored under key {key}, not the key {listed} the sender publishes in nodes/"
+    return "ok", f"authored under {key}, the key the node accepted and the sender publishes"
 
 
 def cites(capsule, capsule_id):
@@ -666,7 +692,7 @@ def live_node(bin_, name, data_dir, out, work):
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
-    summary = {"unclaimed": 0, "unkeyed": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}}
+    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
     since = sealed_since()
@@ -720,7 +746,8 @@ def live_node(bin_, name, data_dir, out, work):
         # the one the node's citing record accepted (none when no record cites it).
         rh = (((parsed(citing[0]) or {}).get("model_attestation") or {}).get("compute_attestation") or {}).get(
             "received_half") if citing else None
-        state, detail = signature_check(raw, rh.get("sender_key_id") if isinstance(rh, dict) else None)
+        state, detail = signature_check(raw, rh.get("sender_key_id") if isinstance(rh, dict) else None,
+                                        listed_key((prov or {}).get("received_from")))
         c["signature"] = {"ok": state != "bad", "state": state, "detail": detail}
         checks.append(c)
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
@@ -728,7 +755,7 @@ def live_node(bin_, name, data_dir, out, work):
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
     current = [c for c in checks if "accepted" in c]
-    for state in ("unclaimed", "unkeyed"):
+    for state in ("unclaimed", "unkeyed", "unlisted"):
         summary[state] = sum(1 for c in checks if c.get("signature", {}).get("state") == state)
     summary["judged"] = len(current)
     summary["earlier"] = sum(1 for c in checks if c.get("current_build") is False)
@@ -783,7 +810,7 @@ def main_live(pop, out, started):
     missing = live_tools(bin_)
     results, proof, details, not_checked = [], [], [], list(missing)
     halves = {}
-    total = {"unclaimed": 0, "unkeyed": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
+    total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
     vias, unbound, no_sharing = set(), {}, []
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
@@ -839,7 +866,8 @@ def main_live(pop, out, started):
              ([live_ambiguous(total["ambiguous"])] if total["ambiguous"] else [])
     default = [dict(LIVE_DEFAULT_ABSENT, why=LIVE_DEFAULT_ABSENT["why"].format(nodes=", ".join(no_sharing)))] \
         if no_sharing else []
-    unclaimed = [live_unclaimed(total["unclaimed"], total["unkeyed"])] if total["unclaimed"] or total["unkeyed"] else []
+    unclaimed = [live_unclaimed(total["unclaimed"], total["unkeyed"], total["unlisted"])] \
+        if total["unclaimed"] or total["unkeyed"] or total["unlisted"] else []
     for nc in (*untied, *default, *acceptance_gaps, *unclaimed):
         if nc not in not_checked:
             not_checked.append(nc)
