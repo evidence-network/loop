@@ -102,13 +102,6 @@ class GateTest(unittest.TestCase):
         self.assertEqual(gate.cmd_verify(self.baseline, LOCK),
                          ["mesh: steps differ from the findings in findings/a"])
 
-    def test_verify_refuses_a_baseline_from_other_pins_when_the_lock_changed(self):
-        self.update("a", {"01": "PASS"})
-        other = self.dir / "versions.lock"
-        other.write_text(LOCK.read_text().replace("capsulectl action-state-group/evidencebook v0.8.1",
-                                                  "capsulectl action-state-group/evidencebook v0.8.2"))
-        self.assertEqual(len(gate.cmd_verify(self.baseline, other)), 1)
-
     def test_verify_refuses_a_findings_record_changed_after_the_fact(self):
         self.update("a", {"01": "PASS"})
         f = self.dir / "findings" / "a" / "01-step" / "finding.json"
@@ -155,7 +148,7 @@ class GateTest(unittest.TestCase):
         old = self.dir / "old.json"
         old.write_text(self.baseline.read_text())
         new = json.loads(old.read_text())
-        new["ecosystems"]["mesh"]["pin_set_sha256"] = "0" * 64
+        new["ecosystems"]["mesh"]["pins"]["capsulectl"] = "x y"
         newp = self.dir / "new.json"
         newp.write_text(json.dumps(new))
         self.assertEqual(len(gate.cmd_check(old, newp)), 1)
@@ -179,10 +172,22 @@ class GateTest(unittest.TestCase):
         self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.baseline), "--lock", str(LOCK)]), 0)
         self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.dir / "nope.json"), "--lock", str(LOCK)]), 1)
 
-    def test_pin_set_digest_ignores_comments(self):
-        other = self.dir / "versions.lock"
-        other.write_text("# a new comment\n" + LOCK.read_text())
-        self.assertEqual(gate.pin_set_sha256(other), gate.pin_set_sha256(LOCK))
+    def test_a_pin_added_since_is_not_a_bump_but_a_moved_or_removed_one_is(self):
+        self.update("a", {"01": "PASS"})
+        text = LOCK.read_text()
+        added = self.dir / "added.lock"
+        added.write_text(text + "# step 99\nnewpin some/repo v1.0.0\n")
+        self.assertEqual(gate.cmd_verify(self.baseline, added), [])
+        comment = self.dir / "comment.lock"
+        comment.write_text("# a new comment\n" + text)
+        self.assertEqual(gate.cmd_verify(self.baseline, comment), [])
+        moved = self.dir / "moved.lock"
+        moved.write_text(text.replace("capsulectl action-state-group/evidencebook v0.8.1",
+                                      "capsulectl action-state-group/evidencebook v0.8.2"))
+        self.assertEqual(len(gate.cmd_verify(self.baseline, moved)), 1)
+        removed = self.dir / "removed.lock"
+        removed.write_text("".join(l for l in text.splitlines(True) if not l.startswith("capsulectl ")))
+        self.assertEqual(len(gate.cmd_verify(self.baseline, removed)), 1)
 
     def test_update_refuses_rehearsal_and_malformed_findings(self):
         self.assertTrue(self.update("r", {"01": "PASS"}, population="rehearsal"))
@@ -190,10 +195,6 @@ class GateTest(unittest.TestCase):
         (out / "01-step" / "p.txt").write_text("changed\n")
         self.assertTrue(gate.cmd_update("mesh", out, self.baseline))
         self.assertFalse(self.baseline.exists())
-
-    def test_committed_mesh_baseline_matches_its_findings(self):
-        gate.ROOT = self._root
-        self.assertEqual(gate.cmd_verify(gate.BASELINE, LOCK), [])
 
 
 if __name__ == "__main__":

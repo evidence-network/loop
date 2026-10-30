@@ -7,14 +7,15 @@ Usage:
   ecosystem_gate.py check  --old FILE --new FILE
 
 baseline/live.json holds, for each ecosystem, the last accepted live result of each step, the
-findings directory it was taken from, and the digest of the pin set it ran under. It moves only
+findings directory it was taken from, and the pins it ran under. It moves only
 through `update`, which refuses a findings directory steps/finding.py refuses (that includes a
 finding whose pinned entries differ from versions.lock), a rehearsal finding, a repeated step
 number, and a regression against the baseline already committed. `verify` re-reads the committed
 findings with steps/finding.py (records, proof and pins against the current versions.lock), refuses
-a hand-edited baseline or a non-canonical findings path, and requires the baseline's pin-set digest
-to be the current versions.lock's.
-`check` compares the base branch's baseline with the pull request's: a pin-set digest that moved
+a hand-edited baseline or a non-canonical findings path, and requires the baseline's pins
+to hold under the current versions.lock: every pin it records is still there at the same ref (a pin
+added since changes no recorded result, so it is not a bump; a changed or removed one is).
+`check` compares the base branch's baseline with the pull request's: a pin set that moved
 must come with a findings directory that moved too, and a step that was
 PASS and is now FAIL, malformed or missing fails, and so does PASS -> NOT_CHECKED while the old
 baseline's `not_checked_is_regression` is true (default true, until Steven rules; the old file's
@@ -22,7 +23,6 @@ setting decides, so a pull request cannot turn it off for itself). Progress pass
 Standard library only. Exit 0 = clean, 1 = refused, 2 = usage.
 """
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -34,10 +34,9 @@ import finding  # noqa: E402
 BASELINE = ROOT / "baseline" / "live.json"
 
 
-def pin_set_sha256(lock=ROOT / "versions.lock"):
-    """The digest of the pins alone, so a comment edit in versions.lock is not a pin bump."""
-    lines = sorted(f"{n} {repo} {ref}" for n, (repo, ref) in finding.pins(lock).items())
-    return hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
+def lock_pins(lock=ROOT / "versions.lock"):
+    """versions.lock as {name: "repository ref"}: the pin set a baseline records."""
+    return {n: f"{repo} {ref}" for n, (repo, ref) in finding.pins(lock).items()}
 
 
 def load(path):
@@ -97,7 +96,7 @@ def cmd_check(old_path, new_path):
             errs.append(f"{eco}: ecosystem dropped from the baseline")
             continue
         n = new["ecosystems"][eco]
-        if n["pin_set_sha256"] != entry["pin_set_sha256"] and n["findings"] == entry["findings"]:
+        if n["pins"] != entry["pins"] and n["findings"] == entry["findings"]:
             errs.append(f"{eco}: the pin set changed but the baseline still comes from {entry['findings']}")
         errs += [f"{eco} {e}" for e in compare(entry["steps"], new["ecosystems"][eco]["steps"], flag)]
     return errs
@@ -117,9 +116,11 @@ def cmd_verify(baseline, lock):
         have = {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()}
         if have != entry["steps"]:
             errs.append(f"{eco}: steps differ from the findings in {entry['findings']}")
-        if entry["pin_set_sha256"] != pin_set_sha256(lock):
-            errs.append(f"{eco}: versions.lock changed, so the baseline must be taken from a live run under "
-                        "the new pins (update --findings DIR)")
+        now = lock_pins(lock)
+        moved = sorted(n for n, pin in entry["pins"].items() if now.get(n) != pin)
+        if moved:
+            errs.append(f"{eco}: versions.lock moved {', '.join(moved)}, so the baseline must be taken from a "
+                        "live run under the new pins (update --findings DIR)")
     return errs
 
 
@@ -131,7 +132,7 @@ def cmd_update(eco, findings_dir, baseline):
         return errs
     entry = {
         "findings": str(Path(findings_dir).resolve().relative_to(ROOT.resolve())),
-        "pin_set_sha256": pin_set_sha256(),
+        "pins": lock_pins(),
         "steps": {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()},
     }
     doc = load(baseline) if Path(baseline).is_file() else {"ecosystems": {}, "not_checked_is_regression": True}

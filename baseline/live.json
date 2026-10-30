@@ -2,7 +2,23 @@
   "ecosystems": {
     "mesh": {
       "findings": "findings/2026-10-30-live",
-      "pin_set_sha256": "858fa017e627fe0d32f43c72d7b98b3ad131897564ef7b1788d4d4fab2a50584",
+      "pins": {
+        "aac-go": "action-state-group/agent-action-capsule go/v0.15.0",
+        "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
+        "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
+        "capsulectl": "action-state-group/evidencebook v0.8.1",
+        "capsulectl-book": "action-state-group/evidencebook v0.8.1",
+        "capsules": "Mesh-LLM/capsules-plugin d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+        "capsules-evidence-request": "action-state-group/agent-action-capsule a8f7ac7f9d4b76d96796885e5eac795211c28180",
+        "checkpointed-local-log": "action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1",
+        "evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.2.0",
+        "evidencebook": "action-state-group/evidencebook v0.8.1",
+        "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.9",
+        "mesh-llm": "Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123",
+        "mesh-llm-pr-2620": "Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e",
+        "mesh-llm-pr-2649": "Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8",
+        "reporter": "evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202"
+      },
       "steps": {
         "01": {
           "finding_sha256": "1e2ba88cd5f1326807e08d1ac857e558f0b18c52654d7950fded61f929d88e28",
