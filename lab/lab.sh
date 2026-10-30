@@ -489,13 +489,23 @@ for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
         print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+  # Each node's own console, for step 12 to read that node's doctor: NAME=URL per population node, by the
+  # lab-N directory its data_dir names (the name is the operator's label).
+  node_consoles=$(python3 -c 'import json, re, sys
+base, pop = int(sys.argv[1]), sys.argv[2]
+out = []
+for n in json.load(open(pop))["nodes"]:
+    m = re.search(r"/nodes/lab-([0-9])/", n.get("data_dir") or "")
+    if m:
+        out.append(n["name"] + "=http://127.0.0.1:" + str(base + 10 + int(m.group(1))))
+print(",".join(out))' "$BASE" "$ROOT/population/live/population.json")
 }
 
 cmd_loop() {
-  local second self
+  local second self node_consoles
   ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
-    LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
+    LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$node_consoles" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -519,7 +529,7 @@ cmd_settle() {
 cmd_ask() {
   # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
-  local out=$ROOT/findings/$TODAY-live second self
+  local out=$ROOT/findings/$TODAY-live second self node_consoles
   ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
     LAB_DIR="$LAB_DIR" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
