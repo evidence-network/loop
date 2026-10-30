@@ -1,7 +1,7 @@
 {
-  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest",
-  "detail": "node stevenmih-1: 0 of 1380 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: 10 of 928 ledger records carry an admission decision (10 GO, 0 NO), read-only; node stevenmih-3: 26 of 1352 ledger records carry an admission decision (26 GO, 0 NO), read-only. Each decision is GO or NO, names its source, cites the operator policy it read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and names the peer by commitment only; the step read the ledger lines as written, without verifying their signatures. Build split: 12 of the 36 decisions (4 on stevenmih-2, 8 on stevenmih-3) carry a timestamp at or after the 2026-10-30T07:20Z swap to capsules d1f4edc; the other 24 were sealed under earlier builds. This step does not attribute each decision to the build that sealed it (evidence-network/loop#103), so this PASS rests mostly on pre-d1f4edc records. Spend: none; this step pays nothing (would spend 0 USD). Outside this step's assertion: the five base-policy rows sealed with each decision, evaluated right: evidence-network/loop#81. Outside this step's assertion: each ledger record's producer signature and capsule_id: action-state-group/agent-action-capsule#431. Outside this step's assertion: the routing path enforcing the decision when it chooses a candidate: Mesh-LLM/mesh-llm#2061.",
-  "finished": "2026-10-30T08:51:13Z",
+  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest; the verdict follows from its source as the plugin decides, and each base-policy row it seals is one the plugin's rules give from the reads it seals",
+  "detail": "node stevenmih-1: 0 of 1444 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: 10 of 928 ledger records carry an admission decision (10 GO, 0 NO), read-only; node stevenmih-3: 26 of 1416 ledger records carry an admission decision (26 GO, 0 NO), read-only; of the base-policy rows sealed, 18 were fixed by the record and matched it, 72 are values the rules allow but the record does not fix (rows.json) and 0 disagree. Each decision is GO or NO, names its source, cites the operator policy it read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and names the peer by commitment only; its verdict follows from its source alone, the same for one peer under one policy digest; each row it seals is one the base policy's rules give from what it read. The step read the ledger lines as written, without verifying their signatures. Spend: none; this step pays nothing (would spend 0 USD). Outside this step's assertion: each base-policy row's value where the sealed decision does not fix it: identity's fail or not_read on no card, key age on a cited card, and the three local rows: evidence-network/loop#81. Outside this step's assertion: each ledger record's producer signature and capsule_id: evidence-network/loop#135. Outside this step's assertion: the routing path enforcing the decision when it chooses a candidate: Mesh-LLM/mesh-llm#2061.",
+  "finished": "2026-10-30T19:33:49Z",
   "name": "admit",
   "not_checked": [],
   "pinned": {
@@ -21,11 +21,19 @@
       "sha256": "24ba94eddc83ccf1be7cbb2349489095378c9ead4eebe0ce5f55517205c50a87"
     },
     {
+      "path": "stevenmih-2/rows.json",
+      "sha256": "7b068ee4510b60e368250c0973e63fc13cb7bd012f219f2a8203949f99d6882c"
+    },
+    {
       "path": "stevenmih-3/decisions.jsonl",
       "sha256": "53fd0e44b9dc083fe9b9e517ba161855aa01373f0330e98ebf284ae67b3460ee"
+    },
+    {
+      "path": "stevenmih-3/rows.json",
+      "sha256": "b48ef8a579f5c57edc84060900b7d3f5d52fb8c3af252c13722c5edee31cc77f"
     }
   ],
   "result": "PASS",
-  "started": "2026-10-30T08:51:13Z",
+  "started": "2026-10-30T19:33:49Z",
   "step": "04"
 }
