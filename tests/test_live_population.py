@@ -136,7 +136,7 @@ class CommittedLiveTest(LiveCase):
                            capture_output=True, text=True, env=dict(os.environ, LOOP_CONSOLE="http://127.0.0.1:9"))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.split("\n")[:4],
-                         ["01 seal NOT_CHECKED", "02 book NOT_CHECKED", "03 advertise NOT_CHECKED",
+                         ["01 seal NOT_CHECKED", "02 book NOT_CHECKED", "03 advertise PASS",
                           "12 join NOT_CHECKED"])
         self.assertNotIn("FAIL", r.stdout)
 
