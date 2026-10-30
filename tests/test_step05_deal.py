@@ -381,7 +381,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         keys = BINDINGS["valid-same-controller"]["keys"]
         text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": types})
         BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
-        self.addCleanup(BINDINGS.pop, "with-key-types")
+        self.addCleanup(BINDINGS.pop, "with-key-types", None)
         return self.check("with-key-types", key=key)
 
     def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_bad(self):
