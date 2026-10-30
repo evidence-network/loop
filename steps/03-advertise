@@ -9,7 +9,9 @@ a file in nodes/commitments/ of a git repository, reads it back from that
 repository's HEAD with `git show`, and verifies the bytes it read back with
 scripts/check_commitment.py: the fields, no counts, the signature under the
 SPKI key, the policy digest against the policy bytes, the staple's and the
-checkpoint's digests.
+checkpoint's digests. Either commitment profile verifies: evidence-commitment/0
+(one stapled card) or /1 (one card per evidence stream); the record names each
+stapled card's stream (scripts/history_cards.py).
 
 - rehearsal: the carrier is a scratch git repository (the repository's own
   nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
@@ -42,6 +44,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
+import history_cards as hc  # noqa: E402
 import finding  # noqa: E402
 from live import NO_ISSUE_YET  # noqa: E402
 
@@ -238,6 +241,7 @@ def check_node(population, out, node, carrier, live):
         rec["sha256"] = hashlib.sha256(fetched).hexdigest()
         rec["signature"] = "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)"
         rec["policy_digest"] = doc["lcap"]["policy_digest"]
+        rec["history_cards"] = hc.history_cards(doc)
     return rec, proofs
 
 
@@ -290,7 +294,9 @@ def main(argv=None):
     # sentences in detail, otherwise not_checked entries. A policy digest not checked is inside it.
     outside = []
     for r in checked:
-        outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies",
+        streams = ", ".join(str(c["stream"]) for c in r["history_cards"] if c["stream"])
+        outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies"
+                                + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
                         "why": "its bytes, digest, profile and responder are checked; its signature is not, "
                                "as no pinned history_card/1 verifier is callable from the loop"
                                + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),

@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -41,6 +41,8 @@ export LAB_DIR=$HOME/loop-lab          # any empty directory you own
 | `$LAB_DIR/logs/<name>.log` | each node's log. It holds the invite token: never copy a log off the host |
 | `$LAB_DIR/build.json` | what `check` confirmed about the build, and each `tools` setup's exit code |
 | `$LAB_DIR/out/loop-lab-<date>.tgz` | the tarball you bring back |
+
+`config.toml` also grants the capsules plugin the admission hook (`[plugin.openai_exchange_grant]`, `admission = true`, at `backend_selected`), which is what makes the routing node seal an `admission_decision` record for step 04. `start` writes it, so a lab started before this needs `stop` and then `start`.
 
 Ports: `LAB_PORT_BASE` (default 9800) gives each node an API port
 (base+1..3), a console (base+11..13) and a QUIC port (base+21..23):
@@ -327,6 +329,8 @@ through it. A node can't be asked through its own console, so
 `LOOP_SELF_NODE` names the reporter node and step 12 asks it through
 `LOOP_SECOND_CONSOLE`, lab-1's console (lab-2's when lab-1 is the reporter).
 Without a second console the reporter node's probe is NOT_CHECKED, not FAIL.
+`lab/lab.sh loop` also sets `LOOP_NODE_CONSOLES` (`NAME=URL` per node, comma separated), each node's own
+console, so step 12 reads each node's `doctor` for its controller binding.
 The finding's detail says which console asked each node. `loop.sh` prints one line per step; the result is in each
 `findings/<date>-live/<NN>-<name>/finding.json`, not in the exit code.
 
@@ -376,7 +380,8 @@ over the three nodes, and its `detail` lists each node:
   Through each node's own console (`LOOP_NODE_CONSOLES`, which `loop` sets)
   it runs the plugin's `doctor` with `probe` and `join`: both probes must
   match, and the commitment join returns must verify under the listed key.
-  The controller binding (Mesh-LLM/capsules-plugin#54) and the signed join/1
+  The controller binding (fixed upstream in capsules-plugin PR #121, not in
+  the pinned build) and the signed join/1
   the join switch sends the reporter (in the pin; step 12 does not read it
   yet) read NOT_CHECKED, so the step reads
   NOT_CHECKED at best. A FAIL names the node and the check.
@@ -424,6 +429,15 @@ completes, provided it knows the other side's key (the host announces it).
 contract over the whole directory. It starts no exchange and pays nothing: it
 reads the halves each node holds. A node with no held half reads NOT_CHECKED.
 `pack` takes `05-deal/` with the rest of the day's findings.
+
+### Step 06, settlements recorded
+
+Stage 1 does not include step 06 either. `lab/lab.sh settle` runs `steps/06-settle`
+on `population/live` into the same `findings/<date>-live/` as `06-settle/`, then
+checks the finding contract over the whole directory. It reads each node's
+capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) and
+pays nothing. The live population names no rail, so the finding reads
+NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
 
 ## 6. Pack and bring back
 

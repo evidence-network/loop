@@ -1,0 +1,31 @@
+{
+  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest",
+  "detail": "node stevenmih-1: 0 of 194 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: 1 of 130 ledger records carry an admission decision (1 GO, 0 NO), read-only; node stevenmih-3: 1 of 130 ledger records carry an admission decision (1 GO, 0 NO), read-only. Each decision is GO or NO, names its source, cites the operator policy it read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and names the peer by commitment only; the step read the ledger lines as written, without verifying their signatures. Spend: none; this step pays nothing (would spend 0 USD). Outside this step's assertion: the five base-policy rows sealed with each decision: Mesh-LLM/capsules-plugin#116. Outside this step's assertion: each ledger record's producer signature and capsule_id: action-state-group/agent-action-capsule#431. Outside this step's assertion: the routing path enforcing the decision when it chooses a candidate: Mesh-LLM/mesh-llm#2061.",
+  "finished": "2026-10-29T23:50:46Z",
+  "name": "admit",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "01f0921e19f12f6bf9267a916ed286b938fd9652",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "2809443345ea8134db62a8b433f5bb2bb5f1d123",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-2/decisions.jsonl",
+      "sha256": "fd29f7170f84cc81830641ff508f28fdb02e2b1135317ba6ea6e24430bc76131"
+    },
+    {
+      "path": "stevenmih-3/decisions.jsonl",
+      "sha256": "531e83b278037836a256ccacc644910334e41343f3ebbcf45643bcf1c31472f0"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-29T23:50:46Z",
+  "step": "04"
+}

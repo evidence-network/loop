@@ -1,0 +1,3 @@
+{"ask": "exchange_late", "at": "2026-10-28T07:49:14.557781Z", "event": "sent", "request_sha256": "f30c6f82288f04013785e108d8ef7723d53523c5e3d86270d61f4f517a448fc6", "to": "alice-book"}
+{"ask": "exchange_late", "at": "2026-10-28T07:49:14.808074Z", "event": "held"}
+{"ask": "exchange_late", "at": "2026-10-28T07:50:16.344767Z", "event": "delivered", "reply_sha256": "8b03c609638ea1a4536edf8d087ba75e6e1e299ff7940045d5c8c79b59ca2106"}

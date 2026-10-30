@@ -1,0 +1,18 @@
+{
+  "attempt": 1,
+  "model": "rehearsal-model",
+  "peer_commitment": {
+    "alg": "SHA-256",
+    "digest": "abababababababababababababababababababababababababababababababab"
+  },
+  "reads": [
+    {
+      "digest": null,
+      "kind": "operator_policy",
+      "policy": "basic/1"
+    }
+  ],
+  "request_id": "req-5",
+  "source": "unreadable_policy",
+  "verdict": "NO"
+}

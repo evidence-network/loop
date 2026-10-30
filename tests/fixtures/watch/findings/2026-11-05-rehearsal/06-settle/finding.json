@@ -1,0 +1,22 @@
+{
+  "asserts": "the fixture's step holds",
+  "detail": "a fixture for the watch page",
+  "finished": "2026-11-05T06:30:00Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "checks.json",
+      "sha256": "7a94ca8a6f73f82d9240b66a43d24825d3237c2791906026aa65505a7e6e3496"
+    },
+    {
+      "path": "exchange.json",
+      "sha256": "6ffe4f79e3db91073d7bb01bee0744dc3a5152c49c11cc52271283fa4b6bc251"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-05T06:00:00Z",
+  "step": "06"
+}

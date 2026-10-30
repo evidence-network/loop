@@ -1,0 +1,17 @@
+{
+  "ask": {
+    "endpoint": "book:node-four-agent"
+  },
+  "history_cards": [
+    {
+      "bytes": "eyJhcnRpZmFjdCI6ICJleUprWlhKcGRtRjBhVzl1SWpvZ0ltaHBjM1J2Y25sZlkyRnlaQzh4SWl3Z0ltVjJhV1JsYm1ObFgzTjBjbVZoYlNJNklDSnViMlJsTFdadmRYSXRZV2RsYm5RaUxDQWlhR2x6ZEc5eWVTSTZJRnQ3SW1Ob1pXTnJjRzlwYm5RaU9pQWlNREFpTENBaVkyOXVjMmx6ZEdWdVkzbGZabkp2YlY5d2NtVjJhVzkxY3lJNklHNTFiR3g5WFN3Z0luTjBjbVZoYlY5emRHRnlkR1ZrSWpvZ0lqSXdNall0TVRBdE1ERWlmUSIsICJkZXJpdmF0aW9uIjogImhpc3RvcnlfY2FyZC8xIiwgImlzc3VlZF9hdCI6ICIyMDI2LTEwLTAxVDA2OjAwOjAwWiIsICJwcm9maWxlIjogImV2aWRlbmNlLWludGVyb3AvMCJ9",
+      "community": "muse",
+      "derivation": "history_card/1",
+      "sha256": "45b598349373ea630db12e873ef1e4f9a077203a6017b30cd706587c066f35ac",
+      "stream": "node-four-agent"
+    }
+  ],
+  "key_id": "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+  "node_id": "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+  "profile": "evidence-commitment/1"
+}

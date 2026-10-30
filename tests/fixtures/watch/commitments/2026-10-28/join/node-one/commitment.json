@@ -1,0 +1,13 @@
+{
+  "ask": {
+    "endpoint": "book:node-one-book"
+  },
+  "history_card": {
+    "bytes": "eyJhcnRpZmFjdCI6ICJleUprWlhKcGRtRjBhVzl1SWpvZ0ltaHBjM1J2Y25sZlkyRnlaQzh4SWl3Z0ltVjJhV1JsYm1ObFgzTjBjbVZoYlNJNklDSnViMlJsTFc5dVpTMWliMjlySWl3Z0ltaHBjM1J2Y25raU9pQmJleUpqYUdWamEzQnZhVzUwSWpvZ0lqQXdJaXdnSW1OdmJuTnBjM1JsYm1ONVgyWnliMjFmY0hKbGRtbHZkWE1pT2lCdWRXeHNmVjBzSUNKemRISmxZVzFmYzNSaGNuUmxaQ0k2SUNJeU1ESTJMVEV3TFRBeEluMCIsICJkZXJpdmF0aW9uIjogImhpc3RvcnlfY2FyZC8xIiwgImlzc3VlZF9hdCI6ICIyMDI2LTEwLTAxVDA2OjAwOjAwWiIsICJwcm9maWxlIjogImV2aWRlbmNlLWludGVyb3AvMCJ9",
+    "derivation": "history_card/1",
+    "sha256": "df2c70d4b561e98a9f79881a89f398a3314bdaffff072ea471fc6f22d03d1810"
+  },
+  "key_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "node_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "profile": "evidence-commitment/0"
+}

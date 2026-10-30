@@ -64,8 +64,8 @@ STEPS = (
                     "witness receipt holds.", NODE_SIDE, "M1"),
     Step(3, "Advertise", "The node publishes a signed commitment (checkpoint, disclosure policy digest, predicate "
                          "classes, how to ask) and it is fetched back intact. It carries no counts.", NODE_SIDE, "M1"),
-    Step(4, "Admit", "Before an exchange, one node reads the other's history, decides GO, ASK, LIMIT or NO, and seals "
-                     "the decision.", NODE_SIDE, "M3"),
+    Step(4, "Admit", "Before the deal, the buyer's admission gate decides GO or NO and seals the decision first; the deal "
+                     "obeys it.", NODE_SIDE, "M3"),
     Step(5, "Deal and push", "Both sides seal halves that cite each other and push them at completion; the receiver "
                              "seals a record citing them.", NODE_SIDE, "M2"),
     Step(6, "Settle", "A settlement object for the exchange exists on the rail, with finality.", NODE_SIDE, "M2"),
@@ -93,7 +93,8 @@ HELD_NOTE = "Held: whether this row stays on the page is still to be settled."
 # The five numbers. A measured one reads the newest run of its population:
 #   start = run.json `started`, which loop.sh writes before the run's first step;
 #   event = the `finished` of the marker step's finding, when that finding is a
-#           valid PASS.
+#           valid PASS; for step 07 (Ask), the `answered_at` of its first answered
+#           ask (first_answered()), as its valid PASS or NOT_CHECKED finding names it.
 # minutes = event - start. A number with no marker step, or whose marker step has
 # no valid PASS, reads "not measured yet (<milestone>)". A marker step that is a
 # valid PASS in a run with no usable start time says exactly why (NO_START and
@@ -111,14 +112,17 @@ class Number:
 NUMBERS = (
     Number("first-sealed", "Minutes to the first sealed record", "minutes from the run's start", "M1", 1,
            "step 01 (Seal) finding's finished, minus run.json started"),
-    Number("first-answered", "Minutes to the first answered request", "minutes from the run's start", "M1", 12,
-           "step 12 (Join) finding's finished (its probe asks the node's own responder), minus run.json started"),
+    Number("first-answered", "Minutes to the first answered request", "minutes from the run's start", "M2", 7,
+           "step 07 (Ask) finding's first-answered.json answered_at (the first ask answered in time with a signed "
+           "artifact or a signed refusal judged allowed), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
            11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
-    Number("limited", "Decisions limited or refused on evidence", "of all admission decisions", "M3", None,
-           "step 04 (Admit): no finding carries the decision counts yet"),
-    Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", None,
-           "no finding carries either volume yet; the raw figure is never shown without the filtered one"),
+    Number("refused", "Admission decisions that were NO", "of all admission decisions", "M3", 4,
+           "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
+    Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,
+           "step 06 (Settle) finding's volume.json, when that finding is a valid PASS: raw counts the final "
+           "settlement records on the rail's public ledger, filtered keeps those on a fee-paying rail whose payer and "
+           "payee are declared under different controllers; the raw figure is never shown without the filtered one"),
 )
 
 e = html.escape
@@ -313,9 +317,44 @@ def passed(run, step):
     return r if r is not None and not problems and r["result"] == "PASS" else None
 
 
+FIRST_ANSWERED = "first-answered.json"
+ASK_STEP = 7
+
+
+def first_answered(run, step):
+    """When step 07's finding says its first ask was answered, as a UTC datetime, or None.
+
+    The finding must be valid and PASS or NOT_CHECKED (a live run answers asks while
+    parts of the step stay unchecked), and name first-answered.json among its proof,
+    so the file is the one its sha256 covers."""
+    if run.path is None or step not in run.findings:
+        return None
+    d, r, problems = run.findings[step]
+    if r is None or problems or r["result"] not in ("PASS", "NOT_CHECKED") or \
+            FIRST_ANSWERED not in [p["path"] for p in r["proof"]]:
+        return None
+    try:
+        at = json.loads((d / FIRST_ANSWERED).read_text(encoding="utf-8"))["answered_at"]
+        m = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$", at)
+        return stamp(m.group(1) + "Z") + dt.timedelta(microseconds=int((m.group(2) or "0")[:6].ljust(6, "0")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def unsealed_ask(run, step):
+    """The ask first-answered.json names when the step ran without sealing its requests (`sealed` false, as on
+    the live backend today), else None. The cell says so, so a live number does not read as row 7 done."""
+    try:
+        d = json.loads((run.findings[step][0] / FIRST_ANSWERED).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return str(d.get("ask")) if d.get("sealed") is False and d.get("ask") else None
+
+
 def not_measured(run, step, milestone):
-    """Why a minutes number has no value: its milestone while the marker step has no PASS, else the start's fault."""
-    if run.path is None or passed(run, step) is None:
+    """Why a minutes number has no value: its milestone while the marker step has no event, else the start's
+    fault."""
+    if run.path is None or event(run, step) is None:
         return f"not measured yet ({milestone})"
     if not (run.path / "run.json").is_file():
         return NO_START
@@ -324,13 +363,25 @@ def not_measured(run, step, milestone):
     return "not measured: this run's run.json start is after the step finished"
 
 
-def minutes(run, step):
-    """Minutes from run.json `started` to `step`'s valid PASS `finished`, or None."""
+def event(run, step):
+    """When `step`'s number event happened: step 07's first answered ask, any other step's valid PASS
+    `finished`; None when there is none."""
+    if step == ASK_STEP:
+        return first_answered(run, step)
     r = passed(run, step)
-    if run.started is None or r is None:
+    try:
+        return stamp(r["finished"]) if r is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def minutes(run, step):
+    """Minutes from run.json `started` to `step`'s event (event()), or None."""
+    at = event(run, step)
+    if run.started is None or at is None:
         return None
     try:
-        m = (stamp(r["finished"]) - stamp(run.started)).total_seconds() / 60
+        m = (at - stamp(run.started)).total_seconds() / 60
     except (TypeError, ValueError):
         return None
     return m if m >= 0 else None
@@ -343,21 +394,57 @@ def volume(raw, filtered, milestone="M2"):
     return f"{filtered} filtered of {raw} raw records"
 
 
-def decided(limited, total, milestone="M3"):
-    if limited is None or total is None:
+def settled_volume(run, step):
+    """(raw, filtered) from `step`'s volume.json, a proof file of its valid PASS finding; (None, None) otherwise.
+
+    Both or neither: a volume.json without one of them, or with filtered above raw, gives neither."""
+    r = passed(run, step)
+    if r is None or "volume.json" not in [p["path"] for p in r["proof"]]:
+        return None, None
+    try:
+        v = json.loads((run.findings[step][0] / "volume.json").read_text(encoding="utf-8"))
+        raw, filtered = v["raw"], v["filtered"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    counts = all(isinstance(n, int) and not isinstance(n, bool) and n >= 0 for n in (raw, filtered))
+    return (raw, filtered) if counts and filtered <= raw else (None, None)
+
+
+def decided(refused, total, milestone="M3"):
+    if refused is None or total is None:
         return f"not measured yet ({milestone})"
-    return f"{limited} of {total} decisions"
+    return f"{refused} of {total} decisions"
+
+
+def refused_counts(run):
+    """(refused, decisions) from step 04's counts.json proof when its finding is a valid PASS, else
+    (None, None): both numbers or neither."""
+    r = passed(run, 4) if run.path else None
+    if r is None or "counts.json" not in [x["path"] for x in r["proof"]]:
+        return None, None
+    try:
+        c = json.loads((run.findings[4][0] / "counts.json").read_text(encoding="utf-8"))
+        refused, total = c["refused"], c["decisions"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    ok = all(isinstance(x, int) and not isinstance(x, bool) for x in (refused, total)) and 0 <= refused <= total
+    return (refused, total) if ok and total > 0 else (None, None)
 
 
 def number_value(number, run):
     """(text, measured?) for one number in one population's run."""
     if number.key == "filtered":
-        return volume(None, None, number.milestone), False
-    if number.key == "limited":
-        return decided(None, None, number.milestone), False
+        raw, filtered = settled_volume(run, number.step) if run.path else (None, None)
+        return volume(raw, filtered, number.milestone), raw is not None
+    if number.key == "refused":
+        refused, total = refused_counts(run)
+        return decided(refused, total, number.milestone), total is not None
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False
+    ask = unsealed_ask(run, number.step) if number.step == ASK_STEP else None
+    if ask:
+        return f"{duration(m)} ({ask}, answered but not sealed before it was sent)", True
     return duration(m), True
 
 

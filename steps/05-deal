@@ -106,9 +106,9 @@ SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkp
               "held/received-inclusion.jsonl", "citing.json", "citing-inclusion.json", "checkpoint.json",
               "placement.json"]
 PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
-# Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). What
-# is still open is a node sending a controller declaration: binding a node key to its operator.
-ACCEPTANCE_ISSUE = "Mesh-LLM/capsules-plugin#54"
+# Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). A node
+# sending a controller declaration, binding its key to its operator, is capsules-plugin PR #121, after the pin.
+ACCEPTANCE_ISSUE = "fixed upstream in capsules-plugin PR #121 (196ed195, join runs the controller binding ceremony), not in the pinned build; loop re-pins next"
 # No released verifier checks a controller-binding/0 record's signatures.
 BINDING_VERIFIER_ISSUE = "action-state-group/agent-action-capsule#432"
 ACCEPTANCE_WHAT = "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration"

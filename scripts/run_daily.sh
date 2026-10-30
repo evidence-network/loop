@@ -14,21 +14,46 @@
 # reports/rehearsal, stages and pushes only that, and its retries are bounded so
 # it settles inside the slot (scripts/daily_report.py). The default set is daily.
 # The reporter's own node is asked through LOOP_SECOND_CONSOLE when it is set
-# (and LOOP_SELF_NODE, its label, is checked), in either set.
+# (and LOOP_SELF_NODE, its label, is checked), in every set.
+#
+# `run_daily.sh --set ondemand` is one extra ask round made by hand between
+# dailies (scripts/refresh_now.sh runs it): one report under
+# reports/ondemand/<YYYY-MM-DD>T<HHMMSS>Z, named by the second it started, its
+# retries bounded to settle in about two minutes. It refuses to start while the
+# daily, ask-again or rehearsal service is active, or with anything staged in
+# the loop-data checkout; it commits only its own run's directory, and a run
+# that cannot reach its own node writes and commits nothing (exit 2).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 console="${LOOP_CONSOLE:-http://127.0.0.1:3131}"
 data_dir="${CAPSULES_DATA_DIR:-$HOME/.local/share/capsules}"
 report_set="${LOOP_REPORT_SET:-daily}"
 if [ "${1:-}" = --set ] && [ "$#" -eq 2 ]; then report_set="$2"; elif [ "$#" -ne 0 ]; then
-  echo "usage: $0 [--set daily|rehearsal]" >&2; exit 1
+  echo "usage: $0 [--set daily|rehearsal|ondemand]" >&2; exit 1
 fi
 case "$report_set" in
   daily) day="$(date -u +%F)" ;;
   # The 10-minute UTC slot this run reports, <YYYY-MM-DD>T<HHMM>Z: one clock read.
   rehearsal) now="$(date -u +%Y-%m-%dT%H%M)"; day="${now%?}0Z" ;;
-  *) echo "LOOP_REPORT_SET must be daily or rehearsal, not $report_set" >&2; exit 1 ;;
+  # The run, <YYYY-MM-DD>T<HHMMSS>Z: the second it starts.
+  ondemand) day="$(date -u +%Y-%m-%dT%H%M%SZ)" ;;
+  *) echo "LOOP_REPORT_SET must be daily, rehearsal or ondemand, not $report_set" >&2; exit 1 ;;
 esac
+if [ "$report_set" = ondemand ]; then
+  # A scheduled run owns the checkout while it runs (the daily one for up to six
+  # hours): never ask beside it. `is-active` says activating while a oneshot runs.
+  for unit in loop-reporter.service loop-reporter-ask.service loop-reporter-rehearsal.service; do
+    state="$(systemctl --user is-active "$unit" 2>&1)"
+    case "$state" in
+      inactive|failed|unknown) ;;
+      active|activating|deactivating|reloading|refreshing)
+        echo "$unit is $state: an on-demand run waits until it has finished" >&2; exit 1 ;;
+      *) echo "cannot tell whether $unit is running ($state): not starting an on-demand run" >&2; exit 1 ;;
+    esac
+  done
+  # Another run holding the loop-data checkout (scripts/loop_data.sh): refuse at once, never wait.
+  lock_wait=0
+fi
 
 # The reporter judges every answer under the key the node's host announces on
 # the mesh, never under a static map: refuse to run with one configured.
@@ -38,6 +63,11 @@ if [ -n "${CAPSULES_PEER_KEYS:-}" ]; then
 fi
 
 . scripts/loop_data.sh || exit 1
+if [ "$report_set" = ondemand ] && ! data_git diff --cached --quiet; then
+  echo "changes are staged in $data, not starting an on-demand run:" >&2
+  data_git diff --cached --name-only >&2
+  exit 1
+fi
 # The deploy key pushes reports/<set> to loop-data's main and nothing else: run
 # only on main, and only when every local commit not on origin/main stays in reports/<set>.
 [ "$(data_git symbolic-ref --short HEAD 2>/dev/null)" = main ] || { echo "not on main: $data" >&2; exit 1; }
@@ -49,6 +79,8 @@ status=$?
 # 1 = refused before asking anyone (bad list, reporter key not set or not this
 # node's): nothing to commit, and the next run will mark this day MISSED.
 [ "$status" -eq 1 ] && exit 1
+# An on-demand run that could not reach its own node wrote nothing: no commit.
+[ "$report_set" = ondemand ] && [ "$status" -eq 2 ] && exit 2
 python3 scripts/check_reports.py "$reports" --set "$report_set" || exit 1
 # Nothing with personal data in it is pushed: this push skips the required
 # checks, so a hit is caught here, before history, not after. The day's bytes
@@ -59,18 +91,24 @@ if [ -f scripts/check_personal_data.py ] && ! python3 -B scripts/check_personal_
   held="${LOOP_HELD_DIR:-$HOME/.local/share/loop/held}/$day-$(date -u +%H%M%S)"
   mkdir -p "$(dirname "$held")" || exit 1
   [ -d "$reports/$day" ] && { mv "$reports/$day" "$held" || exit 1; }
-  mkdir -p "$reports/$day"
-  echo "no report for $day: the run could not finish: its answers failed the personal-data check and are held on the reporter node" \
-    > "$reports/$day/MISSED"
+  # No continuity on demand: the run is held, and nothing is left in its place.
+  if [ "$report_set" != ondemand ]; then
+    mkdir -p "$reports/$day"
+    echo "no report for $day: the run could not finish: its answers failed the personal-data check and are held on the reporter node" \
+      > "$reports/$day/MISSED"
+  fi
   echo "$day: personal-data check failed; held in $held; nothing committed" >&2
   exit 3
 fi
-data_git add "reports/$report_set" || exit 1
+# On demand, only this run's directory: never another run's, nor a leftover.
+if [ "$report_set" = ondemand ]; then commit_path="reports/ondemand/$day"; else commit_path="reports/$report_set"; fi
+data_git add "$commit_path" || exit 1
 if [ "$report_set" = daily ]; then
   if [ "$status" -eq 0 ]; then msg="report: daily $day"; else msg="report: $day missed"; fi
+elif [ "$report_set" = ondemand ]; then msg="report: on-demand $day"
 elif [ "$status" -eq 0 ]; then msg="report: rehearsal $day (TEST)"; else msg="report: rehearsal $day missed (TEST)"; fi
 if ! data_git diff --cached --quiet; then
-  data_git commit --quiet -s -m "$msg" || exit 1
+  data_git commit --quiet -s -m "$msg" -- "$commit_path" || exit 1
 fi
 # Every outgoing commit, not just the net diff: a file added then deleted
 # would still be pushed in history.

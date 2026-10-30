@@ -1,0 +1,21 @@
+{
+  "held": [
+    {
+      "capsule_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "held": "held-1",
+      "provenance": {
+        "detail": "received from node-one via mesh at 2026-11-02T06:00:00Z",
+        "ok": true
+      }
+    },
+    {
+      "capsule_id": "2222222222222222222222222222222222222222222222222222222222222222",
+      "held": "held-2",
+      "provenance": {
+        "detail": "received from someone-else via mesh at 2026-11-02T06:00:00Z",
+        "ok": true
+      }
+    }
+  ],
+  "node": "node-four"
+}
