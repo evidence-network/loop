@@ -689,7 +689,6 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({**VERIFIED, "exchange": "no_checkpoint_yet"}, ledger=asker, node_extra=extra)
         self.assertIn(step.EXCHANGE_ISSUE, self.issues(r))
         self.assertNotEqual(r["result"], "FAIL", r["detail"])
-        asker, extra = self.exchange_dirs()
         fail, _ = step.judge_exchange_line("no_checkpoint_yet reason=coverage_unsatisfiable key=" + "3" * 64
                                            + " listed_key=differs", {})
         self.assertIn("not the listed key", fail)
@@ -698,7 +697,7 @@ class ReporterBackendTest(Tmp):
         asker, extra = self.exchange_dirs()
         node = Path(extra["data_dir"]) / "ledger"
         with (node / "capsules.jsonl").open("a") as f:
-            f.write('{"capsule_id": [], "references": 1}\n{"references": [1, {"digest": []}]}\n')
+            f.write('{"capsule_id": [], "references": 1}\n{"references": [1, {"citation_purpose": "counterparty_half", "digest": []}]}\n')
         with (asker / "ledger" / "capsules.jsonl").open("a") as f:
             f.write('{"capsule_id": []}\n')
         half, why = step.exchange_subject(extra, asker)
@@ -709,6 +708,10 @@ class ReporterBackendTest(Tmp):
     def test_served_records_that_are_not_objects_fail_not_crash(self):
         path = Path(self.tmp.name) / "resp.json"
         artifact = base64.urlsafe_b64encode(json.dumps({"records": [{"body": b"[1]".hex()}]}).encode()).decode()
+        path.write_text(json.dumps({"answer": {"artifact": artifact}}))
+        errs, notes = step.exchange_records_cite(path, self.HALF)
+        self.assertEqual((len(errs), notes), (1, []))
+        artifact = base64.urlsafe_b64encode(json.dumps({"records": [{"body": b'{"references": 1}'.hex()}]}).encode()).decode()
         path.write_text(json.dumps({"answer": {"artifact": artifact}}))
         errs, notes = step.exchange_records_cite(path, self.HALF)
         self.assertEqual((len(errs), notes), (1, []))

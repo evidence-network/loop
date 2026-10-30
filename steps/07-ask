@@ -72,7 +72,8 @@ then NOT_CHECKED. An unreadable ledger is NOT_CHECKED. The exchange ask (loop#94
 asked node holds, the asker's own chain also holds (it sent it) and the asked node's chain cites as a
 `counterparty_half` (`exchange_subject`; the two data dirs are read, the asked node's is its `data_dir` in the population).
 It is sealed and judged like the others; a verified answer must serve records that each cite the half, and a refusal is
-judged by its reason with the asker a counterparty (a withholding or unnamed reason is a FAIL). With no such half the
+judged by its reason with the asker a counterparty (a withholding or unnamed reason is a FAIL; coverage_unsatisfiable,
+which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED on loop#94). With no such half the
 ask is NOT_CHECKED on loop#94. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
@@ -897,7 +898,8 @@ def exchange_subject(node, asker_data_dir):
         return None, EXCHANGE_GAP
     mine = {r["capsule_id"] for r in sent if isinstance(r.get("capsule_id"), str)}
     cited = {ref.get("digest") for r in chain if isinstance(r.get("references"), list)
-             for ref in r["references"] if isinstance(ref, dict) and ref.get("citation_purpose") == COUNTERPARTY_HALF}
+             for ref in r["references"] if isinstance(ref, dict) and ref.get("citation_purpose") == COUNTERPARTY_HALF
+             and isinstance(ref.get("digest"), str)}
     for r in reversed(got):
         cid = r.get("capsule_id")
         if isinstance(cid, str) and cid in mine and cid in cited:
@@ -940,8 +942,13 @@ def exchange_records_cite(response, half):
         return [], ["the served exchange records could not be read from the answer"]
     if not served:
         return ["the exchange answer serves no record, but the asked node cites the half"], []
-    bad = [r for r in served if not isinstance(r, dict) or not any(isinstance(x, dict) and x.get("citation_purpose") == COUNTERPARTY_HALF
-                                        and x.get("digest") == half for x in r.get("references") or [])]
+    def cites(r):
+        refs = r.get("references") if isinstance(r, dict) else None
+        return isinstance(refs, list) and any(
+            isinstance(x, dict) and x.get("citation_purpose") == COUNTERPARTY_HALF and x.get("digest") == half
+            for x in refs)
+
+    bad = [r for r in served if not cites(r)]
     return ([f"{len(bad)} of {len(served)} served records do not cite the asked half as a counterparty half"]
             if bad else []), []
 
@@ -949,7 +956,8 @@ def exchange_records_cite(response, half):
 def judge_exchange_line(line, entry):
     """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
     holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
-    (the policy answers it), an ambiguous one is not checked, a request-blaming one is fine."""
+    (the policy answers it), an ambiguous one is not checked, and a request-blaming one is fine, except coverage_unsatisfiable (the
+    no_checkpoint_yet line): its key is checked and the ask is left NOT_CHECKED on loop#94."""
     if line.split(" ", 1)[0] not in ("refusal", "no_checkpoint_yet"):  # coverage_unsatisfiable reads as the latter
         return step12.judge_reporter_line(EXCHANGE, line, entry)
     if "listed_key=match" not in line.split():
