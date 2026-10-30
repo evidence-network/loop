@@ -323,6 +323,7 @@ def main_live(pop, out, started):
     since = window_from(pop)
     pinned = pop.get("pinned", LIVE_PINNED)
     proof, details, not_checked, hashes = [], [], [], {}
+    (out / "crosscheck.json").unlink(missing_ok=True)  # a rerun must not keep an earlier run's comparison
     for entry in pop["nodes"]:
         name = entry["name"]
         shutil.rmtree(out / name, ignore_errors=True)  # a rerun must not keep an earlier run's file
@@ -351,21 +352,33 @@ def main_live(pop, out, started):
                                 "issue": ADAPTER_ISSUE})
         else:
             details.append(f"node {name}: no settlement recorded")
-            not_checked.append({"what": f"a settlement for an exchange of node {name}",
-                                "why": "the node has recorded no settlement: the lab has no wallet configured yet, "
-                                       "so no paid exchange has run on it and the adapter has nothing to report on",
+            if since is not None:
+                why = (f"the node recorded no settlement in the window from {found['window_from']} "
+                       f"({found['outside_window']} records before it, {found['undated']} without a timestamp), "
+                       "so the adapter has nothing in the window to report on")
+            else:
+                why = ("the node has recorded no settlement: the lab has no wallet configured yet, "
+                       "so no paid exchange has run on it and the adapter has nothing to report on")
+            not_checked.append({"what": f"a settlement for an exchange of node {name}", "why": why,
                                 "issue": WALLET_ISSUE})
-    if pop.get("crosscheck") == "payment_hash" and len(hashes) > 1:
-        cross = crosscheck(hashes)
-        (out / "crosscheck.json").write_text(json.dumps(cross, indent=2, sort_keys=True) + "\n")
-        proof.append("crosscheck.json")
-        details.append(f"payment hashes compared across {', '.join(cross['nodes'])}: "
-                       f"{len(cross['recorded_by_all'])} recorded by every node, {len(cross['recorded_by_some'])} "
-                       f"by some only; agreement between the nodes' own records is not finality")
+    if pop.get("crosscheck") == "payment_hash":
+        if len(hashes) > 1:
+            cross = crosscheck(hashes)
+            (out / "crosscheck.json").write_text(json.dumps(cross, indent=2, sort_keys=True) + "\n")
+            proof.append("crosscheck.json")
+            n_all, n_some = len(cross["recorded_by_all"]), len(cross["recorded_by_some"])
+            details.append(f"payment hashes compared across {', '.join(cross['nodes'])}: {n_all} recorded by every "
+                           f"node, {n_some} by some only; agreement between the nodes' own records is not finality")
+            why = ("the nodes' records " + ("agree on every payment hash they recorded" if n_all and not n_some
+                                            else "do not all record the same payment hashes" if n_some
+                                            else "hold no payment hash to compare")
+                   + ", and either way they are records of wallet-reported payments; the pinned adapter has no "
+                     "preimage finality")
+        else:
+            details.append("payment hash comparison requested but fewer than two nodes were read, so it was not run")
+            why = "fewer than two nodes' ledgers were readable, so no comparison ran; and the pinned adapter has no preimage finality"
         not_checked.append({"what": "that the payment hashes the nodes recorded settled, with their preimages",
-                            "why": "the nodes agree on which payment hashes they recorded, but both are records of "
-                                   "the same wallet-reported payment; the pinned adapter has no preimage finality",
-                            "issue": ADAPTER_ISSUE})
+                            "why": why, "issue": ADAPTER_ISSUE})
     if pop.get("rail") is None:
         details.append("the live population names no rail")
     if not any("settlements node" in n["what"] for n in not_checked):

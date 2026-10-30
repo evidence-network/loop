@@ -443,6 +443,9 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual((rec["outside_window"], rec["undated"], rec["window_from"]), (1, 1, "2026-10-30T17:58:00Z"))
         self.assertIn("node shockley: no settlement recorded", r["detail"])
         self.assertIn("window from 2026-10-30T17:58:00Z: 1 records before it", r["detail"])
+        why = next(n["why"] for n in r["not_checked"] if n["what"].endswith("of node shockley"))
+        self.assertIn("no settlement in the window from 2026-10-30T17:58:00Z (1 records before it, 0 without", why)
+        self.assertNotIn("no wallet", why)
 
     def test_no_window_counts_every_record(self):
         lab = Path(self.tmp.name) / "lab"
@@ -483,8 +486,43 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("crosscheck.json", [p["path"] for p in r["proof"]])
         self.assertIn("1 recorded by every node, 1 by some only", r["detail"])
-        self.assertTrue([n for n in r["not_checked"] if n["issue"] == step.ADAPTER_ISSUE
-                         and "preimages" in n["what"]])
+        why = next(n["why"] for n in r["not_checked"] if "preimages" in n["what"])
+        self.assertIn("do not all record the same payment hashes", why)
+        self.assertNotIn("agree on", why)
+
+    def test_the_crosscheck_says_so_when_the_nodes_agree_and_when_there_is_nothing_to_compare(self):
+        for rows, expect in (({"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                               "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]}, "agree on every payment hash"),
+                             ({"brattain": [], "shockley": []}, "hold no payment hash to compare")):
+            with self.subTest(expect=expect):
+                lab = Path(self.tmp.name) / "lab"
+                shutil.rmtree(lab, ignore_errors=True)
+                self.demo_ledgers(lab, rows)
+                r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+                self.assertIn(expect, next(n["why"] for n in r["not_checked"] if "preimages" in n["what"]))
+                shutil.rmtree(Path(self.tmp.name) / "demo")
+
+    def test_a_requested_crosscheck_with_one_node_unread_says_it_did_not_run(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)]})  # shockley has no data dir
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertFalse((self.out / "crosscheck.json").exists())
+        self.assertIn("fewer than two nodes were read", r["detail"])
+        self.assertTrue([n for n in r["not_checked"] if "preimages" in n["what"] and "no comparison ran" in n["why"]])
+
+    def test_a_rerun_does_not_keep_an_earlier_crosscheck(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        pop = self.demo_population(lab)
+        env = dict(os.environ, STEP06_LAB=str(lab))
+        self.run_step(pop, env=env)
+        self.assertTrue((self.out / "crosscheck.json").exists())
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["crosscheck"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=env)
+        self.assertFalse((self.out / "crosscheck.json").exists())
 
     def test_no_crosscheck_unless_the_population_asks(self):
         lab = Path(self.tmp.name) / "lab"
@@ -497,9 +535,8 @@ class Step06SettleTest(unittest.TestCase):
         self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
         self.assertFalse((self.out / "crosscheck.json").exists())
 
-    def test_a_node_with_no_settlement_cites_an_open_issue_not_the_closed_wallet_one(self):
+    def test_a_node_with_no_settlement_cites_the_open_adapter_issue(self):
         self.assertEqual(step.WALLET_ISSUE, step.ADAPTER_ISSUE)
-        self.assertNotEqual(step.WALLET_ISSUE, "evidence-network/loop#56")
 
     def test_the_step_never_reaches_for_a_wallet_or_the_network(self):
         source = STEP.read_text()
