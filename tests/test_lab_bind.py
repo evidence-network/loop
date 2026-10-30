@@ -79,6 +79,18 @@ class Bip340(unittest.TestCase):
             self.assertEqual(len(first), 32)
 
 
+class KeyMode(unittest.TestCase):
+    def test_a_key_file_readable_beyond_its_user_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "nostr.key")
+            ns.load_key(path, make=True)
+            os.chmod(path, 0o640)
+            with self.assertRaises(ValueError):
+                ns.load_key(path)
+            os.chmod(path, 0o600)
+            self.assertEqual(len(ns.load_key(path)), 32)
+
+
 class FakeNode:
     """A node console: join (the ceremony) and doctor, as the plugin answers them (capsules-plugin#121)."""
 
