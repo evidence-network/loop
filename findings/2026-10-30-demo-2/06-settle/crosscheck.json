@@ -1,0 +1,49 @@
+{
+  "nodes": [
+    "brattain",
+    "shockley"
+  ],
+  "paired": {
+    "045ca535e0aeb1daf867a066cdf564279ab37f66941c8c457d1c3486d64ec3fb": {
+      "amount_msat": 3300,
+      "payee": "shockley",
+      "payer": "brattain"
+    },
+    "0e0e95637c60887f792f8e08043d83eca3ba3ea7c8a85f891586e837637e21d7": {
+      "amount_msat": 2100,
+      "payee": "shockley",
+      "payer": "brattain"
+    },
+    "25686a7915cd59fe7a78d4b14fca24524a57ad865ca365ef1580bab88a13dcff": {
+      "amount_msat": 1000,
+      "payee": "shockley",
+      "payer": "brattain"
+    },
+    "33176c840757d6317700f3060aeacf7ad5091400ff6a87cc7b9881b61572049f": {
+      "amount_msat": 1100,
+      "payee": "brattain",
+      "payer": "shockley"
+    },
+    "5ea0e89b862caddc426dd21e39406dfb8028d15b9421edd4ffd17844de951217": {
+      "amount_msat": 1000,
+      "payee": "brattain",
+      "payer": "shockley"
+    },
+    "63be49c714e970871c832110ada14b7e00de1fd74c49365bc83b225d6329750c": {
+      "amount_msat": 2100,
+      "payee": "brattain",
+      "payer": "shockley"
+    },
+    "bd69de5c21eba94fc5eb5013df49b69936a2a5f7dc5539db8ced91d8daa611ef": {
+      "amount_msat": 1350,
+      "payee": "shockley",
+      "payer": "brattain"
+    },
+    "f0ae5dc4bcf5ba47a2d5c76063c3994e56ab2d3f2b945997cf3ea8d8dc980925": {
+      "amount_msat": 2100,
+      "payee": "brattain",
+      "payer": "shockley"
+    }
+  },
+  "unpaired": {}
+}

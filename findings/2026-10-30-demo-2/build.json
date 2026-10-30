@@ -1,0 +1,28 @@
+{
+  "capsules": {
+    "archive": "capsules-0.1.5-main.f494845-x86_64-unknown-linux-gnu.tar.gz",
+    "archive_sha256": "d4b075a10e7dba14945bc7bbc0c01208a3602c94218fb8a2703c8aed05d3eaf1",
+    "installed_version": "0.1.5",
+    "pin": "f494845bb9e003d100429fc4c081fc11322551cc",
+    "repository": "Mesh-LLM/capsules-plugin"
+  },
+  "checked_at": "2026-10-30T22:48:18Z",
+  "mesh_llm": {
+    "binary": "/home/intangible/ml-lab1030/mesh-llm",
+    "binary_sha256": "8f7cbd57eb1629b723b0c4c9c80eff7fde266dda0680b4f6801cb7798d847146",
+    "pin": "3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301",
+    "repository": "ethanyzhang/mesh-llm"
+  },
+  "nodes": {
+    "brattain": {
+      "vm": "mc53-u755-payer",
+      "snapshot_at": "2026-10-30T22:48:06Z",
+      "ledger_lines": 1472
+    },
+    "shockley": {
+      "vm": "mc53-u755-provider",
+      "snapshot_at": "2026-10-30T22:48:18Z",
+      "ledger_lines": 896
+    }
+  }
+}
