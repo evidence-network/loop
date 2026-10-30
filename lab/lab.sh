@@ -107,7 +107,7 @@ LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
 MODEL_NAME=${LAB_MODEL_NAME:-${MODEL_REF:-lab-model}}
-# With an HF ref the name is the one lab-1 listed at start (run/model-name), unless LAB_MODEL_NAME says otherwise.
+# With an HF ref the name is the one the asking node's peers advertised at start (run/model-name), unless LAB_MODEL_NAME says otherwise.
 if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ -s "${LAB_DIR:-/nonexistent}/run/model-name" ]; then
   MODEL_NAME=$(cat "$LAB_DIR/run/model-name")
 fi
@@ -217,6 +217,17 @@ rejected_reasons() { # FILE N
 for l in sys.stdin:
     try: print(json.loads(l).get("reason") or l.strip()[:200])
     except ValueError: print(l.strip()[:200])'
+}
+# wait_for that, on a timeout, says why when the requester refused a push meanwhile (the plugin logs the reason, never retries):
+# the lines of $TWINS_REJ past line $TWINS_REJ_BEFORE.
+twins_wait() { # SECONDS WHAT CMD...
+  local secs=$1 what=$2; shift 2
+  wait_for "$secs" "$what" "$@" && return 0
+  [ "$DRY" = 1 ] && return 0
+  local why; why=$(rejected_reasons "$TWINS_REJ" "$TWINS_REJ_BEFORE" | sort | uniq -c | tr '\n' ';')
+  [ -z "$why" ] || echo "lab.sh: the requester refused pushes during this run ($TWINS_REJ): $why" >&2
+  case "$why" in *signature_unverified*) echo "lab.sh: signature_unverified: the plugins had not read each other's keys; wait LAB_KEY_SETTLE after start and run twins again" >&2 ;; esac
+  return 1
 }
 node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
@@ -722,16 +733,7 @@ cmd_twins() {
   run mkdir -p "$LAB_DIR/twins"
   local rejected_before rej="$led/rejected-record-pushes.jsonl"
   rejected_before=$(rejected_count "$rej")
-  # A wait that times out says why when the requester refused a push meanwhile (the plugin logs the reason, and never retries).
-  twins_wait() { # SECONDS WHAT CMD...
-    local secs=$1 what=$2; shift 2
-    wait_for "$secs" "$what" "$@" && return 0
-    [ "$DRY" = 1 ] && return 0
-    local why; why=$(rejected_reasons "$rej" "$rejected_before" | sort | uniq -c | tr '\n' ';')
-    [ -z "$why" ] || echo "lab.sh: the requester refused pushes during this run ($rej): $why" >&2
-    case "$why" in *signature_unverified*) echo "lab.sh: signature_unverified: the plugins had not read each other's keys; wait LAB_KEY_SETTLE after start and run twins again" >&2 ;; esac
-    return 1
-  }
+  TWINS_REJ=$rej TWINS_REJ_BEFORE=$rejected_before
   local api="http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
   # 1. The requester asks the referee once. The plugin takes a referee as eligible only when it holds a half from it
   #    (referee/live.rs candidates), and that push arrives after the exchange completes: wait for it.

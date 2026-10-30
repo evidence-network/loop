@@ -255,6 +255,27 @@ class DryRunTest(unittest.TestCase):
         r = run()
         self.assertEqual(r.stdout.split(), ["count=3", "signature_unverified", "model_mismatch"])  # only lines past the first
 
+    def test_twins_wait_explains_a_timeout_by_the_refusals_logged_during_the_run(self):
+        f = self.tmp / "rej.jsonl"
+        script = ('eval "$(sed -n "/^rejected_count()/p;/^rejected_reasons()/,/^}/p;/^twins_wait()/,/^}/p" "$LAB")"; DRY=0; '
+                  f'wait_for() {{ return $WAIT; }}; TWINS_REJ="$F"; TWINS_REJ_BEFORE=1; twins_wait 1 "the halves" true; echo "rc=$?"')
+        def run(wait):
+            return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                  env={**os.environ, "LAB": str(LAB), "F": str(f), "WAIT": str(wait)})
+        self.assertEqual(run(0).stdout.strip(), "rc=0")  # the wait passed: nothing said
+        r = run(1)  # timed out, no rejections: just the failure
+        self.assertEqual((r.stdout.strip(), r.stderr), ("rc=1", ""))
+        f.write_text('{"reason":"stale_reason"}\n{"reason":"model_mismatch"}\n')
+        r = run(1)  # another reason: reported, but no key advice
+        self.assertIn("model_mismatch", r.stderr)
+        self.assertNotIn("had not read each other's keys", r.stderr)
+        self.assertNotIn("stale_reason", r.stderr)  # earlier than this run
+        f.write_text('{"reason":"stale_reason"}\n{"reason":"signature_unverified"}\n')
+        r = run(1)
+        self.assertIn("signature_unverified", r.stderr)
+        self.assertIn("had not read each other's keys", r.stderr)
+        self.assertEqual(r.stdout.strip(), "rc=1")
+
     def test_the_asking_node_is_the_requester_with_twins_and_lab_2_otherwise(self):
         text = (ROOT / "lab" / "lab.sh").read_text()
         self.assertIn("asker=lab-2", text)
