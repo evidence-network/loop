@@ -670,7 +670,9 @@ cmd_twins() {
   local bracket body ref a b led
   bracket="lab-twins-$(date -u +%Y%m%dT%H%M%SZ)"   # one pair per run: a bracket with more than two exchanges is refused
   led=$(data_of "$REQUESTER")/ledger
-  body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Name one colour."}],"max_tokens":16,"temperature":0}' "$MODEL_NAME")
+  # The bracket is in the prompt, so every run has its own request_digest: the plugin pairs a held half by digest and would
+  # otherwise pair last run's half with this run's texts.
+  body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Name one colour. (run %s)"}],"max_tokens":16,"temperature":0}' "$MODEL_NAME" "$bracket")
   ref=$(node_id "$REFEREE") || die "the referee $REFEREE has no node id yet"
   a=$(node_id "$TWIN_A") || die "twin A $TWIN_A has no node id yet"
   b=$(node_id "$TWIN_B") || die "twin B $TWIN_B has no node id yet"
