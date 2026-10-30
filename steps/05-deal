@@ -62,9 +62,9 @@ PR #77, in the pin): a record naming a key other than the half's, an unknown
 `accepted_via`, or a declaration with no binding digest or anchored on the
 node's own key is a FAIL. A half accepted via `host_announced` or
 `operator_stopgap` leaves acceptance not_checked: no node sends a controller
-declaration yet (ACCEPTANCE_ISSUE). The other parts the pinned plugin does not
+declaration yet (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
 do, or the loop cannot read, are not_checked entries: halves citing each other
-and the other side's checkpoint (#49), the push on by default, which the
+and the other side's checkpoint (capsules-plugin#130), the push on by default, which the
 pinned plugin does (PR #72) but a data dir does not show, the declaration's
 own signatures (AAC#432), and the held half's signature in a second language
 (AAC#431). A node with no held half, or whose data_dir is not readable, is
@@ -108,7 +108,7 @@ SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkp
 PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
 # Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). A node
 # sending a controller declaration, binding its key to its operator, is the pinned plugin's join (capsules-plugin
-# PR #121); the lab nodes running it is the open part.
+# PR #121); the rehearsal's gap is no node sending one. The live gap is LIVE_ACCEPTANCE_ISSUE.
 ACCEPTANCE_ISSUE = "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"
 # No released verifier checks a controller-binding/0 record's signatures.
 BINDING_VERIFIER_ISSUE = "action-state-group/agent-action-capsule#432"
@@ -271,7 +271,7 @@ LIVE_HALVES = {
     "what": "halves that cite each other and the other side's checkpoint",
     "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's "
            "checkpoint; only the receiver's citing record cites the half it holds",
-    "issue": "Mesh-LLM/capsules-plugin#49",
+    "issue": "Mesh-LLM/capsules-plugin#130",
 }
 LIVE_DEFAULT = {
     "what": "each side pushing its half at completion by default",
@@ -289,9 +289,14 @@ LIVE_DECLARATION = {
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
+# What a live node needs before a receiver can record controller_declaration: the sender's push carrying its
+# operator binding (the lab nodes already hold one, lab.sh bind).
+LIVE_ACCEPTANCE_ISSUE = "Mesh-LLM/capsules-plugin#113"
+
+
 def live_acceptance(vias):
     """The not_checked entry for held halves accepted on the evidence key other than under a declaration."""
-    return {"what": ACCEPTANCE_WHAT, "issue": ACCEPTANCE_ISSUE,
+    return {"what": ACCEPTANCE_WHAT, "issue": LIVE_ACCEPTANCE_ISSUE,
             "why": f"the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, "
                    f"in the pin) and records how; the citing records say {', '.join(vias)}: no node sends a "
                    f"controller declaration yet"}
@@ -394,6 +399,44 @@ def accepted(citing, half):
     return {"ok": True, "via": via, "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
 
 
+def exchange_key(capsule):
+    """(client_nonce, role, agent_output_digest) of a held half: what joins its two halves into one exchange.
+
+    Not agent_input_digest: every exchange that sends the same prompt shares it (loop#66). A member that is
+    absent, empty or not a string is None, so a malformed half is named as unpaired, never raises."""
+    ma = capsule.get("model_attestation")
+    ca = ma.get("compute_attestation") if isinstance(ma, dict) else None
+    ca = ca if isinstance(ca, dict) else {}
+    x = next((v for k, v in ca.items() if k.startswith("x-mesh-poc-v1") and isinstance(v, dict)), {})
+    return tuple(v if isinstance(v, str) and v else None
+                 for v in (x.get("client_nonce"), x.get("role"), ca.get("agent_output_digest")))
+
+
+def paired_exchanges(halves):
+    """({client_nonce}, [why not]) for {node: [(client_nonce, role, agent_output_digest)]}.
+
+    An exchange is a nonce held by two different nodes as one requested and one served half with the same
+    output digest (present on both). Any other nonce, and any half with no nonce, is named in the second list."""
+    by_nonce, notes = {}, []
+    for node, keys in sorted(halves.items()):
+        for nonce, role, out in keys:
+            if not nonce:
+                notes.append(f"a half held by {node} carries no client_nonce")
+            else:
+                by_nonce.setdefault(nonce, []).append((node, role, out))
+    paired = set()
+    for nonce, hs in sorted(by_nonce.items()):
+        nodes, roles, outs = {h[0] for h in hs}, {h[1] for h in hs}, {h[2] for h in hs}
+        if len(hs) == 2 and len(nodes) == 2 and roles == {"requested", "served"} and len(outs) == 1 \
+                and None not in outs:
+            paired.add(nonce)
+        else:
+            notes.append(f"nonce {nonce} is not one exchange held on two nodes: "
+                         + ", ".join(f"{n} {r or 'no role'}" for n, r, _ in hs)
+                         + ("" if len(outs) == 1 and None not in outs else " (output digests differ or are missing)"))
+    return paired, notes
+
+
 def live_node(bin_, name, data_dir, out, work):
     """Check every half the node holds: (result, proof, detail, pairs, accepted_via values)."""
     out.mkdir(parents=True, exist_ok=True)
@@ -446,8 +489,7 @@ def live_node(bin_, name, data_dir, out, work):
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
     vias = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
-    pairs = [(capsule.get("model_attestation", {}).get("compute_attestation", {}).get("agent_input_digest"),
-              c["capsule_id"]) for c, capsule in zip(checks, map(lambda r: parsed(r) or {}, held))]
+    pairs = [exchange_key(capsule) for capsule in map(lambda r: parsed(r) or {}, held)]
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, vias
     return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
@@ -461,7 +503,7 @@ def main_live(pop, out, started):
     bin_ = driver()
     missing = live_tools(bin_)
     results, proof, details, not_checked = [], [], [], list(missing)
-    own_inputs = {}
+    halves = {}
     vias = set()
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
@@ -480,14 +522,14 @@ def main_live(pop, out, started):
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
-            own_inputs[name] = {d for d, _ in pairs if d}
+            halves[name] = pairs
             vias |= set(node_vias)
             if not files:
                 not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
                                     "from the lab run's exchanges", "issue": live.ISSUE})
-    seen = [d for ds in own_inputs.values() for d in ds]
-    both = sorted({d for d in seen if seen.count(d) > 1})
-    details.append(f"exchanges with a half held on each of two nodes: {len(both)}")
+    both, unpaired = paired_exchanges(halves)
+    details.append(f"exchanges with a half held on each of two nodes (joined on client_nonce): {len(both)}"
+                   + (f" ({'; '.join(unpaired)})" if unpaired else ""))
     acceptance_gaps = [LIVE_DECLARATION] if "controller_declaration" in vias else []
     if vias & set(VIA_KEY):
         acceptance_gaps.append(live_acceptance(sorted(vias & set(VIA_KEY))))

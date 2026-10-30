@@ -51,6 +51,69 @@ def run_step(population, out, env=None):
     return r
 
 
+class Step05ExchangePairingTest(unittest.TestCase):
+    """Halves join on client_nonce, never on agent_input_digest (loop#66); no verifier needed."""
+    OUT_A, OUT_B = "a" * 64, "b" * 64
+
+    def test_two_exchanges_sharing_a_prompt_count_as_two(self):
+        halves = {"n1": [("x1", "requested", self.OUT_A), ("x2", "requested", self.OUT_B)],
+                  "n2": [("x1", "served", self.OUT_A)],
+                  "n3": [("x2", "served", self.OUT_B)]}
+        paired, notes = step.paired_exchanges(halves)
+        self.assertEqual(paired, {"x1", "x2"})
+        self.assertEqual(notes, [])
+
+    def test_a_half_on_one_node_only_is_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "requested", self.OUT_A)], "n2": []})
+        self.assertEqual(paired, set())
+        self.assertIn("nonce x1 is not one exchange held on two nodes: n1 requested", notes)
+
+    def test_two_halves_of_one_role_are_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "served", self.OUT_A)],
+                                               "n2": [("x1", "served", self.OUT_A)]})
+        self.assertEqual(paired, set())
+        self.assertEqual(len(notes), 1)
+
+    def test_two_halves_with_different_outputs_are_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "requested", self.OUT_A)],
+                                               "n2": [("x1", "served", self.OUT_B)]})
+        self.assertEqual(paired, set())
+        self.assertIn("output digests differ or are missing", notes[0])
+
+    def test_two_halves_with_no_output_digest_are_not_an_exchange(self):
+        paired, notes = step.paired_exchanges({"n1": [("x1", "requested", None)], "n2": [("x1", "served", None)]})
+        self.assertEqual(paired, set())
+        self.assertIn("missing", notes[0])
+
+    def test_a_malformed_half_is_named_not_raised_on(self):
+        def half(**x):
+            return {"model_attestation": {"compute_attestation": {"agent_output_digest": ["d"],
+                                                                  "x-mesh-poc-v1": x}}}
+        keys = [step.exchange_key(half(client_nonce=["a"], role={"r": 1})), step.exchange_key(half(client_nonce="")),
+                step.exchange_key({}), step.exchange_key({"model_attestation": "x"}),
+                step.exchange_key({"model_attestation": {"compute_attestation": []}})]
+        self.assertEqual(keys, [(None, None, None)] * 5)
+        paired, notes = step.paired_exchanges({"n1": keys})
+        self.assertEqual((paired, len(notes)), (set(), 5))
+
+    def test_a_half_with_no_nonce_is_named_not_dropped(self):
+        paired, notes = step.paired_exchanges({"n1": [(None, "requested", self.OUT_A)]})
+        self.assertEqual(paired, set())
+        self.assertEqual(notes, ["a half held by n1 carries no client_nonce"])
+
+    def test_the_2026_10_29_live_halves_are_two_exchanges(self):
+        root = ROOT / "findings" / "2026-10-29-live" / "05-deal"
+        files = sorted(root.glob("stevenmih-*/held-?.json"))
+        if not files:
+            self.skipTest("the 2026-10-29 live proof files are not in this checkout")
+        halves = {}
+        for f in files:
+            halves.setdefault(f.parent.name, []).append(step.exchange_key(json.loads(f.read_text())))
+        paired, notes = step.paired_exchanges(halves)
+        self.assertEqual(paired, {"26c09646-1582-4ee4-a0f8-f030163f917f", "de9cf398-1203-47d5-abc5-5ea0d7b5c25a"})
+        self.assertEqual(notes, [])
+
+
 @unittest.skipIf(BIN is None, NO_DRIVER)
 class Step05DealRehearsalTest(unittest.TestCase):
     def setUp(self):
@@ -282,7 +345,7 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
-        for i in ("Mesh-LLM/capsules-plugin#49", step.ACCEPTANCE_ISSUE,
+        for i in ("Mesh-LLM/capsules-plugin#130", step.LIVE_ACCEPTANCE_ISSUE,
                   "action-state-group/agent-action-capsule#431", step.live.NO_ISSUE_YET):
             self.assertIn(i, issues)
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
@@ -296,7 +359,7 @@ class Step05DealLiveTest(unittest.TestCase):
         default = next(n for n in f["not_checked"] if n["what"] == step.LIVE_DEFAULT["what"])
         self.assertIn("capsules-plugin PR #72, in the pin", default["why"])
         [acc] = self.acceptance_entries(f)
-        self.assertEqual(acc["issue"], step.ACCEPTANCE_ISSUE)
+        self.assertEqual(acc["issue"], step.LIVE_ACCEPTANCE_ISSUE)
         self.assertIn("capsules-plugin PR #77, in the pin", acc["why"])
         self.assertIn("say host_announced: no node sends a controller declaration yet", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
@@ -341,7 +404,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
         self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
-        self.assertNotIn(step.ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
+        self.assertNotIn(step.LIVE_ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
         self.assertEqual(finding.check(self.findings), [])
 
     def test_live_a_declaration_anchored_on_the_nodes_own_key_fails(self):
