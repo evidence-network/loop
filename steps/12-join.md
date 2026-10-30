@@ -53,3 +53,13 @@ With no published file, the detail says nothing is compared.
   (action-state-group/agent-action-capsule#432).
 - The signed commitment and the policy digest that the reporter's answers are
   matched against: `nodes/` entries are unsigned.
+
+## Rehearsal (probe backend `doctor`): proof step 08 reproduces from
+
+Each node's finding cites, by digest: `<node>.join.log` and `<node>.join.exit`
+(join.sh's exit code, kept even when it is non-zero), the commitment, policy,
+doctor and probe files, and the stranger's book the kept answers are verified
+again in (`<node>/probe/stranger/**`; its seeds are throwaway test keys).
+`decide(work, population, started)` judges from those files alone, with the
+same code a run uses, so 08 calls it to reproduce 12. One changed proof byte
+gives FAIL.
