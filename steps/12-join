@@ -937,8 +937,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             lines += said_tools
             if signed is None:
                 merge(not_checked, [{"what": f"{name}: {SIGNED_WHAT}",
-                                     "why": "join returned no commitment that verifies under the listed key with its "
-                                            "policy this run, so the answers are matched against the nodes/ entry",
+                                     "why": "this run verified no commitment from join under the listed key with its "
+                                            "policy, so the answers are matched against the nodes/ entry",
                                      "issue": live.ISSUE}])
             else:
                 misstated = check_listing(name, entry, signed)

@@ -1186,8 +1186,8 @@ class PluginToolsRunTest(Tmp):
     def test_join_returning_no_commitment_leaves_the_match_not_checked(self):
         r = self.run_one(join=lambda reply: {**reply, "commitment": None})
         self.assertIn({"what": f"alice: {step.SIGNED_WHAT}",
-                       "why": "join returned no commitment that verifies under the listed key with its policy this "
-                              "run, so the answers are matched against the nodes/ entry",
+                       "why": "this run verified no commitment from join under the listed key with its policy, so the "
+                              "answers are matched against the nodes/ entry",
                        "issue": step.live.ISSUE}, r["not_checked"])
 
 
