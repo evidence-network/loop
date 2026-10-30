@@ -210,6 +210,22 @@ class Step01SealTest(unittest.TestCase):
         self.assertEqual((result, gaps), ("FAIL", []))
         self.assertIn("could not seal", detail)
 
+    def test_an_unsigned_record_from_the_nodes_own_seal_fails(self):
+        need(VERIFIER)
+        mod = self.load_step()
+        capsule = json.loads(SEALED.read_text())
+        del capsule["signature"], capsule["key_id"]
+        stub = Path(self.tmp.name) / "unsigned-emit"  # stands in for capsule-emit's python: writes an unsigned capsule
+        stub.write_text('#!/bin/sh\ncat > "$7" <<\'EOF\'\n' + json.dumps(capsule) + '\nEOF\n')
+        stub.chmod(0o755)
+        out = Path(self.tmp.name) / "own"
+        out.mkdir()
+        result, _, detail, gaps = mod.seal_and_check(out, "n", POPULATION.parent.parent / "population" / "rehearsal" / "keys" / "alice", stub, VERIFIER, {}, "rehearsal")
+        self.assertEqual((result, gaps), ("FAIL", []))
+        self.assertIn("no producer signature", detail)
+        saved = json.loads((out / "checks.json").read_text())["checks"]["signature"]
+        self.assertEqual((saved["ok"], saved["state"]), (False, "bad"))  # the proof file agrees with the finding
+
     def test_missing_tools_read_not_checked_never_pass(self):
         env = dict(os.environ, LOOP_TOOLS=str(Path(self.tmp.name) / "no-tools"))
         r = self.run_step(env=env)

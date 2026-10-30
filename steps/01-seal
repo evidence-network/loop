@@ -18,10 +18,12 @@ recomputes the capsule_id from them on its own. The step checks, on those bytes:
   signature       the producer envelope's signature verifies in the Go verifier
                   (`cross_language signature`, aac-go go/v0.15.0, AAC#463) under the key_id it carries, and
                   that key is the node's own key (the key check) and, on the live population, the key the
-                  node publishes in nodes/<node_id>.json. Exit 1 (invalid) or another key is a FAIL. Exit 3
-                  (unclaimed, no signature) or a node with no published listing is a not_checked entry
-                  (the key is then only self-attested), so the finding reads NOT_CHECKED, not PASS. Exit 2
-                  with a usage message (an aac-go without the mode) stops the step.
+                  node publishes in nodes/<node_id>.json. Exit 1 (invalid) or another key is a FAIL, and so
+                  is a record capsule-emit sealed here with no signature. Exit 3 (unclaimed) on a `--sealed`
+                  capsule, or a node with no published listing, is a not_checked entry (the key is then only
+                  self-attested), so the finding reads NOT_CHECKED, not PASS. Exit 2 with a usage message (an
+                  aac-go without the mode) stops the step; exit 2 with any other message is a FAIL (the
+                  verifier cannot read the record).
 
 --sealed CAPSULE skips sealing and checks a capsule capsule-emit sealed earlier
 the same way (the planted-failure tests use it).
@@ -176,7 +178,7 @@ def signature_check(capsule_bytes, verifier, key_id, listed, listing_expected, o
     return {"ok": True, "state": "ok", "detail": f"authored under {key_id}" + (", the key the node publishes" if listed else "")}
 
 
-def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False):
+def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False, own_seal=False):
     """Every check on the sealed bytes: {name: {ok, detail}} plus the verifier's raw outputs."""
     checks, outputs = {}, {}
     rc, out, err = run([str(verifier), "verify"], stdin=capsule_bytes)
@@ -222,6 +224,8 @@ def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False
 
     key_id = capsule.get("key_id")
     checks["signature"] = signature_check(capsule_bytes, verifier, key_id, listed, listing_expected, outputs)
+    if own_seal and checks["signature"]["state"] == "unclaimed":  # capsule-emit signs what it seals: its defect
+        checks["signature"] = {"ok": False, "state": "bad", "detail": "capsule-emit sealed a record with no producer signature"}
     # An unclaimed record carries no key_id to match; that is the signature's not_checked entry, not a wrong key.
     unclaimed = checks["signature"]["state"] == "unclaimed" and key_id is None
     checks["key"] = {"ok": key_id == node_pub or unclaimed,
@@ -264,14 +268,12 @@ def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=
 
     listed = listed_key(nodes_dir(), node_id) if node_id else None
     checks, outputs = check(capsule_path.read_bytes(), verifier, raw_public_hex(key_dir / "node-key.pub.pem"),
-                            listed, listing_expected=live_node)
+                            listed, listing_expected=live_node, own_seal=not sealed)
     (out / "verifier.json").write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n")
     (out / "checks.json").write_text(json.dumps(
         {"node": node, "sealed_by": "given capsule" if sealed else "capsule-emit, in this process",
          "installed": seen, "checks": checks}, indent=2, sort_keys=True) + "\n")
     sig = checks["signature"]
-    if not sealed and sig["state"] == "unclaimed":  # capsule-emit signs what it seals; no signature is its defect
-        sig.update(ok=False, state="bad", detail="capsule-emit sealed a record with no producer signature")
     failed = [n for n, c in checks.items() if not c["ok"]]
     gaps = [signature_gap(node, sig["detail"])] if not failed and sig.get("state") in ("unclaimed", "unlisted") else []
     detail = (f"node {node}: " + ("; ".join(f"{n}: {checks[n]['detail']}" for n in failed) if failed else

@@ -405,9 +405,10 @@ over the three nodes, and its `detail` lists each node:
   PASS when every node's capsule verifies under that node's key and that
   key is the one its `nodes/<node_id>.json` publishes. NOT_CHECKED for a
   node whose `data_dir` is unreadable, a node with no `nodes/<node_id>.json`
-  listing (the key is then only self-attested), an unsigned record, or when
+  listing (the key is then only self-attested), or when
   a pinned tool is missing (run `lab/lab.sh tools`). A FAIL names the node
-  and the check, such as an invalid signature or a different published key.
+  and the check, such as an invalid signature, a record sealed with no
+  signature, or a different published key.
 - `02 book`: for each node, the pinned capsulectl appends a capsule sealed
   with the node's key to the book under its `book_dir` and verifies it
   under that book's checkpoint key. NOT_CHECKED at best: the book's
