@@ -229,7 +229,7 @@ class Controllers(unittest.TestCase):
         data = {"weeks": [], "controllers": 2, "cards": [
             {"node_id": "a" * 64, "verifies": True, "stream": "s", "community": "muse", "first_checkpoint": None, "first_checkpoint_receipt": False}]}
         text = re.sub(r"<[^>]+>", " ", growth.render(data))
-        self.assertIn("2 distinct verified controllers beside 1 nodes with a verifying card", text)
+        self.assertIn("2 distinct verified controllers beside 1 node with a verifying card", text)
 
 
 class Synthetic(unittest.TestCase):

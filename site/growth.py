@@ -277,7 +277,8 @@ def controllers_line(controllers, ok_nodes):
     if not controllers:
         return ("No verified controller binding yet: no node is shown as under a controller, so the node count "
                 "cannot yet be read against a controller count.")
-    return (f"{controllers} distinct verified controllers beside {ok_nodes} nodes with a verifying card. A controller "
+    noun = "controller" if controllers == 1 else "controllers"
+    return (f"{controllers} distinct verified {noun} beside {ok_nodes} {'node' if ok_nodes == 1 else 'nodes'} with a verifying card. A controller "
             "is counted only when a pinned verifier has verified its binding; a node with no binding is not counted "
             "as a controller. Read the two against each other; neither is a ranking.")
 
@@ -387,8 +388,8 @@ it measures evidence activity, not deals. Checkpoints and records are counted fr
 <h2>What the lab itself has done</h2>
 <p class="note">The evidence that the loop changes outcomes is not counted from stapled cards. These rows come only from
 the lab's own participation with real settlement, never from staples, and a lab-to-lab exchange never counts (keys under
-one declaration are excluded). They are not published on this page yet; the lab's own results are on
-<a href="../status/">the status page</a>.</p>
+one declaration are excluded). They are not published on this page yet. The lab's harness runs are on
+<a href="../status/">the status page</a>; those are lab-to-lab and do not count here.</p>
 <div class="scroll"><table>
 <thead><tr><th scope="col">Row</th><th scope="col">Source</th><th scope="col">Value here</th></tr></thead>
 <tbody>
