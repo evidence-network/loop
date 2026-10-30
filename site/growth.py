@@ -20,7 +20,9 @@ in its own week, once published). The last week ends at the ref's own commit tim
 the ref's first-parent history, so the same ref gives the same bytes; nothing here reads the clock.
 
 "Records sealed" is the number of log entries covered by a signed checkpoint, padding and admission
-decisions included. It measures evidence activity, never deals. Every count reads "n of N" or names what
+decisions included. It measures evidence activity, never deals. A staple costs one key, so the staple-derived rows
+(nodes with a verifying card, checkpoints cut, records sealed) are inflatable and the page says so (loop#170); the
+existence proof is shown apart, lab-only, and the page puts distinct verified controllers beside the node count. Every count reads "n of N" or names what
 it is out of. No score, rank or rating. Volume is network totals (and a split by community); a card's
 status is per node, but there is no per-node volume.
 """
@@ -82,10 +84,10 @@ def snapshot_sha(repo, ref, end, last):
     return git(repo, "rev-list", "-1", "--first-parent", f"--before={stamp(before)}", ref).strip()
 
 
-def export_nodes(repo, sha, into):
-    """Extract nodes/ as committed at `sha` into `into`; False when the commit has no nodes/."""
+def export_tree(repo, sha, into, *paths):
+    """Extract `paths` as committed at `sha` into `into`; False when the commit lacks any of them."""
     try:
-        raw = git(repo, "archive", sha, "nodes", binary=True)
+        raw = git(repo, "archive", sha, *paths, binary=True)
     except subprocess.CalledProcessError:
         return False
     with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
@@ -160,7 +162,9 @@ def judge_tree(tree):
         for entry in hc.entries(doc):
             cards.append({"stream": entry.get("stream"), "community": entry.get("community"),
                           "checkpoints": checkpoints_of(entry)})
-        nodes[node_id] = {"ok": True, "reason": "", "cards": cards}
+        binding = doc.get("controller_binding")
+        digest = binding.get("digest") if isinstance(binding, dict) else None
+        nodes[node_id] = {"ok": True, "reason": "", "cards": cards, "binding": digest if isinstance(digest, str) else None}
     return {"listed": listed, "nodes": nodes}
 
 
@@ -198,6 +202,21 @@ def week_numbers(judgeds, start, end, last):
             "communities": {k: communities[k] for k in sorted(communities)}}
 
 
+def verified_controllers(repo, sha, judged):
+    """Verified controller groups among the nodes whose card verifies, from bindings/ and versions.lock as committed at `sha`.
+
+    A group counts only when scripts/history_cards.py:bound_groups accepts its verdict (verified by the pinned binding
+    verifier, every subject's commitment carrying the verdict's digest). Nobody is grouped without one; a node with no
+    binding is neither a controller nor a node under one. Every subject a verdict names must be a listed node with a
+    verifying card, or the group is not counted (an undercount, never an inflation). A tree without bindings/ or versions.lock has none."""
+    subjects = [{"node_id": n, "controller_binding": {"digest": judged["nodes"][n]["binding"]}}
+                for n in judged["listed"] if judged["nodes"][n]["ok"] and judged["nodes"][n].get("binding")]
+    with tempfile.TemporaryDirectory() as tmp:
+        if not export_tree(repo, sha, tmp, "bindings", "versions.lock"):
+            return []
+        return hc.bound_groups(Path(tmp) / "bindings", Path(tmp) / "versions.lock", subjects)
+
+
 def build_model(repo, ref):
     repo = Path(repo)
     cache, spans = {}, []
@@ -205,7 +224,7 @@ def build_model(repo, ref):
         sha = snapshot_sha(repo, ref, end, last)
         if sha not in cache:
             with tempfile.TemporaryDirectory() as tmp:
-                cache[sha] = judge_tree(tmp) if export_nodes(repo, sha, tmp) else {"listed": [], "nodes": {}}
+                cache[sha] = judge_tree(tmp) if export_tree(repo, sha, tmp, "nodes") else {"listed": [], "nodes": {}}
         spans.append((start, end, last, sha))
     rows = []
     for i, (start, end, last, sha) in enumerate(spans):
@@ -214,7 +233,8 @@ def build_model(repo, ref):
         row.update({"week": start.strftime("%Y-%m-%d"), "to": shown_to.strftime("%Y-%m-%d"), "partial": last, "commit": sha[:12]})
         rows.append(row)
     latest = cache[spans[-1][3]] if spans else {"listed": [], "nodes": {}}
-    return {"weeks": rows, "latest": latest}
+    controllers = len(verified_controllers(repo, spans[-1][3], latest)) if spans else 0
+    return {"weeks": rows, "latest": latest, "controllers": controllers}
 
 
 def first_checkpoint(card):
@@ -238,7 +258,7 @@ def export(model):
             date, carries = first_checkpoint(card)
             cards.append({"node_id": node_id, "verifies": True, "stream": card["stream"], "community": card["community"],
                           "first_checkpoint": date, "first_checkpoint_receipt": carries})
-    return {"weeks": model["weeks"], "cards": cards}
+    return {"weeks": model["weeks"], "cards": cards, "controllers": model["controllers"]}
 
 
 def esc(text):
@@ -247,6 +267,20 @@ def esc(text):
 
 def week_label(w):
     return f"{w['week']} to {w['to']}" + (" (so far)" if w["partial"] else "")
+
+
+CAVEAT = "A staple costs one key; these rows measure evidence activity, not nodes or deals."
+
+
+def controllers_line(controllers, ok_nodes):
+    """Distinct verified controllers beside the node count, to be read against each other; never a ranking."""
+    if not controllers:
+        return ("No verified controller binding yet: no node is shown as under a controller, so the node count "
+                "cannot yet be read against a controller count.")
+    noun = "controller" if controllers == 1 else "controllers"
+    return (f"{controllers} distinct verified {noun} beside {ok_nodes} {'node' if ok_nodes == 1 else 'nodes'} with a verifying card. A controller "
+            "is counted only when a pinned verifier has verified its binding; a node with no binding is not counted "
+            "as a controller. Read the two against each other; neither is a ranking.")
 
 
 def render(data):
@@ -284,6 +318,8 @@ def render(data):
         card_rows.append(f"<tr><th scope=\"row\"><code>{esc(c['node_id'])}</code></th><td>{esc(c['community'])}: {esc(c['stream'])}</td>"
                          f"<td>verifies</td><td>{esc(first)} ({label})</td></tr>")
     return PAGE.format(
+        caveat=CAVEAT,
+        controllers_line=controllers_line(data.get("controllers", 0), ok_nodes),
         nodes_line=f"{ok_nodes} of {listed} listed nodes have a stapled card that verifies" if listed else "No node is listed yet",
         weeks="\n".join(weeks_rows) or "<tr><td colspan=\"5\">No week yet.</td></tr>",
         communities="\n".join(community_rows) or "<tr><td colspan=\"5\">No verifying card yet.</td></tr>",
@@ -311,6 +347,7 @@ code {{ background: var(--code); padding: 0 .25em; border-radius: 3px; font-size
 table {{ border-collapse: collapse; width: 100%; font-size: .9rem; margin: .4rem 0; }}
 th, td {{ border: 1px solid var(--line); padding: .35rem .5rem; vertical-align: top; text-align: left; }}
 td.num {{ text-align: right; }}
+.caveat {{ border-left: 3px solid var(--line); padding-left: .75rem; }}
 td.gapcell {{ color: var(--muted); }}
 </style>
 </head>
@@ -321,6 +358,9 @@ td.gapcell {{ color: var(--muted); }}
 the committed commitments and their stapled history cards, checked offline, and nothing else. It is not the stats
 page and not the status page.</p>
 <p>{nodes_line}.</p>
+<p>{controllers_line}</p>
+<p class="caveat"><strong>{caveat}</strong> The rows below (nodes with a verifying card, checkpoints cut, records
+sealed) are counted from stapled cards that anyone holding a key can make. Records are sealed, never deals.</p>
 
 <h2>Week by week</h2>
 <p class="note">Each week is judged against the commitments as committed at the end of that week, not against today's
@@ -343,6 +383,19 @@ it measures evidence activity, not deals. Checkpoints and records are counted fr
 <thead><tr><th scope="col">Week (UTC)</th><th scope="col">Community</th><th scope="col">Checkpoints cut</th><th scope="col">Records sealed</th><th scope="col">Checkpoints with a witness receipt</th></tr></thead>
 <tbody>
 {communities}
+</tbody></table></div>
+
+<h2>What the lab itself has done</h2>
+<p class="note">The evidence that the loop changes outcomes is not counted from stapled cards. These rows come only from
+the lab's own participation with real settlement, never from staples, and a lab-to-lab exchange never counts (keys under
+one declaration are excluded). They are not published on this page yet. The lab's harness runs are on
+<a href="../status/">the status page</a>; those are lab-to-lab and do not count here.</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Row</th><th scope="col">Source</th><th scope="col">Value here</th></tr></thead>
+<tbody>
+<tr><th scope="row">Decisions limited or refused on evidence</th><td>The lab's own decisions</td><td class="gapcell">not published here</td></tr>
+<tr><th scope="row">Exchanges with outside nodes, settled</th><td>The lab's own settlements</td><td class="gapcell">not published here</td></tr>
+<tr><th scope="row">Exchanges with outside nodes, disputed</th><td>The lab's own settlements</td><td class="gapcell">not published here</td></tr>
 </tbody></table></div>
 
 <h2>Each node's card, now</h2>
