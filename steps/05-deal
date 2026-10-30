@@ -108,7 +108,7 @@ SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkp
 PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
 # Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). A node
 # sending a controller declaration, binding its key to its operator, is the pinned plugin's join (capsules-plugin
-# PR #121); the lab nodes running it is the open part.
+# PR #121); the rehearsal's gap is no node sending one. The live gap is LIVE_ACCEPTANCE_ISSUE.
 ACCEPTANCE_ISSUE = "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"
 # No released verifier checks a controller-binding/0 record's signatures.
 BINDING_VERIFIER_ISSUE = "action-state-group/agent-action-capsule#432"
@@ -404,7 +404,9 @@ def exchange_key(capsule):
 
     Not agent_input_digest: every exchange that sends the same prompt shares it (loop#66). A member that is
     absent, empty or not a string is None, so a malformed half is named as unpaired, never raises."""
-    ca = capsule.get("model_attestation", {}).get("compute_attestation", {})
+    ma = capsule.get("model_attestation")
+    ca = ma.get("compute_attestation") if isinstance(ma, dict) else None
+    ca = ca if isinstance(ca, dict) else {}
     x = next((v for k, v in ca.items() if k.startswith("x-mesh-poc-v1") and isinstance(v, dict)), {})
     return tuple(v if isinstance(v, str) and v else None
                  for v in (x.get("client_nonce"), x.get("role"), ca.get("agent_output_digest")))

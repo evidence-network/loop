@@ -90,10 +90,11 @@ class Step05ExchangePairingTest(unittest.TestCase):
             return {"model_attestation": {"compute_attestation": {"agent_output_digest": ["d"],
                                                                   "x-mesh-poc-v1": x}}}
         keys = [step.exchange_key(half(client_nonce=["a"], role={"r": 1})), step.exchange_key(half(client_nonce="")),
-                step.exchange_key({})]
-        self.assertEqual(keys, [(None, None, None)] * 3)
+                step.exchange_key({}), step.exchange_key({"model_attestation": "x"}),
+                step.exchange_key({"model_attestation": {"compute_attestation": []}})]
+        self.assertEqual(keys, [(None, None, None)] * 5)
         paired, notes = step.paired_exchanges({"n1": keys})
-        self.assertEqual((paired, len(notes)), (set(), 3))
+        self.assertEqual((paired, len(notes)), (set(), 5))
 
     def test_a_half_with_no_nonce_is_named_not_dropped(self):
         paired, notes = step.paired_exchanges({"n1": [(None, "requested", self.OUT_A)]})
