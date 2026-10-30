@@ -2,6 +2,7 @@
 """Step 12, Join: one command on the pinned release joins a node, and a stranger's probe of it verifies.
 
 Usage: 12-join --population DIR --out DIR [--console URL] [--self-node NAME] [--second-console URL]
+                [--node-console NAME=URL ...]
 
 The probe backend is the population's choice (`probe` in population.json;
 by default `doctor` for rehearsal, `reporter` for live).
@@ -43,8 +44,8 @@ node checkpoints and history_card/1 through the daily reporter's ask
 (scripts/daily_report.py), whose plugin verifies each answer under the key
 the node's host announces. An answer that verifies under a key other than the
 listed one, does not verify, or refuses a subject the node lists as
-stranger-safe is a failure. Join, doctor, the binding and the signed
-commitment are NOT_CHECKED on the capsules plugin's issues.
+stranger-safe is a failure. Join, doctor --probe, the binding's own signature
+verification and the signed commitment's policy digest are NOT_CHECKED on the issues that own them.
 
 The controller binding is read for each node whose own console the run holds: `--node-console
 NAME=URL` (repeatable, or LOOP_NODE_CONSOLES="NAME=URL,..."), and the self node's is `--console`.
@@ -392,7 +393,7 @@ def post_json(url, body, timeout):
 
 
 def check_binding(name, node_id, doctor_console, commitment_console, timeout=30):
-    """(failure or None, not_checked or None, line) for the controller binding of the self node.
+    """(failure or None, not_checked or None, line) for the controller binding of one node.
 
     Its doctor, asked through its own console, says bound (with the binding digest) or unbound; its commitment,
     fetched through the asking console, may name a binding by digest. Both agree, or neither names one: the
@@ -403,11 +404,13 @@ def check_binding(name, node_id, doctor_console, commitment_console, timeout=30)
                       "issue": "Mesh-LLM/capsules-plugin#54"}, f"{name}: binding not read"
 
     doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
-    found = {f.get("check"): f for f in (doctor or {}).get("findings", []) if isinstance(f, dict)}
+    findings = doctor.get("findings") if isinstance(doctor, dict) else None
+    found = {f.get("check"): f for f in findings if isinstance(f, dict)} if isinstance(findings, list) else {}
     finding_ = found.get("controller_binding")
     if finding_ is None or finding_.get("state") not in ("bound", "unbound"):
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
-    held = (finding_.get("records") or [None])[0] if finding_["state"] == "bound" else None
+    records = finding_.get("records")
+    held = records[0] if finding_["state"] == "bound" and isinstance(records, list) and records else None
     if finding_["state"] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
         return f"{name}: doctor reports the binding bound without a sha256 digest", None, ""
     fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
@@ -421,6 +424,10 @@ def check_binding(name, node_id, doctor_console, commitment_console, timeout=30)
                 f"{('it bound as ' + held) if held else 'no binding held'}"), None, ""
     return None, None, (f"{name}: controller binding bound, the commitment names the same digest {held}" if held
                         else f"{name}: no controller binding held, and the commitment names none")
+
+
+def no_binding(name, why):
+    return {"what": f"{name}: the controller binding", "why": why, "issue": "Mesh-LLM/capsules-plugin#54"}
 
 
 def listed_entry(node):
@@ -474,7 +481,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         asker, via = console, "the reporter's console"
         if self_node and name == self_node:
             if not second_console:
-                merge(not_checked, [no_second_console(name)])
+                merge(not_checked, [no_second_console(name), no_binding(name, "its commitment was not fetched")])
                 lines.append(f"{name}: not asked, the reporter's own node and no second console")
                 continue
             asker, via = second_console, "a second node's console"
@@ -483,6 +490,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         except FileNotFoundError:
             merge(not_checked, [{"what": f"live node {name}", "why": "node_id not set, or no nodes/<node_id>.json",
                                  "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
+            merge(not_checked, [no_binding(name, "it has no nodes/ entry")])
             lines.append(f"{name}: not asked, no nodes/ entry")
             continue
         node_dir = out / name
@@ -502,7 +510,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
         if own:
-            fail, nc, line = check_binding(name, entry["node_id"], own, asker)
+            fail, nc, line = check_binding(name, entry["node_id"], own, asker, timeout)
             if fail:
                 bad.append(fail)
             if nc:
@@ -510,10 +518,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             if line:
                 lines.append(line)
         else:
-            merge(not_checked, [{"what": f"{name}: the controller binding",
-                                 "why": "its doctor is reachable only through its own console, which this run "
-                                        "does not hold (--node-console)",
-                                 "issue": "Mesh-LLM/capsules-plugin#54"}])
+            merge(not_checked, [no_binding(name, "its doctor is reachable only through its own console, which "
+                                                 "this run does not hold (--node-console)")])
         failures += bad
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
@@ -541,7 +547,8 @@ def main(argv=None):
                          "or LOOP_NODE_CONSOLES=NAME=URL,...)")
     a = ap.parse_args(argv)
     node_consoles = {}
-    for item in a.node_console + [x for x in os.environ.get("LOOP_NODE_CONSOLES", "").split(",") if x]:
+    # The flags come after the environment, so a flag overrides the same name there, as for the other options.
+    for item in [x for x in os.environ.get("LOOP_NODE_CONSOLES", "").split(",") if x] + a.node_console:
         n, sep, url = item.partition("=")
         if not sep or not n or not url:
             print(f"12-join: --node-console {item!r} is not NAME=URL", file=sys.stderr)
@@ -558,6 +565,11 @@ def main(argv=None):
         if a.self_node and a.self_node not in [n["name"] for n in pop["nodes"]]:
             # A misspelt or stale name would quietly ask that node through its own console again.
             print(f"12-join: --self-node {a.self_node!r} is not a node in the population "
+                  f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
+            return 2
+        unknown = sorted(set(node_consoles) - {n["name"] for n in pop["nodes"]})
+        if unknown:
+            print(f"12-join: --node-console names {', '.join(unknown)}, not nodes in the population "
                   f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
             return 2
         failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
