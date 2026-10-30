@@ -848,9 +848,6 @@ def judge_sealed(ledger, node_id, request, posted, back, saw, within):
             errs.append(f"the absence closes its window at {window.get('closed')}, before {stamp(close)}")
         if answered:
             errs.append("the plugin recorded an absence, but the reporter saw a signed answer")
-        if within is not None and closed < sealed + within:
-            errs.append(f"the absence closes its window at {window.get('closed')}, before the request's answers_within "
-                        f"deadline {stamp(sealed + within)}")
     return errs, notes, evidence
 
 

@@ -369,14 +369,15 @@ class ReporterBackendTest(Tmp):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None):
+    def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None, extra_nodes=(),
+                 data_dir_flag=True):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [{
             "name": "lab-1", "node_id": "1" * 64, "key_id": key,
-            "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}]}))
+            "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}, *extra_nodes]}))
         console = FakeConsole(answers, announced, ledger, sealed)
-        extra = ["--console-data-dir", str(ledger)] if ledger is not None else []
+        extra = ["--console-data-dir", str(ledger)] if ledger is not None and data_dir_flag else []
         try:
             self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out),
                                         "--console", console.url, *extra, *flags]), 0)
@@ -551,6 +552,28 @@ class ReporterBackendTest(Tmp):
                           ledger=self.ledger(), sealed={"checkpoints": "refusal_mismatch"})
         self.assertEqual(r["result"], "FAIL", r["detail"])
         self.assertIn("does not match", r["detail"])
+
+    def test_the_console_data_dir_defaults_to_the_self_nodes_data_dir(self):
+        ledger = self.ledger()
+        (ledger / "ledger").mkdir()
+        (ledger / "ledger" / "capsules.jsonl").touch()  # the node's data_dir is readable only with its ledger
+        r = self.run_live(VERIFIED, ledger=ledger, extra_nodes=[{"name": "lab-0", "data_dir": str(ledger)}],
+                          data_dir_flag=False, flags=("--self-node", "lab-0"))
+        self.assertNotIn(step.LEDGER_GAP, [i["why"] for i in r["not_checked"]])
+        self.assertTrue(list(self.out.glob("lab-1/attempts/*/checkpoints.ledger.json")))
+
+    def test_the_self_node_is_asked_through_the_second_console_and_read_from_the_second_data_dir(self):
+        ledger = self.ledger()
+        other = Path(self.tmp.name) / "other"
+        other.mkdir()
+        console = FakeConsole(VERIFIED, LISTED, ledger)
+        try:
+            self.run_live(VERIFIED, ledger=other, data_dir_flag=False,
+                          flags=("--self-node", "lab-1", "--second-console", console.url,
+                                 "--second-data-dir", str(ledger)))
+        finally:
+            console.close()
+        self.assertTrue(json.loads((self.out / "first-answered.json").read_text())["sealed"])
 
     def test_a_response_of_another_type_than_the_reporter_saw_is_a_fail(self):
         r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, ledger=self.ledger(),
