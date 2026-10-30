@@ -73,7 +73,7 @@ judge10 = importlib.util.module_from_spec(_spec)
 _loader.exec_module(judge10)
 
 ISSUE = "evidence-network/loop#24"
-PACK_ISSUE = judge10.PACK_ISSUE
+PACK_ISSUE = judge10.GAP_ISSUE  # the pinned pack's own evaluator does not run: step 10 applies its terms itself
 VIEWER_ISSUE = "action-state-group/capsule-viewer#158"
 PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
 PINNED = ["capsulectl", "capsulectl-book"]
@@ -226,7 +226,7 @@ def render_figures(manifest, finer, rollup, cited, pack, found):
     steps = [e for e in manifest["steps"] if e["status"] == "reproduced" and e["step"] in kinds]
     for nn, k in pack["kinds"].items():
         mine = [e for e in steps if e["step"] == nn]
-        # The same definition 10 judges by: a record is a primary record file (pack.json `records`), so a count means
+        # The same definition 10 judges by: a record is a primary record file (binding.json `records`), so a count means
         # deals, settlements, asks or disputes, not the bundles and proof files beside them.
         refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])
                 if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
@@ -539,7 +539,10 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     finer, rollup, cited, problems = read_results(judged, record, manifest, capsulectl, judge10.pub_hex(judge_pub), tmp)
     if problems:
         raise Refused("; ".join(problems))
-    pack = load(judge10.PACK)
+    try:
+        pack = judge10.load_pack()
+    except judge10.NotChecked as e:
+        raise NotChecked(*e.args)
     figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack))
     book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl)
     digests = {}
@@ -624,8 +627,8 @@ def main(argv=None):
                    "--seal and matched by book report check; the builder's viewer script is pinned code and was not "
                    "scanned for score-like words. ")
         detail += (LIVE_LABEL + " " if population == "live" else "")
-        detail += finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
-                                  "evidencebook-skills pack", PACK_ISSUE) + " "
+        detail += finding.outside("the pinned pack's own evaluator does not run here: step 10 applies the "
+                                  "pack's terms to the results 08 re-derived", PACK_ISSUE) + " "
         detail += finding.outside("the page's text naming its two questions (did the evidence verify, is this the "
                                   "page the publisher issued)", VIEWER_ISSUE) + " "
         detail += finding.outside("a check that both sides' deals agree: only the payer seals a deal for now",
