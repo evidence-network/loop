@@ -645,6 +645,8 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
     if after is None:
         nc.append(nc_("the controller binding after join", "doctor after join reports no controller_binding of "
                                                            "bound or unbound" + (f" ({err})" if err else "")))
+    elif after[0] == "bound" and not (isinstance(after[1], str) and len(after[1]) == 64 and set(after[1]) <= HEX64):
+        fails.append(f"{name}: doctor after join reports the node bound without a sha256 digest")
     elif before[0] == "bound" and after != before:
         fails.append(f"{name}: the node was bound ({before[1]}) before join, and doctor after join reports "
                      + (f"it bound as {after[1]}" if after[0] == "bound" else "it unbound"))

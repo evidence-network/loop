@@ -808,6 +808,10 @@ class PluginToolsTest(Tmp):
                            "issue": step.live.ISSUE}])
         self.assertNotIn("the binding is", " ".join(lines))
 
+    def test_an_unbound_node_that_comes_back_bound_without_a_digest_is_a_fail(self):
+        fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", "not-a-digest"))
+        self.assertEqual(fails, ["alice: doctor after join reports the node bound without a sha256 digest"])
+
     def test_an_unbound_node_that_comes_back_bound_is_not_a_fail(self):
         fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", self.D))
         self.assertEqual(fails, [])
