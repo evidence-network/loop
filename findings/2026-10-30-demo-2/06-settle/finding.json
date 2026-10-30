@@ -1,0 +1,51 @@
+{
+  "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
+  "detail": "node brattain: window from 2026-10-30T17:58:00Z: 106 settlement records before it and 0 without a timestamp left out; node brattain: 15 settlement legs and 8 wallet-reported settlement observations recorded; none is the rail's own object, so finality is not verified; node shockley: window from 2026-10-30T17:58:00Z: 48 settlement records before it and 0 without a timestamp left out; node shockley: 15 settlement legs and 8 wallet-reported settlement observations recorded; none is the rail's own object, so finality is not verified; payment hashes compared across brattain, shockley: 8 paired (one node's payer amount equals the other's credited plus fee), 0 unpaired; agreement between the nodes' own records is not finality; the live population names no rail. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays).",
+  "finished": "2026-10-30T22:48:33Z",
+  "name": "settle",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#83",
+      "what": "settlements node brattain recorded, against the rail",
+      "why": "the node records its wallet's report of a Lightning payment, not the rail's settlement object; the pinned adapter (capsules-plugin#82) reports on the node's own book with the wallet's terminal report as finality, and this step does not call it yet"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#83",
+      "what": "settlements node shockley recorded, against the rail",
+      "why": "the node records its wallet's report of a Lightning payment, not the rail's settlement object; the pinned adapter (capsules-plugin#82) reports on the node's own book with the wallet's terminal report as finality, and this step does not call it yet"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#83",
+      "what": "that the payment hashes the nodes recorded settled, with their preimages",
+      "why": "the nodes' records pair every payment hash they recorded, and either way they are records of wallet-reported payments; the pinned adapter has no preimage finality"
+    }
+  ],
+  "pinned": {
+    "demo-capsules": {
+      "ref": "f494845bb9e003d100429fc4c081fc11322551cc",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "demo-mesh-llm": {
+      "ref": "3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301",
+      "repository": "ethanyzhang/mesh-llm"
+    }
+  },
+  "population": "demo",
+  "proof": [
+    {
+      "path": "brattain/recorded.json",
+      "sha256": "6f013bd489d98cc3d9b566134ecedb87d730c20a1e5d2d04d070a71f7ff6b539"
+    },
+    {
+      "path": "shockley/recorded.json",
+      "sha256": "5348b955872ae868e5c197b14e95a6b3a9c71f7bd5480a732ce00da338d171bb"
+    },
+    {
+      "path": "crosscheck.json",
+      "sha256": "edbc24880b3c999487b384573f8bb84ae8fc6a38ac0a63de86f4ce22265074a6"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T22:48:33Z",
+  "step": "06"
+}

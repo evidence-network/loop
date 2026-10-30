@@ -1,0 +1,208 @@
+{
+  "outside_window": 48,
+  "settlement_legs": [
+    {
+      "capsule_id": "fd1e0003dd6037415f6bef72b0c95b7a93fcb111a7cbc678a41354abe4aac085",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "25686a7915cd59fe7a78d4b14fca24524a57ad865ca365ef1580bab88a13dcff"
+      }
+    },
+    {
+      "capsule_id": "cc2d3021a41910076f96999ac9f506a92bfe04c7ff6a30fb1e8b64dae3c212fc",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "bd69de5c21eba94fc5eb5013df49b69936a2a5f7dc5539db8ced91d8daa611ef"
+      }
+    },
+    {
+      "capsule_id": "c7b34e985f35604e0ecec191e7aca91246721b7e44c1ee77abae9d2b8088ede2",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "045ca535e0aeb1daf867a066cdf564279ab37f66941c8c457d1c3486d64ec3fb"
+      }
+    },
+    {
+      "capsule_id": "5617f1e2e1ca3149dd9fc80a1687ea2dc39f6d0a15a9756d313234276c31a538",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "0e0e95637c60887f792f8e08043d83eca3ba3ea7c8a85f891586e837637e21d7"
+      }
+    },
+    {
+      "capsule_id": "b0c146f90dacc703e9e2b696cd753a6199a9f0600d7b815f15ab5d08118728e1",
+      "leg": "terms",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "5ea0e89b862caddc426dd21e39406dfb8028d15b9421edd4ffd17844de951217"
+      }
+    },
+    {
+      "capsule_id": "8e624e0da0a3831332b298f3d27bd2d32f9219119d358a9b72eb5f04e2eddfdd",
+      "leg": "payer_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "5ea0e89b862caddc426dd21e39406dfb8028d15b9421edd4ffd17844de951217"
+      }
+    },
+    {
+      "capsule_id": "940b449d3ff852e70cee4c6a4c3c43963f459284d646a6a4b61a0548332a8ba9",
+      "leg": "terms",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "33176c840757d6317700f3060aeacf7ad5091400ff6a87cc7b9881b61572049f"
+      }
+    },
+    {
+      "capsule_id": "c9a5ee9163de4b9f584e97ba474550fe8d448ef5f20767493fddc884ac3d339d",
+      "leg": "payer_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "33176c840757d6317700f3060aeacf7ad5091400ff6a87cc7b9881b61572049f"
+      }
+    },
+    {
+      "capsule_id": "5cde2a21877465c5a54e156713a819c2a91492e4141e3203d6d68baf7f89a35d",
+      "leg": "delivered",
+      "payment_ref": null
+    },
+    {
+      "capsule_id": "e96c82bf7e9e031ca77fe5ed66dbffd8a97803d42e3da0838422b1d68db018d9",
+      "leg": "terms",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "63be49c714e970871c832110ada14b7e00de1fd74c49365bc83b225d6329750c"
+      }
+    },
+    {
+      "capsule_id": "be49cfd0fb6dc959d7635f722d147a5cf705418681b5587ad5d65f76f2fa2fcf",
+      "leg": "payer_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "63be49c714e970871c832110ada14b7e00de1fd74c49365bc83b225d6329750c"
+      }
+    },
+    {
+      "capsule_id": "7950cec22223e6e994ac9e8c854a462c813df9353ed8094591a90a20bfc71e1a",
+      "leg": "delivered",
+      "payment_ref": null
+    },
+    {
+      "capsule_id": "becf38cab4e8b9efeb66ebe50fe65882b0008ac412b871efd442777478dadaa5",
+      "leg": "terms",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "f0ae5dc4bcf5ba47a2d5c76063c3994e56ab2d3f2b945997cf3ea8d8dc980925"
+      }
+    },
+    {
+      "capsule_id": "ba9e8007b3f67f0e24fee7045365fe798e6d566e1e0147f3bb3790d90965306c",
+      "leg": "payer_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "f0ae5dc4bcf5ba47a2d5c76063c3994e56ab2d3f2b945997cf3ea8d8dc980925"
+      }
+    },
+    {
+      "capsule_id": "4bf6984eded9cbed2b638d33f6be2d065791c7b771ec1324bb782cfb67de2708",
+      "leg": "delivered",
+      "payment_ref": null
+    }
+  ],
+  "settlement_observations": [
+    {
+      "amount_msat": 1000,
+      "capsule_id": "20b36df124a9d053ce101aac8709bf233604beb014151288ddec10194a9d9a94",
+      "credited_msat": 995,
+      "exchange_id": "eadc6f4c-7c77-4b96-bd4e-d4fb345a8bb5",
+      "fee_msat": 5,
+      "observed_by": "provider",
+      "payment_hash": "25686a7915cd59fe7a78d4b14fca24524a57ad865ca365ef1580bab88a13dcff",
+      "phase": "input_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1350,
+      "capsule_id": "e87c611ae3dd802e0be8defc3a3b2095ef52bcbf9d73d57c54675f4b4d1adc14",
+      "credited_msat": 1343,
+      "exchange_id": "eadc6f4c-7c77-4b96-bd4e-d4fb345a8bb5",
+      "fee_msat": 7,
+      "observed_by": "provider",
+      "payment_hash": "bd69de5c21eba94fc5eb5013df49b69936a2a5f7dc5539db8ced91d8daa611ef",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 3300,
+      "capsule_id": "6daf30174bf8f13d5a141d35aea523efb995c066deafc9c722eaa985cb0f1bf7",
+      "credited_msat": 3284,
+      "exchange_id": "91de07bd-f58e-44d9-97d3-3d8ef08c09ce",
+      "fee_msat": 16,
+      "observed_by": "provider",
+      "payment_hash": "045ca535e0aeb1daf867a066cdf564279ab37f66941c8c457d1c3486d64ec3fb",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 2100,
+      "capsule_id": "3565cca063411d5d333fdeda2f8e6b4f8ce360fecdba18cd9559f34465a7302e",
+      "credited_msat": 2090,
+      "exchange_id": "c06e0d61-ebba-4cc8-bc2e-e4e24bbf3ba6",
+      "fee_msat": 10,
+      "observed_by": "provider",
+      "payment_hash": "0e0e95637c60887f792f8e08043d83eca3ba3ea7c8a85f891586e837637e21d7",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1000,
+      "capsule_id": "1411a6416abaf06e3e8106fe300907e9cd0b6d29159fa2823dadbb6e2929833c",
+      "credited_msat": null,
+      "exchange_id": "5a743ade-6147-4ec2-8e2f-705f67ca180f",
+      "fee_msat": 0,
+      "observed_by": "payer",
+      "payment_hash": "5ea0e89b862caddc426dd21e39406dfb8028d15b9421edd4ffd17844de951217",
+      "phase": "input_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1100,
+      "capsule_id": "d269d88f50160bc59158fcf53a27d146bd05003665aba4185652922bc5d9a670",
+      "credited_msat": null,
+      "exchange_id": "5a743ade-6147-4ec2-8e2f-705f67ca180f",
+      "fee_msat": 0,
+      "observed_by": "payer",
+      "payment_hash": "33176c840757d6317700f3060aeacf7ad5091400ff6a87cc7b9881b61572049f",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 2100,
+      "capsule_id": "e0f9f60460ba0d376c507e13d87256f7198a1b6729fb29284efc7bbe0326cd3e",
+      "credited_msat": null,
+      "exchange_id": "bb6841d1-54d2-41cc-a55f-3c2c1ef37160",
+      "fee_msat": 0,
+      "observed_by": "payer",
+      "payment_hash": "63be49c714e970871c832110ada14b7e00de1fd74c49365bc83b225d6329750c",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 2100,
+      "capsule_id": "f81dcabf9d2556c91da189b5292036c94e15fa454f47e08deb58137eeeadc998",
+      "credited_msat": null,
+      "exchange_id": "9503e5d4-75d4-4cae-9eb7-9219adfdfb0f",
+      "fee_msat": 0,
+      "observed_by": "payer",
+      "payment_hash": "f0ae5dc4bcf5ba47a2d5c76063c3994e56ab2d3f2b945997cf3ea8d8dc980925",
+      "phase": "output_settlement_observed",
+      "source": "wallet_reported"
+    }
+  ],
+  "undated": 0,
+  "window_from": "2026-10-30T17:58:00Z"
+}

@@ -1,0 +1,12 @@
+{
+  "as_of": "2026-10-30T22:49:52Z",
+  "end": "2026-10-01T00:00:00Z",
+  "period": "month",
+  "periods": 12,
+  "records": [],
+  "refused": [
+    "07-ask: 65 files, not_reproduced by 08"
+  ],
+  "source": "run",
+  "start": "2025-10-01T00:00:00Z"
+}
