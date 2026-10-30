@@ -398,11 +398,18 @@ class Rows(unittest.TestCase):
             _, f = self.run_blocks(b)
             self.assertEqual(f["result"], "FAIL", card)
 
+    def test_base_1_naming_a_peer_without_rows_is_a_fail(self):
+        dropped = json.loads(json.dumps(ROWS116["all-pass"]))
+        del dropped["rows"]
+        _, f = self.run_blocks(dropped)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
     def test_the_read_rule_holds_on_both_shapes(self):
         # Rows: the policy read first, the card second. An earlier build: the policy read alone.
         earlier = json.loads(json.dumps(ROWS116["all-pass"]))
         del earlier["rows"]
         earlier["reads"].pop()
+        earlier["reads"][0]["policy"] = "basic/1"
         earlier["peer_commitment"]["digest"] = "e" * 64
         _, f = self.run_blocks(ROWS116["all-pass"], earlier)
         self.assertEqual(f["result"], "PASS", f["detail"])

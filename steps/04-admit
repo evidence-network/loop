@@ -43,7 +43,9 @@ node's ledger (the lab grants it the hook, lab/lab.sh). For each lab node whose
 data_dir is readable the step reads those blocks, read-only, and checks each is
 GO or NO, names its source, cites the operator policy by digest and names the
 peer by commitment only. PASS when every node reads and at least one is found
-and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The pinned plugin
+and all hold; FAIL when one found is malformed or breaks a rule the plugin decides by (a verdict its
+source does not give, a row value its rules cannot give, rows under another policy or missing under base/1,
+two decisions disagreeing under one policy digest); NOT_CHECKED otherwise. The pinned plugin
 also seals the base policy's five rows with each decision that names a peer,
 and a second read, the peer's history card (capsules-plugin PR #116); a
 decision sealed by an earlier build has neither. The step recomputes each row
@@ -365,7 +367,8 @@ def main_rehearsal(pop_dir, out, started, plant=None):
 # --- Live ----------------------------------------------------------------------
 # The pinned plugin's admission hook decides GO or NO from the operator's allow and deny lists and seals an
 # admission_decision block in the node's own ledger before the exchange (capsules-plugin admission.rs).
-# The step reads those blocks, read-only, and checks their shape; it evaluates no Terms Pack.
+# The step reads those blocks, read-only, and checks their shape and the rules the plugin decides by (the verdict
+# its source gives, the five rows, one verdict per peer under one policy digest); it evaluates no Terms Pack.
 ROWS_OPEN = ("each base-policy row's value where the sealed decision does not fix it: identity's fail or not_read "
              "on no card, key age on a cited card, and the three local rows")
 ROWS_OPEN_WHY = ("the decision cites the history card and names the peer only by commitments salted from the node's "
@@ -525,6 +528,8 @@ def verdict_problems(blk):
         errs.append("an unreadable policy cited by digest")
     if "rows" in blk and pol.get("policy") != POLICY_WITH_ROWS:
         errs.append(f"rows under policy {pol.get('policy')!r}, not {POLICY_WITH_ROWS}")
+    if pol.get("policy") == POLICY_WITH_ROWS and blk.get("peer_commitment") is not None and "rows" not in blk:
+        errs.append(f"policy {POLICY_WITH_ROWS} names a peer but seals no rows (the plugin always seals them)")
     return errs
 
 
