@@ -10,6 +10,6 @@ live result of each step, the `findings/<date>-live` directory it came from, and
   at the same ref; a pin added since is not a bump. So a pull request that changes or removes a pin
   must carry a baseline taken from a new live run under the new pins, and no step that was PASS in
   the base branch's baseline may be FAIL or missing in it. PASS -> NOT_CHECKED is a regression while
-  `not_checked_is_regression` is true (Steven's open call; the default is on, and the base branch's
-  setting decides, not the pull request's).
+  `not_checked_is_regression` is true (Steven ruled it counts as going red, buzz://message?channel=054513b2-0a66-4c1e-885e-2af75c56233c&id=d07765e74e23b2b946a35d96316ce12951118fa1825d1d111d824d737dee0da2;
+  the default is on, and the base branch's setting decides, not the pull request's).
 - Rehearsal stays the per-PR gate (`loop.sh --strict`); this gate is about live results.

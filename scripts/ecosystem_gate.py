@@ -3,7 +3,7 @@
 
 Usage:
   ecosystem_gate.py update --ecosystem NAME --findings DIR [--baseline FILE]
-  ecosystem_gate.py verify [--baseline FILE] [--lock FILE]
+  ecosystem_gate.py verify [--baseline FILE]
   ecosystem_gate.py check  --old FILE --new FILE
 
 baseline/live.json holds, for each ecosystem, the last accepted live result of each step, the
@@ -104,7 +104,12 @@ def cmd_check(old_path, new_path):
     return errs
 
 
-def cmd_verify(baseline, lock):
+def moved_pins(recorded, now):
+    """The recorded pins that are not in `now` at the same ref; a pin added to `now` is not one."""
+    return sorted(n for n, pin in recorded.items() if now.get(n) != pin)
+
+
+def cmd_verify(baseline):
     doc = load(baseline)
     errs = []
     if not isinstance(doc.get("not_checked_is_regression"), bool):
@@ -118,8 +123,7 @@ def cmd_verify(baseline, lock):
         have = {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()}
         if have != entry["steps"]:
             errs.append(f"{eco}: steps differ from the findings in {entry['findings']}")
-        now = lock_pins(lock)
-        moved = sorted(n for n, pin in entry["pins"].items() if now.get(n) != pin)
+        moved = moved_pins(entry["pins"], lock_pins())
         if moved:
             errs.append(f"{eco}: versions.lock moved {', '.join(moved)}, so the baseline must be taken from a "
                         "live run under the new pins (update --findings DIR)")
@@ -159,13 +163,12 @@ def main(argv):
     c.add_argument("--new", required=True)
     for p in (u, v):
         p.add_argument("--baseline", default=str(BASELINE))
-    v.add_argument("--lock", default=str(ROOT / "versions.lock"))
     a = ap.parse_args(argv[1:])
     try:
         if a.cmd == "update":
             errs = cmd_update(a.ecosystem, a.findings, a.baseline)
         elif a.cmd == "verify":
-            errs = cmd_verify(a.baseline, a.lock)
+            errs = cmd_verify(a.baseline)
         else:
             errs = cmd_check(a.old, a.new)
     except (OSError, ValueError, KeyError, TypeError) as e:

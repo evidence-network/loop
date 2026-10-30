@@ -53,7 +53,7 @@ class GateTest(unittest.TestCase):
         self.assertEqual({k: v["result"] for k, v in doc["ecosystems"]["mesh"]["steps"].items()},
                          {"01": "PASS", "02": "NOT_CHECKED"})
         self.assertTrue(doc["not_checked_is_regression"])
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK), [])
+        self.assertEqual(gate.cmd_verify(self.baseline), [])
 
     def test_planted_pass_to_fail_is_refused(self):
         self.update("a", {"01": "PASS", "02": "PASS"})
@@ -99,7 +99,7 @@ class GateTest(unittest.TestCase):
         doc = json.loads(self.baseline.read_text())
         doc["ecosystems"]["mesh"]["steps"]["01"]["result"] = "PASS"
         gate.write(self.baseline, doc)
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK),
+        self.assertEqual(gate.cmd_verify(self.baseline),
                          ["mesh: steps differ from the findings in findings/a"])
 
     def test_verify_refuses_a_findings_record_changed_after_the_fact(self):
@@ -111,7 +111,7 @@ class GateTest(unittest.TestCase):
         doc = json.loads(self.baseline.read_text())
         doc["ecosystems"]["mesh"]["steps"]["01"]["finding_sha256"] = finding.sha256(f)
         gate.write(self.baseline, doc)
-        errs = gate.cmd_verify(self.baseline, LOCK)
+        errs = gate.cmd_verify(self.baseline)
         self.assertEqual(len(errs), 1)
         self.assertIn("a PASS needs the proof bytes", errs[0])
 
@@ -124,14 +124,14 @@ class GateTest(unittest.TestCase):
         doc = json.loads(self.baseline.read_text())
         doc["ecosystems"]["mesh"]["steps"]["01"]["finding_sha256"] = finding.sha256(f)
         gate.write(self.baseline, doc)
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK), ["mesh 01-step: pinned capsulectl is not the versions.lock entry"])
+        self.assertEqual(gate.cmd_verify(self.baseline), ["mesh 01-step: pinned capsulectl is not the versions.lock entry"])
 
     def test_verify_refuses_an_aliased_findings_path(self):
         self.update("a", {"01": "PASS"})
         doc = json.loads(self.baseline.read_text())
         doc["ecosystems"]["mesh"]["findings"] = "findings/./a"
         gate.write(self.baseline, doc)
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK),
+        self.assertEqual(gate.cmd_verify(self.baseline),
                          ["mesh: findings is 'findings/./a', write it as 'findings/a'"])
 
     def test_two_directories_for_one_step_are_refused(self):
@@ -169,25 +169,26 @@ class GateTest(unittest.TestCase):
 
     def test_exit_codes(self):
         self.update("a", {"01": "PASS"})
-        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.baseline), "--lock", str(LOCK)]), 0)
-        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.dir / "nope.json"), "--lock", str(LOCK)]), 1)
+        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.baseline)]), 0)
+        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.dir / "nope.json")]), 1)
 
     def test_a_pin_added_since_is_not_a_bump_but_a_moved_or_removed_one_is(self):
+        recorded = {"a": "r/a v1", "b": "r/b v1"}
+        self.assertEqual(gate.moved_pins(recorded, {**recorded, "c": "r/c v1"}), [])
+        self.assertEqual(gate.moved_pins(recorded, {**recorded, "b": "r/b v2"}), ["b"])
+        self.assertEqual(gate.moved_pins(recorded, {"a": "r/a v1"}), ["b"])
+
+    def test_verify_refuses_a_baseline_recording_other_pins(self):
         self.update("a", {"01": "PASS"})
-        text = LOCK.read_text()
-        added = self.dir / "added.lock"
-        added.write_text(text + "# step 99\nnewpin some/repo v1.0.0\n")
-        self.assertEqual(gate.cmd_verify(self.baseline, added), [])
-        comment = self.dir / "comment.lock"
-        comment.write_text("# a new comment\n" + text)
-        self.assertEqual(gate.cmd_verify(self.baseline, comment), [])
-        moved = self.dir / "moved.lock"
-        moved.write_text(text.replace("capsulectl action-state-group/evidencebook v0.8.1",
-                                      "capsulectl action-state-group/evidencebook v0.8.2"))
-        self.assertEqual(len(gate.cmd_verify(self.baseline, moved)), 1)
-        removed = self.dir / "removed.lock"
-        removed.write_text("".join(l for l in text.splitlines(True) if not l.startswith("capsulectl ")))
-        self.assertEqual(len(gate.cmd_verify(self.baseline, removed)), 1)
+        doc = json.loads(self.baseline.read_text())
+        doc["ecosystems"]["mesh"]["pins"]["capsulectl"] = "x y"
+        gate.write(self.baseline, doc)
+        self.assertEqual(len(gate.cmd_verify(self.baseline)), 1)
+
+    def test_pin_comments_are_not_pins(self):
+        other = self.dir / "versions.lock"
+        other.write_text("# a new comment\n" + LOCK.read_text())
+        self.assertEqual(gate.lock_pins(other), gate.lock_pins(LOCK))
 
     def test_update_refuses_rehearsal_and_malformed_findings(self):
         self.assertTrue(self.update("r", {"01": "PASS"}, population="rehearsal"))
