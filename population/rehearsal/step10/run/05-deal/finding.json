@@ -1,0 +1,139 @@
+{
+  "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
+  "detail": "deal rehearsal-deal-2026-10-30T18:15:54Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD). Outside this step's assertion: the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it: evidence-network/loop#134.",
+  "finished": "2026-09-14T10:00:30Z",
+  "name": "deal",
+  "not_checked": [],
+  "pinned": {
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "deal.json",
+      "sha256": "1a88a67f3fa2096031a41f376f2f664a3c7045074a79e3490736419e2bdcdbc4"
+    },
+    {
+      "path": "declarations.json",
+      "sha256": "da6d346d8e6755821d7f1a5054dd6e2b90bdbe1a8071237af80603d66d5e05d0"
+    },
+    {
+      "path": "verify.json",
+      "sha256": "3b8487f42f0ed3d9c961f2529833fbbfdeacf055efd64f4cccc3dee221edc752"
+    },
+    {
+      "path": "alice/checkpoint-open.json",
+      "sha256": "951c36b5fd7522ea708e250bf3c43eec9d74969f9daff7d0ae942ddffa045fa1"
+    },
+    {
+      "path": "alice/settings.json",
+      "sha256": "100ac1fadad82c9b1048faf1e84c8448169318349cac5f22c6ccec0990403f10"
+    },
+    {
+      "path": "alice/half.json",
+      "sha256": "1290605f640bedc64ed9b9e4408dd85461f30f98fb1c3e5c02aceeb1b34d5257"
+    },
+    {
+      "path": "alice/half-checkpoint.json",
+      "sha256": "59826257e0f0198393b3a651895b5c8f03daa089da17ccfe323dd86c72f0ce2f"
+    },
+    {
+      "path": "alice/half-inclusion.json",
+      "sha256": "569b0aa91706408a0887b64cad806c5fbd85d5dac1dea9c2b90b93856210d12e"
+    },
+    {
+      "path": "alice/push.json",
+      "sha256": "8af9ef8b6bdf35c171b8d77b74a2dc625b130f54c2e97f35306697c7d64476b5"
+    },
+    {
+      "path": "alice/held/received-records.jsonl",
+      "sha256": "63f19eb36aa62853acd0ad4942a085971d3198b20ea54c098f6ec7b6e18fb0ba"
+    },
+    {
+      "path": "alice/held/received-provenance.jsonl",
+      "sha256": "39c1ba942b04000ea8f5c631fbb568763fb9dc6586071d016aff5d871916ce0a"
+    },
+    {
+      "path": "alice/held/received-inclusion.jsonl",
+      "sha256": "b7ea1794ba8fe3765b41c5056a69123a2b92bd7c324115228fee811c5eeb6a4a"
+    },
+    {
+      "path": "alice/citing.json",
+      "sha256": "bfdf4d70af8a1fb1e7c7a536c60d678cbfe20b31c0e53a19b4e50f3349c0447a"
+    },
+    {
+      "path": "alice/citing-inclusion.json",
+      "sha256": "5d159452b4fa49cebb4f8c5bfc10373f443617dd663f6ffa7e10033bed669249"
+    },
+    {
+      "path": "alice/checkpoint.json",
+      "sha256": "c644689c4c5df57e0fb09138b4a4a6f1b6411e66624d730b1df2c30b442348ee"
+    },
+    {
+      "path": "alice/placement.json",
+      "sha256": "b76889fce02865817745e3ef6f6680cecf7bc5077de06b91183f33cc5779ca93"
+    },
+    {
+      "path": "bob/checkpoint-open.json",
+      "sha256": "5d96329c605a5c689597f0fe3aa5a379190f25b6dbd846329a366d73e5af3dc4"
+    },
+    {
+      "path": "bob/settings.json",
+      "sha256": "100ac1fadad82c9b1048faf1e84c8448169318349cac5f22c6ccec0990403f10"
+    },
+    {
+      "path": "bob/half.json",
+      "sha256": "10be5e520edcacfbbdf4a320df6e490bc90d0b6136bc4425e80b863536aed107"
+    },
+    {
+      "path": "bob/half-checkpoint.json",
+      "sha256": "b317b1efc111e2d1281c09eb60821d2bb03ea5d7110d18b80f8b577ff6d4649a"
+    },
+    {
+      "path": "bob/half-inclusion.json",
+      "sha256": "2f8c204f9be6f669fc69602f3db495ca11d1b5ea54e88d1e1e47b321a94c6d4f"
+    },
+    {
+      "path": "bob/push.json",
+      "sha256": "e9e9b650d2c923200d5de7fab1ec8bb7a10e267a9b831c434f74cd32579c527c"
+    },
+    {
+      "path": "bob/held/received-records.jsonl",
+      "sha256": "9e6f504be3e0af627c2ea577f75b7169ae122cd3b0cc8ac33131ac5dd7ad787c"
+    },
+    {
+      "path": "bob/held/received-provenance.jsonl",
+      "sha256": "f0080102a947a6d60a997f851d4274a12fc5c6438b569bc9ff8294d5b78fd7cb"
+    },
+    {
+      "path": "bob/held/received-inclusion.jsonl",
+      "sha256": "263faf145fff26af567dd9d6e86c7a40f31f3a67a8d230030e9e79f66d29c3a5"
+    },
+    {
+      "path": "bob/citing.json",
+      "sha256": "60cc471b72587088400c239f3351994af23e4aba109ce1027e3cabfed7a9ccbd"
+    },
+    {
+      "path": "bob/citing-inclusion.json",
+      "sha256": "fdd77608a9a068ba0de35bcd9fcb53062c7202f3fe5f7ca02e7d81ffe64d68e0"
+    },
+    {
+      "path": "bob/checkpoint.json",
+      "sha256": "a1fb98fa887d7f392e47984dcbe897cd71cdd828410815b66bab2d70e2466d4d"
+    },
+    {
+      "path": "bob/placement.json",
+      "sha256": "398dc500f10798a9bef9c07f4e5106698dcb3061956cd2f14ee382d41924095c"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:00:00Z",
+  "step": "05"
+}

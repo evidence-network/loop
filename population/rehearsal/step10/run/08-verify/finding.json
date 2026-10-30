@@ -1,0 +1,56 @@
+{
+  "asserts": "an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, run again on the proof bytes it cites, gives the result and not_checked list the step recorded",
+  "detail": "run run, offline, from the bundle and the repository's keys only: 05-deal: reproduced PASS; 06-settle: reproduced PASS; 07-ask: reproduced PASS; 09-dispute: reproduced PASS. The manifest, per step, is this step's proof file.",
+  "finished": "2026-10-02T09:01:00Z",
+  "name": "verify",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 01: its finding reproduced",
+      "why": "this run did not run step 01 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 02: its finding reproduced",
+      "why": "this run did not run step 02 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 03: its finding reproduced",
+      "why": "this run did not run step 03 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 12: its finding reproduced",
+      "why": "this run did not run step 12 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    }
+  ],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "verified.json",
+      "sha256": "147b2a5cd1ddb3b3d69f2cc312edf021a15b9adb9a230b757708093d9a95904e"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-02T09:00:00Z",
+  "step": "08"
+}

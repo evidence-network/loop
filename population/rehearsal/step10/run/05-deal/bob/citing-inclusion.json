@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "kind": "inclusion",
+  "size": 4,
+  "leaf_index": 2,
+  "witness": [],
+  "peaks_left": [
+    "f32d20bb15d2eb68b76087fbb26e06074e55da6c3f68dda804fd8101cd17d34b"
+  ],
+  "peaks_right": []
+}

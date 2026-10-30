@@ -1,0 +1,40 @@
+{
+  "checks": {
+    "adapter": {
+      "detail": "object_form PASS, rail_signature PASS, settlement_id PASS",
+      "ok": true
+    },
+    "band": {
+      "detail": "PASS: USDC:e-3",
+      "ok": true
+    },
+    "exchange_match": {
+      "detail": "exchange rehearsal-ex-0004: exchange_id, payer, payee, currency, amount_atomic, decimals match",
+      "ok": true
+    },
+    "finality": {
+      "detail": "PASS: final true",
+      "ok": true
+    },
+    "ledger": {
+      "detail": "4 settlements, each signed by the rail, in sequence, no id repeated",
+      "ok": true
+    },
+    "ledger_count:alice": {
+      "detail": "alice discloses 4 through sequence 4 (signature verifies); the public ledger counts 4",
+      "ok": true
+    },
+    "ledger_count:bob": {
+      "detail": "bob discloses 3 through sequence 4 (signature verifies); the public ledger counts 3",
+      "ok": true
+    },
+    "rail_fee": {
+      "detail": "PASS: fee_atomic 10, rail fee_paying true",
+      "ok": true
+    },
+    "reference": {
+      "detail": "settlement_ref {\"rail\": \"mock\", \"settlement_id\": \"baa2e56c3a4231c09e302df002cf507991a6c9e4ca105b2ec267c5e370cbccdf\"} names 1 ledger line(s); exchange members ['amount_atomic', 'currency', 'decimals', 'exchange_id', 'payee', 'payer', 'settlement_ref']",
+      "ok": true
+    }
+  }
+}

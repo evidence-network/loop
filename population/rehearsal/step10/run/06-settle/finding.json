@@ -1,0 +1,54 @@
+{
+  "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
+  "detail": "exchange rehearsal-ex-0004, settlement baa2e56c3a4231c09e302df002cf507991a6c9e4ca105b2ec267c5e370cbccdf (alice pays bob) on the mock rail, a rehearsal rail under a TEST key that moves no value: these held on the proof bytes: ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:alice, ledger_count:bob. Band USDC:e-3. Volume: 3 filtered of 4 raw settlements (final, on a fee-paying rail, payer and payee declared under different controllers). Outside this step's assertion: the exchange's sealed halves, which this step reads as an unsigned stand-in, and the controller declarations, which are rehearsal stand-ins: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: a settlement object on a real rail, verified with finality by its adapter: Mesh-LLM/capsules-plugin#83.",
+  "finished": "2026-09-14T10:01:30Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "rail.json",
+      "sha256": "f2a9a1fded3037394ec43e688ed335d7bfc495d3251c1f851828fadce3c3e0ab"
+    },
+    {
+      "path": "ledger.jsonl",
+      "sha256": "65ae41f08179d4f1f108054f1a8a268d6c1294be7b682b82e22430e5d7f919b8"
+    },
+    {
+      "path": "rail-key.pub.pem",
+      "sha256": "564e893e7f524274fd741bd5a952c36871e73388619d82a08b56816269b1c80b"
+    },
+    {
+      "path": "exchange.json",
+      "sha256": "c9adc524b8df04eea1e7331aec8f034acabd67f103532e3f07abccaa7ba67756"
+    },
+    {
+      "path": "controllers.json",
+      "sha256": "96d09858e8c2c9b5791a38535ea99bb14e48ea41e8cccba01c463aa2cfd0a17c"
+    },
+    {
+      "path": "disclosure-alice.json",
+      "sha256": "0c628433ff7b4dff26952a39896da7acfd2cc3fb4347ba85f63c66c4858199f0"
+    },
+    {
+      "path": "disclosure-bob.json",
+      "sha256": "7dfb6b65bb66c2d0c4d8ff550af1a86624f77f00c8129bc46ac1e226dbcfd8f0"
+    },
+    {
+      "path": "adapter.json",
+      "sha256": "e8a2e3d9090cfc2b85772dea624782b4cd6fca6c4c263d558c9a42dba7f59388"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "5243fffc9a6fad2f0da8c06faaae64a1a593613772cecf1b3c072b923880f119"
+    },
+    {
+      "path": "volume.json",
+      "sha256": "9793efa903f0e696bfcfc21fb5b3148ca04140a57780802986ffbcf536080940"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:01:00Z",
+  "step": "06"
+}

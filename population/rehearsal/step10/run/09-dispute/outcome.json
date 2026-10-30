@@ -1,0 +1,37 @@
+{
+  "results": [
+    {
+      "all_checks_held": true,
+      "party": "requester",
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "twins": {
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34": "contradicted",
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
+      },
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+    },
+    {
+      "all_checks_held": true,
+      "party": "alice",
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "twins": {
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34": "contradicted",
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
+      },
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+    },
+    {
+      "all_checks_held": true,
+      "party": "bob",
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "twins": {
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34": "contradicted",
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
+      },
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+    }
+  ]
+}

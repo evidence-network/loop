@@ -1,0 +1,18 @@
+{
+  "filter": "final, on a fee-paying rail, payer and payee declared under different controllers",
+  "filtered": 3,
+  "filtered_by_band": {
+    "USDC:e-2": 1,
+    "USDC:e-3": 1,
+    "USDC:e-4": 1
+  },
+  "rail": "mock",
+  "raw": 4,
+  "raw_by_band": {
+    "USDC:e-2": 1,
+    "USDC:e-3": 1,
+    "USDC:e-4": 1,
+    "USDC:e0": 1
+  },
+  "unit": "settlements"
+}

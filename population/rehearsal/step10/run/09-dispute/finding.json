@@ -1,0 +1,70 @@
+{
+  "asserts": "the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; the party's book holds the matching adjudication_received with the same Result bytes as the referee's adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded",
+  "detail": "exchange rehearsal-exchange-09 (twins alice and bob, asked by requester), referee referee: for each Result each party holds, these held on the proof bytes: result_signed, result_is_adjudication, referee_signed, cites_halves, recorded_received, matches_issued. The Result rules 13fc1c5d contradicted, da7eb4ab corroborated (outcome.json). Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close on Mesh, so none is asserted. Every key is a rehearsal TEST key. Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD). Outside this step's assertion: the twins' served records, which this step reads as committed stand-ins of the records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not a node's own output: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: the referee, its announced key and its delivery, which are rehearsal stand-ins until the lab nodes run an adjudication (the plugin's two-node e2e seals one, Mesh-LLM/capsules-plugin#102; the live trigger is open): Mesh-LLM/capsules-plugin#126.",
+  "finished": "2026-09-14T10:03:30Z",
+  "name": "dispute",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "alice/ledger/capsules.jsonl",
+      "sha256": "22aafd1c3882224480c9df9222655c7b09f672d5b7801c107f96cd96c1a0b22a"
+    },
+    {
+      "path": "alice/ledger/received-adjudications.jsonl",
+      "sha256": "04bf559fd4b2a9de2e37164e0a351f8ad3eb7692188a178f30296f30c076cefc"
+    },
+    {
+      "path": "announced.json",
+      "sha256": "3c4dceb6f2b4317004f1a5ed1f2bb36ee1feea9af0fc9fdf84dcc965001b060d"
+    },
+    {
+      "path": "bob/ledger/capsules.jsonl",
+      "sha256": "c8548f4b8ce3bbd4d5a04a199282bfa04fc8497bbb98826f6532de6aa1ded303"
+    },
+    {
+      "path": "bob/ledger/received-adjudications.jsonl",
+      "sha256": "04bf559fd4b2a9de2e37164e0a351f8ad3eb7692188a178f30296f30c076cefc"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "0fc6d7008221a523b72bda90b537229bf94bc156c283fffcbfb26c44e971bf20"
+    },
+    {
+      "path": "dispute.json",
+      "sha256": "e85c9e56cd9fef7f949595e0a2bbba4fa861ff043ab79de5603c0aac8eb5f65e"
+    },
+    {
+      "path": "outcome.json",
+      "sha256": "d5bb944d06564c0d21d6fb157f71b11fea96849f03dc9438535f0d09be7bfa1a"
+    },
+    {
+      "path": "referee/ledger/capsules.jsonl",
+      "sha256": "9398bbd2a150a270b6299a5115e28b911f59e5a241343635d1a7e2dbae1f7095"
+    },
+    {
+      "path": "referee/ledger/issued-adjudications.jsonl",
+      "sha256": "f4a0d4d3d572b9522e83759add54dedafb524e962cc2b9eadefdc4c4dc4f2998"
+    },
+    {
+      "path": "requester/ledger/capsules.jsonl",
+      "sha256": "088f21b2f1e0fe18438760b42b9f22fae90454ec4f2584f1bbdb7b53d28aac65"
+    },
+    {
+      "path": "requester/ledger/received-adjudications.jsonl",
+      "sha256": "04bf559fd4b2a9de2e37164e0a351f8ad3eb7692188a178f30296f30c076cefc"
+    },
+    {
+      "path": "requester/ledger/received-capsules.jsonl",
+      "sha256": "fe5f7d720a36c0b573b8f7ce7302e59a46b05c00fa8ebb1e7ed0a5a08c18aef6"
+    },
+    {
+      "path": "requester/ledger/requested-adjudications.jsonl",
+      "sha256": "9c2041cbcc50604608eafe74aae36b9879fd1c929a6615b6dea4093e6a4abd6d"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:03:00Z",
+  "step": "09"
+}

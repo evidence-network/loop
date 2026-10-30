@@ -78,7 +78,8 @@ STEPS = (
                       "network call.", HARNESS, "M3"),
     Step(9, "Dispute", "One party disputes, a referee seals a Result, and the close reads AGREED, CONTESTED or "
                        "UNILATERAL.", NODE_SIDE, "M3"),
-    Step(10, "Judge", "A pack runs over the window, and its sealed Result cites every record it read.", HARNESS, "M3"),
+    Step(10, "Judge", "A pack runs over a window of whole closed months of the records step 08 reproduced, and its "
+                      "sealed Results cite every record in the window, none missing and none extra.", HARNESS, "M3"),
     Step(11, "Report", "The report renders from the bundle only, its digest is sealed, and every number has a "
                        "denominator.", HARNESS, "M3"),
     Step(12, "Join", "A new node joins with one command on the pinned release, and a probe asks its own responder "

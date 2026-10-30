@@ -1,0 +1,544 @@
+#!/usr/bin/env python3
+"""Step 10 Judge: a deterministic pack runs over a window of the run's records, and its sealed Results cite
+every record in the window by digest, none missing and none extra, and verify offline.
+
+Usage: 10-judge --population DIR --out RUN/10-judge
+
+RUN is the loop run (the parent of --out). This step reads only step 08's
+manifest, RUN/08-verify/verified.json, and the files it lists for the steps it
+shows as `reproduced`. When RUN holds no 08-verify/, it judges the population's
+committed stand-in run instead (DIR/step10/run, dated in a closed month), and
+its detail says the records are that stand-in, not this run's:
+
+  manifest   08's finding passes steps/finding.py's check and names
+             verified.json in its proof with the sha256 the file has. The
+             as-of instant is 08's finding `finished`.
+  window     12 whole closed calendar months before the as-of month, never
+             rolling (steps/10-judge.d/pack.json). A record is a primary record file (pack.json `records`) that 08 lists
+             for a reproduced step of one of the pack's kinds (05 deals, 06
+             settlements, 07 asks, 09 disputes) whose step finished in the
+             window. Its bytes must still match 08's digest. A file 08 does
+             not list, and a record outside the window, is refused, not read,
+             and named in detail. A step 08 did not reproduce is outside the
+             window, with a not_checked entry.
+  pack       deterministic, no model: one claim per term of the step's kind,
+             citing every record of the step; the verdict is recomputed from
+             the result 08 re-derived (PASS met, FAIL not_met, NOT_CHECKED
+             not_evaluable). Term 3 reads "provider states" where no record
+             carries model_attestation. 09's referee Result is cited and
+             counted as found, never judged again.
+  seal       a fresh book under the repository's rehearsal TEST judge key
+             (population/<p>/step10/keys): each record is published as a
+             capsule whose payload is {step, path, sha256}; `capsulectl book
+             result build` seals one Result per step and a roll-up Result
+             citing them; `capsulectl book disclose` writes one bundle per
+             Result.
+  judge      on the bundles alone, offline:
+               verify    each bundle is VALID under `capsulectl verify
+                         --bundle` (an empty config), and every record in it
+                         is under the repository's judge key;
+               complete  the finer Results cite every record in the window;
+               exact     every record they cite is in the window;
+               rollup    the roll-up cites exactly the finer Results, each the
+                         root of a VALID bundle.
+
+PASS when every check held and every step 08 lists was reproduced; FAIL when a
+check did not hold; NOT_CHECKED when the window holds no record, a step is not
+reproduced, or the tools or 08's manifest are missing. The design is
+steps/10-judge.md. Exit 0 once the finding is written, whatever the result.
+"""
+import argparse
+import base64
+import datetime as dt
+import fnmatch
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_commitment as cc  # noqa: E402
+import finding  # noqa: E402
+
+ISSUE = "evidence-network/loop#24"
+# The pack is loop's own deterministic copy of terms 1-3, not a pinned evidencebook-skills pack.
+PACK_ISSUE = "evidence-network/loop#111"
+PACK = HERE / "10-judge.d" / "pack.json"
+PINNED = ["capsulectl", "capsulectl-book"]
+ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 "
+           "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
+           "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
+           "pinned verifier, offline, under the repository's judge key")
+RESULT_TYPE = "evidence_result"
+
+
+class NotChecked(Exception):
+    """The judge cannot run here; args are (what, why)."""
+
+
+def load(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def dump(path, obj):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
+
+
+def utc(s):
+    return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+
+
+def stamp(t):
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def tools():
+    """capsulectl and its book plugin, where the setup scripts install them."""
+    bin_ = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop") / "bin"
+    return bin_ / "capsulectl", bin_ / "capsulectl-book"
+
+
+# --- The window ---------------------------------------------------------------------------
+def window_of(as_of, periods=12):
+    """[start, end): the `periods` whole calendar months closed before as_of's month. Never rolling."""
+    end = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
+    months = end.year * 12 + end.month - 1 - periods
+    return dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc), end
+
+
+def read_manifest(run):
+    """(manifest, as_of) from RUN/08-verify, or raise NotChecked / ValueError (a FAIL)."""
+    d = Path(run) / "08-verify"
+    if not (d / "finding.json").is_file() or not (d / "verified.json").is_file():
+        raise NotChecked("the run's records, by step 08's manifest",
+                         f"{Path(run).name} holds no 08-verify/verified.json for this step to read")
+    record = load(d / "finding.json")
+    errs = finding.check_record(d, record) if isinstance(record, dict) else ["finding.json is not an object"]
+    if errs:
+        raise ValueError(f"step 08's finding does not hold: {'; '.join(errs)}")
+    if "verified.json" not in [p["path"] for p in record["proof"]]:
+        raise ValueError("step 08's finding does not name verified.json in its proof")
+    return load(d / "verified.json"), utc(record["finished"])
+
+
+def select(run, manifest, start, end, pack):
+    """(records, refused, not_checked, problems) over 08's manifest.
+
+    A record is {dir, step, path, sha256, kind, result}: a primary record file (pack.json `records`) that 08 lists for a reproduced step of the pack's kinds
+    whose step finished in [start, end). Only finding.json is read before that is known, and only after its
+    bytes match 08's digest.
+    """
+    records, refused, not_checked, problems = [], [], [], []
+    for e in manifest["steps"]:
+        d = Path(run) / e["dir"]
+        files = {f["path"]: f["sha256"] for f in e.get("files", [])}
+        if e["status"] != "reproduced":
+            refused.append(f"{e['dir']}: {len(files)} files, {e['status']} by 08")
+            not_checked.append({"what": f"step {e['step']}: its records, judged in the window",
+                                "why": f"step 08 shows it {e['status']}, so its records are not verified by 08 and "
+                                       "this step does not read them", "issue": ISSUE})
+            continue
+        if e["step"] not in pack["kinds"]:
+            refused.append(f"{e['dir']}: {len(files)} files, not a record kind of this pack")
+            continue
+        if finding.sha256(d / "finding.json") != files.get("finding.json"):
+            problems.append(f"{e['dir']}/finding.json does not match the sha256 08's manifest gives it")
+            continue
+        finished = utc(load(d / "finding.json")["finished"])
+        if not start <= finished < end:
+            refused.append(f"{e['dir']}: {len(files)} files, finished {stamp(finished)}, outside the window")
+            continue
+        unlisted = sorted(str(p.relative_to(d)) for p in d.rglob("*") if p.is_file()
+                          and str(p.relative_to(d)) not in files and p.name != "loop-step.log")
+        refused += [f"{e['dir']}/{p}: not in 08's manifest" for p in unlisted]
+        kind = pack["kinds"][e["step"]]["kind"]
+        patterns = pack["kinds"][e["step"]]["records"]
+        # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
+        # disputes; the bundles and proof files beside them are 08's, not counted.
+        wanted = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
+        if not wanted:
+            refused.append(f"{e['dir']}: {len(files)} files, none is a {kind} record ({', '.join(patterns)})")
+            problems.append(f"{e['dir']}: 08 lists no {kind} record ({', '.join(patterns)})")
+            continue
+        for path, sha in sorted(wanted.items()):
+            if not (d / path).is_file() or finding.sha256(d / path) != sha:
+                problems.append(f"{e['dir']}/{path} does not match the sha256 08's manifest gives it")
+                continue
+            records.append({"dir": e["dir"], "step": e["step"], "path": path, "sha256": sha, "kind": kind,
+                            "result": e["rederived"]["result"], "finished": stamp(finished)})
+    return records, refused, not_checked, problems
+
+
+def ref(r):
+    return f"{r['dir']}/{r['path']}"
+
+
+# --- The pack: deterministic, no model ----------------------------------------------------
+def attested(path):
+    """True when a JSON record carries a model_attestation that is not null."""
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    stack = [doc]
+    while stack:
+        x = stack.pop()
+        if isinstance(x, dict):
+            if x.get("model_attestation") is not None:
+                return True
+            stack += list(x.values())
+        elif isinstance(x, list):
+            stack += x
+    return False
+
+
+def claim(cid, requirement, verdict, refs, narrative=None):
+    """One claim; `evidence` holds record refs until seal() puts the capsule digests in."""
+    sufficiency = "SATISFIED" if verdict in ("met", "not_met") else "INSUFFICIENT"
+    c = {"id": cid, "contract_ref": None, "requirement_ref": requirement, "tier": "recomputed",
+         "grade": "self-attested", "sufficiency": sufficiency, "verdict": verdict, "evidence": list(refs),
+         "proofs": []}
+    if narrative:
+        c["presentation"] = {"kind": "story", "status": "INSUFFICIENT", "narrative": narrative}
+    else:
+        c["presentation"] = {"kind": "disclosure", "status": "SATISFIED" if verdict == "met" else
+                             ("CONTRADICTED" if verdict == "not_met" else "INSUFFICIENT"), "evidence": None}
+    return c
+
+
+def result_doc(claims, pack, start, end, extra=None):
+    buckets = {"met": [], "not_met": [], "not_evaluable": []}
+    for c in claims:
+        c["contract_ref"] = pack["contract_ref"]
+        buckets[c["verdict"]].append(c["id"])
+    doc = {"result_version": "evidence-result-v0", "generated_at": stamp(end), "claims": claims,
+           "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
+                                      "unknown_count": 0}, "buckets": buckets},
+           "x-window": {"start": stamp(start), "end": stamp(end), "period": pack["window"]["period"],
+                        "periods": pack["window"]["periods"], "pack": pack["pack"]}}
+    doc.update(extra or {})
+    return doc
+
+
+def judge_records(records, run, pack, start, end, not_checked):
+    """{step dir: Result document} with one claim per term, each citing every record of the step."""
+    docs = {}
+    for d in sorted({r["dir"] for r in records}):
+        mine = [r for r in records if r["dir"] == d]
+        nn, refs = mine[0]["step"], [ref(r) for r in mine]
+        verdict = pack["verdicts"][mine[0]["result"]]
+        claims = []
+        for t in pack["kinds"][nn]["terms"]:
+            cid = f"{d}:{t['id']}"
+            if t.get("model_attestation"):
+                if any(attested(Path(run) / d / r["path"]) for r in mine):
+                    not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
+                                        "why": "a record carries model_attestation and this pack has no "
+                                               "recomputation for it yet", "issue": ISSUE})
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "model_attestation is present; this "
+                                        "pack does not recompute it yet, so the term is not judged"))
+                else:
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "provider states the model it "
+                                        "served (self-attested); no record carries model_attestation, so this is "
+                                        "never a judged match"))
+            else:
+                claims.append(claim(cid, t["id"], verdict, refs))
+        docs[d] = result_doc(claims, pack, start, end)
+    return docs
+
+
+def rollup_doc(finer, pack, start, end):
+    """The roll-up: one claim per finer Result, citing its record id, with its worst verdict."""
+    claims = []
+    for d, (rid, doc) in sorted(finer.items()):
+        verdicts = {c["verdict"] for c in doc["claims"]}
+        worst = next(v for v in ("not_met", "not_evaluable", "met") if v in verdicts)
+        claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid]))
+    return result_doc(claims, pack, start, end)
+
+
+# --- Sealing: a fresh book under the repository's judge key -------------------------------
+def seed_hex(pem):
+    """The 32-byte Ed25519 seed (hex) of a PKCS#8 PEM file."""
+    body = "".join(line for line in Path(pem).read_text().splitlines() if line and not line.startswith("-----"))
+    der = base64.b64decode(body)
+    if len(der) != 48:
+        raise ValueError(f"{pem} is not an Ed25519 PKCS#8 key")
+    return der[16:].hex()
+
+
+def pub_hex(pem):
+    return cc.key_id_of(cc.spki_from_pem(Path(pem).read_text(encoding="utf-8")))
+
+
+class Book:
+    """A scratch book profile under the judge key, driven through the pinned capsulectl."""
+
+    def __init__(self, home, capsulectl, keys):
+        self.home, self.capsulectl = Path(home), Path(capsulectl)
+        self.home.mkdir(parents=True, exist_ok=True)
+        for k in ("judge", "checkpoint"):
+            f = self.home / f"{k}.seed"
+            f.write_text(seed_hex(keys / f"{k}.pem"))
+            f.chmod(0o600)
+        self.cap("profile", "create", "--name", "judge", "--type", "jsonl", "--jsonl-path", str(self.home / "store"),
+                 "--log-id", "judge", "--operator", "loop-judge", "--trusted-key", pub_hex(keys / "judge.pub.pem"),
+                 "--signing-key-file", str(self.home / "judge.seed"),
+                 "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),
+                 "--checkpoint-trusted-key", pub_hex(keys / "checkpoint.pub.pem"))
+        self.cap("store", "init", "--profile", "judge")
+
+    def cap(self, *args):
+        env = dict(os.environ, XDG_CONFIG_HOME=str(self.home / "config"),
+                   CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(self.capsulectl.parent)))
+        r = subprocess.run([str(self.capsulectl), *args], env=env, capture_output=True, text=True, timeout=300)
+        if r.returncode != 0:
+            raise RuntimeError(f"capsulectl {' '.join(args[:2])}: {(r.stderr.strip() or r.stdout)[:400]}")
+        lines = r.stdout.strip().splitlines()
+        return json.loads(lines[-1]) if lines else {}
+
+    def publish(self, r):
+        """A capsule for one record; its payload is the record's {step, path, sha256}."""
+        req = {"spec_version": "capsule-seal-request/v1",
+               "capsule": {"ActionID": f"loop-record:{ref(r)}", "ActionType": "fyi", "Operator": "loop-judge",
+                           "Developer": "evidence-network/loop", "Timestamp": r["finished"]},
+               "payload": {"step": r["dir"], "path": r["path"], "sha256": r["sha256"]}, "agent_output": {"ok": True}}
+        f = self.home / "request.json"
+        dump(f, req)
+        return self.cap("publish", "--profile", "judge", "--request", str(f))["capsule_id"]
+
+    def result(self, doc, name):
+        f = self.home / f"{name}.input.json"
+        dump(f, doc)
+        return self.cap("book", "result", "build", "--profile", "judge", "--result", str(f),
+                        "--out", str(self.home / f"{name}.result.json"))["record_id"]
+
+    def disclose(self, rid, path):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.cap("book", "disclose", "--profile", "judge", "--root", rid, "--payloads", "selected", "--out", str(path))
+
+
+def fill(doc, digests):
+    """The document with each claim's record refs replaced by digest refs."""
+    for c in doc["claims"]:
+        c["evidence"] = [{"digest_alg": "SHA-256", "digest": digests.get(e, e)} for e in c["evidence"]]
+        if c["presentation"]["kind"] == "disclosure":
+            c["presentation"]["evidence"] = c["evidence"]
+    return doc
+
+
+def seal(book, records, docs, pack, start, end, out):
+    """Publish the records the documents cite, seal each finer Result and the roll-up, write their bundles.
+
+    Returns {"finer": {step dir: record id}, "rollup": record id}.
+    """
+    by_ref = {ref(r): r for r in records}
+    cited = sorted({e for doc in docs.values() for c in doc["claims"] for e in c["evidence"]})
+    digests = {e: book.publish(by_ref[e]) for e in cited}
+    finer = {}
+    for d, doc in sorted(docs.items()):
+        finer[d] = (book.result(fill(doc, digests), d), doc)
+    rollup = book.result(fill(rollup_doc(finer, pack, start, end), {}), "rollup")
+    for d, (rid, _) in finer.items():
+        book.disclose(rid, out / "bundles" / f"{d}.bundle.json")
+    book.disclose(rollup, out / "bundles" / "rollup.bundle.json")
+    return {"finer": {d: rid for d, (rid, _) in finer.items()}, "rollup": rollup}
+
+
+# --- The judge: on the bundles alone ------------------------------------------------------
+def verify_bundle(capsulectl, path, tmp):
+    """capsulectl verify --bundle under an empty config: the verdict, as JSON ({} when there is none)."""
+    cfg = Path(tempfile.mkdtemp(dir=tmp))
+    env = dict(os.environ, XDG_CONFIG_HOME=str(cfg))
+    r = subprocess.run([str(capsulectl), "verify", "--bundle", str(path)], env=env, capture_output=True, text=True,
+                       timeout=300)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {}
+
+
+def open_bundle(path, verdict, judge_key):
+    """(root id, Result statement, {record id: disclosed agent_input}, problems) of one bundle."""
+    name, problems = Path(path).name, []
+    b = load(path)
+    root = b.get("root")
+    if verdict.get("verdict") != "VALID":
+        bad = [f"{d['capsule_id'][:12]} {d['member']} {d['status']}" for d in verdict.get("disclosures", [])
+               if d.get("status") not in ("disclosure_match", "withheld")]
+        problems.append(f"{name} does not verify: {verdict.get('verdict') or 'no verdict'}"
+                        + (f" ({', '.join(bad)})" if bad else ""))
+    if b.get("extensions", {}).get("producer-key/v1", {}).get("public_key") != judge_key:
+        problems.append(f"{name} is not under the repository's judge key")
+    others = [r for r in b.get("records", []) if r.get("key_id") != judge_key]
+    if others:
+        problems.append(f"{name}: {len(others)} of its {len(b.get('records', []))} records are signed under another "
+                        "key than the judge's")
+    disclosed = {k: v.get("agent_input") for k, v in b.get("disclosures", {}).items()}
+    header = disclosed.get(root) or {}
+    if header.get("record_type") != RESULT_TYPE:
+        problems.append(f"{name}: its root is not a disclosed Result")
+    return root, header.get("statement") or {}, disclosed, problems
+
+
+def evidence(statement):
+    return [e["digest"] for c in statement.get("claims", []) for e in c.get("evidence", [])]
+
+
+def check_cited_once(cited, key, sha, where):
+    """A record cited twice has one digest: a later citation must not hide a wrong one behind the first."""
+    return [] if cited.setdefault(key, sha) == sha else [f"{where}: {key} is cited with two different sha256 digests"]
+
+
+def check_complete(window, cited):
+    """Every record in the window is cited by a finer Result."""
+    return [f"no Result cites {k} ({s[:12]}), a record in the window" for k, s in sorted(window.items())
+            if k not in cited]
+
+
+def check_exact(window, cited):
+    """Every record a finer Result cites is a record in the window."""
+    return [f"a Result cites {k} ({s[:12]}), which is outside the window" for k, s in sorted(cited.items())
+            if window.get(k) != s]
+
+
+def check_rollup(rollup_cites, finer_valid):
+    """The roll-up cites exactly the finer Results, each the root of a VALID bundle."""
+    return ([f"the roll-up cites {r[:12]}, a Result that does not verify (no VALID finer bundle is rooted on it)"
+             for r in sorted(set(rollup_cites) - finer_valid)]
+            + [f"the roll-up does not cite the finer Result {r[:12]}" for r in sorted(finer_valid - set(rollup_cites))])
+
+
+def judge(out, records, capsulectl, judge_key, tmp):
+    """(problems, lines) over out/bundles: verify, complete, exact, rollup."""
+    problems, lines, finer_valid, cited = [], [], set(), {}
+    verdicts = {}
+    bundles = sorted((out / "bundles").glob("*.bundle.json"))
+    for path in bundles:
+        verdicts[path.name] = verify_bundle(capsulectl, path, tmp)
+        dump(out / "verify" / path.name.replace(".bundle.json", ".verify.json"), verdicts[path.name])
+    rollup = out / "bundles" / "rollup.bundle.json"
+    rollup_cites = []
+    for path in bundles:
+        root, statement, disclosed, probs = open_bundle(path, verdicts[path.name], judge_key)
+        problems += probs
+        if path == rollup:
+            rollup_cites = evidence(statement)
+            continue
+        if not probs:
+            finer_valid.add(root)
+        for digest in evidence(statement):
+            p = disclosed.get(digest) or {}
+            if not {"step", "path", "sha256"} <= set(p):
+                problems.append(f"{path.name}: cited record {digest[:12]} is not a disclosed record capsule")
+                continue
+            key = f"{p['step']}/{p['path']}"
+            problems += check_cited_once(cited, key, p["sha256"], path.name)
+        lines.append(f"{path.name.replace('.bundle.json', '')}: {len(statement.get('claims', []))} claim(s), "
+                     f"{len(set(evidence(statement)))} records cited, "
+                     + ", ".join(f"{c['requirement_ref']} {c['verdict']}" for c in statement.get("claims", [])))
+    if not rollup.is_file():
+        problems.append("there is no roll-up bundle")
+    window = {ref(r): r["sha256"] for r in records}
+    problems += check_complete(window, cited)
+    problems += check_exact(window, cited)
+    problems += check_rollup(rollup_cites, finer_valid)
+    return problems, lines
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    out = a.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    for p in ("finding.json", "window.json"):
+        (out / p).unlink(missing_ok=True)
+    for p in ("bundles", "verify"):
+        shutil.rmtree(out / p, ignore_errors=True)
+    population = load(a.population / "population.json")["population"]
+    pack = load(PACK)
+    keys = a.population.resolve() / "step10" / "keys"
+    run = out.parent
+    # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
+    standin = a.population.resolve() / "step10" / "run"
+    standin = standin if not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir() else None
+    source = standin or run
+
+    problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
+    start = end = None
+    pinned = []
+    try:
+        try:
+            manifest, as_of = read_manifest(source)
+        except ValueError as e:
+            raise RuntimeError(str(e))
+        if manifest.get("population") != population:
+            raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
+        start, end = window_of(as_of, pack["window"]["periods"])
+        records, refused, not_checked, problems = select(source, manifest, start, end, pack)
+        dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
+                                   "period": pack["window"]["period"], "periods": pack["window"]["periods"],
+                                   "records": records, "refused": refused})
+        proof.append("window.json")
+        if problems:
+            raise RuntimeError("; ".join(problems))
+        if not records:
+            raise NotChecked("the pack over the window",
+                             f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
+                             "step of the pack's kinds finished outside it, or none is in the run")
+        if not (keys / "judge.pem").is_file():
+            raise NotChecked("the pack's Results, sealed", f"the {population} population lists no judge key "
+                                                           "(step10/keys)")
+        capsulectl, book_plugin = tools()
+        if not (capsulectl.is_file() and book_plugin.is_file()):
+            raise NotChecked("the pack's Results, sealed and verified offline",
+                             f"capsulectl and capsulectl-book are not installed ({capsulectl.parent}); "
+                             "steps/10-judge.setup.sh installs them")
+        pinned = PINNED
+        with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
+            docs = judge_records(records, source, pack, start, end, not_checked)
+            book = Book(Path(tmp) / "book", capsulectl, keys)
+            sealed = seal(book, records, docs, pack, start, end, out)
+            problems, lines = judge(out, records, capsulectl, pub_hex(keys / "judge.pub.pem"), tmp)
+        proof += [str(p.relative_to(out)) for p in sorted((out / "bundles").glob("*.json"))]
+        proof += [str(p.relative_to(out)) for p in sorted((out / "verify").glob("*.json"))]
+        lines.append(f"roll-up {sealed['rollup'][:12]} over {len(sealed['finer'])} Results")
+    except NotChecked as e:
+        what, why = e.args
+        not_checked.append({"what": what, "why": why, "issue": ISSUE})
+    except RuntimeError as e:
+        problems = problems or [str(e)]
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
+        problems = [f"the judge did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
+
+    result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
+    window = f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)" if start else "no window"
+    what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "
+            f"run's records" if standin else f"run {run.name}")
+    detail = (f"{what}, {window}, deterministic pack {pack['pack']} (no model): "
+              f"{len(records)} records in the window from {len({r['dir'] for r in records})} steps. "
+              + ("; ".join(lines) + ". " if lines else "")
+              + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
+              + (f"Refused, not read: {'; '.join(refused)}. " if refused else "")
+              + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each.")
+    if result == "PASS":
+        detail += " " + finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
+                                        "evidencebook-skills pack", PACK_ISSUE)
+    finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned,
+                  proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
+    print(f"10-judge: {result}: {detail}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

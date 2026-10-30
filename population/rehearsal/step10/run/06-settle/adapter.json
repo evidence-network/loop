@@ -1,0 +1,85 @@
+{
+  "adapter": {
+    "adapter": "mock-rail",
+    "declaration": "mock-rail/v1",
+    "not_supported": [
+      "that any value moved: the mock rail is a file and nothing settles",
+      "who controls payer or payee: the relying party's controller declarations say that"
+    ],
+    "object": {
+      "issuer": "the rail, under the key rail.json names (a TEST key)",
+      "name": "mock-rail.settlement/v1",
+      "natively_signed": true,
+      "octets": "one line of the rail's ledger.jsonl, as written"
+    },
+    "properties": [
+      {
+        "method": "mock-rail.settlement/v1: JSON object with exactly its members, integer amounts, boolean final, rail is the declared rail, integers below 2**53",
+        "property": "object_form"
+      },
+      {
+        "method": "Ed25519 over the JCS form without sig, under the key rail.json names (openssl pkeyutl)",
+        "property": "rail_signature"
+      },
+      {
+        "method": "settlement_id = SHA-256 of the JCS form without settlement_id and sig",
+        "property": "settlement_id"
+      },
+      {
+        "method": "final is true in the signed object",
+        "property": "finality"
+      },
+      {
+        "method": "fee_atomic > 0 in the signed object, on a rail whose declaration is fee_paying",
+        "property": "rail_fee"
+      },
+      {
+        "method": "(currency, decade): decade = floor(log10(amount_atomic / 10^decimals)), exact integer arithmetic",
+        "property": "band"
+      }
+    ],
+    "supports": "the rail recorded a final settlement of amount_atomic units of currency from payer to payee for exchange_id, charging fee_atomic"
+  },
+  "reports": [
+    {
+      "detail": "mock-rail.settlement/v1",
+      "method": "mock-rail.settlement/v1: JSON object with exactly its members, integer amounts, boolean final, rail is the declared rail, integers below 2**53",
+      "property": "object_form",
+      "status": "PASS"
+    },
+    {
+      "detail": "rail key 3a76fa64ef370bd65cf207ace8963fa7d261d85ff8a639888ba29d78b443709c",
+      "method": "Ed25519 over the JCS form without sig, under the key rail.json names (openssl pkeyutl)",
+      "property": "rail_signature",
+      "status": "PASS"
+    },
+    {
+      "detail": "stated baa2e56c3a4231c09e302df002cf507991a6c9e4ca105b2ec267c5e370cbccdf, computed baa2e56c3a4231c09e302df002cf507991a6c9e4ca105b2ec267c5e370cbccdf",
+      "method": "settlement_id = SHA-256 of the JCS form without settlement_id and sig",
+      "property": "settlement_id",
+      "status": "PASS"
+    },
+    {
+      "detail": "final true",
+      "method": "final is true in the signed object",
+      "property": "finality",
+      "status": "PASS"
+    },
+    {
+      "detail": "fee_atomic 10, rail fee_paying true",
+      "method": "fee_atomic > 0 in the signed object, on a rail whose declaration is fee_paying",
+      "property": "rail_fee",
+      "status": "PASS"
+    },
+    {
+      "detail": "USDC:e-3",
+      "method": "(currency, decade): decade = floor(log10(amount_atomic / 10^decimals)), exact integer arithmetic",
+      "property": "band",
+      "status": "PASS"
+    }
+  ],
+  "settlement": {
+    "line": 4,
+    "settlement_id": "baa2e56c3a4231c09e302df002cf507991a6c9e4ca105b2ec267c5e370cbccdf"
+  }
+}
