@@ -401,11 +401,13 @@ over the three nodes, and its `detail` lists each node:
 
 - `01 seal`: each node seals one record with its own plugin key from its
   `data_dir`, and the second-language verifier checks Class 1 on the
-  sealed bytes. PASS when every node's capsule verifies under that node's
-  key; the detail then says the producer signature is outside the
-  assertion. NOT_CHECKED for a node whose `data_dir` is unreadable or when
+  sealed bytes, and its producer signature too (`cross_language signature`).
+  PASS when every node's capsule verifies under that node's key and that
+  key is the one its `nodes/<node_id>.json` publishes. NOT_CHECKED for a
+  node whose `data_dir` is unreadable, a node with no `nodes/<node_id>.json`
+  listing (the key is then only self-attested), an unsigned record, or when
   a pinned tool is missing (run `lab/lab.sh tools`). A FAIL names the node
-  and the check.
+  and the check, such as an invalid signature or a different published key.
 - `02 book`: for each node, the pinned capsulectl appends a capsule sealed
   with the node's key to the book under its `book_dir` and verifies it
   under that book's checkpoint key. NOT_CHECKED at best: the book's

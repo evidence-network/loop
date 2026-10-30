@@ -181,6 +181,35 @@ class Step01SealTest(unittest.TestCase):
             got = mod.signature_check(data, VERIFIER, key_id, mod.listed_key(nodes, "n1"), listing_expected=True)
             self.assertEqual((got["ok"], got["state"]), (ok, state), got)
 
+    def load_step(self):
+        loader = importlib.machinery.SourceFileLoader("step01_seal", str(STEP))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step01_seal", loader))
+        loader.exec_module(mod)
+        return mod
+
+    def test_verifier_exit_2_is_a_usage_error_or_a_bad_record(self):
+        mod = self.load_step()
+        key = "a" * 64
+        for out, want in (((2, "", "usage: cross_language"), RuntimeError), ((7, "", "boom"), RuntimeError),
+                          ((2, "", "record is not JSON"), "bad")):
+            mod.run = lambda cmd, stdin=None, env=None, out=out: out
+            if want is RuntimeError:
+                with self.assertRaises(RuntimeError):
+                    mod.signature_check(b"{}", Path("v"), key, key, True)
+            else:
+                self.assertEqual(mod.signature_check(b"{}", Path("v"), key, key, True)["state"], want)
+
+    def test_a_node_that_cannot_seal_still_returns_its_failure(self):
+        mod = self.load_step()
+        out = Path(self.tmp.name) / "n"
+        out.mkdir()
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "node-key.pem").write_text("x")
+            result, proof, detail, gaps = mod.seal_and_check(out, "n", Path(d), Path("/usr/bin/false"), VERIFIER, {},
+                                                             "live", None, None, live_node=True)
+        self.assertEqual((result, gaps), ("FAIL", []))
+        self.assertIn("could not seal", detail)
+
     def test_missing_tools_read_not_checked_never_pass(self):
         env = dict(os.environ, LOOP_TOOLS=str(Path(self.tmp.name) / "no-tools"))
         r = self.run_step(env=env)

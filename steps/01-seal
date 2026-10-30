@@ -52,7 +52,8 @@ import live  # noqa: E402
 PINNED = ["capsule-emit", "aac-go"]
 GO_MODULE = "github.com/action-state-group/agent-action-capsule/go"
 ASSERTS = ("a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the "
-           "AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its effect reads effect_attestation "
+           "AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go "
+           "verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation "
            "runtime_claimed (sealed in the producer's own process) and it carries model_attestation")
 # What the step tells the producer about the model; model_attestation must carry it back.
 MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
@@ -148,12 +149,14 @@ def listed_key(nodes_dir, node_id):
     return key if isinstance(key, str) and key else None
 
 
-def signature_check(capsule_bytes, verifier, key_id, listed, listing_expected):
+def signature_check(capsule_bytes, verifier, key_id, listed, listing_expected, outputs=None):
     """The producer-signature check: {ok, state, detail}; state is ok, unclaimed, unlisted or bad.
 
     The key the signature is authored under must be the one the node publishes (`listed`) when it has a listing;
     `listing_expected` is set for a node that should have one (live), and no listing is then an unlisted entry."""
     rc, out, err = run([str(verifier), "signature"], stdin=capsule_bytes)
+    if outputs is not None:
+        outputs["signature"] = {"command": "cross_language signature", "exit": rc, "stdout": out, "stderr": err}
     err = err.strip()
     verdict = SIGNATURE_EXIT.get(rc)
     if verdict is None and rc == 2 and err and not err.startswith("usage"):
@@ -218,7 +221,7 @@ def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False
     checks["model"] = {"ok": ok, "detail": f"model_attestation {json.dumps(ma, sort_keys=True)}"}
 
     key_id = capsule.get("key_id")
-    checks["signature"] = signature_check(capsule_bytes, verifier, key_id, listed, listing_expected)
+    checks["signature"] = signature_check(capsule_bytes, verifier, key_id, listed, listing_expected, outputs)
     # An unclaimed record carries no key_id to match; that is the signature's not_checked entry, not a wrong key.
     unclaimed = checks["signature"]["state"] == "unclaimed" and key_id is None
     checks["key"] = {"ok": key_id == node_pub or unclaimed,
@@ -236,14 +239,14 @@ def nodes_dir():
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
-def signature_gap(node, state, detail):
+def signature_gap(node, detail):
     """The not_checked entry for a signature that verifies but cannot be held to a published key, or is absent."""
     return {"what": SIGNATURE_WHAT, "why": f"node {node}: {detail}", "issue": live.NO_ISSUE_YET}
 
 
-def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None):
+def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None, live_node=False):
     """Seal with key_dir's key (or take `sealed`), check it, write the proof into out:
-    (result, proof, detail, not_checked). `node_id` is set for a live node, which must have a nodes/ listing."""
+    (result, proof, detail, not_checked). A live node must have a nodes/ listing, so one without a node_id is unlisted."""
     capsule_path = out / "capsule.json"
     if sealed:
         shutil.copyfile(sealed, capsule_path)
@@ -257,22 +260,24 @@ def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=
                               str(capsule_path), json.dumps(MODEL), pop_name], env=env)
         if rc != 0:
             (out / "seal.stderr.txt").write_text(err)
-            return "FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})"
+            return "FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})", []
 
     listed = listed_key(nodes_dir(), node_id) if node_id else None
     checks, outputs = check(capsule_path.read_bytes(), verifier, raw_public_hex(key_dir / "node-key.pub.pem"),
-                            listed, listing_expected=bool(node_id))
+                            listed, listing_expected=live_node)
     (out / "verifier.json").write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n")
     (out / "checks.json").write_text(json.dumps(
         {"node": node, "sealed_by": "given capsule" if sealed else "capsule-emit, in this process",
          "installed": seen, "checks": checks}, indent=2, sort_keys=True) + "\n")
-    failed = [n for n, c in checks.items() if not c["ok"]]
     sig = checks["signature"]
-    gaps = [signature_gap(node, sig["state"], sig["detail"])] if not failed and sig.get("state") in ("unclaimed", "unlisted") else []
+    if not sealed and sig["state"] == "unclaimed":  # capsule-emit signs what it seals; no signature is its defect
+        sig.update(ok=False, state="bad", detail="capsule-emit sealed a record with no producer signature")
+    failed = [n for n, c in checks.items() if not c["ok"]]
+    gaps = [signature_gap(node, sig["detail"])] if not failed and sig.get("state") in ("unclaimed", "unlisted") else []
     detail = (f"node {node}: " + ("; ".join(f"{n}: {checks[n]['detail']}" for n in failed) if failed else
               "Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, "
               "model_attestation present, key_id is the node's key; "
-              + (f"producer signature {sig['detail']}" if not gaps else f"producer signature not held to a key ({sig['detail']})")))
+              + (f"producer signature {sig['detail']}" if not gaps else f"producer signature not checked ({sig['detail']})")))
     result = "FAIL" if failed else "NOT_CHECKED" if gaps else "PASS"
     return result, ["capsule.json", "verifier.json", "checks.json"], detail, gaps
 
@@ -299,7 +304,7 @@ def main_live(population, out, started, sealed=None):
             node_out = out / name
             node_out.mkdir(parents=True, exist_ok=True)
             result, files, detail, gaps = seal_and_check(node_out, name, data_dir / "keys", python, verifier, seen,
-                                                         pop_name, sealed, entry.get("node_id"))
+                                                         pop_name, sealed, entry.get("node_id"), live_node=True)
             results.append(result)
             not_checked += gaps
             proof += [f"{name}/{f}" for f in files]

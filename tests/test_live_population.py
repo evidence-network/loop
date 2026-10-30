@@ -169,8 +169,31 @@ class Step01LiveTest(LiveCase):
             need(t, "steps/01-seal.setup.sh")
         self.pop, self.lab_dir, self.env = self.lab()
 
+    def publish(self, listed_keys=None):
+        """Give each node a node_id and a nodes/<node_id>.json listing its TEST public key (or `listed_keys[name]`);
+        returns the env that points the step at that directory."""
+        import importlib.machinery, importlib.util
+        loader = importlib.machinery.SourceFileLoader("step01_seal", str(ROOT / "steps" / "01-seal"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step01_seal", loader))
+        loader.exec_module(mod)
+        pop = json.loads((self.pop / "population.json").read_text())
+        nodes = self.tmp / "published-nodes"
+        nodes.mkdir()
+        for i, n in enumerate(pop["nodes"]):
+            n["node_id"] = f"{i + 1:064x}"
+            key = (listed_keys or {}).get(n["name"]) or mod.raw_public_hex(TEST_KEYS / NODE_KEYS[n["name"]] / "node-key.pub.pem")
+            (nodes / f"{n['node_id']}.json").write_text(json.dumps({"node_id": n["node_id"], "key_id": key}))
+        (self.pop / "population.json").write_text(json.dumps(pop))
+        return dict(self.env, LOOP_NODES_DIR=str(nodes))
+
+    def test_a_node_listing_another_key_fails(self):
+        r = self.step("01-seal", self.pop, self.publish({"lab-2": "f" * 64}))
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("node lab-2: signature: authored under key", r["detail"])
+        self.assertIn("the node publishes in nodes/", r["detail"])
+
     def test_each_node_seals_with_its_own_key_and_passes(self):
-        r = self.step("01-seal", self.pop, self.env)
+        r = self.step("01-seal", self.pop, self.publish())
         self.assertEqual(r["result"], "PASS", r["detail"])
         for name, test in NODE_KEYS.items():
             self.assertIn(f"node {name}: Class 1 ok", r["detail"])
@@ -188,7 +211,7 @@ class Step01LiveTest(LiveCase):
     def test_a_node_with_no_published_listing_is_not_checked(self):
         pop = json.loads((self.pop / "population.json").read_text())
         for i, n in enumerate(pop["nodes"]):
-            n["node_id"] = f"{i:064x}"
+            n["node_id"] = f"{i:064x}" if i else None  # one has a node_id with no listing, one has no node_id
         (self.pop / "population.json").write_text(json.dumps(pop))
         nodes = self.tmp / "no-nodes"
         nodes.mkdir()
