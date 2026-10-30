@@ -215,8 +215,8 @@ def load(path):
 # join.sh writes it in step 03's format (steps/03-advertise.md); its checkpoint
 # member carries the book's checkpoint attestation whole: {book_id,
 # checkpoint_key, statement}.
-def advertised(node_dir):
-    c = load(Path(node_dir) / "commitment.json")
+def advertised(node_dir, name="commitment.json"):
+    c = load(Path(node_dir) / name)
     attestation = json.loads(base64.b64decode(c["checkpoint"]["bytes"]))
     return {"node_key": c["key_id"], "checkpoint_key": attestation["checkpoint_key"],
             "book_id": attestation["book_id"], "policy_digest": c["lcap"]["policy_digest"],

@@ -392,9 +392,11 @@ class ReporterBackendTest(Tmp):
         # A lab run's join output: the node's signed commitment (answers_within PT1M) under lab/runs.
         runs = Path(self.tmp.name) / "lab" / "runs"
         shutil.copytree(FIX / "good" / "alice" / "advertised", runs / "2026-10-28" / "join" / "lab-1")
-        patcher = mock.patch.object(step, "LAB_RUNS", runs)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        self.published = Path(self.tmp.name) / "nodes" / "commitments"  # nothing published unless a test says so
+        for name, path in (("LAB_RUNS", runs), ("PUBLISHED", self.published)):
+            patcher = mock.patch.object(step, name, path)
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None, extra_nodes=(),
                  data_dir_flag=True, node_extra=None):
@@ -508,6 +510,59 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
         self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
+
+    # --- which commitment pins the policy: the newer of lab/runs and nodes/commitments (loop#179) ---
+    def publish(self):
+        """Alice's genuine commitment and policy, published under nodes/commitments/<node_id>.json."""
+        src = FIX / "good" / "alice" / "advertised"
+        doc = json.loads((src / "commitment.json").read_text())
+        uri = self.published / doc["lcap"]["policy_uri"]
+        uri.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(src / doc["lcap"]["policy_uri"], uri)
+        (self.published / f"{'1' * 64}.json").write_text(json.dumps(doc))
+
+    def age_join(self, issued_at):
+        path = next(step.LAB_RUNS.glob("*/join/lab-1/commitment.json"))
+        doc = json.loads(path.read_text())
+        doc["issued_at"] = issued_at
+        path.write_text(json.dumps(doc))
+
+    def refusal_with_listed_commitment(self):
+        return self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"},
+                             ledger=self.ledger(), sealed={"checkpoints": "refusal_match"}, node_extra={"node_id": "1" * 64})
+
+    def test_a_newer_published_commitment_wins_over_a_stale_join_record(self):
+        self.age_join("2020-01-01T00:00:00Z")  # the stale join no longer verifies; the published one does
+        self.publish()
+        r = self.refusal_with_listed_commitment()
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+        self.assertNotIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
+        timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
+        self.assertEqual(timing["commitment"], str(self.published / f"{'1' * 64}.json"))
+
+    def test_a_newer_join_record_still_wins_over_an_older_published_commitment(self):
+        self.age_join("2999-01-01T00:00:00Z")  # newer, so chosen; its signature no longer holds
+        self.publish()
+        r = self.refusal_with_listed_commitment()
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
+        self.assertTrue(any("does not verify" in i["why"] for i in r["not_checked"]), r["not_checked"])
+
+    def test_the_published_commitment_alone_gives_the_deadline_and_pins_the_policy(self):
+        shutil.rmtree(step.LAB_RUNS)
+        self.publish()
+        r = self.refusal_with_listed_commitment()
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+        timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
+        self.assertEqual(timing["answers_within"], "PT1M")
+
+    def test_a_refusal_naming_neither_digest_is_a_fail_with_a_published_commitment(self):
+        self.age_join("2020-01-01T00:00:00Z")
+        self.publish()
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, ledger=self.ledger(),
+                          sealed={"checkpoints": "refusal_other_policy"}, node_extra={"node_id": "1" * 64})
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("not the", r["detail"])
 
     def test_a_self_node_without_a_second_console_is_not_checked_never_asked(self):
         r = self.run_live(VERIFIED, flags=("--self-node", "lab-1"))

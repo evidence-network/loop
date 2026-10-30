@@ -57,7 +57,9 @@ judges it (scripts and steps/12-join reused: the answer verifies under the
 key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
-`answers_within` (lab/runs/*/join/), and an answer not in by it is not counted
+`answers_within` (the newer by `issued_at` of the node's newest lab/runs/*/join/ commitment and its published
+nodes/commitments/<node_id>.json: the join record is only as fresh as the last lab pack, so after a plugin move
+it pins the old policy, while the published one is what step 03 verifies), and an answer not in by it is not counted
 as answered.
 
 The pinned plugin seals each ask as an evidence_request before it sends it, and the reply as an evidence_response
@@ -150,6 +152,7 @@ LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set o
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
 # Where the lab keeps each live node's signed join commitment (lab/lab.sh pack).
 LAB_RUNS = ROOT / "lab" / "runs"
+PUBLISHED = ROOT / "nodes" / "commitments"  # what step 03 publishes and verifies against the listed key
 
 
 def load(path):
@@ -195,8 +198,10 @@ def merge(into, items):
 
 
 # --- The asked node's advertisement ----------------------------------------
-def advertisement(adv_dir):
+def advertisement(adv_dir, name="commitment.json"):
     """(advertised, errors): the asked node's keys, answers, policy and answers_within, from its commitment.
+
+    `name` is the commitment's file in adv_dir; its policy is read at lcap.policy_uri beside it.
 
     The commitment verifies with step 03's checker (its signature under the node
     key, the policy digest against the signed policy beside it) before anything
@@ -204,7 +209,7 @@ def advertisement(adv_dir):
     """
     adv_dir = Path(adv_dir)
     try:
-        doc = load(adv_dir / "commitment.json")
+        doc = load(adv_dir / name)
     except (OSError, ValueError) as e:
         return None, [f"the asked node's commitment is not readable JSON ({e})"]
     errs, notes = check_commitment.verify(doc, check_commitment.file_fetcher(adv_dir))
@@ -212,7 +217,7 @@ def advertisement(adv_dir):
     if errs:
         return None, errs
     try:
-        adv = step12.advertised(adv_dir)
+        adv = step12.advertised(adv_dir, name)
         adv["answers_within"] = doc["answers_within"]
         adv["within"] = duration(doc["answers_within"])
         adv["policy"] = load(adv_dir / adv["policy_uri"])["policy"]
@@ -664,21 +669,37 @@ def run_book(pop, out, tmp):
 
 # --- Backend "reporter": Mesh nodes, asked through the daily reporter ---------
 def live_commitment(entry):
-    """(advertised, not_checked) for a live node: its newest signed join commitment under lab/runs, by key."""
-    found = []
-    for path in sorted(LAB_RUNS.glob("*/join/*/commitment.json")):
+    """(advertised, not_checked) for a live node: the newer of its signed join commitment under lab/runs and its
+    published one under nodes/commitments, by `issued_at` (never by file order).
+
+    The pinned plugin signs a different policy after a plugin move, and lab/runs is only as fresh as the last
+    lab pack, while the published commitment is the one step 03 verifies against the listed key. A tie goes to
+    the published one. The record chosen still has to verify before anything in it is used.
+    """
+    found = []  # (issued_at, order, directory, file name)
+    for order, path in enumerate(sorted(LAB_RUNS.glob("*/join/*/commitment.json"))):
+        found.append((path, path.parent, path.name, order))
+    published = PUBLISHED / f"{entry.get('node_id')}.json"
+    if published.is_file():
+        found.append((published, published.parent, published.name, len(found)))
+    ranked = []
+    for path, adv_dir, name, order in found:
         try:
-            if load(path).get("key_id") == entry.get("key_id"):
-                found.append(path)
+            doc = load(path)
         except (OSError, ValueError):
             continue
-    if not found:
+        if isinstance(doc, dict) and doc.get("key_id") == entry.get("key_id"):
+            issued = doc.get("issued_at")
+            ranked.append((issued if isinstance(issued, str) else "", order, path, adv_dir, name))
+    if not ranked:
         return None, {"what": "the deadline (answers_within)",
-                      "why": "no signed commitment for the node's listed key under lab/runs", "issue": NO_COMMITMENT_ISSUE}
-    adv, errs = advertisement(found[-1].parent)
+                      "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments",
+                      "issue": NO_COMMITMENT_ISSUE}
+    _, _, path, adv_dir, name = max(ranked, key=lambda r: r[:2])
+    adv, errs = advertisement(adv_dir, name)
     if adv is None:
         return None, {"what": "the deadline (answers_within)", "why": "; ".join(errs), "issue": NO_COMMITMENT_ISSUE}
-    adv["commitment"] = str(found[-1].relative_to(LAB_RUNS.parent.parent))
+    adv["commitment"] = str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
     return adv, None
 
 
