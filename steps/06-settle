@@ -322,9 +322,9 @@ def is_int(v):
 def crosscheck(found):
     """Compare the payment hashes the nodes recorded. found: {node: recorded()}.
 
-    A hash is paired when one node's payer observation and another node's provider observation of it agree:
-    the payer's amount_msat equals the provider's credited_msat + fee_msat. Every other hash is unpaired with
-    the reason (recorded by one node only, no observation, same role on both, amounts differ).
+    A hash is paired when all its payer observations are on one node with one amount_msat, all its provider
+    observations are on another node with one credited_msat + fee_msat, and the two amounts are equal (repeated
+    identical observations from lifecycle phases still pair). Every other hash is unpaired with the reason.
     """
     seen = {}
     for name, hs in {n: payment_hashes(f) for n, f in found.items()}.items():
@@ -332,24 +332,32 @@ def crosscheck(found):
             seen.setdefault(h, []).append(name)
     paired, unpaired = {}, {}
     for h, names in sorted(seen.items()):
-        payers, payees = [], []
+        payers, payees = set(), set()
         for name, f in found.items():
             for o in f["settlement_observations"]:
                 if o.get("payment_hash") != h:
                     continue
                 if o.get("observed_by") == "payer" and is_int(o.get("amount_msat")):
-                    payers.append((name, o["amount_msat"]))
+                    payers.add((name, o["amount_msat"]))
                 elif o.get("observed_by") == "provider" and is_int(o.get("credited_msat")) and is_int(o.get("fee_msat")):
-                    payees.append((name, o["credited_msat"] + o["fee_msat"]))
-        match = next(((a, b, amt) for a, amt in payers for b, got in payees if a != b and amt == got), None)
-        if match:
-            paired[h] = {"payer": match[0], "payee": match[1], "amount_msat": match[2]}
-        elif len(names) < len(found):
+                    payees.add((name, o["credited_msat"] + o["fee_msat"]))
+        payer_nodes, payee_nodes = sorted({n for n, _ in payers}), sorted({n for n, _ in payees})
+        payer_amts, payee_amts = sorted({a for _, a in payers}), sorted({a for _, a in payees})
+        if len(names) < len(found):
             unpaired[h] = f"recorded by {', '.join(sorted(names))} only"
         elif not payers or not payees:
-            unpaired[h] = "no payer observation and provider observation of it, with amounts, on different nodes"
+            unpaired[h] = "no payer observation or no provider observation, with amounts"
+        elif len(payer_nodes) > 1 or len(payee_nodes) > 1:
+            unpaired[h] = (f"payer observations on {', '.join(payer_nodes)} and provider observations on "
+                           f"{', '.join(payee_nodes)}: one node of each role is needed")
+        elif payer_nodes == payee_nodes:
+            unpaired[h] = f"payer and provider observations are both on {payer_nodes[0]}"
+        elif len(payer_amts) > 1 or len(payee_amts) > 1:
+            unpaired[h] = f"conflicting amounts: payer {payer_amts}, provider credited plus fee {payee_amts}"
+        elif payer_amts != payee_amts:
+            unpaired[h] = f"payer amount_msat {payer_amts[0]} and provider credited_msat + fee_msat {payee_amts[0]} differ"
         else:
-            unpaired[h] = "payer amount_msat and provider credited_msat + fee_msat differ"
+            paired[h] = {"payer": payer_nodes[0], "payee": payee_nodes[0], "amount_msat": payer_amts[0]}
     return {"nodes": sorted(found), "paired": paired, "unpaired": unpaired}
 
 

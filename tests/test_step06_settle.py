@@ -516,7 +516,7 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(cross["paired"], {h("a"): {"payer": "brattain", "payee": "shockley", "amount_msat": 1000},
                                            h("b"): {"payer": "shockley", "payee": "brattain", "amount_msat": 500}})
         self.assertIn("differ", cross["unpaired"][h("c")])       # 700 != 610
-        self.assertIn("no payer observation and provider observation", cross["unpaired"][h("d")])  # both payers
+        self.assertIn("no payer observation or no provider", cross["unpaired"][h("d")])  # both payers
         self.assertEqual(cross["unpaired"][h("e")], "recorded by brattain only")
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("crosscheck.json", [p["path"] for p in r["proof"]])
@@ -525,6 +525,21 @@ class Step06SettleTest(unittest.TestCase):
         why = next(n["why"] for n in r["not_checked"] if "preimages" in n["what"])
         self.assertIn("leave some payment hashes unpaired", why)
         self.assertNotIn("pair every", why)
+
+    def test_the_crosscheck_does_not_pair_a_hash_other_records_contradict(self):
+        h = lambda c: c * 64
+        payer = lambda hash_, amt: {"observed_by": "payer", "payment_hash": hash_, "amount_msat": amt}
+        prov = lambda hash_, cred, fee: {"observed_by": "provider", "payment_hash": hash_, "credited_msat": cred,
+                                         "fee_msat": fee}
+        _, cross = self.crosscheck_of({
+            "brattain": [payer(h("a"), 10), payer(h("b"), 10), payer(h("b"), 999), payer(h("c"), 10),
+                         prov(h("c"), 9, 1), payer(h("d"), 10), payer(h("d"), 10)],
+            "shockley": [prov(h("a"), 9, 1), payer(h("a"), 10), prov(h("b"), 9, 1), {"payment_hash": h("c")},
+                         prov(h("d"), 9, 1), prov(h("d"), 9, 1)]})
+        self.assertIn("one node of each role is needed", cross["unpaired"][h("a")])  # payer on both nodes
+        self.assertIn("conflicting amounts: payer [10, 999]", cross["unpaired"][h("b")])
+        self.assertEqual(cross["unpaired"][h("c")], "payer and provider observations are both on brattain")
+        self.assertEqual(cross["paired"][h("d")], {"payer": "brattain", "payee": "shockley", "amount_msat": 10})
 
     def test_the_crosscheck_says_so_when_every_hash_pairs_and_when_there_is_nothing_to_compare(self):
         both = [({"brattain": [{"observed_by": "payer", "payment_hash": "a" * 64, "amount_msat": 10}],
