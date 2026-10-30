@@ -1,0 +1,20 @@
+{
+  "recompute": {
+    "capsule_id": "28576243d78ea64162b45d7b1231819b7dd2bf2070dffb5bd66f9da4b5a31393",
+    "command": "cross_language seal (capsule_id, signature, key_id removed)",
+    "exit": 0,
+    "stderr": ""
+  },
+  "signature": {
+    "command": "cross_language signature",
+    "exit": 0,
+    "stderr": "",
+    "stdout": "authored\n"
+  },
+  "verify": {
+    "command": "cross_language verify",
+    "exit": 0,
+    "stderr": "",
+    "stdout": "28576243d78ea64162b45d7b1231819b7dd2bf2070dffb5bd66f9da4b5a31393\n"
+  }
+}
