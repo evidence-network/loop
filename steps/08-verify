@@ -62,6 +62,10 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 
 
+class Mismatch(Exception):
+    """The re-run changed bytes the finding cites; the argument says which."""
+
+
 class Unreproducible(Exception):
     """The step's result cannot be re-derived here; args are (what, why)."""
 
@@ -167,6 +171,10 @@ def keys_06(c):
 
 def keys_07(c):
     pubs, bad = node_pubs(c.pop), []
+    # A proof that holds no node, or no ask, has nothing for the judge to check and would read PASS.
+    bad += [f"the proof holds no book of node {n}" for n in sorted(pubs) if not (c.work / n / "advertised" / "book.json").is_file()]
+    if not list(c.work.glob("*/asks/*/*/request.json")):
+        bad.append("the proof holds no ask request")
     for n in nodes_of(c.work, c.pop):
         f = c.work / n / "advertised" / "book.json"
         got = load(f).get("node_key") if f.is_file() else None
@@ -178,7 +186,14 @@ def keys_07(c):
 def keys_09(c, m):
     doc, announced = load(c.work / "dispute.json"), load(c.work / "announced.json")["announced_keys"]
     bad = []
+    nodes = {n["name"]: n for n in load(c.pop / "population.json")["nodes"]}
     for name, entry in doc["nodes"].items():
+        # The bundle must not name where its own trusted key is: a key_dir is the repository's or it is refused.
+        kd = entry.get("key_dir")
+        if kd and (repo_path(kd) != repo_path(nodes[name]["key_dir"]) if name in nodes
+                   else not repo_path(kd).resolve().is_relative_to(c.pop.resolve())):
+            bad.append(f"dispute.json key_dir of {name} is not the repository's key directory for it")
+            continue
         want = pub_key(m.key_dir_of(c.pop, name, entry) / "node-key.pub.pem")
         if announced.get(entry["node_id"]) != want:
             bad.append(f"announced.json key of {name} is {announced.get(entry['node_id'])}, the repository's is {want}")
@@ -208,6 +223,8 @@ def rederive_02(m, c):
 def rederive_03(m, c):
     if shutil.which("git") is None:
         raise Unreproducible("step 03: its judge, run again here", "git is not installed where 08 runs")
+    if shutil.which("openssl") is None:
+        raise Unreproducible("step 03: its judge, run again here", "openssl is not installed where 08 runs")
     src = c.tmp / "carrier.bundle"
     shutil.copyfile(c.work / "carrier.bundle", src)
     inputs = {n["name"]: n.get("inputs") for n in load(c.work / "verification.json").get("nodes", [])}
@@ -224,6 +241,12 @@ def rederive_03(m, c):
 
     m.rehearsal_node = from_bundle
     m.main(["--population", str(c.pop), "--out", str(c.work)])
+    # The judge writes its commitment and policy files again from the carrier; the cited ones must be those bytes,
+    # or a corrupted cited file would be replaced by a good one before it is judged.
+    changed = [p["path"] for p in c.record["proof"] if p["path"].endswith((".commitment.json", ".policy.json"))
+               and (c.work / p["path"]).read_bytes() != (c.bundle / p["path"]).read_bytes()]
+    if changed:
+        raise Mismatch(f"the judge's own copy of {', '.join(changed)} differs from the cited bytes")
     return load(c.work / "finding.json")
 
 
@@ -380,6 +403,9 @@ def verify_step(d, pop_dir, population, tmp):
         what, why = e.args
         entry["not_checked"] = {"what": what, "why": why, "issue": ISSUE}
         return done("not_reproduced")
+    except Mismatch as e:
+        entry["problems"].append(str(e))
+        return done("failed")
     except (Exception, SystemExit) as e:  # the step's judge broke on bytes it had decided on
         entry["problems"].append(f"the step's judge did not run to the end on its proof bytes ({type(e).__name__}: "
                                  f"{str(e)[:300]})")
@@ -408,7 +434,7 @@ def verify_run(run, out, pop_dir, population):
     entries = []
     own = Path(out).resolve().name.split("-", 1)[0]
     for nn in expected_steps(run) or []:
-        if nn != own and not list(Path(run).glob(f"{nn}-*/finding.json")):
+        if nn != own and not any(finding.STEP_DIR.match(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):
             entries.append({"step": nn, "name": None, "dir": f"{nn}-?", "recorded": None, "rederived": None,
                             "problems": [f"run.json lists step {nn} but the run holds no {nn}-*/finding.json"],
                             "not_checked": None, "files": [], "status": "failed"})

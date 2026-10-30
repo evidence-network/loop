@@ -86,6 +86,8 @@ if [ -n "$only" ]; then
     [[ " $steps " == *" $nn "* ]] || die "step $nn is not in stage $stage ($steps)"
   done
   steps=${only//,/ }
+  # 08 reproduces the findings of the steps that ran before it in this run, so it runs last.
+  if [[ " $steps " == *" 08 "* ]]; then steps="${steps/08/} 08"; steps=$(echo $steps); fi
 fi
 
 findings_root=${LOOP_FINDINGS:-$ROOT/findings}

@@ -316,6 +316,34 @@ class Step08Test(unittest.TestCase):
         self.assertEqual(f["population"], "live")
         self.assertIn("live result", f["not_checked"][0]["what"])
 
+    def test_a_listed_step_renamed_to_an_invalid_dir_fails_naming_it(self):
+        (self.run / "06-settle").rename(self.run / "06-INVALID")
+        f, entries = verify(self.run)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("run.json lists step 06 but the run holds no 06-*/finding.json", f["detail"])
+
+    def test_a_dispute_that_names_its_own_trusted_key_dir_fails(self):
+        d = self.run / "09-dispute"
+        doc = load(d / "dispute.json")
+        pop = load(POPULATION / "population.json")["nodes"]
+        doc["nodes"]["alice"]["key_dir"] = next(n["key_dir"] for n in pop if n["name"] == "bob")
+        dump(d / "dispute.json", doc)
+        rehash(d)
+        f, entries = verify(self.run)
+        self.assertFailsNaming("09-dispute", entries, f)
+        self.assertIn("dispute.json key_dir of alice is not the repository's key directory", f["detail"])
+
+    def test_a_corrupted_cited_commitment_the_judge_would_replace_fails(self):
+        d = self.run / "03-advertise"
+        doc = load(d / "alice.commitment.json")
+        v = doc["sig"]["value"]
+        doc["sig"]["value"] = ("A" if v[0] != "A" else "B") + v[1:]
+        dump(d / "alice.commitment.json", doc)
+        rehash(d)
+        f, entries = verify(self.run)
+        self.assertFailsNaming("03-advertise", entries, f)
+        self.assertIn("differs from the cited bytes", f["detail"])
+
     def test_a_step_run_json_lists_but_the_run_lacks_fails_naming_it(self):
         shutil.rmtree(self.run / "06-settle")
         f, entries = verify(self.run)
@@ -404,6 +432,26 @@ class Step08RehearsalTest(unittest.TestCase):
             self.assertEqual(len(entries), 9)
             self.assertEqual(subprocess.run([sys.executable, "-B", str(STEPS / "finding.py"), "check", str(run)]
                                             ).returncode, 0)
+
+    def test_a_07_proof_cut_to_its_number_file_fails(self):
+        """Nothing for the judge to check must not read PASS: 07 with no book and no ask in its proof."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "2026-10-30-rehearsal"
+            run_step("03-advertise", run)
+            run_step("07-ask", run)
+            write_run_json(run, ["07", "08"])
+            d = run / "07-ask"
+            dump(d / "first-answered.json", {"answered_at": None, "ask": None, "sealed": True})
+            f = load(d / "finding.json")
+            f["proof"] = [p for p in f["proof"] if p["path"] == "first-answered.json"]
+            dump(d / "finding.json", f)
+            rehash(d)
+            out = run / "08-verify"
+            step.main(["--population", str(POPULATION), "--out", str(out)])
+            v = load(out / "finding.json")
+            self.assertEqual(v["result"], "FAIL", v["detail"])
+            self.assertIn("the proof holds no book of node", v["detail"])
+            self.assertIn("the proof holds no ask request", v["detail"])
 
     def test_a_scenario_dropped_from_04s_proof_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
