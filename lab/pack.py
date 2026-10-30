@@ -113,6 +113,8 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
             print(f"would write nodes/<{node['name']} node_id>.json "
                   f"(operator {operator}, consent check_nodes.CONSENT, mesh lab, ask_route mesh)")
         print("would write population/live/population.json (the node ids, data_dir and book_dir)")
+        for host in add_hosts:
+            print(f"would write {lab_dir}/population-twins/population.json (with {host}; not nodes/, not population/live)")
         print(f"would write reporter/reporter.json ({reporter}'s node_id and key_id)")
         return []
     if not build_path.is_file():
@@ -125,13 +127,23 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
         return errs
     host_build, plugin_version = build_strings(build)
     pop = load(pop_path)
-    # A lab host directory the population does not list yet (lab-4 with LAB_TWINS=1) joins it, named as the others are.
+    # A twins-only lab node (lab-4 with LAB_TWINS=1) is not a committed live node: it gets no nodes/ entry and is not in
+    # population/live. It joins a separate population written under the lab dir (population-twins/), which
+    # `lab.sh dispute` reads, so step 09 can verify its half without the committed population changing.
+    twins_pop = None
+    extra = []
     for host in add_hosts:
         if not any(host_name(n) == host for n in pop["nodes"]):
             # Named as the others are (stevenmih-1..3), not from the operator's handle, which may differ in case.
             prefix = next((n["name"].rsplit("-", 1)[0] for n in pop["nodes"] if "-" in n["name"]), operator.lower())
-            pop["nodes"].append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
-                                 "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules"})
+            extra.append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
+                          "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules",
+                          "book_dir": f"$LAB_DIR/nodes/{host}/join-book"})
+    stale = Path(lab_dir) / "population-twins" / "population.json"
+    if not add_hosts and stale.is_file() and not dry_run:
+        # An entries run without the twins-only node: an earlier twins run's population must not ride along into this pack.
+        stale.unlink()
+        print(f"removed {stale} (left by an earlier twins run)")
     writes = []
     reporter_identity = None
     for node in pop["nodes"]:
@@ -171,17 +183,26 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     if reporter_identity is None:
         return [f"the reporter {reporter} is not a node in {pop_path}"]
     writes.append((pop_path, json.dumps(pop, indent=2) + "\n"))
+    if extra:
+        for node in extra:
+            try:
+                node["node_id"] = reporter_key.read_identity(data_dir(lab_dir, host_name(node)))["node_id"]
+            except (OSError, ValueError) as e:
+                return [f"{node['name']}: {e}"]
+        twins_pop = dict(pop, nodes=pop["nodes"] + extra)
+        writes.append((Path(lab_dir) / "population-twins" / "population.json", json.dumps(twins_pop, indent=2) + "\n"))
     rep_path = root / "reporter" / "reporter.json"
     rep = load(rep_path)
     rep.update(reporter_identity, operator=operator, mesh="lab", host_build=host_build, plugin_version=plugin_version)
     writes.append((rep_path, json.dumps(rep, indent=2) + "\n"))
     for path, text in writes:
         if dry_run:
-            print(f"would write {path.relative_to(root)}:")
+            print(f"would write {path.relative_to(root) if path.is_relative_to(root) else path}:")
             print("".join(f"  {line}\n" for line in text.splitlines()), end="")
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
-            print(f"wrote {path.relative_to(root)}")
+            print(f"wrote {path.relative_to(root) if path.is_relative_to(root) else path}")
     return []
 
 
@@ -217,6 +238,17 @@ def plan(root, lab_dir, day):
         if not joined:
             missing.append(f"{run}/join/{node['name']}/ (run lab/lab.sh join)")
         files += joined
+    # A twins run (LAB_TWINS=1 entries): the four-node population its 09-dispute finding ran on, and the twins-only node's join
+    # output, as lab provenance under the run (neither is committed live: lab-4 is not in population/live or nodes/).
+    twins_path = lab_dir / "population-twins" / "population.json"
+    if twins_path.is_file():
+        files.append((f"{run}/population-twins/population.json", twins_path))
+        for node in load(twins_path)["nodes"]:
+            if host_name(node) not in {host_name(n) for n in pop["nodes"]}:
+                joined = walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
+                if not joined:
+                    missing.append(f"{run}/join/{node['name']}/ (run LAB_TWINS=1 lab/lab.sh join)")
+                files += joined
     files = [(a, p) for a, p in files if not p.name.endswith(SKIP_SUFFIXES)]
     missing += [a for a, p in files if not p.is_file()]
     return [(a, p) for a, p in files if p.is_file()], missing
@@ -276,7 +308,7 @@ def main(argv=None):
     e = sub.add_parser("entries")
     e.add_argument("--operator", required=True)
     e.add_argument("--reporter", default="lab-3")
-    e.add_argument("--add-host", action="append", default=[], help="a lab host directory to add to the population")
+    e.add_argument("--add-host", action="append", default=[], help="a twins-only lab host directory (lab-4): written to the lab dir's population-twins/, not to population/live")
     p = sub.add_parser("pack")
     p.add_argument("--date", required=True)
     for s in (e, p):
