@@ -10,7 +10,7 @@
       "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's checkpoint; only the receiver's citing record cites the half it holds"
     },
     {
-      "issue": "no open issue yet (to be filed)",
+      "issue": "Mesh-LLM/capsules-plugin#136",
       "what": "each side pushing its half at completion by default",
       "why": "the pinned plugin defaults share_record_at_completion to counterparty (capsules-plugin PR #72, in the pin), but a node's setting is not in its data dir to read"
     },
