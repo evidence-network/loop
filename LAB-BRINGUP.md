@@ -378,13 +378,13 @@ over the three nodes, and its `detail` lists each node:
 - `12 join`: asks each listed node `checkpoints` and `history_card/1` from
   lab-3 and judges each answer under the key the node's host announces.
   Through each node's own console (`LOOP_NODE_CONSOLES`, which `loop` sets)
-  it runs the plugin's `doctor` with `probe` and `join`: both probes must
-  match, and the commitment join returns must verify under the listed key.
-  The controller binding (fixed upstream in capsules-plugin PR #121, not in
-  the pinned build) and the signed join/1
-  the join switch sends the reporter (in the pin; step 12 does not read it
-  yet) read NOT_CHECKED, so the step reads
-  NOT_CHECKED at best. A FAIL names the node and the check.
+  it reads the controller binding: the digest the node's `doctor` reports
+  must match the one its signed commitment names, or neither names one.
+  The plugin's own `join` and `doctor --probe`, the binding ceremony itself
+  (fixed upstream in capsules-plugin PR #121, not in the pinned build) and
+  the signed join/1 the join switch sends the reporter (in the pin; step 12
+  does not read it yet) read NOT_CHECKED, so the step reads NOT_CHECKED at
+  best. A FAIL names the node and the check.
 
 A FAIL is reported with the tarball as it is; do not work around it on the
 host.

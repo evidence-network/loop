@@ -177,7 +177,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
         f = self.decide(started)
         # Bob finds no verifying declaration for Alice's key and falls back to the stopgap.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual(f["not_checked"][0]["issue"], "Mesh-LLM/capsules-plugin#54")
+        self.assertEqual(f["not_checked"][0]["issue"], step.ACCEPTANCE_ISSUE)
         self.assertIn("operator_stopgap (bob)", f["detail"])
         self.assert_clean()
 
@@ -210,7 +210,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
                 started = self.dealt(settings=self.with_settings(alice={"accepted_via": via}))
                 f = self.decide(started)
                 self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
-                self.assertEqual([n["issue"] for n in f["not_checked"]], ["Mesh-LLM/capsules-plugin#54"])
+                self.assertEqual([n["issue"] for n in f["not_checked"]], [step.ACCEPTANCE_ISSUE])
                 self.assertIn(f"{via} (alice)", f["not_checked"][0]["why"])
                 self.assertEqual(self.failed(), set())
                 self.assert_clean()
@@ -282,7 +282,7 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
-        for i in ("Mesh-LLM/capsules-plugin#49", "Mesh-LLM/capsules-plugin#54",
+        for i in ("Mesh-LLM/capsules-plugin#49", step.ACCEPTANCE_ISSUE,
                   "action-state-group/agent-action-capsule#431", step.live.NO_ISSUE_YET):
             self.assertIn(i, issues)
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
@@ -296,7 +296,7 @@ class Step05DealLiveTest(unittest.TestCase):
         default = next(n for n in f["not_checked"] if n["what"] == step.LIVE_DEFAULT["what"])
         self.assertIn("capsules-plugin PR #72, in the pin", default["why"])
         [acc] = self.acceptance_entries(f)
-        self.assertEqual(acc["issue"], "Mesh-LLM/capsules-plugin#54")
+        self.assertEqual(acc["issue"], step.ACCEPTANCE_ISSUE)
         self.assertIn("capsules-plugin PR #77, in the pin", acc["why"])
         self.assertIn("say host_announced: no node sends a controller declaration yet", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
@@ -341,7 +341,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
         self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
-        self.assertNotIn("Mesh-LLM/capsules-plugin#54", {n["issue"] for n in f["not_checked"]})
+        self.assertNotIn(step.ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
         self.assertEqual(finding.check(self.findings), [])
 
     def test_live_a_declaration_anchored_on_the_nodes_own_key_fails(self):

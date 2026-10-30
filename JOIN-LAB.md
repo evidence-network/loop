@@ -130,10 +130,12 @@ These are never shown as checked.
   reads as unbound. Step 12 states this outside its assertion.
 - Mesh nodes keep their book in the capsules plugin. The pinned plugin has
   its own `join` and `doctor --probe` (capsules-plugin PR #81) and signs and
-  serves the commitment (PR #75); step 12 runs both through the node's own
-  console, and asks the node through the daily reporter too. It does not bind
-  the node key to a controller (fixed upstream in capsules-plugin PR #121, not in
-  the pinned build). The pinned plugin's
+  serves the commitment (PR #75); step 12 asks the node through the daily
+  reporter and, through the node's own console, reads the controller binding
+  its `doctor` reports against the one its commitment names. It does not run
+  the plugin's `join` or `doctor --probe` itself. The pinned plugin does not
+  bind the node key to a controller (fixed upstream in capsules-plugin PR #121,
+  not in the pinned build). The pinned plugin's
   join switch (capsules-plugin PR #85, off by default) sends the reporter node
   a signed join/1; step 12 does not read what the reporter received yet.
 - No witness is registered, so checkpoints are unwitnessed.
