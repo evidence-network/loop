@@ -1,14 +1,9 @@
 {
-  "asserts": "each node seals records naming both halves and citing the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest, with a producer signature that verifies in a second language under the key the receiver accepted for the sender, and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
-  "detail": "node stevenmih-1: 26 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 9 sealed under the current build (accepted the half's key via host_announced; 9 tied to the node's own half, 0 held, never tied, 0 ambiguous), 17 earlier, not judged for acceptance or tie; node stevenmih-1 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:27Z; the push itself is judged from the sealed records; node stevenmih-2: 16 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 6 sealed under the current build (accepted the half's key via host_announced; 6 tied to the node's own half, 0 held, never tied, 0 ambiguous), 10 earlier, not judged for acceptance or tie; node stevenmih-2 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:32Z; the push itself is judged from the sealed records; node stevenmih-3: 22 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 8 sealed under the current build (accepted the half's key via host_announced; 8 tied to the node's own half, 0 held, never tied, 0 ambiguous), 14 earlier, not judged for acceptance or tie; node stevenmih-3 reports (node-reported, unsigned) share_record_at_completion counterparty from default at 2026-10-30T07:19:37Z; the push itself is judged from the sealed records; exchanges with a half held on each of two nodes (joined on client_nonce): 29 (nonce 3bf4d449-d9b7-4495-ab80-b551062269f6 is not one exchange held on two nodes: stevenmih-2 requested; nonce 6e2f156e-6246-4614-9cc9-3a0c8f750ac6 is not one exchange held on two nodes: stevenmih-1 requested; nonce 879aa6f2-77d5-4a17-b89d-7ea5dd1383b5 is not one exchange held on two nodes: stevenmih-3 served; nonce e564a97e-e5de-472f-a59e-c4cae860f725 is not one exchange held on two nodes: stevenmih-3 served; nonce f37a5007-3b1c-468b-9d33-d59d8c343ca6 is not one exchange held on two nodes: stevenmih-3 served; nonce f8dfc0a0-dc3c-4e09-8a0a-c4b217395388 is not one exchange held on two nodes: stevenmih-1 requested); judged under the current build (sealed since 2026-10-30T07:20:00Z): 23 halves, 23 tied to the node's own half, 0 held, never tied, 0 ambiguous; 41 sealed earlier, not judged. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
-  "finished": "2026-10-30T09:10:13Z",
+  "asserts": "each node seals records naming both halves and citing the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest, with a producer signature that verifies in a second language under the key the receiver accepted for the sender, and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration, whose binding names that key and applies (form, both signatures and the window pass in a second language)",
+  "detail": "node stevenmih-1: did not hold: held-18 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); held-20 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); held-22 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); held-25 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); node stevenmih-1 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:27Z; the push itself is judged from the sealed records; node stevenmih-2: did not hold: held-11 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-12 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-13 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-16 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); node stevenmih-2 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:32Z; the push itself is judged from the sealed records; node stevenmih-3: did not hold: held-15 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-16 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-17 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-18 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); held-19 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); held-21 binding (binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL); held-22 binding (binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL); node stevenmih-3 reports (node-reported, unsigned) share_record_at_completion counterparty from default at 2026-10-30T07:19:37Z; the push itself is judged from the sealed records; exchanges with a half held on each of two nodes (joined on client_nonce): 29 (nonce 3bf4d449-d9b7-4495-ab80-b551062269f6 is not one exchange held on two nodes: stevenmih-2 requested; nonce 6e2f156e-6246-4614-9cc9-3a0c8f750ac6 is not one exchange held on two nodes: stevenmih-1 requested; nonce 879aa6f2-77d5-4a17-b89d-7ea5dd1383b5 is not one exchange held on two nodes: stevenmih-3 served; nonce e564a97e-e5de-472f-a59e-c4cae860f725 is not one exchange held on two nodes: stevenmih-3 served; nonce f37a5007-3b1c-468b-9d33-d59d8c343ca6 is not one exchange held on two nodes: stevenmih-3 served; nonce f8dfc0a0-dc3c-4e09-8a0a-c4b217395388 is not one exchange held on two nodes: stevenmih-1 requested); judged under the current build (sealed since 2026-10-30T07:20:00Z): 23 halves, 23 tied to the node's own half, 0 held, never tied, 0 ambiguous; 41 sealed earlier, not judged. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
+  "finished": "2026-10-30T15:16:46Z",
   "name": "deal",
   "not_checked": [
-    {
-      "issue": "action-state-group/agent-action-capsule#432",
-      "what": "the controller declaration or operator binding a node accepted a half under",
-      "why": "the citing record names the binding's digest (and its anchor key when it has one); its bytes are not in the data dir, and no released verifier checks controller-binding/0"
-    },
     {
       "issue": "evidence-network/loop: a lab node that publishes no operator binding (lab.sh bind)",
       "what": "halves from an unbound sender",
@@ -354,7 +349,7 @@
     },
     {
       "path": "stevenmih-1/checks.json",
-      "sha256": "7f33f404f9486f7711396fc97449467c55aab0687e9deb624ebd546bcf23d690"
+      "sha256": "7b88e88d180446f0d67e89aafad0f1c3d8390edeaaa2852460736d591a785ea7"
     },
     {
       "path": "stevenmih-1/sharing-effective.json",
@@ -554,7 +549,7 @@
     },
     {
       "path": "stevenmih-2/checks.json",
-      "sha256": "6e8107d7b61e3ca2f0a0b059cc43cbc707986c309bbacecdaada7ca9565abfc8"
+      "sha256": "f0b1a74ed39a5bb7311254a8b2d1575d95ddc8fedd467738e42c7f4ff8da95fa"
     },
     {
       "path": "stevenmih-2/sharing-effective.json",
@@ -826,14 +821,14 @@
     },
     {
       "path": "stevenmih-3/checks.json",
-      "sha256": "55cc09d56577a3b610f22fca6c6f50b9bc39c233fe496d2159002f6694cae12a"
+      "sha256": "75e9fc4924bbfbe21a3a777bc17da26af543cf5ba0d714647ca594fa50f30711"
     },
     {
       "path": "stevenmih-3/sharing-effective.json",
       "sha256": "05386f34c00e98ddf56857a7306076636f9d6847437667039cd8fca96cea7de6"
     }
   ],
-  "result": "NOT_CHECKED",
-  "started": "2026-10-30T09:10:11Z",
+  "result": "FAIL",
+  "started": "2026-10-30T15:16:44Z",
   "step": "05"
 }
