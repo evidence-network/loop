@@ -23,24 +23,25 @@ a change that breaks something shows up as a step that stops passing. On the liv
 is that no step that passed stops passing, not that every step passes; on the rehearsal
 population every step must pass.
 
-One loop, two layers:
+One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross` (default `mesh`):
 
-- **Per ecosystem**: the same steps, run inside one ecosystem with its own fixtures and nodes.
-  Today that is mesh nodes running the capsules plugin; a second ecosystem is planned.
+- **Per ecosystem**: the same steps 01 to 12, run inside one ecosystem with its own fixtures
+  and nodes. Today that is `mesh`: mesh nodes running the capsules plugin. `muse` has no steps
+  yet; each of its steps reads `NOT_CHECKED`.
 - **Across ecosystems**: steps where two ecosystems meet (one side admits and deals with the
-  other, both sides seal their half, an outside verifier checks the pair), numbered 13 and
-  up. Planned.
+  other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
+  and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
 
-What runs today: `loop.sh --stage 1` runs steps 01, 02, 03 and 12. Each pull request runs them
+Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03 and 12)
 against the rehearsal population (simulated nodes on a mock rail, no real payments) and fails
-if any of them fails; runs against the live lab nodes are reported and do not gate. Planned:
-a gate on the live runs that fails a version bump when a step goes from passing to failing or
-to not checked ([#149](https://github.com/evidence-network/loop/issues/149)), and a switch
-that picks the ecosystem, `--ecosystem mesh|muse|cross`
-([#150](https://github.com/evidence-network/loop/issues/150)).
+if any step fails. The ecosystem gate keeps each step's last live result per ecosystem, with
+the pins it ran under, in [`baseline/`](baseline/README.md): a pull request that changes a pin
+must bring a new live run, and fails if a step that passed now fails, is missing or reads
+`NOT_CHECKED`.
 
-How the network grows is a separate report, not part of this check: planned as its own page on
-the site, beside `/stats/` ([#151](https://github.com/evidence-network/loop/issues/151)).
+How the network grows is a separate report, not part of either gate:
+[`/growth/`](https://evidence-network.github.io/loop/growth/), beside
+[`/stats/`](https://evidence-network.github.io/loop/stats/). See [site/README.md](site/README.md).
 
 ## What is here
 
@@ -54,7 +55,8 @@ the site, beside `/stats/` ([#151](https://github.com/evidence-network/loop/issu
 - [`reporter/`](reporter/README.md): the reporter's public key and how it runs. It is a node
   like any other and asks nothing beyond the two questions.
 - [`steps/`](steps/README.md) and `loop.sh`: the loop's steps and the script that runs them,
-  one finding per step.
+  one finding per step. [`baseline/`](baseline/README.md): the ecosystem gate's last accepted
+  live results.
 - `scripts/`: the checks CI runs, and the reporter's scripts. Each runs with plain `python3`.
 
 ## Running a node on the network
