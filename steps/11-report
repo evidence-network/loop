@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Step 11 Report: the lab's report page renders only from step 08's manifest and step 10's Results, every number on
-it has a denominator, nothing on it is a score, and the page's byte digest is sealed in the reporting node's book.
+"""Step 11 Report: the lab's report page renders only from step 08's manifest, step 10's Results and the deal and
+settlement records they cite, every number on it has a denominator, nothing on it is a score, and the page's byte
+digest is sealed in the reporting node's book.
 
 Usage: 11-report --population DIR --out RUN/11-report
 
-RUN is the loop run (the parent of --out). This step reads no record bytes:
+RUN is the loop run (the parent of --out). The only record bytes this step reads
+are the deal and settlement records 10's Results cite, for the exchanges figure:
 
   inputs        08's finding passes steps/finding.py's check and names its
                 manifest in proof. 10's finding does too, and is PASS. Each of
@@ -14,10 +16,13 @@ RUN is the loop run (the parent of --out). This step reads no record bytes:
                 manifest gives it, in a step 08 reproduced. An input that does
                 not hold is a FAIL and nothing is rendered.
   figures       counted from those inputs: records and steps per kind, each
-                pack term's outcomes, the roll-up, and paid exchanges, each
-                from the payer's sealed deal, the only deal record there is
-                (capsules-plugin#134 owns the provider's). Each figure cites
-                its records by digest.
+                pack term's outcomes, the roll-up, and paid exchanges. 10's
+                Results judge per step, so paid exchanges are counted from the
+                contents of the records they cite, each matching 08's digest: a
+                paid exchange is one payer's sealed deal, the only deal record
+                there is (capsules-plugin#134 owns the provider's), and an
+                exchange is one exchange id. A file no Result cites counts for
+                nothing. Each figure cites its records by digest.
   page          the figures are sealed as one report Result, and the pinned
                 `capsulectl book report build --seal` renders it and seals the
                 page's sha256 in the reporting book.
@@ -65,8 +70,8 @@ PACK_ISSUE = judge10.PACK_ISSUE
 VIEWER_ISSUE = "action-state-group/capsule-viewer#158"
 PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
 PINNED = ["capsulectl", "capsulectl-book"]
-ASSERTS = ("the report page renders only from step 08's manifest and step 10's Results, every number on it has a "
-           "denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book")
+ASSERTS = ("the report page renders only from step 08's manifest, step 10's Results and the deal and settlement "
+           "records they cite, every number on it has a denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book")
 CONTRACT = "loop-report@v0"
 LIVE_LABEL = ("The records are operator-collected from the lab's own nodes; this proves the report, not how an operator "
               "gets bundles from peers.")
@@ -142,12 +147,62 @@ def read_results(judged, manifest, capsulectl, judge_key, tmp):
     return finer, rollup, cited, problems
 
 
+# --- Exchanges: counted from what the cited records say, not from their names --------------
+def record_holds(path, sha):
+    """The file's bytes have the sha256 08's manifest gives it."""
+    return path.is_file() and finding.sha256(path) == sha
+
+
+def cited_records(source, cited, pack):
+    """[(ref, path, sha256)] of the deal and settlement records the Results cite; only these are read."""
+    steps = {nn for nn, k in pack["kinds"].items() if k["kind"] in ("deal", "settlement")}
+    return [(ref, source / ref, sha) for ref, sha in sorted(cited.items()) if ref[:2] in steps]
+
+
+def documents(path):
+    """The JSON objects a record holds, one for a .json file, one per line for a .jsonl one; none if it is neither."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        docs = [json.loads(line) for line in text.splitlines() if line.strip()] if path.suffix == ".jsonl" \
+            else [json.loads(text)]
+    except ValueError:
+        return []
+    return [d for d in docs if isinstance(d, dict)]
+
+
+def deal_of(doc):
+    """The deal id a record seals, or None: a sealed step's top-level deal_id, or the stand-in's buyer-named deal."""
+    if isinstance(doc.get("deal_id"), str) and doc["deal_id"]:
+        return doc["deal_id"]
+    return doc["deal"] if isinstance(doc.get("deal"), str) and doc["deal"] and doc.get("buyer") else None
+
+
+def exchange_of(doc):
+    for key in ("exchange", "exchange_id"):
+        if isinstance(doc.get(key), str) and doc[key]:
+            return doc[key]
+    return None
+
+
+def count_exchanges(source, cited, pack):
+    """{"deals": {id: refs}, "exchanges": {id: refs}} from the cited records' contents; raises Refused on a bad digest."""
+    found = {"deals": {}, "exchanges": {}}
+    for ref, path, sha in cited_records(source, cited, pack):
+        if not record_holds(path, sha):
+            raise Refused(f"{ref} does not match the sha256 08's manifest gives it")
+        for doc in documents(path):
+            for name, value in (("deals", deal_of(doc)), ("exchanges", exchange_of(doc))):
+                if value:
+                    found[name].setdefault(value, set()).add(ref)
+    return found
+
+
 # --- The figures: counted from the inputs, each with its denominator ----------------------
 def figure(fid, section, text, verdict, evidence):
     return {"id": fid, "section": section, "text": text, "verdict": verdict, "evidence": sorted(evidence)}
 
 
-def render_figures(manifest, finer, rollup, cited, pack):
+def render_figures(manifest, finer, rollup, cited, pack, found):
     """The page's figures. `evidence` holds record refs until the report Result is sealed."""
     figures = []
     kinds = {nn: k["kind"] for nn, k in pack["kinds"].items()}
@@ -184,15 +239,14 @@ def render_figures(manifest, finer, rollup, cited, pack):
         f"The roll-up cites {len(judge10.evidence(rollup or {}))} of {len(finer)} finer Results: met in {count['met']} "
         f"of {n}, not met in {count['not_met']} of {n}, not evaluable in {count['not_evaluable']} of {n}.",
         next((v for v in ("not_met", "not_evaluable", "met") if count[v]), "not_evaluable"), []))
-    exchanges = [r for r in cited if Path(r).name == "exchange.json"]
-    deals = [r for r in cited if Path(r).name == "deal.json"]
-    if exchanges:
+    deals, exchanges = found["deals"], found["exchanges"]
+    if deals or exchanges:
         figures.append(figure(
             "exchanges:deals", "exchanges",
             f"Paid exchanges, each counted from the payer's sealed deal: {len(deals)} of {len(exchanges)} exchanges in "
             "the window. A free exchange gets no deal and no receipt, by design: it stays in this denominator and is "
             "no gap.",
-            "met", exchanges + deals))
+            "met", {r for refs in (*deals.values(), *exchanges.values()) for r in refs}))
     return figures
 
 
@@ -425,7 +479,8 @@ def report(run, out, population, pop, population_dir, proof, tmp):
     finer, rollup, cited, problems = read_results(judged, manifest, capsulectl, judge10.pub_hex(judge_pub), tmp)
     if problems:
         raise Refused("; ".join(problems))
-    figures = render_figures(manifest, finer, rollup, cited, load(judge10.PACK))
+    pack = load(judge10.PACK)
+    figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack))
     book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl)
     digests = {}
     for ref, sha in sorted(cited.items()):

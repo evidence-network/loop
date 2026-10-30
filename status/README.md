@@ -37,9 +37,9 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   records are all in the open month reads `NOT_CHECKED`; a step 08 did not
   reproduce is a `not_checked` entry on the row.
 - Row 11 (Report) is step 11's own finding, read like any other row. Step 11
-  renders only from 08's manifest and 10's Results, with a denominator beside
-  every number and no score anywhere, and seals the page's digest in the
-  reporting node's book. A run with neither 08's nor 10's output reports on the
+  renders only from 08's manifest, 10's Results and the deal and settlement
+  records they cite, with a denominator beside every number and no score
+  anywhere, and seals the page's digest in the reporting node's book. A run with neither 08's nor 10's output reports on the
   committed stand-in, and its detail says so. A run whose 10 is `NOT_CHECKED`
   reads `NOT_CHECKED`; a live `PASS` says its records are operator-collected
   from the lab's own nodes.
@@ -47,7 +47,8 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record
   (step 01), to the first answered request (step 07) and to the first
-  countersigned report (step 11, a placeholder until M3). Steps 01 and 11 use
+  countersigned report (held at its placeholder, even when step 11 passes,
+  since nothing is countersigned yet). Step 01 uses
   the marker step's PASS finding `finished`; step 07 uses `answered_at` in the
   `first-answered.json` its finding names in `proof`, from a valid PASS or
   NOT_CHECKED finding (never a FAIL or malformed one). Each is minus the run's

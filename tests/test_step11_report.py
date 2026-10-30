@@ -75,6 +75,20 @@ class Base(unittest.TestCase):
     def summaries(self):
         return {c["id"]: c["presentation"]["summary"] for c in self.statement()["claims"]}
 
+    def add_record(self, base, path, obj):
+        """A new record in a step, listed by 08 and judged again by 10, so 10's Results cite it."""
+        f = self.run / base / path
+        f.parent.mkdir(parents=True, exist_ok=True)
+        dump(f, obj)
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        next(e for e in m["steps"] if e["dir"] == base)["files"].append({"path": path, "sha256": finding.sha256(f)})
+        dump(v / "verified.json", m)
+        record = load(v / "finding.json")
+        record["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", record)
+        self.judge()
+
     def change_record_digest(self, reseal):
         """Change one record's sha256 in 08's manifest, after 10 sealed its Results; optionally reseal 08's proof."""
         v = self.run / "08-verify"
@@ -134,6 +148,24 @@ class InputsTest(Base):
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("step 10's finding does not hold", f["detail"])
+
+    def test_a_passing_step_11_does_not_publish_a_countersigned_number(self):
+        # Nothing is countersigned, so step 11's PASS must leave the number under that label at its placeholder.
+        import status_page
+        run = Path(self.tmp.name) / "findings" / "2026-10-30-rehearsal"
+        d = run / "11-report"
+        d.mkdir(parents=True)
+        (d / "report.html").write_text("a stand-in\n")
+        finding.write(d, result="PASS", population="rehearsal", asserts="a stand-in", pinned=[], proof=["report.html"],
+                      detail="a stand-in", started="2026-10-30T00:00:00Z")
+        dump(run / "run.json", {"stage": "1", "population": "rehearsal", "started": "2026-10-30T00:00:00Z"})
+        status_page.build(run.parent, ROOT / "versions.lock", Path(self.tmp.name) / "site")
+        page = (Path(self.tmp.name) / "site" / "index.html").read_text()
+        row = page[page.index("Minutes to the first countersigned report"):]
+        row = row[:row.index("</tr>")]
+        self.assertEqual(re.findall(r'<td class="placeholder"[^>]*>([^<]*)</td>', row),
+                         ["not measured yet (M3)", "not measured yet (M3)"])
+        self.assertNotIn('class="measured"', row)
 
     def test_a_score_like_word_is_found_and_a_longer_word_is_not(self):
         self.assertEqual(step.score_like({"a": {"trust_score": 1}}), ["/a/trust_score"])
@@ -212,18 +244,7 @@ class ReportTest(Base):
         self.assertEqual(load(out / "check.json")["check"]["page"], "match")
 
     def test_a_free_exchange_stays_in_the_denominator_and_is_no_gap(self):
-        d = self.run / "06-settle" / "free"
-        d.mkdir()
-        (d / "exchange.json").write_text('{"exchange": "fixture-free-1"}\n')
-        v = self.run / "08-verify"
-        m = load(v / "verified.json")
-        next(e for e in m["steps"] if e["dir"] == "06-settle")["files"].append(
-            {"path": "free/exchange.json", "sha256": finding.sha256(d / "exchange.json")})
-        dump(v / "verified.json", m)
-        f = load(v / "finding.json")
-        f["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
-        dump(v / "finding.json", f)
-        self.judge()
+        self.add_record("06-settle", "free/held.json", {"exchange": "fixture-free-1"})
         self.assertEqual(self.report()["result"], "PASS")
         text = self.summaries()["exchanges:deals"]
         self.assertIn("1 of 2 exchanges", text)
@@ -243,6 +264,67 @@ class ReportTest(Base):
             self.assertNotIn(word, statement)
         self.assertIn(("a check that both sides' deals agree: only the payer seals a deal for now",
                        step.PROVIDER_DEAL_ISSUE), finding.gaps(f["detail"]))
+
+    def test_the_count_comes_from_contents_not_names(self):
+        self.add_record("05-deal", "deal-copy/deal.json", {"note": "named like a deal, and not one"})
+        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertIn("sealed deal: 2 of 2 exchanges", self.summaries()["exchanges:deals"])
+
+    def test_one_deal_of_several_sealed_steps_counts_once(self):
+        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        self.add_record("05-deal", "steps/close.json", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertIn("sealed deal: 2 of 2 exchanges", self.summaries()["exchanges:deals"])
+
+    def test_more_deals_than_exchanges_fails_the_denominator_check(self):
+        self.add_record("05-deal", "steps/baseline.json", {"deal_id": "deal-random-2"})
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("'2 of 1' has no denominator", f["detail"])
+
+    def uncited_deal(self):
+        """A deal-like file and an exchange in the step dirs, which no Result cites and 08 does not list."""
+        dump(self.run / "05-deal" / "extra-deal.json", {"buyer": "mallory", "deal": "uncited-deal"})
+        dump(self.run / "06-settle" / "extra-exchange.json", {"exchange": "uncited-exchange"})
+
+    def test_planted_an_uncited_deal_like_file_does_not_change_the_count(self):
+        self.uncited_deal()
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertIn("sealed deal: 1 of 1 exchanges", self.summaries()["exchanges:deals"])
+        self.assertNotIn("uncited", json.dumps(self.statement()))
+
+    def test_mutant_counting_the_step_dirs_the_uncited_file_changes_the_count(self):
+        self.uncited_deal()
+        real = step.cited_records
+
+        def every_file(source, cited, pack):
+            listed = real(source, cited, pack)
+            seen = {path for _, path, _ in listed}
+            extra = [p for d in ("05-deal", "06-settle") for p in (source / d).rglob("*.json") if p not in seen]
+            return listed + [(str(p.relative_to(source)), p, finding.sha256(p)) for p in extra]
+        cited = {f"{e['dir']}/{x['path']}": x["sha256"] for e in load(self.run / "08-verify" / "verified.json")["steps"]
+                 for x in e["files"]}
+        pack = load(step.judge10.PACK)
+        counted = lambda: {k: len(v) for k, v in step.count_exchanges(self.run, cited, pack).items()}  # noqa: E731
+        self.assertEqual(counted(), {"deals": 1, "exchanges": 1})
+        with mock.patch.object(step, "cited_records", side_effect=every_file):
+            self.assertEqual(counted(), {"deals": 2, "exchanges": 2})
+
+    def change_cited_deal(self):
+        dump(self.run / "05-deal" / "deal.json", {"buyer": "alice", "deal": "fixture-deal-1", "provider": "mallory"})
+
+    def test_planted_a_cited_deal_changed_after_10_is_refused(self):
+        self.change_cited_deal()
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("refused, nothing rendered: 05-deal/deal.json does not match the sha256", f["detail"])
+        self.assertFalse((self.run / "11-report" / "report.html").exists())
+
+    def test_mutant_without_the_digest_check_the_changed_deal_passes(self):
+        self.change_cited_deal()
+        with mock.patch.object(step, "record_holds", return_value=True):
+            self.assertEqual(self.report()["result"], "PASS")
 
     def test_a_step_outside_the_window_stays_in_the_denominator(self):
         d = self.run / "07-ask" / "finding.json"

@@ -80,8 +80,8 @@ STEPS = (
                        "UNILATERAL.", NODE_SIDE, "M3"),
     Step(10, "Judge", "A pack runs over a window of whole closed months of the records step 08 reproduced, and its "
                       "sealed Results cite every record in the window, none missing and none extra.", HARNESS, "M3"),
-    Step(11, "Report", "The report renders only from step 08's manifest and step 10's Results, its page's digest is "
-                       "sealed in the reporting node's book, every number has a denominator, and nothing on it is a "
+    Step(11, "Report", "The report renders only from step 08's manifest, step 10's Results and the deal and settlement "
+                       "records they cite, its page's digest is sealed in the reporting node's book, every number has a denominator, and nothing on it is a "
                        "score.", HARNESS, "M3"),
     Step(12, "Join", "A new node joins with one command on the pinned release, and a probe asks its own responder "
                      "through the public path.", NODE_SIDE, "M1"),
@@ -122,7 +122,7 @@ NUMBERS = (
            "step 07 (Ask) finding's first-answered.json answered_at (the first ask answered in time with a signed "
            "artifact or a signed refusal judged allowed), minus run.json started"),
     Number("first-countersigned", "Minutes to the first countersigned report", "minutes from the run's start", "M3",
-           11, "step 11 (Report) finding's finished, minus run.json started; a placeholder until M3"),
+           11, "held at its placeholder, even when step 11 (Report) passes: nothing is countersigned yet"),
     Number("refused", "Admission decisions that were NO", "of all admission decisions", "M3", 4,
            "step 04 (Admit) finding's counts.json, refused of decisions, when the finding is a valid PASS"),
     Number("filtered", "Filtered volume beside raw volume", "filtered records of raw records", "M2", 6,
@@ -445,6 +445,8 @@ def number_value(number, run):
     if number.key == "refused":
         refused, total = refused_counts(run)
         return decided(refused, total, number.milestone), total is not None
+    if number.key == "first-countersigned":  # step 11 passing countersigns nothing, so no number goes under this label
+        return f"not measured yet ({number.milestone})", False
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False
