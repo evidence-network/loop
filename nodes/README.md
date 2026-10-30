@@ -93,6 +93,21 @@ binding verifier that `versions.lock` pins, and each subject's commitment
 carries the verdict's binding digest as `controller_binding.digest`. A `revoked` or `not_checked` verdict never joins
 them. `scripts/check_binding.py bindings` checks the verdicts.
 
+### Revocation statements
+
+Either key of a binding can withdraw it with a revocation statement
+(Controller Binding v0 §5). The lab publishes them by pull request at
+`nodes/revocations/<binding_digest>.json`: a JSON array of statements for the
+binding the file name gives, each exactly
+`{"revocation_version": "controller-binding-revocation/0", "binding", "key_id", "revoked_at", "sig"}`
+and signed by one of the binding's two keys. The loop never signs one; the key
+holder does and opens the pull request. Step 05 passes the statements to the
+pinned verifier with the binding, so a binding revoked at or before a half's
+time does not apply. CB v0 registers no place to fetch statements (CB-1), so
+the verifier knows only those it is given; this folder is the lab's.
+`scripts/check_revocations.py nodes/revocations` checks the files' shape (the
+`commitments` check); the verifier checks signatures and times.
+
 ## Leave
 
 Open a pull request that removes `nodes/<node_id>.json` and adds

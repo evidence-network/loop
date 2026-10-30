@@ -311,6 +311,7 @@ class Step05DealNoDriverTest(unittest.TestCase):
 
 
 BINDINGS = json.loads((FIXTURES / "controller-bindings.json").read_text())["cases"]
+REVOCATIONS = json.loads((FIXTURES / "controller-bindings.json").read_text())["revocations"]
 
 
 def binding_digest(text):
@@ -348,7 +349,68 @@ class Step05BindingCheckTest(unittest.TestCase):
     def test_a_binding_that_names_the_key_and_applies_is_ok(self):
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("signatures and window PASS, revocation NOT_CHECKED", detail)
+        self.assertIn("signatures and window PASS, revocation NOT_CHECKED (0 statements published in "
+                      "nodes/revocations/, none applies)", detail)
+
+    # revocation statements published at nodes/revocations/<digest>.json (loop#138)
+    def publish_revocations(self, case, statements=None):
+        digest = binding_digest(BINDINGS[case]["binding"])
+        (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
+        statements = [json.loads(REVOCATIONS[case])] if statements is None else statements
+        (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text(json.dumps(statements))
+        return digest
+
+    def test_a_published_revocation_before_the_halfs_time_makes_the_binding_not_apply(self):
+        self.publish_revocations("valid-same-controller")
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_revocation FAIL", detail)
+
+    def test_a_published_revocation_by_the_bip340_key_makes_it_not_apply_too(self):
+        self.publish_revocations("valid-nostr-key")
+        keys = BINDINGS["valid-nostr-key"]["keys"]
+        state, detail = self.check("valid-nostr-key", key=keys[1])
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_revocation FAIL", detail)
+
+    def test_a_revocation_dated_after_both_times_leaves_the_binding_applying(self):
+        # the vector's statement is revoked_at 2026-10-12, after a half issued on 2026-10-11
+        self.publish_revocations("valid-same-controller")
+        state, detail = self.check("valid-same-controller", times=("2026-10-11T00:00:00Z",))
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("revocation NOT_CHECKED (1 statements published in nodes/revocations/, none applies)", detail)
+
+    def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
+        statement = json.loads(REVOCATIONS["valid-same-controller"])
+        sig = statement["sig"]
+        statement["sig"] = ("0" if sig[0] != "0" else "1") + sig[1:]
+        self.publish_revocations("valid-same-controller", [statement])
+        self.assertEqual(self.check("valid-same-controller")[0], "ok")
+
+    def test_a_revocations_file_out_of_shape_is_refused(self):
+        good = json.loads(REVOCATIONS["valid-same-controller"])
+        digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
+        folder = self.dir / "nodes" / "revocations"
+        folder.mkdir()
+        for name, doc, why in ((f"{digest}.json", [], "non-empty array"),
+                               (f"{digest}.json", [{**good, "extra": 1}], "members are not exactly"),
+                               (f"{digest}.json", [{**good, "binding": "cd" * 32}], "for binding " + digest),
+                               (f"{digest}.json", [{**good, "revocation_version": "x"}], "not a controller-binding"),
+                               ("not-a-digest.json", [good], "not named")):
+            (folder / name).write_text(json.dumps(doc))
+            with self.assertRaises(ValueError) as e:
+                step.bv.read_revocations(folder / name)
+            self.assertIn(why, str(e.exception))
+            (folder / name).unlink()
+        self.assertEqual(step.bv.revocations(self.dir / "nodes", digest), [])
+        (folder / f"{digest}.json").write_text("not json")
+        with self.assertRaises(ValueError):
+            step.bv.revocations(self.dir / "nodes", digest)
+        import check_revocations
+        self.assertEqual(len(check_revocations.check(folder)), 1)
+        (folder / f"{digest}.json").write_text(json.dumps([good]))
+        self.assertEqual(check_revocations.check(folder), [])
+        self.assertEqual(check_revocations.check(self.dir / "absent"), [])
 
     def test_the_second_key_of_the_binding_is_ok_too_the_role_is_not_checked(self):
         keys = BINDINGS["valid-same-controller"]["keys"]
@@ -606,10 +668,67 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(acc["what"], step.LIVE_UNBOUND_WHAT)
         self.assertEqual(acc["issue"], step.LIVE_UNBOUND_ISSUE)
         self.assertIn("1 current-build halves accepted via host_announced", acc["why"])
-        self.assertIn("the sender's missing binding, not a plugin gap", acc["why"])
+        self.assertIn("the sender's missing or stale published binding, not a plugin gap", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_half_from_a_sender_outside_the_population_is_counted_not_judged(self):
+        # loop#174: lab-4, the twins-only node, is in no population; its halves are out of the step's scope.
+        prov = self.ledger() / "received-provenance.jsonl"
+        prov.write_text(prov.read_text().replace("b1" * 32, "4d" * 32))
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertFalse((self.out / "lab-a" / "checks.json").exists())
+        self.assertIn("node lab-a: holds no pushed half from a node of the population; 1 held halves from senders "
+                      "outside the population, not judged (evidence keys 9e4480104975505a (1))", f["detail"])
+        whats = {n["what"] for n in f["not_checked"]}
+        self.assertNotIn("the held half's producer signature, in a second language", whats)
+        self.assertNotIn(step.LIVE_UNBOUND_WHAT, whats)
+        self.assertIn("lab-a: a pushed half held", whats)
+        self.assertNotIn("nonce n", f["detail"])
+        self.assertFalse((self.out / "lab-a" / "held-1.json").exists())
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_an_outside_half_is_listed_in_checks_beside_the_judged_ones(self):
+        # a second held half, from outside the population, next to lab-b's
+        held = self.ledger() / "received-capsules.jsonl"
+        half = json.loads(held.read_text())
+        other = dict(half, capsule_id="ee" * 32)
+        held.write_text(held.read_text() + json.dumps(other, separators=(",", ":")) + "\n")
+        prov = self.ledger() / "received-provenance.jsonl"
+        prov.write_text(prov.read_text() + json.dumps({"capsule_id": "ee" * 32, "received_from": "4d" * 32,
+                                                       "via": "push"}) + "\n")
+        f = self.run_live()
+        doc = json.loads((self.out / "lab-a" / "checks.json").read_text())
+        self.assertEqual([c["held"] for c in doc["held"]], ["held-1"])
+        self.assertEqual(doc["outside_population"], [{"held": "held-2", "capsule_id": "ee" * 32,
+                                                      "received_from": "4d" * 32, "key_id": half["key_id"]}])
+        self.assertIn("1 held halves from senders outside the population, not judged", f["detail"])
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_sender_that_publishes_no_binding_is_accepted_on_its_listed_key(self):
+        # loop#187: the binding is optional; lab-b lists the half's key and its commitment carries no binding.
+        self.publish_binding(None)
+        f = self.run_live()
+        self.assertEqual(self.acceptance_entries(f), [])
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertIs(c["accepted"]["optional"], True)
+        self.assertEqual(c["signature"]["state"], "ok")
+        self.assertIn("1 current-build halves accepted on the evidence key their sender lists in nodes/, from "
+                      "senders whose published commitment carries no controller binding (the binding is optional, "
+                      "loop#187)", f["detail"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_sender_that_publishes_a_binding_the_record_does_not_name_stays_unbound(self):
+        self.publish_binding("cd" * 32)
+        f = self.run_live()
+        [acc] = self.acceptance_entries(f)
+        self.assertEqual(acc["what"], step.LIVE_UNBOUND_WHAT)
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertNotIn("optional", c["accepted"])
+        self.assertNotIn("loop#187", f["detail"])
 
     def test_live_a_held_half_whose_bytes_do_not_match_its_digest_fails(self):
         held = self.lab / "nodes" / "lab-a" / "data" / "ledger" / "received-capsules.jsonl"
@@ -669,12 +788,9 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(finding.check(self.findings), [])
 
     def bind_sender(self, text=None, file=True):
-        """lab-b, the sender, is a node of the population with its node_id and holds this binding as its
+        """lab-b, the sender (a node of the population, node_id b1..), holds this binding as its
         controller-binding.json (None: no file); the citing record names the binding's digest."""
         self.publish_binding("cd" * 32)
-        pop = json.loads((self.lab / "population.json").read_text())
-        pop["nodes"][1]["node_id"] = "b1" * 32
-        (self.lab / "population.json").write_text(json.dumps(pop))
         if text is not None:
             (self.lab / "nodes" / "lab-b" / "data" / step.BINDING_FILE).write_text(text)
             self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest=binding_digest(text))
@@ -793,7 +909,7 @@ class Step05DealLiveTest(unittest.TestCase):
     def list_sender(self, key=None):
         """lab-b, the node lab-a received the half from, publishes a listing with this key (default the half's)."""
         key = key or json.loads(self.held_path().read_text())["key_id"]
-        (self.nodes / "lab-b.json").write_text(json.dumps({"node_id": "lab-b", "key_id": key}))
+        (self.nodes / f"{'b1' * 32}.json").write_text(json.dumps({"node_id": "b1" * 32, "key_id": key}))
 
     def test_live_a_half_authored_under_the_key_its_sender_publishes_is_ok(self):
         self.list_sender()

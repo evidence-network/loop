@@ -1,4 +1,4 @@
 {"population":"live","nodes":[
   {"name":"lab-a","data_dir":"$LAB_DIR/nodes/lab-a/data","book_dir":null},
-  {"name":"lab-b","data_dir":"$LAB_DIR/nodes/lab-b/data","book_dir":null},
+  {"name":"lab-b","node_id":"b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1","data_dir":"$LAB_DIR/nodes/lab-b/data","book_dir":null},
   {"name":"lab-c","data_dir":null,"book_dir":null}],"rail":null}
