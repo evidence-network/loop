@@ -578,14 +578,15 @@ KNOWN_KEY_TYPES = {"ed25519", "bip340"}  # AAC#457 defines these two; any other 
 UNSUPPORTED_KEY_TYPES = {"bip340"}
 
 
-def unsupported_key_types(raw):
+def unsupported_key_types(raw, nkeys):
     """The key types a binding declares in `key_types` that the pinned verifier lacks, sorted; none when any
-    declared type is not one AAC#457 defines (the binding is then malformed, not unsupported)."""
+    declared type is not one AAC#457 defines or the list is not one token per key (the binding is then malformed,
+    not unsupported)."""
     try:
         types = json.loads(raw).get("key_types")
     except (ValueError, AttributeError):
         return []
-    if not isinstance(types, list) or not all(isinstance(t, str) and t in KNOWN_KEY_TYPES for t in types):
+    if not isinstance(types, list) or len(types) != nkeys or not all(isinstance(t, str) and t in KNOWN_KEY_TYPES for t in types):
         return []
     return sorted(set(types) & UNSUPPORTED_KEY_TYPES)
 
@@ -636,7 +637,7 @@ def binding_check(digest, half, citing, peers):
         return "unread", (f"{name}'s {BINDING_FILE} is binding {report.get('binding_digest')}, not the {digest} the "
                           f"citing record names (the node may have bound again since)")
     props = report.get("properties") or {}
-    if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw)):
+    if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw, len(report.get("keys") or []))):
         return "unsupported_key_type", (f"binding {digest} ({name}) declares key type {', '.join(lacking)}, which the "
                                         f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE}); signatures not verified")
     if verdict == "bad":
