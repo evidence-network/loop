@@ -6,7 +6,9 @@ LOOP_REQUIRE_TOOLS=1 (CI, after the setups ran), fail to load. The
 reporter backend runs against a fake reporter console on localhost.
 Fixtures: tests/fixtures/step12/, made by make_fixtures.py.
 """
+import base64
 import contextlib
+import copy
 import io
 import importlib.machinery
 import importlib.util
@@ -174,7 +176,7 @@ class FakeConsole:
         self.answers, self.announced, self.own = answers, announced, own
         self.doctor, self.committed = doctor, committed
         self.doctor_raw, self.problems = doctor_raw, list(problems)
-        self.doctor_asked, self.fetched = 0, []
+        self.doctor_asked, self.fetched, self.doctor_bodies, self.joins = 0, [], [], []
         self.me, self.key_id, self.announced_key = me, key_id or LISTED, announced_key
         self.asked = []
 
@@ -199,8 +201,12 @@ class FakeConsole:
                     if fake.me is None:
                         return self.reply(404, b"no such tool")
                     return self.reply(200, json.dumps({"commitment": {"node_id": fake.me}}).encode())
+                if self.path.endswith("/tools/join"):
+                    fake.joins.append(body)
+                    return self.reply(404, b"no such tool")
                 if self.path.endswith("/tools/doctor"):
                     fake.doctor_asked += 1
+                    fake.doctor_bodies.append(body)
                     if fake.doctor_raw is not None:
                         return self.reply(200, json.dumps(fake.doctor_raw).encode())
                     if fake.doctor is None:
@@ -300,7 +306,10 @@ class ReporterBackendTest(Tmp):
         return json.loads((self.out / "finding.json").read_text())
 
     def per_node(self, r):
-        return [i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" not in i["what"]]
+        """The probe answers' per-node entries: not the binding's, nor the plugin's doctor --probe and join's."""
+        return [i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" not in i["what"]
+                and "doctor --probe" not in i["what"] and "the plugin's" not in i["what"]
+                and "commitment/1" not in i["what"]]
 
     def test_with_both_flags_the_reporter_node_is_asked_through_the_second_console(self):
         r = self.run_lab("self", "second")
@@ -406,16 +415,20 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         for n in ("lab-1", "lab-2", "lab-3"):
             self.assertIn(f"{n}: doctor reports no controller binding held, and the signed commitment names none", r["detail"])
-        self.assertEqual([i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]], [])
+        self.assertEqual([i["what"] for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]],
+                         [f"{n}: the controller binding" for n in ("lab-1", "lab-2", "lab-3")])
+        self.assertTrue(all(i["why"].startswith("no controller binding recorded") for i in r["not_checked"]
+                            if i["what"].startswith("lab-") and "binding" in i["what"]))
 
     def test_each_node_doctor_is_asked_through_its_own_console_and_its_commitment_through_the_asker(self):
         d1, d2 = "1" * 64, "2" * 64
         r = self.run_lab("self", "second", doctor=("bound", self.D), committed={"1" * 64: d1, "2" * 64: d2, "3" * 64: self.D},
                          own_consoles={"lab-1": ("bound", d1), "lab-2": ("bound", d2)})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertEqual(self.own["lab-1"].doctor_asked, 1)
-        self.assertEqual(self.own["lab-2"].doctor_asked, 1)
-        self.assertEqual(self.consoles["reporter"].doctor_asked, 1)  # the self node's, through --console
+        # Each node's doctor: the binding read, then --probe before join, then the binding after join.
+        for c in (self.own["lab-1"], self.own["lab-2"], self.consoles["reporter"]):  # the self node's is --console
+            self.assertEqual(c.doctor_bodies, [{}, {"probe": True}, {}])
+            self.assertEqual(c.joins, [{}])
         self.assertEqual(sorted(self.consoles["reporter"].fetched), ["1" * 64, "2" * 64])
         self.assertEqual(self.consoles["second"].fetched, ["3" * 64])
         for n, d in (("lab-1", d1), ("lab-2", d2), ("lab-3", self.D)):
@@ -459,7 +472,7 @@ class ReporterBackendTest(Tmp):
     def test_a_flag_overrides_the_environment_for_the_same_node(self):
         r = self.run_lab("self", "second", doctor=("unbound", None), own_consoles={"lab-1": ("bound", "1" * 64)},
                          committed={"1" * 64: "1" * 64}, env="lab-1=http://127.0.0.1:9")
-        self.assertEqual(self.own["lab-1"].doctor_asked, 1)
+        self.assertEqual(self.own["lab-1"].doctor_asked, 3)
         self.assertIn("lab-1: doctor reports the controller binding bound", r["detail"])
 
     def test_a_node_console_for_a_node_not_in_the_population_is_refused(self):
@@ -512,9 +525,15 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertTrue({"evidence-network/loop: step 12's reporter probe backend drives the plugin's join",
-                         "evidence-network/loop: step 12's reporter probe backend drives the plugin's doctor --probe",
-                         "no open issue yet (to be filed)"} <= issues, issues)
+        self.assertTrue({"action-state-group/agent-action-capsule#432", "no open issue yet (to be filed)"} <= issues,
+                        issues)
+        # The plugin's join and doctor --probe are no longer loop-wide gaps: per node, and here no console is held.
+        self.assertNotIn("one command that binds the key, creates the book and publishes the commitment on a Mesh "
+                         "node", [i["what"] for i in r["not_checked"]])
+        self.assertNotIn("doctor --probe on a Mesh node", [i["what"] for i in r["not_checked"]])
+        self.assertIn({"what": "lab-1: the plugin's doctor --probe and join",
+                       "why": "they are reachable only through the node's own console, which this run does not hold "
+                              "(--node-console)", "issue": step.NODE_CONSOLE_ISSUE}, r["not_checked"])
         self.assertIn("lab-1/attempts", " ".join(p["path"] for p in r["proof"]))
 
     def test_an_answer_verified_under_a_key_other_than_the_listed_one_is_a_fail(self):
@@ -531,6 +550,398 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "absence", "history_card": "absence"})
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertTrue(any("no verifiable answer" in i["why"] for i in r["not_checked"]))
+
+
+ALICE = FIX / "joined" / "alice"
+ALICE_DOC = json.loads((ALICE / "commitment.json").read_text())
+ALICE_ID = ALICE_DOC["node_id"]
+ALICE_ENTRY = {"name": "alice", "node_id": ALICE_ID, "key_id": ALICE_DOC["key_id"],
+               "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}
+OPENSSL_ = shutil.which("openssl")
+NO_OPENSSL = "openssl not on PATH: step 03's checker verifies the commitment's signature with it"
+
+
+def plugin_fixture(name, digest=None):
+    """tests/fixtures/step12/plugin/<name>.json with its markers filled: alice's signed commitment pair."""
+    text = (FIX / "plugin" / f"{name}.json").read_text()
+    for marker, value in (("@KEY_ID@", ALICE_DOC["key_id"]), ("@ANCHOR@", "a" * 64), ("@BOOK@", "/book"),
+                          ("@POLICY_DIGEST@", ALICE_DOC["lcap"]["policy_digest"])):
+        text = text.replace(marker, value)
+    reply = json.loads(text)
+    if "commitment" in reply:
+        reply["commitment"] = {"commitment": copy.deepcopy(ALICE_DOC),
+                               "policy": base64.b64encode((ALICE / "disclosure-policy.json").read_bytes()).decode()}
+    return reply
+
+
+def with_binding(reply, state):
+    """`reply` with its controller_binding finding set to `state`: ("bound", digest), ("unbound", None), or None
+    for no such finding."""
+    findings = [f for f in reply["findings"] if f["check"] != "controller_binding"]
+    if state is not None:
+        f = {"check": "controller_binding", "state": state[0], "detail": "d"}
+        if state[1]:
+            f["records"] = [state[1]]
+        findings.append(f)
+    return {**reply, "findings": findings}
+
+
+class PluginConsole:
+    """A node's own console, as the pinned capsules plugin answers on it: commitment, doctor (with and without
+    probe) and join, from tests/fixtures/step12/plugin/. `before` is the binding doctor reports until join is
+    called, `after` the one it reports from then on; `doctor`, `join` and `commitment` change those replies."""
+
+    def __init__(self, node_id=ALICE_ID, before=("unbound", None), after="same", doctor=None, join=None,
+                 key_id=None):
+        fake = self
+        self.node_id, self.before = node_id, before
+        self.after = before if after == "same" else after
+        self.doctor_change, self.join_change = doctor, join
+        self.joins, self.doctor_bodies, self.key_id = [], [], key_id or ALICE_DOC["key_id"]
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, status, body):
+                self.send_response(status)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path.endswith("/tools/commitment"):
+                    return self.reply(200, json.dumps({"commitment": {"node_id": fake.node_id}}).encode())
+                if self.path.endswith("/tools/mesh_commitment_fetch"):  # as the asker of the self node
+                    return self.reply(200, json.dumps({"commitment": {"node_id": body["peer_id"],
+                                                                      "key_id": fake.key_id}}).encode())
+                if self.path.endswith("/tools/doctor"):
+                    fake.doctor_bodies.append(body)
+                    reply = plugin_fixture("doctor")
+                    if not body.get("probe"):
+                        reply["findings"] = [f for f in reply["findings"] if not f["check"].startswith("probe_")]
+                    reply = with_binding(reply, fake.after if fake.joins else fake.before)
+                    if body.get("probe") and fake.doctor_change:
+                        reply = fake.doctor_change(reply)
+                    if reply is None:
+                        return self.reply(500, b"doctor task did not complete")
+                    return self.reply(200, json.dumps(reply).encode())
+                if self.path.endswith("/tools/join"):
+                    fake.joins.append(body)
+                    reply = with_binding(plugin_fixture("join"), fake.before)
+                    if fake.join_change:
+                        reply = fake.join_change(reply)
+                    return self.reply(200, json.dumps(reply).encode())
+                self.reply(404, b"no such tool")
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def probe_state(check, state, detail="d"):
+    def change(reply):
+        for f in reply["findings"]:
+            if f["check"] == check:
+                f["state"], f["detail"] = state, detail
+        return reply
+    return change
+
+
+def commitment_change(change):
+    def join(reply):
+        change(reply["commitment"])
+        return reply
+    return join
+
+
+@unittest.skipUnless(OPENSSL_, NO_OPENSSL)
+class PluginToolsTest(Tmp):
+    """The pinned plugin's doctor --probe and join, through the node's own console (check_node_tools)."""
+
+    def setUp(self):
+        super().setUp()
+        self.published = Path(self.tmp.name) / "published"
+        self.published.mkdir()
+        self.real_published, step.PUBLISHED = step.PUBLISHED, self.published
+
+    def tearDown(self):
+        step.PUBLISHED = self.real_published
+        super().tearDown()
+
+    def tools(self, entry=ALICE_ENTRY, **kw):
+        kw.setdefault("before", ("bound", "d" * 64))  # an unbound node is NOT_CHECKED, which the tests below pin
+        console = PluginConsole(**kw)
+        node_dir = self.out / "alice"
+        node_dir.mkdir(exist_ok=True)
+        try:
+            fails, nc, proof, lines = step.check_node_tools("alice", entry, console.url, node_dir, 5)
+        finally:
+            console.close()
+        self.console = console
+        for p in proof:
+            self.assertTrue((node_dir / p).is_file(), p)
+        return fails, nc, proof, lines
+
+    def whats(self, nc):
+        return [i["what"] for i in nc]
+
+    def test_a_healthy_bound_node_holds_on_every_part(self):
+        fails, nc, proof, lines = self.tools(before=("bound", "d" * 64))
+        self.assertEqual((fails, nc), ([], []))
+        self.assertEqual(self.console.doctor_bodies, [{"probe": True}, {}])
+        self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
+        self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
+                                 "doctor-after.json"])
+        self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), ALICE_DOC)
+        self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
+        self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))
+
+    def test_a_probe_doctor_finds_mismatched_is_a_fail(self):
+        for check in step.DOCTOR_PROBES:
+            fails, nc, _, _ = self.tools(doctor=probe_state(check, "mismatch", "the answer does not verify"))
+            self.assertEqual(fails, [f"alice: doctor --probe {check}: mismatch (the answer does not verify)"])
+
+    def test_a_probe_the_plugin_did_not_run_is_not_checked(self):
+        fails, nc, _, _ = self.tools(doctor=probe_state("probe_checkpoints", "NOT_CHECKED", "there is no checkpoint"))
+        self.assertEqual(fails, [])
+        self.assertEqual(self.whats(nc), ["alice: doctor --probe probe_checkpoints"])
+        self.assertIn("there is no checkpoint", nc[0]["why"])
+
+    def test_a_doctor_with_no_probe_findings_is_not_checked_never_fail(self):
+        def older(reply):
+            reply["findings"] = [f for f in reply["findings"] if not f["check"].startswith("probe_")]
+            return reply
+        fails, nc, _, _ = self.tools(doctor=older, before=("bound", "d" * 64))
+        self.assertEqual(fails, [])
+        self.assertEqual(self.whats(nc), ["alice: doctor --probe probe_checkpoints",
+                                          "alice: doctor --probe probe_history_card"])
+
+    def test_a_served_commitment_that_does_not_carry_the_policy_is_a_fail(self):
+        fails, _, _, _ = self.tools(doctor=probe_state(
+            "policy_in_commitment", "missing", "the commitment served on commitment/1 advertises policy x, but "
+                                               "this node answers under y"))
+        self.assertEqual(len(fails), 1, fails)
+        self.assertIn("alice: doctor policy_in_commitment: missing (the commitment served", fails[0])
+
+    def test_no_commitment_served_yet_is_not_checked(self):
+        fails, nc, _, _ = self.tools(doctor=probe_state("policy_in_commitment", "missing",
+                                                        "no commitment is served: no checkpoint yet"))
+        self.assertEqual(fails, [])
+        self.assertIn("alice: the commitment the node serves on commitment/1, carrying the policy it answers under",
+                      self.whats(nc))
+
+    def test_a_join_commitment_altered_after_signing_is_a_fail(self):
+        fails, _, _, _ = self.tools(join=commitment_change(lambda pair: pair["commitment"].update(
+            answers_within="PT24H")))
+        self.assertEqual(fails, ["alice: join's commitment does not verify: signature does not verify under spki"])
+
+    def test_policy_bytes_other_than_the_signed_digest_are_a_fail(self):
+        def other_policy(pair):
+            pair["policy"] = base64.b64encode(b'{"policy": {}}').decode()
+        fails, _, _, _ = self.tools(join=commitment_change(other_policy))
+        self.assertTrue(fails, fails)
+        self.assertTrue(all("join's commitment does not verify: lcap.policy_digest" in f for f in fails), fails)
+
+    def test_a_join_commitment_under_another_key_or_for_another_node_is_a_fail(self):
+        fails, _, _, _ = self.tools(entry={**ALICE_ENTRY, "key_id": "7" * 64})
+        self.assertEqual(fails, [f"alice: join's commitment is under key {ALICE_DOC['key_id']}, not the listed key"])
+        fails, _, _, _ = self.tools(entry={**ALICE_ENTRY, "node_id": "8" * 64}, node_id="8" * 64)
+        self.assertEqual(fails, [f"alice: join's commitment is for node {ALICE_ID}, not this node"])
+
+    def test_a_commitment_pair_that_is_not_one_is_a_fail(self):
+        fails, _, _, _ = self.tools(join=lambda reply: {**reply, "commitment": {"commitment": [1], "policy": "x"}})
+        self.assertEqual(len(fails), 1, fails)
+        self.assertIn("join's commitment pair is not {commitment, policy}", fails[0])
+
+    def test_join_returning_no_commitment_is_not_checked(self):
+        fails, nc, proof, _ = self.tools(join=lambda reply: {**reply, "commitment": None})
+        self.assertEqual(fails, [])
+        self.assertEqual(self.whats(nc), ["alice: the commitment join returns"])
+        self.assertNotIn("commitment.json", proof)
+
+    def test_a_pending_join_is_not_checked_never_a_pass(self):
+        pending = "the first checkpoint: the cadence cuts it after this node's first exchange; run join again then"
+        fails, nc, _, _ = self.tools(join=lambda reply: {**reply, "joined": False, "pending": [pending]})
+        self.assertEqual(fails, [])
+        self.assertEqual(self.whats(nc), ["alice: the plugin's join"])
+        self.assertEqual(nc[0]["why"], "join reports pending: " + pending)
+
+    def test_a_console_that_does_not_answer_is_not_checked(self):
+        console = PluginConsole()
+        console.close()  # nothing listens: the call fails
+        node_dir = self.out / "alice"
+        node_dir.mkdir()
+        fails, nc, _, _ = step.check_node_tools("alice", ALICE_ENTRY, console.url, node_dir, 2)
+        self.assertEqual(fails, [])
+        self.assertEqual(self.whats(nc), ["alice: the plugin's doctor --probe and join"])
+
+    # --- Bindings: join must not drop one -----------------------------------------
+    D = "d" * 64
+
+    def test_a_bound_node_that_stays_bound_holds(self):
+        fails, nc, _, lines = self.tools(before=("bound", self.D))
+        self.assertEqual((fails, nc), ([], []))
+        self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))
+
+    def test_a_bound_node_that_comes_back_unbound_is_a_fail(self):
+        fails, _, _, _ = self.tools(before=("bound", self.D), after=("unbound", None))
+        self.assertEqual(fails, [f"alice: the node was bound ({self.D}) before join, and doctor after join reports "
+                                 "it unbound"])
+
+    def test_a_bound_node_that_comes_back_bound_by_another_binding_is_a_fail(self):
+        fails, _, _, _ = self.tools(before=("bound", self.D), after=("bound", "e" * 64))
+        self.assertEqual(fails, [f"alice: the node was bound ({self.D}) before join, and doctor after join reports "
+                                 f"it bound as {'e' * 64}"])
+
+    def test_a_node_unbound_before_and_after_is_not_checked_not_held(self):
+        fails, nc, _, lines = self.tools(before=("unbound", None))
+        self.assertEqual(fails, [])
+        self.assertEqual([x for x in nc if x["what"] == "alice: the controller binding"],
+                         [{"what": "alice: the controller binding", "why": "no controller binding recorded: the node "
+                           "was unbound before the re-join and is after it (join {} sends no binding)",
+                           "issue": step.live.ISSUE}])
+        self.assertNotIn("the binding is", " ".join(lines))
+
+    def test_an_unbound_node_that_comes_back_bound_without_a_digest_is_a_fail(self):
+        fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", "not-a-digest"))
+        self.assertEqual(fails, ["alice: doctor after join reports the node bound without a sha256 digest"])
+
+    def test_an_unbound_node_that_comes_back_bound_is_not_a_fail(self):
+        fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", self.D))
+        self.assertEqual(fails, [])
+
+    def test_a_probe_mismatch_join_files_under_pending_is_a_fail(self):
+        def bad(reply):
+            reply["joined"] = False
+            reply["pending"] = ["probe_checkpoints: mismatch"]
+            for f in reply["findings"]:
+                if f["check"] == "probe_checkpoints":
+                    f["state"] = "mismatch"
+            return reply
+        fails, nc, _, _ = self.tools(join=bad)
+        self.assertEqual(len(fails), 1)
+        self.assertTrue(fails[0].startswith("alice: join: doctor --probe probe_checkpoints: mismatch"))
+
+    def test_join_is_not_called_when_the_binding_state_cannot_be_read_first(self):
+        fails, nc, proof, lines = self.tools(before=None)
+        self.assertEqual(self.console.joins, [])
+        self.assertEqual(fails, [])
+        self.assertIn({"what": "alice: the plugin's join",
+                       "why": "the binding state could not be read from doctor first, so join was not called",
+                       "issue": step.live.ISSUE}, nc)
+        self.assertNotIn("join.json", proof)
+        self.assertEqual(lines, ["alice: join not called, the binding state was not read first"])
+
+    def test_join_is_not_called_when_doctor_does_not_answer(self):
+        fails, nc, _, _ = self.tools(doctor=lambda reply: None)
+        self.assertEqual(self.console.joins, [])
+        self.assertIn("alice: the plugin's join", self.whats(nc))
+
+    def test_a_binding_unreadable_after_join_is_not_checked(self):
+        fails, nc, _, _ = self.tools(before=("bound", self.D), after=None)
+        self.assertEqual(fails, [])
+        self.assertIn("alice: the controller binding after join", self.whats(nc))
+
+    def test_join_is_never_sent_to_a_console_that_answers_as_another_node(self):
+        fails, nc, proof, _ = self.tools(node_id="9" * 64)
+        self.assertEqual((self.console.joins, self.console.doctor_bodies, fails, proof), ([], [], [], []))
+        self.assertIn(f"answers as {'9' * 64}, not as {ALICE_ID}", nc[0]["why"])
+
+    # --- The published commitment (loop#88): a change is reported, never a FAIL ---
+    def test_with_no_published_commitment_nothing_is_compared(self):
+        _, _, _, lines = self.tools()
+        self.assertIn("alice: no commitment is published under nodes/commitments/ for it yet; nothing is compared",
+                      lines)
+
+    def test_a_published_commitment_join_returns_unchanged_is_said_so(self):
+        (self.published / f"{ALICE_ID}.json").write_text(json.dumps(ALICE_DOC, indent=2))
+        _, _, _, lines = self.tools()
+        self.assertIn("alice: join's commitment is the one published under nodes/commitments/", lines)
+        self.assertNotIn(step.CHANGED, " ".join(lines))
+
+    def test_a_changed_commitment_is_reported_as_a_change_not_a_fail(self):
+        older = copy.deepcopy(ALICE_DOC)
+        older["issued_at"] = "2026-01-01T00:00:00Z"
+        (self.published / f"{ALICE_ID}.json").write_text(json.dumps(older))
+        fails, nc, _, lines = self.tools(before=("bound", "d" * 64))
+        self.assertEqual((fails, nc), ([], []))
+        self.assertIn("alice: commitment changed: join's commitment is not the one published under "
+                      "nodes/commitments/, so the findings run republishes it", lines)
+        # The change stays in detail when another check fails, so a findings run still sees it.
+        r = step.conclude(self.out, "live", ["alice: a planted failure"], [], [], lines, finding.now(), "reporter")
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("alice: commitment changed", r["detail"])
+        self.assertEqual(finding.check(self.out.parent), [])
+
+
+class BindingGapTest(unittest.TestCase):
+    """The binding gap names only what the pinned plugin leaves unchecked: revocation, and a check outside the
+    node. The plugin's join and doctor --probe are no longer loop-wide gaps."""
+
+    def test_the_binding_gap_is_narrowed_to_revocation_and_an_outside_check(self):
+        self.assertEqual(step.NO_BINDING_VERIFIER, {
+            "what": "the controller binding's revocation, and a check of the binding record by a verifier outside "
+                    "the node",
+            "why": "the pinned plugin checks the binding's form, both signatures, its window and that it binds the "
+                   "node key before doctor reports it bound, but reads no revocation (CB section 5); doctor names "
+                   "the binding by digest only, so the loop holds no record to check itself",
+            "issue": "action-state-group/agent-action-capsule#432"})
+
+    def test_the_live_gaps_are_the_binding_and_the_signed_commitment_only(self):
+        self.assertEqual([i["what"] for i in step.LIVE_NOT_CHECKED], [
+            step.NO_BINDING_VERIFIER["what"], "the signed commitment and the policy digest the answers are matched "
+                                              "against"])
+
+
+@unittest.skipUnless(OPENSSL_, NO_OPENSSL)
+class PluginToolsRunTest(Tmp):
+    """The whole step on a live population of one node, with its own console given."""
+
+    def run_one(self, **kw):
+        pop_dir = Path(self.tmp.name) / "live"
+        pop_dir.mkdir()
+        (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None,
+                                                             "nodes": [ALICE_ENTRY]}))
+        asker = FakeConsole(VERIFIED, ALICE_DOC["key_id"], key_id=ALICE_DOC["key_id"],
+                            committed=kw.pop("committed", None))
+        own = PluginConsole(**kw)
+        real, step.PUBLISHED = step.PUBLISHED, Path(self.tmp.name) / "none"
+        try:
+            self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out), "--console",
+                                        asker.url, "--node-console", f"alice={own.url}"]), 0)
+        finally:
+            step.PUBLISHED = real
+            asker.close()
+            own.close()
+        self.assertEqual(finding.check(self.out.parent), [])
+        return json.loads((self.out / "finding.json").read_text())
+
+    def test_a_healthy_node_reads_not_checked_on_the_binding_and_signed_commitment_gaps_only(self):
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(r["not_checked"], step.LIVE_NOT_CHECKED)
+        self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", r["detail"])
+        for p in ("alice/doctor-probe.json", "alice/join.json", "alice/commitment.json",
+                  "alice/disclosure-policy.json", "alice/doctor-after.json"):
+            self.assertIn(p, [x["path"] for x in r["proof"]])
+
+    def test_an_unbound_node_reads_not_checked_in_a_whole_run(self):
+        r = self.run_one()
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("alice: the controller binding", [i["what"] for i in r["not_checked"]])
+
+    def test_a_bound_node_join_unbinds_is_a_fail(self):
+        D = "d" * 64
+        r = self.run_one(before=("bound", D), after=("unbound", None), committed=D)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn(f"alice: the node was bound ({D}) before join, and doctor after join reports it unbound",
+                      r["detail"])
 
 
 if __name__ == "__main__":

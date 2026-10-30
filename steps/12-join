@@ -37,15 +37,42 @@ checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding's own verification (controller-binding/0, both
 signatures) is outside the assertion: no released verifier checks it yet, and
-a PASS says so in detail, citing the issue that owns it.
+a PASS says so in detail, citing the issue that owns it. For a Mesh node
+(`reporter`), the pinned plugin checks the record itself before its doctor
+reports it bound; its revocation, and a check outside the node, stay
+NOT_CHECKED.
 
-`reporter` (Mesh plugin nodes, which doctor --probe cannot reach): asks each
+`reporter` (Mesh plugin nodes, reached through their consoles): asks each
 node checkpoints and history_card/1 through the daily reporter's ask
 (scripts/daily_report.py), whose plugin verifies each answer under the key
 the node's host announces. An answer that verifies under a key other than the
 listed one, does not verify, or refuses a subject the node lists as
-stranger-safe is a failure. Join, doctor --probe, the binding's own signature
-verification and the signed commitment's policy digest are NOT_CHECKED on the issues that own them.
+stranger-safe is a failure. The binding's own signature verification and the
+signed commitment's policy digest are NOT_CHECKED on the issues that own them.
+
+Through each node's own console (below), the step also runs the pinned
+capsules plugin's `doctor` with `{"probe": true}` and its `join` (with no
+arguments: it binds nothing new), and judges what they return:
+
+  - doctor's two in-process stranger probes match (a mismatch is a failure;
+    the plugin's NOT_CHECKED, before the first checkpoint, is NOT_CHECKED);
+  - doctor's policy_in_commitment is present: the commitment the node serves
+    on commitment/1 verifies and carries the policy it answers under (none
+    served yet is NOT_CHECKED; one that does not verify is a failure);
+  - the commitment join returns verifies with step 03's checker, policy bytes
+    included, and is the listed node's, under its listed key;
+  - join reports the node joined (a pending part is NOT_CHECKED);
+  - join keeps the binding: doctor's controller_binding is read before join,
+    and join is not called when it cannot be (NOT_CHECKED). A node bound
+    before that doctor after join reports unbound, or bound by another
+    binding, is a failure.
+
+The commitment join returns is compared with the node's published one,
+nodes/commitments/<node_id>.json, when that file exists. A re-join returns
+the commitment the node already serves, but a new checkpoint rebuilds it, so
+a difference is reported in detail as "commitment changed" for the findings
+run to republish, never as a failure. With no published file, detail says
+nothing is compared.
 
 The controller binding is read for each node whose own console the run holds: `--node-console
 NAME=URL` (repeatable, or LOOP_NODE_CONSOLES="NAME=URL,..."), and the self node's is `--console`.
@@ -82,9 +109,10 @@ import check_commitment as check_commitment_  # noqa: E402
 import history_cards as hc  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
+import live  # noqa: E402
 import report_layout as layout  # noqa: E402
 
-ASSERTS = ("one command on the pinned release records a controller binding for the node key (its controller "
+ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
            "advertised policy")
@@ -96,11 +124,17 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # No released verifier the loop can call for a stapled history_card/1 (as step 03).
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
+# A Mesh node's binding. The pinned plugin itself checks the record its doctor reports bound: well formed,
+# same_controller_asserted under dual_signature/0, both signatures (Ed25519, or BIP-340 for a Nostr key),
+# inside its window, and binding the node's own key (controller_binding.rs binds_own). What is left is
+# revocation, which it never evaluates, and any check by a party other than the node: doctor names the
+# binding by digest only, so the loop holds no record bytes to check.
 NO_BINDING_VERIFIER = {
-    "what": "the controller binding's own verification (controller-binding/0, both signatures) by a verifier "
-            "the loop can call",
-    "why": "no released implementation verifies controller-binding/0 outside the plugin; the loop reads the "
-           "plugin's doctor (bound or unbound) and compares digests, but does not check the signatures itself",
+    "what": "the controller binding's revocation, and a check of the binding record by a verifier outside the "
+            "node",
+    "why": "the pinned plugin checks the binding's form, both signatures, its window and that it binds the "
+           "node key before doctor reports it bound, but reads no revocation (CB section 5); doctor names the "
+           "binding by digest only, so the loop holds no record to check itself",
     "issue": "action-state-group/agent-action-capsule#432",
 }
 BINDING_OUTSIDE = finding.outside(
@@ -362,14 +396,6 @@ def run_doctor(pop, out, tmp):
 # capsules plugin), reused as it is: the plugin verifies each answer under the
 # key the node's host announces, and the reporter writes that verdict as a line.
 LIVE_NOT_CHECKED = [
-    {"what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
-     "why": "a Mesh node's book is the capsules plugin's; join.sh does not run against it, and this step "
-            "does not drive the plugin's join",
-     "issue": "evidence-network/loop: step 12's reporter probe backend drives the plugin's join"},
-    {"what": "doctor --probe on a Mesh node",
-     "why": "the probe is the daily reporter's mesh_evidence_request path until the loop drives the plugin's "
-            "doctor --probe",
-     "issue": "evidence-network/loop: step 12's reporter probe backend drives the plugin's doctor --probe"},
     NO_BINDING_VERIFIER,
     {"what": "the signed commitment and the policy digest the answers are matched against",
      "why": "the pinned plugin signs and serves the commitment (capsules-plugin PR #75), but nodes/ entries are "
@@ -382,6 +408,12 @@ LIVE_NOT_CHECKED = [
 DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
 COMMITMENT_ROUTE = "/api/plugins/capsules/tools/mesh_commitment_fetch"
 OWN_COMMITMENT_ROUTE = "/api/plugins/capsules/tools/commitment"
+JOIN_ROUTE = "/api/plugins/capsules/tools/join"
+# The commitments a findings run publishes (loop#88), one per node: nodes/commitments/<node_id>.json.
+PUBLISHED = ROOT / "nodes" / "commitments"
+# A detail line saying a node's commitment is not the published one; it stays in detail on a FAIL too.
+CHANGED = "commitment changed"
+NODE_CONSOLE_ISSUE = "evidence-network/loop: lab/lab.sh loop gives each node's console (LOOP_NODE_CONSOLES)"
 HEX64 = frozenset("0123456789abcdef")
 
 
@@ -416,15 +448,11 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     if answered_as != node_id:
         return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
     doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
-    findings = doctor.get("findings") if isinstance(doctor, dict) else None
-    found = {f["check"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("check"), str)} \
-        if isinstance(findings, list) else {}
-    finding_ = found.get("controller_binding")
-    if finding_ is None or finding_.get("state") not in ("bound", "unbound"):
+    state = binding_state(doctor)
+    if state is None:
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
-    records = finding_.get("records")
-    held = records[0] if finding_["state"] == "bound" and isinstance(records, list) and records else None
-    if finding_["state"] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
+    held = state[1]
+    if state[0] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
         return f"{name}: doctor reports the binding bound without a sha256 digest", None, ""
     fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
     if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
@@ -446,6 +474,190 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
 
 def no_binding(name, why):
     return {"what": f"{name}: the controller binding", "why": why, "issue": "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"}
+
+
+def tool(console, route, body, timeout):
+    """(reply object or None, the bytes, what went wrong or None) for one plugin tool call."""
+    try:
+        status, raw = daily_report.http("POST", console + route, body, timeout)
+    except (OSError, ValueError) as e:
+        return None, json.dumps({"error": str(e)}).encode(), f"no reply ({e})"
+    if status != 200:
+        return None, raw, f"http {status}: {raw.decode('utf-8', 'replace')[:200]}"
+    try:
+        reply = json.loads(raw)
+    except ValueError:
+        return None, raw, "the reply is not JSON"
+    return (reply, raw, None) if isinstance(reply, dict) else (None, raw, "the reply is not a JSON object")
+
+
+def doctor_findings(reply):
+    """{check: finding} from a doctor or join reply; {} when it carries none."""
+    findings = reply.get("findings") if isinstance(reply, dict) else None
+    return {f["check"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("check"), str)} \
+        if isinstance(findings, list) else {}
+
+
+def binding_state(reply):
+    """("bound", digest) or ("unbound", None) from doctor's controller_binding; None when it reports neither."""
+    f = doctor_findings(reply).get("controller_binding")
+    if not isinstance(f, dict) or f.get("state") not in ("bound", "unbound"):
+        return None
+    records = f.get("records")
+    return f["state"], (records[0] if f["state"] == "bound" and isinstance(records, list) and records else None)
+
+
+def judge_doctor(reply):
+    """(failures, not_checked) for the plugin's doctor --probe findings.
+
+    A finding the reply does not carry is NOT_CHECKED (an older plugin than the pin), never a failure.
+    """
+    found = doctor_findings(reply)
+    fails, nc = [], []
+    for check in DOCTOR_PROBES:
+        f = found.get(check)
+        state = f.get("state") if f else None
+        if state is None or state == "NOT_CHECKED":  # NOT_CHECKED is the plugin's own: no checkpoint yet
+            nc.append({"what": f"doctor --probe {check}",
+                       "why": f"the plugin did not run it: {f.get('detail')}" if f else "doctor reports no such finding",
+                       "issue": live.ISSUE})
+        elif state != "match":
+            fails.append(f"doctor --probe {check}: {state} ({f.get('detail', 'no detail')})")
+    pic = found.get("policy_in_commitment")
+    detail = str(pic.get("detail", "no detail")) if pic else ""
+    # doctor.rs policy_in_commitment: `missing` both when no commitment is served yet (pending) and when the
+    # one served does not verify or advertises another policy (a failure); the detail says which. The prefix
+    # below is the pinned plugin's text for the first (capsules-plugin d1f4edc, doctor.rs); another wording
+    # reads as a failure, so a pin bump must recheck it.
+    if pic is None or (pic.get("state") == "missing" and detail.startswith("no commitment is served")):
+        nc.append({"what": "the commitment the node serves on commitment/1, carrying the policy it answers under",
+                   "why": f"doctor: {detail}" if pic else "doctor reports no policy_in_commitment finding",
+                   "issue": live.ISSUE})
+    elif pic.get("state") != "present":
+        fails.append(f"doctor policy_in_commitment: {pic.get('state')} ({detail})")
+    return fails, nc
+
+
+def judge_join(reply, entry, node_dir):
+    """(failures, not_checked, the commitment join returns or None) for the plugin's join report.
+
+    Writes the commitment pair it returns as commitment.json and disclosure-policy.json in node_dir.
+    """
+    fails, nc, doc = [], [], None
+    pair = reply.get("commitment")
+    if pair is None:
+        nc.append({"what": "the commitment join returns", "why": "join returns none (the node serves no "
+                   "commitment yet)", "issue": live.ISSUE})
+    else:
+        try:
+            doc, policy = pair["commitment"], base64.b64decode(pair["policy"], validate=True)
+            if not isinstance(doc, dict):
+                raise TypeError("its commitment is not an object")
+        except (KeyError, TypeError, ValueError) as e:
+            doc = None
+            fails.append(f"join's commitment pair is not {{commitment, policy}} ({e})")
+        if doc is not None:
+            (node_dir / "commitment.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+            (node_dir / "disclosure-policy.json").write_bytes(policy)
+            errs, notes = check_commitment_.verify(doc, lambda uri: policy)
+            fails += [f"join's commitment does not verify: {e}" for e in errs + notes]
+            if doc.get("key_id") != entry.get("key_id"):
+                fails.append(f"join's commitment is under key {doc.get('key_id')}, not the listed key")
+            if doc.get("node_id") != entry.get("node_id"):
+                fails.append(f"join's commitment is for node {doc.get('node_id')}, not this node")
+    # join runs the probes itself and files a mismatch under pending as well (doctor.rs), so judge its findings.
+    fails += [f"join: {x}" for x in judge_doctor(reply)[0]]
+    if reply.get("joined") is not True:
+        pending = reply.get("pending")
+        nc.append({"what": "the plugin's join", "why": "join reports pending: " +
+                   "; ".join(map(str, pending if isinstance(pending, list) and pending else ["(no pending list)"])),
+                   "issue": live.ISSUE})
+    return fails, nc, doc
+
+
+def compare_published(name, node_id, doc, published=None):
+    """A line on how join's commitment stands against the one published for the node, never a failure.
+
+    A re-join does not rebuild the commitment, but a new checkpoint does (the pinned plugin's cache,
+    commitment_bridge.rs), so the published file may lag the node: a change is reported for the
+    findings run to republish.
+    """
+    f = (published or PUBLISHED) / f"{node_id}.json"
+    if not f.is_file():
+        return f"{name}: no commitment is published under nodes/commitments/ for it yet; nothing is compared"
+    try:
+        same = load(f) == doc
+    except (OSError, ValueError):
+        same = False
+    return (f"{name}: join's commitment is the one published under nodes/commitments/" if same else
+            f"{name}: {CHANGED}: join's commitment is not the one published under nodes/commitments/, "
+            "so the findings run republishes it")
+
+
+def check_node_tools(name, entry, console, node_dir, timeout=30):
+    """(failures, not_checked, proof names in node_dir, lines) for the plugin's doctor --probe and join.
+
+    The binding state is read from doctor before join; join is called only when it was, and a node that was
+    bound must come back bound to the same binding in doctor after join. The console must answer as this
+    node first: join is a write, and never sent to a node other than the one named.
+    """
+    def nc_(what, why, issue=live.ISSUE):
+        return {"what": f"{name}: {what}", "why": why, "issue": issue}
+
+    own = post_json(console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    mine = own.get("commitment") if isinstance(own, dict) else None
+    answered_as = mine.get("node_id") if isinstance(mine, dict) else None
+    if answered_as != entry["node_id"]:
+        why = f"the console given for it answers as {answered_as or 'no node'}, not as {entry['node_id']}"
+        return [], [nc_("the plugin's doctor --probe and join", why)], [], [f"{name}: doctor and join not asked"]
+    fails, nc, proof, lines = [], [], [], []
+
+    def call(stem, route, body):
+        reply, raw, err = tool(console, route, body, timeout)
+        (node_dir / f"{stem}.json").write_bytes(raw)
+        proof.append(f"{stem}.json")
+        return reply, err
+
+    doctor, err = call("doctor-probe", DOCTOR_ROUTE, {"probe": True})
+    if err:
+        nc.append(nc_("the plugin's doctor --probe", err))
+    else:
+        f, n = judge_doctor(doctor)
+        fails += [f"{name}: {x}" for x in f]
+        nc += [{**x, "what": f"{name}: {x['what']}"} for x in n]
+    before = binding_state(doctor) if not err else None
+    if before is None:
+        nc.append(nc_("the plugin's join", "the binding state could not be read from doctor first, so join was "
+                                           "not called"))
+        return fails, nc, proof, lines + [f"{name}: join not called, the binding state was not read first"]
+    joined, err = call("join", JOIN_ROUTE, {})
+    if err:
+        nc.append(nc_("the plugin's join", err))
+    else:
+        f, n, doc = judge_join(joined, entry, node_dir)
+        fails += [f"{name}: {x}" for x in f]
+        nc += [{**x, "what": f"{name}: {x['what']}"} for x in n]
+        proof += [p for p in ("commitment.json", "disclosure-policy.json") if doc is not None]
+        if doc is not None and not f:
+            lines.append(compare_published(name, entry["node_id"], doc))
+    after_reply, err = call("doctor-after", DOCTOR_ROUTE, {})
+    after = binding_state(after_reply) if not err else None
+    if after is None:
+        nc.append(nc_("the controller binding after join", "doctor after join reports no controller_binding of "
+                                                           "bound or unbound" + (f" ({err})" if err else "")))
+    elif after[0] == "bound" and not (isinstance(after[1], str) and len(after[1]) == 64 and set(after[1]) <= HEX64):
+        fails.append(f"{name}: doctor after join reports the node bound without a sha256 digest")
+    elif before[0] == "bound" and after != before:
+        fails.append(f"{name}: the node was bound ({before[1]}) before join, and doctor after join reports "
+                     + (f"it bound as {after[1]}" if after[0] == "bound" else "it unbound"))
+    elif before is not None and before[0] == "unbound" and after[0] == "unbound":
+        nc.append(nc_("the controller binding", "no controller binding recorded: the node was unbound before "
+                                                "the re-join and is after it (join {} sends no binding)"))
+    if not fails and not nc:
+        lines.append(f"{name}: doctor --probe finds both probes match and the commitment it serves carries its "
+                     "policy; the re-join reports it joined, and its commitment holds under the listed key with "
+                     f"its policy bytes; the binding is {before[0]} before the re-join and {after[0]} after")
+    return fails, nc, proof, lines
 
 
 def listed_entry(node):
@@ -499,7 +711,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         asker, via = console, "the reporter's console"
         if self_node and name == self_node:
             if not second_console:
-                merge(not_checked, [no_second_console(name), no_binding(name, "its commitment was not fetched")])
+                merge(not_checked, [no_second_console(name), no_binding(name, "its commitment was not fetched"),
+                                    {"what": f"{name}: the plugin's doctor --probe and join",
+                                     "why": "the reporter's own node is not asked without a second console",
+                                     "issue": NO_SECOND_CONSOLE_ISSUE}])
                 lines.append(f"{name}: not asked, the reporter's own node and no second console")
                 continue
             asker, via = second_console, "a second node's console"
@@ -535,9 +750,18 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, [nc])
             if line:
                 lines.append(line)
+            fails, nc, files, said_tools = check_node_tools(name, entry, own, node_dir, timeout)
+            bad += fails
+            merge(not_checked, nc)
+            proof += [f"{name}/{f}" for f in files]
+            lines += said_tools
         else:
             merge(not_checked, [no_binding(name, "its doctor is reachable only through its own console, which "
-                                                 "this run does not hold (--node-console)")])
+                                                 "this run does not hold (--node-console)"),
+                                {"what": f"{name}: the plugin's doctor --probe and join",
+                                 "why": "they are reachable only through the node's own console, which this run "
+                                        "does not hold (--node-console)",
+                                 "issue": NODE_CONSOLE_ISSUE}])
         failures += bad
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
@@ -604,7 +828,8 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
-    detail = f"probe backend: {which}. " + "; ".join(failures or lines) + "."
+    shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
+    detail = f"probe backend: {which}. " + "; ".join(shown) + "."
     if result == "PASS":  # a PASS covers its assertion; the binding's own verification is outside it
         detail += " " + BINDING_OUTSIDE
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
