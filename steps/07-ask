@@ -68,14 +68,19 @@ ask (judge_sealed): one evidence_request for the node and the question, sealed w
 citing it, after it in the ledger, for the digest of the sealed request; a response where the reporter saw an
 answer, an absence (opened at the request, closed no earlier than its window and the commitment's answers_within)
 where it did not; a refusal's policy_check is not MISMATCH. A window still open at read time is waited out up to 90 s,
-then NOT_CHECKED. An unreadable ledger is NOT_CHECKED. The exchange ask is NOT_CHECKED on evidence-network/loop#94:
-the reporter asks only stranger-safe questions. A node cannot be asked
+then NOT_CHECKED. An unreadable ledger is NOT_CHECKED. The exchange ask (loop#94) is driven too, about a half step 05 left: the newest half the
+asked node holds, the asker's own chain also holds (it sent it) and the asked node's chain cites as a
+`counterparty_half` (`exchange_subject`; the two data dirs are read, the asked node's is its `data_dir` in the population).
+It is sealed and judged like the others; a verified answer must serve records that each cite the half, and a refusal is
+judged by its reason with the asker a counterparty (a withholding or unnamed reason is a FAIL). With no such half the
+ask is NOT_CHECKED on loop#94. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
 first-answered.json names the first ask answered (a verified artifact or a
 refusal judged allowed, in time; a refusal that could only be NOT_CHECKED does not count), for the status page's minutes number.
 """
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import importlib.machinery
@@ -138,14 +143,8 @@ DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 # The pinned plugin seals each ask before it sends it, and its absence when the window closes (capsules-plugin
 # PR #110); the live path reads those sealed records from the asker's ledger (ask_records, judge_sealed).
 SEAL_ISSUE = "evidence-network/loop: the live lab run with the asker's data dirs set (lab.sh ask); loop#80 built the read"
-EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node; it needs step 05's deal half as subject
+EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node: it needs a half step 05 left as subject
 LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
-LIVE_NOT_CHECKED = [
-    {"what": "a later exchange request on a Mesh node",
-     "why": "the reporter asks only the stranger-safe questions; the step drives no exchange ask on a Mesh node "
-            "yet (it needs a two-sided deal record from step 05 as its subject)",
-     "issue": EXCHANGE_ISSUE},
-]
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
 # Where the lab keeps each live node's signed join commitment (lab/lab.sh pack).
@@ -865,9 +864,118 @@ def judge_sealed(ledger, node_id, request, posted, back, saw, within, policy_dig
     return errs, notes, evidence
 
 
+# --- The exchange ask: about a half the asked node holds from the asker (step 05's deal half) -------------------
+EXCHANGE = "exchange"
+COUNTERPARTY_HALF = "counterparty_half"
+EXCHANGE_GAP = ("the asker's ledger and the asked node's data_dir (ledger/received-capsules.jsonl and "
+                "ledger/capsules.jsonl) must be readable to name a half the asked node holds from the asker")
+
+
+def ledger_lines(path):
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    out = []
+    for line in text.splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out
+
+
+def state_of(line):
+    return line.split(" ", 1)[0]
+
+
+def exchange_subject(node, asker_data_dir):
+    """(half id, None) or (None, why not): the newest half the asked node holds that the asker's own chain also
+    holds (the asker sent it) and that the asked node's chain cites as `counterparty_half`, so the asked node's
+    policy answers the asker an exchange request about it. The ids come from the two ledgers, not from the asked
+    node's word."""
+    held = live.readable(node, "data_dir", "ledger/received-capsules.jsonl", "ledger/capsules.jsonl")
+    if held is None or asker_data_dir is None:
+        return None, EXCHANGE_GAP
+    sent = ledger_lines(Path(asker_data_dir) / "ledger" / "capsules.jsonl")
+    got = ledger_lines(held / "ledger" / "received-capsules.jsonl")
+    chain = ledger_lines(held / "ledger" / "capsules.jsonl")
+    if sent is None or got is None or chain is None:
+        return None, EXCHANGE_GAP
+    mine = {r.get("capsule_id") for r in sent}
+    cited = {ref.get("digest") for r in chain for ref in r.get("references") or []
+             if isinstance(ref, dict) and ref.get("citation_purpose") == COUNTERPARTY_HALF}
+    for r in reversed(got):
+        cid = r.get("capsule_id")
+        if isinstance(cid, str) and cid in mine and cid in cited:
+            return cid, None
+    return None, ("the asked node holds no half the asker sent that its own chain cites as a counterparty half "
+                  "(step 05's live run leaves them)")
+
+
+def exchange_question(half):
+    """The exchange request about `half`, as the plugin answers it (subject = the half's id, pinned to it)."""
+    return {"profile": daily_report.PROFILE, "coverage": {"expected_pin": half}, "subject": {EXCHANGE: half}}
+
+
+class exchange_registered:
+    """Registers the exchange question with the reporter's ask for the length of a node's asks (None: nothing)."""
+
+    def __init__(self, half):
+        self.half = half
+
+    def __enter__(self):
+        if self.half:
+            daily_report.QUESTIONS[EXCHANGE] = exchange_question(self.half)
+            daily_report.QUESTION_NAMES[EXCHANGE] = EXCHANGE
+
+    def __exit__(self, *exc):
+        daily_report.QUESTIONS.pop(EXCHANGE, None)
+        daily_report.QUESTION_NAMES.pop(EXCHANGE, None)
+
+
+def exchange_records_cite(response, half):
+    """Whether a verified exchange answer serves records, and each cites `half` as a counterparty half: (errors,
+    reasons it could not be read). The plugin verified the answer; this reads the records it served."""
+    try:
+        reply = json.loads(Path(response).read_text(encoding="utf-8"))
+        answer = reply["answer"]
+        artifact = answer.get("artifact") or answer["envelope"]["artifact"]
+        body = json.loads(base64.urlsafe_b64decode(artifact + "=" * (-len(artifact) % 4)))
+        served = [json.loads(bytes.fromhex(r["body"])) for r in body["records"]]
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return [], ["the served exchange records could not be read from the answer"]
+    if not served:
+        return ["the exchange answer serves no record, but the asked node cites the half"], []
+    bad = [r for r in served if not any(isinstance(x, dict) and x.get("citation_purpose") == COUNTERPARTY_HALF
+                                        and x.get("digest") == half for x in r.get("references") or [])]
+    return ([f"{len(bad)} of {len(served)} served records do not cite the asked half as a counterparty half"]
+            if bad else []), []
+
+
+def judge_exchange_line(line, entry):
+    """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
+    holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
+    (the policy answers it), an ambiguous one is not checked, a request-blaming one is fine."""
+    if line.split(" ", 1)[0] != "refusal":
+        return step12.judge_reporter_line(EXCHANGE, line, entry)
+    if "listed_key=match" not in line.split():
+        return f"the exchange refusal is signed under a key that is not the listed key: {line}", None
+    reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
+    verdict = refusal_verdict(reason)
+    if verdict == "fail":
+        return (f"the exchange answer is refused ({reason}), but the asker holds a half the node cites as a "
+                f"counterparty half: {line}"), None
+    if verdict == "not_checked":
+        return None, refusal_not_checked("the refusal of the exchange ask", reason)
+    return None, None
+
+
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, console_data_dir=None,
                  second_data_dir=None):
-    failures, not_checked, answered, proof, lines = [], list(LIVE_NOT_CHECKED), [], [], []
+    failures, not_checked, answered, proof, lines = [], [], [], [], []
     console_data_dir, second_data_dir = (Path(os.path.expandvars(d)) if d else None
                                          for d in (console_data_dir, second_data_dir))
     if console_data_dir is None and self_node:  # the reporter's console is its own node's: the node's data_dir
@@ -898,51 +1006,63 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         node_dir.mkdir(parents=True)
         # One attempt per question, so each answer has its own send and receive times.
         said, last = [], None
-        for stem in daily_report.QUESTIONS:
-            while last is not None and daily_report.utc_now().replace(microsecond=0) <= last:
-                time.sleep(0.05)  # an attempt is named by its second: one per node per second
-            at = last = daily_report.utc_now()
-            last = last.replace(microsecond=0)
-            posted = []
-            result = ask_posted(asker, entry, node_dir, stem, at, timeout, posted)
-            back = now()
-            attempt = layout.attempts(node_dir)[-1]
-            sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
-            sent_at = sent if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc)
-            late = adv is not None and back > sent_at + adv["within"]
-            timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
-                      "answers_within": adv["answers_within"] if adv else None,
-                      "deadline": stamp(sent_at + adv["within"]) if adv else None,
-                      "commitment": adv["commitment"] if adv else None, "late": late}
-            write_json(attempt / "timing.json", timing)
-            for stem, line in result.items():
-                saw = line.split(" ", 1)[0]
-                errs, notes, evidence = judge_sealed(
-                    Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
-                    sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None,
-                    adv["policy_digest"] if adv else None)
-                qn = daily_report.QUESTION_NAMES[stem]
-                failures += [f"{name}: {qn}: {e}" for e in errs]
-                merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,
-                                     "issue": SEAL_ISSUE} for n in notes])
-                if evidence is not None:
-                    write_json(attempt / f"{stem}.ledger.json", evidence)
-            proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
-            for stem, line in result.items():
-                qname = daily_report.QUESTION_NAMES[stem]
-                fail, nc2 = judge_live_line(stem, line, entry)
-                if fail:
-                    failures.append(f"{name}: {fail}")
-                if nc2:
-                    merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
-                state = line.split(" ", 1)[0]
-                if not fail and not nc2 and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
-                    if late:
-                        said.append(f"{qname} back after the deadline, counted absent")
-                        continue
-                    if adv is not None:
-                        answered.append((back, f"{name} {qname}"))
-                said.append(f"{qname} {step12.said(line)}")
+        half, why = exchange_subject(node, ledger)
+        if half is None:
+            merge(not_checked, [{"what": f"{name}: a later exchange request on a Mesh node", "why": why,
+                                 "issue": EXCHANGE_ISSUE}])
+        stems = [*daily_report.QUESTIONS, *([EXCHANGE] if half else [])]
+        with exchange_registered(half):
+            for stem in stems:
+                while last is not None and daily_report.utc_now().replace(microsecond=0) <= last:
+                    time.sleep(0.05)  # an attempt is named by its second: one per node per second
+                at = last = daily_report.utc_now()
+                last = last.replace(microsecond=0)
+                posted = []
+                result = ask_posted(asker, entry, node_dir, stem, at, timeout, posted)
+                back = now()
+                attempt = layout.attempts(node_dir)[-1]
+                sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
+                sent_at = sent if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc)
+                late = adv is not None and back > sent_at + adv["within"]
+                timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
+                          "answers_within": adv["answers_within"] if adv else None,
+                          "deadline": stamp(sent_at + adv["within"]) if adv else None,
+                          "commitment": adv["commitment"] if adv else None, "late": late}
+                write_json(attempt / "timing.json", timing)
+                for stem, line in result.items():
+                    saw = line.split(" ", 1)[0]
+                    errs, notes, evidence = judge_sealed(
+                        Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
+                        sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None,
+                        adv["policy_digest"] if adv else None)
+                    qn = daily_report.QUESTION_NAMES[stem]
+                    failures += [f"{name}: {qn}: {e}" for e in errs]
+                    merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,
+                                         "issue": SEAL_ISSUE} for n in notes])
+                    if evidence is not None:
+                        write_json(attempt / f"{stem}.ledger.json", evidence)
+                proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
+                for stem, line in result.items():
+                    qname = daily_report.QUESTION_NAMES[stem]
+                    fail, nc2 = (judge_exchange_line(line, entry) if stem == EXCHANGE
+                                 else judge_live_line(stem, line, entry))
+                    if stem == EXCHANGE and not fail and state_of(line) == "verified":
+                        cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
+                        failures += [f"{name}: exchange: {e}" for e in cite_errs]
+                        merge(not_checked, [{"what": f"{name}: exchange: the served records", "why": n,
+                                             "issue": EXCHANGE_ISSUE} for n in cite_notes])
+                    if fail:
+                        failures.append(f"{name}: {fail}")
+                    if nc2:
+                        merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
+                    state = line.split(" ", 1)[0]
+                    if not fail and not nc2 and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
+                        if late:
+                            said.append(f"{qname} back after the deadline, counted absent")
+                            continue
+                        if adv is not None:
+                            answered.append((back, f"{name} {qname}"))
+                    said.append(f"{qname} {step12.said(line)}")
         asked_via = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked_via}: " + "; ".join(said))
     return failures, not_checked, answered, proof, lines

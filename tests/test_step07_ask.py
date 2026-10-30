@@ -8,6 +8,7 @@ The reporter backend runs against a fake reporter console on localhost.
 Fixtures: tests/fixtures/step07/, made by make_fixtures.py; each planted
 failure there was made by a misbehaving asker or responder during a real run.
 """
+import base64
 import datetime as dt
 import importlib.machinery
 import importlib.util
@@ -322,6 +323,22 @@ def seal_records(ledger, peer, asked, outcome):
         f.write("".join(lines))
 
 
+def exchange_reply(kind, half):
+    """The plugin's 200 body for an exchange ask: an artifact serving the records `kind` names."""
+    cite = {"references": [{"type": "capsule", "digest": half, "citation_purpose": "counterparty_half"}]}
+    records = {"exchange_verified": [cite], "exchange_other_half": [{"references": [
+        {"type": "capsule", "digest": "e" * 64, "citation_purpose": "counterparty_half"}]}],
+        "exchange_empty": [], "exchange_unreadable": []}[kind]
+    artifact = {"records": [{"index": i, "body": json.dumps(r).encode().hex()} for i, r in enumerate(records)]}
+    if kind == "exchange_unreadable":
+        artifact = "x"
+    encoded = base64.urlsafe_b64encode(json.dumps(artifact).encode()).decode().rstrip("=")
+    return json.dumps({"answer": {"envelope": {"profile": "evidence-interop/0", "artifact": encoded, "sig": "s"}},
+                       "held": [], "request_digest": "d" * 64,
+                       "verification": {"anchor": "checkpoints[0]", "checkpoints": 0,
+                                        "records": list(range(len(records))), "state": "artifact"}}).encode()
+
+
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
@@ -345,12 +362,15 @@ class FakeConsole:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                stem = "history_card" if body["request"].get("derivation") else "checkpoints"
-                what = fake.answers[stem]
+                stem = ("exchange" if "exchange" in body["request"].get("subject", {})
+                        else "history_card" if body["request"].get("derivation") else "checkpoints")
+                what = fake.answers.get(stem, "absence")
                 if fake.ledger is not None:
                     seal_records(fake.ledger, body["peer_id"], body["request"], fake.sealed.get(stem, "response"))
                 if what == "absence":
                     return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
+                if what.startswith("exchange_"):
+                    return self.reply(200, exchange_reply(what, body["request"]["subject"]["exchange"]))
                 self.reply(200, (REPORTER_FIX / f"{what}.json").read_bytes())
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -377,11 +397,11 @@ class ReporterBackendTest(Tmp):
         self.addCleanup(patcher.stop)
 
     def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None, extra_nodes=(),
-                 data_dir_flag=True):
+                 data_dir_flag=True, node_extra=None):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [{
-            "name": "lab-1", "node_id": "1" * 64, "key_id": key,
+            "name": "lab-1", "node_id": "1" * 64, "key_id": key, **(node_extra or {}),
             "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}, *extra_nodes]}))
         console = FakeConsole(answers, announced, ledger, sealed)
         extra = ["--console-data-dir", str(ledger)] if ledger is not None and data_dir_flag else []
@@ -502,7 +522,7 @@ class ReporterBackendTest(Tmp):
 
     def only_exchange_left(self, r):
         self.assertEqual([i["what"] for i in r["not_checked"] if i["issue"] in (step.SEAL_ISSUE, step.EXCHANGE_ISSUE)],
-                         [step.LIVE_NOT_CHECKED[0]["what"]], r["not_checked"])
+                         ["lab-1: a later exchange request on a Mesh node"], r["not_checked"])
 
     def test_sealed_requests_and_their_responses_are_read(self):
         r = self.run_live(VERIFIED, ledger=self.ledger())
@@ -609,6 +629,83 @@ class ReporterBackendTest(Tmp):
         r = self.refusal_run("refusal_other_policy")
         self.assertEqual(r["result"], "FAIL", r["detail"])
         self.assertIn("not the", r["detail"])
+
+    # --- the exchange ask about a half step 05 left (evidence-network/loop#94) ---
+    HALF = "a" * 64
+
+    def exchange_dirs(self, held=True, cited=True, sent=True):
+        """The asker's ledger (it sent HALF) and the asked node's data_dir (it holds HALF and cites it)."""
+        asker, node = self.ledger(), Path(self.tmp.name) / "asked"
+        (asker / "ledger").mkdir(parents=True, exist_ok=True)
+        (node / "ledger").mkdir(parents=True, exist_ok=True)
+        (asker / "ledger" / "capsules.jsonl").write_text(
+            json.dumps({"capsule_id": self.HALF if sent else "c" * 64}) + "\n")
+        (node / "ledger" / "received-capsules.jsonl").write_text(
+            json.dumps({"capsule_id": self.HALF if held else "d" * 64}) + "\n")
+        ref = {"type": "capsule", "digest": self.HALF if cited else "b" * 64, "citation_purpose": "counterparty_half"}
+        (node / "ledger" / "capsules.jsonl").write_text(json.dumps({"capsule_id": "f" * 64, "references": [ref]}) + "\n")
+        return asker, {"data_dir": str(node)}
+
+    def run_exchange(self, exchange, sealed=None, **dirs):
+        asker, extra = self.exchange_dirs(**dirs)
+        return self.run_live({**VERIFIED, "exchange": exchange}, ledger=asker, node_extra=extra,
+                             sealed={"exchange": sealed} if sealed else None)
+
+    def test_the_exchange_ask_about_a_held_half_is_sealed_and_judged_like_the_others(self):
+        r = self.run_exchange("exchange_verified")
+        self.assertEqual(r["result"], "PASS", r["detail"])  # nothing left unchecked once the exchange is driven
+        self.assertEqual(r["not_checked"], [])
+        self.assertIn("exchange answered under the listed key", r["detail"])
+        sent = json.loads(next(self.out.glob("lab-1/attempts/*/exchange.request.json")).read_text())
+        self.assertEqual(sent["subject"], {"exchange": self.HALF})
+        self.assertTrue(next(self.out.glob("lab-1/attempts/*/exchange.ledger.json")).is_file())
+        self.assertTrue(json.loads((self.out / "first-answered.json").read_text())["sealed"])
+
+    def test_an_exchange_answer_serving_no_record_is_a_fail(self):
+        r = self.run_exchange("exchange_empty")
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("serves no record", r["detail"])
+
+    def test_an_exchange_answer_serving_a_record_that_cites_another_half_is_a_fail(self):
+        r = self.run_exchange("exchange_other_half")
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("do not cite the asked half", r["detail"])
+
+    def test_an_exchange_answer_whose_records_cannot_be_read_is_not_checked(self):
+        r = self.run_exchange("exchange_unreadable")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("the served exchange records could not be read from the answer",
+                      [i["why"] for i in r["not_checked"]])
+
+    def test_a_withholding_refusal_of_the_exchange_ask_is_a_fail(self):
+        r = self.run_exchange("refusal_withheld", sealed="refusal_match")
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("exchange answer is refused (no_such_subject)", r["detail"])
+
+    def test_a_policy_declined_refusal_of_the_exchange_ask_is_not_checked(self):
+        r = self.run_exchange("refusal", sealed="refusal_not_checked")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn(step.REFUSAL_ISSUE, self.issues(r))
+        # an unjudged refusal is not an answer
+        self.assertNotEqual(json.loads((self.out / "first-answered.json").read_text())["ask"], "lab-1 exchange")
+
+    def test_an_exchange_refusal_signed_under_another_key_is_a_fail(self):
+        r = self.run_live({**VERIFIED, "exchange": "refusal"}, announced="3" * 64, **dict(
+            zip(("ledger", "node_extra"), self.exchange_dirs())), sealed={"exchange": "refusal_match"})
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("exchange refusal is signed under a key that is not the listed key", r["detail"])
+
+    def test_no_half_the_asker_sent_and_the_node_cites_leaves_the_exchange_ask_not_checked_unasked(self):
+        for dirs in ({"held": False}, {"cited": False}, {"sent": False}):
+            with self.subTest(dirs=dirs):
+                shutil.rmtree(Path(self.tmp.name) / "live", ignore_errors=True)
+                r = self.run_exchange("exchange_verified", **dirs)
+                self.assertIn(step.EXCHANGE_ISSUE, self.issues(r))
+                self.assertFalse(list(self.out.glob("lab-1/attempts/*/exchange.request.json")), dirs)
+
+    def test_a_node_with_no_readable_data_dir_leaves_the_exchange_ask_not_checked(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger())
+        self.assertIn(step.EXCHANGE_GAP, [i["why"] for i in r["not_checked"]])
 
     def test_a_response_of_another_type_than_the_reporter_saw_is_a_fail(self):
         r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, ledger=self.ledger(),
