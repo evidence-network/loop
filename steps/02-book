@@ -26,15 +26,28 @@ The finding:
 
 On the live population each node's own book is used: the book join.sh made
 under its book_dir, sealed with its own key from its data_dir (steps/live.py).
-The pinned capsulectl seals a record with that key, appends it to the book and
-cuts a checkpoint with the book's checkpoint key, then bundles the record;
+The book's profile is found under book_dir by its store (join.sh names it after
+its --name, lab-N on the lab host, not the operator's label). The pinned
+capsulectl seals a record with the node key, appends it to the book and cuts a
+checkpoint with the book's checkpoint key, then bundles the record;
 `capsulectl verify --bundle` checks the bundle offline (record identity and
 signature, membership under the signed checkpoint). The step then checks that the
 bundle's record is the one appended, at its position, signed by the node key,
-under a checkpoint signed by the key the book was created with. The live driver
-is capsulectl, not the rehearsal driver, and the witness part is NOT_CHECKED:
-no witness is configured for a lab node's book. A node whose data_dir or book_dir is not set or not readable is
-NOT_CHECKED. One finding, the worst over the nodes, its detail listing each node.
+under a checkpoint signed by the key the book was created with.
+
+The witness part: when the book's profile names a witness (checkpoint.endpoint
+and checkpoint.public_key, which lab/lab.sh witness sets to the lab test
+witness), the step delivers the new checkpoint there (`capsulectl cll checkpoint
+publish`), and `capsulectl cll checkpoint status` re-verifies the receipt the
+book stored. The step picks the receipt's entry in lab/witness/witnesses.json by
+the receipt's key id, never "the" witness key, and the receipt FAILs when that
+key id is not listed, is any node's own key, is not the key it verifies under, or
+the receipt was signed before the entry's not_before. A rotated-out key keeps its
+entry, so its receipts still pass. A book with no witness configured, or one whose
+witness gave no receipt, is NOT_CHECKED for the witness part. A node whose
+data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
+`$LAB_DIR` the environment does not set says so). One finding, the worst over
+the nodes, its detail listing each node.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (no driver installed, unreadable population).
@@ -48,6 +61,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -167,9 +181,12 @@ LIVE_PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PROOF = ["capsule.json", "append.json", "checkpoint.json", "bundle.json", "book-record.json", "verify.json"]
 LIVE_WITNESS_NOT_CHECKED = {
     "what": "a witness receipt on the book's checkpoint, and its verification",
-    "why": "no witness is configured for a lab node's book, so its checkpoint carries no receipt",
-    "issue": "evidence-network/loop: the lab nodes' books have no witness configured (population/live)",
+    "why": "the node's book profile names no witness (checkpoint.endpoint), so its checkpoint gets no receipt",
+    "issue": "evidence-network/loop: the lab nodes' books have no witness configured (lab/lab.sh witness)",
 }
+# The lab test witness's listing: each key its own entry with its not_before (lab/witness.py).
+LISTING = Path(os.environ.get("LOOP_WITNESS_LISTING") or ROOT / "lab" / "witness" / "witnesses.json")
+SPKI_ED25519 = bytes.fromhex("302a300506032b6570032100")
 LIVE_SETUP = "none: steps/12-join.setup.sh has not installed it"
 PKCS8_ED25519 = bytes.fromhex("302e020100300506032b657004220420")
 
@@ -218,32 +235,157 @@ def seed_of(pem):
     return der[16:].hex()
 
 
-def bound_keys(book_dir, name):
-    """The node keys join.sh's profile for the book trusts: its top-level trusted_keys."""
-    keys, inside = [], False
-    for line in (book_dir / "config" / "capsule" / "profiles" / f"{name}.yaml").read_text().splitlines():
-        if not line.startswith(" "):
-            inside = line.strip() == "trusted_keys:"
-        elif inside and line.strip().startswith("- "):
-            keys.append(line.strip()[2:].strip())
-    return keys
+def profile_fields(text):
+    """A capsulectl profile YAML as {dotted key: value or [items]}: the keys this step reads."""
+    out, stack = {}, []
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent, body = len(line) - len(line.lstrip()), line.strip()
+        if body.startswith("- "):
+            key = ".".join(k for _, k in stack)
+            out.setdefault(key, [])
+            if isinstance(out[key], list):
+                out[key].append(body[2:].strip().strip('"'))
+            continue
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        key, _, value = body.partition(":")
+        stack.append((indent, key.strip()))
+        if value.strip():
+            out[".".join(k for _, k in stack)] = value.strip().strip('"')
+    return out
 
 
-def live_book(cap, name, data_dir, book_dir, out, work, time):
-    """Append one record to the node's book and check it: (result, proof, detail)."""
+def book_profile(book_dir):
+    """The profile join.sh made for the book under book_dir: the one under its config whose
+    store (connection.database) is book_dir/book. join.sh names it after its --name (lab/lab.sh
+    passes lab-N), not after the operator's label in population.json. None when there is none."""
+    want = (book_dir / "book").resolve()
+    for p in sorted((book_dir / "config" / "capsule" / "profiles").glob("*.yaml")):
+        try:
+            f = profile_fields(p.read_text())
+        except OSError:
+            continue
+        if f.get("connection.database") and Path(f["connection.database"]).resolve() == want:
+            return {"trusted_keys": f.get("trusted_keys") or [],
+                    "endpoint": f.get("checkpoint.endpoint", ""), "public_key": f.get("checkpoint.public_key", "")}
+    return None
+
+
+def spki_hex(pem):
+    """The raw Ed25519 public key of an SPKI PEM as hex, or None."""
+    try:
+        der = base64.b64decode("".join(ln for ln in Path(pem).read_text().splitlines() if not ln.startswith("-----")))
+    except (OSError, ValueError):
+        return None
+    return der[12:].hex() if len(der) == 44 and der.startswith(SPKI_ED25519) else None
+
+
+def cbor(data, i=0):
+    """One CBOR item at data[i]: (value, next index). Enough for a COSE receipt's headers."""
+    major, info = data[i] >> 5, data[i] & 31
+    i += 1
+    if info < 24:
+        n = info
+    elif info <= 27:
+        size = 1 << (info - 24)
+        n, i = int.from_bytes(data[i:i + size], "big"), i + size
+    else:
+        raise ValueError("indefinite or reserved CBOR length")
+    if major == 0:
+        return n, i
+    if major == 1:
+        return -1 - n, i
+    if major in (2, 3):
+        v = bytes(data[i:i + n])
+        return (v if major == 2 else v.decode()), i + n
+    if major == 4:
+        items = []
+        for _ in range(n):
+            v, i = cbor(data, i)
+            items.append(v)
+        return items, i
+    if major == 5:
+        m = {}
+        for _ in range(n):
+            k, i = cbor(data, i)
+            m[k], i = cbor(data, i)
+        return m, i
+    if major == 6:
+        return cbor(data, i)
+    return {20: False, 21: True, 22: None}.get(n), i
+
+
+def receipt_header(receipt):
+    """(key id hex or None, signing time as unix seconds or None) from a COSE receipt's protected header."""
+    msg, _ = cbor(receipt)
+    protected = cbor(msg[0])[0] if msg[0] else {}
+    kid, claims = protected.get(4), protected.get(15)
+    iat = claims.get(6) if isinstance(claims, dict) else None
+    return (kid.hex() if isinstance(kid, bytes) else None), (iat if isinstance(iat, int) else None)
+
+
+def listing():
+    """The lab test witness listing: its entries, [] when it is missing or unreadable."""
+    try:
+        return [e for e in json.loads(LISTING.read_text()).get("witnesses", []) if isinstance(e, dict)]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def utc_seconds(text):
+    return int(datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp())
+
+
+def witness_checks(status_rc, status, profile_key, node_keys):
+    """The checks on the receipt the book stored for its checkpoint: {name: {ok, detail}}."""
+    receipt = base64.b64decode(((status or {}).get("receipt") or {}).get("Bytes") or "")
+    kid, iat = receipt_header(receipt)
+    entries = listing()
+    entry = next((e for e in entries if e.get("key_id") == kid), None)
+    when = datetime.fromtimestamp(iat, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if iat is not None else None
+    checks = {"witness_listed": {"ok": entry is not None,
+                                 "detail": f"receipt key id {kid}; the lab test witness listing has "
+                                           f"{[e.get('key_id') for e in entries]}"},
+              "witness_not_node": {"ok": kid is not None and kid not in node_keys,
+                                   "detail": f"receipt key id {kid}; " + ("a node's own key" if kid in node_keys
+                                                                         else "not a key of any node it witnesses")}}
+    try:
+        ok = entry is not None and iat is not None and iat >= utc_seconds(entry.get("not_before"))
+    except (TypeError, ValueError):
+        ok = False
+    checks["witness_not_before"] = {"ok": ok, "detail": f"signed at {when}; the entry's not_before "
+                                                        f"{entry.get('not_before') if entry else None}"}
+    ok = status_rc == 0 and (status or {}).get("state") == "verified" and kid == profile_key
+    checks["witness_receipt"] = {"ok": ok, "detail": f"capsulectl cll checkpoint status exit {status_rc}, state "
+                                                     f"{(status or {}).get('state')}, under the book's witness key "
+                                                     f"{profile_key}; receipt key id {kid}"}
+    return checks
+
+
+def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time):
+    """Append one record to the node's book and check it, then its witness receipt: (result, proof, detail, gap).
+
+    gap is the node's witness not_checked entry when the witness part could not be checked, else None.
+    """
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(mode=0o700, parents=True)
     env = dict(os.environ, XDG_CONFIG_HOME=str(work / "config"),
                CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
+    if os.environ.get("LOOP_WITNESS_CA"):
+        # The lab test witness serves HTTPS on loopback under its own certificate (lab/lab.sh witness).
+        env["SSL_CERT_FILE"] = os.environ["LOOP_WITNESS_CA"]
     done = []
 
     def cap_run(stem, *args, save=None):
         r = subprocess.run([str(cap), *map(str, args)], capture_output=True, text=True, env=env)
         if save:
             (out / save).write_text(r.stdout)
-        if r.returncode != 0 and stem != "verify":
+        if r.returncode != 0:
             (out / f"{stem}.stderr.txt").write_text(r.stderr)
-            raise RuntimeError(stem)
+            if stem not in ("verify", "publish", "status"):
+                raise RuntimeError(stem)
         return r
 
     try:
@@ -257,10 +399,14 @@ def live_book(cap, name, data_dir, book_dir, out, work, time):
         records = book_dir / "book" / "book" / "records"
         first = json.loads((records / "checkpoints.jsonl").read_text().splitlines()[0])
         book_id, book_key = first["log_id"], first["key_id"]
-        bound = bound_keys(book_dir, name)
+        bound = profile["trusted_keys"]
+        # The book's witness, as its profile names it: the step delivers this run's checkpoint there.
+        witness = (["--checkpoint-endpoint", profile["endpoint"], "--checkpoint-public-key", profile["public_key"]]
+                   if profile["endpoint"] else [])
         cap_run("profile", "profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", book_dir / "book",
                 "--log-id", book_id, "--operator", name, "--trusted-key", node_pub, "--signing-key-file", seed,
-                "--checkpoint-signing-key-file", book_dir / "checkpoint.seed", "--checkpoint-trusted-key", cp_pub)
+                "--checkpoint-signing-key-file", book_dir / "checkpoint.seed", "--checkpoint-trusted-key", cp_pub,
+                *witness)
         request = work / "request.json"
         request.write_text(json.dumps({
             "spec_version": "capsule-seal-request/v1",
@@ -273,16 +419,17 @@ def live_book(cap, name, data_dir, book_dir, out, work, time):
         appended = json.loads(cap_run("append", "cll", "append", "--profile", name, "--capsule",
                                       out / "capsule.json", save="append.json").stdout)
         done.append("append.json")
-        cap_run("checkpoint", "cll", "checkpoint", "create", "--profile", name, save="checkpoint.json")
+        size = json.loads(cap_run("checkpoint", "cll", "checkpoint", "create", "--profile", name,
+                                  save="checkpoint.json").stdout)["checkpoint"]
         done.append("checkpoint.json")
         cap_run("bundle", "book", "bundle", "--profile", name, "--root", capsule_id, "--out", out / "bundle.json")
         done.append("bundle.json")
     except RuntimeError as e:
         proof = done + [f"{e}.stderr.txt"]
-        return "FAIL", proof, f"node {name}: capsulectl {e} did not run on the node's book (exit non-zero)"
+        return "FAIL", proof, f"node {name}: capsulectl {e} did not run on the node's book (exit non-zero)", None
     except (OSError, ValueError, KeyError, IndexError) as e:
         (out / "input.stderr.txt").write_text(f"{e}\n")
-        return "FAIL", done + ["input.stderr.txt"], f"node {name}: the node's key or book could not be read: {e}"
+        return "FAIL", done + ["input.stderr.txt"], f"node {name}: the node's key or book could not be read: {e}", None
 
     # The book record that carries the appended capsule.
     line = next((ln for ln in (records / "records.jsonl").read_text().splitlines()
@@ -291,14 +438,49 @@ def live_book(cap, name, data_dir, book_dir, out, work, time):
     r = cap_run("verify", "verify", "--bundle", out / "bundle.json", save="verify.json")
     checks = live_checks(r.returncode, out, capsule_id, appended, node_pub, book_id, book_key)
     checks["node_key"] = {"ok": node_pub in bound, "detail": f"node key {node_pub}; the book was bound to {bound}"}
-    (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     proof = LIVE_PROOF + ["checks.json"]
+    gap = None
+    if not profile["endpoint"]:
+        gap = LIVE_WITNESS_NOT_CHECKED
+    else:
+        # Deliver this run's checkpoint to the book's witness; the book keeps the receipt it gets.
+        published = cap_run("publish", "cll", "checkpoint", "publish", "--profile", name, "--checkpoint", size,
+                            save="publish.json")
+        proof += ["publish.json"] + (["publish.stderr.txt"] if published.returncode else [])
+        try:
+            state = json.loads(published.stdout)
+        except ValueError:
+            state = {}
+        if not state.get("receipt"):
+            reason = (published.stderr.strip().splitlines() or [f"state {state.get('state')}"])[-1]
+            gap = {"what": f"a witness receipt on node {name}'s checkpoint, and its verification",
+                   "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason}",
+                   "issue": "evidence-network/loop: the lab test witness gave no receipt (lab/lab.sh witness)"}
+        else:
+            # Re-verified from the receipt the book stored, offline, by the pinned capsulectl.
+            r = cap_run("status", "cll", "checkpoint", "status", "--profile", name, "--checkpoint", size,
+                        save="witness-status.json")
+            proof += ["witness-status.json"] + (["status.stderr.txt"] if r.returncode else [])
+            try:
+                status = json.loads(r.stdout)
+            except ValueError:
+                status = state
+            try:
+                checks.update(witness_checks(r.returncode, status, profile["public_key"],
+                                             node_keys | {node_pub, cp_pub, *bound}))
+            except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
+                checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
+    (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
     if failed:
-        return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}"
-    return "NOT_CHECKED", proof, (f"{where}: these held on the proof bytes, by capsulectl verify --bundle and "
-                                  f"this step's comparisons: {', '.join(checks)}. Witness part not checked.")
+        return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}", None
+    held = (f"{where}: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint "
+            f"status and this step's comparisons: {', '.join(checks)}.")
+    if gap:
+        return "NOT_CHECKED", proof, f"{held} Witness part not checked.", gap
+    return "PASS", proof, (f"{held} The receipt is from the lab test witness (lab/witness/witnesses.json), "
+                           f"one organization's test witness."), None
 
 
 def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):
@@ -351,27 +533,37 @@ def main_live(pop, out, started):
     cap, missing = capsulectl()
     results, proof, details, not_checked = [], [], [], list(missing)
     out.mkdir(parents=True, exist_ok=True)
+    if LISTING.is_file():
+        shutil.copyfile(LISTING, out / "witnesses.json")
+        proof.append("witnesses.json")
+    # Every node's own key: a receipt under any of them is not a witness's.
+    node_keys = {k for k in (spki_hex(d / "keys" / "node-key.pub.pem") for d in
+                             (live.readable(n, "data_dir", "keys/node-key.pub.pem") for n in pop["nodes"]) if d) if k}
     with tempfile.TemporaryDirectory(prefix="02-book-") as tmp:
         for entry in pop["nodes"]:
             name = entry["name"]
-            data_dir = live.readable(entry, "data_dir", "keys/node-key.pem")
-            book_dir = live.readable(entry, "book_dir", "checkpoint.seed", "book/book/records/checkpoints.jsonl",
-                                     "book/book/records/records.jsonl", f"config/capsule/profiles/{name}.yaml")
-            unset = [f for f, d in (("data_dir", data_dir), ("book_dir", book_dir)) if d is None]
-            if unset or missing:
+            need = {"data_dir": ("keys/node-key.pem",),
+                    "book_dir": ("checkpoint.seed", "book/book/records/checkpoints.jsonl",
+                                 "book/book/records/records.jsonl")}
+            dirs = {f: live.readable(entry, f, *files) for f, files in need.items()}
+            why = {f: live.why_not(entry, f, *need[f]) for f, d in dirs.items() if d is None}
+            profile = book_profile(dirs["book_dir"]) if dirs["book_dir"] else None
+            if dirs["book_dir"] and profile is None:
+                why["book_dir"] = "book_dir has no book profile whose store is its book/ (config/capsule/profiles)"
+            if why or missing:
                 results.append("NOT_CHECKED")
-                not_checked += [live.not_checked(name, f) for f in unset]
-                why = f"{' and '.join(unset)} not set or unreadable" if unset else "a pinned tool is missing"
-                details.append(f"node {name}: not checked, {why}")
+                not_checked += [live.not_checked(name, f, w) for f, w in why.items()]
+                details.append(f"node {name}: not checked, {'; '.join(why.values()) or 'a pinned tool is missing'}")
                 continue
             if (out / name).exists():
                 shutil.rmtree(out / name)
-            result, files, detail = live_book(cap, name, data_dir, book_dir, out / name, Path(tmp) / name, started)
+            result, files, detail, gap = live_book(cap, name, dirs["data_dir"], dirs["book_dir"], profile, node_keys,
+                                                   out / name, Path(tmp) / name, started)
             results.append(result)
             proof += [f"{name}/{f}" for f in files if (out / name / f).is_file()]
             details.append(detail)
-            if result == "NOT_CHECKED" and LIVE_WITNESS_NOT_CHECKED not in not_checked:
-                not_checked.append(LIVE_WITNESS_NOT_CHECKED)
+            if result == "NOT_CHECKED" and gap and gap not in not_checked:
+                not_checked.append(gap)
     finding.write(out, result=live.worst(results), population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
                   proof=proof, detail="; ".join(details), not_checked=not_checked, started=started)
     return 0
