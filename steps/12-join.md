@@ -47,7 +47,8 @@ With no published file, the detail says nothing is compared.
 - The controller binding's revocation, and a check of the binding record by
   a verifier outside the node. Before doctor reports a binding bound, the
   pinned plugin checks its form, both signatures, its window, and that it
-  binds the node key. It reads no revocation, and doctor names the binding
+  binds the node key. It reads no revocation (the loop's own read is
+  evidence-network/loop#138), and doctor names the binding
   only by its digest, so the loop has no record to check
   (action-state-group/agent-action-capsule#432).
 - The signed commitment and the policy digest that the reporter's answers are
