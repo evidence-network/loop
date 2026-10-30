@@ -526,7 +526,7 @@ class Bindings(unittest.TestCase):
         self.assertEqual(hc.bound_groups(FIX / "revoked" / "bindings", FIX / "revoked" / "versions.lock", revoked), [])
 
     def test_revoked_and_not_checked_never_group_even_from_a_pinned_verifier(self):
-        for status, cites in (("revoked", None), ("not_checked", "action-state-group/agent-action-capsule#432")):
+        for status, cites in (("revoked", None), ("not_checked", "action-state-group/agent-action-capsule#457")):
             with self.subTest(status=status):
                 d, lock = self.write(lambda v: v.update(status=status, cites=cites))
                 self.assertEqual(cb.check_file(d / self.verdict_path.name, cb.read_lock(lock))[1], [])

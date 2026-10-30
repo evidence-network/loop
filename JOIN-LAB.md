@@ -124,10 +124,11 @@ with the issue that owns it.
 
 These are never shown as checked.
 
-- No released tool verifies a `controller-binding/0` record yet
-  (action-state-group/agent-action-capsule#432). join.sh signs it and doctor
-  finds it naming your key, but nothing checks its signatures, so your key
-  reads as unbound. Step 12 states this outside its assertion.
+- No `binding-verifier` is pinned, so your key reads as unbound for
+  grouping: the second-language check of your binding record writes no
+  verdict.
+- Your binding's revocation, and your key's role in it (the verifier takes
+  either of the binding's two keys), are not checked.
 - Mesh nodes keep their book in the capsules plugin. The pinned plugin has
   its own `join` and `doctor --probe` (capsules-plugin PR #81) and signs and
   serves the commitment (PR #75); step 12 asks the node through the daily

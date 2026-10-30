@@ -238,11 +238,11 @@ class StatusPageTest(unittest.TestCase):
     # A PASS finding's gaps, in the convention the steps write: one sentence in
     # detail, "Outside this step's assertion: ...", ending with owner/repo#N.
     GAPS = {1: ("the producer envelope signature is not verified in a second language",
-                "action-state-group/agent-action-capsule#432"),
+                "action-state-group/agent-action-capsule#457"),
             3: ("alice: the stapled history_card/1 signature is not verified",
                 "action-state-group/agent-action-capsule#430"),
             12: ("the controller binding of the joined node is not established",
-                 "action-state-group/agent-action-capsule#432")}
+                 "action-state-group/agent-action-capsule#457")}
 
     def gap_detail(self, n):
         text, issue = self.GAPS[n]

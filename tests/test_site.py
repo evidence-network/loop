@@ -215,7 +215,7 @@ class SiteTest(unittest.TestCase):
         self.assertEqual(branding(self.out), [])
 
     def test_a_cited_issue_reference_is_allowed_and_the_org_in_prose_is_not(self):
-        ref = "action-state-group/agent-action-capsule#432"
+        ref = "action-state-group/agent-action-capsule#457"
         gap = f"alice: PASS. Outside this step's assertion: the envelope signature is not verified: {ref}."
         with tempfile.TemporaryDirectory() as d:
             findings = Path(d) / "findings"
@@ -224,7 +224,7 @@ class SiteTest(unittest.TestCase):
             self.assertEqual(run_build(DATA, findings, Path(d) / "a")[0], 0)
             for page in ("stats/index.html", "stats/status/index.html"):
                 text = (Path(d) / "a" / page).read_text()
-                self.assertIn(f'<a href="https://github.com/action-state-group/agent-action-capsule/issues/432">{ref}</a>',
+                self.assertIn(f'<a href="https://github.com/action-state-group/agent-action-capsule/issues/457">{ref}</a>',
                               text)
             self.assertEqual(branding(Path(d) / "a"), [])  # a gap line with an AAC issue ref passes
             for prose in ("Built by action-state-group.", "See action-state-group/agent-action-capsule for more.",
@@ -339,11 +339,11 @@ class SiteTest(unittest.TestCase):
 
     def test_a_pass_step_with_a_gap_is_ringed(self):
         gaps = {1: ("seal", "the producer envelope signature is not verified in a second language",
-                    "action-state-group/agent-action-capsule#432"),
+                    "action-state-group/agent-action-capsule#457"),
                 3: ("advertise", "alice: the stapled history_card/1 signature is not verified",
                     "action-state-group/agent-action-capsule#430"),
                 12: ("join", "the controller binding of the joined node is not established",
-                     "action-state-group/agent-action-capsule#432")}
+                     "action-state-group/agent-action-capsule#457")}
         with tempfile.TemporaryDirectory() as d:
             findings = Path(d) / "findings"
             make_findings(findings)

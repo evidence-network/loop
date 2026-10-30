@@ -12,6 +12,7 @@
     "Mesh-LLM/capsules-plugin#113": "closed by capsules-plugin PR #135 (d1f4edc), in the pin",
     "Mesh-LLM/capsules-plugin#130": "closed by capsules-plugin PR #138 (2e334b2), in the pin",
     "Mesh-LLM/capsules-plugin#136": "closed by capsules-plugin PR #137 (7b7f9e0), in the pin",
-    "action-state-group/agent-action-capsule#431": "closed by agent-action-capsule go/v0.15.0 (cross_language signature, AAC#463), the aac-go pin since loop#125"
+    "action-state-group/agent-action-capsule#431": "closed by agent-action-capsule go/v0.15.0 (cross_language signature, AAC#463), the aac-go pin since loop#125",
+    "action-state-group/agent-action-capsule#432": "closed by agent-action-capsule PR #464 (13e4e7b), released as go/v0.15.0 (cross_language binding), the aac-go pin since loop#136"
   }
 }
