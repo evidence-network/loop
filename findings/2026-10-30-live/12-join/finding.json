@@ -1,7 +1,7 @@
 {
   "asserts": "one command on the pinned release records a controller binding for the node key (its controller class recorded), creates the book, publishes the commitment, and a stranger's probe of the node (capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the advertised policy",
-  "detail": "probe backend: reporter. stevenmih-1: doctor reports no controller binding held, and the signed commitment names none; stevenmih-1 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-2: doctor reports no controller binding held, and the signed commitment names none; stevenmih-2 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-3: doctor reports no controller binding held, and the signed commitment names none; stevenmih-3 (asked through a second node's console): checkpoints answered under the listed key; history_card/1 answered under the listed key.",
-  "finished": "2026-10-30T02:31:46Z",
+  "detail": "probe backend: reporter. stevenmih-1: doctor reports the controller binding bound (9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073); its signed commitment, fetched through the console that asks it, names the same digest; stevenmih-1 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-2: doctor reports the controller binding bound (68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e); its signed commitment, fetched through the console that asks it, names the same digest; stevenmih-2 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-3: doctor reports no controller binding held, and the signed commitment names none; stevenmih-3 (asked through a second node's console): checkpoints answered under the listed key; history_card/1 answered under the listed key.",
+  "finished": "2026-10-30T03:15:02Z",
   "name": "join",
   "not_checked": [
     {
@@ -46,103 +46,103 @@
   "population": "live",
   "proof": [
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/ATTEMPT",
-      "sha256": "4e3cae3e2555bd1796e08461c76031816943dbf45a74af7843ec5d3ffc2f1cfe"
+      "path": "stevenmih-1/attempts/20261030T031502Z/ATTEMPT",
+      "sha256": "41e6762a8498b20e0cac5d0edf47b0ea11aae024c54697f5262d3305f3450ec5"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/checkpoints.request.json",
+      "path": "stevenmih-1/attempts/20261030T031502Z/checkpoints.request.json",
       "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/checkpoints.response.json",
-      "sha256": "1d8bf403d99ccb8cdb9e3da594f6ca78450431cfe6f26a9a2eb7f2da697904a4"
+      "path": "stevenmih-1/attempts/20261030T031502Z/checkpoints.response.json",
+      "sha256": "d77b06a4bc92a6cb1c8ea97377dec6f7a1e1a63fcaf49ab95e45af5bb9b8aad5"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/checkpoints.verification",
-      "sha256": "97a0cb928f9a351fe5225003eec7beb69f46629179a0ef661f7708cd1ad42c91"
+      "path": "stevenmih-1/attempts/20261030T031502Z/checkpoints.verification",
+      "sha256": "a5dfbeec945693ffd014a1dfa1b8bd18b294d384afd1d044d99f14e33f7125cc"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/history_card.request.json",
+      "path": "stevenmih-1/attempts/20261030T031502Z/history_card.request.json",
       "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/history_card.response.json",
-      "sha256": "2da0bd5970a95947b64399a055e48a31d4634ba02bacf9acc672d9306e46b2c4"
+      "path": "stevenmih-1/attempts/20261030T031502Z/history_card.response.json",
+      "sha256": "f74674cee24b497a75631d518508eb56988f1f103784a74eac4bab59bbd26c41"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/history_card.verification",
-      "sha256": "97a0cb928f9a351fe5225003eec7beb69f46629179a0ef661f7708cd1ad42c91"
+      "path": "stevenmih-1/attempts/20261030T031502Z/history_card.verification",
+      "sha256": "a5dfbeec945693ffd014a1dfa1b8bd18b294d384afd1d044d99f14e33f7125cc"
     },
     {
-      "path": "stevenmih-1/attempts/20261030T023146Z/peer-key.json",
+      "path": "stevenmih-1/attempts/20261030T031502Z/peer-key.json",
       "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/ATTEMPT",
-      "sha256": "4e3cae3e2555bd1796e08461c76031816943dbf45a74af7843ec5d3ffc2f1cfe"
+      "path": "stevenmih-2/attempts/20261030T031502Z/ATTEMPT",
+      "sha256": "41e6762a8498b20e0cac5d0edf47b0ea11aae024c54697f5262d3305f3450ec5"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/checkpoints.request.json",
+      "path": "stevenmih-2/attempts/20261030T031502Z/checkpoints.request.json",
       "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/checkpoints.response.json",
-      "sha256": "1c18adb065d61bea134ac385bf4d1d7adec191fc02f751ef5a7945adcb652016"
+      "path": "stevenmih-2/attempts/20261030T031502Z/checkpoints.response.json",
+      "sha256": "96ba97026080d5ab644d4fc65f8a5b70db46000048b20c450d6c45f3c73f7109"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/checkpoints.verification",
+      "path": "stevenmih-2/attempts/20261030T031502Z/checkpoints.verification",
       "sha256": "96359c192de4452c6518114edaa632950efb1e13cdba3ca5fbb85db957a9c4b6"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/history_card.request.json",
+      "path": "stevenmih-2/attempts/20261030T031502Z/history_card.request.json",
       "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/history_card.response.json",
-      "sha256": "50fe0f2b642d9d83dfb5621b20c3752ece2c0407dd834157ac286b36ec68402b"
+      "path": "stevenmih-2/attempts/20261030T031502Z/history_card.response.json",
+      "sha256": "ff1a5c13c5a5177319fd2e5e19d4ff2c2a8d3a3d303932085fd685c160921f5a"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/history_card.verification",
+      "path": "stevenmih-2/attempts/20261030T031502Z/history_card.verification",
       "sha256": "96359c192de4452c6518114edaa632950efb1e13cdba3ca5fbb85db957a9c4b6"
     },
     {
-      "path": "stevenmih-2/attempts/20261030T023146Z/peer-key.json",
+      "path": "stevenmih-2/attempts/20261030T031502Z/peer-key.json",
       "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/ATTEMPT",
-      "sha256": "4e3cae3e2555bd1796e08461c76031816943dbf45a74af7843ec5d3ffc2f1cfe"
+      "path": "stevenmih-3/attempts/20261030T031502Z/ATTEMPT",
+      "sha256": "41e6762a8498b20e0cac5d0edf47b0ea11aae024c54697f5262d3305f3450ec5"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/checkpoints.request.json",
+      "path": "stevenmih-3/attempts/20261030T031502Z/checkpoints.request.json",
       "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/checkpoints.response.json",
-      "sha256": "c2adc56a8fe98afc364ba4588f19d27f9c277432ef4ffb8b65e88186f0db4f72"
+      "path": "stevenmih-3/attempts/20261030T031502Z/checkpoints.response.json",
+      "sha256": "e8db559e689b3922bf75e89abfc937fbb29cc606c8df506f1a86710bcd68f571"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/checkpoints.verification",
-      "sha256": "b809f5fc4b3c3ea881a02fdc96c878c0d7d5005a3c394958e017284d95e48e14"
+      "path": "stevenmih-3/attempts/20261030T031502Z/checkpoints.verification",
+      "sha256": "732782664d4250625b8ecd602f58381fb67463ae587dd575a27f5cb44f313324"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/history_card.request.json",
+      "path": "stevenmih-3/attempts/20261030T031502Z/history_card.request.json",
       "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/history_card.response.json",
-      "sha256": "87d4e600549529d524fe1fb3a23213bd25d118b0d050d306fe08fc3e90c572c4"
+      "path": "stevenmih-3/attempts/20261030T031502Z/history_card.response.json",
+      "sha256": "295bc2485d7e276f0fe43c52a50a412256428fa3f4e82871d8d633102ca31828"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/history_card.verification",
-      "sha256": "b809f5fc4b3c3ea881a02fdc96c878c0d7d5005a3c394958e017284d95e48e14"
+      "path": "stevenmih-3/attempts/20261030T031502Z/history_card.verification",
+      "sha256": "732782664d4250625b8ecd602f58381fb67463ae587dd575a27f5cb44f313324"
     },
     {
-      "path": "stevenmih-3/attempts/20261030T023146Z/peer-key.json",
+      "path": "stevenmih-3/attempts/20261030T031502Z/peer-key.json",
       "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
     }
   ],
   "result": "NOT_CHECKED",
-  "started": "2026-10-30T02:31:46Z",
+  "started": "2026-10-30T03:15:02Z",
   "step": "12"
 }

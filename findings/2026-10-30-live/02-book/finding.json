@@ -1,7 +1,7 @@
 {
   "asserts": "the record is in the node's book at a stated position, under a signed checkpoint that verifies; the checkpoint's witness receipt verifies",
   "detail": "node stevenmih-1: not checked, book_dir not set or unreadable; node stevenmih-2: not checked, book_dir not set or unreadable; node stevenmih-3: not checked, book_dir not set or unreadable",
-  "finished": "2026-10-30T02:31:46Z",
+  "finished": "2026-10-30T03:15:02Z",
   "name": "book",
   "not_checked": [
     {
@@ -33,6 +33,6 @@
   "population": "live",
   "proof": [],
   "result": "NOT_CHECKED",
-  "started": "2026-10-30T02:31:46Z",
+  "started": "2026-10-30T03:15:02Z",
   "step": "02"
 }

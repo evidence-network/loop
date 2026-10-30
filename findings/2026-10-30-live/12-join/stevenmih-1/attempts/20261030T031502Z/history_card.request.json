@@ -1,0 +1,10 @@
+{
+  "coverage": {
+    "min_freshness": 1
+  },
+  "derivation": "history_card/1",
+  "profile": "evidence-interop/0",
+  "subject": {
+    "full_history": null
+  }
+}

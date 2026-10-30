@@ -1,7 +1,7 @@
 {
   "asserts": "a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
   "detail": "node stevenmih-1: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node stevenmih-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node stevenmih-3: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key. Outside this step's assertion: the producer envelope signature is not verified in a second language (Class 1 does not include it; only key_id is matched to the node's key): action-state-group/agent-action-capsule#431.",
-  "finished": "2026-10-30T02:31:45Z",
+  "finished": "2026-10-30T03:15:02Z",
   "name": "seal",
   "not_checked": [],
   "pinned": {
@@ -18,42 +18,42 @@
   "proof": [
     {
       "path": "stevenmih-1/capsule.json",
-      "sha256": "923407cb8e939a8cc2a3a3f0b21cac41e91f030082edba4ed15c157ab26639d5"
+      "sha256": "bb3140c418eecb9744116f11762211470cc9bae07f83249e6c13e32c079a1478"
     },
     {
       "path": "stevenmih-1/verifier.json",
-      "sha256": "a2988ea961314d3b5eecfed18668f86cd12b1d639dc594c228e4c6a58639fbac"
+      "sha256": "9be3aac52863a8c8a2cc57c64342a7a01ed5b7d2b42e8738a117b438d80f2a0b"
     },
     {
       "path": "stevenmih-1/checks.json",
-      "sha256": "ec5ec3bd83645b506cdda9f7d4c5d449aa5a9ff25488ff316ebd1bf07aedd95f"
+      "sha256": "7544948e4656d92bb8dee8b92512d42da9e9e46a368aad761232ea93478a7993"
     },
     {
       "path": "stevenmih-2/capsule.json",
-      "sha256": "bfc3022d4ea22905c00d1f364c3c52c55fec3909cd7a26911760b7015804c21d"
+      "sha256": "a9fab046082b73f1d02c3cf10c968b70e7aef9b9cca0e6a71850667fbcd65d4e"
     },
     {
       "path": "stevenmih-2/verifier.json",
-      "sha256": "14d17579751a6763ef391a1d7bc981e5e00e4cec7818eb149e7cade8601ebf15"
+      "sha256": "a6a321de0486a6dadea1a6ff69dcf003bf56701fe3961030bf35253e9090e9a3"
     },
     {
       "path": "stevenmih-2/checks.json",
-      "sha256": "793690ad51992099b184664264bc2d60176cb14c17fdf21c74081c809b4936e3"
+      "sha256": "ea8c6c2cdb6fa4962f774d80ab7fb39580372636ca97d95caf87cf7adaeea299"
     },
     {
       "path": "stevenmih-3/capsule.json",
-      "sha256": "fd360fc9971f37e7f695995b110389b2d244c99ba862da686052a6de546a5eb8"
+      "sha256": "b4725398afc4a4ae923e32a188bd38577cd645f13bf8de6f44d46f66443e6c3b"
     },
     {
       "path": "stevenmih-3/verifier.json",
-      "sha256": "d8e8de9361b95d3a534de85758998dea913cd55143b87d1611b96bc6f21c3a33"
+      "sha256": "4353b39e23c39fbc932efcaf9b8f96e40065b200dd7a0b3c34f41f68c56177c8"
     },
     {
       "path": "stevenmih-3/checks.json",
-      "sha256": "c92c81c59861d72fb44582d8727fa099f4d13b4282c12022a21502afb65898fb"
+      "sha256": "0414dcb87b5b390b03f9a8e18134f6e642869a8b01e62313e154ec12fe518528"
     }
   ],
   "result": "PASS",
-  "started": "2026-10-30T02:31:45Z",
+  "started": "2026-10-30T03:15:01Z",
   "step": "01"
 }
