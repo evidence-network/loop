@@ -27,7 +27,8 @@
 #             half from it), then sends the same temperature-0 request to twin A and twin B under one
 #             x-mesh-twin-bracket; twin B's config injects a different answer (see LAB_TWINS); waits for
 #             the Result on the requester. Writes $LAB_DIR/twin-fault.json. Pays nothing
-#   dispute   steps/09-dispute on population/live, into the same findings/<date>-live/. Read-only
+#   dispute   steps/09-dispute on population/live (with LAB_TWINS, on the four-node population `entries` wrote under
+#             $LAB_DIR/population-twins/: lab-4 is not a committed live node), into the same findings/<date>-live/. Read-only
 #   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
@@ -777,8 +778,10 @@ PY
 }
 
 cmd_dispute() {
-  local out=$ROOT/findings/$TODAY-live
-  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/09-dispute" --population "$ROOT/population/live" --out "$out/09-dispute"
+  local out=$ROOT/findings/$TODAY-live pop=$ROOT/population/live
+  # A twins run has a fourth node that is not in the committed population: `LAB_TWINS=1 entries` wrote the four-node one under the lab dir.
+  [ "$TWINS" = 1 ] && pop=$LAB_DIR/population-twins
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/09-dispute" --population "$pop" --out "$out/09-dispute"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }

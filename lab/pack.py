@@ -125,13 +125,18 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
         return errs
     host_build, plugin_version = build_strings(build)
     pop = load(pop_path)
-    # A lab host directory the population does not list yet (lab-4 with LAB_TWINS=1) joins it, named as the others are.
+    # A twins-only lab node (lab-4 with LAB_TWINS=1) is not a committed live node: it gets no nodes/ entry and is not in
+    # population/live. It joins a separate population written under the lab dir (population-twins/), which
+    # `lab.sh dispute` reads, so step 09 can verify its half without the committed population changing.
+    twins_pop = None
+    extra = []
     for host in add_hosts:
         if not any(host_name(n) == host for n in pop["nodes"]):
             # Named as the others are (stevenmih-1..3), not from the operator's handle, which may differ in case.
             prefix = next((n["name"].rsplit("-", 1)[0] for n in pop["nodes"] if "-" in n["name"]), operator.lower())
-            pop["nodes"].append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
-                                 "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules"})
+            extra.append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
+                          "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules",
+                          "book_dir": f"$LAB_DIR/nodes/{host}/join-book"})
     writes = []
     reporter_identity = None
     for node in pop["nodes"]:
@@ -171,17 +176,26 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     if reporter_identity is None:
         return [f"the reporter {reporter} is not a node in {pop_path}"]
     writes.append((pop_path, json.dumps(pop, indent=2) + "\n"))
+    if extra:
+        for node in extra:
+            try:
+                node["node_id"] = reporter_key.read_identity(data_dir(lab_dir, host_name(node)))["node_id"]
+            except (OSError, ValueError) as e:
+                return [f"{node['name']}: {e}"]
+        twins_pop = dict(pop, nodes=pop["nodes"] + extra)
+        writes.append((Path(lab_dir) / "population-twins" / "population.json", json.dumps(twins_pop, indent=2) + "\n"))
     rep_path = root / "reporter" / "reporter.json"
     rep = load(rep_path)
     rep.update(reporter_identity, operator=operator, mesh="lab", host_build=host_build, plugin_version=plugin_version)
     writes.append((rep_path, json.dumps(rep, indent=2) + "\n"))
     for path, text in writes:
         if dry_run:
-            print(f"would write {path.relative_to(root)}:")
+            print(f"would write {path.relative_to(root) if path.is_relative_to(root) else path}:")
             print("".join(f"  {line}\n" for line in text.splitlines()), end="")
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
-            print(f"wrote {path.relative_to(root)}")
+            print(f"wrote {path.relative_to(root) if path.is_relative_to(root) else path}")
     return []
 
 
