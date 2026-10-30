@@ -101,7 +101,7 @@ class DoctorBackendTest(Tmp):
             shutil.copyfile(self.out / p["path"], work / p["path"])
         if mutate:
             mutate(work)
-        return r, step.decide(work, "rehearsal", finding.now())
+        return r, step.decide(work, "rehearsal", finding.now(), FIX / "population")
 
     @needs_capsulectl
     def test_the_proof_cites_the_exit_code_and_the_strangers_book_and_reproduces_alone(self):
@@ -128,6 +128,27 @@ class DoctorBackendTest(Tmp):
                 f.write_bytes(bytes(b))
             _, again = self.reproduce(flip)
             self.assertEqual(again["result"], "FAIL", rel)
+
+    @needs_capsulectl
+    def test_a_missing_or_unreadable_exit_code_or_no_proof_at_all_reproduces_as_a_fail(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        _, again = self.reproduce(lambda work: (work / "alice.join.exit").unlink())
+        self.assertEqual(again["result"], "FAIL")
+        _, again = self.reproduce(lambda work: (work / "alice.join.exit").write_text("x\n"))
+        self.assertEqual(again["result"], "FAIL")
+        shutil.rmtree(Path(self.tmp.name) / "work")
+        _, again = self.reproduce(lambda work: [f.unlink() for f in work.glob("*.join.exit")])
+        self.assertEqual(again["result"], "FAIL")
+
+    @needs_capsulectl
+    def test_a_judged_file_removed_or_corrupt_still_reproduces_as_a_fail_citing_what_remains(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        _, again = self.reproduce(lambda work: (work / "alice/probe/stranger/profile.json").write_text("{"))
+        self.assertEqual(again["result"], "FAIL")
+        self.assertIn("alice/commitment.json", [p["path"] for p in again["proof"]])
+        shutil.rmtree(Path(self.tmp.name) / "work")
+        _, again = self.reproduce(lambda work: (work / "alice/commitment.json").unlink())
+        self.assertEqual(again["result"], "FAIL")
 
     @needs_capsulectl
     def test_a_kept_nonzero_join_exit_code_reproduces_as_a_fail(self):

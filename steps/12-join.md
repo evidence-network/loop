@@ -60,6 +60,9 @@ Each node's finding cites, by digest: `<node>.join.log` and `<node>.join.exit`
 (join.sh's exit code, kept even when it is non-zero), the commitment, policy,
 doctor and probe files, and the stranger's book the kept answers are verified
 again in (`<node>/probe/stranger/**`; its seeds are throwaway test keys).
-`decide(work, population, started)` judges from those files alone, with the
-same code a run uses, so 08 calls it to reproduce 12. One changed proof byte
-gives FAIL.
+`decide(work, population, started, pop_dir)` judges from those files alone,
+with the same code a run uses and the population's nodes (a node whose exit
+code is not kept is a FAIL), so 08 calls it to reproduce 12. A change to a file
+the judge reads (exit code, commitment, policy, doctor, probe answers, the
+stranger's book) gives FAIL; a change to any cited file is also caught by
+08's digest check. `decide` writes into `work`: pass a scratch copy.
