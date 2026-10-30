@@ -18,5 +18,9 @@ This note sits beside the generated `finding.json` and is not part of its proof 
   `recorded_received`, `matches_issued`) were read from each node's data directory at run time and are not in
   the proof; lab-4's declared entry is in git history at 7fb0029. `result_signed` and `result_is_adjudication`
   re-check from the committed bytes alone.
-- **Pin.** The run was on capsules `01f0921e`; `versions.lock` on main has moved since, so `finding.py check`
-  reports the pin mismatch, as it does for the 2026-10-29 findings.
+- **Pin, and which Result is new.** Rerun 2026-10-30T08:34Z on capsules `d1f4edc` (the lab build of step 05).
+  The copied ledgers hold two Results, and `finding.json`, `checks.json` and `outcome.json` count and pass both:
+  `02439259…` (bracket `lab-twins-20261030T083448Z`, sealed 08:34Z) is the only one produced at `d1f4edc`;
+  `4df68071…` (bracket `lab-twins-20261030T014545Z`, sealed 01:45Z) is carried over in the same data dirs from
+  the first run on `01f0921e`. So "2 held Result line(s)" per node is one new and one old-pin Result. Step 09
+  has no bracket or time filter, so the generated files are left as the step wrote them rather than edited by hand.

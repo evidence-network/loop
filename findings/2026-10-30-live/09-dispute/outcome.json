@@ -10,6 +10,17 @@
       },
       "verdict": "contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
       "verdict_capsule_id": "4df68071dfc59899edbf6fdb23f9ae527317b351b4182cd9acad1583039a6f1d"
+    },
+    {
+      "all_checks_held": true,
+      "party": "stevenmih-3",
+      "referee_node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "twins": {
+        "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94": "contradicted",
+        "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864": "corroborated"
+      },
+      "verdict": "contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
+      "verdict_capsule_id": "02439259e086495920ed308624073268b0144433f02afa20cf50ba0d2984e7b7"
     }
   ]
 }
