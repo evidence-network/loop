@@ -454,9 +454,9 @@
         "via": "host_announced"
       },
       "binding": {
-        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL",
-        "ok": false,
-        "state": "bad"
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) declares key type bip340, which the pinned verifier does not implement (action-state-group/agent-action-capsule#457); signatures not verified",
+        "ok": true,
+        "state": "unsupported_key_type"
       },
       "capsule_id": "a930596b65cecdf6541f610b148bbd0ac7bef30e9215656cda134aca405065e9",
       "cited": {
@@ -545,9 +545,9 @@
         "via": "host_announced"
       },
       "binding": {
-        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL",
-        "ok": false,
-        "state": "bad"
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) declares key type bip340, which the pinned verifier does not implement (action-state-group/agent-action-capsule#457); signatures not verified",
+        "ok": true,
+        "state": "unsupported_key_type"
       },
       "capsule_id": "afae60a03b30eabfcee576a075b40ed92dae1d75af81285af23db7f3012710a6",
       "cited": {
@@ -636,9 +636,9 @@
         "via": "host_announced"
       },
       "binding": {
-        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL",
-        "ok": false,
-        "state": "bad"
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) declares key type bip340, which the pinned verifier does not implement (action-state-group/agent-action-capsule#457); signatures not verified",
+        "ok": true,
+        "state": "unsupported_key_type"
       },
       "capsule_id": "a2b0672710cadd07c124d089bddee12202bd80e3dc0c5ad6443de1a7c2e7d21f",
       "cited": {
@@ -768,9 +768,9 @@
         "via": "host_announced"
       },
       "binding": {
-        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) does not apply: controller_binding_form FAIL",
-        "ok": false,
-        "state": "bad"
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) declares key type bip340, which the pinned verifier does not implement (action-state-group/agent-action-capsule#457); signatures not verified",
+        "ok": true,
+        "state": "unsupported_key_type"
       },
       "capsule_id": "4685d3b7a3b8d6c7d291ad801addc6cee27f9d7ba2d6232f9d4a1849797763d3",
       "cited": {
