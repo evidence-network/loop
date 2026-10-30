@@ -401,16 +401,18 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("does not name the half's key", detail)
 
     def test_a_malformed_key_type_is_bad_not_unsupported(self):
-        for types in (["ed25519", "rsa"], ["ed25519", "bip340", "rsa"]):
+        for types in (["bip340"], ["ed25519", "rsa"], ["ed25519", "bip340", "rsa"]):
             state, detail = self.with_key_types(types)
             self.assertEqual(state, "bad", detail)
 
     def test_unsupported_key_types_reads_only_a_key_types_list(self):
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}'), ["bip340"])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}'), [])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", 7]}'), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340"]}', 2), ["bip340"])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}', 2), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", 7]}', 2), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340"]}', 2), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}', 2), [])
         for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
-            self.assertEqual(step.unsupported_key_types(raw), [], raw)
+            self.assertEqual(step.unsupported_key_types(raw, 2), [], raw)
 
     def test_no_file_no_listing_or_another_binding_is_unread_never_bad(self):
         state, detail = self.check("valid-same-controller", file=False)
