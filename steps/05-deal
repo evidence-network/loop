@@ -574,16 +574,20 @@ BINDING_VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
 # key type; it did not find a bad binding. Remove this, the branch in binding_check, its declaration and its tests
 # once AAC#458 merges, aac-go ships bip340, the loop repins and step 05 reruns.
 UNSUPPORTED_KEY_TYPE_ISSUE = "action-state-group/agent-action-capsule#457"
-UNSUPPORTED_KEY_TYPES = {"bip340"}  # AAC#457 names only this one; any other token is malformed, not unsupported
+KNOWN_KEY_TYPES = {"ed25519", "bip340"}  # AAC#457 defines these two; any other token makes the list malformed (bad)
+UNSUPPORTED_KEY_TYPES = {"bip340"}
 
 
 def unsupported_key_types(raw):
-    """The key types a binding declares in `key_types` that AAC#457 defines and the pinned verifier lacks, sorted."""
+    """The key types a binding declares in `key_types` that the pinned verifier lacks, sorted; none when any
+    declared type is not one AAC#457 defines (the binding is then malformed, not unsupported)."""
     try:
         types = json.loads(raw).get("key_types")
     except (ValueError, AttributeError):
         return []
-    return sorted({t for t in types if isinstance(t, str)} & UNSUPPORTED_KEY_TYPES) if isinstance(types, list) else []
+    if not isinstance(types, list) or not all(isinstance(t, str) and t in KNOWN_KEY_TYPES for t in types):
+        return []
+    return sorted(set(types) & UNSUPPORTED_KEY_TYPES)
 
 
 def binding_check(digest, half, citing, peers):

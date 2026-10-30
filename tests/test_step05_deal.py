@@ -400,11 +400,14 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("does not name the half's key", detail)
 
     def test_a_malformed_key_type_is_bad_not_unsupported(self):
-        state, detail = self.with_key_types(["ed25519", "rsa"])
-        self.assertEqual(state, "bad", detail)
+        for types in (["ed25519", "rsa"], ["ed25519", "bip340", "rsa"]):
+            state, detail = self.with_key_types(types)
+            self.assertEqual(state, "bad", detail)
 
     def test_unsupported_key_types_reads_only_a_key_types_list(self):
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340", "rsa"]}'), ["bip340"])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}'), ["bip340"])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}'), [])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", 7]}'), [])
         for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
             self.assertEqual(step.unsupported_key_types(raw), [], raw)
 
