@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -1015,7 +1016,7 @@ class BindingGapTest(unittest.TestCase):
 class PluginToolsRunTest(Tmp):
     """The whole step on a live population of one node, with its own console given."""
 
-    def run_one(self, data_dir=None, **kw):
+    def run_one(self, data_dir=None, run_at=None, **kw):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
         node = {**ALICE_ENTRY, **({"data_dir": str(data_dir)} if data_dir else {})}
@@ -1024,11 +1025,15 @@ class PluginToolsRunTest(Tmp):
                             committed=kw.pop("committed", None))
         own = PluginConsole(**kw)
         real, step.PUBLISHED = step.PUBLISHED, Path(self.tmp.name) / "none"
+        real_now = step.daily_report.utc_now
+        if run_at:  # the run's one time, which the binding window is held to
+            step.daily_report.utc_now = lambda: datetime.strptime(run_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         try:
             self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out), "--console",
                                         asker.url, "--node-console", f"alice={own.url}"]), 0)
         finally:
             step.PUBLISHED = real
+            step.daily_report.utc_now = real_now
             asker.close()
             own.close()
         self.assertEqual(finding.check(self.out.parent), [])
@@ -1053,11 +1058,8 @@ class PluginToolsRunTest(Tmp):
         return d
 
     def run_bound(self, binding=None, digest=BINDING_DIGEST):
-        real, step.utc_now = step.utc_now, lambda: FIXTURE_AT
-        try:
-            return self.run_one(data_dir=self.data_dir(binding), before=("bound", digest), committed=digest)
-        finally:
-            step.utc_now = real
+        return self.run_one(data_dir=self.data_dir(binding), before=("bound", digest), committed=digest,
+                            run_at=FIXTURE_AT)
 
     @needs_cross
     def test_a_held_binding_that_applies_leaves_revocation_and_the_keys_role(self):
@@ -1098,11 +1100,8 @@ class PluginToolsRunTest(Tmp):
 
     @needs_cross
     def test_a_held_binding_outside_its_window_is_a_fail(self):
-        real, step.utc_now = step.utc_now, lambda: "2030-01-01T00:00:00Z"
-        try:
-            r = self.run_one(data_dir=self.data_dir(), before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST)
-        finally:
-            step.utc_now = real
+        r = self.run_one(data_dir=self.data_dir(), before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST,
+                         run_at="2030-01-01T00:00:00Z")
         self.assertEqual(r["result"], "FAIL", r["detail"])
         self.assertIn("controller_binding_window FAIL", r["detail"])
 

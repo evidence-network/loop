@@ -829,7 +829,7 @@ def no_second_console(name):
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, node_consoles=None):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
     at = daily_report.utc_now()
-    bind_at = utc_now()  # one time for every node's binding window
+    bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
     for node in pop["nodes"]:
         name = node["name"]
         asker, via = console, "the reporter's console"
