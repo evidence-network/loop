@@ -394,17 +394,34 @@ class Step05BindingCheckTest(unittest.TestCase):
                                       {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)})
         self.assertEqual(state, "unread")
 
-    def test_the_entry_names_what_is_left_and_is_absent_when_nothing_is(self):
-        self.assertIsNone(step.live_declaration({}, set(), False))
-        e = step.live_declaration({"ok": 2, "unread": 1},
-                                  {"lab-b has no readable controller-binding.json in its data_dir"}, True)
-        self.assertEqual(e["what"], step.LIVE_DECLARATION_WHAT)
-        self.assertEqual(e["issue"], step.live.ISSUE)
-        self.assertIn("1 cited bindings could not be checked", e["why"])
-        self.assertIn("revocation is not checked", e["why"])
-        only = step.live_declaration({"ok": 1}, set(), True)
-        self.assertEqual(only["issue"], step.live.NO_ISSUE_YET)
-        self.assertNotIn("could not be checked", only["why"])
+    def test_a_half_with_no_evidence_key_is_bad_not_a_crash(self):
+        for key in (None, "zz", 5):
+            state, detail = step.binding_check("cd" * 32, {"key_id": key, "timestamp": "2026-10-30T00:00:00Z"},
+                                               {"timestamp": "2026-10-30T00:00:00Z"}, {})
+            self.assertEqual(state, "bad", detail)
+        self.assertIsNone(step.listed_node_id(None))
+
+    def test_both_issue_times_must_be_readable_to_hold_the_window(self):
+        for half, citing in (("2026-10-30T00:00:00Z", "not a time"), (None, "2026-10-30T00:00:00Z"),
+                             ("2026-10-30T00:00:00", "2026-10-30T00:00:00Z")):
+            state, detail = self.check("valid-same-controller", times=(half, citing))
+            self.assertEqual(state, "unread", detail)
+            self.assertIn("no readable timestamp", detail)
+
+    def test_the_entries_name_what_is_left_and_are_absent_when_nothing_is(self):
+        self.assertEqual(step.live_declarations({}, set()), [])
+        es = step.live_declarations({"ok": 2, "unread": 1, "unsupported": 1},
+                                    {"lab-b has no readable controller-binding.json in its data_dir"})
+        by = {(e["what"], e["issue"]): e["why"] for e in es}
+        self.assertIn("1 cited bindings could not be checked", by[(step.LIVE_DECLARATION_WHAT, step.live.ISSUE)])
+        self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.live.NO_ISSUE_YET)])
+        self.assertIn("revocation NOT_CHECKED", by[("revocation of the controller bindings that apply",
+                                                    step.BINDING_REVOCATION_ISSUE)])
+        self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",
+                                            step.BINDING_ROLE_ISSUE)])
+        self.assertEqual(len(es), 4)
+        self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
+                         [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
 
 
 @unittest.skipIf(BIN is None or not HAS_CROSS, NO_DRIVER if BIN is None else NO_CROSS)
