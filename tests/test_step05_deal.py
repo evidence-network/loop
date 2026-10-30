@@ -175,8 +175,8 @@ class Step05DealRehearsalTest(unittest.TestCase):
             self.assertIn(c, f["detail"])
         self.assertEqual(finding.gaps(f["detail"]), [(
             "the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the "
-            "controller-binding/0 the pinned capsules plugin reads, whose signatures no released verifier checks",
-            "action-state-group/agent-action-capsule#432")])
+            "controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it",
+            "evidence-network/loop#134")])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(set(f["pinned"]), {"evidencebook", "checkpointed-local-log"})
         paths = {p["path"] for p in f["proof"]}
@@ -308,6 +308,103 @@ class Step05DealNoDriverTest(unittest.TestCase):
             self.assertEqual(f["result"], "NOT_CHECKED")
             self.assertIn(step.LIVE_SETUP, {n["issue"] for n in f["not_checked"]})
             self.assertEqual(finding.check(Path(tmp) / "f"), [])
+
+
+BINDINGS = json.loads((FIXTURES / "controller-bindings.json").read_text())["cases"]
+
+
+def binding_digest(text):
+    r = subprocess.run([str(CROSS), "binding"], capture_output=True,
+                       input=json.dumps({"binding": text, "at": ["2026-10-30T00:00:00Z"]}).encode())
+    return json.loads(r.stdout)["binding_digest"]
+
+
+@unittest.skipUnless(HAS_CROSS, NO_CROSS)
+class Step05BindingCheckTest(unittest.TestCase):
+    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.15.0)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.data = self.dir / "data"
+        self.data.mkdir()
+        (self.dir / "nodes").mkdir()
+        os.environ["LOOP_NODES_DIR"] = str(self.dir / "nodes")
+        self.addCleanup(os.environ.pop, "LOOP_NODES_DIR")
+
+    def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",)):
+        text, keys = BINDINGS[case]["binding"], BINDINGS[case]["keys"]
+        key = key or keys[0]
+        node_id = "b1" * 32
+        if listed:
+            (self.dir / "nodes" / f"{node_id}.json").write_text(json.dumps({"node_id": node_id, "key_id": key}))
+        if file:
+            (self.data / step.BINDING_FILE).write_text(text)
+        half = {"key_id": key, "timestamp": times[0]}
+        citing = {"timestamp": times[-1]}
+        return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)})
+
+    def test_a_binding_that_names_the_key_and_applies_is_ok(self):
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("signatures and window PASS, revocation NOT_CHECKED", detail)
+
+    def test_the_second_key_of_the_binding_is_ok_too_the_role_is_not_checked(self):
+        keys = BINDINGS["valid-same-controller"]["keys"]
+        self.assertEqual(self.check("valid-same-controller", key=keys[1])[0], "ok")
+
+    def test_a_key_the_binding_does_not_name_is_bad(self):
+        state, detail = self.check("valid-same-controller", key="ab" * 32)
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("does not name the half's key", detail)
+
+    def test_a_binding_outside_its_window_at_the_citing_record_is_bad(self):
+        state, detail = self.check("valid-same-controller", times=("2026-10-30T00:00:00Z", "2028-01-01T00:00:00Z"))
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_window FAIL", detail)
+
+    def test_an_expired_binding_and_one_signed_by_one_key_are_bad(self):
+        for case, prop in (("expired", "controller_binding_window FAIL"),
+                           ("one-key-signed", "controller_binding_signatures FAIL")):
+            state, detail = self.check(case)
+            self.assertEqual(state, "bad", detail)
+            self.assertIn(prop, detail)
+
+    def test_a_method_the_verifier_does_not_implement_is_unsupported_not_ok(self):
+        state, detail = self.check("unknown-method")
+        self.assertEqual(state, "unsupported", detail)
+        self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
+
+    def test_no_file_no_listing_or_another_binding_is_unread_never_bad(self):
+        state, detail = self.check("valid-same-controller", file=False)
+        self.assertEqual(state, "unread", detail)
+        self.assertIn("no readable controller-binding.json", detail)
+        for f in (self.dir / "nodes").glob("*.json"):
+            f.unlink()
+        self.assertIn("no nodes/<node_id>.json listing", self.check("valid-same-controller", listed=False)[1])
+        state, detail = self.check("valid-same-controller", digest="cd" * 32)
+        self.assertEqual(state, "unread", detail)
+        self.assertIn("not the " + "cd" * 32 + " the citing record names", detail)
+
+    def test_a_file_that_is_not_a_binding_is_not_the_cited_one_and_not_a_stopped_step(self):
+        self.check("valid-same-controller")
+        (self.data / step.BINDING_FILE).write_text("not json")
+        state, _ = step.binding_check("cd" * 32, {"key_id": "ab" * 32, "timestamp": "2026-10-30T00:00:00Z"},
+                                      {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)})
+        self.assertEqual(state, "unread")
+
+    def test_the_entry_names_what_is_left_and_is_absent_when_nothing_is(self):
+        self.assertIsNone(step.live_declaration({}, set(), False))
+        e = step.live_declaration({"ok": 2, "unread": 1},
+                                  {"lab-b has no readable controller-binding.json in its data_dir"}, True)
+        self.assertEqual(e["what"], step.LIVE_DECLARATION_WHAT)
+        self.assertEqual(e["issue"], step.live.ISSUE)
+        self.assertIn("1 cited bindings could not be checked", e["why"])
+        self.assertIn("revocation is not checked", e["why"])
+        only = step.live_declaration({"ok": 1}, set(), True)
+        self.assertEqual(only["issue"], step.live.NO_ISSUE_YET)
+        self.assertNotIn("could not be checked", only["why"])
 
 
 @unittest.skipIf(BIN is None or not HAS_CROSS, NO_DRIVER if BIN is None else NO_CROSS)
@@ -495,7 +592,7 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
-        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+        self.assertIn(step.LIVE_DECLARATION_WHAT, self.names(f))
         self.assertNotIn(step.LIVE_UNBOUND_ISSUE, {n["issue"] for n in f["not_checked"]})
         self.assertEqual(finding.check(self.findings), [])
 
@@ -505,7 +602,7 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
-        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+        self.assertIn(step.LIVE_DECLARATION_WHAT, self.names(f))
         self.assertIn("accepted the half's key via host_announced", f["detail"])
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertTrue(checks[0]["accepted"]["bound"] and checks[0]["accepted"]["ok"])
@@ -514,6 +611,44 @@ class Step05DealLiveTest(unittest.TestCase):
                          {"path": f"nodes/commitments/{node_file.name}",
                           "sha256": hashlib.sha256(node_file.read_bytes()).hexdigest()})
         self.assertEqual(finding.check(self.findings), [])
+
+    def bind_sender(self, text=None, file=True):
+        """lab-b, the sender, is a node of the population with its node_id and holds this binding as its
+        controller-binding.json (None: no file); the citing record names the binding's digest."""
+        self.publish_binding("cd" * 32)
+        pop = json.loads((self.lab / "population.json").read_text())
+        pop["nodes"][1]["node_id"] = "b1" * 32
+        (self.lab / "population.json").write_text(json.dumps(pop))
+        if text is not None:
+            (self.lab / "nodes" / "lab-b" / "data" / step.BINDING_FILE).write_text(text)
+            self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest=binding_digest(text))
+        else:
+            self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32)
+
+    def test_live_a_cited_binding_the_senders_data_dir_does_not_hold_stays_not_checked(self):
+        self.bind_sender()
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        e = self.names(f)[step.LIVE_DECLARATION_WHAT]
+        self.assertIn("lab-b has no readable controller-binding.json", e["why"])
+        self.assertEqual(e["issue"], step.live.ISSUE)
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertEqual(c["binding"]["state"], "unread")
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_cited_binding_that_does_not_name_the_halfs_key_fails(self):
+        self.bind_sender(BINDINGS["valid-same-controller"]["binding"])
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("binding", f["detail"])
+        self.assertIn("does not name the half's key", f["detail"])
+
+    def test_live_another_binding_than_the_cited_one_is_not_a_fail(self):
+        self.bind_sender(BINDINGS["valid-same-controller"]["binding"])
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertIn("not the " + "cd" * 32, self.names(f)[step.LIVE_DECLARATION_WHAT]["why"])
 
     def test_live_a_bound_key_with_no_same_controller_member_still_counts(self):
         self.publish_binding("cd" * 32)
@@ -566,7 +701,7 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
-        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+        self.assertIn(step.LIVE_DECLARATION_WHAT, self.names(f))
 
     def test_live_a_declaration_with_a_malformed_anchor_key_fails(self):
         self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
