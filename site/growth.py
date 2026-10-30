@@ -167,15 +167,15 @@ def judge_tree(tree):
 def week_numbers(judgeds, start, end, last):
     """The week's counts. judgeds[0] is the tree at the week's end: the nodes listed and the ones with a verifying card.
     Volume comes from every verifying card, in that tree or a later one, that carries a checkpoint cut in this week
-    (so one committed late is counted in its own week); `volume_nodes` and each community's `cards` count the
+    (so one committed late is counted in its own week) and whose node was listed that week; `volume_nodes` and each community's `cards` count the
     contributors of that volume."""
     judged = judgeds[0]
     verifying = [n for n in judged["listed"] if judged["nodes"][n]["ok"]]
     communities, contributors, seen, cards_seen = {}, set(), set(), set()
     for later in judgeds:
         for node_id in later["listed"]:
-            if not later["nodes"][node_id]["ok"]:
-                continue
+            if node_id not in judged["listed"] or not later["nodes"][node_id]["ok"]:
+                continue  # only nodes listed that week: the cell says "of N listed nodes", so k <= N
             for card in later["nodes"][node_id]["cards"]:
                 for payload, carries in card["checkpoints"]:
                     issued = card_time(payload)

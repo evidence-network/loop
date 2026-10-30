@@ -175,6 +175,16 @@ class Synthetic(unittest.TestCase):
         c = self.week([week_end, later, later])
         self.assertEqual((c["cards"], c["checkpoints"], c["records"]), (1, 1, 7))  # the card is the week-end tree's; the checkpoint is counted once
 
+    def test_a_node_listed_only_later_adds_nothing_so_k_never_exceeds_n(self):
+        week_end = {"listed": ["a"], "nodes": {"a": {"ok": True, "reason": "", "cards": []}}}
+        later = {"listed": ["a", "b"], "nodes": {
+            "a": week_end["nodes"]["a"],
+            "b": {"ok": True, "reason": "", "cards": [{"stream": "s", "community": "muse",
+                                                       "checkpoints": [self.ck("2026-10-30T00:00:00Z", 0, 5)]}]}}}
+        row = growth.week_numbers([week_end, later], growth.parse_time("2026-10-26T00:00:00Z"),
+                                  growth.parse_time("2026-11-02T00:00:00Z"), False)
+        self.assertEqual((row["listed"], row["volume_nodes"], row["communities"]), (1, 0, {}))
+
     def test_a_failing_tree_adds_nothing(self):
         failing = self.node([self.ck("2026-10-31T23:00:00Z", 0, 7)], ok=False)
         self.assertEqual(growth.week_numbers([failing], growth.parse_time("2026-10-26T00:00:00Z"),
