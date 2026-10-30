@@ -271,7 +271,7 @@ LIVE_HALVES = {
     "what": "halves that cite each other and the other side's checkpoint",
     "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's "
            "checkpoint; only the receiver's citing record cites the half it holds",
-    "issue": "Mesh-LLM/capsules-plugin#49",
+    "issue": "Mesh-LLM/capsules-plugin#130",
 }
 LIVE_DEFAULT = {
     "what": "each side pushing its half at completion by default",
@@ -289,9 +289,14 @@ LIVE_DECLARATION = {
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
+# What a live node needs before a receiver can record controller_declaration: the sender's push carrying its
+# operator binding (the lab nodes already hold one, lab.sh bind).
+LIVE_ACCEPTANCE_ISSUE = "Mesh-LLM/capsules-plugin#113"
+
+
 def live_acceptance(vias):
     """The not_checked entry for held halves accepted on the evidence key other than under a declaration."""
-    return {"what": ACCEPTANCE_WHAT, "issue": ACCEPTANCE_ISSUE,
+    return {"what": ACCEPTANCE_WHAT, "issue": LIVE_ACCEPTANCE_ISSUE,
             "why": f"the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, "
                    f"in the pin) and records how; the citing records say {', '.join(vias)}: no node sends a "
                    f"controller declaration yet"}
@@ -397,17 +402,19 @@ def accepted(citing, half):
 def exchange_key(capsule):
     """(client_nonce, role, agent_output_digest) of a held half: what joins its two halves into one exchange.
 
-    Not agent_input_digest: every exchange that sends the same prompt shares it (loop#66)."""
+    Not agent_input_digest: every exchange that sends the same prompt shares it (loop#66). A member that is
+    absent, empty or not a string is None, so a malformed half is named as unpaired, never raises."""
     ca = capsule.get("model_attestation", {}).get("compute_attestation", {})
     x = next((v for k, v in ca.items() if k.startswith("x-mesh-poc-v1") and isinstance(v, dict)), {})
-    return x.get("client_nonce"), x.get("role"), ca.get("agent_output_digest")
+    return tuple(v if isinstance(v, str) and v else None
+                 for v in (x.get("client_nonce"), x.get("role"), ca.get("agent_output_digest")))
 
 
 def paired_exchanges(halves):
     """({client_nonce}, [why not]) for {node: [(client_nonce, role, agent_output_digest)]}.
 
     An exchange is a nonce held by two different nodes as one requested and one served half with the same
-    output digest. Any other nonce, and any half with no nonce, is named in the second list."""
+    output digest (present on both). Any other nonce, and any half with no nonce, is named in the second list."""
     by_nonce, notes = {}, []
     for node, keys in sorted(halves.items()):
         for nonce, role, out in keys:
@@ -418,12 +425,13 @@ def paired_exchanges(halves):
     paired = set()
     for nonce, hs in sorted(by_nonce.items()):
         nodes, roles, outs = {h[0] for h in hs}, {h[1] for h in hs}, {h[2] for h in hs}
-        if len(hs) == 2 and len(nodes) == 2 and roles == {"requested", "served"} and len(outs) == 1:
+        if len(hs) == 2 and len(nodes) == 2 and roles == {"requested", "served"} and len(outs) == 1 \
+                and None not in outs:
             paired.add(nonce)
         else:
             notes.append(f"nonce {nonce} is not one exchange held on two nodes: "
                          + ", ".join(f"{n} {r or 'no role'}" for n, r, _ in hs)
-                         + ("" if len(outs) == 1 else " (output digests differ)"))
+                         + ("" if len(outs) == 1 and None not in outs else " (output digests differ or are missing)"))
     return paired, notes
 
 
