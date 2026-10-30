@@ -319,6 +319,7 @@ def rederive_09(m, c):
 
 
 def rederive_12(m, c):
+    need(m.tools(), "step 12", "capsulectl")
     return m.decide(c.work, c.population, c.started, c.pop)
 
 

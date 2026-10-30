@@ -278,6 +278,14 @@ class Step08Test(unittest.TestCase):
         self.assertIn("11-report: recorded PASS, not reproduced", verdict["detail"])
         self.assertEqual(finding.check(self.run), [])
 
+    def test_step_12_without_capsulectl_is_not_checked_not_failed(self):
+        class NoTools:
+            @staticmethod
+            def tools():
+                return Path(self.tmp.name) / "none"
+        with self.assertRaises(step.Unreproducible):
+            step.rederive_12(NoTools, None)
+
     def test_a_step_whose_tool_is_missing_is_not_checked(self):
         sd = self.run / "05-deal"
         sd.mkdir()
@@ -480,7 +488,8 @@ class Step08RehearsalTest(unittest.TestCase):
             for base in ("01-seal", "02-book", "03-advertise", "04-admit", "05-deal", "06-settle", "07-ask",
                          "09-dispute", "12-join"):
                 run_step(base, run)
-            write_run_json(run, ["01", "02", "03", "04", "05", "06", "07", "09", "12", "08"])
+            # Stage 1, since 08 runs in its own process and knows only loop.sh's stages.
+            write_run_json(run, ["01", "02", "03", "04", "05", "06", "07", "09", "12", "08"], stage="1")
             run_step("08-verify", run)
             f = load(run / "08-verify" / "finding.json")
             entries = {e["dir"]: e for e in load(run / "08-verify" / "verified.json")["steps"]}
