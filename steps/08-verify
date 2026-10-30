@@ -171,9 +171,12 @@ def keys_05(c):
     for ctl in load(c.pop / "step05" / "controllers.json")["controllers"]:
         key = pub_key(repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
         want[ctl["id"]] = (key, sorted(node_pubs(c.pop)[n] for n in ctl["nodes"]))
-    got = {}
-    for d in load(c.work / "declarations.json"):
+    got, decls = {}, load(c.work / "declarations.json")
+    for d in decls:
         got[d.get("controller_id")] = (d.get("controller_key"), sorted(d.get("evidence_keys") or []))
+    # The driver reads every declaration, so a repeated id would let an unchecked one stand behind a checked one.
+    if len(decls) != len(got):
+        return ["declarations.json repeats a controller id"]
     return [f"declarations.json controller {i} is {got.get(i)}, the repository's is {want.get(i)}"
             for i in sorted(set(want) | set(got), key=str) if got.get(i) != want.get(i)]
 
@@ -494,7 +497,7 @@ def main(argv=None):
     else:
         # The stage's steps are loop.sh's list, so a run.json cut down to fewer steps can't read as the whole stage.
         stage = load(out.parent / "run.json").get("stage")
-        full = STAGES.get(stage)
+        full = STAGES.get(stage) if isinstance(stage, str) else None
         if full is None:
             not_checked.append({"what": "which steps the stage holds",
                                 "why": f"run.json names stage {stage!r}, which loop.sh does not list", "issue": ISSUE})

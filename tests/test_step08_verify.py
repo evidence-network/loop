@@ -364,6 +364,29 @@ class Step08Test(unittest.TestCase):
         f, entries = verify(self.run)
         self.assertEqual(entries["06-settle"]["status"], "reproduced", f["detail"])  # the claim excuses nothing
 
+    def test_a_non_string_stage_is_an_unknown_stage_not_a_crash(self):
+        for bad in ([], {}, 1):
+            write_run_json(self.run, ["03", "06", "09", "08"], stage=bad)
+            f, _ = verify(self.run)
+            self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+            self.assertTrue((self.run / "08-verify" / "verified.json").is_file())
+
+    def test_a_repeated_controller_id_in_05_is_refused(self):
+        c = step.Ctx(self.run, self.run, self.run, POPULATION, {"population": "rehearsal", "started": "x"})
+        want = {}
+        for ctl in load(POPULATION / "step05" / "controllers.json")["controllers"]:
+            key = step.pub_key(step.repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
+            nodes = step.node_pubs(POPULATION)
+            want[ctl["id"]] = {"controller_declaration": 1, "controller_id": ctl["id"], "controller_key": key,
+                               "evidence_keys": sorted(nodes[n] for n in ctl["nodes"])}
+        with tempfile.TemporaryDirectory() as tmp:
+            c.work = Path(tmp)
+            dump(c.work / "declarations.json", list(want.values()))
+            self.assertEqual(step.keys_05(c), [])
+            first = dict(next(iter(want.values())), controller_key="ff" * 32)
+            dump(c.work / "declarations.json", [first, *want.values()])
+            self.assertEqual(step.keys_05(c), ["declarations.json repeats a controller id"])
+
     def test_a_malformed_finding_does_not_crash_08(self):
         d = self.run / "06-settle"
         f6 = load(d / "finding.json")
