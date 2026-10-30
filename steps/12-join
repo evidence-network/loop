@@ -42,7 +42,7 @@ a PASS says so in detail, citing the issue that owns it. For a Mesh node
 reports it bound; its revocation, and a check outside the node, stay
 NOT_CHECKED.
 
-`reporter` (Mesh plugin nodes, which doctor --probe cannot reach): asks each
+`reporter` (Mesh plugin nodes, reached through their consoles): asks each
 node checkpoints and history_card/1 through the daily reporter's ask
 (scripts/daily_report.py), whose plugin verifies each answer under the key
 the node's host announces. An answer that verifies under a key other than the
