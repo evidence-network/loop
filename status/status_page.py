@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Build the loop status page and its badge from loop findings and versions.lock.
 
-Usage: status_page.py [FINDINGS] [--lock FILE] [--out DIR]
+Usage: status_page.py [FINDINGS] [--ecosystem mesh|muse|cross] [--lock FILE] [--out DIR]
        (defaults: findings, versions.lock, _site/status)
+
+--ecosystem picks the runs of one ecosystem: mesh is findings/ and _site/status as always; muse and
+cross read findings/<ecosystem>/ (where loop.sh --ecosystem writes them) and build into
+_site/status-<ecosystem>. An explicit FINDINGS or --out wins.
 
 FINDINGS holds loop.sh runs, one directory each: <YYYY-MM-DD>-rehearsal/ or
 <YYYY-MM-DD>-live/, with one <NN>-<name>/finding.json per step (steps/README.md).
@@ -712,13 +716,18 @@ def build(findings_dir, lock_path, out):
 
 def main(argv):
     args = argv[1:]
-    opts = {"--out": "_site/status", "--lock": LOCK}
+    opts = {"--out": None, "--lock": LOCK, "--ecosystem": "mesh"}
     for flag in opts:
         if flag in args:
             i = args.index(flag)
             opts[flag] = args[i + 1]
             del args[i:i + 2]
-    findings_dir = Path(args[0] if args else FINDINGS)
+    eco = opts["--ecosystem"]
+    if eco not in ("mesh", "muse", "cross"):
+        print(f"ecosystem is mesh, muse or cross, not {eco!r}", file=sys.stderr)
+        return 2
+    findings_dir = Path(args[0] if args else FINDINGS if eco == "mesh" else f"{FINDINGS}/{eco}")
+    opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{eco}")
     try:
         rs = build(findings_dir, opts["--lock"], opts["--out"])
     except StatusError as err:
