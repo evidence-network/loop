@@ -430,6 +430,7 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertRegex(r.stdout, rf"env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
                                    rf"LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LAB_DIR={re.escape(str(self.lab))} "
+                                   rf"LOOP_SECOND_DATA_DIR={re.escape(str(self.lab))}/nodes/lab-2/\S+ "
                                    rf"\S+/steps/07-ask --population \S+/population/live --out "
                                    rf"\S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/07-ask\n")
         self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
