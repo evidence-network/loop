@@ -1,23 +1,18 @@
 {
-  "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
-  "detail": "node stevenmih-1: 15 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record, which says it accepted the half's key via host_announced; node stevenmih-2: 9 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record, which says it accepted the half's key via host_announced; node stevenmih-3: 13 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record, which says it accepted the half's key via host_announced; exchanges with a half held on each of two nodes (joined on client_nonce): 16 (nonce 3bf4d449-d9b7-4495-ab80-b551062269f6 is not one exchange held on two nodes: stevenmih-2 requested; nonce 6e2f156e-6246-4614-9cc9-3a0c8f750ac6 is not one exchange held on two nodes: stevenmih-1 requested; nonce 879aa6f2-77d5-4a17-b89d-7ea5dd1383b5 is not one exchange held on two nodes: stevenmih-3 served; nonce e564a97e-e5de-472f-a59e-c4cae860f725 is not one exchange held on two nodes: stevenmih-3 served; nonce f8dfc0a0-dc3c-4e09-8a0a-c4b217395388 is not one exchange held on two nodes: stevenmih-1 requested). Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
-  "finished": "2026-10-30T05:25:00Z",
+  "asserts": "each node seals records naming both halves and citing the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
+  "detail": "node stevenmih-1: 21 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 4 sealed under the current build (accepted the half's key via host_announced; 4 tied to the node's own half, 0 held, never tied, 0 ambiguous), 17 earlier, not judged for acceptance or tie; node stevenmih-1 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:27Z; the push itself is judged from the sealed records; node stevenmih-2: 12 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 2 sealed under the current build (accepted the half's key via host_announced; 2 tied to the node's own half, 0 held, never tied, 0 ambiguous), 10 earlier, not judged for acceptance or tie; node stevenmih-2 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:32Z; the push itself is judged from the sealed records; node stevenmih-3: 16 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 2 sealed under the current build (accepted the half's key via host_announced; 2 tied to the node's own half, 0 held, never tied, 0 ambiguous), 14 earlier, not judged for acceptance or tie; node stevenmih-3 reports (node-reported, unsigned) share_record_at_completion counterparty from default at 2026-10-30T07:19:37Z; the push itself is judged from the sealed records; exchanges with a half held on each of two nodes (joined on client_nonce): 22 (nonce 3bf4d449-d9b7-4495-ab80-b551062269f6 is not one exchange held on two nodes: stevenmih-2 requested; nonce 6e2f156e-6246-4614-9cc9-3a0c8f750ac6 is not one exchange held on two nodes: stevenmih-1 requested; nonce 879aa6f2-77d5-4a17-b89d-7ea5dd1383b5 is not one exchange held on two nodes: stevenmih-3 served; nonce e564a97e-e5de-472f-a59e-c4cae860f725 is not one exchange held on two nodes: stevenmih-3 served; nonce f8dfc0a0-dc3c-4e09-8a0a-c4b217395388 is not one exchange held on two nodes: stevenmih-1 requested); judged under the current build (sealed since 2026-10-30T07:20:00Z): 8 halves, 8 tied to the node's own half, 0 held, never tied, 0 ambiguous; 41 sealed earlier, not judged. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
+  "finished": "2026-10-30T08:21:37Z",
   "name": "deal",
   "not_checked": [
     {
-      "issue": "Mesh-LLM/capsules-plugin#130",
-      "what": "halves that cite each other and the other side's checkpoint",
-      "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's checkpoint; only the receiver's citing record cites the half it holds"
+      "issue": "action-state-group/agent-action-capsule#432",
+      "what": "the controller declaration or operator binding a node accepted a half under",
+      "why": "the citing record names the binding's digest (and its anchor key when it has one); its bytes are not in the data dir, and no released verifier checks controller-binding/0"
     },
     {
-      "issue": "Mesh-LLM/capsules-plugin#136",
-      "what": "each side pushing its half at completion by default",
-      "why": "the pinned plugin defaults share_record_at_completion to counterparty (capsules-plugin PR #72, in the pin), but a node's setting is not in its data dir to read"
-    },
-    {
-      "issue": "Mesh-LLM/capsules-plugin#113",
-      "what": "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration",
-      "why": "the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, in the pin) and records how; the citing records say host_announced: no node sends a controller declaration yet"
+      "issue": "evidence-network/loop: a lab node that publishes no operator binding (lab.sh bind)",
+      "what": "halves from an unbound sender",
+      "why": "2 current-build halves accepted via host_announced from sender evidence keys 99d5ce4f8e9f9c24 (2), with no operator binding digest equal to the one in the sender's published commitment; the pinned plugin accepts them on the evidence key (capsules-plugin PR #77), so this is the sender's missing binding, not a plugin gap"
     },
     {
       "issue": "action-state-group/agent-action-capsule#431",
@@ -31,7 +26,7 @@
       "repository": "action-state-group/agent-action-capsule"
     },
     "capsules": {
-      "ref": "e5eef37efe9faf8ba14c40d3c1172498f8d9b969",
+      "ref": "d1f4edc09a9546d0c54a3bc8572251436ba47e59",
       "repository": "Mesh-LLM/capsules-plugin"
     },
     "checkpointed-local-log": {
@@ -226,8 +221,84 @@
       "sha256": "0b0628be3a4b005a5ab57d4ebf614e93f1ba16f4b78ae6534b74d51d886b4667"
     },
     {
+      "path": "stevenmih-1/held-16.json",
+      "sha256": "bc3a4b1bfe8b6e005b44aeefc42785509109c2838d9f7a0a4a0ad144b08356c7"
+    },
+    {
+      "path": "stevenmih-1/held-16-inclusion.json",
+      "sha256": "7dc490558604beb2d0e654819c623b67e06e23a56a9cb5bd9d545d70a047781b"
+    },
+    {
+      "path": "stevenmih-1/held-16-citing.json",
+      "sha256": "e3c93816d6b0a0145a06c6e9353faaeee65c3c8e9df876c68839aafa2169824c"
+    },
+    {
+      "path": "stevenmih-1/held-17.json",
+      "sha256": "becf35dbcdea92d8840f0c6a36e57c61c0e2d622712ccc17927f96f26e816274"
+    },
+    {
+      "path": "stevenmih-1/held-17-inclusion.json",
+      "sha256": "1a7e365aa25430671de4b5a8688745b34c075543f9170c75b52d181552a2af92"
+    },
+    {
+      "path": "stevenmih-1/held-17-citing.json",
+      "sha256": "c19ddda3f09e541edca46c835c35d4ffcd1f47a29f7cd32280ca65e81749b7de"
+    },
+    {
+      "path": "stevenmih-1/held-18.json",
+      "sha256": "f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603"
+    },
+    {
+      "path": "stevenmih-1/held-18-inclusion.json",
+      "sha256": "f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea"
+    },
+    {
+      "path": "stevenmih-1/held-18-citing.json",
+      "sha256": "fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639"
+    },
+    {
+      "path": "stevenmih-1/held-19.json",
+      "sha256": "13b6522b95b6d6697a56ad57eb4f231e8520f2f4411c196b5810f3f70a4e9228"
+    },
+    {
+      "path": "stevenmih-1/held-19-inclusion.json",
+      "sha256": "5f98c25d78ff4dcc3ff1766c729f2c09d3b78b43a13894a085144ec9bdf4817b"
+    },
+    {
+      "path": "stevenmih-1/held-19-citing.json",
+      "sha256": "4ad07f94c9cac0ae0236d8351ca4e7a85e9b9f7e9f5671e5f7316a9c378cbf71"
+    },
+    {
+      "path": "stevenmih-1/held-20.json",
+      "sha256": "9aa1a026a0e7d58de3b36d77182a3aed04d8496ddc1c44ba35218f3c1d7624eb"
+    },
+    {
+      "path": "stevenmih-1/held-20-inclusion.json",
+      "sha256": "df485aa0c0114736b0ba796dfbe85c93b4ea554d73ea9da291d5cf130f0bf2dd"
+    },
+    {
+      "path": "stevenmih-1/held-20-citing.json",
+      "sha256": "6ce1732434505b6a7efcc31c1b6b0d256a650ddb61ce88d18adf9cc110482375"
+    },
+    {
+      "path": "stevenmih-1/held-21.json",
+      "sha256": "0173e22fbd9c838d7a22caad51a1518e38d2ef230d719f6763c30beaa8f48084"
+    },
+    {
+      "path": "stevenmih-1/held-21-inclusion.json",
+      "sha256": "8f0283a2ce937db8540f435b1fd8ef0580111de936ce779389e19662ab2a57ae"
+    },
+    {
+      "path": "stevenmih-1/held-21-citing.json",
+      "sha256": "679b4deb660a16ebd45accb4d336165d5dfa1094859608b65ba88b66d666f53d"
+    },
+    {
       "path": "stevenmih-1/checks.json",
-      "sha256": "01a28c3598b6adf4551d75e316db79385e74d6f007c32ac9d963bf7caf3cdcfe"
+      "sha256": "63b5ffd93a7ffb5e3400b705fef7689e74b178219fa0066baca50260fa031132"
+    },
+    {
+      "path": "stevenmih-1/sharing-effective.json",
+      "sha256": "769152f8af9d23da0ba715f15fc44c923ededb15720763d9073c6c3bef3470b6"
     },
     {
       "path": "stevenmih-2/held-1.json",
@@ -338,8 +409,48 @@
       "sha256": "607f22c6b899f97f94588246634e7586f9ec440284a23f761aa0a564e3564013"
     },
     {
+      "path": "stevenmih-2/held-10.json",
+      "sha256": "e13d4db176c3d5270f5a54d02ba15c6ab46d39d40d9e953e4d33f68963795aa5"
+    },
+    {
+      "path": "stevenmih-2/held-10-inclusion.json",
+      "sha256": "d60faced32111b7efbae190beb9bbb8c281ab7af766b6e472b6a0e83d1182d83"
+    },
+    {
+      "path": "stevenmih-2/held-10-citing.json",
+      "sha256": "e79055c93e650a26759a13211851ee66a8a9719962c88c0cc87d698ba549cd2e"
+    },
+    {
+      "path": "stevenmih-2/held-11.json",
+      "sha256": "54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683"
+    },
+    {
+      "path": "stevenmih-2/held-11-inclusion.json",
+      "sha256": "b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd"
+    },
+    {
+      "path": "stevenmih-2/held-11-citing.json",
+      "sha256": "8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b"
+    },
+    {
+      "path": "stevenmih-2/held-12.json",
+      "sha256": "1863bfedb3bd9116759e4766098089bf09979c7d657e2dd223e393a9d5988bf3"
+    },
+    {
+      "path": "stevenmih-2/held-12-inclusion.json",
+      "sha256": "fb54810708d6af0b9887be57dd8fddfc4ff37cf7fa4e452cb7788523ada3de9b"
+    },
+    {
+      "path": "stevenmih-2/held-12-citing.json",
+      "sha256": "45ab161317acfdc7191509d57d1bc13814b636b9cee57cd0789a4dde2b2cb76e"
+    },
+    {
       "path": "stevenmih-2/checks.json",
-      "sha256": "933106494077446cd2b505543c7b35b83707793e6c2497ad04b6dd616e2b9935"
+      "sha256": "50cdd2af9aa9d15e197557124be178aadfc1461cc54b8913cbab501f85a64112"
+    },
+    {
+      "path": "stevenmih-2/sharing-effective.json",
+      "sha256": "453878a45b027f8b45db877b691c925a8502bde26e7f15f33a6e8e0fceb6f90e"
     },
     {
       "path": "stevenmih-3/held-1.json",
@@ -498,11 +609,51 @@
       "sha256": "27c29c9832b58ab1e4b192b48bc51305b3a224f0f638fe939b9fec96b0071837"
     },
     {
+      "path": "stevenmih-3/held-14.json",
+      "sha256": "05db2b4418ca074edee12294fb9f69f9176ed3cc933564c6b62dff605cb316aa"
+    },
+    {
+      "path": "stevenmih-3/held-14-inclusion.json",
+      "sha256": "fcccc02eb19b498021b38a2396d02171f95b727140a6bd70326aa88300569c6a"
+    },
+    {
+      "path": "stevenmih-3/held-14-citing.json",
+      "sha256": "bf7c388f9b256dc5c0c60a2eaa3ab49e82e7745720ba758f6149adf402a0770a"
+    },
+    {
+      "path": "stevenmih-3/held-15.json",
+      "sha256": "b12bada165ea574738dd2e207e79434c4f06a72c8380a9e9d0b3a560b266bf4e"
+    },
+    {
+      "path": "stevenmih-3/held-15-inclusion.json",
+      "sha256": "99e2d26b8223d3ca54af21eb7bc07f2acb7dc4245590c38b55b1287af13a0fd9"
+    },
+    {
+      "path": "stevenmih-3/held-15-citing.json",
+      "sha256": "4db4dabffeb5ecab687172aea867603a7e7f5de8de80a08ceed2e187d94a7048"
+    },
+    {
+      "path": "stevenmih-3/held-16.json",
+      "sha256": "d34243593aec77631d6122495bc5e21dd72e26fdad6106b394cd8d8500c4e229"
+    },
+    {
+      "path": "stevenmih-3/held-16-inclusion.json",
+      "sha256": "0ef446e8c9d2b5e3ebf4859722dfdac784b65d4669ade0bc2d7a7e370f10707a"
+    },
+    {
+      "path": "stevenmih-3/held-16-citing.json",
+      "sha256": "04ba535d92996fef3977b94eb44fde867e40c88bf88244e837229082bb6827ab"
+    },
+    {
       "path": "stevenmih-3/checks.json",
-      "sha256": "60bbfd33ec53a7b54fe0b4e19248fe5ce956b27e48ae6cf3ebfd7f6761f0b007"
+      "sha256": "0058329204dd971d084bd5e0aa6f6768295fc8546b51f037daaf86fc87eab70f"
+    },
+    {
+      "path": "stevenmih-3/sharing-effective.json",
+      "sha256": "05386f34c00e98ddf56857a7306076636f9d6847437667039cd8fca96cea7de6"
     }
   ],
   "result": "NOT_CHECKED",
-  "started": "2026-10-30T05:24:59Z",
+  "started": "2026-10-30T08:21:36Z",
   "step": "05"
 }
