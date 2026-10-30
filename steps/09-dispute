@@ -1,0 +1,686 @@
+#!/usr/bin/env python3
+"""Step 09 Dispute: the referee's signed Result on a twin pair, held by each node it concerns, with the same bytes.
+
+Usage: 09-dispute --population DIR --out DIR
+
+On Mesh a dispute is an adjudication only: the referee seals a Result about
+a pair of twins' answers to one request (a twin comparison, as the plugin's
+referee does) and delivers it to the nodes it concerns, each of which
+holds it and seals its own `adjudication_received` record citing it. There
+is no party-to-party path (no party-sealed `dispute`, `dispute_response` or
+`close`; Mesh-LLM/capsules-plugin#58 dropped it for Mesh, and #102 seals the
+referee's verdict on both nodes in the plugin's two-node e2e), so this step
+asserts none, and a party-sealed record presented as the adjudication fails.
+
+Records are AAC capsules as the pinned capsules plugin seals them
+(steps/09-dispute.d/aac.py: capsule_id and the COSE_Sign1 producer envelope),
+laid out as a plugin data dir's `ledger/` holds them:
+
+- `capsules.jsonl`: the node's own chain;
+- `received-capsules.jsonl`: the twins' served records other nodes pushed to it;
+- `requested-adjudications.jsonl`: the referee it asked, about which halves;
+- `issued-adjudications.jsonl` (the referee) and `received-adjudications.jsonl`
+  (a party): each held Result, `{verdict_capsule_id, verdict_capsule, ...}`.
+
+The rehearsal population acts out one adjudication from
+`<population dir>/step09/dispute.json`, with TEST keys for the twins alice and
+bob, the requester and the referee: alice and bob each seal their served
+record of one request, answering it differently, and the requester holds both;
+it asks the referee about the pair; the referee seals the Result (the plugin's
+`adjudication` block, `ruling` from dispute.json), holds it, seals its
+`adjudication_issued` record citing the Result and both halves, and delivers
+it to the requester and to each judged twin, who hold it and seal
+`adjudication_received`. Each
+node's ledger is then a proof directory beside the finding.
+
+The checks, per Result a party holds (checks.json), on those bytes alone:
+- result_signed: the Result's capsule_id recomputes and its envelope verifies
+  under the key it names;
+- result_is_adjudication: it is an adjudication (epistemic type, the
+  plugin's adjudication block and schema, a ruling the plugin issues) and
+  carries no party-path `dispute`, `dispute_response` or `close` block;
+- referee_signed: that key is the one the named referee announced; the
+  referee is neither half's node; the party asked that referee about exactly
+  that pair, or one half is the party's own record; on rehearsal the referee
+  is dispute.json's;
+- cites_halves: the Result cites two halves by digest; the party's book (its
+  chain or its held pushes) resolves both when the party asked the referee
+  about the pair (the requester), and at least the party's own half when it
+  is a judged twin (the plugin's hold door); each half it holds recomputes and
+  verifies under the key of the node the Result names for it;
+- recorded_received: the party's chain carries one `adjudication_received`
+  record citing the Result (`adjudication_verdict`) whose facts are the
+  Result's, signed by the party's own key;
+- matches_issued: the referee holds a Result with the same canonical bytes,
+  and its chain carries an `adjudication_issued` record, under its key,
+  citing that Result and both halves.
+PASS when every check holds for every Result each party holds (and each
+party holds one); FAIL otherwise. outcome.json states, per Result, what it
+rules about each twin, in the plugin's buckets (`contradicted`, `corroborated`,
+`inconclusive`, `not_comparable`; verdict_counts.rs ruling_about), per twin node id;
+step 04's disputes row is to read the plugin's
+verdict_counts fold of these same Results, not a role label the loop invents.
+
+On the live population each lab node's data dir is read (steps/live.py),
+never written. Each Result a node holds is checked as above, with the
+announced keys being the population's nodes' own public keys; a check that
+needs a node whose data dir is not readable (the referee's, or a half's
+signer) is not run. When no lab node holds a Result, the finding is
+NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
+but the lab has not run one): this step never seals a record on
+a live node to make one.
+
+No spend: this step pays nothing on either population, with or without
+LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;
+non-zero when the step itself broke.
+"""
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / "09-dispute.d"))
+import aac  # noqa: E402
+import finding  # noqa: E402
+import live  # noqa: E402
+
+ASSERTS = ("the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; "
+           "the party's book holds the matching adjudication_received with the same Result bytes as the referee's "
+           "adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked "
+           "the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded")
+PINNED = []
+LIVE_PINNED = ["capsules"]
+ISSUE_102 = "Mesh-LLM/capsules-plugin#102"
+ISSUE_49 = "Mesh-LLM/capsules-plugin#49"
+SPEND = ("Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD).")
+MESH_ONLY = ("Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close "
+             "on Mesh, so none is asserted.")
+
+SCHEMA = "capsule-emit-mesh/adjudication/v1"
+RULINGS = ("corroborated", "inconclusive", "not_comparable")
+CONTRADICTED = "contradicted:"
+# The plugin's referee/verdict.rs status_for_verdict.
+STATUS = {"corroborated": "SATISFIED", "inconclusive": "UNKNOWN", "not_comparable": "UNKNOWN",
+          "contradicted": "CONTRADICTED"}
+PARTY_PATH = ("dispute", "dispute_response", "close")
+CHECKS = ("result_signed", "result_is_adjudication", "referee_signed", "cites_halves", "recorded_received",
+          "matches_issued")
+OWN, PUSHED, REQUESTED = "capsules.jsonl", "received-capsules.jsonl", "requested-adjudications.jsonl"
+ISSUED, RECEIVED = "issued-adjudications.jsonl", "received-adjudications.jsonl"
+LEDGER_FILES = (OWN, PUSHED, REQUESTED, ISSUED, RECEIVED)
+
+
+def read_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def lines(path):
+    """The JSON objects of a JSON-lines file; none when it is absent. A line that is not an object is kept as None."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return []
+    out = []
+    for ln in text.splitlines():
+        if ln.strip():
+            try:
+                v = json.loads(ln)
+            except ValueError:
+                v = None
+            out.append(v if isinstance(v, dict) else None)
+    return out
+
+
+def append(path, obj):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(obj, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def attestation(capsule):
+    ma = capsule.get("model_attestation") if isinstance(capsule, dict) else None
+    ca = ma.get("compute_attestation") if isinstance(ma, dict) else None
+    return ca if isinstance(ca, dict) else {}
+
+
+def ref(digest, purpose):
+    return {"citation_purpose": purpose, "digest": digest, "digest_alg": "SHA-256", "type": "capsule"}
+
+
+def cites(capsule, digest, purpose):
+    return any(isinstance(r, dict) and r.get("citation_purpose") == purpose and r.get("digest") == digest
+               for r in capsule.get("references") or [])
+
+
+def check(ok, detail):
+    return {"ok": bool(ok), "detail": detail}
+
+
+# --- acting out the rehearsal ---------------------------------------------------
+
+def record(action_id, timestamp, block_name, block, *, epistemic_type=None, references=None, parent=None,
+           relation="follows", provenance="rehearsal"):
+    """An unsealed capsule body in the plugin's local-record shape."""
+    ca = {block_name: block}
+    if epistemic_type:
+        ca["epistemic_type"] = epistemic_type
+    body = {"spec_version": "draft-mih-scitt-agent-action-capsule-04", "format_version": "4",
+            "action_id": action_id, "action_type": "decide" if epistemic_type == "adjudication" else "observe",
+            "operator": "", "developer": "", "timestamp": timestamp, "canonicalization_id": "jcs",
+            "domain": "action", "provenance": provenance, "model_attestation": {"compute_attestation": ca},
+            "assurance": {"attestation_mode": "self_attested", "effect_mode": "not_applicable",
+                          "ledger_mode": "chained"}}
+    if references:
+        body["references"] = references
+    if parent:
+        body["chain"] = {"parent_capsule_id": parent, "relation": relation}
+    return body
+
+
+class Node:
+    """One acting node: its TEST key, node id and ledger dir."""
+
+    def __init__(self, name, node_id, key_dir, ledger):
+        self.name, self.node_id, self.key_dir, self.ledger = name, node_id, Path(key_dir), Path(ledger)
+        self.head = None
+
+    def seal(self, body):
+        if self.head and "chain" not in body:
+            body["chain"] = {"parent_capsule_id": self.head, "relation": "follows"}
+        return aac.seal(body, self.key_dir)
+
+    def append(self, capsule):
+        append(self.ledger / OWN, capsule)
+        self.head = capsule["capsule_id"]
+
+
+def key_dir_of(population_dir, name, entry):
+    if entry.get("key_dir"):
+        p = Path(entry["key_dir"])
+    else:
+        pop = read_json(Path(population_dir) / "population.json")
+        p = Path(next(n["key_dir"] for n in pop["nodes"] if n["name"] == name))
+    return p if p.is_absolute() else ROOT / p
+
+
+def ruling_for(ruling, nodes):
+    """The plugin's verdict string for dispute.json's ruling: `contradicted:<twin name>` names the twin."""
+    if ruling.startswith(CONTRADICTED) and ruling[len(CONTRADICTED):] in nodes:
+        return CONTRADICTED + nodes[ruling[len(CONTRADICTED):]].node_id
+    if ruling in RULINGS:
+        return ruling
+    raise ValueError(f"ruling {ruling!r} is contradicted:<twin> or one of {', '.join(RULINGS)}")
+
+
+def half(node, exchange, time):
+    """One twin's served record of the exchange's request: the request digest is shared, the answer is its own."""
+    block = {"exchange_id": exchange["exchange_id"], "request_digest": exchange["request_digest"],
+             "response_digest": exchange["response_digests"][node.name], "node_id": node.node_id}
+    return node.seal(record(f"exchange/{exchange['exchange_id']}/{node.name}", time, "served", block,
+                            epistemic_type="observation"))
+
+
+def verdict(referee, half_a, half_b, twin_a, twin_b, ruling, time, *, bracket):
+    block = {"schema": SCHEMA, "source": "rehearsal_referee", "capture_method": "rehearsal_stand_in",
+             "verdict": ruling, "status": STATUS[ruling.split(":")[0]],
+             "half_a_capsule_id": half_a, "half_b_capsule_id": half_b,
+             "half_a_node_id": twin_a.node_id, "half_b_node_id": twin_b.node_id,
+             "referee_id": referee.node_id, "referee_node_id": referee.node_id, "twin_bracket_id": bracket}
+    block = {k: v for k, v in block.items() if v is not None}
+    body = record(f"adjudicate/{bracket}", time, "adjudication", block, epistemic_type="adjudication",
+                  parent=half_a, relation="confirms", provenance="referee")
+    body["disposition"] = {"decision": "accept", "approver": "policy", "human_disposed": False,
+                           "verdict_class": "assessed"}
+    return body
+
+
+def facts_block(v):
+    """The plugin's verdict_block: the facts of Result v that the issued and received records carry."""
+    b = attestation(v).get("adjudication") or {}
+    out = {"verdict": b.get("verdict"), "verdict_capsule_id": v.get("capsule_id"),
+           "referee_node_id": b.get("referee_node_id"),
+           "halves": [b.get("half_a_capsule_id"), b.get("half_b_capsule_id")],
+           "half_node_ids": [b.get("half_a_node_id"), b.get("half_b_node_id")]}
+    for k in ("twin_bracket_id", "model_hash"):
+        if b.get(k):
+            out[k] = b[k]
+    return out
+
+
+def act(population_dir, out, time, plant=None, stranger=None):
+    """Act out one adjudication on the rehearsal population into out/<node>/ledger/.
+
+    Two twins served the same request and answered it differently; the requester holds both
+    served records, asks the referee about the pair, and the referee rules. `plant` (tests
+    only) makes one participant misbehave: "uncited" (the Result cites no halves),
+    "foreign_exchange" (it cites halves not in the books), "wrong_key" (signed by the key in
+    `stranger`, not the referee's), "received_differs" (the referee issues one Result and
+    delivers another) or "party_close" (the requester seals a close record and holds it as
+    the adjudication).
+    """
+    out = Path(out)
+    doc = read_json(Path(population_dir) / "step09" / "dispute.json")
+    shutil.copyfile(Path(population_dir) / "step09" / "dispute.json", out / "dispute.json")
+    nodes = {name: Node(name, e["node_id"], key_dir_of(population_dir, name, e), out / name / "ledger")
+             for name, e in doc["nodes"].items()}
+    announced = {n.node_id: aac.key_id_of_pem(n.key_dir / "node-key.pub.pem") for n in nodes.values()}
+    (out / "announced.json").write_text(json.dumps({"announced_keys": announced}, indent=2, sort_keys=True) + "\n")
+    ex = doc["exchange"]
+    twin_a, twin_b = (nodes[t] for t in ex["twins"])
+    referee, requester = nodes[doc["referee"]], nodes[doc["requester"]]
+    bracket = f"{ex['exchange_id']}/pair-1"
+
+    # The twins each seal their served record; the requester holds both (the plugin's received-capsules).
+    a, b = half(twin_a, ex, time), half(twin_b, ex, time)
+    twin_a.append(a)
+    twin_b.append(b)
+    append(requester.ledger / PUSHED, a)
+    append(requester.ledger / PUSHED, b)
+    cited = (a["capsule_id"], b["capsule_id"])
+    if plant == "foreign_exchange":
+        other = dict(ex, exchange_id=ex["exchange_id"] + "-elsewhere")
+        cited = (half(twin_a, other, time)["capsule_id"], half(twin_b, other, time)["capsule_id"])
+
+    # The requester asks the referee about the pair.
+    append(requester.ledger / REQUESTED, {"referee": referee.node_id, "halves": list(cited), "requested_at": time})
+
+    # The referee seals the Result, holds it, and records it on its chain.
+    ruling = ruling_for(doc["ruling"], {t.name: t for t in (twin_a, twin_b)})
+    body = verdict(referee, *cited, twin_a, twin_b, ruling, time, bracket=bracket)
+    if plant == "uncited":
+        b_ = body["model_attestation"]["compute_attestation"]["adjudication"]
+        for k in ("half_a_capsule_id", "half_b_capsule_id"):
+            b_.pop(k)
+    issued = aac.seal(body, Path(stranger) if plant == "wrong_key" else referee.key_dir)
+    facts = facts_block(issued)
+    append(referee.ledger / ISSUED, dict(facts, verdict_capsule=issued, issued_at=time))
+    refs = [ref(issued["capsule_id"], "adjudication_verdict")] + \
+        [ref(h, "adjudicated_half") for h in facts["halves"] if h]
+    referee.append(referee.seal(record(f"mesh-poc/adjudication-issued/{issued['capsule_id']}", time,
+                                       "adjudication_issued", dict(facts, issued_at=time), references=refs)))
+
+    delivered = issued
+    if plant == "received_differs":
+        other_ruling = "corroborated" if ruling != "corroborated" else CONTRADICTED + twin_a.node_id
+        delivered = aac.seal(verdict(referee, *cited, twin_a, twin_b, other_ruling, time, bracket=bracket),
+                             referee.key_dir)
+
+    # Delivery: the requester and each judged twin hold the Result and seal an adjudication_received.
+    for party, held_half in ((requester, a), (twin_a, a), (twin_b, b)):
+        result = delivered
+        if plant == "party_close" and party is requester:
+            result = party.seal(record(f"close/{ex['exchange_id']}", time, "close",
+                                       {"state": "AGREED", "exchange_id": ex["exchange_id"], "halves": list(cited),
+                                        "closed_by": party.node_id}, epistemic_type="close",
+                                       references=[ref(h, "disputed_half") for h in cited]))
+        rfacts = facts_block(result)
+        append(party.ledger / RECEIVED, dict(rfacts, verdict_capsule=result, received_from=referee.node_id))
+        party.append(party.seal(record(
+            f"mesh-poc/adjudication-received/{result['capsule_id']}", time, "adjudication_received",
+            dict(rfacts, held_half_capsule_id=held_half["capsule_id"], received_from=referee.node_id,
+                 received_at=time), references=[ref(result["capsule_id"], "adjudication_verdict")])))
+    return doc
+
+
+# --- the checks -------------------------------------------------------------------
+
+def book(ledger):
+    """{capsule_id: capsule} for every record in the node's book: its chain and the pushes it holds."""
+    out = {}
+    for c in lines(ledger / OWN) + lines(ledger / PUSHED):
+        if c and isinstance(c.get("capsule_id"), str):
+            out.setdefault(c["capsule_id"], c)
+    return out
+
+
+def is_adjudication(v):
+    ca = attestation(v)
+    b = ca.get("adjudication")
+    party_path = sorted(k for k in PARTY_PATH if k in ca)
+    if party_path:
+        return check(False, f"carries the party-path block {', '.join(party_path)}, which Mesh has no kind for")
+    if ca.get("epistemic_type") != "adjudication" or not isinstance(b, dict):
+        return check(False, f"epistemic_type {ca.get('epistemic_type')!r} with no adjudication block: "
+                            "not an adjudication")
+    nodes = (b.get("half_a_node_id"), b.get("half_b_node_id"))
+    ruling = b.get("verdict")
+    known = ruling in RULINGS or any(n and ruling == CONTRADICTED + n for n in nodes)
+    distinct = all(isinstance(n, str) and n for n in nodes) and nodes[0] != nodes[1]  # the plugin's verdict_facts refuses one node for both halves
+    return check(b.get("schema") == SCHEMA and known and distinct,
+                 f"schema {b.get('schema')!r}, ruling {ruling!r}"
+                 + ("" if known else ": not a ruling the plugin issues")
+                 + ("" if distinct else ": the halves are not from two distinct nodes"))
+
+
+def outcome(v):
+    """What Result v rules about each twin, in the plugin's buckets (verdict_counts.rs ruling_about):
+    {twin node id: contradicted | corroborated | inconclusive | not_comparable}. A contradiction naming
+    one twin means the referee's answer matched the other, so the other is corroborated. A ruling the
+    plugin does not issue puts no twin in a bucket."""
+    b = attestation(v).get("adjudication") or {}
+    ruling = b.get("verdict")
+    nodes = [n for n in (b.get("half_a_node_id"), b.get("half_b_node_id")) if isinstance(n, str) and n]
+    if isinstance(ruling, str) and ruling.startswith(CONTRADICTED):
+        named = ruling[len(CONTRADICTED):]
+        return {n: ("contradicted" if n == named else "corroborated") for n in nodes} if named in nodes else {}
+    if ruling in RULINGS:
+        return {n: ruling for n in nodes}
+    return {}
+
+
+def check_held(party, ledgers, announced, *, expected_referee=None):
+    """The checks on each Result a party holds: [{verdict_capsule_id, checks: {name: {ok, detail} | None}}].
+
+    `ledgers` is {node_id: ledger dir} for every node whose ledger is readable; a check that
+    needs a ledger or a key not there is None (not run). `announced` is {node_id: key_id}.
+    """
+    pid, ledger = party
+    own_book = book(ledger)
+    chain = [c for c in lines(ledger / OWN) if c]
+    asked = lines(ledger / REQUESTED)
+    out = []
+    for n, held in enumerate(lines(ledger / RECEIVED), 1):
+        v = (held or {}).get("verdict_capsule")
+        v = v if isinstance(v, dict) else {}
+        vid = v.get("capsule_id")
+        c = dict.fromkeys(CHECKS)
+        signer, detail = aac.verify(v)
+        c["result_signed"] = check(signer, f"Result {vid}: {detail}")
+        c["result_is_adjudication"] = is_adjudication(v)
+        b = attestation(v).get("adjudication") if isinstance(attestation(v).get("adjudication"), dict) else {}
+        referee = b.get("referee_node_id")
+        halves = [b.get("half_a_capsule_id"), b.get("half_b_capsule_id")]
+        half_nodes = [b.get("half_a_node_id"), b.get("half_b_node_id")]
+
+        # referee_signed
+        problems = []
+        if not referee:
+            problems.append("names no referee")
+        elif expected_referee and referee != expected_referee:
+            problems.append(f"names referee {referee}, not the population's referee {expected_referee}")
+        if referee and referee in half_nodes:
+            problems.append("the referee is one of the halves' nodes")
+        if referee and referee == pid:
+            problems.append("the referee is this party")
+        asked_it = any(a and a.get("referee") == referee and isinstance(a.get("halves"), list)
+                       and sorted(map(str, a["halves"])) == sorted(map(str, halves))
+                       for a in asked)
+        own_half = any(h and h in {x.get("capsule_id") for x in chain} for h in halves)
+        if not (asked_it or own_half):
+            problems.append("the party neither asked this referee about this pair nor holds a half of its own in it")
+        if referee and referee not in announced:
+            c["referee_signed"] = None if not problems else check(False, "; ".join(problems))
+        else:
+            if signer and announced.get(referee) != signer:
+                problems.append(f"signed by {signer}, not the key {announced.get(referee)} the referee announced")
+            if not signer:
+                problems.append("the Result's own signature does not verify")
+            c["referee_signed"] = check(not problems, "; ".join(problems) or
+                                        f"signed by referee {referee}'s announced key {signer}; "
+                                        + ("the party asked it about this pair" if asked_it
+                                           else "one half is the party's own record"))
+
+        # cites_halves
+        if not all(isinstance(h, str) and h for h in halves) or halves[0] == halves[1]:
+            c["cites_halves"] = check(False, f"cites halves {halves}: not two distinct halves of a pair")
+        else:
+            problems, unrun = [], False
+            # The requester asked for the pair and holds both halves; a judged provider holds only its own
+            # served record (the plugin's referee/hold.rs hold_delivered_verdict), but at least that one.
+            if not asked_it and not any(h in own_book for h in halves):
+                problems.append("none of the cited halves is in the party's book")
+            for h, node in zip(halves, half_nodes):
+                rec = own_book.get(h)
+                if rec is None:
+                    if asked_it:
+                        problems.append(f"half {h} is not in the party's book")
+                    continue
+                s, d = aac.verify(rec)
+                if s is None:
+                    problems.append(f"half {h}: {d}")
+                elif node not in announced:
+                    unrun = True
+                elif announced[node] != s:
+                    problems.append(f"half {h} is signed by {s}, not node {node}'s key {announced[node]}")
+            held_n = sum(h in own_book for h in halves)
+            c["cites_halves"] = (check(False, "; ".join(problems)) if problems else None if unrun else
+                               check(True, f"{'both halves' if held_n == 2 else 'its own half'} "
+                                           f"{', '.join(h for h in halves if h in own_book)} resolve by digest in "
+                                           "the party's book, each signed by the node the Result names for it"))
+
+        # recorded_received
+        recs = [r for r in chain if isinstance(attestation(r).get("adjudication_received"), dict)
+                and attestation(r)["adjudication_received"].get("verdict_capsule_id") == vid]
+        if len(recs) != 1:
+            c["recorded_received"] = check(False, f"{len(recs)} adjudication_received records cite Result {vid}")
+        else:
+            r = recs[0]
+            s, d = aac.verify(r)
+            rb = attestation(r)["adjudication_received"]
+            same = all(rb.get(k) == x for k, x in facts_block(v).items())
+            problems = [p for p, bad in ((d, s is None),
+                                         (f"signed by {s}, not the party's key {announced.get(pid)}",
+                                          s is not None and pid in announced and announced[pid] != s),
+                                         ("does not cite the Result as adjudication_verdict",
+                                          not cites(r, vid, "adjudication_verdict")),
+                                         ("its facts are not the Result's", not same)) if bad]
+            c["recorded_received"] = (check(False, f"record {r.get('capsule_id')}: " + "; ".join(problems))
+                                      if problems else None if pid not in announced else
+                                      check(True, f"record {r.get('capsule_id')} cites Result {vid} under the "
+                                                  "party's key, with its facts"))
+
+        # matches_issued
+        rl = ledgers.get(referee)
+        if rl is None:
+            c["matches_issued"] = None
+        else:
+            def same_bytes(x):
+                try:
+                    return aac.canonical(x) == aac.canonical(v)
+                except ValueError:  # a number JCS cannot represent exactly: not the same bytes
+                    return False
+            same = [i for i in lines(rl / ISSUED) if i and isinstance(i.get("verdict_capsule"), dict)
+                    and v and same_bytes(i["verdict_capsule"])]
+            issued_recs = [r for r in lines(rl / OWN) if r and isinstance(attestation(r).get("adjudication_issued"), dict)
+                           and attestation(r)["adjudication_issued"].get("verdict_capsule_id") == vid]
+            problems = []
+            if not same:
+                problems.append(f"the referee holds no Result with these bytes (it holds "
+                                f"{', '.join(str((i or {}).get('verdict_capsule_id')) for i in lines(rl / ISSUED)) or 'none'})")
+            if len(issued_recs) != 1:
+                problems.append(f"{len(issued_recs)} adjudication_issued records on the referee's chain cite it")
+            else:
+                r = issued_recs[0]
+                s, d = aac.verify(r)
+                if s is None or (referee in announced and s != announced[referee]):
+                    problems.append(f"its adjudication_issued record does not verify under the referee's key ({d})")
+                ib = attestation(r)["adjudication_issued"]
+                differ = [k for k, x in facts_block(v).items() if ib.get(k) != x]
+                if differ:
+                    problems.append(f"its adjudication_issued facts differ from the Result's: {', '.join(differ)}")
+                missing = [h for h in [vid] + halves if h and not cites(r, h, "adjudication_verdict" if h == vid
+                                                                         else "adjudicated_half")]
+                if missing:
+                    problems.append(f"its adjudication_issued record does not cite {', '.join(missing)}")
+            c["matches_issued"] = (None if not problems and referee not in announced else
+                                   check(not problems, "; ".join(problems) or
+                                        f"the referee holds the same Result bytes and its adjudication_issued "
+                                        f"record cites the Result and both halves"))
+        out.append({"held": n, "verdict_capsule_id": vid, "referee_node_id": referee, "verdict": b.get("verdict"),
+                    "half_node_ids": half_nodes, "checks": c})
+    return out
+
+
+def failures(per_party):
+    return [f"{p} Result {r['verdict_capsule_id']} {k} ({c['detail']})" for p, rs in per_party.items() for r in rs
+            for k, c in r["checks"].items() if c is not None and not c["ok"]]
+
+
+def unrun(per_party):
+    return [f"{p} Result {r['verdict_capsule_id']} {k}" for p, rs in per_party.items() for r in rs
+            for k, c in r["checks"].items() if c is None]
+
+
+def outcomes(per_party, held_results):
+    rows = []
+    for p, rs in per_party.items():
+        for r in rs:
+            rows.append({"party": p, "verdict_capsule_id": r["verdict_capsule_id"], "verdict": r["verdict"],
+                         "referee_node_id": r["referee_node_id"],
+                         "twins": outcome(held_results[(p, r["held"])]),
+                         "all_checks_held": all(c is not None and c["ok"] for c in r["checks"].values())})
+    return {"results": rows}
+
+
+def held_by(per_party, ledgers_by_name):
+    return {(p, r["held"]): (lines(ledgers_by_name[p] / RECEIVED)[r["held"] - 1] or {}).get("verdict_capsule") or {}
+            for p, rs in per_party.items() for r in rs}
+
+
+def proof_files(out):
+    return sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file() and p.name != "finding.json")
+
+
+def decide(out, *, population, started):
+    """Check the proof bytes in out (dispute.json, announced.json, <node>/ledger/) and write the finding."""
+    out = Path(out)
+    doc = read_json(out / "dispute.json")
+    announced = read_json(out / "announced.json")["announced_keys"]
+    ids = {name: e["node_id"] for name, e in doc["nodes"].items()}
+    ledgers = {ids[name]: out / name / "ledger" for name in ids if (out / name / "ledger").is_dir()}
+    referee = ids[doc["referee"]]
+    parties = [doc["requester"], *doc["exchange"]["twins"]]
+    per_party = {p: check_held((ids[p], out / p / "ledger"), ledgers, announced, expected_referee=referee)
+                 for p in parties}
+    failed = failures(per_party)
+    failed += [f"{p} holds no Result" for p, rs in per_party.items() if not rs]
+    failed += [f"{x}: not run" for x in unrun(per_party)]
+    (out / "checks.json").write_text(json.dumps(per_party, indent=2, sort_keys=True) + "\n")
+    (out / "outcome.json").write_text(json.dumps(
+        outcomes(per_party, held_by(per_party, {p: out / p / "ledger" for p in parties})),
+        indent=2, sort_keys=True) + "\n")
+    proof = proof_files(out)
+    where = (f"exchange {doc['exchange']['exchange_id']} (twins {' and '.join(doc['exchange']['twins'])}, "
+             f"asked by {doc['requester']}), referee {doc['referee']}")
+    if failed:
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+                             detail=f"{where}: did not hold: {'; '.join(failed)}. {SPEND}", started=started)
+    rulings = sorted({f"{n[:8]} {b}" for o in read_json(out / "outcome.json")["results"] for n, b in o["twins"].items()})
+    detail = (f"{where}: for each Result each party holds, these held on the proof bytes: {', '.join(CHECKS)}. "
+              f"The Result rules {', '.join(rulings)} (outcome.json). {MESH_ONLY} Every key is a rehearsal TEST key. "
+              f"{SPEND} "
+              + finding.outside("the twins' served records, which this step reads as committed stand-ins of the "
+                                "records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not "
+                                "a node's own output", ISSUE_49) + " "
+              + finding.outside("the referee, its announced key and its delivery, which are rehearsal stand-ins "
+                                "until the lab nodes run an adjudication (the plugin's own two-node e2e seals one, as of #102)", ISSUE_102))
+    return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+                         detail=detail, started=started)
+
+
+def clean(out):
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    for p in out.iterdir():
+        shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+
+# --- the live population: what the lab nodes hold, read only ----------------------
+
+NO_RESULT = {"what": "an adjudication Result on a twin pair, held by a lab node with its adjudication_received",
+             "why": "no lab node's data dir holds a Result (no issued-adjudications.jsonl or "
+                    "received-adjudications.jsonl line): the referee has not run an adjudication end to end on "
+                    "the lab nodes, and this step never seals one on a live node",
+             "issue": ISSUE_102}
+
+
+def unrun_entry(what):
+    return {"what": what, "why": "it needs the ledger or key of a node that is not a readable lab node "
+                                 "(the referee's, or a half's signer)", "issue": ISSUE_102}
+
+
+def main_live(pop, out, started):
+    clean(out)
+    readable, not_checked, details = {}, [], []
+    for entry in pop["nodes"]:
+        d = live.readable(entry, "data_dir", "ledger")
+        if d is None:
+            not_checked.append(live.not_checked(entry["name"], "data_dir"))
+            details.append(f"node {entry['name']}: data_dir not set or unreadable")
+        else:
+            readable[entry["name"]] = (entry.get("node_id"), d)
+    announced = {}
+    for name, (node_id, d) in readable.items():
+        try:
+            announced[node_id] = aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")
+        except (OSError, ValueError) as e:
+            details.append(f"node {name}: no readable node key ({e})")
+    # The proof bytes: a copy of each readable node's adjudication files and chain.
+    for name, (_, d) in readable.items():
+        for f in LEDGER_FILES:
+            if (d / "ledger" / f).is_file():
+                (out / name / "ledger").mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(d / "ledger" / f, out / name / "ledger" / f)
+    ledgers = {node_id: out / name / "ledger" for name, (node_id, _) in readable.items()}
+    held = {name: len(lines(out / name / "ledger" / RECEIVED)) + len(lines(out / name / "ledger" / ISSUED))
+            for name in readable}
+    per_party = {name: check_held((node_id, out / name / "ledger"), ledgers, announced)
+                 for name, (node_id, _) in readable.items() if (out / name / "ledger" / RECEIVED).is_file()}
+    for name in readable:
+        details.append(f"node {name}: {held[name]} held Result line(s)")
+    result = "NOT_CHECKED"
+    if not readable:
+        not_checked.append(dict(NO_RESULT, why="no lab node's data dir is readable here, so no Result a node holds "
+                                               "is in reach; this step never seals one on a live node"))
+    elif not any(held.values()):
+        not_checked.append(NO_RESULT)
+    else:
+        failed = failures(per_party)
+        if failed:
+            result = "FAIL"
+            details.append(f"did not hold: {'; '.join(failed)}")
+        not_checked += [unrun_entry(x) for x in unrun(per_party)]
+        if not any(per_party.values()):
+            not_checked.append(dict(NO_RESULT, why="a lab node holds a Result it issued, but no lab node holds one "
+                                                   "delivered to it"))
+        if result != "FAIL" and not not_checked:
+            result = "PASS"
+            details.append(f"for each Result a lab node holds, these held on the copied ledgers: {', '.join(CHECKS)}")
+        (out / "checks.json").write_text(json.dumps(per_party, indent=2, sort_keys=True) + "\n")
+        (out / "outcome.json").write_text(json.dumps(
+            outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party})),
+            indent=2, sort_keys=True) + "\n")
+    detail = "; ".join(details) + f". {MESH_ONLY} {SPEND}"
+    finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                  proof=proof_files(out), detail=detail, not_checked=not_checked, started=started)
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    pop = read_json(Path(a.population) / "population.json")
+    out = Path(a.out)
+    if pop["population"] == "live":
+        return main_live(pop, out, started)
+    if not (Path(a.population) / "step09" / "dispute.json").is_file():
+        print(f"09-dispute: {a.population} has no step09/dispute.json", file=sys.stderr)
+        return 2
+    if shutil.which("openssl") is None:
+        print("09-dispute: openssl is missing; run steps/09-dispute.setup.sh", file=sys.stderr)
+        return 2
+    clean(out)
+    act(a.population, out, started)
+    decide(out, population=pop["population"], started=started)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
