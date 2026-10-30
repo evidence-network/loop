@@ -566,6 +566,7 @@ cmd_start() {
   if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ "$DRY" = 0 ]; then
     local asker=lab-2   # exchange asks from lab-2 and lab-3; with LAB_TWINS the requester asks, and it serves nothing
     [ "$TWINS" = 1 ] && asker=$REQUESTER
+    wait_for 120 "$asker's peers advertise a served model" advertised_name "$asker"
     MODEL_NAME=$(advertised_name "$asker") || die "$asker's peers advertise no served model"
     echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
     echo "advertised model name: $MODEL_NAME"
