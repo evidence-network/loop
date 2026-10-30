@@ -134,16 +134,28 @@ def card_stream(answer):
     return stream if isinstance(stream, str) and stream else None
 
 
+def _entry_witnesses(entry):
+    receipts = entry.get("receipts")
+    return [r[RECEIPT_WITNESS] for r in receipts if isinstance(r, dict) and isinstance(r.get(RECEIPT_WITNESS), str)
+            and r[RECEIPT_WITNESS]] if isinstance(receipts, list) else []
+
+
 def card_witnesses(answer):
     """The witnesses whose receipts the card carries, in first-seen order; [] when unwitnessed."""
     seen = []
     for entry in _history(answer):
-        receipts = entry.get("receipts")
-        for receipt in receipts if isinstance(receipts, list) else []:
-            witness = receipt.get(RECEIPT_WITNESS) if isinstance(receipt, dict) else None
-            if isinstance(witness, str) and witness and witness not in seen:
+        for witness in _entry_witnesses(entry):
+            if witness not in seen:
                 seen.append(witness)
     return seen
+
+
+def card_checkpoint_witnesses(answer):
+    """[(payload or None, witnesses)] for each checkpoint the card lists, in order.
+
+    Reads; it verifies neither the checkpoint's signature nor its receipts.
+    """
+    return list(zip(card_checkpoints(answer), (_entry_witnesses(e) for e in _history(answer))))
 
 
 def card_checkpoints(answer):
