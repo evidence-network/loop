@@ -431,17 +431,18 @@ class Step02LiveWitnessTest(JoinedLab):
                              {"witness_listed", "witness_not_node", "witness_not_before", "witness_receipt"})
             self.assertIn(f"{name}/witness-status.json", [p["path"] for p in r["proof"]])
 
-    def test_a_receipt_the_book_rejects_reads_not_checked_saying_it_may_be_that(self):
-        # The witness signs with one key while the profile pins another: the book's verifier rejects the receipt.
-        # capsulectl reports that as state "failed" with its details suppressed, the same as an unreachable witness,
-        # so the step can only say no receipt came back, and that a rejected one looks the same.
+    def test_a_receipt_the_book_rejects_fails_as_a_permanent_delivery_failure(self):
+        # The witness signs with one key while the profile pins another: the book's verifier rejects the receipt,
+        # which capsulectl reports as state "failed" (a witness that does not answer is "pending").
         pem, _ = self.key("witness")
         _, pinned = self.key("pinned")
         self.list_keys((pinned, "2026-01-01T00:00:00Z"))
         r = self.witnessed(pem, pinned)
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        gap = next(n for n in r["not_checked"] if n["what"].startswith("a witness receipt on node lab-1's"))
-        self.assertIn("or the book rejected the receipt", gap["why"])
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("witness_receipt (the book's delivery of checkpoint", r["detail"])
+        for name in NODE_KEYS:
+            published = json.loads((self.findings / "02-book" / name / "publish.json").read_text())
+            self.assertEqual((published["state"], published["receipt"]), ("failed", None))
 
     def test_a_receipt_under_a_key_the_listing_does_not_name_fails(self):
         pem, kid = self.key("witness")
@@ -473,6 +474,8 @@ class Step02LiveWitnessTest(JoinedLab):
         for name in NODE_KEYS:
             gap = next(n for n in r["not_checked"] if n["what"].startswith(f"a witness receipt on node {name}'s"))
             self.assertIn("to its witness and holds no receipt: ", gap["why"])
+            published = json.loads((self.findings / "02-book" / name / "publish.json").read_text())
+            self.assertEqual((published["state"], published["receipt"]), ("pending", None))
 
     def test_an_old_receipt_under_a_rotated_out_key_still_passes(self):
         old, old_id = self.key("old")

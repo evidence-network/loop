@@ -44,7 +44,8 @@ the receipt's key id, never "the" witness key, and the receipt FAILs when that
 key id is not listed, is any node's own key, is not the key it verifies under, or
 the receipt was signed before the entry's not_before. A rotated-out key keeps its
 entry, so its receipts still pass. A book with no witness configured, or one whose
-witness gave no receipt, is NOT_CHECKED for the witness part. A node whose
+witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the witness part; a delivery capsulectl
+reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
 data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
 `$LAB_DIR` the environment does not set says so). One finding, the worst over
 the nodes, its detail listing each node.
@@ -451,11 +452,16 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
             state = json.loads(published.stdout)
         except ValueError:
             state = {}
-        if not state.get("receipt"):
+        if not state.get("receipt") and state.get("state") == "failed":
+            # capsulectl reports "failed" for a permanent failure (a receipt the book's verifier rejected, or a
+            # client error) and "pending" for a retryable one (a witness that did not answer); it hides the cause.
+            checks["witness_receipt"] = {"ok": False, "detail": f"the book's delivery of checkpoint {size} to its "
+                                         "witness failed permanently, so it holds no receipt (the cause is hidden "
+                                         "by capsulectl: a receipt the book rejects, or a refused request)"}
+        elif not state.get("receipt"):
             reason = (published.stderr.strip().splitlines() or [f"state {state.get('state')}"])[-1]
             gap = {"what": f"a witness receipt on node {name}'s checkpoint, and its verification",
-                   "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason} "
-                          "(capsulectl hides why: the witness did not answer, or the book rejected the receipt)",
+                   "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason}",
                    "issue": "evidence-network/loop: the lab test witness gave no receipt (lab/lab.sh witness)"}
         else:
             # Re-verified from the receipt the book stored, offline, by the pinned capsulectl.

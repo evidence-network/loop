@@ -476,8 +476,8 @@ over the three nodes, and its `detail` lists each node:
   is from a listed key that is not any node's key, is the key it verifies
   under, and signed at or after its entry's `not_before`. NOT_CHECKED for the
   witness part when a book names no witness (run `lab/lab.sh witness`) or its
-  witness gave no receipt (is it running? is `LOOP_WITNESS_CA` set?). A FAIL
-  names the node and the check.
+  witness has not answered (is it running? is `LOOP_WITNESS_CA` set?). A FAIL
+  names the node and the check, and covers a delivery capsulectl reports as `failed`.
 - `03 advertise`: reads each node's commitment from this repository's
   `nodes/commitments/` and signs nothing for a live node. NOT_CHECKED
   until each node's commitment, which the pinned plugin signs and serves
