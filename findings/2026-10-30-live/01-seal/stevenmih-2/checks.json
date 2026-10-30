@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried b2a074e34e575af5e9357b836030f41e2679ad2a4f558c1f0a21ef4427c6d23a, recomputed b2a074e34e575af5e9357b836030f41e2679ad2a4f558c1f0a21ef4427c6d23a",
+      "detail": "carried 32b5f81bb86953a23239b1a5c483ce30993084d5eb7a0f37bd2f55ac44a48fbc, recomputed 32b5f81bb86953a23239b1a5c483ce30993084d5eb7a0f37bd2f55ac44a48fbc",
       "ok": true
     },
     "class1": {
@@ -22,7 +22,7 @@
     }
   },
   "installed": {
-    "aac-go": "0.14.0",
+    "aac-go": "0.15.0",
     "capsule-emit": "0.13.0"
   },
   "node": "stevenmih-2",
