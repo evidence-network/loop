@@ -1,0 +1,38 @@
+{
+  "asserts": "the record is in the node's book at a stated position, under a signed checkpoint that verifies; the checkpoint's witness receipt verifies",
+  "detail": "node stevenmih-1: not checked, book_dir not set or unreadable; node stevenmih-2: not checked, book_dir not set or unreadable; node stevenmih-3: not checked, book_dir not set or unreadable",
+  "finished": "2026-10-30T02:31:46Z",
+  "name": "book",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop: the live lab run, which fills population/live",
+      "what": "live node stevenmih-1",
+      "why": "book_dir not set or unreadable"
+    },
+    {
+      "issue": "evidence-network/loop: the live lab run, which fills population/live",
+      "what": "live node stevenmih-2",
+      "why": "book_dir not set or unreadable"
+    },
+    {
+      "issue": "evidence-network/loop: the live lab run, which fills population/live",
+      "what": "live node stevenmih-3",
+      "why": "book_dir not set or unreadable"
+    }
+  ],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T02:31:46Z",
+  "step": "02"
+}

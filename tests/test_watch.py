@@ -752,7 +752,7 @@ class WatchTest(unittest.TestCase):
         got = watch.commitments(ROOT / "lab" / "runs", ROOT / "nodes", by_id, by_key, lambda p: Path(p).name)
         self.assertEqual(sorted(got), sorted(by_id))
         for nid_, (_, c) in got.items():
-            self.assertEqual(c["profile"], "evidence-commitment/0")
+            self.assertIn(c["profile"], ("evidence-commitment/0", "evidence-commitment/1"))
             cards = watch.history_cards(c)
             self.assertEqual(len(cards), 1, nid_)
             self.assertEqual(cards[0]["derivation"], "history_card/1")

@@ -1,0 +1,34 @@
+{
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
+  "detail": "stevenmih-1: NOT_CHECKED via git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json (no commitment at HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json); stevenmih-2: NOT_CHECKED via git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json (no commitment at HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json); stevenmih-3: NOT_CHECKED via git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json (no commitment at HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json). Runner tools: OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0 (not versions.lock components).",
+  "finished": "2026-10-30T02:31:46Z",
+  "name": "advertise",
+  "not_checked": [
+    {
+      "issue": "no open issue yet (to be filed)",
+      "what": "stevenmih-1: the node-signed commitment is published and verifies",
+      "why": "no commitment at HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json; a live commitment is signed by the node, never by the harness: the pinned capsules plugin signs and serves the node's commitment and returns it to its operator (capsules-plugin PR #75, in the pin), but it has not been published to nodes/commitments/ yet"
+    },
+    {
+      "issue": "no open issue yet (to be filed)",
+      "what": "stevenmih-2: the node-signed commitment is published and verifies",
+      "why": "no commitment at HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json; a live commitment is signed by the node, never by the harness: the pinned capsules plugin signs and serves the node's commitment and returns it to its operator (capsules-plugin PR #75, in the pin), but it has not been published to nodes/commitments/ yet"
+    },
+    {
+      "issue": "no open issue yet (to be filed)",
+      "what": "stevenmih-3: the node-signed commitment is published and verifies",
+      "why": "no commitment at HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json; a live commitment is signed by the node, never by the harness: the pinned capsules plugin signs and serves the node's commitment and returns it to its operator (capsules-plugin PR #75, in the pin), but it has not been published to nodes/commitments/ yet"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [
+    {
+      "path": "verification.json",
+      "sha256": "bca59b9dd83947f228be8572494a961b80a38136ff5137ffe9dd6e1dd6b0fc16"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T02:31:46Z",
+  "step": "03"
+}
