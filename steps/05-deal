@@ -343,7 +343,7 @@ def live_declarations(counts, unread):
     if counts.get("unsupported_key_type"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": UNSUPPORTED_KEY_TYPE_ISSUE,
                     "why": f"{counts['unsupported_key_type']} cited bindings declare a key type (AAC#457) the pinned "
-                           f"`cross_language binding` does not implement, so they are not checked, not bad"})
+                           f"`cross_language binding` does not implement, so their signatures were not verified: not checked, neither PASS nor bad"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
                     "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no revocation "
@@ -638,7 +638,7 @@ def binding_check(digest, half, citing, peers):
     props = report.get("properties") or {}
     if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw)):
         return "unsupported_key_type", (f"binding {digest} ({name}) declares key type {', '.join(lacking)}, which the "
-                                        f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE})")
+                                        f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE}); signatures not verified")
     if verdict == "bad":
         why = ("does not name the half's key" if key not in (report.get("keys") or []) else
                ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s == "FAIL"))

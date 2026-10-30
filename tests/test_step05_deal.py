@@ -389,6 +389,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "unsupported_key_type", detail)
         self.assertIn("bip340", detail)
         self.assertIn(step.UNSUPPORTED_KEY_TYPE_ISSUE, detail)
+        self.assertIn("signatures not verified", detail)
 
     def test_a_binding_declaring_only_ed25519_key_types_goes_to_the_verifier(self):
         state, detail = self.with_key_types(["ed25519"])
@@ -457,6 +458,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(len(es), 4)
         es = step.live_declarations({"unsupported_key_type": 2}, set())
         self.assertEqual([(e["issue"], e["why"][:1]) for e in es], [(step.UNSUPPORTED_KEY_TYPE_ISSUE, "2")])
+        self.assertIn("signatures were not verified", es[0]["why"])
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
 
