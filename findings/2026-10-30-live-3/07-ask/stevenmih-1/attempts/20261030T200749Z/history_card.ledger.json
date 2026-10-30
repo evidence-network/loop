@@ -1,0 +1,78 @@
+{
+  "outcome": {
+    "header": {
+      "committed_at": "2026-10-30T20:07:49Z",
+      "epistemic_type": "observed_event",
+      "links": [
+        {
+          "target": "ffedd617f5f763a64c17bba0a569f3602b23850f91c2ed4127e9672ad40597a7",
+          "type": "cites"
+        }
+      ],
+      "record_type": "evidence_response",
+      "statement": {
+        "outcome": "artifact",
+        "request_digest": "d8e54426ff721d63b64395f39616d14d522ebb104faad6157a9853ffa9d6e78e",
+        "verification": {
+          "anchor": "15f40e02ca6124eca56fbafbc9bd30f82fe4701124ea48476b93028e1ab42c70",
+          "checkpoints": 46,
+          "records": [],
+          "state": "artifact"
+        }
+      }
+    },
+    "record": "800c9e68236859e3accc689bc33ad597e7df986b52322f67964bad0a50e2b03b"
+  },
+  "request": {
+    "committed_at": "2026-10-30T20:07:49Z",
+    "epistemic_type": "observed_event",
+    "links": [],
+    "record_type": "evidence_request",
+    "statement": {
+      "commitment": {
+        "digest": "b288312c73392cc160a8627701fc6c67e174a52dee642f36637044e851dd6517",
+        "policy": {
+          "advertise_evidence_requests": "off",
+          "share_adjudications": "off",
+          "share_exchange_corroboration": "off",
+          "share_history_segments": "counterparties",
+          "share_record_at_completion": "counterparty",
+          "share_standard_history": "off",
+          "stranger_safe": [
+            "checkpoints",
+            "history_card/1"
+          ]
+        },
+        "policy_digest": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73",
+        "subjects": [
+          "checkpoints",
+          "full_history",
+          "record",
+          "exchange",
+          "correlation"
+        ]
+      },
+      "request": {
+        "audience": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+        "coverage": {
+          "min_freshness": 1
+        },
+        "deadline": "2026-10-30T20:09:49Z",
+        "derivation": "history_card/1",
+        "nonce": "754cff21043ed9b9258369052271ade79a0edb07503abe8c7a082b56b0455cd1",
+        "profile": "evidence-interop/0",
+        "requester_auth": {
+          "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+          "sig": "bac7124643019e21aade365c51ac1dc354cc88ee890e96a30eb2ffd6a513be523005be7fbffcba398e9e4fd53f058341950147e42870daa0179f172c546bab0b"
+        },
+        "requester_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+        "subject": {
+          "full_history": null
+        }
+      },
+      "responder_ref": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"
+    }
+  },
+  "request_record": "ffedd617f5f763a64c17bba0a569f3602b23850f91c2ed4127e9672ad40597a7",
+  "window_closes": "2026-10-30T21:07:49.000000Z"
+}

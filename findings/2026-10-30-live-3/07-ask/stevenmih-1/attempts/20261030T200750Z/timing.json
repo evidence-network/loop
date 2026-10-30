@@ -1,0 +1,8 @@
+{
+  "answers_within": "PT1H",
+  "asked_at": "2026-10-30T20:07:50.039454Z",
+  "back_at": "2026-10-30T20:07:50.062151Z",
+  "commitment": "lab/runs/2026-10-30/join/stevenmih-1/commitment.json",
+  "deadline": "2026-10-30T21:07:50.039454Z",
+  "late": false
+}
