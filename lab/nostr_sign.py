@@ -57,6 +57,8 @@ def has_even_y(point):
 
 
 def pubkey(seckey):
+    if len(seckey) != 32:
+        raise ValueError("the secret key must be 32 bytes")
     d = int.from_bytes(seckey, "big")
     if not 1 <= d < N:
         raise ValueError("the secret key is out of range")
@@ -64,6 +66,8 @@ def pubkey(seckey):
 
 
 def schnorr_sign(msg, seckey, aux):
+    if len(seckey) != 32 or len(aux) != 32:
+        raise ValueError("the secret key and aux must be 32 bytes")
     d0 = int.from_bytes(seckey, "big")
     if not 1 <= d0 < N:
         raise ValueError("the secret key is out of range")
@@ -81,6 +85,8 @@ def schnorr_sign(msg, seckey, aux):
 
 
 def schnorr_verify(msg, pub, sig):
+    if len(pub) != 32 or len(sig) != 64:
+        return False
     x = int.from_bytes(pub, "big")
     if x >= P:
         return False

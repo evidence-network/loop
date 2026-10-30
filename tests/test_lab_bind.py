@@ -54,6 +54,17 @@ class Bip340(unittest.TestCase):
         self.assertTrue(ns.schnorr_verify(bytes.fromhex(signed["id"]), bytes.fromhex(pub), bytes.fromhex(signed["sig"])))
         self.assertEqual({k: v for k, v in signed.items() if k not in ("id", "sig")}, event)
 
+    def test_a_signature_or_key_of_the_wrong_length_does_not_verify(self):
+        r = self.rows()[0]
+        msg, pub, sig = (bytes.fromhex(r[k]) for k in ("message", "public key", "signature"))
+        self.assertTrue(ns.schnorr_verify(msg, pub, sig))
+        for bad_sig in (sig[:32] + b"\x00" + sig[32:], sig[:-1], sig + b"\x00", b""):
+            self.assertFalse(ns.schnorr_verify(msg, pub, bad_sig))
+        self.assertFalse(ns.schnorr_verify(msg, pub + b"\x00", sig))
+        self.assertFalse(ns.schnorr_verify(msg, pub[:-1], sig))
+        with self.assertRaises(ValueError):
+            ns.pubkey(b"\x01" * 31)
+
     def test_an_event_for_another_key_is_refused(self):
         with self.assertRaises(ValueError):
             ns.sign_event({"pubkey": "11" * 32, "created_at": 1, "kind": 3374, "tags": [], "content": ""},
