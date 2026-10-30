@@ -448,15 +448,11 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     if answered_as != node_id:
         return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
     doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
-    findings = doctor.get("findings") if isinstance(doctor, dict) else None
-    found = {f["check"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("check"), str)} \
-        if isinstance(findings, list) else {}
-    finding_ = found.get("controller_binding")
-    if finding_ is None or finding_.get("state") not in ("bound", "unbound"):
+    state = binding_state(doctor)
+    if state is None:
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
-    records = finding_.get("records")
-    held = records[0] if finding_["state"] == "bound" and isinstance(records, list) and records else None
-    if finding_["state"] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
+    held = state[1]
+    if state[0] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
         return f"{name}: doctor reports the binding bound without a sha256 digest", None, ""
     fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
     if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
