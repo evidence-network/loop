@@ -101,6 +101,21 @@ def checkpoint_payload(statement_hex):
     return payload if isinstance(payload, dict) else None
 
 
+def checkpoint_identity(raw):
+    """(stream, signing key as hex) of a checkpoint statement given as COSE_Sign1 bytes: the stream its protected
+    header's CWT claims name as issuer (label 15, claim 1) and the key id the same header carries (kid, label 4).
+    Raises ValueError when raw is not that."""
+    try:
+        sign1, _ = _cbor(raw)
+        protected, _ = _cbor(sign1[0])
+        stream, kid = protected[15][1], protected[4]
+    except (TypeError, IndexError, KeyError, UnicodeDecodeError, RecursionError) as e:
+        raise ValueError(f"not a COSE_Sign1 checkpoint ({e!r})") from None
+    if not isinstance(stream, str) or not isinstance(kid, bytes):
+        raise ValueError("a COSE checkpoint without a stream and a kid")
+    return stream, kid.hex()
+
+
 # --- one card ---------------------------------------------------------------
 
 def card_answer(member):

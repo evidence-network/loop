@@ -214,12 +214,22 @@ def load(path):
 # --- The commitment: the one place this step reads it ----------------------
 # join.sh writes it in step 03's format (steps/03-advertise.md); its checkpoint
 # member carries the book's checkpoint attestation whole: {book_id,
-# checkpoint_key, statement}.
-def advertised(node_dir):
-    c = load(Path(node_dir) / "commitment.json")
-    attestation = json.loads(base64.b64decode(c["checkpoint"]["bytes"]))
-    return {"node_key": c["key_id"], "checkpoint_key": attestation["checkpoint_key"],
-            "book_id": attestation["book_id"], "policy_digest": c["lcap"]["policy_digest"],
+# checkpoint_key, statement}. The commitment the node serves and the lab publishes carries it as the signed
+# checkpoint itself (a COSE_Sign1, CBOR tag 18): its stream is the book id and its kid the checkpoint key.
+def checkpoint_member(c):
+    """(book_id, checkpoint_key) of a commitment's checkpoint member, in either form."""
+    raw = base64.urlsafe_b64decode(c["checkpoint"]["bytes"] + "=" * (-len(c["checkpoint"]["bytes"]) % 4))
+    if raw[:1] == b"\xd2":
+        return hc.checkpoint_identity(raw)
+    attestation = json.loads(raw)
+    return attestation["book_id"], attestation["checkpoint_key"]
+
+
+def advertised(node_dir, name="commitment.json"):
+    c = load(Path(node_dir) / name)
+    book_id, checkpoint_key = checkpoint_member(c)
+    return {"node_key": c["key_id"], "checkpoint_key": checkpoint_key,
+            "book_id": book_id, "policy_digest": c["lcap"]["policy_digest"],
             "policy_uri": c["lcap"]["policy_uri"], "subjects": c["answers"]["subjects"],
             "derivations": c["answers"]["derivations"], "streams": [x["stream"] for x in hc.history_cards(c)],
             "card_keys": {e.get("stream"): check_commitment_.card_checkpoint_key(e) for e in hc.entries(c)}}

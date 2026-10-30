@@ -57,7 +57,11 @@ judges it (scripts and steps/12-join reused: the answer verifies under the
 key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
-`answers_within` (lab/runs/*/join/), and an answer not in by it is not counted
+`answers_within` (the newer by `issued_at` of the node's newest lab/runs/*/join/ commitment and its published
+nodes/commitments/<node_id>.json that verifies and has a UTC issued_at, a tie going to the published one (a record skipped is named in not_checked
+only if it could have been the choice, that is it is unreadable or not older than the one chosen): the join
+record is only as fresh as the last lab pack, so after a plugin move it pins the old policy, while the published
+one is what step 03 verifies), and an answer not in by it is not counted
 as answered.
 
 The pinned plugin seals each ask as an evidence_request before it sends it, and the reply as an evidence_response
@@ -150,6 +154,7 @@ LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set o
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
 # Where the lab keeps each live node's signed join commitment (lab/lab.sh pack).
 LAB_RUNS = ROOT / "lab" / "runs"
+PUBLISHED = ROOT / "nodes" / "commitments"  # what step 03 publishes and verifies against the listed key
 
 
 def load(path):
@@ -195,8 +200,10 @@ def merge(into, items):
 
 
 # --- The asked node's advertisement ----------------------------------------
-def advertisement(adv_dir):
+def advertisement(adv_dir, name="commitment.json"):
     """(advertised, errors): the asked node's keys, answers, policy and answers_within, from its commitment.
+
+    `name` is the commitment's file in adv_dir; its policy is read at lcap.policy_uri beside it.
 
     The commitment verifies with step 03's checker (its signature under the node
     key, the policy digest against the signed policy beside it) before anything
@@ -204,7 +211,7 @@ def advertisement(adv_dir):
     """
     adv_dir = Path(adv_dir)
     try:
-        doc = load(adv_dir / "commitment.json")
+        doc = load(adv_dir / name)
     except (OSError, ValueError) as e:
         return None, [f"the asked node's commitment is not readable JSON ({e})"]
     errs, notes = check_commitment.verify(doc, check_commitment.file_fetcher(adv_dir))
@@ -212,7 +219,7 @@ def advertisement(adv_dir):
     if errs:
         return None, errs
     try:
-        adv = step12.advertised(adv_dir)
+        adv = step12.advertised(adv_dir, name)
         adv["answers_within"] = doc["answers_within"]
         adv["within"] = duration(doc["answers_within"])
         adv["policy"] = load(adv_dir / adv["policy_uri"])["policy"]
@@ -663,23 +670,66 @@ def run_book(pop, out, tmp):
 
 
 # --- Backend "reporter": Mesh nodes, asked through the daily reporter ---------
+def commitment_time(doc):
+    """A commitment's issued_at as an aware datetime, or None when it is not a UTC `...Z` timestamp."""
+    text = doc.get("issued_at")
+    try:
+        return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
 def live_commitment(entry):
-    """(advertised, not_checked) for a live node: its newest signed join commitment under lab/runs, by key."""
-    found = []
-    for path in sorted(LAB_RUNS.glob("*/join/*/commitment.json")):
+    """(advertised, [not_checked]) for a live node: the newest by `issued_at` of the node's signed commitments that
+    verify, among its join records under lab/runs and its published one under nodes/commitments.
+
+    The pinned plugin signs a different policy after a plugin move, and lab/runs is only as fresh as the last
+    lab pack, while the published commitment is the one step 03 verifies against the listed key. Only a record
+    that verifies and has a UTC `issued_at` is ranked, so an unusable newer record cannot hide a good one; each
+    one skipped is named in not_checked. A tie goes to the published record.
+    """
+    found = sorted(LAB_RUNS.glob("*/join/*/commitment.json"))
+    published = PUBLISHED / f"{entry.get('node_id')}.json"
+    if published.is_file():
+        found.append(published)  # last, so a tie in issued_at goes to it
+    ranked, skipped = [], []  # ranked: (issued_at, position, path, advertised); skipped: (issued_at or None, note)
+    for order, path in enumerate(found):
+        node_record = path == published  # the published file is this node's by name; a join dir may be another's
         try:
-            if load(path).get("key_id") == entry.get("key_id"):
-                found.append(path)
-        except (OSError, ValueError):
+            doc = load(path)
+            if not isinstance(doc, dict):
+                raise ValueError("not a JSON object")
+        except (OSError, ValueError) as e:
+            if node_record:
+                skipped.append((None, note(path, [f"not readable ({e})"])))
             continue
-    if not found:
-        return None, {"what": "the deadline (answers_within)",
-                      "why": "no signed commitment for the node's listed key under lab/runs", "issue": NO_COMMITMENT_ISSUE}
-    adv, errs = advertisement(found[-1].parent)
-    if adv is None:
-        return None, {"what": "the deadline (answers_within)", "why": "; ".join(errs), "issue": NO_COMMITMENT_ISSUE}
-    adv["commitment"] = str(found[-1].relative_to(LAB_RUNS.parent.parent))
-    return adv, None
+        if doc.get("key_id") != entry.get("key_id"):
+            if node_record:
+                skipped.append((None, note(path, ["names a key other than the node's listed key"])))
+            continue
+        adv, errs = advertisement(path.parent, path.name)
+        issued = commitment_time(doc)
+        if adv is not None and issued is None:
+            errs = ["issued_at is not a UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"]
+        if errs:
+            skipped.append((issued, note(path, errs)))
+        else:
+            ranked.append((issued, order, path, adv))
+    if not ranked:
+        return None, [n for _, n in skipped] or [{
+            "what": "the deadline (answers_within)", "issue": NO_COMMITMENT_ISSUE,
+            "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments"}]
+    issued, _, path, adv = max(ranked, key=lambda r: r[:2])
+    adv["commitment"] = str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
+    # A skipped record is named only if it could have been the choice: its time is unknown or not older than the
+    # winner's. An older one that no longer verifies cannot change the outcome and would never clear.
+    return adv, [n for t, n in skipped if t is None or t >= issued]
+
+
+def note(path, errs):
+    """The not_checked entry for a commitment record the live ask did not use."""
+    return {"what": "the deadline (answers_within): a commitment record of the node",
+            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE}
 
 
 def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
@@ -999,9 +1049,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                                  "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
             lines.append(f"{name}: not asked, no nodes/ entry")
             continue
-        adv, nc = live_commitment(entry)
-        if nc:
-            merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
+        adv, ncs = live_commitment(entry)
+        merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"} for nc in ncs])
         node_dir = out / name
         if node_dir.exists():
             shutil.rmtree(node_dir)
