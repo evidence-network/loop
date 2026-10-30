@@ -83,7 +83,6 @@ class GateTest(unittest.TestCase):
         old.write_text(self.baseline.read_text())
         new = json.loads(old.read_text())
         new["ecosystems"]["mesh"]["steps"]["02"]["result"] = "FAIL"
-        new["not_checked_is_regression"] = False  # a pull request cannot loosen its own gate
         newp = self.dir / "new.json"
         newp.write_text(json.dumps(new))
         self.assertEqual(gate.cmd_check(old, newp), ["mesh step 02: PASS -> FAIL"])
@@ -166,6 +165,16 @@ class GateTest(unittest.TestCase):
         newp = self.dir / "new.json"
         newp.write_text(json.dumps(doc))
         self.assertEqual(gate.cmd_check(old, newp), [])
+
+    def test_check_refuses_turning_the_switch_off(self):
+        self.update("a", {"01": "PASS"})
+        old = self.dir / "old.json"
+        old.write_text(self.baseline.read_text())
+        new = json.loads(old.read_text())
+        new["not_checked_is_regression"] = False
+        newp = self.dir / "new.json"
+        newp.write_text(json.dumps(new))
+        self.assertEqual(len(gate.cmd_check(old, newp)), 1)
 
     def test_exit_codes(self):
         self.update("a", {"01": "PASS"})

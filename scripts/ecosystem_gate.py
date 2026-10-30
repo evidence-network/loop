@@ -20,7 +20,7 @@ must come with a findings directory that moved too, and a step that was
 PASS and is now FAIL, malformed or missing fails, and so does PASS -> NOT_CHECKED while the old
 baseline's `not_checked_is_regression` is true. Steven ruled that PASS -> NOT_CHECKED counts as going
 red (buzz://message?channel=054513b2-0a66-4c1e-885e-2af75c56233c&id=d07765e74e23b2b946a35d96316ce12951118fa1825d1d111d824d737dee0da2); the switch stays, default true, and the old file's setting decides, so a pull request
-cannot turn it off for itself. A step with no live finding (step 08 today) has no baseline entry and
+cannot turn it off for itself (`check` refuses the flip itself, too). A step with no live finding (step 08 today) has no baseline entry and
 gates nothing. Progress passes.
 Standard library only. Exit 0 = clean, 1 = refused, 2 = usage.
 """
@@ -93,6 +93,8 @@ def cmd_check(old_path, new_path):
     old, new = load(old_path), load(new_path)
     flag = old.get("not_checked_is_regression", True)
     errs = []
+    if flag and not new.get("not_checked_is_regression", True):
+        errs.append("not_checked_is_regression may not be turned off in a pull request that is checked against it")
     for eco, entry in sorted(old["ecosystems"].items()):
         if eco not in new["ecosystems"]:
             errs.append(f"{eco}: ecosystem dropped from the baseline")
