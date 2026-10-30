@@ -1,23 +1,136 @@
 {
-  "asserts": "both sides seal halves of one rehearsal deal (fixture stand-in)",
-  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
+  "detail": "deal rehearsal-deal-2026-10-30T16:52:04Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD). Outside this step's assertion: the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it: evidence-network/loop#134.",
   "finished": "2026-09-14T10:00:30Z",
   "name": "deal",
   "not_checked": [],
-  "pinned": {},
+  "pinned": {
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
   "population": "rehearsal",
   "proof": [
     {
       "path": "deal.json",
-      "sha256": "bf56bd12b0589681c0d963fe1d8034cd22329cef0751d230128a2077e169aaef"
+      "sha256": "28e0aececc89a377a27b1015b2aa9830548c9f4dd819c2e804864f0ca18d46c2"
+    },
+    {
+      "path": "declarations.json",
+      "sha256": "9a6b6ed5278b6846889232e5cd9125873ea58bfd1b180fa5cc8e0258260e73b3"
+    },
+    {
+      "path": "verify.json",
+      "sha256": "f88a2a8efbea4afa1c0f740798446e6067f26c3d956fa2d09127a7531b3e6066"
+    },
+    {
+      "path": "alice/checkpoint-open.json",
+      "sha256": "a0dab24018f2700fe6f56dbf1f2a933452772f6475e6a55cfe68bd505128cbbb"
+    },
+    {
+      "path": "alice/settings.json",
+      "sha256": "100ac1fadad82c9b1048faf1e84c8448169318349cac5f22c6ccec0990403f10"
     },
     {
       "path": "alice/half.json",
-      "sha256": "41f6b1f7e02e710622e89bff4bc8818277dc35cae8eaa1b7ba04f879fe478d51"
+      "sha256": "4056d32226bd4a172b08eb7fa488c67510577367a9e7f34f39e60792599b92ca"
+    },
+    {
+      "path": "alice/half-checkpoint.json",
+      "sha256": "ca526ad73327962b6b68644e249f796ef2782cceb40a15dd233fd32905cecaad"
+    },
+    {
+      "path": "alice/half-inclusion.json",
+      "sha256": "fa54e183f711bf6b14af657fa91c9594412f2d73769b3165b96120db62051940"
+    },
+    {
+      "path": "alice/push.json",
+      "sha256": "0471fa2707f9474f4e76158c72f290255db889df2dff96c5f8e01d3d4b69982a"
+    },
+    {
+      "path": "alice/held/received-records.jsonl",
+      "sha256": "83835d9072c41154790f0ca9ab76b85cf1d314f57da823495ee1cd3b5f9fbf19"
+    },
+    {
+      "path": "alice/held/received-provenance.jsonl",
+      "sha256": "c9dbcb9195e4328dd2d079f54de381db848e22b281ae0a894dddf7f9e97c8522"
+    },
+    {
+      "path": "alice/held/received-inclusion.jsonl",
+      "sha256": "f15fed292e59c558dfb8df2e0479e42f7d11ab98cd1a3d26a618e48362919801"
+    },
+    {
+      "path": "alice/citing.json",
+      "sha256": "2fc657232aa747089d0a65e7e9b45a8bdad1abc10b8fa99b790b875d533ddfbb"
+    },
+    {
+      "path": "alice/citing-inclusion.json",
+      "sha256": "804874afd87ded8da3ec42ffcdedaaeb06ee744a70d28103adaeea652a6482ce"
+    },
+    {
+      "path": "alice/checkpoint.json",
+      "sha256": "b3a1b1488d961f8f62beae20518fe92bdca4bf8989e6563cc366f7f6e40fdcfd"
+    },
+    {
+      "path": "alice/placement.json",
+      "sha256": "191c44d1e447890c155d96484b68de029eed0a3f775c42ebc0b20095444432cb"
+    },
+    {
+      "path": "bob/checkpoint-open.json",
+      "sha256": "9fb274e385ef9558baed57920450dc0058625cc764dbb28558c6ff764b0a5749"
+    },
+    {
+      "path": "bob/settings.json",
+      "sha256": "100ac1fadad82c9b1048faf1e84c8448169318349cac5f22c6ccec0990403f10"
     },
     {
       "path": "bob/half.json",
-      "sha256": "af3dccf55d0f9b14b3886aa631cf10d0d3683adf1881e68890a08f1ceaeed86b"
+      "sha256": "325225a3844d6c1dd14bc580bf26fdf7e56bf6c496ac1f36ffb244c670169236"
+    },
+    {
+      "path": "bob/half-checkpoint.json",
+      "sha256": "f1e2ff9ffce2949c7824f18f2d00b5dc290e7f874c93274041eaa1b25c5df429"
+    },
+    {
+      "path": "bob/half-inclusion.json",
+      "sha256": "531e9eb85fc24b69b3fa7f22be89a0295c65c37b800be8f0745813596b483a9c"
+    },
+    {
+      "path": "bob/push.json",
+      "sha256": "9f48f3f1cedbf4f4934beb887ee62149c6759942742915e2e904dfae58153fc6"
+    },
+    {
+      "path": "bob/held/received-records.jsonl",
+      "sha256": "9be62ef5bfa406b73065f3a6f28cfe3a8c46d20b2bc9deb45982bc0c43a5bfa9"
+    },
+    {
+      "path": "bob/held/received-provenance.jsonl",
+      "sha256": "53b92808df9d10ef27e54f88df4c6138b3a54cd8c5e69cabe2b4a691b4bcfeaa"
+    },
+    {
+      "path": "bob/held/received-inclusion.jsonl",
+      "sha256": "6e11ca16e5b41554f4c62acec748d656e364452c05201bfa4631d379afb24237"
+    },
+    {
+      "path": "bob/citing.json",
+      "sha256": "25a6937e6ef19efc16665c90bc0fa83c97771dc04c813e3b426f707dfb858ab3"
+    },
+    {
+      "path": "bob/citing-inclusion.json",
+      "sha256": "8cc50e67e266d5efc1b4dfcd0643225f12bf9717c3d5911054aedb3a8ae04811"
+    },
+    {
+      "path": "bob/checkpoint.json",
+      "sha256": "1f1b5efc9d914aa39ce14f57e6958399e69310572600f99f67be5c9c2dd84d68"
+    },
+    {
+      "path": "bob/placement.json",
+      "sha256": "fc8fa0ea27e535f4295d8464cf12e69471006f3bfc7cdc9e0984ccbbe64f7e1b"
     }
   ],
   "result": "PASS",

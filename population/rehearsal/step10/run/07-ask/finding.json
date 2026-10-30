@@ -1,19 +1,184 @@
 {
-  "asserts": "an ask is answered or its absence recorded (fixture stand-in)",
-  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "asserts": "a later exchange request is sealed in the asker's book before it is sent, and is answered with a signed artifact or a signed refusal under the asked node's listed key, or recorded as an absence; a refusal is not of a subject the asked node's advertised policy answers; the deadline is the commitment's answers_within, and an answer after it counts as an absence",
+  "detail": "ask backend: book. alice asked bob: exchange refusal, exchange_late recorded_absence, history_card artifact; bob asked alice: exchange refusal, exchange_late recorded_absence, history_card artifact.",
   "finished": "2026-09-14T10:02:30Z",
   "name": "ask",
   "not_checked": [],
-  "pinned": {},
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
   "population": "rehearsal",
   "proof": [
     {
-      "path": "alice/asks/bob/exchange/request.json",
-      "sha256": "8817199cc98bbbe52bed9ccf2a63d74bd86f0e9125ae94364725e8a5a39346e3"
+      "path": "first-answered.json",
+      "sha256": "69b848d5202d5ac590a8b4b661094fb00bac30c0aa8f01e0773ef85906762980"
+    },
+    {
+      "path": "alice/asks/bob/carrier.jsonl",
+      "sha256": "8fd1b1aace5620cee85c9dfec5f66e4b766be63102cf524ed4704a40498ebe1f"
+    },
+    {
+      "path": "alice/asks/bob/exchange/answer.json",
+      "sha256": "215dd20c643985e2dce923c7ffe780c54bb52a7b75dc12af9e50bbb0339582f9"
+    },
+    {
+      "path": "alice/asks/bob/exchange/asked.json",
+      "sha256": "6934b305fdc0f03aef1336ff3bc71e02f83cae14b69e06991b7a626ef67acf22"
+    },
+    {
+      "path": "alice/asks/bob/exchange/outcome.bundle.json",
+      "sha256": "f7ebf81ea0588bd5e121bfda4eba6c2c9befcd9dd3c33e07a2b85be754c60e6d"
     },
     {
       "path": "alice/asks/bob/exchange/outcome.json",
-      "sha256": "4b7065c71a59ac32a68ed7991eb5951ea37cbaf0adf6344ea76a46f7208731d1"
+      "sha256": "4bab86e7027cfe8f9397e0b0f1284bf43260f6da3d318590ae689222cfecc9d2"
+    },
+    {
+      "path": "alice/asks/bob/exchange/request.json",
+      "sha256": "abbc47d19d9921f6631a1e4e6e777587279ffbd63e7af7422e1586a0567d84ed"
+    },
+    {
+      "path": "alice/asks/bob/exchange_late/answer.json",
+      "sha256": "1041d610e72829a2a19d73dd775dc9cb14dc13d198658b443a7c3727903f6263"
+    },
+    {
+      "path": "alice/asks/bob/exchange_late/asked.json",
+      "sha256": "0f5db6712d1213e238eb076640133d19fa5f71859a5d05da427cd60c850261bc"
+    },
+    {
+      "path": "alice/asks/bob/exchange_late/outcome.bundle.json",
+      "sha256": "22535dddcd2462bd29bdf398300dff76c4474e473337af2b97d913d875df7c40"
+    },
+    {
+      "path": "alice/asks/bob/exchange_late/outcome.json",
+      "sha256": "2ba5a6249d057b48fcdc0b37399f96216140d1f3ab39b75704b67b3089c27f82"
+    },
+    {
+      "path": "alice/asks/bob/exchange_late/request.json",
+      "sha256": "c373822265d29bbc78e09a2276c38fecbcb30ddc1786c87ac2c4755739d21722"
+    },
+    {
+      "path": "alice/asks/bob/history_card/answer.json",
+      "sha256": "434bd98dc620bdf201da0a6ae4238bca34ea2baa3f8d83c4a38dda0a735b3f22"
+    },
+    {
+      "path": "alice/asks/bob/history_card/asked.json",
+      "sha256": "59d8c48b47d3d14b869a3eb226616a8f1ee57e687e7a3ec62166905b1b585c1b"
+    },
+    {
+      "path": "alice/asks/bob/history_card/outcome.bundle.json",
+      "sha256": "76c7a724559fd5da8513b215b1fad8d964c1c47285a486fbde1f62a7736aad78"
+    },
+    {
+      "path": "alice/asks/bob/history_card/outcome.json",
+      "sha256": "fd94e78a60eb3d59e44ba9badb9f4520cc4e79a4b36e75d4c0f0b2ce81c13e7a"
+    },
+    {
+      "path": "alice/asks/bob/history_card/request.json",
+      "sha256": "728e02c68f9bc025415c5f3ee9350c6782f0144f4092793b9c29f6364788aacd"
+    },
+    {
+      "path": "bob/advertised/commitment.json",
+      "sha256": "4e9ae496e040afeb5a9b6ecda9a0c73a96c354eaad40b965e13f3e7a6278911a"
+    },
+    {
+      "path": "bob/advertised/disclosure-policy.json",
+      "sha256": "2ed25535a357d332327f5b4d02ec4443e6a2be67a7fcd7ed42d77fc9eff7dc1c"
+    },
+    {
+      "path": "bob/advertised/policy.json",
+      "sha256": "2bbac8bb1c69ae0d891010fe089554999f141a98eb359dd322057ec964c64f5d"
+    },
+    {
+      "path": "bob/advertised/book.json",
+      "sha256": "6a0e6ed25b9ffba4f591afd20a678c6a805179dc1f23c307f801d820aef80049"
+    },
+    {
+      "path": "bob/asks/alice/carrier.jsonl",
+      "sha256": "abbc643f486f023015d791d5b60da89c3042147c45292b97c0266e24af3bdf0e"
+    },
+    {
+      "path": "bob/asks/alice/exchange/answer.json",
+      "sha256": "f7223f9683ae3d22141c79f4063c90a2fd978be493fd76ed52fc91d8b1a153c7"
+    },
+    {
+      "path": "bob/asks/alice/exchange/asked.json",
+      "sha256": "2490e6434acac3bd9f3fe3aee03651835d1887b2dec05ece2578a692d11b15cd"
+    },
+    {
+      "path": "bob/asks/alice/exchange/outcome.bundle.json",
+      "sha256": "3a01d753dada7a9c55fbf3476eae22d71f0b4ac0d2b7c9cda82b9f1ea553bc72"
+    },
+    {
+      "path": "bob/asks/alice/exchange/outcome.json",
+      "sha256": "42c0fb7b6f4469f7ea050c06e30b0fcd9d284b37a3aba5e23980bd55beb580e8"
+    },
+    {
+      "path": "bob/asks/alice/exchange/request.json",
+      "sha256": "6647a07481725fc917f9a6cacade4fb613dd974ba13666e57eda4243e8ba72c4"
+    },
+    {
+      "path": "bob/asks/alice/exchange_late/answer.json",
+      "sha256": "559295ca071a2ee4226fd6a46ba3ce89d366a3aed210ee65b9386f5d5c0097bd"
+    },
+    {
+      "path": "bob/asks/alice/exchange_late/asked.json",
+      "sha256": "83e6f4defd3267dfd39363eef1fa676b65c3378155788ffc26dda529ad89939b"
+    },
+    {
+      "path": "bob/asks/alice/exchange_late/outcome.bundle.json",
+      "sha256": "bd710ea45374acfee30728dd0267a2c35fa9ad9797beb78d80c70d24539ba053"
+    },
+    {
+      "path": "bob/asks/alice/exchange_late/outcome.json",
+      "sha256": "4d6adc51a546cc12c91baf79556c99b5c639d71cdd8d3629eb1d5d12f2f0a1f5"
+    },
+    {
+      "path": "bob/asks/alice/exchange_late/request.json",
+      "sha256": "7b7234d66a1effa39589ae879a3d4efff49a2a44e8ec0623054814316514965a"
+    },
+    {
+      "path": "bob/asks/alice/history_card/answer.json",
+      "sha256": "72d8a4c9331a204bbdf9a9d24179255a9f15d8efa36d2dae1141778c3dba7c47"
+    },
+    {
+      "path": "bob/asks/alice/history_card/asked.json",
+      "sha256": "280290c243546af446e2a9cc874f8b444b06362a404944baf59c47fe0229071c"
+    },
+    {
+      "path": "bob/asks/alice/history_card/outcome.bundle.json",
+      "sha256": "9d727c07abb11a5709e36c40964318c3bfa5c1296e103d494c4f6736709f3ecc"
+    },
+    {
+      "path": "bob/asks/alice/history_card/outcome.json",
+      "sha256": "ba65719f128bb8493568cbce3856b2517604e656a5001bd650b61ddf5d0f2307"
+    },
+    {
+      "path": "bob/asks/alice/history_card/request.json",
+      "sha256": "b69b6a5d3bcb55c4fb1aa43fd75de1830776b79e931d305814b73dadc7ab577a"
+    },
+    {
+      "path": "alice/advertised/commitment.json",
+      "sha256": "7e7e1a0fec32ff8fd61c67628a93feed6a6f4e93656623f236e4f423ecb79240"
+    },
+    {
+      "path": "alice/advertised/disclosure-policy.json",
+      "sha256": "c4b4f26a83dc7e926a9bda78d2d7d0bbb813f62077197d019a5277f46e52c869"
+    },
+    {
+      "path": "alice/advertised/policy.json",
+      "sha256": "2bbac8bb1c69ae0d891010fe089554999f141a98eb359dd322057ec964c64f5d"
+    },
+    {
+      "path": "alice/advertised/book.json",
+      "sha256": "abe1f14036c09554a1748d437ee57652165b83f0cbff2244200d9d59de2cdecc"
     }
   ],
   "result": "PASS",

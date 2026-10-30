@@ -1,15 +1,32 @@
 {
-  "asserts": "an outsider reproduces every finding of the run offline (step 10's committed stand-in manifest)",
-  "detail": "a committed stand-in manifest for step 10's rehearsal: every step reproduced",
+  "asserts": "an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, run again on the proof bytes it cites, gives the result and not_checked list the step recorded",
+  "detail": "run run, offline, from the bundle and the repository's keys only: 05-deal: reproduced PASS; 06-settle: reproduced PASS; 07-ask: reproduced PASS; 09-dispute: reproduced PASS. The manifest, per step, is this step's proof file.",
   "finished": "2026-10-02T09:01:00Z",
   "name": "verify",
   "not_checked": [],
-  "pinned": {},
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
   "population": "rehearsal",
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "3ed19657bd1dcbe4032dabb7de5aa81ae397e7799d933f2f5cc1740beb5dab1c"
+      "sha256": "728c14a842e4372f6a4e733484429caa72feeb7f9671e72671a1f48154148be5"
     }
   ],
   "result": "PASS",

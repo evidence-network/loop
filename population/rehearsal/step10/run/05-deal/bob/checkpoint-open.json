@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "kind": "mmr_checkpoint",
+  "log_id": "rehearsal-bob-deal",
+  "mmr_size": 1,
+  "root": "f15b91812773d3a482a4044b68c679bcdafba2340916240d947f9c8477adefdc",
+  "prev_size": 0,
+  "prev_root": "",
+  "key_id": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
+  "timestamp": "2026-10-30T16:52:04Z",
+  "signature": "e0408321ad59651414cc4d32c06d3d7f0e42b0f39476165981987baa0376170fed0ac3133180b8a657e22885f56f1200f7ddb89211e848288f5af0087c47fc01"
+}

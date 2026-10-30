@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -34,6 +35,7 @@ _spec = importlib.util.spec_from_loader("step10_judge", _loader)
 step = importlib.util.module_from_spec(_spec)
 _loader.exec_module(step)
 
+TOOLS_DIR = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
 HAS_TOOLS = all(p.is_file() for p in step.tools())
 NO_TOOLS = "SKIPPED LOUDLY: capsulectl and capsulectl-book are not installed; run steps/10-judge.setup.sh"
 if not HAS_TOOLS:
@@ -229,11 +231,12 @@ class JudgeTest(Base):
 
     def test_a_verdict_comes_from_the_result_08_rederived(self):
         m = self.manifest()
-        next(e for e in m["steps"] if e["dir"] == "06-settle")["rederived"]["result"] = "FAIL"
+        e06 = next(e for e in m["steps"] if e["dir"] == "06-settle")
+        e06["rederived"]["result"] = "FAIL"
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])  # a not_met deal is a judged outcome, not a broken judge
-        self.assertIn("06-settle: 1 claim(s), 3 records cited, term-1 not_met", f["detail"])
+        self.assertIn(f"06-settle: 1 claim(s), {len(e06['files'])} records cited, term-1 not_met", f["detail"])
         rollup = load(self.run / "10-judge" / "bundles" / "rollup.bundle.json")
         claims = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["claims"]
         self.assertEqual({c["id"]: c["verdict"] for c in claims}["window:06-settle"], "not_met")
@@ -261,10 +264,11 @@ class JudgeTest(Base):
 
     def test_a_step_outside_the_window_is_refused_not_read(self):
         self.edit_step("07-ask", finished="2026-10-01T00:00:00Z")
+        n07 = len(next(e for e in self.manifest()["steps"] if e["dir"] == "07-ask")["files"])
         with mock.patch.object(step, "attested", wraps=step.attested) as read:
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertIn("07-ask: 3 files, finished 2026-10-01T00:00:00Z, outside the window", f["detail"])
+        self.assertIn(f"07-ask: {n07} files, finished 2026-10-01T00:00:00Z, outside the window", f["detail"])
         self.assertFalse(any(k.startswith("07-ask/") for k in self.cited()))
         self.assertFalse(any("07-ask" in str(c.args[0]) for c in read.call_args_list))
         self.assertFalse((self.run / "10-judge" / "bundles" / "07-ask.bundle.json").exists())
@@ -437,9 +441,30 @@ class StandInTest(unittest.TestCase):
         self.assertIn("the committed stand-in run population/rehearsal/step10/run (dated in a closed month), not "
                       "this run's records", f["detail"])
         self.assertEqual(load(self.run / "10-judge" / "window.json")["source"], "stand-in")
-        self.assertEqual(len(load(self.run / "10-judge" / "window.json")["records"]), 13)
+        manifest = load(POPULATION / "step10" / "run" / "08-verify" / "verified.json")
+        self.assertEqual(len(load(self.run / "10-judge" / "window.json")["records"]),
+                         sum(len(e["files"]) for e in manifest["steps"]))
         self.assertEqual(finding.gaps(f["detail"]), [("the pack is loop's own deterministic copy of terms 1-3, not a "
                                                       "pinned evidencebook-skills pack", step.PACK_ISSUE)])
+
+    @unittest.skipUnless((TOOLS_DIR / "05-deal" / "bin" / "loop-step05-deal").is_file(),
+                         "SKIPPED LOUDLY: step 05's driver is not installed; run steps/05-deal.setup.sh")
+    def test_the_stand_in_is_what_the_real_08_reproduces(self):
+        """08 to 10: the committed manifest is the one the real 08 gives the committed records, not a hand-written one."""
+        run = Path(self.tmp.name) / "run"  # named as the committed one: the manifest carries the run's name
+        run.mkdir(exist_ok=True)
+        shutil.copytree(POPULATION / "step10" / "run", run / "stand-in", dirs_exist_ok=True)
+        again = run / "stand-in"
+        committed = POPULATION / "step10" / "run" / "08-verify"
+        shutil.rmtree(again / "08-verify")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        r = subprocess.run([str(ROOT / "steps" / "08-verify"), "--population", str(POPULATION),
+                            "--out", str(again / "08-verify")], env=env, cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(load(again / "08-verify" / "finding.json")["result"], "PASS", r.stderr)
+        got = load(again / "08-verify" / "verified.json")
+        want = load(committed / "verified.json")
+        self.assertEqual({**got, "run": None}, {**want, "run": None})
 
     def test_the_repository_stand_in_passes(self):
         # The gate exactly: the repository's population, an empty run.

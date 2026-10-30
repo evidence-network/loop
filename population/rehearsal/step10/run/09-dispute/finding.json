@@ -1,6 +1,6 @@
 {
-  "asserts": "the referee seals an adjudication Result (fixture stand-in)",
-  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "asserts": "the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; the party's book holds the matching adjudication_received with the same Result bytes as the referee's adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded",
+  "detail": "exchange rehearsal-exchange-09 (twins alice and bob, asked by requester), referee referee: for each Result each party holds, these held on the proof bytes: result_signed, result_is_adjudication, referee_signed, cites_halves, recorded_received, matches_issued. The Result rules 13fc1c5d contradicted, da7eb4ab corroborated (outcome.json). Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close on Mesh, so none is asserted. Every key is a rehearsal TEST key. Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD). Outside this step's assertion: the twins' served records, which this step reads as committed stand-ins of the records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not a node's own output: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: the referee, its announced key and its delivery, which are rehearsal stand-ins until the lab nodes run an adjudication (the plugin's two-node e2e seals one, Mesh-LLM/capsules-plugin#102; the live trigger is open): Mesh-LLM/capsules-plugin#126.",
   "finished": "2026-09-14T10:03:30Z",
   "name": "dispute",
   "not_checked": [],
@@ -8,12 +8,60 @@
   "population": "rehearsal",
   "proof": [
     {
+      "path": "alice/ledger/capsules.jsonl",
+      "sha256": "a190c85fb23d7b74ee6700870082ada1ec37d9df479021db1c3dd92d7666165e"
+    },
+    {
+      "path": "alice/ledger/received-adjudications.jsonl",
+      "sha256": "11d08d47879d93652b3664c5a7b6cf97e76b38dd7eb176bd89e538d88c3e41da"
+    },
+    {
+      "path": "announced.json",
+      "sha256": "3c4dceb6f2b4317004f1a5ed1f2bb36ee1feea9af0fc9fdf84dcc965001b060d"
+    },
+    {
+      "path": "bob/ledger/capsules.jsonl",
+      "sha256": "8339d254f87d712e88d2e2d71ddba2ce96120022cfc9df66d100225ea62a7a5d"
+    },
+    {
+      "path": "bob/ledger/received-adjudications.jsonl",
+      "sha256": "11d08d47879d93652b3664c5a7b6cf97e76b38dd7eb176bd89e538d88c3e41da"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "346ca2281385236e941b293ad12e7b7afa80b0a3326e788dad75cd428aaf8770"
+    },
+    {
       "path": "dispute.json",
-      "sha256": "5c81c5c67393a032230764ee063c6c7626135d45e2b538477879f450f8e7acec"
+      "sha256": "e85c9e56cd9fef7f949595e0a2bbba4fa861ff043ab79de5603c0aac8eb5f65e"
     },
     {
       "path": "outcome.json",
-      "sha256": "1068ee87dc724634484e6027a5d043500a252f0f79997a1522689312745e3c36"
+      "sha256": "d1df28ad25bc88cfe359a9ef93d600aab1c6b8bef43b641179c66bd6ccefd4db"
+    },
+    {
+      "path": "referee/ledger/capsules.jsonl",
+      "sha256": "881caab7b7ae79258247681b841f93a6cb6abaca7664e134c0230f8b7c69bcf1"
+    },
+    {
+      "path": "referee/ledger/issued-adjudications.jsonl",
+      "sha256": "dcf9f85760cb1d41cab07aff492468606581b80760e337bed2f0b716015c9328"
+    },
+    {
+      "path": "requester/ledger/capsules.jsonl",
+      "sha256": "fe801ece5d97ebc0a5934f58c9c2f4cbabdeb98b52aba07107e57c288be082b6"
+    },
+    {
+      "path": "requester/ledger/received-adjudications.jsonl",
+      "sha256": "11d08d47879d93652b3664c5a7b6cf97e76b38dd7eb176bd89e538d88c3e41da"
+    },
+    {
+      "path": "requester/ledger/received-capsules.jsonl",
+      "sha256": "81e3ff1168394f4c00068cc6973cab0ab6050c4960da5ca7ca3db5faffe5c43b"
+    },
+    {
+      "path": "requester/ledger/requested-adjudications.jsonl",
+      "sha256": "5b41a6f590d0da1572e649d73d878bb7f9c40c89220018d2502c385b745fa67b"
     }
   ],
   "result": "PASS",

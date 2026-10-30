@@ -1,0 +1,116 @@
+{
+  "alice": [
+    {
+      "checks": {
+        "cites_halves": {
+          "detail": "its own half 1d71b14cb6e2ab54c78ce9723009c56b181f712462a2e503ecc9d808ab41da7c resolve by digest in the party's book, each signed by the node the Result names for it",
+          "ok": true
+        },
+        "matches_issued": {
+          "detail": "the referee holds the same Result bytes and its adjudication_issued record cites the Result and both halves",
+          "ok": true
+        },
+        "recorded_received": {
+          "detail": "record fdfe344c39c506fc6f02b15ca7a309b6e856182e9616c48b73d2b876b62eace1 cites Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988 under the party's key, with its facts",
+          "ok": true
+        },
+        "referee_signed": {
+          "detail": "signed by referee 922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf's announced key 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1; one half is the party's own record",
+          "ok": true
+        },
+        "result_is_adjudication": {
+          "detail": "schema 'capsule-emit-mesh/adjudication/v1', ruling 'contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34'",
+          "ok": true
+        },
+        "result_signed": {
+          "detail": "Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "ok": true
+        }
+      },
+      "half_node_ids": [
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227",
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34"
+      ],
+      "held": 1,
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988"
+    }
+  ],
+  "bob": [
+    {
+      "checks": {
+        "cites_halves": {
+          "detail": "its own half a89dd54e28031a392efccd2a8d453988cfbc5c3891743708d75613e29557f29e resolve by digest in the party's book, each signed by the node the Result names for it",
+          "ok": true
+        },
+        "matches_issued": {
+          "detail": "the referee holds the same Result bytes and its adjudication_issued record cites the Result and both halves",
+          "ok": true
+        },
+        "recorded_received": {
+          "detail": "record 6cf9bf37da1cc05e474e4a3a78ba9afaf0b064dc680c4f3ed68c56553ee68188 cites Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988 under the party's key, with its facts",
+          "ok": true
+        },
+        "referee_signed": {
+          "detail": "signed by referee 922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf's announced key 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1; one half is the party's own record",
+          "ok": true
+        },
+        "result_is_adjudication": {
+          "detail": "schema 'capsule-emit-mesh/adjudication/v1', ruling 'contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34'",
+          "ok": true
+        },
+        "result_signed": {
+          "detail": "Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "ok": true
+        }
+      },
+      "half_node_ids": [
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227",
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34"
+      ],
+      "held": 1,
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988"
+    }
+  ],
+  "requester": [
+    {
+      "checks": {
+        "cites_halves": {
+          "detail": "both halves 1d71b14cb6e2ab54c78ce9723009c56b181f712462a2e503ecc9d808ab41da7c, a89dd54e28031a392efccd2a8d453988cfbc5c3891743708d75613e29557f29e resolve by digest in the party's book, each signed by the node the Result names for it",
+          "ok": true
+        },
+        "matches_issued": {
+          "detail": "the referee holds the same Result bytes and its adjudication_issued record cites the Result and both halves",
+          "ok": true
+        },
+        "recorded_received": {
+          "detail": "record 293ba412d2e6db387239b6da52a9ae24ee121753e54b97175fd9a5c9d6f7a6fd cites Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988 under the party's key, with its facts",
+          "ok": true
+        },
+        "referee_signed": {
+          "detail": "signed by referee 922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf's announced key 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1; the party asked it about this pair",
+          "ok": true
+        },
+        "result_is_adjudication": {
+          "detail": "schema 'capsule-emit-mesh/adjudication/v1', ruling 'contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34'",
+          "ok": true
+        },
+        "result_signed": {
+          "detail": "Result 4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "ok": true
+        }
+      },
+      "half_node_ids": [
+        "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227",
+        "13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34"
+      ],
+      "held": 1,
+      "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
+      "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
+      "verdict_capsule_id": "4c34c82f7e61ccc4cc089440d8cb330d0466039b441c4dc7fa8ad52da4b8c988"
+    }
+  ]
+}
