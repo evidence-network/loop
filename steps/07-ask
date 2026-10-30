@@ -58,9 +58,10 @@ key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
 `answers_within` (the newer by `issued_at` of the node's newest lab/runs/*/join/ commitment and its published
-nodes/commitments/<node_id>.json that verifies and has a UTC issued_at, a tie going to the published one: the join
+nodes/commitments/<node_id>.json that verifies and has a UTC issued_at, a tie going to the published one (a record skipped is named in not_checked
+only if it could have been the choice, that is it is unreadable or not older than the one chosen): the join
 record is only as fresh as the last lab pack, so after a plugin move it pins the old policy, while the published
-one is what step 03 verifies; a record skipped is named in not_checked), and an answer not in by it is not counted
+one is what step 03 verifies), and an answer not in by it is not counted
 as answered.
 
 The pinned plugin seals each ask as an evidence_request before it sends it, and the reply as an evidence_response
@@ -691,29 +692,44 @@ def live_commitment(entry):
     published = PUBLISHED / f"{entry.get('node_id')}.json"
     if published.is_file():
         found.append(published)  # last, so a tie in issued_at goes to it
-    ranked, skipped = [], []  # ranked: (issued_at, position, path, advertised)
+    ranked, skipped = [], []  # ranked: (issued_at, position, path, advertised); skipped: (issued_at or None, note)
     for order, path in enumerate(found):
+        node_record = path == published  # the published file is this node's by name; a join dir may be another's
         try:
             doc = load(path)
-        except (OSError, ValueError):
+            if not isinstance(doc, dict):
+                raise ValueError("not a JSON object")
+        except (OSError, ValueError) as e:
+            if node_record:
+                skipped.append((None, note(path, [f"not readable ({e})"])))
             continue
-        if not isinstance(doc, dict) or doc.get("key_id") != entry.get("key_id"):
+        if doc.get("key_id") != entry.get("key_id"):
+            if node_record:
+                skipped.append((None, note(path, ["names a key other than the node's listed key"])))
             continue
         adv, errs = advertisement(path.parent, path.name)
         issued = commitment_time(doc)
         if adv is not None and issued is None:
             errs = ["issued_at is not a UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"]
         if errs:
-            skipped.append({"what": "the deadline (answers_within): a commitment record of the node",
-                            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE})
+            skipped.append((issued, note(path, errs)))
         else:
             ranked.append((issued, order, path, adv))
     if not ranked:
-        return None, skipped or [{"what": "the deadline (answers_within)", "issue": NO_COMMITMENT_ISSUE,
-                                  "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments"}]
-    _, _, path, adv = max(ranked, key=lambda r: r[:2])
+        return None, [n for _, n in skipped] or [{
+            "what": "the deadline (answers_within)", "issue": NO_COMMITMENT_ISSUE,
+            "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments"}]
+    issued, _, path, adv = max(ranked, key=lambda r: r[:2])
     adv["commitment"] = str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
-    return adv, skipped
+    # A skipped record is named only if it could have been the choice: its time is unknown or not older than the
+    # winner's. An older one that no longer verifies cannot change the outcome and would never clear.
+    return adv, [n for t, n in skipped if t is None or t >= issued]
+
+
+def note(path, errs):
+    """The not_checked entry for a commitment record the live ask did not use."""
+    return {"what": "the deadline (answers_within): a commitment record of the node",
+            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE}
 
 
 def ask_posted(console, entry, node_dir, stem, at, timeout, posted):

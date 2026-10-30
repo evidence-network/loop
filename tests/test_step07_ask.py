@@ -448,6 +448,27 @@ class LiveCommitmentTest(Tmp):
         self.assertIn("does not verify", ncs[0]["why"])
         self.assertEqual(ncs[0]["issue"], step.NO_COMMITMENT_ISSUE)
 
+    def test_an_older_join_record_that_does_not_verify_is_not_named(self):
+        self.put_published()
+        self.put_old_join()
+        path = self.runs / "2026-10-30" / "join" / "stevenmih-1" / "commitment.json"
+        doc = json.loads(path.read_text())
+        doc["answers_within"] = "PT9M"  # older than the published one and no longer verifies: cannot change the outcome
+        path.write_text(json.dumps(doc))
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertEqual((adv["policy_digest"], ncs), (self.NEW, []))
+
+    def test_an_unreadable_or_other_keys_published_record_is_named_when_a_join_record_is_used(self):
+        self.put_old_join()
+        self.published.mkdir()
+        for text, why in (("{not json", "not readable"), (json.dumps([1]), "not a JSON object"),
+                          (json.dumps({"key_id": "9" * 64}), "other than the node's listed key")):
+            (self.published / self.node).write_text(text)
+            adv, ncs = step.live_commitment(self.entry)
+            self.assertEqual(adv["policy_digest"], self.OLD)
+            self.assertEqual(len(ncs), 1, ncs)
+            self.assertIn(why, ncs[0]["why"])
+
     def test_no_record_that_verifies_gives_no_deadline_and_names_each(self):
         self.put_published()
         (self.published / self.node).write_text("{}")
