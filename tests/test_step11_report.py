@@ -79,7 +79,7 @@ class Base(unittest.TestCase):
 
     def add_record(self, base, path, *objs):
         """Lines added to a step's primary record file, 08's manifest given its new digest and 10 run again, so 10's
-        Results cite the new bytes. The stand-in's record definition (pack.json `records`) names the files that count."""
+        Results cite the new bytes. The stand-in's record definition (binding.json `records`) names the files that count."""
         f = self.run / base / path
         with f.open("a") as out:
             out.writelines(json.dumps(o, sort_keys=True) + "\n" for o in objs)
@@ -219,9 +219,10 @@ class ReportTest(Base):
         self.assertIn("Settlements judged: 1 of 1", s["count:settlement"])
         self.assertIn("Asks judged: 6 of 6", s["count:ask"])
         self.assertIn("Disputes counted as found: 1 of 1", s["count:dispute"])
-        self.assertIn("term-2 (served as agreed): met in 1 of 1", s["term:term-2"])
-        self.assertIn("not evaluable in 1 of 1", s["term:term-3"])
-        self.assertIn("provider states", s["term:term-3"])
+        self.assertIn("come_through.served_as_agreed (Served as agreed): met in 1 of 1",
+                      s["term:come_through.served_as_agreed"])
+        self.assertIn("not evaluable in 1 of 1", s["term:come_through.served_named_model"])
+        self.assertIn("provider states", s["term:come_through.served_named_model"])
         self.assertIn("The roll-up cites 4 of 4 finer Results", s["decisions:rollup"])
         self.assertIn("Paid exchanges, each counted from the payer's sealed deal: 1 of 4 exchanges", s["exchanges:deals"])
 
@@ -376,7 +377,7 @@ class ReportTest(Base):
             return listed + [(str(p.relative_to(source)), p, finding.sha256(p)) for p in extra]
         cited = {f"{e['dir']}/{x['path']}": x["sha256"] for e in load(self.run / "08-verify" / "verified.json")["steps"]
                  for x in e["files"]}
-        pack = load(step.judge10.PACK)
+        pack = step.judge10.load_pack()
         counted = lambda: step.count_exchanges(self.run, cited, pack)  # noqa: E731
         found = counted()
         self.assertEqual((len(found["deals"]), len(found["exchanges"])), (1, 4))
