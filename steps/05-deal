@@ -56,26 +56,36 @@ held half: the AAC Go verifier (step 01's pin) runs Class 1 on the held bytes
 and recomputes the capsule_id from them; the driver checks the half is
 included under the checkpoint it was pushed with, signed by the half's key;
 and the node's own chain carries a record citing it as `counterparty_half`,
-whose capsule_id recomputes. That citing record carries how the node accepted
-the half (`received_half.accepted_via` and `sender_key_id`, capsules-plugin
-PR #77, in the pin): a record naming a key other than the half's, an unknown
-`accepted_via`, or a declaration with no binding digest or anchored on the
-node's own key (a declaration under a bip340 anchor has no anchor key, so that
-check applies only when one is present), or `received_half.same_controller_as_receiver`
-true (capsules-plugin#135), is a FAIL. A side whose citing record names a
-`controller_binding_digest` equal to the `controller_binding.digest` in the sender's
-published commitment (`nodes/commitments/<node_id>.json` in this checkout, loop#88; the
-sender is the node whose `nodes/<node_id>.json` lists the half's key) counts as accepted
-under a controller declaration however the plugin first accepted the key, leaving only the
-binding's own signatures (AAC#432) unchecked. A half accepted via `host_announced` or
-`operator_stopgap` with no such digest, or one the commitment does not carry, leaves
-acceptance not_checked (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
-do, or the loop cannot read, are not_checked entries: halves citing each other
-and the other side's checkpoint (capsules-plugin#130), the push on by default, which the
-pinned plugin does (PR #72) but a data dir does not show (capsules-plugin#136), the declaration's
-own signatures (AAC#432), and the held half's signature in a second language
-(AAC#431). A node with no held half, or whose data_dir is not readable, is
-NOT_CHECKED. One finding, the worst over the nodes.
+whose capsule_id recomputes, and a `counterparty_inclusion` record citing the checkpoint it was pushed
+under. That citing record carries how the node accepted the half (`received_half.accepted_via` and
+`sender_key_id`, capsules-plugin PR #77): a record naming a key other than the half's, an unknown
+`accepted_via`, or a declaration with no binding digest or anchored on the node's own key (a
+declaration under a bip340 anchor has no anchor key, so that check applies only when one is present),
+or `received_half.same_controller_as_receiver` true (capsules-plugin#135), is a FAIL. A citing record
+naming a `controller_binding_digest` equal to the `controller_binding.digest` in the sender's
+published commitment (`nodes/commitments/<node_id>.json` in this checkout, loop#88; the sender is
+the node whose `nodes/<node_id>.json` lists the half's key) counts as accepted under a controller
+declaration however the plugin first accepted the key, leaving only the binding's own signatures
+(AAC#432) unchecked.
+
+The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
+`received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
+name an own half in the node's chain, of the same `client_nonce` and the opposite role, whose bytes
+verify (else FAIL). A citing record without it is "held, never tied", its own not_checked entry; a nonce
+that now has more than one own half or another held half makes the tie ambiguous at verify time (it is
+sealed at seal time only), another entry, never a pass. A node's `sharing-effective.json`
+(capsules-plugin#137) is read and labelled "node-reported, unsigned"; the push is still judged from
+the sealed records.
+
+Only halves sealed under the current build are judged for acceptance and the tie: LOOP_SEALED_SINCE
+(RFC 3339, the instant the lab's current build started) is compared to the citing record's timestamp,
+and earlier halves are counted and still checked for their bytes, provenance, inclusion and citation.
+Unset, every held half is judged. Current-build halves accepted on the evidence key from a sender
+whose published commitment carries no equal operator binding are their own entry ("halves from an
+unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
+read, are not_checked entries: the declaration's own signatures (AAC#432) and the held half's
+signature in a second language (AAC#431). A node with no held half, or whose data_dir is not readable,
+is NOT_CHECKED. One finding, the worst over the nodes.
 
 No spend: this step starts no exchange and pays nothing on either population.
 On the live population it reads the halves the lab run's exchanges left; the
@@ -94,6 +104,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -105,6 +116,13 @@ ASSERTS = ("both sides seal halves of one deal, each citing the other half and t
            "each pushes its half at completion with share_record_at_completion on; the receiver holds the "
            "foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key "
            "under a controller declaration")
+# The live node's halves cite neither each other nor the other's checkpoint: each node seals a record
+# naming both halves of the exchange (its citing record, with own_half_capsule_id) and cites the checkpoint
+# the other half was pushed under (capsules-plugin#138).
+LIVE_ASSERTS = ("each node seals a record naming both halves and cites the other side's checkpoint; "
+                "each pushes its half at completion with share_record_at_completion on; the receiver holds the "
+                "foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key "
+                "under a controller declaration")
 PINNED = ["evidencebook", "checkpointed-local-log"]
 POLICY_ON = "counterparty"
 DEFAULT_POLICY = "off"
@@ -116,7 +134,7 @@ SIDE_FILES = ["checkpoint-open.json", "settings.json", "half.json", "half-checkp
 PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in SIDES for f in SIDE_FILES]
 # Acceptance on the evidence key landed in the pinned plugin (capsules-plugin PR #77, which closed #69). A node
 # sending a controller declaration, binding its key to its operator, is the pinned plugin's join (capsules-plugin
-# PR #121); the rehearsal's gap is no node sending one. The live gap is LIVE_ACCEPTANCE_ISSUE.
+# PR #121); the rehearsal's gap is no node sending one. The live lab's unbound senders are LIVE_UNBOUND_WHAT.
 ACCEPTANCE_ISSUE = "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"
 # No released verifier checks a controller-binding/0 record's signatures.
 BINDING_VERIFIER_ISSUE = "action-state-group/agent-action-capsule#432"
@@ -275,18 +293,14 @@ def clean(out):
 # --- The live population: what each lab node's capsules plugin holds ----------
 LIVE_PINNED = ["capsules", "aac-go", "evidencebook", "checkpointed-local-log"]
 LIVE_SETUP = "none: steps/05-deal.setup.sh has not installed it"
-LIVE_HALVES = {
-    "what": "halves that cite each other and the other side's checkpoint",
-    "why": "a half the pinned capsules plugin seals cites neither the other half nor the other side's "
-           "checkpoint; only the receiver's citing record cites the half it holds",
-    "issue": "Mesh-LLM/capsules-plugin#130",
-}
-LIVE_DEFAULT = {
+LIVE_NEVER_TIED = "held, never tied"
+LIVE_DEFAULT_ABSENT = {
     "what": "each side pushing its half at completion by default",
-    "why": "the pinned plugin defaults share_record_at_completion to counterparty (capsules-plugin PR #72, in "
-           "the pin), but a node's setting is not in its data dir to read",
-    "issue": "Mesh-LLM/capsules-plugin#136",
+    "why": "the pinned plugin writes its effective share_record_at_completion to sharing-effective.json in the data "
+           "dir (capsules-plugin#137, in the pin); {nodes} has none to read",
+    "issue": live.NO_ISSUE_YET,
 }
+SHARING_FILE = "sharing-effective.json"
 VIA_KEY = ("host_announced", "operator_stopgap")
 LIVE_DECLARATION = {
     "what": "the controller declaration or operator binding a node accepted a half under",
@@ -297,17 +311,39 @@ LIVE_DECLARATION = {
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
-# What a live node needs before a receiver can record controller_declaration: the sender's push carrying its
-# operator binding (the lab nodes already hold one, lab.sh bind).
-LIVE_ACCEPTANCE_ISSUE = "Mesh-LLM/capsules-plugin#113"
+# A half whose sender published no operator binding the citing record names (a lab node that has not run
+# lab.sh bind, or one that does not push its binding) is its own line, not the plugin gap capsules-plugin#113
+# closed with #135.
+LIVE_UNBOUND_WHAT = "halves from an unbound sender"
+LIVE_UNBOUND_ISSUE = "evidence-network/loop: a lab node that publishes no operator binding (lab.sh bind)"
 
 
-def live_acceptance(vias):
-    """The not_checked entry for held halves accepted on the evidence key other than under a declaration."""
-    return {"what": ACCEPTANCE_WHAT, "issue": LIVE_ACCEPTANCE_ISSUE,
-            "why": f"the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, "
-                   f"in the pin) and records how; the citing records say {', '.join(vias)} with no operator binding "
-                   f"digest equal to the one in the sender's published commitment"}
+def live_unbound(unbound, vias):
+    """The not_checked entry for current-build halves accepted on the evidence key from a sender with no
+    published operator binding equal to the one the citing record names: {key_id: count}."""
+    senders = ", ".join(f"{k[:16]} ({n})" for k, n in sorted(unbound.items()))
+    return {"what": LIVE_UNBOUND_WHAT, "issue": LIVE_UNBOUND_ISSUE,
+            "why": f"{sum(unbound.values())} current-build halves accepted via {', '.join(vias)} from sender evidence "
+                   f"keys {senders}, with no operator binding digest equal to the one in the sender's published "
+                   f"commitment; the pinned plugin accepts them on the evidence key (capsules-plugin PR #77), so this "
+                   f"is the sender's missing binding, not a plugin gap"}
+
+
+def live_never_tied(n):
+    """The not_checked entry for current-build halves held and cited with no own half named (capsules-plugin#138:
+    the own half had not sealed 2 s after the push arrived, no own half binds the nonce, or the nonce was
+    ambiguous at seal time)."""
+    return {"what": LIVE_NEVER_TIED, "issue": live.NO_ISSUE_YET,
+            "why": f"{n} current-build halves are cited by a record with no own_half_capsule_id, so no record of the "
+                   f"node names both halves of that exchange"}
+
+
+def live_ambiguous(n):
+    return {"what": "a tie that is ambiguous at verify time", "issue": live.NO_ISSUE_YET,
+            "why": f"{n} citing records name an own half, but the nonce now has more than one own half or another "
+                   f"held half, so the tie, sealed at seal time only, is not counted"}
+
+
 LIVE_SIGNATURE = {
     "what": "the held half's producer signature, in a second language",
     "why": "Class 1 does not include it and the pinned Go verifier has no envelope mode",
@@ -495,8 +531,73 @@ def paired_exchanges(halves):
     return paired, notes
 
 
+def sealed_since():
+    """The instant the lab's current build started sealing, from LOOP_SEALED_SINCE (RFC 3339), or None: every
+    held half is then judged. The citing record's timestamp, which its signature covers, is compared to it."""
+    return parse_time(os.environ.get("LOOP_SEALED_SINCE"))
+
+
+def parse_time(value):
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def before(citing, since):
+    """True when the citing record was sealed before `since`; a record with no readable timestamp is judged."""
+    sealed = parse_time(citing.get("timestamp"))
+    return since is not None and sealed is not None and sealed < since
+
+
+def cites_inclusion(capsule, cid, checkpoint_digest):
+    """Whether `capsule` is a counterparty_inclusion record of half `cid` citing the checkpoint it was pushed under."""
+    block = ((capsule.get("model_attestation") or {}).get("compute_attestation") or {}).get("counterparty_inclusion")
+    refs = [r.get("digest") for r in capsule.get("references") or []
+            if isinstance(r, dict) and r.get("citation_purpose") == "counterparty_inclusion"]
+    return isinstance(block, dict) and block.get("half_capsule_id") == cid and checkpoint_digest in refs
+
+
+def is_citing(capsule):
+    """Whether the capsule is one of the node's citing records, not a half of an exchange it took part in."""
+    ca = (capsule.get("model_attestation") or {}).get("compute_attestation")
+    return isinstance(ca, dict) and ("received_half" in ca or "counterparty_inclusion" in ca)
+
+
+def tie(citing, nonce, role, own_lines, held):
+    """How the citing record ties the held half to the node's own half of the exchange: (state, detail) with
+    state "tied", "never_tied", "ambiguous" or "bad". The member is sealed at seal time only, so a nonce that
+    now has more than one own half or another held half is ambiguous, never a pass (loop#107)."""
+    rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
+    own_id = rh.get("own_half_capsule_id") if isinstance(rh, dict) else None
+    if own_id is None:
+        return "never_tied", "the citing record names no own_half_capsule_id"
+    owns = [(ln, cap) for ln, cap in zip(own_lines, map(parsed, own_lines))
+            if cap and cap.get("capsule_id") == own_id]
+    if not owns:
+        return "bad", f"the citing record names own half {own_id}, which the node's chain does not hold"
+    ln, own = owns[0]
+    o_nonce, o_role, _ = exchange_key(own)
+    if nonce is None or o_nonce != nonce or role is None or o_role is None or o_role == role:
+        return "bad", (f"own half {own_id} is nonce {o_nonce} role {o_role}, not the opposite role of the held "
+                       f"half's nonce {nonce} role {role}")
+    ok, detail = capsule_checks(ln)
+    if not ok:
+        return "bad", f"own half {own_id}: {detail}"
+    n_own = sum(1 for cap in map(parsed, own_lines) if cap and not is_citing(cap) and exchange_key(cap)[0] == nonce
+                and exchange_key(cap)[1] in ("requested", "served"))
+    n_held = sum(1 for r in held if exchange_key(parsed(r) or {})[0] == nonce) - 1
+    if n_own != 1 or n_held > 0:
+        return "ambiguous", f"own half {own_id} named, but the nonce has {n_own} own halves and {n_held} other held halves"
+    return "tied", f"own half {own_id}, nonce {nonce}, role {o_role} against the held half's {role}"
+
+
 def live_node(bin_, name, data_dir, out, work):
-    """Check every half the node holds: (result, proof, detail, pairs, accepted_via values)."""
+    """Check every half the node holds: (result, proof, detail, pairs, summary).
+
+    summary: {"judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
+    are judged on the halves sealed under the current build (LOOP_SEALED_SINCE); an earlier half still has its
+    bytes, provenance, inclusion and citation checked."""
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
     ledger = data_dir / "ledger"
@@ -505,8 +606,10 @@ def live_node(bin_, name, data_dir, out, work):
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
+    summary = {"judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}}
     if not held:
-        return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], []
+        return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
+    since = sealed_since()
     checks, proof = [], []
     for n, raw in enumerate(held, 1):
         stem = f"held-{n}"
@@ -541,23 +644,69 @@ def live_node(bin_, name, data_dir, out, work):
             proof.append(f"{stem}-citing.json")
             ok, detail = capsule_checks(citing[0])
             c["cited"] = {"ok": ok, "detail": f"record {parsed(citing[0]).get('capsule_id')} cites it: {detail}"}
-            c["accepted"] = accepted(parsed(citing[0]), capsule)
+            record = parsed(citing[0])
+            c["current_build"] = not before(record, since)
+            if c["current_build"]:
+                c["accepted"] = accepted(record, capsule)
+                nonce, role, _ = exchange_key(capsule)
+                state, detail = tie(record, nonce, role, own_lines, held)
+                c["tied"] = {"ok": state != "bad", "state": state, "detail": detail}
+                if inc is not None:
+                    seen = [ln for ln in own_lines if cites_inclusion(parsed(ln) or {}, cid, inc.get("checkpoint_digest"))]
+                    c["inclusion_cited"] = {"ok": bool(seen), "detail": (
+                        f"a counterparty_inclusion record cites {cid} and checkpoint {inc.get('checkpoint_digest')}"
+                        if seen else f"no counterparty_inclusion record of the node cites {cid} with checkpoint "
+                                     f"{inc.get('checkpoint_digest')}")}
         checks.append(c)
-    (out / "checks.json").write_text(json.dumps({"node": name, "held": checks}, indent=2, sort_keys=True) + "\n")
+    (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
+                                                 "held": checks}, indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
-    recorded = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
-    # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
-    # controller declaration, however the plugin first accepted it.
-    vias = sorted({"controller_declaration" if c["accepted"]["bound"] else c["accepted"]["via"]
-                   for c in checks if "accepted" in c})
+    current = [c for c in checks if "accepted" in c]
+    summary["judged"] = len(current)
+    summary["earlier"] = sum(1 for c in checks if c.get("current_build") is False)
+    for c in current:
+        if c["tied"]["state"] != "bad":
+            summary[c["tied"]["state"]] += 1
+        # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
+        # controller declaration, however the plugin first accepted it; an unbound sender is its own line.
+        a = c["accepted"]
+        if a["bound"]:
+            summary["vias"].add("controller_declaration")
+        elif a["via"] in VIA_KEY:
+            key = parsed(held[checks.index(c)]).get("key_id") or "unknown"
+            summary["unbound"][key] = summary["unbound"].get(key, 0) + 1
+            summary["vias"].add(a["via"])
+        else:
+            summary["vias"].add(a["via"])
     pairs = [exchange_key(capsule) for capsule in map(lambda r: parsed(r) or {}, held)]
     if failed:
-        return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, vias
-    return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
-                                  f"the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was "
-                                  f"pushed with (evidencebook), and cited as counterparty_half by the node's own "
-                                  f"record, which says it accepted the half's key via {', '.join(recorded)}"), pairs, vias
+        return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, summary
+    recorded = sorted({c["accepted"]["via"] for c in current})
+    return "NOT_CHECKED", proof, (
+        f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and the capsule_id recomputed by "
+        f"the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as "
+        f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
+        + (f" (accepted the half's key via {', '.join(recorded)}; {summary['tied']} tied to the node's own half, "
+           f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if current else "")
+        + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")), pairs, summary
+
+
+def sharing_report(name, data_dir, out):
+    """(detail, proof file or None) for the node's sharing-effective.json, read as the node's own report."""
+    path = data_dir / SHARING_FILE
+    doc = None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    if not isinstance(doc, dict) or doc.get("share_record_at_completion") not in (POLICY_ON, DEFAULT_POLICY):
+        return None, None
+    shutil.copyfile(path, out / SHARING_FILE)
+    raw = f" (raw value {doc['raw_value']!r} is not one the plugin knows)" if "raw_value" in doc else ""
+    return (f"node {name} reports (node-reported, unsigned) share_record_at_completion "
+            f"{doc['share_record_at_completion']} from {doc.get('source')} at {doc.get('written_at')}{raw}; the push "
+            f"itself is judged from the sealed records"), f"{name}/{SHARING_FILE}"
 
 
 def main_live(pop, out, started):
@@ -566,7 +715,8 @@ def main_live(pop, out, started):
     missing = live_tools(bin_)
     results, proof, details, not_checked = [], [], [], list(missing)
     halves = {}
-    vias = set()
+    total = {"judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
+    vias, unbound, no_sharing = set(), {}, []
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
             name = entry["name"]
@@ -580,33 +730,52 @@ def main_live(pop, out, started):
                 continue
             if (out / name).exists():
                 shutil.rmtree(out / name)
-            result, files, detail, pairs, node_vias = live_node(bin_, name, data_dir, out / name, Path(tmp) / name)
+            result, files, detail, pairs, summary = live_node(bin_, name, data_dir, out / name, Path(tmp) / name)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
             halves[name] = pairs
-            vias |= set(node_vias)
+            vias |= summary["vias"]
+            for k in total:
+                total[k] += summary[k]
+            for k, n in summary["unbound"].items():
+                unbound[k] = unbound.get(k, 0) + n
             if not files:
                 not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
                                     "from the lab run's exchanges", "issue": live.ISSUE})
+            report, file = sharing_report(name, data_dir, out / name)
+            if file:
+                proof.append(file)
+                details.append(report)
+            else:
+                no_sharing.append(name)
     both, unpaired = paired_exchanges(halves)
     details.append(f"exchanges with a half held on each of two nodes (joined on client_nonce): {len(both)}"
                    + (f" ({'; '.join(unpaired)})" if unpaired else ""))
+    since = os.environ.get("LOOP_SEALED_SINCE")
+    details.append(f"judged under the current build{f' (sealed since {since})' if since else ' (LOOP_SEALED_SINCE unset: every held half)'}: "
+                   f"{total['judged']} halves, {total['tied']} tied to the node's own half, {total['never_tied']} "
+                   f"{LIVE_NEVER_TIED}, {total['ambiguous']} ambiguous; {total['earlier']} sealed earlier, not judged")
     acceptance_gaps = [LIVE_DECLARATION] if "controller_declaration" in vias else []
-    if vias & set(VIA_KEY):
-        acceptance_gaps.append(live_acceptance(sorted(vias & set(VIA_KEY))))
+    if unbound:
+        acceptance_gaps.append(live_unbound(unbound, sorted(vias & set(VIA_KEY))))
     if "none recorded" in vias:
         acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": LIVE_NO_VIA,
                                 "why": "a citing record names no accepted_via, so it was sealed by a build "
                                        "before the pinned one"})
-    if not vias:
+    if not total["judged"]:
         acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": live.ISSUE,
-                                "why": "no node holds a half its own record cites, so there is no acceptance to read"})
-    for nc in (LIVE_HALVES, LIVE_DEFAULT, *acceptance_gaps, LIVE_SIGNATURE):
+                                "why": "no node holds a current-build half its own record cites, so there is no "
+                                       "acceptance or tie to read"})
+    untied = ([live_never_tied(total["never_tied"])] if total["never_tied"] else []) + \
+             ([live_ambiguous(total["ambiguous"])] if total["ambiguous"] else [])
+    default = [dict(LIVE_DEFAULT_ABSENT, why=LIVE_DEFAULT_ABSENT["why"].format(nodes=", ".join(no_sharing)))] \
+        if no_sharing else []
+    for nc in (*untied, *default, *acceptance_gaps, LIVE_SIGNATURE):
         if nc not in not_checked:
             not_checked.append(nc)
     result = live.worst(results + ["NOT_CHECKED"])
-    finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+    finding.write(out, result=result, population=pop["population"], asserts=LIVE_ASSERTS, pinned=LIVE_PINNED,
                   proof=proof, detail="; ".join(details) + f". {NO_SPEND}", not_checked=not_checked,
                   started=started)
     return 0
