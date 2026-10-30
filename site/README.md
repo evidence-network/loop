@@ -257,4 +257,12 @@ signed checkpoint, padding and admission decisions included: evidence activity,
 never deals. A card's first checkpoint is "stated, not proven" unless it carries a
 receipt. There is no per-node volume (Sherlock2, Buzz 12950c3a; Steven's
 acceptance, ops 92af8529); an operator-chosen column can be added later.
+A staple costs one key, so the staple-derived rows are inflatable (loop#170): the
+page says so in a caveat line ("a staple costs one key; these rows measure evidence
+activity, not nodes or deals"), shows the distinct verified controllers beside the
+nodes with a verifying card (a group counts only for a `bindings/` verdict that
+`history_cards.bound_groups` accepts; none today, and then the page says so), and
+keeps the existence-proof rows (decisions limited or refused on evidence; exchanges
+with outside nodes, settled, disputed) in a lab-only section that carries no value
+and links the status page. Wording rule: records sealed, never deals.
 Needs full git history (`fetch-depth: 0`). `tests/test_growth.py` holds it.

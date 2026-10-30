@@ -6,7 +6,9 @@
   (d) network totals and a community split only: no per-node volume in the page or in data.json;
   (e) no score, rank or rating, "deals" appears once (to say what the count is not), every count names what it is out of;
   (f) no script, no external URL; same inputs give the same bytes; the build writes only under growth/;
-  (g) on the real repository, the committed commitments all verify.
+  (g) on the real repository, the committed commitments all verify;
+  (h) loop#170: a caveat line (a staple costs one key), distinct verified controllers beside the nodes (only for a
+      verdict the pinned verifier verified), and lab-only existence-proof rows that carry no staple-derived value.
 
 Fixtures: tests/fixtures/commitment1/two-books/ (a signed evidence-commitment/1 with two cards, TEST key),
 committed into a scratch git repository with fixed dates.
@@ -115,12 +117,29 @@ class FixtureRepo(unittest.TestCase):
         text = re.sub(r"<[^>]+>", " ", self.page).lower()
         for word in ("score", "rank", "rating"):
             self.assertNotRegex(text, rf"\b{word}\b")
-        self.assertEqual(text.count("deals"), 1)
+        # "deals" appears only to say what a count is not (loop#170: records sealed, never deals)
+        self.assertEqual(len(re.findall(r"(?:not|never)\b[^.]*\bdeals\b", text)), text.count("deals"))
         self.assertIn("not deals", text)
         self.assertIn("log entries covered by a signed checkpoint", text)
         self.assertNotRegex(self.page, r"<script|https?://|src=|<img")
         for cell in re.findall(r"<td class=\"num\">(.*?)</td>", self.page):
             self.assertRegex(cell, r"\d+ (of|from) ")
+
+    def test_the_caveat_and_the_lab_only_rows(self):
+        text = re.sub(r"<[^>]+>", " ", self.page)
+        text = re.sub(r"\s+", " ", text)
+        self.assertIn("A staple costs one key; these rows measure evidence activity, not nodes or deals.", text)
+        self.assertLess(text.index("A staple costs one key"), text.index("Week by week"))
+        lab = text[text.index("What the lab itself has done"):text.index("Each node's card, now")]
+        self.assertIn("only from the lab's own participation with real settlement", lab)
+        self.assertIn("lab-to-lab exchange never counts", lab)
+        self.assertEqual(lab.count("not published here"), 3)
+        self.assertNotRegex(lab, r"\d")  # no value, and nothing counted from staples, in the existence-proof section
+
+    def test_controllers_sit_beside_nodes_and_none_is_shown_without_a_verdict(self):
+        self.assertEqual(self.data["controllers"], 0)
+        self.assertIn("No verified controller binding yet", self.page)
+        self.assertNotIn("distinct verified controllers", self.page)
 
     def test_first_checkpoint_is_stated_unless_witnessed(self):
         out = growth.render({"weeks": [], "cards": [
@@ -137,6 +156,58 @@ class FixtureRepo(unittest.TestCase):
         for name in ("index.html", "data.json"):
             self.assertEqual((again / "growth" / name).read_bytes(), (self.out / "growth" / name).read_bytes())
         self.assertEqual([p.name for p in self.out.iterdir()], ["growth"])
+
+
+class Controllers(unittest.TestCase):
+    """verified_controllers counts a group only for a verdict the pinned verifier verified (bound_groups)."""
+    DIGEST = "d" * 64
+
+    def repo(self, tmp, status="verified", subject_digest=None, verifier="binding-verifier@v1"):
+        repo = Path(tmp) / "repo"
+        (repo / "nodes").mkdir(parents=True)
+        (repo / "bindings").mkdir()
+        git(repo, "init", "-q", "-b", "main")
+        (repo / "nodes" / f"{NODE_A}.json").write_text("{}\n")
+        verdict = {"profile": "binding-verdict/0", "controller_key_id": self.DIGEST, "subjects": [NODE_A, NODE_B],
+                   "status": status, "verifier": verifier, "checked_at": "2026-10-30T00:00:00Z", "cites": None}
+        if status == "not_checked":
+            verdict.update(verifier=None, cites="Mesh-LLM/capsules-plugin#1")
+        (repo / "bindings" / f"{self.DIGEST}.json").write_text(json.dumps(verdict))
+        (repo / "versions.lock").write_text("binding-verifier example/binding-verifier v1\n")
+        commit(repo, "x", "2026-10-30T10:00:00Z")
+        judged = {"listed": [NODE_A, NODE_B], "nodes": {n: {"ok": True, "reason": "", "cards": [], "binding": subject_digest or self.DIGEST}
+                                                          for n in (NODE_A, NODE_B)}}
+        sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        return repo, sha, judged
+
+    def count(self, **kw):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, sha, judged = self.repo(tmp, **kw)
+            return growth.verified_controllers(repo, sha, judged)
+
+    def test_a_verified_verdict_counts_one_controller(self):
+        self.assertEqual(len(self.count()), 1)
+
+    def test_revoked_not_checked_and_digest_mismatch_count_none(self):
+        self.assertEqual(self.count(status="revoked"), [])
+        self.assertEqual(self.count(status="not_checked"), [])
+        self.assertEqual(self.count(subject_digest="e" * 64), [])
+
+    def test_a_tree_without_bindings_has_no_controllers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "r"
+            (repo / "nodes").mkdir(parents=True)
+            git(repo, "init", "-q", "-b", "main")
+            (repo / "nodes" / f"{NODE_A}.json").write_text("{}\n")
+            commit(repo, "x", "2026-10-30T10:00:00Z")
+            sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(growth.verified_controllers(repo, sha, {"listed": [], "nodes": {}}), [])
+
+    def test_render_puts_controllers_beside_nodes(self):
+        data = {"weeks": [], "controllers": 2, "cards": [
+            {"node_id": "a" * 64, "verifies": True, "stream": "s", "community": "muse", "first_checkpoint": None, "first_checkpoint_receipt": False}]}
+        text = re.sub(r"<[^>]+>", " ", growth.render(data))
+        self.assertIn("2 distinct verified controllers beside 1 nodes with a verifying card", text)
 
 
 class Synthetic(unittest.TestCase):
