@@ -160,6 +160,8 @@ wait_for() {
   echo "ready: $what"
 }
 
+# At least two records of the chain carry the bracket; wait_for calls it again on every retry.
+sealed_twice() { [ "$(grep -c -- "$1" "$2" 2> /dev/null)" -ge 2 ] 2> /dev/null; }
 node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 routes_model() {
@@ -636,7 +638,7 @@ cmd_twins() {
     -H "x-mesh-target: $b" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
   # 3. Stock mesh-llm passes plugins no exchange text, so the client that marked the pair supplies it (INSTALL.md,
   #    "Sharing policy"): the request and both answers, each checked against what the requester's own records sealed.
-  wait_for 120 "the requester sealed both twin exchanges" test "$([ -s "$led/capsules.jsonl" ] && grep -c "$bracket" "$led/capsules.jsonl" || echo 0)" -ge 2
+  wait_for 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
   if [ "$DRY" = 1 ]; then
     say curl -fsS -X POST "$(console "$REQUESTER")/api/plugins/capsules/tools/referee_supply_twin_texts" \
       "(twin_bracket_id $bracket, request_body, response_bodies twin-a.json twin-b.json)"

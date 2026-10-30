@@ -543,6 +543,30 @@ class EntriesTest(LabFixture):
         self.assertIn("lab-operator-4", errs[0])  # added as the others are named, then its missing key is reported
         self.assertEqual(len(json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]), 3)
 
+    def test_add_host_with_a_lab_4_identity_writes_its_entry_under_lab_4s_directory(self):
+        d = pack.data_dir(self.lab, "lab-4")
+        (d / "keys").mkdir(parents=True)
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(self.tmp / "k4.pem")], check=True)
+        subprocess.run(["openssl", "pkey", "-in", str(self.tmp / "k4.pem"), "-pubout", "-out",
+                        str(d / "keys" / "node-key.pub.pem")], check=True)
+        (d / "self-peer-id").write_text("4" * 64 + "\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
+        self.assertEqual(errs, [])
+        nodes = json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]
+        self.assertEqual(len(nodes), 4)
+        self.assertEqual(nodes[3]["data_dir"], "$LAB_DIR/nodes/lab-4/.local/share/capsules")
+        self.assertEqual(nodes[3]["node_id"], "4" * 64)
+        self.assertTrue((self.root / "nodes" / f"{'4' * 64}.json").is_file())
+
+    def test_the_twin_exchange_wait_reads_the_ledger_on_every_retry(self):
+        led = self.tmp / "capsules.jsonl"
+        script = ('eval "$(sed -n "/^sealed_twice()/p" "$LAB")"; '
+                  '(sleep 1; echo b-1 >> "$LED"; echo b-1 >> "$LED") & '
+                  'for i in 1 2 3 4 5 6 7 8; do sealed_twice b-1 "$LED" && echo seen && exit 0; sleep 0.5; done; echo never')
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB), "LED": str(led)})
+        self.assertEqual(r.stdout.strip(), "seen", r.stderr)
+
     def test_writes_entries_that_pass_check_nodes(self):
         self.assertEqual(self.entries(), [])
         errs, count = check_nodes.check_dir(self.root / "nodes")
