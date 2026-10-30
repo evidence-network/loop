@@ -55,4 +55,4 @@ capsulectl-book action-state-group/evidencebook v0.8.1
 # The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).
 capsule-emit action-state-group/capsule-emit python/v0.13.0
-aac-go action-state-group/agent-action-capsule go/v0.14.0
+aac-go action-state-group/agent-action-capsule go/v0.15.0
