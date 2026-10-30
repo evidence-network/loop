@@ -754,11 +754,12 @@ def request_digest(request):
         return None
 
 
-def judge_sealed(ledger, node_id, request, posted, back, saw, within):
+def judge_sealed(ledger, node_id, request, posted, back, saw, within, policy_digest=None):
     """(errors, not_checked reasons, evidence) for one live ask, from the asker's own sealed records: its
     evidence_request is in the book, and an evidence_response or a recorded_absence citing it agrees with what the
     reporter saw. `posted` and `back` bracket the ask; `saw` is what the reporter saw: "verified", "refusal" or None
-    when it saw no signed answer; `within` is the commitment's answers_within as a timedelta, or None. The wire
+    when it saw no signed answer; `within` is the commitment's answers_within as a timedelta, or None;
+    `policy_digest` is the digest of the policy the peer's commitment pins, or None. The wire
     send is after the seal, so
     the true deadline is no earlier than the seal plus `within`: an absence must close no earlier than that.
 
@@ -830,12 +831,25 @@ def judge_sealed(ledger, node_id, request, posted, back, saw, within):
             errs.append(f"the response was recorded as {st.get('outcome')}, but the reporter saw {saw}")
         if not answered:
             notes.append("the plugin sealed a reply after the reporter's call returned")
-        check = (st.get("verification") or {}).get("policy_check")
         if st.get("outcome") == "refusal":
-            if check == "MISMATCH" or (isinstance(check, dict) and check.get("state") == "MISMATCH"):
+            check = (st.get("verification") or {}).get("policy_check")
+            check = check if isinstance(check, dict) else {}
+            status, shown = check.get("status"), check.get("policy_digest")
+            if status == "MISMATCH":
                 errs.append("the refusal is checked against the policy the peer's commitment pins and does not match")
-            elif check in (None, "NOT_CHECKED") or (isinstance(check, dict) and check.get("state") == "NOT_CHECKED"):
-                notes.append("the refusal's policy check (capsules-plugin PR #112) is NOT_CHECKED in the sealed record")
+            elif status == "NOT_CHECKED":
+                notes.append("the refusal's policy check (capsules-plugin PR #112) is NOT_CHECKED in the sealed record: "
+                             f"{check.get('why')}")
+            elif status != "MATCH":
+                errs.append(f"the refusal's policy_check has no status the step knows ({status!r}); it must be "
+                            "MATCH, MISMATCH or NOT_CHECKED")
+            if status in ("MATCH", "MISMATCH") or shown is not None:
+                if policy_digest is None:
+                    notes.append("the peer's commitment is not at hand, so the refusal's policy_check cannot be tied to "
+                                 "the policy it pins")
+                elif shown != policy_digest:
+                    errs.append(f"the refusal's policy_check names policy {shown}, not the {policy_digest} the peer's "
+                                "commitment pins")
     else:
         window = st.get("window") or {}
         try:
@@ -905,7 +919,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 saw = line.split(" ", 1)[0]
                 errs, notes, evidence = judge_sealed(
                     Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
-                    sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None)
+                    sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None,
+                    adv["policy_digest"] if adv else None)
                 qn = daily_report.QUESTION_NAMES[stem]
                 failures += [f"{name}: {qn}: {e}" for e in errs]
                 merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,

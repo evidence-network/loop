@@ -286,12 +286,19 @@ def seal_records(ledger, peer, asked, outcome):
             "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
             "statement": {"outcome": "artifact", "request_digest": "0" * 64 if outcome == "wrong_digest" else digest,
                           "verification": verification}, "committed_at": iso(at)}))
-    elif outcome == "refusal_mismatch":
+    elif outcome.startswith("refusal_") and outcome != "refusal_for_artifact":  # the plugin's policy_check: {status, why, policy_digest} (peer_commitments.rs)
+        digest_pinned = ALICE["lcap"]["policy_digest"]
+        check = {"refusal_mismatch": {"status": "MISMATCH", "why": "w", "policy_digest": digest_pinned},
+                 "refusal_match": {"status": "MATCH", "why": "w", "policy_digest": digest_pinned},
+                 "refusal_not_checked": {"status": "NOT_CHECKED", "why": "w", "policy_digest": digest_pinned},
+                 "refusal_unknown_status": {"status": "PERHAPS", "why": "w", "policy_digest": digest_pinned},
+                 "refusal_state_key": {"state": "MISMATCH"},
+                 "refusal_other_policy": {"status": "MATCH", "why": "w", "policy_digest": "f" * 64}}[outcome]
         lines.append(ask_record(f"{n + 1:064x}", {
             "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
             "statement": {"outcome": "refusal", "request_digest": digest,
-                          "verification": {"state": "refusal", "reason": "policy_declined",
-                                           "policy_check": {"state": "MISMATCH"}}}, "committed_at": iso(at)}))
+                          "verification": {"state": "refusal", "reason": "policy_declined", "policy_check": check}},
+            "committed_at": iso(at)}))
     elif outcome in ("artifact_for_refusal", "refusal_for_artifact"):
         lines.append(ask_record(f"{n + 1:064x}", {
             "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
@@ -574,6 +581,34 @@ class ReporterBackendTest(Tmp):
         finally:
             console.close()
         self.assertTrue(json.loads((self.out / "first-answered.json").read_text())["sealed"])
+
+    def refusal_run(self, sealed):
+        return self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"},
+                             ledger=self.ledger(), sealed={"checkpoints": sealed})
+
+    def test_a_matching_refusal_check_is_read_clean(self):
+        r = self.refusal_run("refusal_match")
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+
+    def test_a_refusal_check_not_checked_in_the_record_is_named(self):
+        r = self.refusal_run("refusal_not_checked")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertTrue(any("policy check" in i["why"] and "NOT_CHECKED" in i["why"] for i in r["not_checked"]))
+
+    def test_a_refusal_check_with_an_unknown_status_fails_closed(self):
+        r = self.refusal_run("refusal_unknown_status")
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("no status the step knows", r["detail"])
+
+    def test_a_refusal_check_in_the_old_state_shape_fails_closed(self):
+        r = self.refusal_run("refusal_state_key")
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("no status the step knows", r["detail"])
+
+    def test_a_refusal_check_against_another_policy_than_the_commitment_pins_is_a_fail(self):
+        r = self.refusal_run("refusal_other_policy")
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("not the", r["detail"])
 
     def test_a_response_of_another_type_than_the_reporter_saw_is_a_fail(self):
         r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, ledger=self.ledger(),
