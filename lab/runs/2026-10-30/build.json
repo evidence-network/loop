@@ -1,0 +1,64 @@
+{
+  "capsules": {
+    "binary_sha256": "805eda47d5c4e98e0061fc1ce78b5c241cdac8e8e35e01ab6b1c67831a99e851",
+    "pin": "e5eef37efe9faf8ba14c40d3c1172498f8d9b969",
+    "pin_commit": "e5eef37efe9faf8ba14c40d3c1172498f8d9b969",
+    "source_head": "e5eef37efe9faf8ba14c40d3c1172498f8d9b969"
+  },
+  "check_failures": [],
+  "checked_at": "2026-10-30T01:56:16Z",
+  "failures": [],
+  "mesh_llm": {
+    "binary_sha256": "f999484cf37bf4b11075990666eb8a49113750ee6e8f975f815eb894eb66a7f6",
+    "contains": {
+      "mesh-llm": "2809443345ea8134db62a8b433f5bb2bb5f1d123",
+      "mesh-llm-pr-2620": "1d96a0205ed77959485159d2110259fd32ccb35e"
+    },
+    "source_head": "fc35ee4968dff4563f1adb981a5dd33b1ce8fd58",
+    "version": "mesh-llm 0.78.0"
+  },
+  "ok": true,
+  "relay": "off (--disable-iroh-relays) until Mesh-LLM/capsules-plugin#48 is closed",
+  "tools": {
+    "checked_at": "2026-10-30T01:56:26Z",
+    "failures": [],
+    "setups": [
+      {
+        "exit": 0,
+        "name": "01-seal.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "02-book.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "03-advertise.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "04-admit.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "05-deal.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "06-settle.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "07-ask.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "09-dispute.setup.sh"
+      },
+      {
+        "exit": 0,
+        "name": "12-join.setup.sh"
+      }
+    ]
+  }
+}

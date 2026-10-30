@@ -1,0 +1,24 @@
+{
+  "binding_version": "controller-binding/0",
+  "claim": "same_controller_asserted",
+  "issued_at": "2026-10-30T02:31:43Z",
+  "keys": [
+    "3cabcdb7ffddabce7282477e0ede92bfdd12bc46b3bc1b281dbf24a189c62722",
+    "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff"
+  ],
+  "method": "dual_signature/0",
+  "nonce": "8aebe2d3b446e6459aa3fe799344694a",
+  "not_after": "2027-10-30T02:31:43Z",
+  "not_before": "2026-10-30T02:31:43Z",
+  "revocation": "revocation_statement/0",
+  "sigs": [
+    {
+      "key_id": "3cabcdb7ffddabce7282477e0ede92bfdd12bc46b3bc1b281dbf24a189c62722",
+      "sig": "a01478437dd7e271169910cc0490c94ae330ba3a52fb48b741cd275df479d7d38e79c9fb9dbeeed0fe4c0594f396964d1776d3b080bafa5a1ceea02003086203"
+    },
+    {
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "sig": "04ac87d74fedd347778ad380baed5910c7c7e3544a0d12a3016941b2d599774e92b78576304364c98fc24c687bd2fbfaf0338e33052b81188eaa2ef1f068ba01"
+    }
+  ]
+}
