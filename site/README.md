@@ -239,15 +239,21 @@ python3 -B site/growth.py --out _site   # writes _site/growth/index.html and dat
 ```
 
 Each Monday-to-Sunday week (UTC, the last one cut at the ref's commit time) is
-judged against the tree as committed at the end of that week, not today's files:
-`scripts/check_commitment.py` checks every listed node's commitment and the cards
-stapled to it offline. A week shows the nodes with a verifying card, of those
-listed, and the checkpoints cut and records sealed from those nodes, as network
-totals and split by community, with the witnessed checkpoints of those cut. A
-failing or missing commitment stays in the denominator and the node table says
-why. **Records sealed** is the log entries covered by a signed checkpoint,
-padding and admission decisions included: evidence activity, never deals. A
-card's first checkpoint is "stated, not proven" unless it carries a witness
-receipt. There is no per-node volume (Sherlock2, Buzz 12950c3a);
-an operator-chosen column can be added later.
+judged against the tree as committed at the end of that week along the ref's
+first-parent history, not today's files. `scripts/check_commitment.py` checks
+every listed node's commitment there offline: its signature, its policy digest
+(the policy file read from that tree; one that cannot be read means the commitment
+does not verify) and each stapled card's bytes, digest and subject. It does not
+verify a card's checkpoint signatures or witness receipts (AAC#430), so the page
+says a checkpoint "carries a witness receipt", never "witnessed". A week shows the
+nodes with a verifying card, of those listed, and the checkpoints cut and records
+sealed, as network totals and split by community, with the checkpoints carrying a
+receipt of those cut. A checkpoint counts in the week it was cut, from the first
+end-of-week tree in which a verifying card carries it, so one committed late is
+counted in its own week. A failing or missing commitment stays in the denominator
+and the node table says why. **Records sealed** is the log entries covered by a
+signed checkpoint, padding and admission decisions included: evidence activity,
+never deals. A card's first checkpoint is "stated, not proven" unless it carries a
+receipt. There is no per-node volume (Sherlock2, Buzz 12950c3a; Steven's
+acceptance, ops 92af8529); an operator-chosen column can be added later.
 Needs full git history (`fetch-depth: 0`). `tests/test_growth.py` holds it.
