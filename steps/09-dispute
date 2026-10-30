@@ -67,8 +67,8 @@ announced keys being the population's nodes' own public keys; a check that
 needs a node whose data dir is not readable (the referee's, or a half's
 signer) is not run. When no lab node holds a Result, the finding is
 NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
-but the lab has not run one): this step never seals a record on
-a live node to make one.
+but the live twin trigger on real traffic is Mesh-LLM/capsules-plugin#126 and the
+lab has not run one): this step never seals a record on a live node to make one.
 
 No spend: this step pays nothing on either population, with or without
 LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;
@@ -94,7 +94,7 @@ ASSERTS = ("the referee seals an adjudication Result on a pair of twins that cit
            "the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded")
 PINNED = []
 LIVE_PINNED = ["capsules"]
-ISSUE_102 = "Mesh-LLM/capsules-plugin#102"
+ISSUE_LIVE_TWINS = "Mesh-LLM/capsules-plugin#126"
 ISSUE_49 = "Mesh-LLM/capsules-plugin#49"
 SPEND = ("Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD).")
 MESH_ONLY = ("Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close "
@@ -577,7 +577,7 @@ def decide(out, *, population, started):
                                 "records two serving nodes seal (AAC capsules under the rehearsal TEST keys), not "
                                 "a node's own output", ISSUE_49) + " "
               + finding.outside("the referee, its announced key and its delivery, which are rehearsal stand-ins "
-                                "until the lab nodes run an adjudication (the plugin's own two-node e2e seals one, as of #102)", ISSUE_102))
+                                "until the lab nodes run an adjudication (the plugin's two-node e2e seals one, Mesh-LLM/capsules-plugin#102; the live trigger is open)", ISSUE_LIVE_TWINS))
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                          detail=detail, started=started)
 
@@ -595,12 +595,12 @@ NO_RESULT = {"what": "an adjudication Result on a twin pair, held by a lab node 
              "why": "no lab node's data dir holds a Result (no issued-adjudications.jsonl or "
                     "received-adjudications.jsonl line): the referee has not run an adjudication end to end on "
                     "the lab nodes, and this step never seals one on a live node",
-             "issue": ISSUE_102}
+             "issue": ISSUE_LIVE_TWINS}
 
 
 def unrun_entry(what):
     return {"what": what, "why": "it needs the ledger or key of a node that is not a readable lab node "
-                                 "(the referee's, or a half's signer)", "issue": ISSUE_102}
+                                 "(the referee's, or a half's signer)", "issue": ISSUE_LIVE_TWINS}
 
 
 def main_live(pop, out, started):

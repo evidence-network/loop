@@ -169,7 +169,7 @@ class RehearsalTest(Tmp):
         for c in step.CHECKS:
             self.assertIn(c, r["detail"])
         self.assertEqual(sorted(i for _, i in finding.gaps(r["detail"])),
-                         ["Mesh-LLM/capsules-plugin#102", "Mesh-LLM/capsules-plugin#49"])
+                         ["Mesh-LLM/capsules-plugin#126", "Mesh-LLM/capsules-plugin#49"])
         self.assertIn("Spend: none", r["detail"])
         self.assertIn("adjudications only", r["detail"])
         proof = {p["path"] for p in r["proof"]}
@@ -317,10 +317,10 @@ class LiveTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertEqual(r["pinned"]["capsules"]["ref"], finding.pins()["capsules"][1])
         issues = [n["issue"] for n in r["not_checked"]]
-        self.assertIn("Mesh-LLM/capsules-plugin#102", issues)
+        self.assertIn("Mesh-LLM/capsules-plugin#126", issues)
         self.assertEqual(sum(i == step.live.ISSUE for i in issues), 3)
 
-    def test_nodes_holding_no_result_are_not_checked_on_102(self):
+    def test_nodes_holding_no_result_are_not_checked_on_the_live_twin_trigger(self):
         d = self.copy()
         for f in d.rglob("*adjudications.jsonl"):
             f.unlink()
