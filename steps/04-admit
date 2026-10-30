@@ -45,9 +45,18 @@ GO or NO, names its source, cites the operator policy by digest and names the
 peer by commitment only. PASS when every node reads and at least one is found
 and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The pinned plugin
 also seals the base policy's five rows with each decision that names a peer,
-and a second read, the peer's history card (capsules-plugin PR #116): the step
-checks their shape, and a decision sealed by an earlier build has neither.
-Whether each row was evaluated right is evidence-network/loop#81.
+and a second read, the peer's history card (capsules-plugin PR #116); a
+decision sealed by an earlier build has neither. The step recomputes each row
+from what the decision sealed, by the base policy's rules (admission/base.rs):
+identity passes exactly when a card is cited, key age is not_read when none is,
+and the three local rows come from one snapshot of the node's chain, all
+not_read when it had none. A row that disagrees is a FAIL naming it. What the
+record does not give (the card itself, the snapshot, and the clear peer behind
+its salted commitment) leaves that row's value NOT_CHECKED, row by row, in
+<node>/rows.json. The rows decide nothing: the verdict follows from its source
+alone (allow list GO, deny list NO, an unreadable policy or target NO, the
+default the policy's), and on one node every decision about one peer under one
+policy digest has the same verdict and source.
 
 No spend: nothing is paid on either population.
 
@@ -78,7 +87,9 @@ ASSERTS = ("the buyer's admission decision is exactly one of GO or NO, in the sh
 PINNED = ["capsulectl", "capsulectl-book"]
 LIVE_PINNED = ["capsules", "mesh-llm"]
 ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the "
-                "node's own ledger, naming its source and the operator policy it read by digest")
+                "node's own ledger, naming its source and the operator policy it read by digest; the verdict follows "
+                "from its source as the plugin decides, and each base-policy row it seals is one the plugin's rules "
+                "give from the reads it seals")
 PLANTS = ("ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no")
 PLANT_SCENARIO = {"ask-outcome": "go", "limit-outcome": "go", "unsealed": "go", "sealed-after": "go",
                   "deal-after-no": "no-deny-list"}
@@ -355,12 +366,13 @@ def main_rehearsal(pop_dir, out, started, plant=None):
 # The pinned plugin's admission hook decides GO or NO from the operator's allow and deny lists and seals an
 # admission_decision block in the node's own ledger before the exchange (capsules-plugin admission.rs).
 # The step reads those blocks, read-only, and checks their shape; it evaluates no Terms Pack.
+ROWS_OPEN = ("each base-policy row's value where the sealed decision does not fix it: identity's fail or not_read "
+             "on no card, key age on a cited card, and the three local rows")
+ROWS_OPEN_WHY = ("the decision cites the history card and names the peer only by commitments salted from the node's "
+                 "signing key, and the plugin keeps neither the card nor its snapshot of its own chain; the step "
+                 "reads neither the key nor the host config")
 LIVE_NOT_CHECKED = [
-    {"what": "the five base-policy rows (identity, key age, performed-and-settled, disputes, corroboration) sealed "
-             "with each decision, evaluated right",
-     "why": "the pinned plugin seals the rows (capsules-plugin PR #116); the step checks their names and results, "
-            "not the evaluation behind them",
-     "issue": "evidence-network/loop#81"},
+    {"what": ROWS_OPEN, "why": ROWS_OPEN_WHY, "issue": "evidence-network/loop#81"},
     {"what": "each ledger record's producer signature and capsule_id",
      "why": "the step reads the node's ledger lines as written and verifies neither",
      "issue": "evidence-network/loop#135"},
@@ -370,7 +382,7 @@ LIVE_NOT_CHECKED = [
 ]
 VERDICTS = ("GO", "NO")
 LIVE_GAPS = " ".join([
-    finding.outside("the five base-policy rows sealed with each decision, evaluated right", "evidence-network/loop#81"),
+    finding.outside(ROWS_OPEN, "evidence-network/loop#81"),
     finding.outside("each ledger record's producer signature and capsule_id", "evidence-network/loop#135"),
     finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
 ])
@@ -442,10 +454,108 @@ def block_problems(blk):
     return errs
 
 
+# The verdict each source gives (capsules-plugin admission.rs, Policy::decide); `default` gives the policy's default.
+VERDICT_OF = {"allow_list": "GO", "deny_list": "NO", "unreadable_policy": "NO", "unreadable_target": "NO"}
+SOURCES = (*VERDICT_OF, "default")
+POLICY_WITH_ROWS = "base/1"
+CARD_ROWS, LOCAL_ROWS = ROWS[:2], ROWS[2:]
+NO_CARD = ("the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered "
+           "(not_read)")
+CARD_AGE = "the card's first checkpoint time is not in the record, which cites the card by a salted commitment only"
+SNAPSHOT = ("the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the "
+            "record names the peer only by a commitment salted from the node's signing key")
+
+
+def row_checks(blk):
+    """[{row, sealed, want, check, why}] for a well-shaped decision with rows: each row recomputed from what the
+    decision sealed by the base policy's rules (capsules-plugin admission/base.rs). `check` is PASS when the
+    record fixes the row and it matches, FAIL when the row is a value the rules cannot give, NOT_CHECKED when
+    it is one they can but the record does not say which."""
+    got = {x["row"]: x["result"] for x in blk["rows"]}
+    cited = "commitment" in blk["reads"][1]
+    allowed = {"identity": {"pass"} if cited else {"fail", "not_read"},
+               "key_age": set(ROW_RESULTS) if cited else {"not_read"}}
+    why = {"identity": "" if cited else NO_CARD, "key_age": CARD_AGE if cited else ""}
+    # Card rows (card_rows): a cited card passes identity; with none, key age is not read.
+    # Local rows (read_with_key): one snapshot gives all three. With none, all three are not_read; with one,
+    # performed_and_settled and corroboration are pass or fail, and disputes is not_read only while the node
+    # holds no verdict about the peer.
+    settled, held = got["performed_and_settled"] == "not_read", got["corroboration"] == "not_read"
+    no_snapshot = settled and held
+    for row in LOCAL_ROWS:
+        allowed[row] = {"not_read"} if no_snapshot else (set(ROW_RESULTS) if row == "disputes" else {"pass", "fail"})
+        why[row] = SNAPSHOT
+    out = []
+    for row in ROWS:
+        want = sorted(allowed[row])
+        if settled != held and row in ("performed_and_settled", "corroboration"):
+            other = "corroboration" if row == "performed_and_settled" else "performed_and_settled"
+            out.append({"row": row, "sealed": got[row], "want": want, "check": "FAIL",
+                        "why": f"{row} is {got[row]} while {other} is {got[other]}; the plugin reads both from one "
+                               f"snapshot, so both are not_read or neither is"})
+            continue
+        if settled != held and row == "disputes":
+            out.append({"row": row, "sealed": got[row], "want": sorted(ROW_RESULTS), "check": "NOT_CHECKED",
+                        "why": "the other local rows disagree on whether there was a snapshot"})
+            continue
+        if got[row] not in allowed[row]:
+            check = "FAIL"
+            when = ("with a cited card" if cited else "with no card cited") if row in CARD_ROWS else \
+                ("when the other local rows are not_read (no snapshot)" if no_snapshot
+                 else "when the other local rows are read (a snapshot)")
+            why_row = f"{row} is {got[row]}; the rules give {' or '.join(want)} {when}"
+        elif len(want) == 1 and row in CARD_ROWS:
+            check, why_row = "PASS", ""
+        else:
+            check, why_row = "NOT_CHECKED", why[row]
+        out.append({"row": row, "sealed": got[row], "want": want, "check": check, "why": why_row})
+    return out
+
+
+def verdict_problems(blk):
+    """Why a well-shaped decision's verdict does not follow from its source the way the plugin decides; [] when
+    it does. The rows decide nothing (capsules-plugin admission.rs): only the operator's lists and default do."""
+    errs, source, verdict = [], blk["source"], blk["verdict"]
+    pol = blk["reads"][0]
+    if source not in SOURCES:
+        errs.append(f"source {source!r} is none the plugin gives")
+    elif source in VERDICT_OF and verdict != VERDICT_OF[source]:
+        errs.append(f"verdict {verdict} from {source}, which gives {VERDICT_OF[source]}")
+    if source == "unreadable_policy" and pol.get("digest") is not None:
+        errs.append("an unreadable policy cited by digest")
+    if "rows" in blk and pol.get("policy") != POLICY_WITH_ROWS:
+        errs.append(f"rows under policy {pol.get('policy')!r}, not {POLICY_WITH_ROWS}")
+    return errs
+
+
+def same_policy_problems(found):
+    """Why decisions on one node disagree under one policy digest; [] when they agree. Per policy digest the
+    default is one verdict, and per peer commitment the lists give one verdict and source."""
+    errs, defaults, peers = [], {}, {}
+    for n, blk in found:
+        digest = (blk["reads"][0].get("digest") or {}).get("digest")
+        if digest is None:
+            continue
+        if blk["source"] == "default":
+            defaults.setdefault(digest, {}).setdefault(blk["verdict"], n)
+        if blk.get("peer_commitment"):
+            peers.setdefault((digest, blk["peer_commitment"]["digest"]), {}).setdefault(
+                (blk["verdict"], blk["source"]), n)
+    for digest, seen in defaults.items():
+        if len(seen) > 1:
+            errs.append(f"records {' and '.join(str(n) for n in sorted(seen.values()))}: the default gives both GO "
+                        f"and NO under one policy digest")
+    for _, seen in peers.items():
+        if len(seen) > 1:
+            errs.append(f"records {' and '.join(str(n) for n in sorted(seen.values()))}: one peer gets "
+                        f"{' and '.join(f'{v} ({s})' for v, s in sorted(seen))} under one policy digest")
+    return errs
+
+
 def node_decisions(data_dir):
-    """([(line, block)], [problem], total) over the node's ledger lines that carry an admission decision;
-    None when the ledger file cannot be read."""
-    found, problems, total = [], [], 0
+    """([(line, block)], [problem], total, {record: row checks}) over the node's ledger lines that carry an
+    admission decision; None when the ledger file cannot be read."""
+    found, problems, total, rows, shaped = [], [], 0, {}, []
     try:
         lines = (data_dir / "ledger" / "capsules.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -458,14 +568,24 @@ def node_decisions(data_dir):
         if blk is ABSENT:
             continue
         found.append((ln, blk))
-        problems += [f"record {total}: {e}" for e in block_problems(blk)]
-    return found, problems, total
+        bad = block_problems(blk)
+        problems += [f"record {total}: {e}" for e in bad]
+        if bad:
+            continue
+        shaped.append((total, blk))
+        problems += [f"record {total}: {e}" for e in verdict_problems(blk)]
+        if "rows" in blk:
+            rows[total] = row_checks(blk)
+            problems += [f"record {total}: row {c['why']}" for c in rows[total] if c["check"] == "FAIL"]
+    problems += same_policy_problems(shaped)
+    return found, problems, total, rows
 
 
 def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     (out / "finding.json").unlink(missing_ok=True)
     details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [], [], 0, False
+    tally = {"PASS": 0, "NOT_CHECKED": 0, "FAIL": 0}
     for entry in pop["nodes"]:
         name = entry["name"]
         data_dir = live.readable(entry, "data_dir", "ledger")
@@ -480,7 +600,7 @@ def main_live(pop, out, started):
             details.append(f"node {name}: ledger not readable")
             unreadable = True
             continue
-        found, bad, total = read
+        found, bad, total, rows = read
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
         details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
                        f"({by['GO']} GO, {by['NO']} NO), read-only")
@@ -490,17 +610,29 @@ def main_live(pop, out, started):
             (out / name).mkdir(exist_ok=True)
             (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for ln, _ in found), encoding="utf-8")
             proof.append(f"{name}/decisions.jsonl")
+        if rows:
+            (out / name / "rows.json").write_text(json.dumps({str(n): c for n, c in rows.items()}, indent=2) + "\n",
+                                                  encoding="utf-8")
+            proof.append(f"{name}/rows.json")
+            for c in (c for cs in rows.values() for c in cs):
+                tally[c["check"]] += 1
     base = dict(population=pop["population"], asserts=ASSERTS_LIVE, pinned=LIVE_PINNED, started=started)
     summary = "; ".join(details)
+    if any(tally.values()):
+        summary += (f"; of the base-policy rows sealed, {tally['PASS']} were fixed by the record and matched it, "
+                    f"{tally['NOT_CHECKED']} are values the rules allow but the record does not fix (rows.json) "
+                    f"and {tally['FAIL']} disagree")
     if problems:
         finding.write(out, result="FAIL", proof=proof, not_checked=[],
                       detail=f"{summary}. Did not hold: {'; '.join(problems)}. {NO_SPEND}", **base)
     elif decided and not unreadable:
         finding.write(out, result="PASS", proof=proof, not_checked=[],
                       detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
-                             f"read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and "
-                             f"names the peer by commitment only; the step read the ledger lines "
-                             f"as written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
+                             f"read by digest (or is a NO sealed with no readable policy), carries no member beyond "
+                             f"the plugin's own and names the peer by commitment only; its verdict follows from its "
+                             f"source alone, the same for one peer under one policy digest; each row it seals is one "
+                             f"the base policy's rules give from what it read. The step read the ledger lines as "
+                             f"written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
     else:
         gap = {"what": "an admission decision on a lab node",
                "why": "no ledger record carries one: the host config grants the plugin no admission hook "
