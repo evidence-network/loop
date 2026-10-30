@@ -271,6 +271,11 @@
         "ok": true,
         "via": "host_announced"
       },
+      "binding": {
+        "detail": "binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL",
+        "ok": false,
+        "state": "bad"
+      },
       "capsule_id": "587eea74015a969a07df1eefd2b623a548ce5a1d13f5544ba94b5be0c9bbb6cc",
       "cited": {
         "detail": "record d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc cites it: Class 1 exit 0; carried d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc, recomputed d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc",
@@ -316,6 +321,11 @@
         "ok": true,
         "via": "host_announced"
       },
+      "binding": {
+        "detail": "binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL",
+        "ok": false,
+        "state": "bad"
+      },
       "capsule_id": "af88843e6a063b1d816bcab0e4603fd606b9ec339be909af9e65f7822b19b2f3",
       "cited": {
         "detail": "record 645a154ecdc637885158104ba2b16db09a914989fd84c9616b21413d9fa13599 cites it: Class 1 exit 0; carried 645a154ecdc637885158104ba2b16db09a914989fd84c9616b21413d9fa13599, recomputed 645a154ecdc637885158104ba2b16db09a914989fd84c9616b21413d9fa13599",
@@ -360,6 +370,11 @@
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced, its operator binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 the one in the sender's published commitment",
         "ok": true,
         "via": "host_announced"
+      },
+      "binding": {
+        "detail": "binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL",
+        "ok": false,
+        "state": "bad"
       },
       "capsule_id": "090eef4f0cc2c9d3c209c0f002cac60ee21056cabf8d53cdf0f024be0cc7dc64",
       "cited": {
@@ -487,6 +502,11 @@
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced, its operator binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 the one in the sender's published commitment",
         "ok": true,
         "via": "host_announced"
+      },
+      "binding": {
+        "detail": "binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 (stevenmih-1) does not apply: controller_binding_form FAIL",
+        "ok": false,
+        "state": "bad"
       },
       "capsule_id": "32c310ca2f57f06f31760df5688fa3eb41aa63d5577cd22c0aff7398eeb87bce",
       "cited": {
