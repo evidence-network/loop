@@ -151,7 +151,7 @@ class Synthetic(unittest.TestCase):
 
     def week(self, judgeds, last=False, start="2026-10-26", end="2026-11-02"):
         t = growth.parse_time
-        return growth.week_numbers(judgeds, t(start + "T00:00:00Z"), t(end + "T00:00:00Z"), last)["communities"]["muse"]
+        return growth.week_numbers(judgeds, t(start + "T00:00:00Z"), t(end + "T00:00:00Z"), last)["communities"].get("muse", {"cards": 0, "checkpoints": 0, "records": 0, "with_receipt": 0})
 
     def test_boundaries_malformed_counts_and_receipts(self):
         judged = self.node([
@@ -219,8 +219,11 @@ class History(unittest.TestCase):
             first, second = growth.export(growth.build_model(repo, "HEAD"))["weeks"]
             self.assertEqual((first["listed"], first["verifying"]), (1, 0))  # nothing published by the end of week 1
             self.assertEqual(first["communities"]["mesh-llm"]["checkpoints"], 2)  # but they were cut in it
-            self.assertEqual(first["communities"]["mesh-llm"]["cards"], 0)
-            self.assertEqual(second["communities"]["mesh-llm"]["checkpoints"], 0)
+            self.assertEqual((first["volume_nodes"], first["communities"]["mesh-llm"]["cards"]), (1, 2))
+            page = growth.render(growth.export(growth.build_model(repo, "HEAD")))
+            self.assertIn("0 of 1 listed nodes", page)  # the week-end tree had no verifying card
+            self.assertIn("8 from 1 of 1 listed nodes", page)  # the volume names who contributed it
+            self.assertEqual(second["communities"], {})
 
     def test_a_week_is_judged_along_first_parent_history_not_an_unmerged_branch(self):
         with tempfile.TemporaryDirectory() as tmp:

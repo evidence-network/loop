@@ -250,7 +250,8 @@ nodes with a verifying card, of those listed, and the checkpoints cut and record
 sealed, as network totals and split by community, with the checkpoints carrying a
 receipt of those cut. A checkpoint counts in the week it was cut, from the first
 end-of-week tree in which a verifying card carries it, so one committed late is
-counted in its own week. A failing or missing commitment stays in the denominator
+counted in its own week; each volume cell names the nodes (of those listed) or
+cards that contributed it. A failing or missing commitment stays in the denominator
 and the node table says why. **Records sealed** is the log entries covered by a
 signed checkpoint, padding and admission decisions included: evidence activity,
 never deals. A card's first checkpoint is "stated, not proven" unless it carries a

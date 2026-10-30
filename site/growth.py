@@ -165,15 +165,13 @@ def judge_tree(tree):
 
 
 def week_numbers(judgeds, start, end, last):
-    """The week's counts. judgeds[0] is the tree at the week's end (nodes, cards); the later ones only add
-    checkpoints cut in this week that were committed after it. Volume per community: cards, checkpoints, records."""
+    """The week's counts. judgeds[0] is the tree at the week's end: the nodes listed and the ones with a verifying card.
+    Volume comes from every verifying card, in that tree or a later one, that carries a checkpoint cut in this week
+    (so one committed late is counted in its own week); `volume_nodes` and each community's `cards` count the
+    contributors of that volume."""
     judged = judgeds[0]
     verifying = [n for n in judged["listed"] if judged["nodes"][n]["ok"]]
-    communities = {}
-    for node_id in verifying:
-        for card in judged["nodes"][node_id]["cards"]:
-            communities.setdefault(card["community"], {"cards": 0, "checkpoints": 0, "records": 0, "with_receipt": 0})["cards"] += 1
-    seen = set()
+    communities, contributors, seen, cards_seen = {}, set(), set(), set()
     for later in judgeds:
         for node_id in later["listed"]:
             if not later["nodes"][node_id]["ok"]:
@@ -188,11 +186,15 @@ def week_numbers(judgeds, start, end, last):
                     if not (is_count(size) and is_count(prev) and size >= prev) or key in seen:
                         continue
                     seen.add(key)
+                    contributors.add(node_id)
                     c = communities.setdefault(card["community"], {"cards": 0, "checkpoints": 0, "records": 0, "with_receipt": 0})
+                    if (node_id, card["stream"]) not in cards_seen:
+                        cards_seen.add((node_id, card["stream"]))
+                        c["cards"] += 1
                     c["checkpoints"] += 1
                     c["records"] += size - prev
                     c["with_receipt"] += bool(carries)
-    return {"listed": len(judged["listed"]), "verifying": len(verifying),
+    return {"listed": len(judged["listed"]), "verifying": len(verifying), "volume_nodes": len(contributors),
             "communities": {k: communities[k] for k in sorted(communities)}}
 
 
@@ -254,20 +256,20 @@ def render(data):
         for c in w["communities"].values():
             for k in total:
                 total[k] += c[k]
-        v = w["verifying"]
+        v, k = w["verifying"], w["volume_nodes"]
         weeks_rows.append(
             f"<tr><th scope=\"row\">{esc(week_label(w))}</th>"
             f"<td class=\"num\">{v} of {w['listed']} listed nodes</td>"
-            f"<td class=\"num\">{total['checkpoints']} from {v} of {w['listed']} nodes</td>"
-            f"<td class=\"num\">{total['records']} from {v} of {w['listed']} nodes</td>"
+            f"<td class=\"num\">{total['checkpoints']} from {k} of {w['listed']} listed nodes</td>"
+            f"<td class=\"num\">{total['records']} from {k} of {w['listed']} listed nodes</td>"
             f"<td class=\"num\">{total['with_receipt']} of {total['checkpoints']} checkpoints cut</td></tr>")
     community_rows = []
     for w in reversed(data["weeks"]):
         for name, c in w["communities"].items():
             community_rows.append(
                 f"<tr><th scope=\"row\">{esc(week_label(w))}</th><td>{esc(name)}</td>"
-                f"<td class=\"num\">{c['checkpoints']} from {c['cards']} verifying cards</td>"
-                f"<td class=\"num\">{c['records']} from {c['cards']} verifying cards</td>"
+                f"<td class=\"num\">{c['checkpoints']} from {c['cards']} cards</td>"
+                f"<td class=\"num\">{c['records']} from {c['cards']} cards</td>"
                 f"<td class=\"num\">{c['with_receipt']} of {c['checkpoints']} checkpoints cut</td></tr>")
     card_rows = []
     listed = len({c["node_id"] for c in data["cards"]})
@@ -328,7 +330,7 @@ are not verified here, so a receipt is counted as carried, never as witnessed. A
 cut, from the first end-of-week files in which a verifying card carries it, so one published late appears in its own
 week once it is published.
 "Records sealed" is the number of log entries covered by a signed checkpoint, padding and admission decisions included:
-it measures evidence activity, not deals. Counts come from the nodes with a verifying card that week, as each cell says.</p>
+it measures evidence activity, not deals. Checkpoints and records are counted from the cards that carry a checkpoint cut that week, as each cell says.</p>
 <div class="scroll"><table>
 <thead><tr><th scope="col">Week (UTC)</th><th scope="col">Nodes with a verifying card</th><th scope="col">Checkpoints cut</th><th scope="col">Records sealed</th><th scope="col">Checkpoints with a witness receipt</th></tr></thead>
 <tbody>
@@ -336,7 +338,7 @@ it measures evidence activity, not deals. Counts come from the nodes with a veri
 </tbody></table></div>
 
 <h2>By community</h2>
-<p class="note">The same counts split by the community each card names. A node can staple one card per book.</p>
+<p class="note">The same counts split by the community each card names; a card counts here if it carries a checkpoint cut that week. A node can staple one card per book.</p>
 <div class="scroll"><table>
 <thead><tr><th scope="col">Week (UTC)</th><th scope="col">Community</th><th scope="col">Checkpoints cut</th><th scope="col">Records sealed</th><th scope="col">Checkpoints with a witness receipt</th></tr></thead>
 <tbody>
