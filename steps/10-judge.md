@@ -22,7 +22,7 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
    records has the same document. A record whose bytes no longer match 08's digest
    is a FAIL.
 4. **Refused, not read, named in detail:** a file 08 does not list, a step outside the window, and a step
-   that is not one of the pack's kinds. A step 08 did not reproduce is outside the window too, with a
+   that is not one of the pack's kinds. A step 08 did not reproduce is refused as not verified by 08, with a
    not_checked entry.
 
 ## The pack
