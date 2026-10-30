@@ -13,6 +13,36 @@ questions are safe to answer to anyone, and every listed node answers them:
 An answer is either an artifact or a refusal the node signed over that request, so whoever
 asked can check it under the key the node announces on the mesh.
 
+## What the loop is for
+
+Several products are built from the same parts (sealed records, books, evidence requests,
+admission, settlement), and each part moves on its own release. The loop is how they keep
+working together: it runs the same steps (seal, book, advertise, admit, deal and push,
+settle, ask, verify, dispute, judge, report, join) against pinned versions of those parts, so
+a change that breaks something shows up as a step that stops passing. On the live runs the bar
+is that no step that passed stops passing, not that every step passes; on the rehearsal
+population every step must pass.
+
+One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross` (default `mesh`):
+
+- **Per ecosystem**: the same steps 01 to 12, run inside one ecosystem with its own fixtures
+  and nodes. Today that is `mesh`: mesh nodes running the capsules plugin. `muse` has no steps
+  yet; each of its steps reads `NOT_CHECKED`.
+- **Across ecosystems**: steps where two ecosystems meet (one side admits and deals with the
+  other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
+  and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
+
+Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03 and 12)
+against the rehearsal population (simulated nodes on a mock rail, no real payments) and fails
+if any step fails. The ecosystem gate keeps each step's last live result per ecosystem, with
+the pins it ran under, in [`baseline/`](baseline/README.md): a pull request that changes a pin
+must bring a new live run, and fails if a step that passed now fails, is missing or reads
+`NOT_CHECKED`.
+
+How the network grows is a separate report, not part of either gate:
+[`/growth/`](https://evidence-network.github.io/loop/growth/), beside
+[`/stats/`](https://evidence-network.github.io/loop/stats/). See [site/README.md](site/README.md).
+
 ## What is here
 
 - [`nodes/`](nodes/README.md): the commitment list. One `<node_id>.json` per node, added by the
@@ -24,14 +54,17 @@ asked can check it under the key the node announces on the mesh.
   totalled across nodes.
 - [`reporter/`](reporter/README.md): the reporter's public key and how it runs. It is a node
   like any other and asks nothing beyond the two questions.
+- [`steps/`](steps/README.md) and `loop.sh`: the loop's steps and the script that runs them,
+  one finding per step. [`baseline/`](baseline/README.md): the ecosystem gate's last accepted
+  live results.
 - `scripts/`: the checks CI runs, and the reporter's scripts. Each runs with plain `python3`.
 
 ## Running a node on the network
 
 The network is in its lab stage: the nodes are run by known operators on a lab mesh. To take
 part you run a node (a mesh host build with the capsules plugin) as a full node on that mesh,
-then add your entry to `nodes/` by pull request. `JOIN-LAB.md`, written from a run on a fresh
-machine, will cover the install; until it lands, ask in an issue.
+then add your entry to `nodes/` by pull request. [`JOIN-LAB.md`](JOIN-LAB.md) covers creating
+the book and publishing its commitment; for installing the mesh host and plugin, ask in an issue.
 
 What joining publishes, in this repository and from then on in its history:
 
