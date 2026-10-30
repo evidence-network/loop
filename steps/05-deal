@@ -56,8 +56,9 @@ held half: the AAC Go verifier (step 01's pin) runs Class 1 on the held bytes
 and recomputes the capsule_id from them; the driver checks the half is
 included under the checkpoint it was pushed with, signed by the half's key;
 and the node's own chain carries a record citing it as `counterparty_half`,
-whose capsule_id recomputes, and a `counterparty_inclusion` record citing the checkpoint it was pushed
-under. That citing record carries how the node accepted the half (`received_half.accepted_via` and
+whose capsule_id recomputes. For a half sealed under the current build only, the chain must also carry a
+`counterparty_inclusion` record that recomputes and cites the checkpoint it was pushed under (the digest the
+driver recomputes from the held checkpoint). That citing record carries how the node accepted the half (`received_half.accepted_via` and
 `sender_key_id`, capsules-plugin PR #77): a record naming a key other than the half's, an unknown
 `accepted_via`, or a declaration with no binding digest or anchored on the node's own key (a
 declaration under a bip340 anchor has no anchor key, so that check applies only when one is present),
@@ -79,7 +80,8 @@ the sealed records.
 
 Only halves sealed under the current build are judged for acceptance and the tie: LOOP_SEALED_SINCE
 (RFC 3339, the instant the lab's current build started) is compared to the citing record's timestamp,
-and earlier halves are counted and still checked for their bytes, provenance, inclusion and citation.
+and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
+record (not for the counterparty_inclusion record, the tie or acceptance).
 Unset, every held half is judged. Current-build halves accepted on the evidence key from a sender
 whose published commitment carries no equal operator binding are their own entry ("halves from an
 unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
@@ -534,7 +536,13 @@ def paired_exchanges(halves):
 def sealed_since():
     """The instant the lab's current build started sealing, from LOOP_SEALED_SINCE (RFC 3339), or None: every
     held half is then judged. The citing record's timestamp, which its signature covers, is compared to it."""
-    return parse_time(os.environ.get("LOOP_SEALED_SINCE"))
+    raw = os.environ.get("LOOP_SEALED_SINCE")
+    if raw is None:
+        return None
+    since = parse_time(raw)
+    if since is None or since.tzinfo is None:
+        raise ValueError(f"LOOP_SEALED_SINCE {raw!r} is not an RFC 3339 time with a zone, such as 2026-10-30T01:56:00Z")
+    return since
 
 
 def parse_time(value):
@@ -547,7 +555,7 @@ def parse_time(value):
 def before(citing, since):
     """True when the citing record was sealed before `since`; a record with no readable timestamp is judged."""
     sealed = parse_time(citing.get("timestamp"))
-    return since is not None and sealed is not None and sealed < since
+    return since is not None and sealed is not None and sealed.tzinfo is not None and sealed < since
 
 
 def cites_inclusion(capsule, cid, checkpoint_digest):
@@ -556,6 +564,20 @@ def cites_inclusion(capsule, cid, checkpoint_digest):
     refs = [r.get("digest") for r in capsule.get("references") or []
             if isinstance(r, dict) and r.get("citation_purpose") == "counterparty_inclusion"]
     return isinstance(block, dict) and block.get("half_capsule_id") == cid and checkpoint_digest in refs
+
+
+def inclusion_cited(own_lines, cid, inc, verified_digest):
+    """The node holds a counterparty_inclusion record of half `cid` that recomputes and cites the checkpoint the
+    half was pushed under: the digest the driver recomputed from the held checkpoint, equal to the one the held
+    inclusion line carries and the record cites."""
+    if not verified_digest or inc.get("checkpoint_digest") != verified_digest:
+        return {"ok": False, "detail": f"the held inclusion line's checkpoint_digest {inc.get('checkpoint_digest')} is "
+                                       f"not the digest {verified_digest} recomputed from the held checkpoint"}
+    for ln in own_lines:
+        if cites_inclusion(parsed(ln) or {}, cid, verified_digest):
+            ok, detail = capsule_checks(ln)
+            return {"ok": ok, "detail": f"a counterparty_inclusion record cites {cid} and checkpoint {verified_digest}: {detail}"}
+    return {"ok": False, "detail": f"no counterparty_inclusion record of the node cites {cid} with checkpoint {verified_digest}"}
 
 
 def is_citing(capsule):
@@ -578,7 +600,7 @@ def tie(citing, nonce, role, own_lines, held):
         return "bad", f"the citing record names own half {own_id}, which the node's chain does not hold"
     ln, own = owns[0]
     o_nonce, o_role, _ = exchange_key(own)
-    if nonce is None or o_nonce != nonce or role is None or o_role is None or o_role == role:
+    if nonce is None or o_nonce != nonce or {role, o_role} != {"requested", "served"}:
         return "bad", (f"own half {own_id} is nonce {o_nonce} role {o_role}, not the opposite role of the held "
                        f"half's nonce {nonce} role {role}")
     ok, detail = capsule_checks(ln)
@@ -652,11 +674,7 @@ def live_node(bin_, name, data_dir, out, work):
                 state, detail = tie(record, nonce, role, own_lines, held)
                 c["tied"] = {"ok": state != "bad", "state": state, "detail": detail}
                 if inc is not None:
-                    seen = [ln for ln in own_lines if cites_inclusion(parsed(ln) or {}, cid, inc.get("checkpoint_digest"))]
-                    c["inclusion_cited"] = {"ok": bool(seen), "detail": (
-                        f"a counterparty_inclusion record cites {cid} and checkpoint {inc.get('checkpoint_digest')}"
-                        if seen else f"no counterparty_inclusion record of the node cites {cid} with checkpoint "
-                                     f"{inc.get('checkpoint_digest')}")}
+                    c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
         checks.append(c)
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
                                                  "held": checks}, indent=2, sort_keys=True) + "\n")
@@ -710,6 +728,7 @@ def sharing_report(name, data_dir, out):
 
 
 def main_live(pop, out, started):
+    sealed_since()  # a malformed cutoff stops the step before any node is read
     out.mkdir(parents=True, exist_ok=True)
     bin_ = driver()
     missing = live_tools(bin_)
@@ -789,7 +808,11 @@ def main(argv):
     started = finding.now()
     pop = json.loads((Path(a.population) / "population.json").read_text(encoding="utf-8"))
     if pop["population"] == "live":
-        return main_live(pop, Path(a.out), started)
+        try:
+            return main_live(pop, Path(a.out), started)
+        except ValueError as e:
+            print(f"05-deal: {e}", file=sys.stderr)
+            return 2
     bin_ = driver()
     if bin_ is None:
         print("05-deal: the driver is not installed; run steps/05-deal.setup.sh", file=sys.stderr)

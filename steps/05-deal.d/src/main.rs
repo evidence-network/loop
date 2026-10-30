@@ -67,7 +67,8 @@
 //!
 //! `held` checks one half a capsules plugin node holds: that `record-id`
 //! (a capsule id) is included under the held checkpoint by the held proof,
-//! and that the checkpoint is signed by `key-id`. It prints one JSON object
+//! and that the checkpoint is signed by `key-id`. It prints one JSON object, with the checkpoint's
+//! recomputed `checkpoint_digest`,
 //! and exits like `verify`.
 //!
 //! A record's seal is an Ed25519 signature over the 32 octets of its record
@@ -820,14 +821,18 @@ fn held(f: &Flags) -> Result<u8, String> {
     let key = need(f, "key-id")?;
     let cp = read_json(Path::new(need(f, "checkpoint")?))?;
     let proof = read_json(Path::new(need(f, "inclusion")?))?;
-    let (ok, detail) = match checkpoint_ok(&cp, key, None) {
+    let (ok, detail, digest) = match checkpoint_ok(&cp, key, None) {
         Ok(cp) => {
             let ok = included(id, &cp, &proof);
             (ok, format!("{id} {} under checkpoint {} of {} (mmr_size {}), signed by {key}",
-                         if ok { "is included" } else { "is NOT included" }, cp.digest(), cp.log_id, cp.mmr_size))
+                         if ok { "is included" } else { "is NOT included" }, cp.digest(), cp.log_id, cp.mmr_size),
+             Some(cp.digest()))
         }
-        Err(e) => (false, e),
+        Err(e) => (false, e, None),
     };
-    println!("{}", serde_json::to_string_pretty(&json!({ "record_id": id, "ok": ok, "detail": detail })).map_err(|e| e.to_string())?);
+    // checkpoint_digest: the digest recomputed from the checkpoint itself, which the caller compares to the one a
+    // record cites.
+    println!("{}", serde_json::to_string_pretty(&json!({ "record_id": id, "ok": ok, "detail": detail,
+                                                          "checkpoint_digest": digest })).map_err(|e| e.to_string())?);
     Ok(if ok { 0 } else { 1 })
 }

@@ -367,7 +367,14 @@ class Step05DealLiveTest(unittest.TestCase):
         record naming it, and a counterparty_inclusion record citing the checkpoint the half was pushed under."""
         inc_path = self.ledger() / "received-inclusion.jsonl"
         inc = json.loads(inc_path.read_text())
-        inc["checkpoint_digest"] = "ee" * 32
+        cp_file, proof_file = Path(self.tmp.name) / "cp.json", Path(self.tmp.name) / "proof.json"
+        cp_file.write_text(json.dumps(inc["checkpoint"]))
+        proof_file.write_text(json.dumps(inc["inclusion_proof"]))
+        held = json.loads((self.ledger() / "received-capsules.jsonl").read_text())
+        r = subprocess.run([str(BIN), "held", "--record-id", held["capsule_id"], "--key-id", held["key_id"],
+                            "--checkpoint", str(cp_file), "--inclusion", str(proof_file)], capture_output=True, text=True)
+        self.digest = json.loads(r.stdout)["checkpoint_digest"]
+        inc["checkpoint_digest"] = self.digest
         inc_path.write_text(json.dumps(inc) + "\n")
         citing = self.citing()
         key_id = citing["key_id"]
@@ -387,7 +394,7 @@ class Step05DealLiveTest(unittest.TestCase):
         incl_body["action_id"] = "mesh-poc/counterparty-inclusion-citation/" + half["capsule_id"]
         incl_body["model_attestation"] = {"model_id": "n/a", "provider": "mesh-llm", "compute_attestation": {
             "counterparty_inclusion": {"half_capsule_id": half["capsule_id"]}}}
-        incl_body["references"] = [{"type": "cll-checkpoint", "digest_alg": "SHA-256", "digest": "ee" * 32,
+        incl_body["references"] = [{"type": "cll-checkpoint", "digest_alg": "SHA-256", "digest": self.digest,
                                     "citation_purpose": "counterparty_inclusion"}]
         self.write_lines([citing, self.own, self.seal(incl_body, key_id)])
         self.reseal_citing(own_half_capsule_id=self.own["capsule_id"])
@@ -644,6 +651,45 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertIn("a tie that is ambiguous at verify time", self.names(f))
 
+    def test_live_an_inclusion_line_with_a_digest_the_checkpoint_does_not_have_fails(self):
+        path = self.ledger() / "received-inclusion.jsonl"
+        inc = json.loads(path.read_text())
+        inc["checkpoint_digest"] = "ee" * 32
+        path.write_text(json.dumps(inc) + "\n")
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("recomputed from the held checkpoint", f["detail"])
+
+    def test_live_an_inclusion_record_altered_after_sealing_fails(self):
+        records = self.lines()
+        for r in records:
+            if "counterparty_inclusion" in (r["model_attestation"].get("compute_attestation") or {}):
+                r["references"][0]["digest"] = "ff" * 32
+        self.write_lines(records)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("held-1 inclusion_cited", f["detail"])
+
+    def test_live_an_unknown_role_is_not_the_opposite_of_served(self):
+        def role(body):
+            body["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["role"] = "observer"
+        self.set_own(role)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("not the opposite role", f["detail"])
+
+    def test_live_a_cutoff_that_is_not_an_rfc3339_time_with_a_zone_stops_the_step(self):
+        for bad in ("yesterday", "2026-10-30T00:00:00", ""):
+            r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
+                                                      LOOP_SEALED_SINCE=bad))
+            self.assertEqual(r.returncode, 2, bad)
+            self.assertIn("LOOP_SEALED_SINCE", r.stderr)
+
+    def test_live_a_half_sealed_exactly_at_the_cutoff_is_current(self):
+        stamp = self.citing()["timestamp"]
+        f = self.run_live(LOOP_SEALED_SINCE=stamp)
+        self.assertIn("1 halves, 1 tied", f["detail"])
+
     def test_live_no_counterparty_inclusion_record_for_a_current_half_fails(self):
         self.write_lines([r for r in self.lines() if "counterparty_inclusion" not in
                           (r["model_attestation"].get("compute_attestation") or {})])
@@ -691,6 +737,11 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(self.names(f)[step.LIVE_DEFAULT_ABSENT["what"]]["why"].count("lab-b"), 1)
         self.assertNotIn("lab-a", self.names(f)[step.LIVE_DEFAULT_ABSENT["what"]]["why"])
         self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_an_unknown_value_the_plugin_resolved_to_off_shows_its_raw_value(self):
+        (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(json.dumps(
+            {"v": 1, "share_record_at_completion": "off", "source": "console", "written_at": "t", "raw_value": "everyone"}))
+        self.assertIn("raw value 'everyone' is not one the plugin knows", self.run_live()["detail"])
 
     def test_live_an_unknown_sharing_value_is_not_read_as_a_report(self):
         (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(
