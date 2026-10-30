@@ -193,6 +193,28 @@ class Controllers(unittest.TestCase):
         self.assertEqual(self.count(status="not_checked"), [])
         self.assertEqual(self.count(subject_digest="e" * 64), [])
 
+    def test_a_subject_whose_card_fails_leaves_the_group_uncounted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo, sha, judged = self.repo(tmp)
+            judged["nodes"][NODE_B] = {"ok": False, "reason": "x", "cards": [], "binding": None}
+            self.assertEqual(growth.verified_controllers(repo, sha, judged), [])
+
+    def test_judge_tree_reads_the_bindings_digest_of_a_verifying_commitment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nodes = Path(tmp) / "nodes"
+            (nodes / "commitments").mkdir(parents=True)
+            (nodes / f"{NODE_A}.json").write_text("{}\n")
+            doc = json.loads((SIGNED / "commitment.json").read_text())
+            doc["controller_binding"] = {"digest": self.DIGEST}
+            (nodes / "commitments" / f"{NODE_A}.json").write_text(json.dumps(doc))
+            real = growth.check_commitment_in
+            growth.check_commitment_in = lambda path: ""  # the signature covers the edit above; only the extraction is tested
+            try:
+                judged = growth.judge_tree(tmp)
+            finally:
+                growth.check_commitment_in = real
+            self.assertEqual(judged["nodes"][NODE_A]["binding"], self.DIGEST)
+
     def test_a_tree_without_bindings_has_no_controllers(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "r"

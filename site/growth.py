@@ -84,10 +84,10 @@ def snapshot_sha(repo, ref, end, last):
     return git(repo, "rev-list", "-1", "--first-parent", f"--before={stamp(before)}", ref).strip()
 
 
-def export_nodes(repo, sha, into, *paths):
-    """Extract nodes/ (and any other `paths`) as committed at `sha` into `into`; False when the commit has no nodes/."""
+def export_tree(repo, sha, into, *paths):
+    """Extract `paths` as committed at `sha` into `into`; False when the commit lacks any of them."""
     try:
-        raw = git(repo, "archive", sha, "nodes", *paths, binary=True)
+        raw = git(repo, "archive", sha, *paths, binary=True)
     except subprocess.CalledProcessError:
         return False
     with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
@@ -207,16 +207,13 @@ def verified_controllers(repo, sha, judged):
 
     A group counts only when scripts/history_cards.py:bound_groups accepts its verdict (verified by the pinned binding
     verifier, every subject's commitment carrying the verdict's digest). Nobody is grouped without one; a node with no
-    binding is neither a controller nor a node under one. A tree without bindings/ or versions.lock has none."""
+    binding is neither a controller nor a node under one. Every subject a verdict names must be a listed node with a
+    verifying card, or the group is not counted (an undercount, never an inflation). A tree without bindings/ or versions.lock has none."""
     subjects = [{"node_id": n, "controller_binding": {"digest": judged["nodes"][n]["binding"]}}
                 for n in judged["listed"] if judged["nodes"][n]["ok"] and judged["nodes"][n].get("binding")]
     with tempfile.TemporaryDirectory() as tmp:
-        try:
-            raw = git(repo, "archive", sha, "bindings", "versions.lock", binary=True)
-        except subprocess.CalledProcessError:
+        if not export_tree(repo, sha, tmp, "bindings", "versions.lock"):
             return []
-        with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
-            tar.extractall(tmp, filter="data")
         return hc.bound_groups(Path(tmp) / "bindings", Path(tmp) / "versions.lock", subjects)
 
 
@@ -227,7 +224,7 @@ def build_model(repo, ref):
         sha = snapshot_sha(repo, ref, end, last)
         if sha not in cache:
             with tempfile.TemporaryDirectory() as tmp:
-                cache[sha] = judge_tree(tmp) if export_nodes(repo, sha, tmp) else {"listed": [], "nodes": {}}
+                cache[sha] = judge_tree(tmp) if export_tree(repo, sha, tmp, "nodes") else {"listed": [], "nodes": {}}
         spans.append((start, end, last, sha))
     rows = []
     for i, (start, end, last, sha) in enumerate(spans):
