@@ -431,7 +431,7 @@ class Step05DealLiveTest(unittest.TestCase):
         # the closed refs are gone, and a tied, bound-or-unbound lab is not a plugin gap
         closed = json.loads((ROOT / "tests" / "fixtures" / "closed_issues.json").read_text())["closed"]
         self.assertEqual(issues & set(closed), set())
-        self.assertIn("each node seals a record naming both halves and cites the other side's checkpoint", f["asserts"])
+        self.assertIn("each node seals records naming both halves and citing the other side's checkpoint", f["asserts"])
         self.assertNotIn(step.LIVE_NEVER_TIED, {n["what"] for n in f["not_checked"]})
         self.assertIn("1 tied to the node's own half", f["detail"])
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
@@ -677,7 +677,7 @@ class Step05DealLiveTest(unittest.TestCase):
         os.chmod(old, 0o755)
         r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
                                                   LOOP_STEP05_DEAL_BIN=old))
-        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(r.returncode, 2)
         self.assertIn("steps/05-deal.setup.sh", r.stderr)
 
     def test_live_an_unknown_role_is_not_the_opposite_of_served(self):
@@ -694,6 +694,12 @@ class Step05DealLiveTest(unittest.TestCase):
                                                       LOOP_SEALED_SINCE=bad))
             self.assertEqual(r.returncode, 2, bad)
             self.assertIn("LOOP_SEALED_SINCE", r.stderr)
+
+    def test_live_a_cutoff_with_seconds_is_taken_at_its_minute(self):
+        stamp = self.citing()["timestamp"]  # a whole minute, as the plugin seals
+        self.assertTrue(stamp.endswith(":00Z") or ":00." in stamp, stamp)
+        f = self.run_live(LOOP_SEALED_SINCE=stamp.replace(":00Z", ":30Z"))
+        self.assertIn("1 halves, 1 tied", f["detail"])
 
     def test_live_a_half_sealed_exactly_at_the_cutoff_is_current(self):
         stamp = self.citing()["timestamp"]

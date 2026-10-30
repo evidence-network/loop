@@ -79,7 +79,8 @@ sealed at seal time only), another entry, never a pass. A node's `sharing-effect
 the sealed records.
 
 Only halves sealed under the current build are judged for acceptance and the tie: LOOP_SEALED_SINCE
-(RFC 3339, the instant the lab's current build started) is compared to the citing record's timestamp,
+(RFC 3339, the instant the lab's current build started, taken at its whole minute since the plugin seals
+timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
 Unset, every held half is judged. Current-build halves accepted on the evidence key from a sender
@@ -119,9 +120,9 @@ ASSERTS = ("both sides seal halves of one deal, each citing the other half and t
            "foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key "
            "under a controller declaration")
 # The live node's halves cite neither each other nor the other's checkpoint: each node seals a record
-# naming both halves of the exchange (its citing record, with own_half_capsule_id) and cites the checkpoint
+# naming both halves of the exchange (its citing record, with own_half_capsule_id) and another citing the checkpoint
 # the other half was pushed under (capsules-plugin#138).
-LIVE_ASSERTS = ("each node seals a record naming both halves and cites the other side's checkpoint; "
+LIVE_ASSERTS = ("each node seals records naming both halves and citing the other side's checkpoint; "
                 "each pushes its half at completion with share_record_at_completion on; the receiver holds the "
                 "foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key "
                 "under a controller declaration")
@@ -542,7 +543,9 @@ def sealed_since():
     since = parse_time(raw)
     if since is None or since.tzinfo is None:
         raise ValueError(f"LOOP_SEALED_SINCE {raw!r} is not an RFC 3339 time with a zone, such as 2026-10-30T01:56:00Z")
-    return since
+    # The plugin seals timestamps to the minute (utc_now_minute), so a cutoff is taken at its minute: a cutoff with
+    # seconds would drop records sealed in that same minute.
+    return since.replace(second=0, microsecond=0)
 
 
 def parse_time(value):
@@ -813,7 +816,7 @@ def main(argv):
     if pop["population"] == "live":
         try:
             return main_live(pop, Path(a.out), started)
-        except ValueError as e:
+        except (ValueError, RuntimeError) as e:
             print(f"05-deal: {e}", file=sys.stderr)
             return 2
     bin_ = driver()
