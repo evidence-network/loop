@@ -263,8 +263,9 @@ def window_from(pop):
 def recorded(ledger, since=None):
     """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations.
 
-    With `since`, only records whose signed capsule timestamp is at or after it count; the others, and
-    records with no readable timestamp, are counted in "outside_window" and "undated" and not listed.
+    With `since`, only settlement records whose signed capsule timestamp is at or after it count; the earlier
+    ones, and those with no readable timestamp, are counted in "outside_window" and "undated" and not listed.
+    Records that are neither a leg nor an observation (padding, for one) are never counted.
     """
     legs, observed, outside, undated = [], [], 0, 0
     for line in ledger.read_text(encoding="utf-8").splitlines():
@@ -273,25 +274,32 @@ def recorded(ledger, since=None):
         except ValueError:
             continue
         rec = rec.get("capsule", rec) if isinstance(rec, dict) else {}
+        if not isinstance(rec, dict):
+            continue
+        leg = rec.get("settlement")
+        block = rec
+        for k in SETTLEMENT_BLOCK:
+            block = block.get(k) if isinstance(block, dict) else None
+        has_obs = isinstance(block, dict) and str(block.get("phase", "")).endswith("_settlement_observed")
+        if not (isinstance(leg, dict) or has_obs):
+            continue
         if since is not None:
-            at = utc(rec.get("timestamp")) if isinstance(rec, dict) else None
+            at = utc(rec.get("timestamp"))
             if at is None:
                 undated += 1
                 continue
             if at < since:
                 outside += 1
                 continue
-        leg = rec.get("settlement") if isinstance(rec, dict) else None
         if isinstance(leg, dict):
             legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg.get("leg") or leg.get("kind"),
                          "payment_ref": leg.get("payment_ref")})
-        block = rec
-        for k in SETTLEMENT_BLOCK:
-            block = block.get(k) if isinstance(block, dict) else None
-        if isinstance(block, dict) and str(block.get("phase", "")).endswith("_settlement_observed"):
+        if has_obs:
             observed.append({"capsule_id": rec.get("capsule_id"), "exchange_id": block.get("exchange_id"),
                              "phase": block.get("phase"), "source": block.get("source"),
-                             "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat")})
+                             "observed_by": block.get("observed_by"),
+                             "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat"),
+                             "credited_msat": block.get("credited_msat"), "fee_msat": block.get("fee_msat")})
     out = {"settlement_legs": legs, "settlement_observations": observed}
     if since is not None:
         out.update(window_from=since.strftime("%Y-%m-%dT%H:%M:%SZ"), outside_window=outside, undated=undated)
@@ -307,15 +315,42 @@ def payment_hashes(found):
                      if isinstance(o.get("payment_hash"), str)}
 
 
-def crosscheck(hashes):
-    """{payment hash: [nodes that recorded it]} split into hashes every node recorded and hashes only some did."""
+def is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def crosscheck(found):
+    """Compare the payment hashes the nodes recorded. found: {node: recorded()}.
+
+    A hash is paired when one node's payer observation and another node's provider observation of it agree:
+    the payer's amount_msat equals the provider's credited_msat + fee_msat. Every other hash is unpaired with
+    the reason (recorded by one node only, no observation, same role on both, amounts differ).
+    """
     seen = {}
-    for name, hs in hashes.items():
+    for name, hs in {n: payment_hashes(f) for n, f in found.items()}.items():
         for h in hs:
             seen.setdefault(h, []).append(name)
-    both = {h: sorted(n) for h, n in seen.items() if len(n) == len(hashes)}
-    some = {h: sorted(n) for h, n in seen.items() if len(n) < len(hashes)}
-    return {"nodes": sorted(hashes), "recorded_by_all": both, "recorded_by_some": some}
+    paired, unpaired = {}, {}
+    for h, names in sorted(seen.items()):
+        payers, payees = [], []
+        for name, f in found.items():
+            for o in f["settlement_observations"]:
+                if o.get("payment_hash") != h:
+                    continue
+                if o.get("observed_by") == "payer" and is_int(o.get("amount_msat")):
+                    payers.append((name, o["amount_msat"]))
+                elif o.get("observed_by") == "provider" and is_int(o.get("credited_msat")) and is_int(o.get("fee_msat")):
+                    payees.append((name, o["credited_msat"] + o["fee_msat"]))
+        match = next(((a, b, amt) for a, amt in payers for b, got in payees if a != b and amt == got), None)
+        if match:
+            paired[h] = {"payer": match[0], "payee": match[1], "amount_msat": match[2]}
+        elif len(names) < len(found):
+            unpaired[h] = f"recorded by {', '.join(sorted(names))} only"
+        elif not payers or not payees:
+            unpaired[h] = "no payer observation and provider observation of it, with amounts, on different nodes"
+        else:
+            unpaired[h] = "payer amount_msat and provider credited_msat + fee_msat differ"
+    return {"nodes": sorted(found), "paired": paired, "unpaired": unpaired}
 
 
 def main_live(pop, out, started):
@@ -333,14 +368,14 @@ def main_live(pop, out, started):
             details.append(f"node {name}: not checked, data_dir or its ledger not set or unreadable")
             continue
         found = recorded(data_dir / "ledger" / "capsules.jsonl", since)
-        hashes[name] = payment_hashes(found)
+        hashes[name] = found
         (out / name).mkdir()
         (out / name / "recorded.json").write_text(json.dumps(found, indent=2, sort_keys=True) + "\n")
         proof.append(f"{name}/recorded.json")
         n_legs, n_obs = len(found["settlement_legs"]), len(found["settlement_observations"])
         if since is not None:
-            details.append(f"node {name}: window from {found['window_from']}: {found['outside_window']} records "
-                           f"before it and {found['undated']} without a timestamp left out")
+            details.append(f"node {name}: window from {found['window_from']}: {found['outside_window']} settlement "
+                           f"records before it and {found['undated']} without a timestamp left out")
         if n_legs or n_obs:
             details.append(f"node {name}: {n_legs} settlement legs and {n_obs} wallet-reported settlement "
                            f"observations recorded; none is the rail's own object, so finality is not verified")
@@ -354,7 +389,7 @@ def main_live(pop, out, started):
             details.append(f"node {name}: no settlement recorded")
             if since is not None:
                 why = (f"the node recorded no settlement in the window from {found['window_from']} "
-                       f"({found['outside_window']} records before it, {found['undated']} without a timestamp), "
+                       f"({found['outside_window']} settlement records before it, {found['undated']} without a timestamp), "
                        "so the adapter has nothing in the window to report on")
             else:
                 why = ("the node has recorded no settlement: the lab has no wallet configured yet, "
@@ -366,11 +401,12 @@ def main_live(pop, out, started):
             cross = crosscheck(hashes)
             (out / "crosscheck.json").write_text(json.dumps(cross, indent=2, sort_keys=True) + "\n")
             proof.append("crosscheck.json")
-            n_all, n_some = len(cross["recorded_by_all"]), len(cross["recorded_by_some"])
-            details.append(f"payment hashes compared across {', '.join(cross['nodes'])}: {n_all} recorded by every "
-                           f"node, {n_some} by some only; agreement between the nodes' own records is not finality")
-            why = ("the nodes' records " + ("agree on every payment hash they recorded" if n_all and not n_some
-                                            else "do not all record the same payment hashes" if n_some
+            n_ok, n_bad = len(cross["paired"]), len(cross["unpaired"])
+            details.append(f"payment hashes compared across {', '.join(cross['nodes'])}: {n_ok} paired (one node's "
+                           f"payer amount equals the other's credited plus fee), {n_bad} unpaired; agreement "
+                           "between the nodes' own records is not finality")
+            why = ("the nodes' records " + ("pair every payment hash they recorded" if n_ok and not n_bad
+                                            else "leave some payment hashes unpaired" if n_bad
                                             else "hold no payment hash to compare")
                    + ", and either way they are records of wallet-reported payments; the pinned adapter has no "
                      "preimage finality")

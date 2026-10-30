@@ -442,10 +442,20 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual([l["payment_ref"]["value"] for l in rec["settlement_legs"]], [new, new])
         self.assertEqual((rec["outside_window"], rec["undated"], rec["window_from"]), (1, 1, "2026-10-30T17:58:00Z"))
         self.assertIn("node shockley: no settlement recorded", r["detail"])
-        self.assertIn("window from 2026-10-30T17:58:00Z: 1 records before it", r["detail"])
+        self.assertIn("window from 2026-10-30T17:58:00Z: 1 settlement records before it", r["detail"])
         why = next(n["why"] for n in r["not_checked"] if n["what"].endswith("of node shockley"))
-        self.assertIn("no settlement in the window from 2026-10-30T17:58:00Z (1 records before it, 0 without", why)
+        self.assertIn("no settlement in the window from 2026-10-30T17:58:00Z (1 settlement records before it, 0 without", why)
         self.assertNotIn("no wallet", why)
+
+    def test_records_that_are_not_settlement_records_are_not_counted_in_the_window(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)], "shockley": []})
+        pad = {"capsule_id": "p", "record_type": "padding"}
+        with (lab / "brattain" / "ledger" / "capsules.jsonl").open("a") as f:
+            f.write(json.dumps(pad) + "\n" + json.dumps(dict(pad, timestamp="2026-10-02T00:00:00Z")) + "\n")
+        self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        self.assertEqual((rec["outside_window"], rec["undated"], len(rec["settlement_legs"])), (0, 0, 1))
 
     def test_no_window_counts_every_record(self):
         lab = Path(self.tmp.name) / "lab"
@@ -474,33 +484,57 @@ class Step06SettleTest(unittest.TestCase):
                 self.assertIn("window", p.stderr)
                 shutil.rmtree(pop)
 
-    def test_the_payment_hash_crosscheck_compares_and_stays_not_checked(self):
+    def demo_observations(self, lab, rows):
+        """rows: {node: [obs]}, each obs a dict merged into a settlement observation at 18:00Z."""
+        for name, obs in rows.items():
+            (lab / name / "ledger").mkdir(parents=True)
+            lines = []
+            for i, o in enumerate(obs):
+                blk = {"phase": "output_settlement_observed", "source": "wallet_reported", **o}
+                lines.append(json.dumps({"capsule_id": f"{name}-{i}", "timestamp": "2026-10-30T18:00:00Z",
+                                         "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": blk}}})
+                             + "\n")
+            (lab / name / "ledger" / "capsules.jsonl").write_text("".join(lines))
+
+    def crosscheck_of(self, rows):
         lab = Path(self.tmp.name) / "lab"
-        both, only = "aa" * 32, "bb" * 32
-        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", both), ("2026-10-30T18:01:00Z", only)],
-                                "shockley": [("2026-10-30T18:00:01Z", both)]})
+        shutil.rmtree(lab, ignore_errors=True)
+        self.demo_observations(lab, rows)
         r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
-        cross = json.loads((self.out / "crosscheck.json").read_text())
-        self.assertEqual(cross["recorded_by_all"], {both: ["brattain", "shockley"]})
-        self.assertEqual(cross["recorded_by_some"], {only: ["brattain"]})
+        shutil.rmtree(Path(self.tmp.name) / "demo")
+        return r, json.loads((self.out / "crosscheck.json").read_text())
+
+    def test_the_payment_hash_crosscheck_pairs_by_role_and_amount_and_stays_not_checked(self):
+        h = lambda c: c * 64
+        payer = lambda hash_, amt: {"observed_by": "payer", "payment_hash": hash_, "amount_msat": amt}
+        prov = lambda hash_, cred, fee: {"observed_by": "provider", "payment_hash": hash_, "credited_msat": cred,
+                                         "fee_msat": fee}
+        r, cross = self.crosscheck_of({
+            "brattain": [payer(h("a"), 1000), prov(h("b"), 495, 5), payer(h("c"), 700), payer(h("d"), 50),
+                         payer(h("e"), 10)],
+            "shockley": [prov(h("a"), 995, 5), payer(h("b"), 500), prov(h("c"), 600, 10), payer(h("d"), 50)]})
+        self.assertEqual(cross["paired"], {h("a"): {"payer": "brattain", "payee": "shockley", "amount_msat": 1000},
+                                           h("b"): {"payer": "shockley", "payee": "brattain", "amount_msat": 500}})
+        self.assertIn("differ", cross["unpaired"][h("c")])       # 700 != 610
+        self.assertIn("no payer observation and provider observation", cross["unpaired"][h("d")])  # both payers
+        self.assertEqual(cross["unpaired"][h("e")], "recorded by brattain only")
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("crosscheck.json", [p["path"] for p in r["proof"]])
-        self.assertIn("1 recorded by every node, 1 by some only", r["detail"])
+        self.assertIn("2 paired", r["detail"])
+        self.assertIn("3 unpaired", r["detail"])
         why = next(n["why"] for n in r["not_checked"] if "preimages" in n["what"])
-        self.assertIn("do not all record the same payment hashes", why)
-        self.assertNotIn("agree on", why)
+        self.assertIn("leave some payment hashes unpaired", why)
+        self.assertNotIn("pair every", why)
 
-    def test_the_crosscheck_says_so_when_the_nodes_agree_and_when_there_is_nothing_to_compare(self):
-        for rows, expect in (({"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
-                               "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]}, "agree on every payment hash"),
-                             ({"brattain": [], "shockley": []}, "hold no payment hash to compare")):
+    def test_the_crosscheck_says_so_when_every_hash_pairs_and_when_there_is_nothing_to_compare(self):
+        both = [({"brattain": [{"observed_by": "payer", "payment_hash": "a" * 64, "amount_msat": 10}],
+                  "shockley": [{"observed_by": "provider", "payment_hash": "a" * 64, "credited_msat": 9,
+                                "fee_msat": 1}]}, "pair every payment hash"),
+                ({"brattain": [], "shockley": []}, "hold no payment hash to compare")]
+        for rows, expect in both:
             with self.subTest(expect=expect):
-                lab = Path(self.tmp.name) / "lab"
-                shutil.rmtree(lab, ignore_errors=True)
-                self.demo_ledgers(lab, rows)
-                r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+                r, _ = self.crosscheck_of(rows)
                 self.assertIn(expect, next(n["why"] for n in r["not_checked"] if "preimages" in n["what"]))
-                shutil.rmtree(Path(self.tmp.name) / "demo")
 
     def test_a_requested_crosscheck_with_one_node_unread_says_it_did_not_run(self):
         lab = Path(self.tmp.name) / "lab"

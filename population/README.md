@@ -69,8 +69,9 @@ runs `steps/06-settle --population population/demo --out findings/<date>-demo/06
 - `window.from`: only records whose signed capsule timestamp is at or after it count. For the 2026-10-30
   run it is the M4 roll (17:58Z); older records come from older plugin builds and must not be attributed
   to the pinned one.
-- `crosscheck: "payment_hash"`: the step compares the payment hashes the two nodes recorded
-  (`crosscheck.json`). Agreement is not finality; the result stays NOT_CHECKED on
-  Mesh-LLM/capsules-plugin#83.
-- `node_id_prefix`: the first 8 hex of the node id; `node_id` stays `null` until the owner fills the full id.
+- `crosscheck: "payment_hash"`: the step pairs the payment hashes the two nodes recorded by role and amount
+  (`crosscheck.json`): one node's payer observation and the other's provider observation, the payer's
+  `amount_msat` equal to the provider's `credited_msat + fee_msat`. Unpaired hashes are listed with a reason.
+  Agreement is not finality; the result stays NOT_CHECKED on Mesh-LLM/capsules-plugin#83.
+- `node_id`: the peer id from the node's `CAPSULES_PEER_KEYS` (Sherlock2, Buzz thread on loop#183).
 - The run's `build.json` records the binary sha256 and the plugin archive sha256.

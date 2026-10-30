@@ -1,21 +1,24 @@
 {
   "population": "demo",
   "kind": "live",
-  "pinned": ["demo-capsules", "demo-mesh-llm"],
-  "window": {"from": "2026-10-30T17:58:00Z"},
+  "pinned": [
+    "demo-capsules",
+    "demo-mesh-llm"
+  ],
+  "window": {
+    "from": "2026-10-30T17:58:00Z"
+  },
   "crosscheck": "payment_hash",
   "nodes": [
     {
       "name": "brattain",
-      "node_id": null,
-      "node_id_prefix": "c5e7af08",
+      "node_id": "c5e7af08d8356582ad9de27f44e2df1d345d192403b379fe1ef9f76a0c43eb08",
       "host": "demo",
       "data_dir": "$DEMO_DIR/brattain/capsules"
     },
     {
       "name": "shockley",
-      "node_id": null,
-      "node_id_prefix": "284a8bb6",
+      "node_id": "284a8bb62c0491b1a27f57425ce585626f7dc9a1495de4519a869a8c11d9f478",
       "host": "demo",
       "data_dir": "$DEMO_DIR/shockley/capsules"
     }
