@@ -92,18 +92,10 @@ if [ "$TWINS" = 1 ]; then
   for n in "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER"; do
     [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_TWINS names $n, not a lab node"
   done
-  # lab-1 always starts from --gguf, and mesh-llm skips [[models]] when the command line names a model, so the
-  # fault would never be applied while twin-fault.json said it was.
-  [ "$TWIN_B" != lab-1 ] || die "LAB_TWIN_B cannot be lab-1: it loads its model from --gguf, which skips the injected config"
   # These go into config.toml inside double quotes; refuse what would need escaping.
-  case "$FAULT_PROMPT${LAB_MODEL:-}$MODEL_REF" in
-    *\"* | *\\* | *$'\n'*) die "LAB_FAULT_SYSTEM_PROMPT, LAB_MODEL and LAB_MODEL_REF must not contain a double quote, a backslash or a newline" ;;
+  case "$FAULT_PROMPT$MODEL_REF" in
+    *\"* | *\\* | *$'\n'*) die "LAB_FAULT_SYSTEM_PROMPT and LAB_MODEL_REF must not contain a double quote, a backslash or a newline" ;;
   esac
-fi
-if [ "$TWINS" = 1 ] && [ -z "$MODEL_REF" ] && [ -n "${LAB_MODEL:-}" ]; then
-  # mesh-llm takes hardware.model_path only as an absolute path to a regular file (not a symlink).
-  [ "${LAB_MODEL#/}" != "$LAB_MODEL" ] && [ ! -L "$LAB_MODEL" ] || [ "$DRY" = 1 ] \
-    || die "LAB_MODEL must be an absolute path to a regular file, not a symlink, for twin B's model_path"
 fi
 serves_model() { [ "$1" = lab-1 ] || { [ "$TWINS" = 1 ] && { [ "$1" = "$TWIN_A" ] || [ "$1" = "$TWIN_B" ] || [ "$1" = "$REFEREE" ]; }; }; }
 [ -n "${LAB_DIR:-}" ] || die "set LAB_DIR (see LAB-BRINGUP.md)"
@@ -187,7 +179,8 @@ def rows(name):
 def digest(r):
     return ((r.get("effect") or {}).get("request_digest"))
 def provider(r):
-    return (r.get("serving_provenance") or {}).get("served_by_node_id")
+    poc = ((r.get("model_attestation") or {}).get("compute_attestation") or {}).get("x-mesh-poc-v1") or {}
+    return (poc.get("serving_provenance") or {}).get("served_by_node_id")
 own = [r for r in rows("capsules.jsonl") if bracket in json.dumps(r) and digest(r) and provider(r)]
 held = rows("received-capsules.jsonl")
 need = {(provider(r), digest(r)) for r in own}

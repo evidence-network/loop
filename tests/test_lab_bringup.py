@@ -201,15 +201,18 @@ class DryRunTest(unittest.TestCase):
     def test_the_pair_is_complete_only_when_each_provider_half_with_the_digest_is_held(self):
         led = self.tmp / "led"
         led.mkdir()
-        own = [{"effect": {"request_digest": "d1"}, "serving_provenance": {"served_by_node_id": "A" * 8}, "x": "b-1"},
-               {"effect": {"request_digest": "d1"}, "serving_provenance": {"served_by_node_id": "B" * 8}, "x": "b-1"}]
+        def poc(node, extra=None):  # the record shape the pinned plugin reads (referee/live.rs poc_text)
+            return {"model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+                "serving_provenance": {"served_by_node_id": node}, **(extra or {})}}}}
+        own = [dict(poc("A" * 8, {"twin_bracket_id": "b-1"}), effect={"request_digest": "d1"}),
+               dict(poc("B" * 8, {"twin_bracket_id": "b-1"}), effect={"request_digest": "d1"})]
         (led / "capsules.jsonl").write_text("".join(json.dumps(r) + "\n" for r in own))
         script = 'eval "$(sed -n "/^halves_held()/,/^}/p" "$LAB")"; halves_held b-1 "$LED"'
         def held():
             return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                                   env={**os.environ, "LAB": str(LAB), "LED": str(led)}).returncode
         self.assertEqual(held(), 1)  # no pushed halves, no file
-        rec = lambda node, d: json.dumps({"effect": {"request_digest": d}, "serving_provenance": {"served_by_node_id": node}}) + "\n"
+        rec = lambda node, d: json.dumps(dict(poc(node), effect={"request_digest": d})) + "\n"
         (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1"))
         self.assertEqual(held(), 1)  # only one twin's half
         (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "other"))
@@ -234,8 +237,8 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("lab-4.pid", r.stdout)
 
     def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
-        for env, text in (({"LAB_TWIN_B": "lab-1", "LAB_TWIN_A": "lab-4"}, "cannot be lab-1"),
-                          ({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote")):
+        for env, text in (({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote"),
+                          ({"LAB_MODEL_REF": "owner/repo\\file.gguf"}, "backslash")):
             r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf", **env})
             self.assertEqual(r.returncode, 2, r.stdout)
             self.assertIn(text, r.stderr)
