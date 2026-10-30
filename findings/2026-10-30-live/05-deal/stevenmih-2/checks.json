@@ -2,6 +2,7 @@
   "held": [
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -27,6 +28,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -52,6 +54,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -77,6 +80,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -102,6 +106,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -127,6 +132,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -152,6 +158,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -177,6 +184,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -202,6 +210,7 @@
     },
     {
       "accepted": {
+        "bound": false,
         "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
         "ok": true,
         "via": "host_announced"
@@ -222,6 +231,62 @@
       },
       "pushed_under_checkpoint": {
         "detail": "99163a2a0213073a7769a8f349261f8640996d65b81980abea1b06527aad37ca is included under checkpoint 42d9dd05ce0c496064fa76a6837bf79113f6f928d663563a7f59e82a6e3ec19d of capsules/511b5b4246cf58e7 (mmr_size 1534), signed by 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+        "ok": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": false,
+        "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced",
+        "ok": true,
+        "via": "host_announced"
+      },
+      "capsule_id": "17fa56306a3170c18f2e9548a74e3989f9ca3ba4dbb0810852049fcae73be658",
+      "cited": {
+        "detail": "record a7fc7b7759154c159ba495c96ea7989c3d7f895d7a0bc38844b7e6e882b68ca4 cites it: Class 1 exit 0; carried a7fc7b7759154c159ba495c96ea7989c3d7f895d7a0bc38844b7e6e882b68ca4, recomputed a7fc7b7759154c159ba495c96ea7989c3d7f895d7a0bc38844b7e6e882b68ca4",
+        "ok": true
+      },
+      "held": "held-10",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 17fa56306a3170c18f2e9548a74e3989f9ca3ba4dbb0810852049fcae73be658, recomputed 17fa56306a3170c18f2e9548a74e3989f9ca3ba4dbb0810852049fcae73be658",
+        "ok": true
+      },
+      "provenance": {
+        "detail": "received from 16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864 via push at 2026-10-30T05:51:35.629Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "17fa56306a3170c18f2e9548a74e3989f9ca3ba4dbb0810852049fcae73be658 is included under checkpoint c2078149270b221ec46010fe78260f53c24f453cd18890909bbd65c25e7ade08 of capsules/511b5b4246cf58e7 (mmr_size 1724), signed by 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+        "ok": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": true,
+        "commitment": {
+          "path": "nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json",
+          "sha256": "5d8c9eebe5f68059b68b3193b922f055ec426684274b57bc77b36f32122b6953"
+        },
+        "detail": "accepted the half's key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9 via host_announced, its operator binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 the one in the sender's published commitment",
+        "ok": true,
+        "via": "host_announced"
+      },
+      "capsule_id": "587eea74015a969a07df1eefd2b623a548ce5a1d13f5544ba94b5be0c9bbb6cc",
+      "cited": {
+        "detail": "record d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc cites it: Class 1 exit 0; carried d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc, recomputed d195e7ac5835e60c0b88a50027980557c1ac562f52b80dd9edb65f0624f71bfc",
+        "ok": true
+      },
+      "held": "held-11",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 587eea74015a969a07df1eefd2b623a548ce5a1d13f5544ba94b5be0c9bbb6cc, recomputed 587eea74015a969a07df1eefd2b623a548ce5a1d13f5544ba94b5be0c9bbb6cc",
+        "ok": true
+      },
+      "provenance": {
+        "detail": "received from 16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864 via push at 2026-10-30T07:21:22.250Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "587eea74015a969a07df1eefd2b623a548ce5a1d13f5544ba94b5be0c9bbb6cc is included under checkpoint d53b0d1834e942ef116a52799cede11df972600f656cf1e8a478d7ecda2a435b of capsules/511b5b4246cf58e7 (mmr_size 1979), signed by 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
         "ok": true
       }
     }
