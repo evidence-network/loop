@@ -122,6 +122,25 @@ class GateTest(unittest.TestCase):
         self.assertEqual(len(errs), 1)
         self.assertIn("a PASS needs the proof bytes", errs[0])
 
+    def test_verify_refuses_a_run_made_under_other_pins(self):
+        self.update("a", {"01": "PASS"})
+        f = self.dir / "findings" / "a" / "01-step" / "finding.json"
+        r = json.loads(f.read_text())
+        r["pinned"]["capsulectl"]["ref"] = "v0.0.1"
+        f.write_text(json.dumps(r, indent=2, sort_keys=True) + "\n")
+        doc = json.loads(self.baseline.read_text())
+        doc["ecosystems"]["mesh"]["steps"]["01"]["finding_sha256"] = finding.sha256(f)
+        gate.write(self.baseline, doc)
+        self.assertEqual(gate.cmd_verify(self.baseline, LOCK), ["mesh 01-step: pinned capsulectl is not the versions.lock entry"])
+
+    def test_verify_refuses_an_aliased_findings_path(self):
+        self.update("a", {"01": "PASS"})
+        doc = json.loads(self.baseline.read_text())
+        doc["ecosystems"]["mesh"]["findings"] = "findings/./a"
+        gate.write(self.baseline, doc)
+        self.assertEqual(gate.cmd_verify(self.baseline, LOCK),
+                         ["mesh: findings is 'findings/./a', write it as 'findings/a'"])
+
     def test_two_directories_for_one_step_are_refused(self):
         out = self.run_dir("a", {"01": "FAIL"})
         other = out / "01-other"

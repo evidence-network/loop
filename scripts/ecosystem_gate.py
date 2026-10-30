@@ -11,8 +11,9 @@ findings directory it was taken from, and the digest of the pin set it ran under
 through `update`, which refuses a findings directory steps/finding.py refuses (that includes a
 finding whose pinned entries differ from versions.lock), a rehearsal finding, a repeated step
 number, and a regression against the baseline already committed. `verify` re-reads the committed
-findings (their records and proof, not their pins, which are the pins of their own day), refuses a
-hand-edited baseline, and requires the baseline's pin-set digest to be the current versions.lock's.
+findings with steps/finding.py (records, proof and pins against the current versions.lock), refuses
+a hand-edited baseline or a non-canonical findings path, and requires the baseline's pin-set digest
+to be the current versions.lock's.
 `check` compares the base branch's baseline with the pull request's: a pin-set digest that moved
 must come with a findings directory that moved too, and a step that was
 PASS and is now FAIL, malformed or missing fails, and so does PASS -> NOT_CHECKED while the old
@@ -102,27 +103,17 @@ def cmd_check(old_path, new_path):
     return errs
 
 
-def record_errors(findings_dir):
-    """finding.check's refusals for a committed run, minus the pin check: it names the pins of its day."""
-    errs = []
-    for d in sorted(p for p in Path(findings_dir).iterdir() if p.is_dir()):
-        try:
-            r = json.loads((d / "finding.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue  # read_findings reports it
-        errs += [e for e in finding.check_record(d, r) if "is not the versions.lock entry" not in e] \
-            if isinstance(r, dict) else []
-    return errs
-
-
 def cmd_verify(baseline, lock):
     doc = load(baseline)
     errs = []
     if not isinstance(doc.get("not_checked_is_regression"), bool):
         errs.append("not_checked_is_regression must be true or false")
     for eco, entry in sorted(doc["ecosystems"].items()):
+        canonical = str((ROOT / entry["findings"]).resolve().relative_to(ROOT.resolve()))
+        if entry["findings"] != canonical:
+            errs.append(f"{eco}: findings is {entry['findings']!r}, write it as {canonical!r}")
         steps, ferrs = read_findings(ROOT / entry["findings"])
-        errs += [f"{eco} {e}" for e in ferrs + record_errors(ROOT / entry["findings"])]
+        errs += [f"{eco} {e}" for e in ferrs + finding.check(ROOT / entry["findings"])]
         have = {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()}
         if have != entry["steps"]:
             errs.append(f"{eco}: steps differ from the findings in {entry['findings']}")
