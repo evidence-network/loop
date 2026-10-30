@@ -15,6 +15,13 @@ with MISSED for a slot with no run. It lives in loop-data beside
 `reports/daily/` and is wiped as a whole before the daily run starts; see
 [reporter/README.md](../reporter/README.md#the-rehearsal).
 
+`reports/ondemand/<YYYY-MM-DD>T<HHMMSS>Z/` is an on-demand run, an extra ask
+round made by hand between dailies (`scripts/refresh_now.sh`): one directory
+per run, named by the second it started, in the same layout, with `"set":
+"ondemand"` in its `RUN.json` (`check_reports.py --set ondemand`). Runs are not
+continuous: the time between two is never MISSED. It lives in loop-data beside
+`reports/daily/` and is never counted as a day.
+
 A node's directory holds `attempts/`: one `<YYYYMMDDTHHMMSSZ>/` per time the
 reporter asked it, written once and never changed. A question that got no
 answer is asked again at the times in `reporter/reporter.json`

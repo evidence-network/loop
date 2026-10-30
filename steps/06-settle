@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""Step 06 Settle: the exchange's settlement object is on the rail, final, banded, and counted honestly.
+
+Usage: 06-settle --population DIR --out DIR
+
+On the rehearsal population (`"rail": "mock"`) the rail is the mock rail in
+DIR/rail/ (population/rehearsal/rail/README.md): its declaration (rail.json,
+naming the rail's TEST key) and its public ledger (ledger.jsonl, the settlement
+objects the rail issued, in order). The exchange is DIR/step06/exchange.json;
+it carries the settlement by reference only, `settlement_ref: {rail,
+settlement_id}`, never a copy. Each node's disclosure, DIR/step06/disclosure-<node>.json,
+is the settlement count the node states for the rail, signed with its key.
+DIR/step06/controllers.json maps node keys to their controllers.
+
+The step copies those files into its out directory and decides on the copies
+alone (the proof bytes):
+- ledger: every line passes the rail adapter's form, signature and id checks
+  (population/rehearsal/rail/mock_rail.py, shaped like evidencebook's
+  adapters), sequences run 1..n, and no settlement id repeats;
+- reference: the exchange's settlement_ref names this rail and exactly one
+  ledger line, and the exchange carries nothing else of the settlement;
+- adapter, finality, rail_fee, band: the adapter's reports on that line, each
+  PASS; the band is derived from the object's amount and currency;
+- exchange_match: the object's exchange id, payer, payee, currency and amount
+  are the exchange's;
+- ledger_count:<node>: the disclosure verifies under the node's key, and its
+  count is the ledger's count of final settlements the node is a party to.
+PASS when all hold, FAIL when any does not. volume.json is the filtered and
+raw settlement counts over the ledger (the status page's number): raw counts
+the final settlements; filtered keeps those on a fee-paying rail whose payer
+and payee are declared under different controllers.
+
+On the live population no rail is verified: the lab nodes record their
+wallets' reports of Lightning payments (capsules plugin settlement legs and
+payment.lifecycle.v1 observations in <data_dir>/ledger/capsules.jsonl), not
+the rail's own settlement objects. The pinned Lightning adapter
+(capsules-plugin#82) reports on the node's own book only, with the wallet's
+terminal report as finality, and the lab has no rail. The step reads what each
+node recorded, lists it (recorded.json per
+node), and is NOT_CHECKED on that issue. A node with nothing recorded, or no
+readable data_dir, is NOT_CHECKED too. The step never pays: it moves no money
+with or without LOOP_LIVE_SPEND, and says so in detail.
+
+Exit 0 once the finding is written, whatever the result; non-zero when the
+step itself broke (unreadable population, no rail files).
+"""
+import argparse
+import json
+import shutil
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "steps"))
+sys.path.insert(0, str(ROOT / "population" / "rehearsal" / "rail"))
+import finding  # noqa: E402
+import live  # noqa: E402
+import mock_rail  # noqa: E402
+
+cc = mock_rail.cc
+ASSERTS = ("a settlement object for the exchange is on the rail, referenced by its own settlement id and not "
+           "copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from "
+           "it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count")
+PINNED = []
+INPUTS = ["exchange.json", "controllers.json"]
+RAIL_FILES = ["rail.json", "ledger.jsonl"]
+EXCHANGE_KEYS = ["amount_atomic", "currency", "decimals", "exchange_id", "payee", "payer", "settlement_ref"]
+MATCHED = ("exchange_id", "payer", "payee", "currency", "amount_atomic", "decimals")
+# The open issue for what the Lightning adapter (capsules-plugin#82, pinned) still lacks: preimage finality and
+# a settlement object by reference on a rail.
+ADAPTER_ISSUE = "Mesh-LLM/capsules-plugin#83"
+# The lab nodes have no wallet configured yet, so no paid exchange has run on them.
+WALLET_ISSUE = "evidence-network/loop#56"
+# The exchange's sealed halves and the controller declarations are step 05's component work.
+DEAL_ISSUE = "Mesh-LLM/capsules-plugin#49"
+SPEND = ("Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND "
+         "(the live run's spend is recorded by the run that pays).")
+
+
+def check(ok, detail):
+    return {"ok": bool(ok), "detail": detail}
+
+
+def read_json(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def nodes_of(population_dir):
+    """{name: key_id} of the population's nodes, from their public keys."""
+    out = {}
+    for n in read_json(Path(population_dir) / "population.json")["nodes"]:
+        key_dir = Path(n["key_dir"])
+        key_dir = key_dir if key_dir.is_absolute() else ROOT / key_dir
+        out[n["name"]] = cc.key_id_of(cc.spki_from_pem((key_dir / "node-key.pub.pem").read_text()))
+    return out
+
+
+def gather(population_dir, out):
+    """Copy the rail's and the step's inputs into out: the proof bytes the step decides on."""
+    rail_dir, inputs = Path(population_dir) / "rail", Path(population_dir) / "step06"
+    decl = read_json(rail_dir / "rail.json")
+    for f in RAIL_FILES:
+        shutil.copyfile(rail_dir / f, out / f)
+    shutil.copyfile(rail_dir / decl["public_key"], out / "rail-key.pub.pem")
+    for f in INPUTS + sorted(p.name for p in inputs.glob("disclosure-*.json")):
+        shutil.copyfile(inputs / f, out / f)
+
+
+def ledger_checks(lines, decl, spki):
+    """(reports per line, the ledger check)."""
+    reports = [mock_rail.verify(ln, decl, spki) for ln in lines]
+    problems = []
+    for i, rs in enumerate(reports, 1):
+        bad = [r["property"] for r in rs if r["property"] in ("object_form", "rail_signature", "settlement_id")
+               and r["status"] != mock_rail.PASS]
+        if bad:
+            problems.append(f"line {i}: {', '.join(bad)}")
+    objs = [json.loads(ln) if not problems else None for ln in lines]
+    if not problems:
+        seqs = [o["sequence"] for o in objs]
+        if seqs != list(range(1, len(objs) + 1)):
+            problems.append(f"sequences {seqs}, not 1..{len(objs)}")
+        ids = [o["settlement_id"] for o in objs]
+        dup = sorted({i for i in ids if ids.count(i) > 1})
+        if dup:
+            problems.append(f"duplicate settlement {', '.join(dup)}")
+    return reports, check(lines and not problems,
+                          "; ".join(problems) or f"{len(lines)} settlements, each signed by the rail, in sequence, "
+                                                  "no id repeated")
+
+
+def volume(objs, reports, decl, controllers):
+    """Raw and filtered settlement counts over the ledger, overall and per band."""
+    raw, filtered = {}, {}
+    for o, rs in zip(objs, reports):
+        st = {r["property"]: r["status"] for r in rs}
+        if not all(st[p] == mock_rail.PASS for p in ("object_form", "rail_signature", "settlement_id", "finality")):
+            continue
+        b = mock_rail.band(o["currency"], o["amount_atomic"], o["decimals"]) or "unbanded"
+        raw[b] = raw.get(b, 0) + 1
+        payer, payee = controllers.get(o["payer"]), controllers.get(o["payee"])
+        if st["rail_fee"] == mock_rail.PASS and payer and payee and payer != payee:
+            filtered[b] = filtered.get(b, 0) + 1
+    return {"rail": decl.get("rail"), "unit": "settlements", "raw": sum(raw.values()),
+            "filtered": sum(filtered.values()), "raw_by_band": raw, "filtered_by_band": filtered,
+            "filter": "final, on a fee-paying rail, payer and payee declared under different controllers"}
+
+
+def decide(out, *, population, nodes, started):
+    """Check the proof bytes in out and write the finding."""
+    out = Path(out)
+    checks = {}
+    decl, spki = mock_rail.rail_key(out, out / "rail-key.pub.pem")
+    lines = (out / "ledger.jsonl").read_bytes().splitlines()
+    reports, checks["ledger"] = ledger_checks(lines, decl, spki)
+    objs = [json.loads(ln) if checks["ledger"]["ok"] else {} for ln in lines]
+
+    exchange = read_json(out / "exchange.json")
+    ref = exchange.get("settlement_ref")
+    hits = [i for i, o in enumerate(objs) if isinstance(ref, dict) and o.get("settlement_id") == ref.get("settlement_id")]
+    by_ref = (sorted(exchange) == EXCHANGE_KEYS and isinstance(ref, dict) and sorted(ref) == ["rail", "settlement_id"]
+              and ref["rail"] == decl["rail"])
+    checks["reference"] = check(by_ref and len(hits) == 1,
+                                f"settlement_ref {json.dumps(ref, sort_keys=True)} names {len(hits)} ledger line(s); "
+                                f"exchange members {sorted(exchange)}")
+    adapter_out = {"adapter": mock_rail.declare(), "settlement": None, "reports": []}
+    if len(hits) == 1:
+        obj, rs = objs[hits[0]], reports[hits[0]]
+        adapter_out.update(settlement={"line": hits[0] + 1, "settlement_id": obj["settlement_id"]}, reports=rs)
+        st = {r["property"]: r for r in rs}
+        checks["adapter"] = check(all(st[p]["status"] == mock_rail.PASS
+                                      for p in ("object_form", "rail_signature", "settlement_id")),
+                                  ", ".join(f"{p} {st[p]['status']}" for p in ("object_form", "rail_signature",
+                                                                               "settlement_id")))
+        band = st["band"]["detail"]
+        for p in ("finality", "rail_fee", "band"):
+            checks[p] = check(st[p]["status"] == mock_rail.PASS, f"{st[p]['status']}: {st[p]['detail']}")
+        diff = [k for k in MATCHED if obj.get(k) != exchange.get(k)]
+        checks["exchange_match"] = check(not diff, ", ".join(f"{k}: settlement {obj.get(k)!r}, exchange "
+                                                            f"{exchange.get(k)!r}" for k in diff)
+                                         or f"exchange {exchange.get('exchange_id')}: " + ", ".join(MATCHED) + " match")
+    else:
+        for p in ("adapter", "finality", "rail_fee", "band", "exchange_match"):
+            checks[p] = check(False, "no single settlement object to check")
+    (out / "adapter.json").write_text(json.dumps(adapter_out, indent=2, sort_keys=True) + "\n")
+
+    by_key = {v: k for k, v in nodes.items()}
+    for name in sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
+        f = out / f"disclosure-{name}.json"
+        key_id = nodes.get(name)
+        if not f.is_file():
+            checks[f"ledger_count:{name}"] = check(False, f"{name} made no disclosure of its settlement count")
+            continue
+        d = read_json(f)
+        signed = key_id is not None and d.get("key_id") == key_id and cc.verify_sig(d, cc.ED25519_SPKI + bytes.fromhex(key_id))
+        through = d.get("through_sequence")
+        counted = sum(1 for o in objs if o and o["final"] is True and key_id in (o["payer"], o["payee"])
+                      and isinstance(through, int) and o["sequence"] <= through)
+        ok = (signed and d.get("rail") == decl["rail"] and checks["ledger"]["ok"]
+              and isinstance(through, int) and through <= len(objs) and d.get("settlements") == counted)
+        checks[f"ledger_count:{name}"] = check(ok, f"{name} discloses {d.get('settlements')!r} through sequence "
+                                                   f"{through!r} (signature {'verifies' if signed else 'fails'}); "
+                                                   f"the public ledger counts {counted}")
+    if not any(k.startswith("ledger_count:") for k in checks):
+        checks["ledger_count"] = check(False, "no node disclosure to compare with the ledger")
+
+    controllers = read_json(out / "controllers.json").get("controllers", {})
+    vol = volume(objs, reports, decl, controllers) if checks["ledger"]["ok"] else None
+    (out / "checks.json").write_text(json.dumps({"checks": checks}, indent=2, sort_keys=True) + "\n")
+    proof = RAIL_FILES + ["rail-key.pub.pem"] + INPUTS + sorted(p.name for p in out.glob("disclosure-*.json")) + \
+        ["adapter.json", "checks.json"]
+    if vol is not None:
+        (out / "volume.json").write_text(json.dumps(vol, indent=2, sort_keys=True) + "\n")
+        proof.append("volume.json")
+    failed = [f"{k} ({c['detail']})" for k, c in checks.items() if not c["ok"]]
+    where = f"exchange {exchange.get('exchange_id')}, settlement {ref.get('settlement_id') if isinstance(ref, dict) else ref}"
+    payer = by_key.get(exchange.get("payer"), "an unknown key")
+    payee = by_key.get(exchange.get("payee"), "an unknown key")
+    if failed:
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+                             detail=f"{where}: did not hold: {'; '.join(failed)}", started=started)
+    detail = (f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
+              f"value: these held on the proof bytes: {', '.join(checks)}. Band {band}. "
+              f"Volume: {vol['filtered']} filtered of {vol['raw']} raw settlements ({vol['filter']}). "
+              + finding.outside("the exchange's sealed halves, which this step reads as an unsigned stand-in, and "
+                                "the controller declarations, which are rehearsal stand-ins", DEAL_ISSUE) + " "
+              + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
+                                ADAPTER_ISSUE))
+    return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+                         detail=detail, started=started)
+
+
+# --- The live population: what the nodes recorded, read and listed, never paid for ----
+LIVE_PINNED = ["capsules", "mesh-llm-pr-2620"]
+SETTLEMENT_BLOCK = ("model_attestation", "compute_attestation", "x-mesh-settlement-v1")
+
+
+def recorded(ledger):
+    """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations."""
+    legs, observed = [], []
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            continue
+        rec = rec.get("capsule", rec) if isinstance(rec, dict) else {}
+        leg = rec.get("settlement") if isinstance(rec, dict) else None
+        if isinstance(leg, dict):
+            legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg.get("leg") or leg.get("kind"),
+                         "payment_ref": leg.get("payment_ref")})
+        block = rec
+        for k in SETTLEMENT_BLOCK:
+            block = block.get(k) if isinstance(block, dict) else None
+        if isinstance(block, dict) and str(block.get("phase", "")).endswith("_settlement_observed"):
+            observed.append({"capsule_id": rec.get("capsule_id"), "exchange_id": block.get("exchange_id"),
+                             "phase": block.get("phase"), "source": block.get("source"),
+                             "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat")})
+    return {"settlement_legs": legs, "settlement_observations": observed}
+
+
+def main_live(pop, out, started):
+    out.mkdir(parents=True, exist_ok=True)
+    proof, details, not_checked = [], [], []
+    for entry in pop["nodes"]:
+        name = entry["name"]
+        shutil.rmtree(out / name, ignore_errors=True)  # a rerun must not keep an earlier run's file
+        data_dir = live.readable(entry, "data_dir", "ledger/capsules.jsonl")
+        if data_dir is None:
+            not_checked.append(live.not_checked(name, "data_dir"))
+            details.append(f"node {name}: not checked, data_dir or its ledger not set or unreadable")
+            continue
+        found = recorded(data_dir / "ledger" / "capsules.jsonl")
+        (out / name).mkdir()
+        (out / name / "recorded.json").write_text(json.dumps(found, indent=2, sort_keys=True) + "\n")
+        proof.append(f"{name}/recorded.json")
+        n_legs, n_obs = len(found["settlement_legs"]), len(found["settlement_observations"])
+        if n_legs or n_obs:
+            details.append(f"node {name}: {n_legs} settlement legs and {n_obs} wallet-reported settlement "
+                           f"observations recorded; none is the rail's own object, so finality is not verified")
+            not_checked.append({"what": f"settlements node {name} recorded, against the rail",
+                                "why": "the node records its wallet's report of a Lightning payment, not the rail's "
+                                       "settlement object; the pinned adapter (capsules-plugin#82) reports on the "
+                                       "node's own book with the wallet's terminal report as finality, and this "
+                                       "step does not call it yet",
+                                "issue": ADAPTER_ISSUE})
+        else:
+            details.append(f"node {name}: no settlement recorded")
+            not_checked.append({"what": f"a settlement for an exchange of node {name}",
+                                "why": "the node has recorded no settlement: the lab has no wallet configured yet, "
+                                       "so no paid exchange has run on it and the adapter has nothing to report on",
+                                "issue": WALLET_ISSUE})
+    if pop.get("rail") is None:
+        details.append("the live population names no rail")
+    if not any("settlements node" in n["what"] for n in not_checked):
+        not_checked.append({"what": "the live rail's settlement object for an exchange, its finality and its band",
+                            "why": "the live population names no rail and the lab has no wallet configured yet; the "
+                                   "pinned Lightning adapter checks the node's own book, with no preimage and no "
+                                   "settlement object by reference on a rail",
+                            "issue": WALLET_ISSUE})
+    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                  proof=proof, detail="; ".join(details) + ". " + SPEND, not_checked=not_checked, started=started)
+    return 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True)
+    ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    pop = read_json(Path(a.population) / "population.json")
+    out = Path(a.out)
+    if pop["population"] == "live":
+        return main_live(pop, out, started)
+    if pop.get("rail") != "mock" or not (Path(a.population) / "rail" / "rail.json").is_file():
+        print(f"06-settle: {a.population} names no mock rail with rail/rail.json", file=sys.stderr)
+        return 2
+    out.mkdir(parents=True, exist_ok=True)
+    for p in out.iterdir():
+        if p.is_file():
+            p.unlink()
+    gather(a.population, out)
+    decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

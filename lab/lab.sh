@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -20,6 +20,10 @@
 #   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
 #             halves the nodes in LAB_SHARE_AT_COMPLETION pushed after `exchange`. Starts no exchange
 #             and pays nothing
+#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
+#             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
+#   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
+#             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
@@ -293,7 +297,12 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     printf ' < /dev/null >> %q 2>&1\n' "$(logfile "$name")"
   )
   local config
-  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN")
+  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
+  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
+  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
+    printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
+    printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
+    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n')
   if [ "$DRY" = 1 ]; then
     echo "  > $home/config.toml:"; sed 's/^/    /' <<< "$config"
     echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
@@ -466,22 +475,37 @@ cmd_entries() {
   run python3 -B "$ROOT/scripts/check_nodes.py" "$ROOT/nodes"
 }
 
-cmd_loop() {
-  # The reporter's console, never the default 3131: other nodes on the lab host may answer there.
-  # A node can't be asked through its own console, so step 12 asks the reporter node through a
-  # second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
-  # LAB_DIR: population/live names each node's data_dir and book_dir from it.
-  # LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
-  # host_name maps a label back to its lab-N directory the same way).
-  local second=lab-1 self
+# The reporter's console, never the default 3131: other nodes on the lab host may answer there.
+# A node can't be asked through its own console, so steps 12 and 07 ask the reporter node through a
+# second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
+# LAB_DIR: population/live names each node's data_dir and book_dir from it.
+# LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
+# host_name maps a label back to its lab-N directory the same way).
+ask_env() {
+  second=lab-1
   [ "$REPORTER" = lab-1 ] && second=lab-2
   self=$(python3 -c 'import json, sys
 for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
         print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+  # Each node's own console, for step 12 to read that node's doctor: NAME=URL per population node, by the
+  # lab-N directory its data_dir names (the name is the operator's label).
+  node_consoles=$(python3 -c 'import json, re, sys
+base, pop = int(sys.argv[1]), sys.argv[2]
+out = []
+for n in json.load(open(pop))["nodes"]:
+    m = re.search(r"/nodes/lab-([0-9])/", n.get("data_dir") or "")
+    if m:
+        out.append(n["name"] + "=http://127.0.0.1:" + str(base + 10 + int(m.group(1))))
+print(",".join(out))' "$BASE" "$ROOT/population/live/population.json")
+}
+
+cmd_loop() {
+  local second self node_consoles
+  ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
-    LAB_DIR="$LAB_DIR" "$ROOT/loop.sh" --stage 1 --population live \
+    LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$node_consoles" "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -491,6 +515,24 @@ cmd_deal() {
   # beside stage 1's, and the finding contract is checked over the whole directory.
   local out=$ROOT/findings/$TODAY-live
   run env LAB_DIR="$LAB_DIR" "$ROOT/steps/05-deal" --population "$ROOT/population/live" --out "$out/05-deal"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
+cmd_settle() {
+  local out=$ROOT/findings/$TODAY-live
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/06-settle" --population "$ROOT/population/live" --out "$out/06-settle"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
+cmd_ask() {
+  # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
+  # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
+  local out=$ROOT/findings/$TODAY-live second self node_consoles
+  ask_env
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
+    LAB_DIR="$LAB_DIR" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -510,6 +552,6 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | deal | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | entries | loop | deal | settle | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

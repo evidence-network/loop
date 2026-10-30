@@ -1,0 +1,45 @@
+{
+  "held": [
+    {
+      "capsule_id": "7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497",
+      "cited": {
+        "detail": "record 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6 cites it: Class 1 exit 0; carried 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6, recomputed 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6",
+        "ok": true
+      },
+      "held": "held-1",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497, recomputed 7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497",
+        "ok": true
+      },
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-29T22:15:01.846Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497 is included under checkpoint 76f8f5c2f72dd52540a78797887c641aee40d02520223f53cc7b2fd66c929f6a of capsules/7e04d3e3fec1332f (mmr_size 127), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      }
+    },
+    {
+      "capsule_id": "866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8",
+      "cited": {
+        "detail": "record 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67 cites it: Class 1 exit 0; carried 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67, recomputed 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67",
+        "ok": true
+      },
+      "held": "held-2",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8, recomputed 866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8",
+        "ok": true
+      },
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-29T22:15:02.108Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8 is included under checkpoint 73b2f8cd1a5c926b66bc9d6bc88318f935487a31ce5c75073eea516ffa620c5e of capsules/93d20518801ba715 (mmr_size 127), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      }
+    }
+  ],
+  "node": "stevenmih-1"
+}

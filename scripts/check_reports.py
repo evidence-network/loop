@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the daily reports: their layout, and that no day is silently missing.
 
-Usage: check_reports.py [DIR] [--set daily|rehearsal] [--through PERIOD [--reporter FILE]]
+Usage: check_reports.py [DIR] [--set daily|rehearsal|ondemand] [--through PERIOD [--reporter FILE]]
        (default DIR: reports/<set>, default set: daily)
 
 Every entry of DIR is a <YYYY-MM-DD> directory holding either RUN.json (a run:
@@ -19,7 +19,11 @@ names a key (not the all-zero placeholder) and no report at all is refused:
 the reporter is deployed but has never run. With --set rehearsal, the same
 checks hold for the rehearsal set, a test of the reporter: every entry is a
 10-minute UTC slot <YYYY-MM-DD>T<HHMM>Z instead of a day, and --through names
-a slot. Standard library only. Exit 0 = clean, 1 = refused.
+a slot. With --set ondemand, the on-demand set, runs made by hand: every entry
+is a run <YYYY-MM-DD>T<HHMMSS>Z, its RUN.json says "set": "ondemand", and there
+is no continuity, so --through checks nothing between runs (a run is never
+missing). A RUN.json that says "set": "ondemand" is refused in the other sets.
+Standard library only. Exit 0 = clean, 1 = refused.
 """
 import datetime as dt  # noqa: F401  (tests build --through dates from it)
 import json
@@ -120,7 +124,7 @@ def check_node(day, node_dir):
     return errs
 
 
-def check_day(day_dir):
+def check_day(day_dir, period=layout.Daily):
     day = day_dir.name
     names = {p.name for p in day_dir.iterdir()}
     if "MISSED" in names:
@@ -139,6 +143,10 @@ def check_day(day_dir):
             raise TypeError("asked is not a list of node ids")
         if run.get("date") != day:
             errs.append(f"{day}: RUN.json date is {run.get('date')}")
+        if period is layout.OnDemand and run.get("set") != "ondemand":
+            errs.append(f"{day}: RUN.json must say \"set\": \"ondemand\" in the on-demand set")
+        elif period is not layout.OnDemand and run.get("set") == "ondemand":
+            errs.append(f"{day}: RUN.json is an on-demand run's, not a {period.noun}'s")
         lock = run.get("versions_lock_sha256")
         if not (isinstance(lock, str) and HEX64.match(lock)):
             errs.append(f"{day}: RUN.json versions_lock_sha256 must be the 64-hex sha256 of the versions.lock it ran under")
@@ -167,7 +175,8 @@ def deployed(reporter):
 def check(root, through=None, reporter=None, period=layout.Daily):
     errs = []
     days = []
-    form = "<YYYY-MM-DD>" if period is layout.Daily else "<YYYY-MM-DD>T<HHMM>Z 10-minute slot"
+    form = {"daily": "<YYYY-MM-DD>", "rehearsal": "<YYYY-MM-DD>T<HHMM>Z 10-minute slot",
+            "ondemand": "<YYYY-MM-DD>T<HHMMSS>Z on-demand run"}[period.set]
     for p in sorted(root.iterdir()) if root.is_dir() else []:
         if p.name in (".gitkeep", "README.md"):
             continue
@@ -175,10 +184,10 @@ def check(root, through=None, reporter=None, period=layout.Daily):
             errs.append(f"{p.name}: not a {form} directory")
             continue
         days.append(p.name)
-        errs += check_day(p)
+        errs += check_day(p, period)
     if not days and through is not None and reporter is not None and deployed(reporter):
         errs.append(f"{reporter} names a reporter key, but {root} holds no report")
-    if days and through is not None:
+    if days and through is not None and period.continuous:
         day = period.parse(days[0])
         while day <= through:
             if period.name(day) not in days:

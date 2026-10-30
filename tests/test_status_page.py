@@ -104,12 +104,21 @@ class StatusPageTest(unittest.TestCase):
         d = self.findings / f"{date}-{population}" / f"{n:02d}-{name or NAMES.get(n, 'step')}"
         d.mkdir(parents=True, exist_ok=True)
         for p in proof:
-            (d / p).write_bytes(b"proof bytes for step %d\n" % n)
+            if not (d / p).exists():  # a proof the test wrote itself is kept
+                (d / p).write_bytes(b"proof bytes for step %d\n" % n)
         with mock.patch.object(finding, "now", return_value="2026-10-27T02:%02d:00Z" % n):
             finding.write(d, result=result, population=population, asserts=f"step {n} holds",
                           pinned=["capsulectl"], proof=list(proof), detail=detail, not_checked=not_checked,
                           started=started)
         return d
+
+    def answered(self, at, result="PASS", population="rehearsal", sealed=None, **kw):
+        """Step 07's finding, its first-answered.json saying the first ask was answered at `at`."""
+        d = self.findings / f"2026-10-27-{population}" / "07-ask"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "first-answered.json").write_text(json.dumps({"answered_at": at, "ask": "bob asked alice exchange",
+                                                              **({} if sealed is None else {"sealed": sealed})}))
+        return self.write(7, result, population=population, proof=("first-answered.json",), name="ask", **kw)
 
     def run_json(self, started, population="rehearsal", date="2026-10-27", run_population=None):
         d = self.findings / f"{date}-{population}"
@@ -386,16 +395,54 @@ class StatusPageTest(unittest.TestCase):
         self.run_json("2026-10-27T01:59:30Z")
         self.write(1, "PASS", started="2026-10-27T02:00:30Z")  # finished 02:01:00
         self.write(2, "PASS", started="2026-10-27T02:01:00Z")
-        self.write(12, "PASS", started="2026-10-27T02:05:00Z")  # finished 02:12:00
+        self.write(12, "PASS", started="2026-10-27T02:05:00Z")  # finished 02:12:00, no longer the marker
         self.run_json("2026-10-27T02:00:00Z", population="live")
         self.write(1, "PASS", population="live", started="2026-10-27T02:00:10Z")
         self.page()
         # From run.json, not from the earliest step start (that would be 0.5).
         self.assertEqual(self.number("first-sealed"), ("measured", "1.5 minutes"))
-        self.assertEqual(self.number("first-answered"), ("measured", "12.5 minutes"))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))  # no step 07
         self.assertEqual(self.number("first-sealed", "live"), ("measured", "1.0 minutes"))
-        self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M1)"))
+        self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M2)"))
         self.assertNotIn("upper bound", self.html)
+
+    def test_first_answered_is_step_07s_first_answer_not_its_finished(self):
+        self.run_json("2026-10-27T01:59:30Z")
+        self.answered("2026-10-27T02:04:00.250000Z", started="2026-10-27T02:03:00Z")  # finished 02:07:00
+        self.run_json("2026-10-27T02:00:00Z", population="live")
+        # A live finding is NOT_CHECKED while the plugin does not seal its requests; its answers still count.
+        self.answered("2026-10-27T02:00:42Z", result="NOT_CHECKED", population="live",
+                      not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
+        self.page()
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
+        self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s"))
+
+    def test_a_live_number_names_the_ask_and_says_it_was_not_sealed(self):
+        self.run_json("2026-10-27T02:00:00Z", population="live")
+        self.answered("2026-10-27T02:00:42Z", result="NOT_CHECKED", population="live", sealed=False,
+                      not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
+        self.run_json("2026-10-27T01:59:30Z")
+        self.answered("2026-10-27T02:04:00Z", sealed=True, started="2026-10-27T02:03:00Z")
+        self.page()
+        self.assertEqual(self.number("first-answered", "live"),
+                         ("measured", "42 s (bob asked alice exchange, answered but not sealed before it was sent)"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
+
+    def test_first_answered_is_not_measured_without_an_answer_or_on_a_fail(self):
+        self.run_json("2026-10-27T02:00:00Z")
+        self.answered(None)  # every ask absent: nothing answered
+        self.run_json("2026-10-27T02:00:00Z", population="live")
+        self.answered("2026-10-27T02:00:42Z", result="FAIL", population="live")
+        self.page()
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))
+        self.assertEqual(self.number("first-answered", "live"), ("placeholder", "not measured yet (M2)"))
+
+    def test_first_answered_reads_only_the_file_the_finding_covers(self):
+        self.run_json("2026-10-27T02:00:00Z")
+        d = self.answered("2026-10-27T02:01:00Z")
+        (d / "first-answered.json").write_text(json.dumps({"answered_at": "2026-10-27T02:00:01Z"}))
+        self.page()  # the finding's sha256 no longer matches: a malformed finding is no measure
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))
 
     def test_under_a_minute_reads_in_seconds(self):
         self.run_json("2026-10-27T02:00:18Z")
@@ -422,11 +469,11 @@ class StatusPageTest(unittest.TestCase):
         self.write(12, "NOT_CHECKED", not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
         self.page()  # no run.json
         self.assertEqual(self.number("first-sealed"), ("placeholder", status_page.NO_START))
-        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))  # 12 no PASS
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))  # no step 07
         self.run_json("2026-10-27T02:00:00Z")
         self.page()
         self.assertEqual(self.number("first-sealed"), ("measured", "1.0 minutes"))
-        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))
 
     def test_an_unusable_run_json_says_why(self):
         self.write(1, "PASS")
@@ -456,14 +503,14 @@ class StatusPageTest(unittest.TestCase):
         self.write(12, "NOT_CHECKED", not_checked=[{"what": "a", "why": "b", "issue": "c"}])
         self.page()
         self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))
-        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M1)"))
+        self.assertEqual(self.number("first-answered"), ("placeholder", "not measured yet (M2)"))
         self.assertEqual(self.number("first-sealed", "live"), ("placeholder", "not measured yet (M1)"))
 
     def test_the_numbers_due_later_are_placeholders_never_zero(self):
         self.write(1, "PASS")
         self.page()
         self.assertEqual(self.number("first-countersigned"), ("placeholder", "not measured yet (M3)"))
-        self.assertEqual(self.number("limited"), ("placeholder", "not measured yet (M3)"))
+        self.assertEqual(self.number("refused"), ("placeholder", "not measured yet (M3)"))
         self.assertEqual(self.number("filtered"), ("placeholder", "not measured yet (M2)"))
         numbers = self.html[self.html.index('id="numbers"'):self.html.index('id="pins"')]
         self.assertNotRegex(numbers, r">\s*0(\.0)?( |<)")
@@ -472,7 +519,7 @@ class StatusPageTest(unittest.TestCase):
         for nb in status_page.NUMBERS:
             self.assertTrue(nb.unit and nb.source, nb.key)
         self.assertEqual([nb.key for nb in status_page.NUMBERS],
-                         ["first-sealed", "first-answered", "first-countersigned", "limited", "filtered"])
+                         ["first-sealed", "first-answered", "first-countersigned", "refused", "filtered"])
 
     def test_raw_volume_is_never_shown_without_the_filtered_figure(self):
         self.assertEqual(status_page.volume(120, None), "not measured yet (M2)")

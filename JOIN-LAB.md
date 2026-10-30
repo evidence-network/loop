@@ -46,12 +46,14 @@ keys; it never says who that is.
 1. binds your node key to your controller key (a `controller-binding/0`
    record, signed by both, and the controller class);
 2. creates your book and cuts its first checkpoint;
-3. writes your commitment in step 03's format (`evidence-commitment/0`,
+3. writes your commitment in step 03's format (`evidence-commitment/1`,
    [steps/03-advertise.md](steps/03-advertise.md)), signed by your node key,
    with your sharing policy, signed too, beside it (`disclosure-policy.json`).
-   It staples the `history_card/1` answer your node gave a stranger: a
-   throwaway stranger asks `checkpoints`, then `history_card/1`, and the
-   requests and answers are kept for anyone to check;
+   It staples one `history_card/1` answer per book your node serves, each
+   given to a stranger: a throwaway stranger asks `checkpoints`, then
+   `history_card/1` of each book, and the requests and answers are kept for
+   anyone to check. The books are the profiles under `--home` signed by your
+   node key (see `./join.sh --help`); the book the join creates is always one;
 4. probes your node as a stranger with `capsulectl book doctor --probe`, into
    `doctor.json`.
 

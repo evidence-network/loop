@@ -16,13 +16,15 @@ writes nightly with `scripts/scrub_reports.py`.
 - `reporter.json`: the reporter's mesh node id and its capsules plugin key
   (Ed25519 public key, 64 hex), and `retry_after_s`: when a run asks a node
   that gave no answer again, in seconds after the run starts (now 3600, 10800,
-  21600: three more attempts over six hours; empty or absent, one attempt). **Placeholder until the reporter node exists:**
-  all zeros, and `daily_report.py run` refuses to run with it. Fill it on the
-  reporter node with `scripts/reporter_key.py --write reporter/reporter.json`
-  and open a pull request.
+  21600: three more attempts over six hours; empty or absent, one attempt). **It holds the lab's reporter node (lab-3).** A reporter
+  node set up anew starts from all zeros, which `daily_report.py run` refuses
+  to run with; fill it on that node with
+  `scripts/reporter_key.py --write reporter/reporter.json` and open a pull
+  request.
 - `systemd/`: the timer that runs `scripts/run_daily.sh` once a day on the
-  reporter node, and one that runs `scripts/ask_again.sh` after it. Not
-  installed anywhere yet. Beside them, `loop-reporter-rehearsal.*`, the
+  reporter node, and one that runs `scripts/ask_again.sh` after it. Install
+  them as [Going live](#going-live) step 6 says (the lab's reporter node runs
+  both). Beside them, `loop-reporter-rehearsal.*`, the
   10-minute rehearsal (see [The rehearsal](#the-rehearsal)), and
   `reporter-env.conf`, a drop-in that gives the daily units the same optional
   settings file (see [The reporter's own node](#the-reporters-own-node)).
@@ -276,6 +278,50 @@ systemctl --user enable --now loop-reporter.timer
 To go live with the rehearsal's last clean slot as day one, follow
 [Going live](#going-live) instead of the switch above.
 
+## Workshop refresh
+
+One extra live ask round between dailies, for a room watching the page. Run
+it by hand on the reporter node, as the reporter's user, from its clone:
+
+```sh
+~/loop/scripts/refresh_now.sh
+```
+
+No systemd and no new secret: it reads `~/.config/loop-reporter/env` (the file
+the units read) for `LOOP_CONSOLE`, `LOOP_SECOND_CONSOLE` and `LOOP_SELF_NODE`,
+then your own environment, which wins. `LOOP_CONSOLE` is the reporter node's
+own console URL and has no default here: the units' `127.0.0.1:3131` is
+mesh-llm's default port, and on a shared host another node may answer there,
+so it refuses until you name the console. It is `run_daily.sh --set ondemand`:
+
+1. it refuses while `loop-reporter.service`, `loop-reporter-ask.service` or
+   `loop-reporter-rehearsal.service` is active, while another run holds the
+   loop-data checkout, or with anything staged there;
+2. it pulls loop-data, then asks every listed node `checkpoints` and
+   `history_card/1` once more, the reporter's own node through the second
+   console as the daily run does. Retries are bounded: again at +30 s and
+   +60 s, no request longer than 20 s, no retry pass started after 90 s (a node
+   still owed an answer then is asked once more with a 1 s timeout), so the
+   run settles in about two minutes (seconds, when every node answers at once);
+3. it checks the run (`check_reports.py --set ondemand`) and holds it on the
+   node, committing nothing, if it fails the personal-data check (exit 3);
+4. it commits `reports/ondemand/<YYYY-MM-DD>T<HHMMSS>Z/` and nothing else,
+   `report: on-demand <run>`, and pushes it with the deploy key under the same
+   guards as the daily run.
+
+The run is named by the second it started (UTC) and its `RUN.json` says
+`"set": "ondemand"`. It is never a daily row: the daily reports, their MISSED
+marks and the watchdog are untouched, and the time between two refreshes is
+never MISSED. A reporter that cannot reach its own node commits nothing and
+exits 2; run it again.
+
+Afterwards, loop-data's `publish-scrubbed` publishes the run to
+`stats/data/ondemand/<run>.json` here, and the `stats` workflow rebuilds and
+deploys Pages. The files are published, but no page reads them yet: showing
+the run as its own point, labelled with its time and never added to the daily
+days, needs loop#46. The stats page, `/stats/`, and its daily rows and totals
+do not change.
+
 ## Going live
 
 The rehearsal ends, and the daily run starts, with the last clean rehearsal
@@ -357,17 +403,23 @@ node from `~/loop` (on `main`), with `~/loop-data` beside it, in this order.
    git -C ~/loop-data pull --rebase --quiet origin main && rm -rf ~/loop-data/reports/rehearsal
    ```
 
-6. Enable the daily run, with the drop-ins that give the daily units the
-   settings file (the second console):
+6. Install the daily units, with the drop-ins that give them the settings
+   file (the second console; `reporter/systemd/reporter-env.conf`, copied as
+   `env.conf` into each `.service.d`), and enable the daily run. A node that
+   set up only the rehearsal has `loop-reporter-rehearsal.*` alone, and
+   `enable` then fails with `Unit loop-reporter.timer not found`; the copy
+   installs the daily units, or refreshes them if already there:
 
    ```sh
+   cp ~/loop/reporter/systemd/loop-reporter.* ~/loop/reporter/systemd/loop-reporter-ask.* ~/.config/systemd/user/
    for unit in loop-reporter loop-reporter-ask; do
      mkdir -p ~/.config/systemd/user/$unit.service.d
      cp ~/loop/reporter/systemd/reporter-env.conf ~/.config/systemd/user/$unit.service.d/env.conf
    done
    systemctl --user daemon-reload
    systemctl --user enable --now loop-reporter.timer
-   systemctl --user list-timers 'loop-reporter*'   # loop-reporter.timer only; no rehearsal timer
+   systemctl --user enable --now loop-reporter-ask.timer   # optional: asks again at 12:00, 18:00, 23:00 UTC
+   systemctl --user list-timers 'loop-reporter*'   # loop-reporter.timer (and -ask if enabled); no rehearsal timer
    ```
 
    The first run is at the next 00:30 UTC. If the timer ran before

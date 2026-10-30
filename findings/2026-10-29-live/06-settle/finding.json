@@ -1,0 +1,56 @@
+{
+  "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
+  "detail": "node stevenmih-1: no settlement recorded; node stevenmih-2: no settlement recorded; node stevenmih-3: no settlement recorded; the live population names no rail. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays).",
+  "finished": "2026-10-29T23:08:33Z",
+  "name": "settle",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#56",
+      "what": "a settlement for an exchange of node stevenmih-1",
+      "why": "the node has recorded no settlement: the lab has no wallet configured yet, so no paid exchange has run on it and the adapter has nothing to report on"
+    },
+    {
+      "issue": "evidence-network/loop#56",
+      "what": "a settlement for an exchange of node stevenmih-2",
+      "why": "the node has recorded no settlement: the lab has no wallet configured yet, so no paid exchange has run on it and the adapter has nothing to report on"
+    },
+    {
+      "issue": "evidence-network/loop#56",
+      "what": "a settlement for an exchange of node stevenmih-3",
+      "why": "the node has recorded no settlement: the lab has no wallet configured yet, so no paid exchange has run on it and the adapter has nothing to report on"
+    },
+    {
+      "issue": "evidence-network/loop#56",
+      "what": "the live rail's settlement object for an exchange, its finality and its band",
+      "why": "the live population names no rail and the lab has no wallet configured yet; the pinned Lightning adapter checks the node's own book, with no preimage and no settlement object by reference on a rail"
+    }
+  ],
+  "pinned": {
+    "capsules": {
+      "ref": "01f0921e19f12f6bf9267a916ed286b938fd9652",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/recorded.json",
+      "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70"
+    },
+    {
+      "path": "stevenmih-2/recorded.json",
+      "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70"
+    },
+    {
+      "path": "stevenmih-3/recorded.json",
+      "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-29T23:08:33Z",
+  "step": "06"
+}

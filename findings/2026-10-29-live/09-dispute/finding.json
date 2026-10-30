@@ -1,0 +1,49 @@
+{
+  "asserts": "the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; the party's book holds the matching adjudication_received with the same Result bytes as the referee's adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded",
+  "detail": "node stevenmih-1: 0 held Result line(s); node stevenmih-2: 0 held Result line(s); node stevenmih-3: 0 held Result line(s). Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close on Mesh, so none is asserted. Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD).",
+  "finished": "2026-10-30T00:13:13Z",
+  "name": "dispute",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#102",
+      "what": "an adjudication Result on a twin pair, held by a lab node with its adjudication_received",
+      "why": "no lab node's data dir holds a Result (no issued-adjudications.jsonl or received-adjudications.jsonl line): the referee has not run an adjudication end to end on the lab nodes, and this step never seals one on a live node"
+    }
+  ],
+  "pinned": {
+    "capsules": {
+      "ref": "01f0921e19f12f6bf9267a916ed286b938fd9652",
+      "repository": "Mesh-LLM/capsules-plugin"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/ledger/capsules.jsonl",
+      "sha256": "3624cbc0c2922afbeeef10b2fe000879746702b9e2e27db5038951b45ef69408"
+    },
+    {
+      "path": "stevenmih-1/ledger/received-capsules.jsonl",
+      "sha256": "1e1d19aab0293dbc1d29d53d19dd632e167fe786d6228f10007b346f5bd64bc0"
+    },
+    {
+      "path": "stevenmih-2/ledger/capsules.jsonl",
+      "sha256": "007d819c7177b45802f5aacd6d749d74d18e225cc6c6474603a6cae751493840"
+    },
+    {
+      "path": "stevenmih-2/ledger/received-capsules.jsonl",
+      "sha256": "f9af44694a2f5fe6471a5a36fde96588053db5778682dd4ad422d4df09f0026a"
+    },
+    {
+      "path": "stevenmih-3/ledger/capsules.jsonl",
+      "sha256": "9b26db11d65bf1c455064c9db9ee6b897b44d578e754f3a94b7093027ced1b9b"
+    },
+    {
+      "path": "stevenmih-3/ledger/received-capsules.jsonl",
+      "sha256": "4588fcadaacdb83874f72984d8b98d23cf2bfa0b47db9ae14885d61edd0b008b"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T00:13:13Z",
+  "step": "09"
+}

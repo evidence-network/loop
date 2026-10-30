@@ -2,8 +2,8 @@
 """The scrubbed set: what a day of raw reports may show in public, and nothing more.
 
 Usage:
-  scrub_reports.py scrub REPORTS_DIR OUT_DIR [--left DIR] [--set daily|rehearsal]
-  scrub_reports.py check OUT_DIR [--set daily|rehearsal]
+  scrub_reports.py scrub REPORTS_DIR OUT_DIR [--left DIR] [--set daily|rehearsal|ondemand]
+  scrub_reports.py check OUT_DIR [--set daily|rehearsal|ondemand]
 
 The raw reports (reports/daily/<YYYY-MM-DD>/, scripts/report_layout.py) hold
 the bytes each node answered. They stay in the private raw store. `scrub`
@@ -38,7 +38,11 @@ OUT_DIR holds exactly one file per input day.
 With --set rehearsal, the rehearsal set (reports/rehearsal/, a test of the
 reporter, one directory per 10-minute UTC slot) is scrubbed the same way into
 one OUT_DIR/<YYYY-MM-DD>T<HHMM>Z.json per slot: `date` is the slot, and
-absent_days_running counts slots. Standard library only.
+absent_days_running counts slots. With --set ondemand, the on-demand set
+(reports/ondemand/, runs made by hand between dailies, one directory per run)
+is scrubbed the same way into one OUT_DIR/<YYYY-MM-DD>T<HHMMSS>Z.json per run:
+`date` is the run's name, and absent_days_running counts runs, each back to
+the latest earlier one. Standard library only.
 Exit 0 = done / clean, 1 = refused.
 """
 import argparse
@@ -311,8 +315,9 @@ def check_day(name, day, period=layout.Daily):
 
 def check_text(name, text, period=layout.Daily):
     if not day_file(period).match(name):
-        return [f"{name}: not <YYYY-MM-DD>.json" if period is layout.Daily
-                else f"{name}: not a <YYYY-MM-DD>T<HHMM>Z.json 10-minute slot"]
+        return [{"daily": f"{name}: not <YYYY-MM-DD>.json",
+                 "rehearsal": f"{name}: not a <YYYY-MM-DD>T<HHMM>Z.json 10-minute slot",
+                 "ondemand": f"{name}: not a <YYYY-MM-DD>T<HHMMSS>Z.json on-demand run"}[period.set]]
     try:
         day = json.loads(text)
     except ValueError as e:
@@ -354,7 +359,8 @@ def main(argv):
     c.add_argument("out")
     for p in (s, c):
         p.add_argument("--set", choices=sorted(layout.SETS), default="daily",
-                       help="daily (default), or rehearsal: one file per 10-minute slot")
+                       help="daily (default); rehearsal: one file per 10-minute slot; "
+                            "ondemand: one file per run made by hand")
     args = parser.parse_args(argv[1:])
     period = layout.SETS[args.set]
     if args.cmd == "check":
