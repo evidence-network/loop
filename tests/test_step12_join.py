@@ -167,7 +167,7 @@ class DoctorBackendTest(Tmp):
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced, own=None, doctor=None, committed=None, doctor_raw=None, problems=(), me=None, key_id=None):
+    def __init__(self, answers, announced, own=None, doctor=None, committed=None, doctor_raw=None, problems=(), me=None, key_id=None, announced_key=None):
         """`own` is the node_id of the node this console belongs to. Like the real one, the console does
         not answer for its own node: a 502 with the absence text, for the key and for each question."""
         fake = self
@@ -175,7 +175,7 @@ class FakeConsole:
         self.doctor, self.committed = doctor, committed
         self.doctor_raw, self.problems = doctor_raw, list(problems)
         self.doctor_asked, self.fetched = 0, []
-        self.me, self.key_id = me, key_id or LISTED
+        self.me, self.key_id, self.announced_key = me, key_id or LISTED, announced_key
         self.asked = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -216,7 +216,10 @@ class FakeConsole:
                     digest = fake.committed.get(body["peer_id"]) if isinstance(fake.committed, dict) else fake.committed
                     if digest:
                         c["controller_binding"] = {"digest": digest}
-                    return self.reply(200, json.dumps({"commitment": c, "problems": fake.problems}).encode())
+                    out = {"commitment": c, "problems": fake.problems}
+                    if fake.announced_key:
+                        out["announced_key"] = fake.announced_key
+                    return self.reply(200, json.dumps(out).encode())
                 fake.asked.append(body["peer_id"])
                 if fake.own is not None and body["peer_id"] == fake.own:
                     return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
@@ -259,7 +262,7 @@ class ReporterBackendTest(Tmp):
         return json.loads((self.out / "finding.json").read_text())
 
     def run_lab(self, *flags, second=True, doctor=None, committed=None, node_consoles=(), doctor_raw=None, problems=(),
-                 env=None, own_consoles=None, key_id=None):
+                 env=None, own_consoles=None, key_id=None, announced_key=None):
         """Three lab nodes, lab-3 the reporter: --console is lab-3's, the second console lab-1's. Each
         console refuses its own node."""
         pop_dir = Path(self.tmp.name) / "lab"
@@ -267,7 +270,7 @@ class ReporterBackendTest(Tmp):
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
         reporter = FakeConsole(VERIFIED, LISTED, own="3" * 64, doctor=doctor, doctor_raw=doctor_raw,
                                committed=committed, me="3" * 64, key_id=key_id)
-        other = FakeConsole(VERIFIED, LISTED, own="1" * 64, committed=committed, problems=problems, key_id=key_id)
+        other = FakeConsole(VERIFIED, LISTED, own="1" * 64, committed=committed, problems=problems, key_id=key_id, announced_key=announced_key)
         self.consoles = {"reporter": reporter, "second": other}
         argv = ["--population", str(pop_dir), "--out", str(self.out), "--console", reporter.url]
         for flag in flags:
@@ -480,8 +483,9 @@ class ReporterBackendTest(Tmp):
         self.assertIn("not under the listed key", " ".join(i["why"] for i in r["not_checked"]))
 
     def test_an_announced_key_does_not_stand_in_for_the_listed_key(self):
-        r = self.run_lab("self", "second", doctor=("unbound", None), key_id="7" * 64)
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])  # the fake never sets announced_key: matches
+        r = self.run_lab("self", "second", doctor=("unbound", None), key_id="7" * 64, announced_key="matches")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("not under the listed key", " ".join(i["why"] for i in r["not_checked"]))
 
     def test_a_doctor_finding_whose_check_is_not_a_string_is_not_checked(self):
         self.assert_unreadable_doctor({"findings": [{"check": []}]})

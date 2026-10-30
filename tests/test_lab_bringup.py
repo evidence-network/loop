@@ -144,11 +144,23 @@ class DryRunTest(unittest.TestCase):
     def test_all_runs_check_then_tools_then_the_rest(self):
         marks = [("check", "merge-base --is-ancestor"), ("tools", "steps/01-seal.setup.sh"),
                  ("start", " serve --config "), ("exchange", "/v1/chat/completions"),
-                 ("join", "join.sh --name lab-1"), ("entries", "would write nodes/<"),
+                 ("join", "join.sh --name lab-1"), ("bind", "lab/bind.py --console"),
+                 ("entries", "would write nodes/<"),
                  ("loop", "loop.sh --stage 1"), ("pack", "would pack")]
         at = [(self.out.find(text), name) for name, text in marks]
         self.assertTrue(all(i >= 0 for i, _ in at), at)
         self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
+
+    def test_bind_covers_every_node_but_the_reporter_and_keeps_its_key_in_the_lab_dir(self):
+        r = lab_sh("--dry-run", "bind", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        binds = [l for l in r.stdout.splitlines() if "lab/bind.py" in l]
+        self.assertEqual(len(binds), 2)
+        self.assertTrue(all("--console http://127.0.0.1:981" in l for l in binds))
+        self.assertFalse(any("9813" in l for l in binds), binds)  # lab-3 is the reporter
+        self.assertTrue(all(f"{self.lab}/controllers/lab-" in l and l.rstrip().endswith("nostr.key") for l in binds), binds)
+        r = lab_sh("--dry-run", "bind", env={**self.env, "LAB_REBIND": "1"})
+        self.assertEqual(r.stdout.count("--rebind"), 2)
 
     def test_every_node_grants_the_plugin_its_admission_hook(self):
         r = lab_sh("--dry-run", "start", env=self.env)
@@ -817,6 +829,12 @@ class LabelTest(LabFixture):
 
 
 class PackTest(LabFixture):
+    def test_the_controllers_dir_is_never_packed_even_with_a_hex_nostr_key_in_it(self):
+        (self.lab / "controllers" / "lab-1").mkdir(parents=True)
+        (self.lab / "controllers" / "lab-1" / "nostr.key").write_text("ab" * 32 + "\n")
+        files, _ = pack.plan(self.root, self.lab, DAY)
+        self.assertFalse(any("controllers" in a or "nostr" in a for a, _ in files), files)
+
     def setUp(self):
         super().setUp()
         pop_path = self.root / "population/live/population.json"
