@@ -363,7 +363,7 @@ LIVE_NOT_CHECKED = [
      "issue": "evidence-network/loop#81"},
     {"what": "each ledger record's producer signature and capsule_id",
      "why": "the step reads the node's ledger lines as written and verifies neither",
-     "issue": "action-state-group/agent-action-capsule#431"},
+     "issue": "evidence-network/loop#135"},
     {"what": "the routing path enforcing the decision when it chooses a candidate",
      "why": "the routing choice cannot yet require a property of a candidate beyond its identity",
      "issue": "Mesh-LLM/mesh-llm#2061"},
@@ -371,7 +371,7 @@ LIVE_NOT_CHECKED = [
 VERDICTS = ("GO", "NO")
 LIVE_GAPS = " ".join([
     finding.outside("the five base-policy rows sealed with each decision, evaluated right", "evidence-network/loop#81"),
-    finding.outside("each ledger record's producer signature and capsule_id", "action-state-group/agent-action-capsule#431"),
+    finding.outside("each ledger record's producer signature and capsule_id", "evidence-network/loop#135"),
     finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
 ])
 

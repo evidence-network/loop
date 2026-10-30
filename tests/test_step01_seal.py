@@ -4,6 +4,8 @@ The real tools come from steps/01-seal.setup.sh (network, run once). Without the
 the tests that need them SKIP and say so; nothing here passes on a missing tool.
 Fixtures are in tests/fixtures/step01/, made by its make_fixtures.py.
 """
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
@@ -74,10 +76,11 @@ class Step01SealTest(unittest.TestCase):
         self.assertEqual(capsule["effect"]["effect_attestation"], "runtime_claimed")
         self.assertEqual(go_capsule_id(capsule), capsule["capsule_id"])
         self.assertTrue(all(c["ok"] for c in self.checks().values()))
-        # The envelope signature is outside the assertion: a PASS says so in detail, with no not_checked entry.
+        # The envelope signature is verified in Go (cross_language signature): nothing is outside the assertion.
         self.assertEqual(r["not_checked"], [])
-        self.assertIn("Outside this step's assertion: the producer envelope signature is not verified", r["detail"])
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#431"])
+        self.assertEqual(self.checks()["signature"]["state"], "ok")
+        self.assertIn("producer signature authored under", r["detail"])
+        self.assertEqual(finding.gaps(r["detail"]), [])
 
     def test_the_fixture_capsule_verifies(self):
         need(VERIFIER)
@@ -137,12 +140,53 @@ class Step01SealTest(unittest.TestCase):
         self.assertEqual(r["result"], "FAIL")
         self.assertFalse(self.checks()["key"]["ok"])
 
+    def test_an_invalid_signature_fails(self):
+        need(VERIFIER)
+        capsule = json.loads(SEALED.read_text())
+        sig = capsule["signature"]
+        capsule["signature"] = ("0" if sig[0] != "0" else "1") + sig[1:]  # the id excludes the signature
+        r = self.run_sealed(json.dumps(capsule).encode())
+        self.assertEqual(r["result"], "FAIL")
+        self.assertTrue(self.checks()["class1"]["ok"])
+        self.assertFalse(self.checks()["signature"]["ok"])
+
+    def test_an_unsigned_record_is_not_checked_not_pass(self):
+        need(VERIFIER)
+        capsule = json.loads(SEALED.read_text())
+        del capsule["signature"], capsule["key_id"]  # the id excludes both
+        r = self.run_sealed(json.dumps(capsule).encode())
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertEqual(self.checks()["signature"]["state"], "unclaimed")
+        self.assertEqual([n["what"] for n in r["not_checked"]],
+                         ["the producer envelope signature, verified in a second language"])
+
+    def test_a_live_node_is_held_to_its_published_key(self):
+        need(VERIFIER)
+        loader = importlib.machinery.SourceFileLoader("step01_seal", str(STEP))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step01_seal", loader))
+        loader.exec_module(mod)
+        key_id = json.loads(SEALED.read_text())["key_id"]
+        data = SEALED.read_bytes()
+        nodes = Path(self.tmp.name) / "nodes"
+        nodes.mkdir()
+        cases = {  # listing -> (ok, state)
+            None: (True, "unlisted"),
+            key_id: (True, "ok"),
+            "f" * 64: (False, "bad"),
+        }
+        for listing, (ok, state) in cases.items():
+            (nodes / "n1.json").unlink(missing_ok=True)
+            if listing:
+                (nodes / "n1.json").write_text(json.dumps({"key_id": listing}))
+            got = mod.signature_check(data, VERIFIER, key_id, mod.listed_key(nodes, "n1"), listing_expected=True)
+            self.assertEqual((got["ok"], got["state"]), (ok, state), got)
+
     def test_missing_tools_read_not_checked_never_pass(self):
         env = dict(os.environ, LOOP_TOOLS=str(Path(self.tmp.name) / "no-tools"))
         r = self.run_step(env=env)
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertEqual(sorted(n["what"] for n in r["not_checked"]),
-                         ["aac-go", "capsule-emit", "the producer envelope signature, verified in a second language"])
+                         ["aac-go", "capsule-emit"])
 
 
 if __name__ == "__main__":

@@ -179,9 +179,24 @@ class Step01LiveTest(LiveCase):
             checks = json.loads((self.findings / "01-seal" / name / "checks.json").read_text())
             self.assertTrue(checks["checks"]["key"]["ok"])
             self.assertIn(capsule["key_id"], checks["checks"]["key"]["detail"])
-        # A PASS covers its assertion: the signature, outside it, is said in detail, not as not_checked.
+        # The producer signature is verified in Go, so a PASS leaves nothing outside its assertion.
         self.assertEqual(r["not_checked"], [])
-        self.assertIn("Outside this step's assertion: the producer envelope signature", r["detail"])
+        self.assertIn("producer signature authored under", r["detail"])
+        self.assertTrue(all(json.loads((self.findings / "01-seal" / n / "checks.json").read_text())
+                            ["checks"]["signature"]["state"] == "ok" for n in NODE_KEYS))
+
+    def test_a_node_with_no_published_listing_is_not_checked(self):
+        pop = json.loads((self.pop / "population.json").read_text())
+        for i, n in enumerate(pop["nodes"]):
+            n["node_id"] = f"{i:064x}"
+        (self.pop / "population.json").write_text(json.dumps(pop))
+        nodes = self.tmp / "no-nodes"
+        nodes.mkdir()
+        r = self.step("01-seal", self.pop, dict(self.env, LOOP_NODES_DIR=str(nodes)))
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertEqual({n["what"] for n in r["not_checked"]},
+                         {"the producer envelope signature, verified in a second language"})
+        self.assertEqual(len(r["not_checked"]), len(NODE_KEYS))
 
     def test_a_node_with_another_nodes_public_key_fails(self):
         keys = self.lab_dir / "nodes" / "lab-2" / ".local" / "share" / "capsules" / "keys"
