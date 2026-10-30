@@ -956,7 +956,9 @@ class WitnessListingTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
         self.listing = self.tmp / "witnesses.json"
-        shutil.copy(ROOT / "lab" / "witness" / "witnesses.json", self.listing)
+        # An empty listing of the committed shape: committing the lab's real entry must not change these tests.
+        self.listing.write_text(json.dumps({**json.loads((ROOT / "lab" / "witness" / "witnesses.json").read_text()),
+                                            "witnesses": []}))
         self.lab = self.tmp / "lab"
         keys = self.lab / "nodes" / "lab-1" / ".local" / "share" / "capsules" / "keys"
         keys.mkdir(parents=True)

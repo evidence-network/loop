@@ -438,7 +438,7 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
     r = cap_run("verify", "verify", "--bundle", out / "bundle.json", save="verify.json")
     checks = live_checks(r.returncode, out, capsule_id, appended, node_pub, book_id, book_key)
     checks["node_key"] = {"ok": node_pub in bound, "detail": f"node key {node_pub}; the book was bound to {bound}"}
-    proof = LIVE_PROOF + ["checks.json"]
+    proof = LIVE_PROOF + ["checks.json"] + (["verify.stderr.txt"] if r.returncode else [])
     gap = None
     if not profile["endpoint"]:
         gap = LIVE_WITNESS_NOT_CHECKED
@@ -454,7 +454,8 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         if not state.get("receipt"):
             reason = (published.stderr.strip().splitlines() or [f"state {state.get('state')}"])[-1]
             gap = {"what": f"a witness receipt on node {name}'s checkpoint, and its verification",
-                   "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason}",
+                   "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason} "
+                          "(capsulectl hides why: the witness did not answer, or the book rejected the receipt)",
                    "issue": "evidence-network/loop: the lab test witness gave no receipt (lab/lab.sh witness)"}
         else:
             # Re-verified from the receipt the book stored, offline, by the pinned capsulectl.

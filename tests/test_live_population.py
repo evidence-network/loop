@@ -5,8 +5,9 @@ lab run, kept as tests/fixtures/live/null) each step writes NOT_CHECKED with a `
 and `loop.sh --stage 1 --population live` exits 0. With a fixture LAB_DIR (the
 TEST keys of tests/fixtures/step02 as each node's plugin keys, and a book join.sh
 makes here with them), step 01 seals with each node's key and PASSes, and step 02
-appends to each node's book and gives the expected NOT_CHECKED (the witness part
-only). The tests that need a real tool SKIP and say so when it is missing.
+appends to each node's book and gives NOT_CHECKED for the witness part when the
+book has no witness; with the lab test witness (Step02LiveWitnessTest) it PASSes
+on a listed key's receipt and FAILs on an unlisted, node-owned or too-early one. The tests that need a real tool SKIP and say so when it is missing.
 """
 import base64
 import importlib.machinery
@@ -429,6 +430,18 @@ class Step02LiveWitnessTest(JoinedLab):
             self.assertEqual({k for k in checks if k.startswith("witness")},
                              {"witness_listed", "witness_not_node", "witness_not_before", "witness_receipt"})
             self.assertIn(f"{name}/witness-status.json", [p["path"] for p in r["proof"]])
+
+    def test_a_receipt_the_book_rejects_reads_not_checked_saying_it_may_be_that(self):
+        # The witness signs with one key while the profile pins another: the book's verifier rejects the receipt.
+        # capsulectl reports that as state "failed" with its details suppressed, the same as an unreachable witness,
+        # so the step can only say no receipt came back, and that a rejected one looks the same.
+        pem, _ = self.key("witness")
+        _, pinned = self.key("pinned")
+        self.list_keys((pinned, "2026-01-01T00:00:00Z"))
+        r = self.witnessed(pem, pinned)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        gap = next(n for n in r["not_checked"] if n["what"].startswith("a witness receipt on node lab-1's"))
+        self.assertIn("or the book rejected the receipt", gap["why"])
 
     def test_a_receipt_under_a_key_the_listing_does_not_name_fails(self):
         pem, kid = self.key("witness")
