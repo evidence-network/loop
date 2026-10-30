@@ -525,7 +525,7 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertTrue({"action-state-group/agent-action-capsule#432", "no open issue yet (to be filed)"} <= issues,
+        self.assertTrue({"action-state-group/agent-action-capsule#432", "evidence-network/loop#161"} <= issues,
                         issues)
         # The plugin's join and doctor --probe are no longer loop-wide gaps: per node, and here no console is held.
         self.assertNotIn("one command that binds the key, creates the book and publishes the commitment on a Mesh "
