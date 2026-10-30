@@ -1,4 +1,10 @@
 {
   "about": "The lab's test witness: one key the lab host holds for its own nodes' books, apart from every node it witnesses. One organization's test witness, not a witness for the network. lab/lab.sh witness adds each key as its own entry with the time its receipts count from (not_before); entries are only added, so a rotated-out key's receipts still verify. Step 02 picks the entry by the receipt's key id.",
-  "witnesses": []
+  "witnesses": [
+    {
+      "name": "lab-test-witness",
+      "key_id": "81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d",
+      "not_before": "2026-10-30T19:35:13Z"
+    }
+  ]
 }
