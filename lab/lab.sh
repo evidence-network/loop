@@ -43,7 +43,7 @@
 #   MESH_LLM_RUNTIME    its native runtimes directory (optional)
 #   CAPSULES_BIN        the capsules plugin binary
 #   CAPSULES_SRC        the plugin source tree that binary was built from (check)
-#   LAB_MODEL           a GGUF model file for lab-1 to serve (start)
+#   LAB_MODEL           a GGUF model file for lab-1 to serve (start); with LAB_TWINS the other serving nodes too
 #   LAB_MODEL_NAME      the name it is served under (default lab-model)
 #   LAB_OPERATOR        the GitHub handle of whoever runs the nodes (entries)
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
@@ -85,6 +85,18 @@ if [ "$TWINS" = 1 ]; then
   for n in "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER"; do
     [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_TWINS names $n, not a lab node"
   done
+  # lab-1 always starts from --gguf, and mesh-llm skips [[models]] when the command line names a model, so the
+  # fault would never be applied while twin-fault.json said it was.
+  [ "$TWIN_B" != lab-1 ] || die "LAB_TWIN_B cannot be lab-1: it loads its model from --gguf, which skips the injected config"
+  # These go into config.toml inside double quotes; refuse what would need escaping.
+  case "$FAULT_PROMPT${LAB_MODEL:-}" in
+    *\"* | *\\* | *$'\n'*) die "LAB_FAULT_SYSTEM_PROMPT and LAB_MODEL must not contain a double quote, a backslash or a newline" ;;
+  esac
+fi
+if [ "$TWINS" = 1 ] && [ -n "${LAB_MODEL:-}" ]; then
+  # mesh-llm takes hardware.model_path only as an absolute path to a regular file (not a symlink).
+  [ "${LAB_MODEL#/}" != "$LAB_MODEL" ] && [ ! -L "$LAB_MODEL" ] || [ "$DRY" = 1 ] \
+    || die "LAB_MODEL must be an absolute path to a regular file, not a symlink, for twin B's model_path"
 fi
 serves_model() { [ "$1" = lab-1 ] || { [ "$TWINS" = 1 ] && { [ "$1" = "$TWIN_A" ] || [ "$1" = "$TWIN_B" ] || [ "$1" = "$REFEREE" ]; }; }; }
 [ -n "${LAB_DIR:-}" ] || die "set LAB_DIR (see LAB-BRINGUP.md)"
@@ -315,7 +327,10 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   # The plugin reads share_record_at_completion from this env var before its config
   # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
   shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
-  [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on)
+  # The referee's re-answer goes to the plugin's OpenAI endpoint, 127.0.0.1:9337 unless told (referee/live.rs): the
+  # requester's own API, never whatever else listens on that port.
+  [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on
+    CAPSULES_OPENAI_API_URL="http://127.0.0.1:$(api_port "$name")")
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
     --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")
   local body
@@ -340,6 +355,17 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
       printf '\n[[models]]\nmodel = "%s"\n\n[models.hardware]\nmodel_path = "%s"\n' "$MODEL_NAME" "$LAB_MODEL"
       printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
     fi)
+  if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
+    # The label comes from the config this node was started with, not from whatever `twins` is run with.
+    python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
+import json, sys
+path, node, prompt = sys.argv[1:]
+open(path, "w").write(json.dumps({"injected_difference": {
+    "node": node, "kind": "system_prompt", "value": prompt,
+    "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
+            "the model hash and weights digest are unchanged"}}, indent=2, sort_keys=True) + "\n")
+PY
+  fi
   if [ "$DRY" = 1 ]; then
     echo "  > $home/config.toml:"; sed 's/^/    /' <<< "$config"
     echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
@@ -352,7 +378,11 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
 
 start_node() { # NAME EXTRA_ARGS...
   local name=$1
-  if [ "$DRY" = 0 ] && alive "$name"; then echo "$name already running (pid $(pid_of "$name"))"; return 0; fi
+  if [ "$DRY" = 0 ] && alive "$name"; then
+    # The roles live in each node's config and launcher, read at start: a node started before LAB_TWINS=1 has none.
+    [ "$TWINS" = 1 ] && die "$name is running with its earlier setup: lab.sh stop, then start with LAB_TWINS=1"
+    echo "$name already running (pid $(pid_of "$name"))"; return 0
+  fi
   local p
   for p in "$(api_port "$name")" "$(console_port "$name")" "$(bind_port "$name")"; do
     [ "$DRY" = 1 ] || port_free "$p" || die "port $p is in use: pick another LAB_PORT_BASE"
@@ -515,7 +545,7 @@ cmd_entries() {
   need LAB_OPERATOR
   local dry=(); [ "$DRY" = 1 ] && dry=(--dry-run)
   python3 -B "$ROOT/lab/pack.py" entries --lab-dir "$LAB_DIR" --operator "$LAB_OPERATOR" \
-    --reporter "$REPORTER" "${dry[@]+"${dry[@]}"}"
+    --reporter "$REPORTER" $([ "$TWINS" = 1 ] && echo --add-host lab-4) "${dry[@]+"${dry[@]}"}"
   run python3 -B "$ROOT/scripts/check_nodes.py" "$ROOT/nodes"
 }
 
@@ -576,38 +606,51 @@ cmd_settle() {
 # prompt; the referee re-answers and the verdict names the twin it disagrees with. Pays nothing.
 cmd_twins() {
   [ "$TWINS" = 1 ] || die "twins needs LAB_TWINS=1"
-  local bracket="lab-twins-$TODAY-1" body ref a b
+  local bracket body ref a b led
+  bracket="lab-twins-$(date -u +%Y%m%dT%H%M%SZ)"   # one pair per run: a bracket with more than two exchanges is refused
+  led=$(data_of "$REQUESTER")/ledger
   body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Name one colour."}],"max_tokens":16,"temperature":0}' "$MODEL_NAME")
-  ref=$(node_id "$REFEREE") a=$(node_id "$TWIN_A") b=$(node_id "$TWIN_B")
+  ref=$(node_id "$REFEREE") || die "the referee $REFEREE has no node id yet"
+  a=$(node_id "$TWIN_A") || die "twin A $TWIN_A has no node id yet"
+  b=$(node_id "$TWIN_B") || die "twin B $TWIN_B has no node id yet"
+  [ "$DRY" = 1 ] || [ -s "$LAB_DIR/twin-fault.json" ] || die "no $LAB_DIR/twin-fault.json: start the lab with LAB_TWINS=1 first"
   run mkdir -p "$LAB_DIR/twins"
-  local who target extra
-  for who in referee twin-a twin-b; do
-    case $who in
-      referee) target=$ref extra=() ;;
-      twin-a) target=$a extra=(-H "x-mesh-twin-bracket: $bracket") ;;
-      twin-b) target=$b extra=(-H "x-mesh-twin-bracket: $bracket") ;;
-    esac
-    run curl -fsS --max-time 180 -o "$LAB_DIR/twins/$who.json" -D "$LAB_DIR/twins/$who.headers.txt" \
-      -H 'content-type: application/json' -H "x-mesh-target: $target" ${extra[@]+"${extra[@]}"} -d "$body" \
-      "http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
-  done
+  local api="http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
+  # 1. The requester asks the referee once. The plugin takes a referee as eligible only when it holds a half from it
+  #    (referee/live.rs candidates), and that push arrives after the exchange completes: wait for it.
+  run curl -fsS --max-time 180 -o "$LAB_DIR/twins/referee.json" -H 'content-type: application/json' \
+    -H "x-mesh-target: $ref" -d "$body" "$api"
+  wait_for 180 "the requester holds a record pushed by the referee" grep -q "$ref" "$led/received-capsules.jsonl"
+  # 2. The same temperature-0 request to both twins under one bracket (the host never pairs on its own).
+  run curl -fsS --max-time 180 -o "$LAB_DIR/twins/twin-a.json" -H 'content-type: application/json' \
+    -H "x-mesh-target: $a" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
+  run curl -fsS --max-time 180 -o "$LAB_DIR/twins/twin-b.json" -H 'content-type: application/json' \
+    -H "x-mesh-target: $b" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
+  # 3. Stock mesh-llm passes plugins no exchange text, so the client that marked the pair supplies it (INSTALL.md,
+  #    "Sharing policy"): the request and both answers, each checked against what the requester's own records sealed.
+  wait_for 120 "the requester sealed both twin exchanges" test "$([ -s "$led/capsules.jsonl" ] && grep -c "$bracket" "$led/capsules.jsonl" || echo 0)" -ge 2
   if [ "$DRY" = 1 ]; then
-    echo "  > $LAB_DIR/twin-fault.json (the injected difference: system_prompt on $TWIN_B)"
-    echo "  (wait up to 300s for $(data_of "$REQUESTER")/ledger/received-adjudications.jsonl)"
+    say curl -fsS -X POST "$(console "$REQUESTER")/api/plugins/capsules/tools/referee_supply_twin_texts" \
+      "(twin_bracket_id $bracket, request_body, response_bodies twin-a.json twin-b.json)"
+    echo "  > $LAB_DIR/twin-fault.json (adds the bracket; the injected difference was written when twin B started)"
+    echo "  (wait up to 300s for the requester's received-adjudications.jsonl to hold a Result for $bracket)"
     return 0
   fi
-  python3 -B - "$LAB_DIR/twin-fault.json" "$TWIN_B" "$TWIN_A" "$REFEREE" "$REQUESTER" "$FAULT_PROMPT" "$bracket" << 'PY'
-import datetime as dt, json, sys
-path, twin_b, twin_a, referee, requester, prompt, bracket = sys.argv[1:]
-open(path, "w").write(json.dumps({
-    "injected_difference": {"node": twin_b, "kind": "system_prompt", "value": prompt,
-                            "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
-                                    "the model hash and weights digest are unchanged"},
-    "roles": {"requester": requester, "twin_a": twin_a, "twin_b": twin_b, "referee": referee},
-    "twin_bracket_id": bracket,
-    "written_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, indent=2, sort_keys=True) + "\n")
+  python3 -B - "$LAB_DIR" "$body" "$bracket" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$(console "$REQUESTER")" << 'PY'
+import json, sys, urllib.request
+lab, body, bracket, twin_a, twin_b, referee, requester, console = sys.argv[1:]
+args = {"twin_bracket_id": bracket, "request_body": json.loads(body),
+        "response_bodies": [json.load(open(f"{lab}/twins/{n}.json")) for n in ("twin-a", "twin-b")]}
+req = urllib.request.Request(f"{console}/api/plugins/capsules/tools/referee_supply_twin_texts",
+                             json.dumps(args).encode(), {"content-type": "application/json"})
+answer = urllib.request.urlopen(req, timeout=300).read().decode()
+print("referee_supply_twin_texts:", answer)
+fault = json.load(open(f"{lab}/twin-fault.json"))
+fault.update(roles={"requester": requester, "twin_a": twin_a, "twin_b": twin_b, "referee": referee},
+             twin_bracket_id=bracket, supply_answer=answer)
+open(f"{lab}/twin-fault.json", "w").write(json.dumps(fault, indent=2, sort_keys=True) + "\n")
 PY
-  wait_for 300 "the requester holds the referee's Result" test -s "$(data_of "$REQUESTER")/ledger/received-adjudications.jsonl"
+  wait_for 300 "the requester holds the referee's Result for $bracket" grep -q "$bracket" "$led/received-adjudications.jsonl"
 }
 
 cmd_dispute() {

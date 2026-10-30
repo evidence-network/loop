@@ -608,7 +608,9 @@ def injected_difference(out):
     """The lab-only fault `lab.sh twins` wrote ($LAB_DIR/twin-fault.json), copied into the proof, as a sentence
     that labels it plainly; empty when the lab ran no such pair. The Result is then real (sealed by the
     plugin on lab nodes) but its disagreement is injected, not organic twin traffic."""
-    src = Path(os.environ.get("LAB_DIR") or "") / "twin-fault.json"
+    if not os.environ.get("LAB_DIR"):
+        return ""
+    src = Path(os.environ["LAB_DIR"]) / "twin-fault.json"
     try:
         doc = json.loads(src.read_text(encoding="utf-8"))
         inj = doc["injected_difference"]

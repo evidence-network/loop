@@ -173,6 +173,9 @@ class DryRunTest(unittest.TestCase):
         on = [l for l in r.stdout.splitlines() if "CAPSULES_ADJUDICATE_DIFFERING_TWINS=on" in l]
         self.assertEqual(len(on), 1)
         self.assertIn(f"HOME={self.lab}/nodes/lab-3 ", on[0])
+        # The referee's re-answer goes to the requester's own API, not the plugin's 9337 default.
+        self.assertIn("CAPSULES_OPENAI_API_URL=http://127.0.0.1:9803", on[0])
+        self.assertEqual(r.stdout.count("CAPSULES_OPENAI_API_URL"), 1)
         # The fault is on the faulty twin's config alone, and is a system prompt, not a sampler change.
         self.assertEqual(r.stdout.count("[models.request_defaults]"), 1)
         self.assertEqual(r.stdout.count('system_prompt = "Answer in French."'), 1)
@@ -184,12 +187,21 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("four distinct nodes", r.stderr)
 
+    def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
+        for env, text in (({"LAB_TWIN_B": "lab-1", "LAB_TWIN_A": "lab-4"}, "cannot be lab-1"),
+                          ({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote")):
+            r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", **env})
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn(text, r.stderr)
+
     def test_the_twins_command_asks_the_referee_then_sends_one_bracket_to_both_twins(self):
         r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.count("x-mesh-twin-bracket:"), 2)
         self.assertEqual(r.stdout.count("http://127.0.0.1:9803/v1/chat/completions"), 3)
         self.assertIn("twin-fault.json", r.stdout)
+        # Stock mesh-llm passes plugins no exchange text: the client supplies the pair's request and answers.
+        self.assertIn("referee_supply_twin_texts", r.stdout)
 
     def test_dispute_runs_step_09_read_only_on_the_live_population(self):
         r = lab_sh("--dry-run", "dispute", env=self.env)
@@ -512,6 +524,13 @@ class EntriesTest(LabFixture):
         subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(self.tmp / "k.pem")], check=True)
         subprocess.run(["openssl", "pkey", "-in", str(self.tmp / "k.pem"), "-pubout", "-out",
                         str(d / "node-key.pub.pem")], check=True)
+
+    def test_add_host_puts_lab_4_in_the_population_and_needs_its_key(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("lab-operator-4", errs[0])  # added as the others are named, then its missing key is reported
+        self.assertEqual(len(json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]), 3)
 
     def test_writes_entries_that_pass_check_nodes(self):
         self.assertEqual(self.entries(), [])

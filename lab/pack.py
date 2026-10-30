@@ -101,7 +101,7 @@ def host_name(node):
     return m.group(1) if m else node["name"]
 
 
-def entries(root, lab_dir, operator, reporter, dry_run=False):
+def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     """Write (or print) the entries. Returns a list of errors; empty means done."""
     build_path = Path(lab_dir) / "build.json"
     pop_path = root / "population" / "live" / "population.json"
@@ -125,6 +125,10 @@ def entries(root, lab_dir, operator, reporter, dry_run=False):
         return errs
     host_build, plugin_version = build_strings(build)
     pop = load(pop_path)
+    # A lab host directory the population does not list yet (lab-4 with LAB_TWINS=1) joins it, named as the others are.
+    for host in add_hosts:
+        if not any(host_name(n) == host for n in pop["nodes"]):
+            pop["nodes"].append({"name": f"{operator}-{host.rsplit('-', 1)[-1]}", "host": "lab"})
     writes = []
     reporter_identity = None
     for node in pop["nodes"]:
@@ -269,6 +273,7 @@ def main(argv=None):
     e = sub.add_parser("entries")
     e.add_argument("--operator", required=True)
     e.add_argument("--reporter", default="lab-3")
+    e.add_argument("--add-host", action="append", default=[], help="a lab host directory to add to the population")
     p = sub.add_parser("pack")
     p.add_argument("--date", required=True)
     for s in (e, p):
@@ -285,7 +290,7 @@ def main(argv=None):
         record(a.lab_dir, a.section, outcome)
         return 0
     if a.cmd == "entries":
-        errs = entries(a.root, a.lab_dir, a.operator, a.reporter, a.dry_run)
+        errs = entries(a.root, a.lab_dir, a.operator, a.reporter, a.dry_run, a.add_host)
     else:
         errs = pack(a.root, a.lab_dir, a.date, a.dry_run)
     for err in errs:
