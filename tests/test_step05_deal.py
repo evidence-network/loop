@@ -664,11 +664,21 @@ class Step05DealLiveTest(unittest.TestCase):
         records = self.lines()
         for r in records:
             if "counterparty_inclusion" in (r["model_attestation"].get("compute_attestation") or {}):
-                r["references"][0]["digest"] = "ff" * 32
+                r["action_id"] += "-altered"
         self.write_lines(records)
         f = self.run_live()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("held-1 inclusion_cited", f["detail"])
+        self.assertIn("recomputed", f["detail"])
+
+    def test_live_a_driver_that_prints_no_checkpoint_digest_stops_the_step(self):
+        old = self.tmp.name + "/old-driver"
+        Path(old).write_text("#!/bin/sh\ncase $1 in held) echo '{\"ok\": true, \"detail\": \"x\"}';; esac\n")
+        os.chmod(old, 0o755)
+        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
+                                                  LOOP_STEP05_DEAL_BIN=old))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("steps/05-deal.setup.sh", r.stderr)
 
     def test_live_an_unknown_role_is_not_the_opposite_of_served(self):
         def role(body):

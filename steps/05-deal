@@ -655,6 +655,9 @@ def live_node(bin_, name, data_dir, out, work):
             r = run(bin_, "held", "--record-id", cid or "", "--key-id", capsule.get("key_id") or "",
                     "--checkpoint", work / f"{stem}-cp.json", "--inclusion", work / f"{stem}-proof.json")
             v = parsed(r.stdout) or {"ok": False, "detail": r.stderr.strip()}
+            if r.returncode in (0, 1) and "checkpoint_digest" not in v:
+                raise RuntimeError("the installed step 05 driver predates the checkpoint_digest it prints; "
+                                   "run steps/05-deal.setup.sh")
             (out / f"{stem}-inclusion.json").write_text(json.dumps(inc, indent=2, sort_keys=True) + "\n")
             proof.append(f"{stem}-inclusion.json")
             c["pushed_under_checkpoint"] = {"ok": r.returncode == 0 and v.get("ok") is True, "detail": v.get("detail")}
