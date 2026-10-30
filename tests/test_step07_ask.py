@@ -677,17 +677,70 @@ class ReporterBackendTest(Tmp):
         self.assertIn("the served exchange records could not be read from the answer",
                       [i["why"] for i in r["not_checked"]])
 
+    def test_an_exchange_answer_whose_records_fail_the_citation_check_is_not_counted_as_answered(self):
+        asker, extra = self.exchange_dirs()
+        r = self.run_live({"checkpoints": "absence", "history_card": "absence", "exchange": "exchange_empty"},
+                          ledger=asker, node_extra=extra)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
+
+    def test_an_unsatisfiable_coverage_refusal_of_the_exchange_ask_is_checked_for_its_key(self):
+        asker, extra = self.exchange_dirs()
+        r = self.run_live({**VERIFIED, "exchange": "no_checkpoint_yet"}, ledger=asker, node_extra=extra)
+        self.assertIn(step.EXCHANGE_ISSUE, self.issues(r))
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+        asker, extra = self.exchange_dirs()
+        fail, _ = step.judge_exchange_line("no_checkpoint_yet reason=coverage_unsatisfiable key=" + "3" * 64
+                                           + " listed_key=differs", {})
+        self.assertIn("not the listed key", fail)
+
+    def test_malformed_ledger_records_leave_the_exchange_ask_not_checked_not_fatal(self):
+        asker, extra = self.exchange_dirs()
+        node = Path(extra["data_dir"]) / "ledger"
+        with (node / "capsules.jsonl").open("a") as f:
+            f.write('{"capsule_id": [], "references": 1}\n{"references": [1, {"digest": []}]}\n')
+        with (asker / "ledger" / "capsules.jsonl").open("a") as f:
+            f.write('{"capsule_id": []}\n')
+        half, why = step.exchange_subject(extra, asker)
+        self.assertEqual(half, self.HALF, why)
+        (node / "capsules.jsonl").write_text('{"references": 1, "capsule_id": {}}\n')
+        self.assertEqual(step.exchange_subject(extra, asker)[0], None)
+
+    def test_served_records_that_are_not_objects_fail_not_crash(self):
+        path = Path(self.tmp.name) / "resp.json"
+        artifact = base64.urlsafe_b64encode(json.dumps({"records": [{"body": b"[1]".hex()}]}).encode()).decode()
+        path.write_text(json.dumps({"answer": {"artifact": artifact}}))
+        errs, notes = step.exchange_records_cite(path, self.HALF)
+        self.assertEqual((len(errs), notes), (1, []))
+
+    def test_the_exchange_ask_from_the_self_node_reads_the_second_data_dir_and_leaves_no_question_registered(self):
+        asker, extra = self.exchange_dirs()
+        other = Path(self.tmp.name) / "other"
+        other.mkdir()
+        console = FakeConsole({**VERIFIED, "exchange": "exchange_verified"}, LISTED, asker)
+        try:
+            r = self.run_live(VERIFIED, ledger=other, data_dir_flag=False, node_extra=extra,
+                              flags=("--self-node", "lab-1", "--second-console", console.url,
+                                     "--second-data-dir", str(asker)))
+        finally:
+            console.close()
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertEqual(sorted(step.daily_report.QUESTIONS), ["checkpoints", "history_card"])
+        self.assertNotIn("exchange", step.daily_report.QUESTION_NAMES)
+
     def test_a_withholding_refusal_of_the_exchange_ask_is_a_fail(self):
         r = self.run_exchange("refusal_withheld", sealed="refusal_match")
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("exchange answer is refused (no_such_subject)", r["detail"])
 
     def test_a_policy_declined_refusal_of_the_exchange_ask_is_not_checked(self):
-        r = self.run_exchange("refusal", sealed="refusal_not_checked")
+        asker, extra = self.exchange_dirs()
+        r = self.run_live({"checkpoints": "absence", "history_card": "absence", "exchange": "refusal"},
+                          ledger=asker, node_extra=extra, sealed={"exchange": "refusal_not_checked"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn(step.REFUSAL_ISSUE, self.issues(r))
         # an unjudged refusal is not an answer
-        self.assertNotEqual(json.loads((self.out / "first-answered.json").read_text())["ask"], "lab-1 exchange")
+        self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
 
     def test_an_exchange_refusal_signed_under_another_key_is_a_fail(self):
         r = self.run_live({**VERIFIED, "exchange": "refusal"}, announced="3" * 64, **dict(

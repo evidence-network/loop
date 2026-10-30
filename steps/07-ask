@@ -46,13 +46,13 @@ it cites. The judge checks, on those bytes:
   - an absence's window opens at the request record and closes no earlier
     than the deadline, and the carrier delivered no reply by the deadline; a
     sent request with no recorded outcome is a failure.
-    Not judged: a refusal of a request from a real counterparty (the deal half
-    of step 05 is not the exchange subject yet); the rehearsal's exchange ask
-    is about the asker's own first record, so only a stranger-safe refusal is
-    checked.
+    Not judged here: a refusal of a request from a real counterparty (the
+    rehearsal's exchange ask is about the asker's own first record, so only a
+    stranger-safe refusal is checked); the `reporter` backend judges it, on a
+    step 05 half.
 
-`reporter` (Mesh plugin nodes): asks each node checkpoints and history_card/1
-through the daily reporter's ask (scripts/daily_report.py), judged as step 12
+`reporter` (Mesh plugin nodes): asks each node checkpoints, history_card/1 and an
+exchange request (below) through the daily reporter's ask (scripts/daily_report.py), judged as step 12
 judges it (scripts and steps/12-join reused: the answer verifies under the
 key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
@@ -725,20 +725,31 @@ MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENC
 OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
 
 
-def ask_records(ledger):
-    """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
-    ledger cannot be read."""
+def ledger_lines(path):
     try:
-        text = Path(ledger).joinpath("capsules.jsonl").read_text(encoding="utf-8")
+        text = Path(path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    records = []
+    out = []
     for line in text.splitlines():
         try:
             rec = json.loads(line)
         except ValueError:
             continue
-        att = rec.get("model_attestation") if isinstance(rec, dict) else None
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out
+
+
+def ask_records(ledger):
+    """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
+    ledger cannot be read."""
+    recs = ledger_lines(Path(ledger) / "capsules.jsonl")
+    if recs is None:
+        return None
+    records = []
+    for rec in recs:
+        att = rec.get("model_attestation")
         comp = att.get("compute_attestation") if isinstance(att, dict) else None
         header = comp.get(BOOK_BLOCK) if isinstance(comp, dict) else None
         if isinstance(header, dict) and isinstance(rec.get("capsule_id"), str):
@@ -871,26 +882,6 @@ EXCHANGE_GAP = ("the asker's ledger and the asked node's data_dir (ledger/receiv
                 "ledger/capsules.jsonl) must be readable to name a half the asked node holds from the asker")
 
 
-def ledger_lines(path):
-    try:
-        text = Path(path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    out = []
-    for line in text.splitlines():
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(rec, dict):
-            out.append(rec)
-    return out
-
-
-def state_of(line):
-    return line.split(" ", 1)[0]
-
-
 def exchange_subject(node, asker_data_dir):
     """(half id, None) or (None, why not): the newest half the asked node holds that the asker's own chain also
     holds (the asker sent it) and that the asked node's chain cites as `counterparty_half`, so the asked node's
@@ -904,9 +895,9 @@ def exchange_subject(node, asker_data_dir):
     chain = ledger_lines(held / "ledger" / "capsules.jsonl")
     if sent is None or got is None or chain is None:
         return None, EXCHANGE_GAP
-    mine = {r.get("capsule_id") for r in sent}
-    cited = {ref.get("digest") for r in chain for ref in r.get("references") or []
-             if isinstance(ref, dict) and ref.get("citation_purpose") == COUNTERPARTY_HALF}
+    mine = {r["capsule_id"] for r in sent if isinstance(r.get("capsule_id"), str)}
+    cited = {ref.get("digest") for r in chain if isinstance(r.get("references"), list)
+             for ref in r["references"] if isinstance(ref, dict) and ref.get("citation_purpose") == COUNTERPARTY_HALF}
     for r in reversed(got):
         cid = r.get("capsule_id")
         if isinstance(cid, str) and cid in mine and cid in cited:
@@ -949,7 +940,7 @@ def exchange_records_cite(response, half):
         return [], ["the served exchange records could not be read from the answer"]
     if not served:
         return ["the exchange answer serves no record, but the asked node cites the half"], []
-    bad = [r for r in served if not any(isinstance(x, dict) and x.get("citation_purpose") == COUNTERPARTY_HALF
+    bad = [r for r in served if not isinstance(r, dict) or not any(isinstance(x, dict) and x.get("citation_purpose") == COUNTERPARTY_HALF
                                         and x.get("digest") == half for x in r.get("references") or [])]
     return ([f"{len(bad)} of {len(served)} served records do not cite the asked half as a counterparty half"]
             if bad else []), []
@@ -959,12 +950,15 @@ def judge_exchange_line(line, entry):
     """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
     holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
     (the policy answers it), an ambiguous one is not checked, a request-blaming one is fine."""
-    if line.split(" ", 1)[0] != "refusal":
+    if line.split(" ", 1)[0] not in ("refusal", "no_checkpoint_yet"):  # coverage_unsatisfiable reads as the latter
         return step12.judge_reporter_line(EXCHANGE, line, entry)
     if "listed_key=match" not in line.split():
         return f"the exchange refusal is signed under a key that is not the listed key: {line}", None
     reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
     verdict = refusal_verdict(reason)
+    if verdict == "ok" and line.startswith("no_checkpoint_yet"):  # the request names a pin the node may not have cut
+        return None, {"what": "the exchange ask", "why": f"the node refused it as unsatisfiable coverage: {line}",
+                      "issue": EXCHANGE_ISSUE}
     if verdict == "fail":
         return (f"the exchange answer is refused ({reason}), but the asker holds a half the node cites as a "
                 f"counterparty half: {line}"), None
@@ -1046,8 +1040,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                     qname = daily_report.QUESTION_NAMES[stem]
                     fail, nc2 = (judge_exchange_line(line, entry) if stem == EXCHANGE
                                  else judge_live_line(stem, line, entry))
-                    if stem == EXCHANGE and not fail and state_of(line) == "verified":
+                    cited_ok = True
+                    if stem == EXCHANGE and not fail and line.split(" ", 1)[0] == "verified":
                         cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
+                        cited_ok = not cite_errs and not cite_notes
                         failures += [f"{name}: exchange: {e}" for e in cite_errs]
                         merge(not_checked, [{"what": f"{name}: exchange: the served records", "why": n,
                                              "issue": EXCHANGE_ISSUE} for n in cite_notes])
@@ -1056,7 +1052,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                     if nc2:
                         merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
                     state = line.split(" ", 1)[0]
-                    if not fail and not nc2 and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
+                    if not fail and not nc2 and cited_ok and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
                         if late:
                             said.append(f"{qname} back after the deadline, counted absent")
                             continue
