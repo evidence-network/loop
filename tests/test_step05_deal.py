@@ -376,13 +376,13 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "unsupported", detail)
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
-    def with_key_types(self, types):
+    def with_key_types(self, types, key=None):
         # INTERIM (loop#140): remove with step.UNSUPPORTED_KEY_TYPE_ISSUE.
         keys = BINDINGS["valid-same-controller"]["keys"]
         text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": types})
         BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
         self.addCleanup(BINDINGS.pop, "with-key-types")
-        return self.check("with-key-types")
+        return self.check("with-key-types", key=key)
 
     def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_bad(self):
         state, detail = self.with_key_types(["ed25519", "bip340"])
@@ -392,10 +392,19 @@ class Step05BindingCheckTest(unittest.TestCase):
 
     def test_a_binding_declaring_only_ed25519_key_types_goes_to_the_verifier(self):
         state, detail = self.with_key_types(["ed25519"])
-        self.assertEqual(state, "bad", detail)  # the extra member breaks v0's member set: a bad binding, as before
+        self.assertEqual(state, "bad", detail)  # no unsupported type declared: the extra member is a bad binding, as before
+
+    def test_an_unsupported_key_type_does_not_hide_a_key_the_binding_does_not_name(self):
+        state, detail = self.with_key_types(["ed25519", "bip340"], key="ab" * 32)
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("does not name the half's key", detail)
+
+    def test_a_malformed_key_type_is_bad_not_unsupported(self):
+        state, detail = self.with_key_types(["ed25519", "rsa"])
+        self.assertEqual(state, "bad", detail)
 
     def test_unsupported_key_types_reads_only_a_key_types_list(self):
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}'), ["bip340"])
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340", "rsa"]}'), ["bip340"])
         for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
             self.assertEqual(step.unsupported_key_types(raw), [], raw)
 

@@ -342,7 +342,7 @@ def live_declarations(counts, unread):
                            f"implement"})
     if counts.get("unsupported_key_type"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": UNSUPPORTED_KEY_TYPE_ISSUE,
-                    "why": f"{counts['unsupported_key_type']} cited bindings declare a key type (bip340) the pinned "
+                    "why": f"{counts['unsupported_key_type']} cited bindings declare a key type (AAC#457) the pinned "
                            f"`cross_language binding` does not implement, so they are not checked, not bad"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
@@ -574,16 +574,16 @@ BINDING_VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
 # key type; it did not find a bad binding. Remove this, the branch in binding_check, its declaration and its tests
 # once AAC#458 merges, aac-go ships bip340, the loop repins and step 05 reruns.
 UNSUPPORTED_KEY_TYPE_ISSUE = "action-state-group/agent-action-capsule#457"
-VERIFIED_KEY_TYPES = {"ed25519"}
+UNSUPPORTED_KEY_TYPES = {"bip340"}  # AAC#457 names only this one; any other token is malformed, not unsupported
 
 
 def unsupported_key_types(raw):
-    """The key types a binding declares in `key_types` that the pinned verifier does not implement, sorted."""
+    """The key types a binding declares in `key_types` that AAC#457 defines and the pinned verifier lacks, sorted."""
     try:
         types = json.loads(raw).get("key_types")
     except (ValueError, AttributeError):
         return []
-    return sorted({t for t in types if isinstance(t, str)} - VERIFIED_KEY_TYPES) if isinstance(types, list) else []
+    return sorted({t for t in types if isinstance(t, str)} & UNSUPPORTED_KEY_TYPES) if isinstance(types, list) else []
 
 
 def binding_check(digest, half, citing, peers):
@@ -632,7 +632,7 @@ def binding_check(digest, half, citing, peers):
         return "unread", (f"{name}'s {BINDING_FILE} is binding {report.get('binding_digest')}, not the {digest} the "
                           f"citing record names (the node may have bound again since)")
     props = report.get("properties") or {}
-    if verdict == "bad" and (lacking := unsupported_key_types(raw)):
+    if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw)):
         return "unsupported_key_type", (f"binding {digest} ({name}) declares key type {', '.join(lacking)}, which the "
                                         f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE})")
     if verdict == "bad":
