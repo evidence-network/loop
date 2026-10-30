@@ -157,6 +157,45 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.stdout.count("admission = true"), 3)
         self.assertEqual(r.stdout.count('phases = ["backend_selected"]'), 3)
 
+    def test_without_lab_twins_the_lab_is_three_nodes_with_no_fault(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertNotIn("lab-4", r.stdout)
+        self.assertNotIn("ADJUDICATE_DIFFERING_TWINS", r.stdout)
+        self.assertNotIn("request_defaults", r.stdout)
+        self.assertNotEqual(lab_sh("--dry-run", "twins", env=self.env).returncode, 0)
+
+    def test_lab_twins_adds_lab_4_on_its_own_ports_with_four_roles(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("--port 9804 --console 9814 --bind-port 9824", r.stdout)
+        self.assertEqual(r.stdout.count("[plugin.openai_exchange_grant]"), 4)
+        # Only the requester (lab-3) turns the referee switch on.
+        on = [l for l in r.stdout.splitlines() if "CAPSULES_ADJUDICATE_DIFFERING_TWINS=on" in l]
+        self.assertEqual(len(on), 1)
+        self.assertIn(f"HOME={self.lab}/nodes/lab-3 ", on[0])
+        # The fault is on the faulty twin's config alone, and is a system prompt, not a sampler change.
+        self.assertEqual(r.stdout.count("[models.request_defaults]"), 1)
+        self.assertEqual(r.stdout.count('system_prompt = "Answer in French."'), 1)
+        for forbidden in ("temperature =", "seed =", "top_k ="):
+            self.assertNotIn(forbidden, r.stdout)
+
+    def test_lab_twins_needs_four_distinct_nodes(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_REFEREE": "lab-1"})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("four distinct nodes", r.stderr)
+
+    def test_the_twins_command_asks_the_referee_then_sends_one_bracket_to_both_twins(self):
+        r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.count("x-mesh-twin-bracket:"), 2)
+        self.assertEqual(r.stdout.count("http://127.0.0.1:9803/v1/chat/completions"), 3)
+        self.assertIn("twin-fault.json", r.stdout)
+
+    def test_dispute_runs_step_09_read_only_on_the_live_population(self):
+        r = lab_sh("--dry-run", "dispute", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("steps/09-dispute --population", r.stdout)
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)

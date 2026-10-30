@@ -76,6 +76,7 @@ non-zero when the step itself broke.
 """
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -603,6 +604,23 @@ def unrun_entry(what):
                                  "(the referee's, or a half's signer)", "issue": ISSUE_LIVE_TWINS}
 
 
+def injected_difference(out):
+    """The lab-only fault `lab.sh twins` wrote ($LAB_DIR/twin-fault.json), copied into the proof, as a sentence
+    that labels it plainly; empty when the lab ran no such pair. The Result is then real (sealed by the
+    plugin on lab nodes) but its disagreement is injected, not organic twin traffic."""
+    src = Path(os.environ.get("LAB_DIR") or "") / "twin-fault.json"
+    try:
+        doc = json.loads(src.read_text(encoding="utf-8"))
+        inj = doc["injected_difference"]
+        text = (f"INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): {inj['kind']} on "
+                f"{inj['node']} = {inj['value']!r}; the twins' model hash and weights digest are the same "
+                f"(roles {json.dumps(doc.get('roles'), sort_keys=True)}, bracket {doc.get('twin_bracket_id')})")
+    except (OSError, ValueError, KeyError, TypeError):
+        return ""
+    shutil.copyfile(src, out / "twin-fault.json")
+    return text
+
+
 def main_live(pop, out, started):
     clean(out)
     readable, not_checked, details = {}, [], []
@@ -625,6 +643,9 @@ def main_live(pop, out, started):
             if (d / "ledger" / f).is_file():
                 (out / name / "ledger").mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(d / "ledger" / f, out / name / "ledger" / f)
+    fault = injected_difference(out)
+    if fault:
+        details.append(fault)
     ledgers = {node_id: out / name / "ledger" for name, (node_id, _) in readable.items()}
     held = {name: len(lines(out / name / "ledger" / RECEIVED)) + len(lines(out / name / "ledger" / ISSUED))
             for name in readable}

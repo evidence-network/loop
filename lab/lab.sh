@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -22,6 +22,11 @@
 #             and pays nothing
 #   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
 #             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
+#   twins     (LAB_TWINS=1) one real step 09 Result: the requester asks the referee once (so it holds a
+#             half from it), then sends the same temperature-0 request to twin A and twin B under one
+#             x-mesh-twin-bracket; twin B's config injects a different answer (see LAB_TWINS); waits for
+#             the Result on the requester. Writes $LAB_DIR/twin-fault.json. Pays nothing
+#   dispute   steps/09-dispute on population/live, into the same findings/<date>-live/. Read-only
 #   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
@@ -43,6 +48,15 @@
 #   LAB_OPERATOR        the GitHub handle of whoever runs the nodes (entries)
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
 #   LAB_REPORTER        the reporter node (default lab-3)
+#   LAB_TWINS           1 adds lab-4 and the four step 09 roles (default off; the lab is then the three nodes
+#             it always was). Twin A is LAB_TWIN_A (default lab-1), the faulty twin B is LAB_TWIN_B
+#             (default lab-4), the referee is LAB_REFEREE (default lab-2) and the requester is
+#             LAB_REQUESTER (default lab-3). Twin A, twin B and the referee each serve LAB_MODEL; the
+#             requester only routes. The requester gets CAPSULES_ADJUDICATE_DIFFERING_TWINS=on (the plugin's
+#             switch, off by default; it sends the twins' request and both answers to the referee). Twin B
+#             alone gets `system_prompt = LAB_FAULT_SYSTEM_PROMPT` (default "Answer in French.") in its
+#             config.toml [models.request_defaults]: LAB-ONLY FAULT INJECTION, so the pair differs under
+#             the same model hash and weights digest. No temperature, seed or sampler override. Read by start
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
 #             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
@@ -52,11 +66,27 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 NODES=(lab-1 lab-2 lab-3)
+TWINS=${LAB_TWINS:-0}
+TWIN_A=${LAB_TWIN_A:-lab-1}
+TWIN_B=${LAB_TWIN_B:-lab-4}
+REFEREE=${LAB_REFEREE:-lab-2}
+REQUESTER=${LAB_REQUESTER:-lab-3}
+FAULT_PROMPT=${LAB_FAULT_SYSTEM_PROMPT:-Answer in French.}
 DRY=0
 if [ "${1:-}" = --dry-run ]; then DRY=1; shift; fi
 cmd=${1:-}
 
 die() { echo "lab.sh: $*" >&2; exit 2; }
+if [ "$TWINS" = 1 ]; then
+  NODES+=(lab-4)
+  # Four distinct roles; the referee pool drops the requester and both twins (capsules-plugin referee/live.rs, select.rs).
+  [ "$(printf '%s\n' "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" | sort -u | wc -l | tr -d ' ')" = 4 ] \
+    || die "LAB_TWINS needs four distinct nodes for twin A, twin B, the referee and the requester"
+  for n in "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER"; do
+    [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_TWINS names $n, not a lab node"
+  done
+fi
+serves_model() { [ "$1" = lab-1 ] || { [ "$TWINS" = 1 ] && { [ "$1" = "$TWIN_A" ] || [ "$1" = "$TWIN_B" ] || [ "$1" = "$REFEREE" ]; }; }; }
 [ -n "${LAB_DIR:-}" ] || die "set LAB_DIR (see LAB-BRINGUP.md)"
 LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
@@ -80,7 +110,7 @@ need() { local v=$1; [ -n "${!v:-}" ] || { [ "$DRY" = 1 ] && printf -v "$v" '<%s
 say() { printf '+'; printf ' %q' "$@"; printf '\n'; }
 run() { if [ "$DRY" = 1 ]; then say "$@"; else "$@"; fi; }
 
-idx() { case "$1" in lab-1) echo 1 ;; lab-2) echo 2 ;; lab-3) echo 3 ;; *) die "unknown node $1" ;; esac; }
+idx() { case "$1" in lab-1) echo 1 ;; lab-2) echo 2 ;; lab-3) echo 3 ;; lab-4) echo 4 ;; *) die "unknown node $1" ;; esac; }
 api_port() { echo $((BASE + $(idx "$1"))); }
 console_port() { echo $((BASE + 10 + $(idx "$1"))); }
 bind_port() { echo $((BASE + 20 + $(idx "$1"))); }
@@ -285,6 +315,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   # The plugin reads share_record_at_completion from this env var before its config
   # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
   shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
+  [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on)
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
     --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")
   local body
@@ -302,7 +333,13 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
     printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
     printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
-    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n')
+    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
+    # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
+    # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
+    if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
+      printf '\n[[models]]\nmodel = "%s"\n\n[models.hardware]\nmodel_path = "%s"\n' "$MODEL_NAME" "$LAB_MODEL"
+      printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
+    fi)
   if [ "$DRY" = 1 ]; then
     echo "  > $home/config.toml:"; sed 's/^/    /' <<< "$config"
     echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
@@ -375,8 +412,15 @@ cmd_start() {
     mv "$(token_file).tmp" "$(token_file)"
   fi
   local n
-  for n in lab-2 lab-3; do
-    start_node "$n" --join-file "$(token_file)"
+  for n in "${NODES[@]:1}"; do
+    if [ "$TWINS" = 1 ] && [ "$n" = "$TWIN_B" ]; then
+      # The faulty twin loads its model from its [[models]] entry (config.toml), which carries the injected system prompt.
+      start_node "$n" --join-file "$(token_file)"
+    elif serves_model "$n"; then
+      start_node "$n" --gguf "$LAB_MODEL" --model "$MODEL_NAME" --join-file "$(token_file)"
+    else
+      start_node "$n" --join-file "$(token_file)"
+    fi
     wait_for 300 "$n can route to lab-1's model" routes_model "$n"
   done
   for n in "${NODES[@]}"; do
@@ -526,6 +570,53 @@ cmd_settle() {
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+# One real step 09 Result (LAB_TWINS=1): see the header. The requester asks the referee once, so it holds a half
+# from it and sees it as eligible; then it sends the same temperature-0 request to twin A and twin B under one
+# x-mesh-twin-bracket (the host never pairs on its own). Twin B's answer differs only by the injected system
+# prompt; the referee re-answers and the verdict names the twin it disagrees with. Pays nothing.
+cmd_twins() {
+  [ "$TWINS" = 1 ] || die "twins needs LAB_TWINS=1"
+  local bracket="lab-twins-$TODAY-1" body ref a b
+  body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Name one colour."}],"max_tokens":16,"temperature":0}' "$MODEL_NAME")
+  ref=$(node_id "$REFEREE") a=$(node_id "$TWIN_A") b=$(node_id "$TWIN_B")
+  run mkdir -p "$LAB_DIR/twins"
+  local who target extra
+  for who in referee twin-a twin-b; do
+    case $who in
+      referee) target=$ref extra=() ;;
+      twin-a) target=$a extra=(-H "x-mesh-twin-bracket: $bracket") ;;
+      twin-b) target=$b extra=(-H "x-mesh-twin-bracket: $bracket") ;;
+    esac
+    run curl -fsS --max-time 180 -o "$LAB_DIR/twins/$who.json" -D "$LAB_DIR/twins/$who.headers.txt" \
+      -H 'content-type: application/json' -H "x-mesh-target: $target" ${extra[@]+"${extra[@]}"} -d "$body" \
+      "http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
+  done
+  if [ "$DRY" = 1 ]; then
+    echo "  > $LAB_DIR/twin-fault.json (the injected difference: system_prompt on $TWIN_B)"
+    echo "  (wait up to 300s for $(data_of "$REQUESTER")/ledger/received-adjudications.jsonl)"
+    return 0
+  fi
+  python3 -B - "$LAB_DIR/twin-fault.json" "$TWIN_B" "$TWIN_A" "$REFEREE" "$REQUESTER" "$FAULT_PROMPT" "$bracket" << 'PY'
+import datetime as dt, json, sys
+path, twin_b, twin_a, referee, requester, prompt, bracket = sys.argv[1:]
+open(path, "w").write(json.dumps({
+    "injected_difference": {"node": twin_b, "kind": "system_prompt", "value": prompt,
+                            "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
+                                    "the model hash and weights digest are unchanged"},
+    "roles": {"requester": requester, "twin_a": twin_a, "twin_b": twin_b, "referee": referee},
+    "twin_bracket_id": bracket,
+    "written_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}, indent=2, sort_keys=True) + "\n")
+PY
+  wait_for 300 "the requester holds the referee's Result" test -s "$(data_of "$REQUESTER")/ledger/received-adjudications.jsonl"
+}
+
+cmd_dispute() {
+  local out=$ROOT/findings/$TODAY-live
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/09-dispute" --population "$ROOT/population/live" --out "$out/09-dispute"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
 cmd_ask() {
   # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
@@ -552,6 +643,6 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | deal | settle | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
