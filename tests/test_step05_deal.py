@@ -346,7 +346,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
         for i in ("Mesh-LLM/capsules-plugin#130", step.LIVE_ACCEPTANCE_ISSUE,
-                  "action-state-group/agent-action-capsule#431", step.live.NO_ISSUE_YET):
+                  "action-state-group/agent-action-capsule#431", "Mesh-LLM/capsules-plugin#136"):
             self.assertIn(i, issues)
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertEqual(len(checks), 1)
