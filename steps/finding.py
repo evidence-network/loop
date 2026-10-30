@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ("PASS", "FAIL", "NOT_CHECKED")
-POPULATIONS = ("rehearsal", "live")
+POPULATIONS = ("rehearsal", "live", "demo")
 STEP_DIR = re.compile(r"^(\d{2})-([a-z][a-z0-9-]*)$")
 FIELDS = ("step", "name", "result", "population", "asserts", "pinned", "proof", "detail",
           "not_checked", "started", "finished")

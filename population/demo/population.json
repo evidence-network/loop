@@ -1,0 +1,24 @@
+{
+  "population": "demo",
+  "kind": "live",
+  "pinned": ["demo-capsules", "demo-mesh-llm"],
+  "window": {"from": "2026-10-30T17:58:00Z"},
+  "crosscheck": "payment_hash",
+  "nodes": [
+    {
+      "name": "brattain",
+      "node_id": null,
+      "node_id_prefix": "c5e7af08",
+      "host": "demo",
+      "data_dir": "$DEMO_DIR/brattain/capsules"
+    },
+    {
+      "name": "shockley",
+      "node_id": null,
+      "node_id_prefix": "284a8bb6",
+      "host": "demo",
+      "data_dir": "$DEMO_DIR/shockley/capsules"
+    }
+  ],
+  "rail": null
+}

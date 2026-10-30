@@ -45,6 +45,7 @@ Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (unreadable population, no rail files).
 """
 import argparse
+import datetime as dt
 import json
 import shutil
 import sys
@@ -69,8 +70,10 @@ MATCHED = ("exchange_id", "payer", "payee", "currency", "amount_atomic", "decima
 # The open issue for what the Lightning adapter (capsules-plugin#82, pinned) still lacks: preimage finality and
 # a settlement object by reference on a rail.
 ADAPTER_ISSUE = "Mesh-LLM/capsules-plugin#83"
-# The lab nodes have no wallet configured yet, so no paid exchange has run on them.
-WALLET_ISSUE = "evidence-network/loop#56"
+# The lab nodes have no wallet, so no paid exchange has run on them. The lab-wallet issue (loop#56) is closed;
+# a paid exchange on them would still be NOT_CHECKED on the adapter's gap, so that is the issue a no-settlement
+# node cites.
+WALLET_ISSUE = ADAPTER_ISSUE
 # The exchange's sealed halves and the controller declarations are step 05's component work.
 DEAL_ISSUE = "Mesh-LLM/capsules-plugin#49"
 SPEND = ("Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND "
@@ -235,15 +238,49 @@ LIVE_PINNED = ["capsules", "mesh-llm-pr-2620"]
 SETTLEMENT_BLOCK = ("model_attestation", "compute_attestation", "x-mesh-settlement-v1")
 
 
-def recorded(ledger):
-    """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations."""
-    legs, observed = [], []
+def utc(text):
+    """A record's RFC 3339 timestamp as an aware UTC datetime; None when it is not one."""
+    if not isinstance(text, str):
+        return None
+    try:
+        t = dt.datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t.astimezone(dt.timezone.utc) if t.tzinfo else None
+
+
+def window_from(pop):
+    """The population's window start (population.json "window": {"from": ...}) as a datetime; None for no window."""
+    w = pop.get("window")
+    if w is None:
+        return None
+    start = utc(w.get("from")) if isinstance(w, dict) and set(w) == {"from"} else None
+    if start is None:
+        raise ValueError('population window must be {"from": "<RFC 3339 time with a zone>"}')
+    return start
+
+
+def recorded(ledger, since=None):
+    """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations.
+
+    With `since`, only records whose signed capsule timestamp is at or after it count; the others, and
+    records with no readable timestamp, are counted in "outside_window" and "undated" and not listed.
+    """
+    legs, observed, outside, undated = [], [], 0, 0
     for line in ledger.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
         except ValueError:
             continue
         rec = rec.get("capsule", rec) if isinstance(rec, dict) else {}
+        if since is not None:
+            at = utc(rec.get("timestamp")) if isinstance(rec, dict) else None
+            if at is None:
+                undated += 1
+                continue
+            if at < since:
+                outside += 1
+                continue
         leg = rec.get("settlement") if isinstance(rec, dict) else None
         if isinstance(leg, dict):
             legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg.get("leg") or leg.get("kind"),
@@ -255,12 +292,37 @@ def recorded(ledger):
             observed.append({"capsule_id": rec.get("capsule_id"), "exchange_id": block.get("exchange_id"),
                              "phase": block.get("phase"), "source": block.get("source"),
                              "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat")})
-    return {"settlement_legs": legs, "settlement_observations": observed}
+    out = {"settlement_legs": legs, "settlement_observations": observed}
+    if since is not None:
+        out.update(window_from=since.strftime("%Y-%m-%dT%H:%M:%SZ"), outside_window=outside, undated=undated)
+    return out
+
+
+def payment_hashes(found):
+    """The payment hashes a node recorded, from its legs' payment_ref and its wallet observations."""
+    hashes = {leg["payment_ref"]["value"] for leg in found["settlement_legs"]
+              if isinstance(leg.get("payment_ref"), dict) and leg["payment_ref"].get("type") == "ln.payment_hash"
+              and isinstance(leg["payment_ref"].get("value"), str)}
+    return hashes | {o["payment_hash"] for o in found["settlement_observations"]
+                     if isinstance(o.get("payment_hash"), str)}
+
+
+def crosscheck(hashes):
+    """{payment hash: [nodes that recorded it]} split into hashes every node recorded and hashes only some did."""
+    seen = {}
+    for name, hs in hashes.items():
+        for h in hs:
+            seen.setdefault(h, []).append(name)
+    both = {h: sorted(n) for h, n in seen.items() if len(n) == len(hashes)}
+    some = {h: sorted(n) for h, n in seen.items() if len(n) < len(hashes)}
+    return {"nodes": sorted(hashes), "recorded_by_all": both, "recorded_by_some": some}
 
 
 def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
-    proof, details, not_checked = [], [], []
+    since = window_from(pop)
+    pinned = pop.get("pinned", LIVE_PINNED)
+    proof, details, not_checked, hashes = [], [], [], {}
     for entry in pop["nodes"]:
         name = entry["name"]
         shutil.rmtree(out / name, ignore_errors=True)  # a rerun must not keep an earlier run's file
@@ -269,11 +331,15 @@ def main_live(pop, out, started):
             not_checked.append(live.not_checked(name, "data_dir"))
             details.append(f"node {name}: not checked, data_dir or its ledger not set or unreadable")
             continue
-        found = recorded(data_dir / "ledger" / "capsules.jsonl")
+        found = recorded(data_dir / "ledger" / "capsules.jsonl", since)
+        hashes[name] = payment_hashes(found)
         (out / name).mkdir()
         (out / name / "recorded.json").write_text(json.dumps(found, indent=2, sort_keys=True) + "\n")
         proof.append(f"{name}/recorded.json")
         n_legs, n_obs = len(found["settlement_legs"]), len(found["settlement_observations"])
+        if since is not None:
+            details.append(f"node {name}: window from {found['window_from']}: {found['outside_window']} records "
+                           f"before it and {found['undated']} without a timestamp left out")
         if n_legs or n_obs:
             details.append(f"node {name}: {n_legs} settlement legs and {n_obs} wallet-reported settlement "
                            f"observations recorded; none is the rail's own object, so finality is not verified")
@@ -289,15 +355,26 @@ def main_live(pop, out, started):
                                 "why": "the node has recorded no settlement: the lab has no wallet configured yet, "
                                        "so no paid exchange has run on it and the adapter has nothing to report on",
                                 "issue": WALLET_ISSUE})
+    if pop.get("crosscheck") == "payment_hash" and len(hashes) > 1:
+        cross = crosscheck(hashes)
+        (out / "crosscheck.json").write_text(json.dumps(cross, indent=2, sort_keys=True) + "\n")
+        proof.append("crosscheck.json")
+        details.append(f"payment hashes compared across {', '.join(cross['nodes'])}: "
+                       f"{len(cross['recorded_by_all'])} recorded by every node, {len(cross['recorded_by_some'])} "
+                       f"by some only; agreement between the nodes' own records is not finality")
+        not_checked.append({"what": "that the payment hashes the nodes recorded settled, with their preimages",
+                            "why": "the nodes agree on which payment hashes they recorded, but both are records of "
+                                   "the same wallet-reported payment; the pinned adapter has no preimage finality",
+                            "issue": ADAPTER_ISSUE})
     if pop.get("rail") is None:
         details.append("the live population names no rail")
     if not any("settlements node" in n["what"] for n in not_checked):
         not_checked.append({"what": "the live rail's settlement object for an exchange, its finality and its band",
-                            "why": "the live population names no rail and the lab has no wallet configured yet; the "
+                            "why": "the live population names no rail and its nodes have no settlement object to read; the "
                                    "pinned Lightning adapter checks the node's own book, with no preimage and no "
                                    "settlement object by reference on a rail",
                             "issue": WALLET_ISSUE})
-    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=pinned,
                   proof=proof, detail="; ".join(details) + ". " + SPEND, not_checked=not_checked, started=started)
     return 0
 
@@ -310,8 +387,13 @@ def main(argv):
     started = finding.now()
     pop = read_json(Path(a.population) / "population.json")
     out = Path(a.out)
-    if pop["population"] == "live":
-        return main_live(pop, out, started)
+    # "live" is the lab's population; any other population naming "kind": "live" (demo) takes the same path.
+    if pop["population"] == "live" or pop.get("kind") == "live":
+        try:
+            return main_live(pop, out, started)
+        except ValueError as e:
+            print(f"06-settle: {a.population}: {e}", file=sys.stderr)
+            return 2
     if pop.get("rail") != "mock" or not (Path(a.population) / "rail" / "rail.json").is_file():
         print(f"06-settle: {a.population} names no mock rail with rail/rail.json", file=sys.stderr)
         return 2

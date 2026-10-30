@@ -380,6 +380,127 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(set(r["pinned"]), {"capsules", "mesh-llm-pr-2620"})
         self.assert_clean()
 
+    # The demo population: a named live-kind population takes the live path, with a window and a cross-check.
+    def demo_population(self, lab, **extra):
+        pop = Path(self.tmp.name) / "demo"
+        pop.mkdir()
+        doc = json.loads((ROOT / "population" / "demo" / "population.json").read_text())
+        for n in doc["nodes"]:
+            n["data_dir"] = f"$STEP06_LAB/{n['name']}"
+        doc.update(extra)
+        dump(pop / "population.json", doc)
+        return pop
+
+    def demo_ledgers(self, lab, rows):
+        """rows: {node: [(timestamp or None, payment_hash)]}; one terms leg per row."""
+        for name, recs in rows.items():
+            (lab / name / "ledger").mkdir(parents=True)
+            lines = []
+            for i, (ts, h) in enumerate(recs):
+                rec = {"capsule_id": f"{name}-{i}", "settlement": {"leg": "terms", "payment_ref": {
+                    "type": "ln.payment_hash", "value": h}}}
+                if ts:
+                    rec["timestamp"] = ts
+                lines.append(json.dumps(rec) + "\n")
+            (lab / name / "ledger" / "capsules.jsonl").write_text("".join(lines))
+
+    def test_the_demo_population_files_pin_the_demo_build(self):
+        doc = json.loads((ROOT / "population" / "demo" / "population.json").read_text())
+        self.assertEqual((doc["population"], doc["kind"], doc["rail"]), ("demo", "live", None))
+        self.assertEqual(doc["window"], {"from": "2026-10-30T17:58:00Z"})
+        pins = finding.pins()
+        self.assertEqual(pins["demo-capsules"][1], "f494845bb9e003d100429fc4c081fc11322551cc")
+        self.assertEqual(pins["demo-mesh-llm"], ("ethanyzhang/mesh-llm", "3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301"))
+
+    def test_a_named_live_kind_population_takes_the_live_path(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertEqual((r["result"], r["population"]), ("NOT_CHECKED", "demo"))
+        self.assertEqual(set(r["pinned"]), {"demo-capsules", "demo-mesh-llm"})
+        self.assertIn("Spend: none", r["detail"])
+        self.assertIn(step.ADAPTER_ISSUE, [n["issue"] for n in r["not_checked"]])
+        self.assert_clean()
+
+    def test_a_population_that_is_not_live_kind_still_needs_the_mock_rail(self):
+        pop = Path(self.tmp.name) / "other"
+        pop.mkdir()
+        dump(pop / "population.json", {"population": "demo", "nodes": [], "rail": None})
+        p = subprocess.run([str(STEP), "--population", str(pop), "--out", str(self.out)], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+
+    def test_the_window_leaves_out_older_and_undated_records(self):
+        lab = Path(self.tmp.name) / "lab"
+        old, new = "11" * 32, "22" * 32
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T17:57:59Z", old), ("2026-10-30T17:58:00Z", new),
+                                             ("2026-10-30T13:00:00-05:00", new), (None, old)],
+                                "shockley": [("2026-10-02T00:00:00Z", old)]})
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        # 13:00-05:00 is 18:00Z: in; 17:57:59Z is out; no timestamp is left out and counted
+        self.assertEqual([l["payment_ref"]["value"] for l in rec["settlement_legs"]], [new, new])
+        self.assertEqual((rec["outside_window"], rec["undated"], rec["window_from"]), (1, 1, "2026-10-30T17:58:00Z"))
+        self.assertIn("node shockley: no settlement recorded", r["detail"])
+        self.assertIn("window from 2026-10-30T17:58:00Z: 1 records before it", r["detail"])
+
+    def test_no_window_counts_every_record(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-02T00:00:00Z", "11" * 32), (None, "22" * 32)],
+                                "shockley": []})
+        pop = self.demo_population(lab)
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["window"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        self.assertEqual(len(rec["settlement_legs"]), 2)
+        self.assertNotIn("outside_window", rec)
+
+    def test_a_malformed_window_exits_2(self):
+        lab = Path(self.tmp.name) / "lab"
+        for bad in ({"from": "yesterday"}, {"from": "2026-10-30T17:58:00"}, {"since": "2026-10-30T17:58:00Z"}, "now"):
+            with self.subTest(window=bad):
+                pop = self.demo_population(lab)
+                doc = json.loads((pop / "population.json").read_text())
+                doc["window"] = bad
+                dump(pop / "population.json", doc)
+                p = subprocess.run([str(STEP), "--population", str(pop), "--out", str(self.out)],
+                                   capture_output=True, text=True, env=dict(os.environ, STEP06_LAB=str(lab)))
+                self.assertEqual(p.returncode, 2)
+                self.assertIn("window", p.stderr)
+                shutil.rmtree(pop)
+
+    def test_the_payment_hash_crosscheck_compares_and_stays_not_checked(self):
+        lab = Path(self.tmp.name) / "lab"
+        both, only = "aa" * 32, "bb" * 32
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", both), ("2026-10-30T18:01:00Z", only)],
+                                "shockley": [("2026-10-30T18:00:01Z", both)]})
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        cross = json.loads((self.out / "crosscheck.json").read_text())
+        self.assertEqual(cross["recorded_by_all"], {both: ["brattain", "shockley"]})
+        self.assertEqual(cross["recorded_by_some"], {only: ["brattain"]})
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIn("crosscheck.json", [p["path"] for p in r["proof"]])
+        self.assertIn("1 recorded by every node, 1 by some only", r["detail"])
+        self.assertTrue([n for n in r["not_checked"] if n["issue"] == step.ADAPTER_ISSUE
+                         and "preimages" in n["what"]])
+
+    def test_no_crosscheck_unless_the_population_asks(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        pop = self.demo_population(lab)
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["crosscheck"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertFalse((self.out / "crosscheck.json").exists())
+
+    def test_a_node_with_no_settlement_cites_an_open_issue_not_the_closed_wallet_one(self):
+        self.assertEqual(step.WALLET_ISSUE, step.ADAPTER_ISSUE)
+        self.assertNotEqual(step.WALLET_ISSUE, "evidence-network/loop#56")
+
     def test_the_step_never_reaches_for_a_wallet_or_the_network(self):
         source = STEP.read_text()
         for word in ("urllib", "socket", "http.client", "requests", "subprocess"):

@@ -60,3 +60,10 @@ aac-go action-state-group/agent-action-capsule go/v0.16.0
 # The inference-deals Terms Pack (evidencebook-skills#71): main at the commit that carries it with Steven's
 # 2026-10-29 rulings (terms 1-3 must_have, 12 whole closed months). The repo has no release tag; a full SHA.
 inference-deals action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf
+# step 06 settle, demo population
+# The demo nodes Brattain and Shockley run a dev build, not the lab's: mesh-llm lab/asg-2026-10-30 at
+# 3ffa5c4f1 on ethanyzhang/mesh-llm, which includes the unmerged mesh-llm PRs #2620, #2649, #2719 and #2721,
+# and the capsules plugin at main f494845. Only population/demo/population.json names these pins. The
+# run's build.json records the binary sha256 (8f7cbd57...) and the plugin archive sha256 (d4b075a1...).
+demo-mesh-llm ethanyzhang/mesh-llm 3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301
+demo-capsules Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc
