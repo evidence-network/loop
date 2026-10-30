@@ -45,8 +45,8 @@ export PYTHONDONTWRITEBYTECODE=1
 export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
-declare -A NAMES=([01]=seal [02]=book [03]=advertise [12]=join)
-STAGE_1="01 02 03 12"
+declare -A NAMES=([01]=seal [02]=book [03]=advertise [08]=verify [12]=join)
+STAGE_1="01 02 03 12 08"
 
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }

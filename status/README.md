@@ -25,6 +25,10 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
 - A `PASS` cell shows each gap its finding names: a sentence in `detail`
   starting `Outside this step's assertion: ` and ending with the issue as
   `owner/repo#N`. The cell shows it on a gap line, with the issue linked.
+- Row 8 (Verify) is step 08's own finding, read like any other row. Step 08
+  runs last in stage 1 and re-derives every other step's finding in the run
+  from its proof bytes; a step it could not re-derive is in its `not_checked`,
+  never in its PASS. Its `verified.json` is what steps 10 and 11 read.
 - Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,
   until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record

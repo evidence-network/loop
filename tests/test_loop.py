@@ -61,7 +61,7 @@ class LoopTest(unittest.TestCase):
         f.chmod(0o755 if executable else 0o644)
 
     def all_steps(self, **how):
-        for name in ("01-seal", "02-book", "03-advertise", "12-join"):
+        for name in ("01-seal", "02-book", "03-advertise", "12-join", "08-verify"):
             if how.get(name) != "missing":
                 self.step(name, how.get(name, "pass"))
 
@@ -132,7 +132,8 @@ class LoopTest(unittest.TestCase):
         self.all_steps()
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS"])
+        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
+                                                 "08 verify PASS"])
         index = (self.out / "index.md").read_text()
         for base in ("01-seal", "02-book", "03-advertise", "12-join"):
             self.assertIn(f"]({base}/finding.json)", index)
@@ -157,7 +158,8 @@ class LoopTest(unittest.TestCase):
         (self.steps / "02-book.d").mkdir()
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS"])
+        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
+                                                 "08 verify PASS"])
 
     def test_a_crashing_step_is_a_fail_finding_with_its_output(self):
         self.all_steps(**{"03-advertise": "crash"})

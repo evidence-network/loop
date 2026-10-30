@@ -1,0 +1,18 @@
+{
+  "asserts": "the step runs to the end and writes its finding",
+  "detail": "steps/02-book exited 2; its output is loop-step.log",
+  "finished": "2026-10-30T04:46:22Z",
+  "name": "book",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "loop-step.log",
+      "sha256": "568f9f3f15c3eb75e1be2b4a07be6635442eb7de53ec13ba0fef1230b8a34865"
+    }
+  ],
+  "result": "FAIL",
+  "started": "2026-10-30T04:00:00Z",
+  "step": "02"
+}
