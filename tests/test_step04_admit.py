@@ -254,8 +254,10 @@ class Live(unittest.TestCase):
         """A good decision as a build with capsules-plugin PR #116 seals it: five rows and the history-card read."""
         cap = json.loads(self.good()[0])
         d = cap["model_attestation"]["compute_attestation"]["admission_decision"]
-        d["rows"] = rows if rows is not None else [{"row": r, "result": x} for r, x in
-                                                   zip(step.ROWS, ("pass", "pass", "fail", "pass", "not_read"))]
+        d["reads"][0]["policy"] = "base/1"
+        cited = card is None or "commitment" in card
+        d["rows"] = rows if rows is not None else [{"row": r, "result": x} for r, x in zip(step.ROWS, (
+            ("pass", "pass") if cited else ("not_read", "not_read")) + ("fail", "pass", "pass"))]
         d["reads"].append(card if card is not None else
                           {"kind": "history_card", "derivation": "history_card/1",
                            "commitment": {"alg": "SHA-256", "digest": "c" * 64}})
@@ -310,6 +312,173 @@ class Live(unittest.TestCase):
             _, f = self.live_run(self.lab_with([json.dumps(cap)]))
             self.assertEqual(f["result"], "FAIL")
             self.assertIn(why, f["detail"])
+
+
+ROWS116 = load(LIVE / "rows116.json")
+
+
+def case(name, **rows):
+    """A copy of one rows116.json case, with the rows named here set to the results given."""
+    b = json.loads(json.dumps(ROWS116[name]))
+    for r in b["rows"]:
+        r["result"] = rows.get(r["row"], r["result"])
+    return b
+
+
+def capsule(n, block):
+    return json.dumps({"capsule_id": f"{n:02x}", "action_type": "fyi",
+                       "model_attestation": {"compute_attestation": {"admission_decision": block}}})
+
+
+class Rows(unittest.TestCase):
+    """Each row recomputed from what a decision in the #116 record shape sealed (tests/fixtures/step04/live/rows116.json)."""
+    live_run, lab_with = Live.live_run, Live.lab_with
+
+    def run_blocks(self, *blocks):
+        return self.live_run(self.lab_with([capsule(i, b) for i, b in enumerate(blocks)]))
+
+    def test_every_case_the_rules_give_passes(self):
+        out, f = self.run_blocks(*ROWS116.values())
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("lab-a/rows.json", [p["path"] for p in f["proof"]])
+        self.assertEqual(finding.check(out.parent), [])
+        rows = load(out / "lab-a" / "rows.json")
+        self.assertEqual(len(rows), len(ROWS116))
+        by = {name: {c["row"]: c for c in cs} for name, cs in zip(ROWS116, rows.values())}
+        # The record fixes identity on a cited card and key age on none; everything else it leaves open.
+        self.assertEqual(by["all-pass"]["identity"]["check"], "PASS")
+        self.assertEqual(by["no-card-yet"]["key_age"]["check"], "PASS")
+        for name, row in (("all-pass", "key_age"), ("no-card-yet", "identity"), ("all-pass", "corroboration"),
+                          ("no-snapshot-yet", "disputes")):
+            self.assertEqual(by[name][row]["check"], "NOT_CHECKED", (name, row))
+            self.assertTrue(by[name][row]["why"])
+        self.assertNotIn("FAIL", {c["check"] for cs in rows.values() for c in cs})
+        self.assertIn("evidence-network/loop#81", f["detail"])
+
+    def test_each_row_passes_and_fails(self):
+        # Each row a value the rules give (it stays a PASS) and one they cannot give (a FAIL naming the row).
+        cases = {
+            "identity": (("all-pass", "pass"), ("all-pass", "fail")),
+            "key_age": (("key-age-fail", "fail"), ("no-card-yet", "pass")),
+            "performed_and_settled": (("settled-fail", "fail"), ("no-snapshot-yet", "pass")),
+            "disputes": (("disputes-fail", "fail"), ("no-snapshot-yet", "fail")),
+            "corroboration": (("corroboration-fail", "fail"), ("all-pass", "not_read")),
+        }
+        for row, ((ok_case, ok), (bad_case, bad)) in cases.items():
+            with self.subTest(row=row):
+                _, f = self.run_blocks(case(ok_case, **{row: ok}))
+                self.assertEqual(f["result"], "PASS", f["detail"])
+                _, f = self.run_blocks(case(bad_case, **{row: bad}))
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+                self.assertIn(f"row {row} is {bad}", f["detail"])
+
+    def test_a_cited_card_with_identity_not_read_fails(self):
+        _, f = self.run_blocks(case("all-pass", identity="not_read"))
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("row identity is not_read; the rules give pass with a cited card", f["detail"])
+
+    def test_a_missing_reordered_or_malformed_row_fails(self):
+        for edit in (lambda b: b["rows"].pop(2), lambda b: b["rows"].reverse(),
+                     lambda b: b["rows"].__setitem__(1, {"row": "key_age"}),
+                     lambda b: b["rows"][3].update(result="PASS")):
+            b = case("all-pass")
+            edit(b)
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL")
+            self.assertIn("five base-policy rows", f["detail"])
+
+    def test_a_bad_second_read_fails(self):
+        for card in ({"kind": "history_card", "state": "read"}, {"kind": "operator_policy", "state": "not_read"},
+                     {**ROWS116["all-pass"]["reads"][1], "derivation": "history_card/2"}, None):
+            b = case("all-pass")
+            if card is None:
+                b["reads"].pop()
+            else:
+                b["reads"][1] = card
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL", card)
+
+    def test_the_read_rule_holds_on_both_shapes(self):
+        # Rows: the policy read first, the card second. An earlier build: the policy read alone.
+        earlier = json.loads(json.dumps(ROWS116["all-pass"]))
+        del earlier["rows"]
+        earlier["reads"].pop()
+        earlier["peer_commitment"]["digest"] = "e" * 64
+        _, f = self.run_blocks(ROWS116["all-pass"], earlier)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        swapped = case("all-pass")
+        swapped["reads"].reverse()
+        two = json.loads(json.dumps(earlier))
+        two["reads"].append(ROWS116["all-pass"]["reads"][1])
+        for b in (swapped, two):
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL")
+
+    def test_rows_under_the_earlier_policy_fail(self):
+        b = case("all-pass")
+        b["reads"][0]["policy"] = "basic/1"
+        _, f = self.run_blocks(b)
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("rows under policy 'basic/1'", f["detail"])
+
+
+class Verdicts(unittest.TestCase):
+    """The rows decide nothing: GO or NO follows from the source alone, the same for one peer under one policy."""
+    live_run, lab_with, run_blocks = Live.live_run, Live.lab_with, Rows.run_blocks
+
+    def test_a_verdict_its_source_does_not_give_fails(self):
+        for source, verdict in (("allow_list", "NO"), ("deny_list", "GO"), ("unreadable_policy", "GO"),
+                                ("unreadable_target", "GO")):
+            b = case("all-pass")
+            b.update(source=source, verdict=verdict)
+            if source == "unreadable_policy":
+                b["reads"][0]["digest"] = None
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL", source)
+            # A GO with no readable policy already fails the shape (it is a NO with no digest, or cites one).
+            self.assertIn("operator policy" if source == "unreadable_policy" else f"verdict {verdict} from {source}",
+                          f["detail"])
+
+    def test_an_unknown_source_fails(self):
+        b = case("all-pass")
+        b["source"] = "rows"
+        _, f = self.run_blocks(b)
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("source 'rows' is none the plugin gives", f["detail"])
+
+    def test_an_unreadable_policy_with_a_digest_fails(self):
+        b = case("all-pass")
+        b.update(source="unreadable_policy", verdict="NO")
+        _, f = self.run_blocks(b)
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("an unreadable policy cited by digest", f["detail"])
+
+    def test_rows_that_fail_do_not_change_the_verdict(self):
+        # A NO from the deny list and a GO from the default, each with every row failing or passing: all hold.
+        no = case("all-pass")
+        no.update(source="deny_list", verdict="NO")
+        go = case("card-unverifiable", key_age="not_read", performed_and_settled="fail", disputes="fail",
+                       corroboration="fail")
+        _, f = self.run_blocks(no, go)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_one_peer_two_verdicts_under_one_policy_fails(self):
+        a, b = case("all-pass"), case("settled-fail")
+        b["peer_commitment"] = a["peer_commitment"]
+        b.update(source="deny_list", verdict="NO")
+        _, f = self.run_blocks(a, b)
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("one peer gets GO (default) and NO (deny_list) under one policy digest", f["detail"])
+        b["reads"][0]["digest"] = {"alg": "SHA-256", "digest": "a" * 64}
+        _, f = self.run_blocks(a, b)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_the_default_giving_both_verdicts_under_one_policy_fails(self):
+        a, b = case("all-pass"), case("settled-fail")
+        b["verdict"] = "NO"
+        _, f = self.run_blocks(a, b)
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("the default gives both GO and NO under one policy digest", f["detail"])
 
 
 class StatusRefusedRow(unittest.TestCase):
