@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 STEP = ROOT / "steps" / "05-deal"
@@ -349,8 +350,8 @@ class Step05BindingCheckTest(unittest.TestCase):
     def test_a_binding_that_names_the_key_and_applies_is_ok(self):
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("signatures and window PASS, revocation NOT_CHECKED (0 statements published in "
-                      "nodes/revocations/, none applies)", detail)
+        self.assertIn("signatures and window PASS, revocation NOT_CHECKED (no statement in nodes/revocations/ "
+                      "applies; 0 published)", detail)
 
     # revocation statements published at nodes/revocations/<digest>.json (loop#138)
     def publish_revocations(self, case, statements=None):
@@ -378,7 +379,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.publish_revocations("valid-same-controller")
         state, detail = self.check("valid-same-controller", times=("2026-10-11T00:00:00Z",))
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation NOT_CHECKED (1 statements published in nodes/revocations/, none applies)", detail)
+        self.assertIn("revocation NOT_CHECKED (no statement in nodes/revocations/ applies; 1 published)", detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])
@@ -523,6 +524,64 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(len(es), 4)
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
+
+
+LAB3 = "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac"  # stevenmih-3, published with no binding
+LAB1 = "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"  # stevenmih-1, published bound
+
+
+class Step05PublishedCommitmentTest(unittest.TestCase):
+    """A sender's "no binding" is read only from its commitment verified under its listed key (loop#187)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.nodes = Path(self.tmp.name) / "nodes"
+        (self.nodes / "commitments" / "policies").mkdir(parents=True)
+        for node in (LAB3, LAB1):
+            shutil.copy(ROOT / "nodes" / f"{node}.json", self.nodes / f"{node}.json")
+            shutil.copy(ROOT / "nodes" / "commitments" / f"{node}.json", self.nodes / "commitments" / f"{node}.json")
+            shutil.copy(ROOT / "nodes" / "commitments" / "policies" / f"{node}.json",
+                        self.nodes / "commitments" / "policies" / f"{node}.json")
+        patch = mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(self.nodes)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def key(self, node):
+        return json.loads((self.nodes / f"{node}.json").read_text())["key_id"]
+
+    def accept(self, node):
+        key = self.key(node)
+        citing = {"model_attestation": {"compute_attestation": {"received_half": {
+            "accepted_via": "host_announced", "sender_key_id": key}}}}
+        return step.accepted(citing, {"key_id": key})
+
+    def test_lab3s_commitment_verifies_and_carries_no_binding(self):
+        digest, commitment = step.published_binding(self.key(LAB3))
+        self.assertIsNone(digest)
+        self.assertIs(commitment["verified"], True)
+        a = self.accept(LAB3)
+        self.assertIs(a["optional"], True)
+        self.assertIn("verified under that key, carries no controller binding (optional)", a["detail"])
+
+    def test_a_bound_sender_is_not_optional(self):
+        digest, commitment = step.published_binding(self.key(LAB1))
+        self.assertTrue(step.is_key(digest))
+        self.assertIs(commitment["verified"], True)
+        self.assertNotIn("optional", self.accept(LAB1))
+
+    def test_a_commitment_edited_after_signing_is_not_verified_so_not_optional(self):
+        path = self.nodes / "commitments" / f"{LAB3}.json"
+        doc = json.loads(path.read_text())
+        doc["issued_at"] = "2026-01-01T00:00:00Z"
+        path.write_text(json.dumps(doc))
+        self.assertIs(step.published_binding(self.key(LAB3))[1]["verified"], False)
+        self.assertNotIn("optional", self.accept(LAB3))
+
+    def test_a_commitment_under_another_key_than_listed_is_not_verified(self):
+        listing = self.nodes / f"{LAB3}.json"
+        listing.write_text(json.dumps(dict(json.loads(listing.read_text()), key_id="ab" * 32)))
+        self.assertIs(step.published_binding("ab" * 32)[1]["verified"], False)
 
 
 @unittest.skipIf(BIN is None or not HAS_CROSS, NO_DRIVER if BIN is None else NO_CROSS)
@@ -708,10 +767,27 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
 
-    def test_live_a_sender_that_publishes_no_binding_is_accepted_on_its_listed_key(self):
-        # loop#187: the binding is optional; lab-b lists the half's key and its commitment carries no binding.
-        self.publish_binding(None)
+    def test_live_an_unverified_commitment_with_no_binding_stays_an_unbound_sender(self):
+        # loop#187, Sherlock2's condition: "no binding" counts only from a commitment verified under the listed key
+        self.publish_binding(None)  # an unsigned {} that carries no binding
         f = self.run_live()
+        [acc] = self.acceptance_entries(f)
+        self.assertEqual(acc["what"], step.LIVE_UNBOUND_WHAT)
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertNotIn("optional", c["accepted"])
+        self.assertIs(c["accepted"]["commitment"]["verified"], False)
+        self.assertNotIn("loop#187", f["detail"])
+
+    def test_live_a_verified_commitment_with_no_binding_is_accepted_on_its_listed_key(self):
+        # the half's key has no private key in the fixtures, so the verified commitment is stood in for here;
+        # Step05PublishedCommitmentTest verifies a real one
+        self.publish_binding(None)
+        self.list_sender()
+        verified = (None, {"path": "nodes/commitments/x.json", "sha256": "00" * 32, "verified": True})
+        env = {"LAB_DIR": str(self.lab), "LOOP_NODES_DIR": str(self.nodes)}
+        with mock.patch.dict(os.environ, env), mock.patch.object(step, "published_binding", return_value=verified):
+            self.assertEqual(step.main(["--population", str(self.lab), "--out", str(self.out)]), 0)
+        f = json.loads((self.out / "finding.json").read_text())
         self.assertEqual(self.acceptance_entries(f), [])
         [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertIs(c["accepted"]["optional"], True)
@@ -784,7 +860,7 @@ class Step05DealLiveTest(unittest.TestCase):
         [node_file] = (self.nodes / "commitments").glob("*.json")
         self.assertEqual(checks[0]["accepted"]["commitment"],
                          {"path": f"nodes/commitments/{node_file.name}",
-                          "sha256": hashlib.sha256(node_file.read_bytes()).hexdigest()})
+                          "sha256": hashlib.sha256(node_file.read_bytes()).hexdigest(), "verified": False})
         self.assertEqual(finding.check(self.findings), [])
 
     def bind_sender(self, text=None, file=True):

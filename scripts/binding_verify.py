@@ -5,8 +5,8 @@ verdict and not which role the key has in it (agent-action-capsule#468). The cal
 
 Revocation statements (Controller Binding v0 §5) for a lab binding are published by pull request at
 `nodes/revocations/<binding_digest>.json` (loop#138): a JSON array of statements, each signed by one of the
-binding's two keys; the loop never signs one. CB §5 leaves delivery to the using profile, and this folder is the
-lab's. A statement that applies at or before a time asked about makes the verifier report revocation FAIL. With
+binding's two keys; the loop never signs one. CB §5 leaves delivery to the using profile; this folder is the
+loop profile's own delivery point, not a registry. A statement that applies at or before a time asked about makes the verifier report revocation FAIL. With
 none that applies it reports NOT_CHECKED, never PASS (CB-1).
 """
 import json

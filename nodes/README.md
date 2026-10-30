@@ -104,7 +104,10 @@ and signed by one of the binding's two keys. The loop never signs one; the key
 holder does and opens the pull request. Step 05 passes the statements to the
 pinned verifier with the binding, so a binding revoked at or before a half's
 time does not apply. CB v0 registers no place to fetch statements (CB-1), so
-the verifier knows only those it is given; this folder is the lab's.
+the verifier knows only those it is given. This folder is the loop profile's
+own delivery point, not a registry: a statement published elsewhere is not
+excluded, so revocation stays NOT_CHECKED, never PASS, with none here that
+applies.
 `scripts/check_revocations.py nodes/revocations` checks the files' shape (the
 `commitments` check); the verifier checks signatures and times.
 

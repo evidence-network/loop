@@ -73,7 +73,9 @@ its `node_id`, listed in nodes/) must have that digest, name the half's evidence
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
 applies", not a trust verdict and not which role the key has in it (AAC#468). The revocation statements published
 for the binding at `nodes/revocations/<binding_digest>.json` (loop#138, `scripts/binding_verify.py`) go to the
-verifier with it, so a binding revoked at or before either time does not apply. A binding that does not apply or does
+verifier with it, so a binding revoked at or before either time does not apply. With none that applies, revocation
+is a not_checked entry under Controller Binding v0's open point CB-1: a statement published elsewhere cannot be
+excluded. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
 not_checked entry, as is the key's role.
 
@@ -91,11 +93,12 @@ Only halves sealed under the current build are judged for acceptance and the tie
 timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
-Unset, every held half is judged. Only halves received from a node of the population are judged: a half whose
-provenance names a sender outside it (lab-4, the twins-only node, is in no population; loop#174) is counted in the
-detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
+Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
+a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
+not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
 half accepted on the evidence key from a sender whose published commitment carries no controller binding, cited by
-a record naming none, is accepted on the key the sender lists in nodes/ (loop#187) and counted in the detail.
+a record naming none, is accepted on the key the sender lists in nodes/ (loop#187) and counted in the detail. "No
+binding" is read only from a commitment that verifies this run under that listed key; an unverified one stays a gap.
 Other current-build halves accepted on the evidence key, from a sender whose published commitment carries no
 equal operator binding, are their own entry ("halves from an unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
 read, are not_checked entries. Each held half's producer signature is checked in
@@ -130,6 +133,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import binding_verify as bv  # noqa: E402
+import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
@@ -332,14 +336,19 @@ LIVE_DECLARATION_WHAT = "the controller binding a node accepted a half under"
 
 
 BINDING_ROLE_ISSUE = "action-state-group/agent-action-capsule#468"
-BINDING_REVOCATION_ISSUE = "evidence-network/loop#138"
+# Controller Binding v0 registers no place to fetch revocation statements, so revocation is FAIL or NOT_CHECKED,
+# never PASS. The statements published in nodes/revocations/ are read (loop#138); reading that list as complete would
+# change CB-1, which is Steven's call (Sherlock2, Buzz f91277af).
+BINDING_REVOCATION_ISSUE = ("action-state-group/agent-action-capsule: Controller Binding v0 open point CB-1 (no "
+                            "registered revocation source)")
 
 
 def live_declarations(counts, unread):
     """The not_checked entries for the controller binding behind current-build halves cited with a binding
     digest: `counts` is {state: n} of binding_check, `unread` the reasons a binding could not be read. For the
-    bindings that apply (ok), revocation is NOT_CHECKED (no revocation statement is read from the lab) and so is
-    the half's key's role in the binding (`Binds` takes either key)."""
+    bindings that apply (ok), revocation is NOT_CHECKED (CB-1: no statement in nodes/revocations/ applies, and a
+    statement published elsewhere cannot be excluded) and so is the half's key's role in the binding (`Binds`
+    takes either key)."""
     out = []
     if counts.get("unread"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,
@@ -350,8 +359,9 @@ def live_declarations(counts, unread):
                            f"implement"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
-                    "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no revocation "
-                           f"statement is read from the lab"})
+                    "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no statement in "
+                           f"nodes/{bv.REVOCATIONS}/ applies, and Controller Binding v0 registers no source a verifier "
+                           f"could hold to be complete (CB-1)"})
         out.append({"what": "the half's key's role in the controller binding that applies",
                     "issue": BINDING_ROLE_ISSUE,
                     "why": f"{counts['ok']} cited bindings name the half's key; which of the two keys it is (node "
@@ -538,10 +548,13 @@ def nodes_dir():
 
 
 def published_binding(key_id):
-    """(controller_binding.digest, {path, sha256}) of the commitment the node holding evidence key `key_id`
-    published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
+    """(controller_binding.digest, {path, sha256, verified}) of the commitment the node holding evidence key
+    `key_id` published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
     commitment, and a None digest when the commitment carries no binding. The path and the sha256 of the bytes
-    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes."""
+    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes. `verified` is
+    true only when the commitment verifies this run (scripts/check_commitment.py: fields, its signature under its
+    spki) and names that node and `key_id`, the key the node's nodes/ listing holds: only then does "carries no
+    binding" say the sender published none (loop#187), since an unsigned or stripped file could hide one."""
     d = nodes_dir()
     for entry in sorted(d.glob("*.json")):
         try:
@@ -549,11 +562,15 @@ def published_binding(key_id):
             if node.get("key_id") != key_id:
                 continue
             raw = (d / "commitments" / f"{node['node_id']}.json").read_bytes()
-            digest = (json.loads(raw).get("controller_binding") or {}).get("digest")
-        except (OSError, ValueError, KeyError, AttributeError):
+            doc = json.loads(raw)
+            digest = (doc.get("controller_binding") or {}).get("digest")
+        except (OSError, ValueError, KeyError, AttributeError, TypeError):
             continue
+        errs, _ = cc.verify(doc, cc.file_fetcher(d / "commitments"))
+        verified = not errs and doc.get("key_id") == key_id and doc.get("node_id") == node["node_id"]
         return (digest if is_key(digest) else None,
-                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest()})
+                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest(),
+                 "verified": verified})
     return None, None
 
 
@@ -639,7 +656,7 @@ def binding_check(digest, half, citing, peers):
         return "unsupported", f"binding {digest} ({name}): {', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}"
     return "ok", (f"binding {digest} ({name}) names the half's key {key} and applies at {', '.join(times)}: form, "
                   f"signatures and window PASS, revocation {props.get('controller_binding_revocation')} "
-                  f"({len(statements)} statements published in nodes/{bv.REVOCATIONS}/, none applies)")
+                  f"(no statement in nodes/{bv.REVOCATIONS}/ applies; {len(statements)} published)")
 
 
 def accepted(citing, half):
@@ -653,8 +670,8 @@ def accepted(citing, half):
     sender's published commitment, however the key was accepted; a declaration has no anchor key under a
     bip340 anchor, so the own-key check applies only when one is present. `optional` is true when the record
     names no binding digest and the sender (the node whose nodes/ listing holds the half's key) publishes a
-    commitment with no controller binding: the binding is optional (loop#187), so the half is accepted on
-    the listed evidence key.
+    commitment with no controller binding, verified this run under that key: the binding is optional (loop#187),
+    so the half is accepted on the listed evidence key. An unverified commitment leaves it unbound.
     """
     rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
     rh = rh if isinstance(rh, dict) else {}
@@ -692,11 +709,12 @@ def accepted(citing, half):
                 "detail": f"accepted the half's key {half.get('key_id')} via {via}, naming operator binding "
                           f"{digest}, which the sender's published commitment does not carry"}
     published, commitment = published_binding(half.get("key_id"))
-    if commitment and published is None and digest is None:
+    if commitment and commitment["verified"] and published is None and digest is None:
         return {"ok": True, "via": via, "bound": False, "optional": True, "commitment": commitment,
                 "detail": f"accepted the half's key {half.get('key_id')} via {via}, the key the sender lists in "
-                          f"nodes/; the sender's published commitment carries no controller binding (optional)"}
-    return {"ok": True, "via": via, "bound": False,
+                          f"nodes/; the sender's published commitment, verified under that key, carries no controller "
+                          f"binding (optional)"}
+    return {"ok": True, "via": via, "bound": False, **({"commitment": commitment} if commitment else {}),
             "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
 
 
