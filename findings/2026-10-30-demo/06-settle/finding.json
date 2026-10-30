@@ -1,0 +1,42 @@
+{
+  "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
+  "detail": "node brattain: 75 settlement legs and 31 wallet-reported settlement observations recorded; none is the rail's own object, so finality is not verified; node shockley: 16 settlement legs and 32 wallet-reported settlement observations recorded; none is the rail's own object, so finality is not verified; the live population names no rail. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays).",
+  "finished": "2026-10-30T07:34:39Z",
+  "name": "settle",
+  "not_checked": [
+    {
+      "issue": "Mesh-LLM/capsules-plugin#83",
+      "what": "settlements node brattain recorded, against the rail",
+      "why": "the node records its wallet's report of a Lightning payment, not the rail's settlement object; the pinned adapter (capsules-plugin#82) reports on the node's own book with the wallet's terminal report as finality, and this step does not call it yet"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#83",
+      "what": "settlements node shockley recorded, against the rail",
+      "why": "the node records its wallet's report of a Lightning payment, not the rail's settlement object; the pinned adapter (capsules-plugin#82) reports on the node's own book with the wallet's terminal report as finality, and this step does not call it yet"
+    }
+  ],
+  "pinned": {
+    "capsules": {
+      "ref": "d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "brattain/recorded.json",
+      "sha256": "e3fdae0bdb538e287ef4ac9965438a814659b13d9f6aacb6bf27d0281d24d264"
+    },
+    {
+      "path": "shockley/recorded.json",
+      "sha256": "ae279edc8865252614bb3d1de75932ec553d771708868cee36e6996d3fcfc108"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T07:34:39Z",
+  "step": "06"
+}
