@@ -111,6 +111,9 @@ read -r -d '' -a SHARE <<< "${LAB_SHARE_AT_COMPLETION:-}" || true
 for n in "${SHARE[@]+"${SHARE[@]}"}"; do
   [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_SHARE_AT_COMPLETION names $n, not a lab node"
 done
+# The requester holds a twin's or the referee's half only if that node pushes it (referee/live.rs: a pair counts when each
+# twin's signed half was pushed to the requester, and a referee is eligible once the requester holds a half from it).
+if [ "$TWINS" = 1 ] && [ "${#SHARE[@]}" = 0 ]; then SHARE=("$TWIN_A" "$TWIN_B" "$REFEREE"); fi
 shares() { local n; for n in "${SHARE[@]+"${SHARE[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
@@ -157,6 +160,7 @@ wait_for() {
   echo "ready: $what"
 }
 
+node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 routes_model() {
   curl -fsS "http://127.0.0.1:$(api_port "$1")/v1/models" \
@@ -451,6 +455,8 @@ cmd_start() {
     else
       start_node "$n" --join-file "$(token_file)"
     fi
+    # routes_model passes through lab-1; a node that serves the model itself must have loaded it (twin B from config alone).
+    if serves_model "$n"; then wait_for 600 "$n has loaded the model itself" node_ready "$n"; fi
     wait_for 300 "$n can route to lab-1's model" routes_model "$n"
   done
   for n in "${NODES[@]}"; do
@@ -468,6 +474,8 @@ cmd_start() {
 
 cmd_stop() {
   local n p
+  # Always lab-1..4: a lab started with LAB_TWINS=1 is stopped by a plain `stop` too.
+  local NODES=(lab-1 lab-2 lab-3 lab-4)
   for n in "${NODES[@]}"; do
     if [ "$DRY" = 1 ]; then say kill -TERM "<pid in $(pidfile "$n")>"; continue; fi
     p=$(pid_of "$n") || continue

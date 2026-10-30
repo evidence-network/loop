@@ -187,6 +187,17 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("four distinct nodes", r.stderr)
 
+    def test_lab_twins_makes_the_twins_and_the_referee_push_their_halves_to_the_requester(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        push = {n for n in ("lab-1", "lab-2", "lab-3", "lab-4")
+                if any(f"HOME={self.lab}/nodes/{n} " in l and "CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in l
+                       for l in r.stdout.splitlines())}
+        self.assertEqual(push, {"lab-1", "lab-2", "lab-4"})  # not the requester lab-3
+
+    def test_stop_includes_lab_4_without_lab_twins(self):
+        r = lab_sh("--dry-run", "stop", env=self.env)
+        self.assertIn("lab-4.pid", r.stdout)
+
     def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
         for env, text in (({"LAB_TWIN_B": "lab-1", "LAB_TWIN_A": "lab-4"}, "cannot be lab-1"),
                           ({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote")):

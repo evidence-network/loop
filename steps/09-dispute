@@ -604,7 +604,19 @@ def unrun_entry(what):
                                  "(the referee's, or a half's signer)", "issue": ISSUE_LIVE_TWINS}
 
 
-def injected_difference(out):
+def held_brackets(out, readable):
+    """The twin bracket ids of the Results the copied ledgers hold."""
+    found = set()
+    for name in readable:
+        for f in (RECEIVED, ISSUED):
+            for held in lines(out / name / "ledger" / f):
+                b = attestation((held or {}).get("verdict_capsule") or {}).get("adjudication")
+                if isinstance(b, dict) and b.get("twin_bracket_id"):
+                    found.add(b["twin_bracket_id"])
+    return found
+
+
+def injected_difference(out, brackets):
     """The lab-only fault `lab.sh twins` wrote ($LAB_DIR/twin-fault.json), copied into the proof, as a sentence
     that labels it plainly; empty when the lab ran no such pair. The Result is then real (sealed by the
     plugin on lab nodes) but its disagreement is injected, not organic twin traffic."""
@@ -614,6 +626,9 @@ def injected_difference(out):
     try:
         doc = json.loads(src.read_text(encoding="utf-8"))
         inj = doc["injected_difference"]
+        if doc.get("twin_bracket_id") not in brackets:
+            return (f"twin-fault.json names bracket {doc.get('twin_bracket_id')!r}, which no Result a lab node holds "
+                    "carries: it is not applied to this finding")
         text = (f"INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): {inj['kind']} on "
                 f"{inj['node']} = {inj['value']!r}; the twins' model hash and weights digest are the same "
                 f"(roles {json.dumps(doc.get('roles'), sort_keys=True)}, bracket {doc.get('twin_bracket_id')})")
@@ -645,7 +660,7 @@ def main_live(pop, out, started):
             if (d / "ledger" / f).is_file():
                 (out / name / "ledger").mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(d / "ledger" / f, out / name / "ledger" / f)
-    fault = injected_difference(out)
+    fault = injected_difference(out, held_brackets(out, readable))
     if fault:
         details.append(fault)
     ledgers = {node_id: out / name / "ledger" for name, (node_id, _) in readable.items()}
