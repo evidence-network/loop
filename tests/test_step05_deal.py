@@ -376,6 +376,29 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "unsupported", detail)
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
+    def with_key_types(self, types):
+        # INTERIM (loop#140): remove with step.UNSUPPORTED_KEY_TYPE_ISSUE.
+        keys = BINDINGS["valid-same-controller"]["keys"]
+        text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": types})
+        BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
+        self.addCleanup(BINDINGS.pop, "with-key-types")
+        return self.check("with-key-types")
+
+    def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_bad(self):
+        state, detail = self.with_key_types(["ed25519", "bip340"])
+        self.assertEqual(state, "unsupported_key_type", detail)
+        self.assertIn("bip340", detail)
+        self.assertIn(step.UNSUPPORTED_KEY_TYPE_ISSUE, detail)
+
+    def test_a_binding_declaring_only_ed25519_key_types_goes_to_the_verifier(self):
+        state, detail = self.with_key_types(["ed25519"])
+        self.assertEqual(state, "bad", detail)  # the extra member breaks v0's member set: a bad binding, as before
+
+    def test_unsupported_key_types_reads_only_a_key_types_list(self):
+        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}'), ["bip340"])
+        for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
+            self.assertEqual(step.unsupported_key_types(raw), [], raw)
+
     def test_no_file_no_listing_or_another_binding_is_unread_never_bad(self):
         state, detail = self.check("valid-same-controller", file=False)
         self.assertEqual(state, "unread", detail)
@@ -420,6 +443,8 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",
                                             step.BINDING_ROLE_ISSUE)])
         self.assertEqual(len(es), 4)
+        es = step.live_declarations({"unsupported_key_type": 2}, set())
+        self.assertEqual([(e["issue"], e["why"][:1]) for e in es], [(step.UNSUPPORTED_KEY_TYPE_ISSUE, "2")])
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
 
