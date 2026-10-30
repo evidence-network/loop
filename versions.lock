@@ -20,8 +20,11 @@ mesh-llm-pr-2649 Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8
 # ceremony in join (#121), each ask sealed before it is sent and its absence when the window closes
 # (#110), the base policy's five rows sealed with each admission decision (#116), service evidence
 # agreements (#111), a Service History (#39, #120), and a refusal checked against the policy the
-# peer's commitment pins (#112). No release carries them yet.
-capsules Mesh-LLM/capsules-plugin e5eef37efe9faf8ba14c40d3c1172498f8d9b969
+# peer's commitment pins (#112); then through #138 (d1f4edc): the operator binding carried to counterparties
+# in push bundles (#135, step 05 (c)), the effective share_record_at_completion written to the data dir
+# (#137), a citing record naming the own half of the same exchange (#138), and a deal capsule going to the
+# exchange's counterparty (#133). No release carries them yet.
+capsules Mesh-LLM/capsules-plugin d1f4edc09a9546d0c54a3bc8572251436ba47e59
 # The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
 # matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
 # .cargo_vcs_info.json names the tag's commit, dd64efe7).
