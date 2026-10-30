@@ -380,6 +380,7 @@ LIVE_NOT_CHECKED = [
 
 DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
 COMMITMENT_ROUTE = "/api/plugins/capsules/tools/mesh_commitment_fetch"
+OWN_COMMITMENT_ROUTE = "/api/plugins/capsules/tools/commitment"
 HEX64 = frozenset("0123456789abcdef")
 
 
@@ -392,17 +393,26 @@ def post_json(url, body, timeout):
         return None
 
 
-def check_binding(name, node_id, doctor_console, commitment_console, timeout=30):
+def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
     """(failure or None, not_checked or None, line) for the controller binding of one node.
 
     Its doctor, asked through its own console, says bound (with the binding digest) or unbound; its commitment,
     fetched through the asking console, may name a binding by digest. Both agree, or neither names one: the
     binding is optional. Only the digest is read, never the operator's key.
+
+    Two ties keep the comparison about this node: the doctor console must answer as this node (its own
+    commitment names node_id), and the fetched commitment must be under the node's listed key. The plugin
+    reads both digests from the same held file, so this shows the node is consistent, not an independent check
+    of the binding. A binding whose window closes between the two calls shows as one FAIL; that is rare, and
+    a rerun settles it.
     """
     def unreadable(why):
-        return None, {"what": f"{name}: the controller binding", "why": why,
-                      "issue": "Mesh-LLM/capsules-plugin#54"}, f"{name}: binding not read"
+        return None, no_binding(name, why), f"{name}: binding not read"
 
+    own = post_json(doctor_console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    answered_as = ((own or {}).get("commitment") or {}).get("node_id") if isinstance(own, dict) else None
+    if answered_as != node_id:
+        return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
     doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
     findings = doctor.get("findings") if isinstance(doctor, dict) else None
     found = {f.get("check"): f for f in findings if isinstance(f, dict)} if isinstance(findings, list) else {}
@@ -418,12 +428,16 @@ def check_binding(name, node_id, doctor_console, commitment_console, timeout=30)
         return unreadable("its commitment could not be fetched and checked through the console that asks it"
                           + (f" ({'; '.join(map(str, fetched['problems']))})" if isinstance(fetched, dict)
                              and fetched.get("problems") else ""))
+    if fetched["commitment"].get("key_id") != key_id and fetched.get("announced_key") != "matches":
+        return unreadable(f"its commitment is not under the listed key {key_id}")
     named = (fetched["commitment"].get("controller_binding") or {}).get("digest")
     if named != held:
         return (f"{name}: the commitment names the controller binding {named or 'none'}, but doctor reports "
                 f"{('it bound as ' + held) if held else 'no binding held'}"), None, ""
-    return None, None, (f"{name}: controller binding bound, the commitment names the same digest {held}" if held
-                        else f"{name}: no controller binding held, and the commitment names none")
+    return None, None, (f"{name}: doctor reports the controller binding bound ({held}); its signed commitment, "
+                        "fetched through the console that asks it, names the same digest" if held
+                        else f"{name}: doctor reports no controller binding held, and the signed commitment "
+                             "names none")
 
 
 def no_binding(name, why):
@@ -510,7 +524,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
         if own:
-            fail, nc, line = check_binding(name, entry["node_id"], own, asker, timeout)
+            fail, nc, line = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
             if fail:
                 bad.append(fail)
             if nc:

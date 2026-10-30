@@ -167,7 +167,7 @@ class DoctorBackendTest(Tmp):
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced, own=None, doctor=None, committed=None, doctor_raw=None, problems=()):
+    def __init__(self, answers, announced, own=None, doctor=None, committed=None, doctor_raw=None, problems=(), me=None, key_id=None):
         """`own` is the node_id of the node this console belongs to. Like the real one, the console does
         not answer for its own node: a 502 with the absence text, for the key and for each question."""
         fake = self
@@ -175,6 +175,7 @@ class FakeConsole:
         self.doctor, self.committed = doctor, committed
         self.doctor_raw, self.problems = doctor_raw, list(problems)
         self.doctor_asked, self.fetched = 0, []
+        self.me, self.key_id = me, key_id or LISTED
         self.asked = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -194,6 +195,10 @@ class FakeConsole:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path.endswith("/tools/commitment"):
+                    if fake.me is None:
+                        return self.reply(404, b"no such tool")
+                    return self.reply(200, json.dumps({"commitment": {"node_id": fake.me}}).encode())
                 if self.path.endswith("/tools/doctor"):
                     fake.doctor_asked += 1
                     if fake.doctor_raw is not None:
@@ -207,7 +212,7 @@ class FakeConsole:
                     return self.reply(200, json.dumps({"findings": [{"check": "self_attested", "state": "x"}, f]}).encode())
                 if self.path.endswith("/tools/mesh_commitment_fetch"):
                     fake.fetched.append(body["peer_id"])
-                    c = {"node_id": body["peer_id"]}
+                    c = {"node_id": body["peer_id"], "key_id": fake.key_id}
                     digest = fake.committed.get(body["peer_id"]) if isinstance(fake.committed, dict) else fake.committed
                     if digest:
                         c["controller_binding"] = {"digest": digest}
@@ -254,20 +259,20 @@ class ReporterBackendTest(Tmp):
         return json.loads((self.out / "finding.json").read_text())
 
     def run_lab(self, *flags, second=True, doctor=None, committed=None, node_consoles=(), doctor_raw=None, problems=(),
-                 env=None, own_consoles=None):
+                 env=None, own_consoles=None, key_id=None):
         """Three lab nodes, lab-3 the reporter: --console is lab-3's, the second console lab-1's. Each
         console refuses its own node."""
         pop_dir = Path(self.tmp.name) / "lab"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
         reporter = FakeConsole(VERIFIED, LISTED, own="3" * 64, doctor=doctor, doctor_raw=doctor_raw,
-                               committed=committed)
-        other = FakeConsole(VERIFIED, LISTED, own="1" * 64, committed=committed, problems=problems)
+                               committed=committed, me="3" * 64, key_id=key_id)
+        other = FakeConsole(VERIFIED, LISTED, own="1" * 64, committed=committed, problems=problems, key_id=key_id)
         self.consoles = {"reporter": reporter, "second": other}
         argv = ["--population", str(pop_dir), "--out", str(self.out), "--console", reporter.url]
         for flag in flags:
             argv += {"self": ["--self-node", "lab-3"], "second": ["--second-console", other.url]}[flag]
-        own = {n: FakeConsole(VERIFIED, LISTED, doctor=d) for n, d in (own_consoles or {}).items()}
+        own = {n: FakeConsole(VERIFIED, LISTED, doctor=d, me=str(n[-1]) * 64) for n, d in (own_consoles or {}).items()}
         self.own = own
         for n in node_consoles:
             argv += ["--node-console", f"{n}={reporter.url}"]
@@ -358,13 +363,13 @@ class ReporterBackendTest(Tmp):
     def test_a_bound_node_whose_commitment_names_the_same_digest_is_shown_bound(self):
         r = self.run_lab("self", "second", doctor=("bound", self.D), committed=self.D)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn(f"lab-3: controller binding bound, the commitment names the same digest {self.D}", r["detail"])
+        self.assertIn(f"lab-3: doctor reports the controller binding bound ({self.D}); its signed commitment, fetched through the console that asks it, names the same digest", r["detail"])
         self.assertNotIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
 
     def test_an_unbound_node_with_no_digest_in_its_commitment_holds_the_binding_is_optional(self):
         r = self.run_lab("self", "second", doctor=("unbound", None))
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn("lab-3: no controller binding held, and the commitment names none", r["detail"])
+        self.assertIn("lab-3: doctor reports no controller binding held, and the signed commitment names none", r["detail"])
 
     def test_a_commitment_digest_other_than_the_held_binding_is_a_fail(self):
         r = self.run_lab("self", "second", doctor=("bound", self.D), committed="e" * 64)
@@ -393,10 +398,11 @@ class ReporterBackendTest(Tmp):
         self.assertIn("lab-2: the controller binding", whats)
 
     def test_a_node_with_its_own_console_has_its_binding_read_too(self):
-        r = self.run_lab("self", "second", doctor=("unbound", None), node_consoles=("lab-1", "lab-2"))
+        r = self.run_lab("self", "second", doctor=("unbound", None),
+                         own_consoles={"lab-1": ("unbound", None), "lab-2": ("unbound", None)})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         for n in ("lab-1", "lab-2", "lab-3"):
-            self.assertIn(f"{n}: no controller binding held, and the commitment names none", r["detail"])
+            self.assertIn(f"{n}: doctor reports no controller binding held, and the signed commitment names none", r["detail"])
         self.assertEqual([i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]], [])
 
     def test_each_node_doctor_is_asked_through_its_own_console_and_its_commitment_through_the_asker(self):
@@ -410,7 +416,7 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(sorted(self.consoles["reporter"].fetched), ["1" * 64, "2" * 64])
         self.assertEqual(self.consoles["second"].fetched, ["3" * 64])
         for n, d in (("lab-1", d1), ("lab-2", d2), ("lab-3", self.D)):
-            self.assertIn(f"{n}: controller binding bound, the commitment names the same digest {d}", r["detail"])
+            self.assertIn(f"{n}: doctor reports the controller binding bound ({d}); its signed commitment, fetched through the console that asks it, names the same digest", r["detail"])
 
     def test_a_node_whose_doctor_digest_differs_from_its_commitment_fails_on_that_node(self):
         r = self.run_lab("self", "second", doctor=("unbound", None), committed={"1" * 64: "9" * 64},
@@ -451,7 +457,7 @@ class ReporterBackendTest(Tmp):
         r = self.run_lab("self", "second", doctor=("unbound", None), own_consoles={"lab-1": ("bound", "1" * 64)},
                          committed={"1" * 64: "1" * 64}, env="lab-1=http://127.0.0.1:9")
         self.assertEqual(self.own["lab-1"].doctor_asked, 1)
-        self.assertIn("lab-1: controller binding bound", r["detail"])
+        self.assertIn("lab-1: doctor reports the controller binding bound", r["detail"])
 
     def test_a_node_console_for_a_node_not_in_the_population_is_refused(self):
         pop_dir = Path(self.tmp.name) / "lab2"
@@ -459,6 +465,19 @@ class ReporterBackendTest(Tmp):
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": LAB}))
         self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out), "--node-console",
                                     "lab-9=http://127.0.0.1:9"]), 2)
+
+    def test_a_console_that_answers_as_another_node_is_not_checked_never_holds(self):
+        # --node-console lab-1 pointed at lab-3's console: both unbound would otherwise "hold".
+        r = self.run_lab("self", "second", doctor=("unbound", None), node_consoles=("lab-1",))
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertNotIn("lab-1: doctor reports", r["detail"])
+        self.assertIn("answers as " + "3" * 64 + ", not as " + "1" * 64,
+                      " ".join(i["why"] for i in r["not_checked"]))
+
+    def test_a_commitment_under_a_key_other_than_the_listed_one_is_not_checked(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None), key_id="7" * 64)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("not under the listed key", " ".join(i["why"] for i in r["not_checked"]))
 
     def test_a_malformed_node_console_is_refused(self):
         self.assertEqual(step.main(["--population", str(self.out), "--out", str(self.out), "--node-console", "lab-1"]), 2)
