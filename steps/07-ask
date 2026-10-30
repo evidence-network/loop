@@ -137,7 +137,7 @@ DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
 # The pinned plugin seals each ask before it sends it, and its absence when the window closes (capsules-plugin
 # PR #110); the live path reads those sealed records from the asker's ledger (ask_records, judge_sealed).
-SEAL_ISSUE = "evidence-network/loop#80"
+SEAL_ISSUE = "evidence-network/loop: the live lab run with the asker's data dirs set (lab.sh ask); loop#80 built the read"
 EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node; it needs step 05's deal half as subject
 LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
 LIVE_NOT_CHECKED = [
@@ -731,7 +731,7 @@ def ask_records(ledger):
     ledger cannot be read."""
     try:
         text = Path(ledger).joinpath("capsules.jsonl").read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     records = []
     for line in text.splitlines():
@@ -739,7 +739,9 @@ def ask_records(ledger):
             rec = json.loads(line)
         except ValueError:
             continue
-        header = ((rec.get("model_attestation") or {}).get("compute_attestation") or {}).get(BOOK_BLOCK)
+        att = rec.get("model_attestation") if isinstance(rec, dict) else None
+        comp = att.get("compute_attestation") if isinstance(att, dict) else None
+        header = comp.get(BOOK_BLOCK) if isinstance(comp, dict) else None
         if isinstance(header, dict) and isinstance(rec.get("capsule_id"), str):
             records.append((rec["capsule_id"], header))
     return records
@@ -752,16 +754,18 @@ def request_digest(request):
         return None
 
 
-def judge_sealed(ledger, node_id, request, posted, back, answered, within):
+def judge_sealed(ledger, node_id, request, posted, back, saw, within):
     """(errors, not_checked reasons, evidence) for one live ask, from the asker's own sealed records: its
     evidence_request is in the book, and an evidence_response or a recorded_absence citing it agrees with what the
-    reporter saw. `posted` and `back` bracket the ask; `answered` is whether the reporter saw a signed artifact or
-    refusal; `within` is the commitment's answers_within as a timedelta, or None. The wire send is after the seal, so
+    reporter saw. `posted` and `back` bracket the ask; `saw` is what the reporter saw: "verified", "refusal" or None
+    when it saw no signed answer; `within` is the commitment's answers_within as a timedelta, or None. The wire
+    send is after the seal, so
     the true deadline is no earlier than the seal plus `within`: an absence must close no earlier than that.
 
     The plugin seals a request before it writes it to the stream, and the response it seals cites that request's
     record and the digest of the bytes sent: the digest the sealed request hashes to, which is checked here."""
     errs, notes = [], []
+    answered = saw in ("verified", "refusal")
     records = ask_records(ledger) if ledger else None
     if records is None:
         return errs, [LEDGER_GAP], None
@@ -776,7 +780,8 @@ def judge_sealed(ledger, node_id, request, posted, back, answered, within):
             return False
         return (h.get("record_type") == REQUEST_RECORD and lo <= at <= hi
                 and (st.get("responder_ref") == node_id or sent.get("audience") == node_id)
-                and sent.get("subject") == request.get("subject") and sent.get("derivation") == request.get("derivation"))
+                and all(sent.get(k) == v for k, v in request.items())  # the plugin only adds audience, nonce, auth
+                and sent.get("derivation") == request.get("derivation"))
 
     found = [(i, rid, h) for i, (rid, h) in enumerate(records) if mine(h)]
     if len(found) != 1:
@@ -787,7 +792,9 @@ def judge_sealed(ledger, node_id, request, posted, back, answered, within):
     index, rid, req_h = found[0]
     sealed = utc(req_h["committed_at"])
     digest = request_digest(req_h["statement"]["request"])
-    close = sealed + MINIMUM_ABSENCE_WINDOW  # the later of this and the request's own deadline
+    close = sealed + MINIMUM_ABSENCE_WINDOW  # the later of this, the commitment's answers_within and the deadline
+    if within is not None:
+        close = max(close, sealed + within)
     if req_h["statement"]["request"].get("deadline"):
         close = max(close, utc(req_h["statement"]["request"]["deadline"]))
 
@@ -819,6 +826,8 @@ def judge_sealed(ledger, node_id, request, posted, back, answered, within):
     if out_h.get("record_type") == RESPONSE_RECORD:
         if st.get("outcome") not in ANSWERED:
             errs.append(f"the response was recorded as {st.get('outcome')}, neither an artifact nor a refusal")
+        elif answered and st.get("outcome") != ("artifact" if saw == "verified" else "refusal"):
+            errs.append(f"the response was recorded as {st.get('outcome')}, but the reporter saw {saw}")
         if not answered:
             notes.append("the plugin sealed a reply after the reporter's call returned")
         check = (st.get("verification") or {}).get("policy_check")
@@ -827,8 +836,6 @@ def judge_sealed(ledger, node_id, request, posted, back, answered, within):
                 errs.append("the refusal is checked against the policy the peer's commitment pins and does not match")
             elif check in (None, "NOT_CHECKED") or (isinstance(check, dict) and check.get("state") == "NOT_CHECKED"):
                 notes.append("the refusal's policy check (capsules-plugin PR #112) is NOT_CHECKED in the sealed record")
-        elif st.get("outcome") == "artifact" and not answered:
-            pass
     else:
         window = st.get("window") or {}
         try:
@@ -845,7 +852,6 @@ def judge_sealed(ledger, node_id, request, posted, back, answered, within):
             errs.append(f"the absence closes its window at {window.get('closed')}, before the request's answers_within "
                         f"deadline {stamp(sealed + within)}")
     return errs, notes, evidence
-
 
 
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, console_data_dir=None,
@@ -899,10 +905,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                       "commitment": adv["commitment"] if adv else None, "late": late}
             write_json(attempt / "timing.json", timing)
             for stem, line in result.items():
-                saw = line.split(" ", 1)[0] in ("verified", "refusal")
+                saw = line.split(" ", 1)[0]
                 errs, notes, evidence = judge_sealed(
                     Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
-                    sent_at, back, saw, adv["within"] if adv else None)
+                    sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None)
                 qn = daily_report.QUESTION_NAMES[stem]
                 failures += [f"{name}: {qn}: {e}" for e in errs]
                 merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,

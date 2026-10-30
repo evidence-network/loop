@@ -292,6 +292,17 @@ def seal_records(ledger, peer, asked, outcome):
             "statement": {"outcome": "refusal", "request_digest": digest,
                           "verification": {"state": "refusal", "reason": "policy_declined",
                                            "policy_check": {"state": "MISMATCH"}}}, "committed_at": iso(at)}))
+    elif outcome in ("artifact_for_refusal", "refusal_for_artifact"):
+        lines.append(ask_record(f"{n + 1:064x}", {
+            "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
+            "statement": {"outcome": "artifact" if outcome == "artifact_for_refusal" else "refusal",
+                          "request_digest": digest, "verification": verification}, "committed_at": iso(at)}))
+    elif outcome == "junk":
+        lines.insert(0, "[]\n1\nnull\n" + json.dumps({"capsule_id": "x", "model_attestation": []}) + "\n")
+        lines.append(ask_record(f"{n + 1:064x}", {
+            "record_type": "evidence_response", "epistemic_type": "observed_event", "links": cites,
+            "statement": {"outcome": "artifact", "request_digest": digest, "verification": verification},
+            "committed_at": iso(at)}))
     elif outcome in ("absence", "early_absence", "late_open"):
         if outcome == "early_absence":
             window["closed"] = iso(at + dt.timedelta(seconds=20))
@@ -478,7 +489,7 @@ class ReporterBackendTest(Tmp):
     # --- the asker's sealed records, read from its ledger (evidence-network/loop#80) ---
     def ledger(self):
         d = Path(self.tmp.name) / "asker"
-        d.mkdir()
+        d.mkdir(exist_ok=True)
         return d
 
     def only_exchange_left(self, r):
@@ -540,6 +551,45 @@ class ReporterBackendTest(Tmp):
                           ledger=self.ledger(), sealed={"checkpoints": "refusal_mismatch"})
         self.assertEqual(r["result"], "FAIL", r["detail"])
         self.assertIn("does not match", r["detail"])
+
+    def test_a_response_of_another_type_than_the_reporter_saw_is_a_fail(self):
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"}, ledger=self.ledger(),
+                          sealed={"checkpoints": "artifact_for_refusal"})
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("recorded as artifact, but the reporter saw refusal", r["detail"])
+
+    def test_a_refusal_recorded_for_an_answer_the_reporter_saw_verified_is_a_fail(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "refusal_for_artifact"})
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("recorded as refusal, but the reporter saw verified", r["detail"])
+
+    def test_malformed_ledger_lines_are_skipped_not_fatal(self):
+        r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "junk"})
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.only_exchange_left(r)
+
+    def test_a_request_sealed_with_other_coverage_is_not_the_ask(self):
+        def altered(records):
+            return [(rid, {**h, "statement": {**h["statement"], "request": {
+                **h["statement"]["request"], "coverage": {"min_freshness": 99}}}}) if
+                    h.get("record_type") == "evidence_request" else (rid, h) for rid, h in records]
+        ask = step.ask_records
+        with mock.patch.object(step, "ask_records", side_effect=lambda l: altered(ask(l))):
+            r = self.run_live(VERIFIED, ledger=self.ledger())
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("holds 0 sealed evidence_request records for this ask", r["detail"])
+
+    def test_a_window_the_commitments_answers_within_keeps_open_is_not_checked_not_failed(self):
+        ledger, asked = self.ledger(), {"profile": "p", "subject": {"checkpoints": None}}
+        seal_records(ledger, "peer-1", asked, "none")
+        at = step.now()
+        with mock.patch.object(step, "OPEN_WINDOW_WAIT", dt.timedelta(0)):
+            late = at + dt.timedelta(seconds=100)  # past sealed + 60s, inside sealed + answers_within
+            with mock.patch.object(step, "now", side_effect=lambda: late):
+                errs, notes, _ = step.judge_sealed(ledger / "ledger", "peer-1", asked, at, at, None,
+                                                   dt.timedelta(minutes=5))
+        self.assertEqual(errs, [])
+        self.assertTrue(any("not sealed yet" in n for n in notes), notes)
 
     def test_an_unreadable_ledger_is_not_checked_on_the_issue(self):
         r = self.run_live(VERIFIED)
