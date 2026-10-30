@@ -8,7 +8,7 @@
 # exits non-zero, gets a FAIL finding written here through steps/finding.py, naming what
 # broke. Then `steps/finding.py check DIR` runs, status/findings.py writes DIR/index.md,
 # and one line per step is printed: `NN name RESULT`. Before the first step it writes
-# DIR/run.json: {"stage", "population", "started"} (UTC), the run's own start.
+# DIR/run.json: {"stage", "population", "started", "steps"} (UTC), the run's own start and the step numbers it runs.
 #
 # Exit 0: every step has a valid finding (FAIL and NOT_CHECKED included: the result is in
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
@@ -129,10 +129,10 @@ PY
 }
 
 # The run's start, before the first step: what the status page measures its minutes from.
-python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" <<'PY' || die "cannot write $out/run.json"
+python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
 import json, sys
-path, stage, population, started, ecosystem = sys.argv[1:]
-run = {"stage": stage, "population": population, "started": started}
+path, stage, population, started, ecosystem, *steps = sys.argv[1:]
+run = {"stage": stage, "population": population, "started": started, "steps": steps}
 if ecosystem != "mesh":
     run["ecosystem"] = ecosystem
 with open(path, "w") as f:

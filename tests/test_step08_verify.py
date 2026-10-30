@@ -74,6 +74,12 @@ def rehash(step_dir):
     dump(step_dir / "finding.json", f)
 
 
+def write_run_json(run, steps, population="rehearsal"):
+    Path(run).mkdir(parents=True, exist_ok=True)
+    dump(Path(run) / "run.json", {"population": population, "stage": "1", "started": "2026-10-30T00:00:00Z",
+                                   "steps": steps})
+
+
 def verify(run):
     """Run 08 in this process on run; (finding, manifest entries by dir)."""
     out = run / "08-verify"
@@ -90,6 +96,7 @@ class Step08Test(unittest.TestCase):
         cls.base = Path(cls.base_tmp.name) / "base"
         for base in BASE_STEPS:
             run_step(base, cls.base)
+        write_run_json(cls.base, ["03", "06", "09", "08"])
 
     @classmethod
     def tearDownClass(cls):
@@ -297,6 +304,7 @@ class Step08Test(unittest.TestCase):
         live = Path(self.tmp.name) / "live"
         sd = live / "06-settle"
         sd.mkdir(parents=True)
+        write_run_json(live, ["06", "08"], "live")
         (sd / "recorded.json").write_text("{}\n")
         finding.write(sd, result="NOT_CHECKED", population="live", asserts="a settlement", pinned=[],
                       proof=["recorded.json"], detail="", started=finding.now(),
@@ -307,6 +315,37 @@ class Step08Test(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(f["population"], "live")
         self.assertIn("live result", f["not_checked"][0]["what"])
+
+    def test_a_step_run_json_lists_but_the_run_lacks_fails_naming_it(self):
+        shutil.rmtree(self.run / "06-settle")
+        f, entries = verify(self.run)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("run.json lists step 06 but the run holds no 06-*/finding.json", f["detail"])
+        # Mutant: with the run.json list ignored, the missing step goes unnoticed.
+        with mock.patch.object(step, "expected_steps", return_value=["03", "09", "08"]):
+            f, _ = verify(self.run)
+        self.assertEqual(f["result"], "PASS")
+
+    def test_a_missing_live_step_does_not_turn_not_checked_into_pass(self):
+        live = Path(self.tmp.name) / "live"
+        for nn, name in (("06", "settle"), ("12", "join")):
+            sd = live / f"{nn}-{name}"
+            sd.mkdir(parents=True)
+            (sd / "recorded.json").write_text("{}\n")
+            finding.write(sd, result="NOT_CHECKED", population="live", asserts="x", pinned=[],
+                          proof=["recorded.json"], detail="", started=finding.now(),
+                          not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#24"}])
+        write_run_json(live, ["06", "12", "08"], "live")
+        shutil.rmtree(live / "12-join")
+        out = live / "08-verify"
+        step.main(["--population", str(ROOT / "population" / "live"), "--out", str(out)])
+        self.assertEqual(load(out / "finding.json")["result"], "FAIL")
+
+    def test_a_run_json_without_steps_is_not_checked(self):
+        (self.run / "run.json").unlink()
+        f, _ = verify(self.run)
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(f["not_checked"][0]["what"], "which steps the run holds")
 
     def test_an_empty_run_is_not_checked(self):
         empty = Path(self.tmp.name) / "empty"
@@ -319,27 +358,27 @@ class Step08Test(unittest.TestCase):
 
 @unittest.skipUnless(HAS_BASE and HAS_GO, NO_GO)
 class Step08NotCheckedListTest(unittest.TestCase):
-    """A recorded not_checked list is reproduced entry for entry: step 01's FAIL carries one."""
+    """A recorded not_checked list is reproduced entry for entry. Step 01's FAIL carries none since the producer
+    signature is verified in a second language (#137), so the plant adds an entry the judge does not derive."""
 
-    def test_a_dropped_not_checked_entry_fails(self):
+    def test_a_not_checked_entry_the_judge_does_not_derive_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "run"
-            run_step("01-seal", Path(tmp) / "sealed")  # sealed with alice's repository key
+            run_step("01-seal", Path(tmp) / "sealed")
             capsule = load(Path(tmp) / "sealed" / "01-seal" / "capsule.json")
             capsule["effect"]["effect_attestation"] = "gate_executed"  # a class an in-process seal cannot have
             dump(Path(tmp) / "planted.json", capsule)
             run_step("01-seal", run, "--sealed", str(Path(tmp) / "planted.json"))
-            f = load(run / "01-seal" / "finding.json")
-            self.assertEqual(f["result"], "FAIL")
-            self.assertEqual(len(f["not_checked"]), 1)
+            write_run_json(run, ["01", "08"])
             verdict, entries = verify(run)
             self.assertEqual(entries["01-seal"]["status"], "reproduced", verdict["detail"])
-            f["not_checked"] = []
+            f = load(run / "01-seal" / "finding.json")
+            f["not_checked"] = [{"what": "x", "why": "y", "issue": "evidence-network/loop#24"}]
             dump(run / "01-seal" / "finding.json", f)
             verdict, entries = verify(run)
-            self.assertEqual(verdict["result"], "FAIL")
-            self.assertIn("01-seal: did not hold: recorded not_checked [], re-derived", verdict["detail"])
-            # Mutant: with the not_checked comparison off, the dropped entry would go through.
+            self.assertEqual(verdict["result"], "FAIL", verdict["detail"])
+            self.assertIn("01-seal: did not hold: recorded not_checked [", verdict["detail"])
+            # Mutant: with the not_checked comparison off, the planted entry would go through.
             with mock.patch.object(step, "canon", return_value=[]):
                 verdict, _ = verify(run)
             self.assertEqual(verdict["result"], "PASS")
@@ -355,6 +394,7 @@ class Step08RehearsalTest(unittest.TestCase):
             for base in ("01-seal", "02-book", "03-advertise", "04-admit", "05-deal", "06-settle", "07-ask",
                          "09-dispute", "12-join"):
                 run_step(base, run)
+            write_run_json(run, ["01", "02", "03", "04", "05", "06", "07", "09", "12", "08"])
             run_step("08-verify", run)
             f = load(run / "08-verify" / "finding.json")
             entries = {e["dir"]: e for e in load(run / "08-verify" / "verified.json")["steps"]}
@@ -364,6 +404,21 @@ class Step08RehearsalTest(unittest.TestCase):
             self.assertEqual(len(entries), 9)
             self.assertEqual(subprocess.run([sys.executable, "-B", str(STEPS / "finding.py"), "check", str(run)]
                                             ).returncode, 0)
+
+    def test_a_scenario_dropped_from_04s_proof_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "2026-10-30-rehearsal"
+            run_step("04-admit", run)
+            write_run_json(run, ["04", "08"])
+            f4 = load(run / "04-admit" / "finding.json")
+            gone = sorted({Path(p["path"]).parts[1] for p in f4["proof"] if p["path"].startswith("scenarios/")})[0]
+            f4["proof"] = [p for p in f4["proof"] if not p["path"].startswith(f"scenarios/{gone}/")]
+            dump(run / "04-admit" / "finding.json", f4)
+            out = run / "08-verify"
+            step.main(["--population", str(POPULATION), "--out", str(out)])
+            f = load(out / "finding.json")
+            self.assertEqual(f["result"], "FAIL", f["detail"])
+            self.assertIn(f"scenario {gone} is in the repository but not in the finding's proof", f["detail"])
 
 
 if __name__ == "__main__":

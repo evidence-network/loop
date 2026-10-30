@@ -39,6 +39,7 @@ import argparse
 import importlib.machinery
 import importlib.util
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -141,6 +142,14 @@ def keys_commitments(c, path):
             if got != pubs[n]:
                 bad.append(f"{f.relative_to(c.work)} key_id {got} is not the repository key of node {n}")
     return bad
+
+
+def keys_04(c):
+    """The scenarios step 04 must have judged are the repository's, not the ones its own finding lists."""
+    want = {d.name for d in (c.pop / "step04" / "scenarios").iterdir() if d.is_dir()}
+    have = {Path(p["path"]).parts[1] for p in c.record["proof"] if p["path"].startswith("scenarios/")}
+    return ([f"scenario {n} is in the repository but not in the finding's proof" for n in sorted(want - have)]
+            + [f"scenario {n} is in the finding's proof but not in the repository" for n in sorted(have - want)])
 
 
 def keys_05(c):
@@ -279,7 +288,7 @@ STEPS = {
     "01": (rederive_01, keys_01),
     "02": (rederive_02, keys_02),
     "03": (rederive_03, lambda c: keys_commitments(c, "{n}.commitment.json")),
-    "04": (rederive_04, lambda c: []),  # the judge takes bob's key from the repository only
+    "04": (rederive_04, keys_04),
     "05": (rederive_05, keys_05),
     "06": (rederive_06, keys_06),
     "07": (rederive_07, keys_07),
@@ -383,9 +392,26 @@ def verify_step(d, pop_dir, population, tmp):
     return done("failed" if entry["problems"] else "reproduced")
 
 
+def expected_steps(run):
+    """The step numbers run.json says the run holds, or None when it does not say."""
+    try:
+        steps = load(Path(run) / "run.json").get("steps")
+    except (OSError, ValueError, AttributeError):
+        return None
+    ok = isinstance(steps, list) and steps and all(isinstance(s, str) and re.fullmatch(r"\d\d", s) for s in steps)
+    return steps if ok else None
+
+
 def verify_run(run, out, pop_dir, population):
-    """[manifest entries] for every step dir in run except out's."""
+    """[manifest entries] for every step dir in run except out's, and one failed entry for each step
+    run.json lists that has no dir."""
     entries = []
+    own = Path(out).resolve().name.split("-", 1)[0]
+    for nn in expected_steps(run) or []:
+        if nn != own and not list(Path(run).glob(f"{nn}-*/finding.json")):
+            entries.append({"step": nn, "name": None, "dir": f"{nn}-?", "recorded": None, "rederived": None,
+                            "problems": [f"run.json lists step {nn} but the run holds no {nn}-*/finding.json"],
+                            "not_checked": None, "files": [], "status": "failed"})
     for d in sorted(p for p in Path(run).iterdir() if p.is_dir()):
         if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.match(d.name):
             continue
@@ -410,6 +436,11 @@ def main(argv=None):
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
+    if expected_steps(out.parent) is None:
+        not_checked.append({"what": "which steps the run holds",
+                            "why": f"{out.parent.name}/run.json lists no steps, so 08 cannot tell a step left out "
+                                   "from a step never run",
+                            "issue": ISSUE})
     if not entries:
         not_checked = [{"what": "the run's findings", "why": f"{out.parent.name} holds no other step's finding",
                         "issue": ISSUE}]

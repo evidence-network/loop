@@ -5,6 +5,14 @@ offline, from the run's bundle and the keys the repository lists. `loop.sh` runs
 steps it reproduces. It never writes into another step's directory and never changes a step's script: each
 step's judge is loaded read-only from `steps/` with `importlib`.
 
+## Which steps the run holds
+
+The expected steps come from the run's own `run.json` `steps` list (loop.sh writes the step numbers it runs), never
+from the directories present. A listed step with no `<NN>-*/finding.json` is a FAIL naming it, so deleting a step's
+directory can't turn a run green or a NOT_CHECKED into a PASS. A `run.json` with no `steps` list is a NOT_CHECKED
+entry: 08 can't tell a step left out from one never run. Step 04's scenarios are the repository's
+(`population/<p>/step04/scenarios/`), never the list its own finding gives; one missing from its proof is a FAIL.
+
 ## What it does, per step
 
 1. **Integrity.** `finding.json` passes `steps/finding.py`'s check: each proof file it names is there and
