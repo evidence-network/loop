@@ -426,7 +426,7 @@ LIVE_NOT_CHECKED = [
      "why": "the pinned plugin signs and serves the commitment (capsules-plugin PR #75), but nodes/ entries are "
             "unsigned and carry no policy digest; the probe is matched against the entry's listed key and "
             "stranger_safe subjects only",
-     "issue": "no open issue yet (to be filed)"},
+     "issue": "evidence-network/loop#161"},
 ]
 
 
