@@ -1,0 +1,12 @@
+{
+  "checked_at": "2026-10-30T06:00:00Z",
+  "cites": "evidence-network/loop#1",
+  "controller_key_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "profile": "binding-verdict/0",
+  "status": "verified",
+  "subjects": [
+    "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a"
+  ],
+  "verifier": "binding-verifier@0123456789abcdef0123456789abcdef01234567"
+}

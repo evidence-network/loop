@@ -1,0 +1,12 @@
+{
+  "amount_atomic": 4200,
+  "currency": "USDC",
+  "decimals": 6,
+  "exchange_id": "rehearsal-ex-fixture",
+  "payee": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+  "payer": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "settlement_ref": {
+    "rail": "mock",
+    "settlement_id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

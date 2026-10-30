@@ -1,0 +1,24 @@
+{
+  "ask": {
+    "endpoint": "book:node-two-book-a"
+  },
+  "history_cards": [
+    {
+      "bytes": "eyJhcnRpZmFjdCI6ICJleUprWlhKcGRtRjBhVzl1SWpvZ0ltaHBjM1J2Y25sZlkyRnlaQzh4SWl3Z0ltVjJhV1JsYm1ObFgzTjBjbVZoYlNJNklDSnViMlJsTFhSM2J5MWliMjlyTFdFaUxDQWlhR2x6ZEc5eWVTSTZJRnQ3SW1Ob1pXTnJjRzlwYm5RaU9pQWlNREFpTENBaVkyOXVjMmx6ZEdWdVkzbGZabkp2YlY5d2NtVjJhVzkxY3lJNklHNTFiR3dzSUNKeVpXTmxhWEIwY3lJNklGdDdJbk5wWnlJNklDSXdNQ0lzSUNKM2FYUnVaWE56SWpvZ0luZHBkRzVsYzNNdGIyNWxJbjFkZlYwc0lDSnpkSEpsWVcxZmMzUmhjblJsWkNJNklDSXlNREkyTFRFd0xUQXhJbjAiLCAiZGVyaXZhdGlvbiI6ICJoaXN0b3J5X2NhcmQvMSIsICJpc3N1ZWRfYXQiOiAiMjAyNi0xMC0wMVQwNjowMDowMFoiLCAicHJvZmlsZSI6ICJldmlkZW5jZS1pbnRlcm9wLzAifQ==",
+      "community": "mesh-llm",
+      "derivation": "history_card/1",
+      "sha256": "23cf4f0dce6d52902e254b25c0c0cc450cf990ac5bcd6209b6c7e2841afcf098",
+      "stream": "node-two-book-a"
+    },
+    {
+      "bytes": "eyJhcnRpZmFjdCI6ICJleUprWlhKcGRtRjBhVzl1SWpvZ0ltaHBjM1J2Y25sZlkyRnlaQzh4SWl3Z0ltVjJhV1JsYm1ObFgzTjBjbVZoYlNJNklDSnViMlJsTFhSM2J5MWliMjlyTFdJaUxDQWlhR2x6ZEc5eWVTSTZJRnRkTENBaWMzUnlaV0Z0WDNOMFlYSjBaV1FpT2lBaU1qQXlOaTB4TUMweU1DSjkiLCAiZGVyaXZhdGlvbiI6ICJoaXN0b3J5X2NhcmQvMSIsICJpc3N1ZWRfYXQiOiAiMjAyNi0xMC0yMFQwNjowMDowMFoiLCAicHJvZmlsZSI6ICJldmlkZW5jZS1pbnRlcm9wLzAifQ==",
+      "community": "muse",
+      "derivation": "history_card/1",
+      "sha256": "ff39afb9f385619ad4714bf915b26224f8821e4f950117e2cbd57ad9c5364381",
+      "stream": "node-two-book-b"
+    }
+  ],
+  "key_id": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+  "node_id": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+  "profile": "evidence-commitment/1"
+}

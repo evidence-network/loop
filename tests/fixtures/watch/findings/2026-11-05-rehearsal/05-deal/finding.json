@@ -1,0 +1,34 @@
+{
+  "asserts": "the fixture's step holds",
+  "detail": "a fixture for the watch page",
+  "finished": "2026-11-05T06:30:00Z",
+  "name": "deal",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "alice/held/received-provenance.jsonl",
+      "sha256": "96560a6f85650051f928ac85fd8cdf1abb3afb4ebfb788ffb076ca3598a81f4b"
+    },
+    {
+      "path": "alice/push.json",
+      "sha256": "3a10c9b0f417b0c5c1eaba8e811b08291bab8d5da2caf4d203930c635b47c0e9"
+    },
+    {
+      "path": "bob/held/received-provenance.jsonl",
+      "sha256": "bf2682f340644e6cccb715b25d62b980621f256368a0efd1925f253c7ed7e0c7"
+    },
+    {
+      "path": "bob/push.json",
+      "sha256": "3a10c9b0f417b0c5c1eaba8e811b08291bab8d5da2caf4d203930c635b47c0e9"
+    },
+    {
+      "path": "deal.json",
+      "sha256": "20ee3daff9f21d30e1f20ff37a8b1225e594e9bb0e32d465fd71c08deb5e7a34"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-05T06:00:00Z",
+  "step": "05"
+}
