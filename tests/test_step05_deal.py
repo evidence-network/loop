@@ -6,6 +6,7 @@ the AAC Go verifier step 01's setup installs. Without them these tests SKIP,
 saying so: they never pass without the verifier. With LOOP_REQUIRE_TOOLS=1
 (CI, after the setups ran) a missing tool is an error instead.
 """
+import copy
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -319,6 +320,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.out = self.findings / "05-deal"
         self.nodes = Path(self.tmp.name) / "nodes"
         self.nodes.mkdir()
+        self.make_current()
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -333,35 +335,105 @@ class Step05DealLiveTest(unittest.TestCase):
         doc = {} if digest is None else {"controller_binding": {"digest": digest}}
         (self.nodes / "commitments" / f"{node_id}.json").write_text(json.dumps(doc))
 
-    def run_live(self):
+    def run_live(self, **env):
         r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab),
-                                                  LOOP_NODES_DIR=str(self.nodes)))
+                                                  LOOP_NODES_DIR=str(self.nodes), **env))
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads((self.out / "finding.json").read_text())
 
+    def ledger(self):
+        return self.lab / "nodes" / "lab-a" / "data" / "ledger"
+
+    def seal(self, body, key_id):
+        r = subprocess.run([str(CROSS), "seal"], input=json.dumps(body).encode(), capture_output=True, check=True)
+        return dict(json.loads(r.stdout), key_id=key_id)
+
+    def lines(self):
+        return [json.loads(ln) for ln in (self.ledger() / "capsules.jsonl").read_text().splitlines() if ln.strip()]
+
+    def write_lines(self, records):
+        (self.ledger() / "capsules.jsonl").write_text(
+            "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in records))
+
+    def body(self, record):
+        return copy.deepcopy({k: v for k, v in record.items() if k not in ("capsule_id", "signature", "key_id", "chain")})
+
+    def citing(self):
+        return next(r for r in self.lines()
+                    if any(x.get("citation_purpose") == "counterparty_half" for x in r.get("references") or []))
+
+    def make_current(self):
+        """Lab-a as the current build seals it: its own half of the exchange (nonce n, requested), a citing
+        record naming it, and a counterparty_inclusion record citing the checkpoint the half was pushed under."""
+        inc_path = self.ledger() / "received-inclusion.jsonl"
+        inc = json.loads(inc_path.read_text())
+        cp_file, proof_file = Path(self.tmp.name) / "cp.json", Path(self.tmp.name) / "proof.json"
+        cp_file.write_text(json.dumps(inc["checkpoint"]))
+        proof_file.write_text(json.dumps(inc["inclusion_proof"]))
+        held = json.loads((self.ledger() / "received-capsules.jsonl").read_text())
+        r = subprocess.run([str(BIN), "held", "--record-id", held["capsule_id"], "--key-id", held["key_id"],
+                            "--checkpoint", str(cp_file), "--inclusion", str(proof_file)], capture_output=True, text=True)
+        self.digest = json.loads(r.stdout)["checkpoint_digest"]
+        inc["checkpoint_digest"] = self.digest
+        inc_path.write_text(json.dumps(inc) + "\n")
+        citing = self.citing()
+        key_id = citing["key_id"]
+        ca = citing["model_attestation"]["compute_attestation"]
+        # the fixture's citing record carries a copy of the half's attestation; the plugin's has only these
+        citing = self.seal({**self.body(citing), "model_attestation": {**citing["model_attestation"], "compute_attestation": {
+            "received_half": ca["received_half"], "store_nonce": ca.get("store_nonce", "00" * 32)}}}, key_id)
+        half = json.loads((self.ledger() / "received-capsules.jsonl").read_text())
+        own_body = self.body(citing)
+        own_body["action_id"] = "mesh-poc/own-half"
+        own_body["references"] = []
+        own_body["model_attestation"] = {"model_id": "m", "provider": "mesh-llm", "compute_attestation": {
+            "agent_output_digest": half["model_attestation"]["compute_attestation"]["agent_output_digest"],
+            "x-mesh-poc-v1": {"client_nonce": "n", "role": "requested"}}}
+        self.own = self.seal(own_body, key_id)
+        incl_body = self.body(citing)
+        incl_body["action_id"] = "mesh-poc/counterparty-inclusion-citation/" + half["capsule_id"]
+        incl_body["model_attestation"] = {"model_id": "n/a", "provider": "mesh-llm", "compute_attestation": {
+            "counterparty_inclusion": {"half_capsule_id": half["capsule_id"]}}}
+        incl_body["references"] = [{"type": "cll-checkpoint", "digest_alg": "SHA-256", "digest": self.digest,
+                                    "citation_purpose": "counterparty_inclusion"}]
+        self.write_lines([citing, self.own, self.seal(incl_body, key_id)])
+        self.reseal_citing(own_half_capsule_id=self.own["capsule_id"])
+
     def reseal_citing(self, **received_half):
         """Seal lab-a's citing record again with these received_half members changed (None drops one)."""
-        path = self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
-        old = json.loads(path.read_text())
-        body = {k: v for k, v in old.items() if k not in ("capsule_id", "signature", "key_id", "chain")}
+        records = self.lines()
+        old = self.citing()
+        body = self.body(old)
         rh = body["model_attestation"]["compute_attestation"]["received_half"]
         for k, v in received_half.items():
             rh.pop(k, None) if v is None else rh.__setitem__(k, v)
-        r = subprocess.run([str(CROSS), "seal"], input=json.dumps(body).encode(), capture_output=True, check=True)
-        citing = dict(json.loads(r.stdout), key_id=old["key_id"])
-        path.write_text(json.dumps(citing, separators=(",", ":")) + "\n")
+        self.write_lines([self.seal(body, old["key_id"]) if r == old else r for r in records])
         return old
 
+    def set_own(self, mutate):
+        """Re-seal the own half after `mutate(body)` and point the citing record at it."""
+        body = self.body(self.own)
+        mutate(body)
+        new = self.seal(body, self.own["key_id"])
+        self.write_lines([new if r == self.own else r for r in self.lines()])
+        self.own = new
+        self.reseal_citing(own_half_capsule_id=new["capsule_id"])
+
     def acceptance_entries(self, f):
-        return [n for n in f["not_checked"] if n["what"] == step.ACCEPTANCE_WHAT]
+        return [n for n in f["not_checked"] if n["what"] in (step.ACCEPTANCE_WHAT, step.LIVE_UNBOUND_WHAT)]
 
     def test_live_held_halves_check_and_the_rest_is_not_checked_under_its_issues(self):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
-        for i in ("Mesh-LLM/capsules-plugin#130", step.LIVE_ACCEPTANCE_ISSUE,
-                  "action-state-group/agent-action-capsule#431", "Mesh-LLM/capsules-plugin#136"):
+        for i in (step.LIVE_UNBOUND_ISSUE, "action-state-group/agent-action-capsule#431"):
             self.assertIn(i, issues)
+        # the closed refs are gone, and a tied, bound-or-unbound lab is not a plugin gap
+        closed = json.loads((ROOT / "tests" / "fixtures" / "closed_issues.json").read_text())["closed"]
+        self.assertEqual(issues & set(closed), set())
+        self.assertIn("each node seals records naming both halves and citing the other side's checkpoint", f["asserts"])
+        self.assertNotIn(step.LIVE_NEVER_TIED, {n["what"] for n in f["not_checked"]})
+        self.assertIn("1 tied to the node's own half", f["detail"])
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertEqual(len(checks), 1)
         self.assertTrue(all(v["ok"] for v in checks[0].values() if isinstance(v, dict)), checks)
@@ -370,12 +442,13 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertIn("accepted the half's key via host_announced", f["detail"])
         self.assertIn({"what": "lab-b: a pushed half held", "why": "the node holds no pushed half from the lab "
                        "run's exchanges", "issue": step.live.ISSUE}, f["not_checked"])
-        default = next(n for n in f["not_checked"] if n["what"] == step.LIVE_DEFAULT["what"])
-        self.assertIn("capsules-plugin PR #72, in the pin", default["why"])
+        default = next(n for n in f["not_checked"] if n["what"] == step.LIVE_DEFAULT_ABSENT["what"])
+        self.assertIn("lab-a", default["why"])
         [acc] = self.acceptance_entries(f)
-        self.assertEqual(acc["issue"], step.LIVE_ACCEPTANCE_ISSUE)
-        self.assertIn("capsules-plugin PR #77, in the pin", acc["why"])
-        self.assertIn("say host_announced with no operator binding digest equal to the one in the sender's published commitment", acc["why"])
+        self.assertEqual(acc["what"], step.LIVE_UNBOUND_WHAT)
+        self.assertEqual(acc["issue"], step.LIVE_UNBOUND_ISSUE)
+        self.assertIn("1 current-build halves accepted via host_announced", acc["why"])
+        self.assertIn("the sender's missing binding, not a plugin gap", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
@@ -418,7 +491,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         self.assertEqual(self.acceptance_entries(f), [])
         self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
-        self.assertNotIn(step.LIVE_ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
+        self.assertNotIn(step.LIVE_UNBOUND_ISSUE, {n["issue"] for n in f["not_checked"]})
         self.assertEqual(finding.check(self.findings), [])
 
     def test_live_a_host_announced_key_with_the_published_binding_digest_counts_as_bound(self):
@@ -496,7 +569,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(self.run_live()["result"], "FAIL")
 
     def test_live_a_declaration_anchored_on_the_nodes_own_key_fails(self):
-        own = json.loads((self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl").read_text())["key_id"]
+        own = self.citing()["key_id"]
         self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
                            controller_anchor_key_id=own)
         f = self.run_live()
@@ -516,6 +589,180 @@ class Step05DealLiveTest(unittest.TestCase):
         [acc] = self.acceptance_entries(f)
         self.assertEqual(acc["issue"], step.LIVE_NO_VIA)
         self.assertIn("sealed by a build before the pinned one", acc["why"])
+
+    # the tie, loop#107: a record naming both halves, the checkpoint cited, "held, never tied"
+    def names(self, f):
+        return {n["what"]: n for n in f["not_checked"]}
+
+    def test_live_a_half_tied_to_its_own_half_leaves_no_untied_gap(self):
+        f = self.run_live()
+        self.assertNotIn(step.LIVE_NEVER_TIED, self.names(f))
+        self.assertNotIn("a tie that is ambiguous at verify time", self.names(f))
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertEqual(c["tied"]["state"], "tied")
+        self.assertTrue(c["inclusion_cited"]["ok"])
+        self.assertIn("1 tied to the node's own half, 0 held, never tied, 0 ambiguous", f["detail"])
+
+    def test_live_a_citing_record_with_no_own_half_is_held_never_tied(self):
+        self.reseal_citing(own_half_capsule_id=None)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        gap = self.names(f)[step.LIVE_NEVER_TIED]
+        self.assertIn("1 current-build halves are cited by a record with no own_half_capsule_id", gap["why"])
+        self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_tie_naming_an_own_half_the_chain_does_not_hold_fails(self):
+        self.reseal_citing(own_half_capsule_id="ab" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("which the node's chain does not hold", f["detail"])
+
+    def test_live_a_tie_to_an_own_half_of_the_same_role_or_another_nonce_fails(self):
+        def role(body):
+            body["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["role"] = "served"
+        self.set_own(role)
+        self.assertIn("not the opposite role", self.run_live()["detail"])
+        self.setUp()
+        def nonce(body):
+            body["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["client_nonce"] = "other"
+        self.set_own(nonce)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("not the opposite role", f["detail"])
+
+    def test_live_a_second_own_half_under_the_nonce_makes_the_tie_ambiguous(self):
+        twin = self.body(self.own)
+        twin["action_id"] = "mesh-poc/own-half-twin"
+        self.write_lines(self.lines() + [self.seal(twin, self.own["key_id"])])
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        gap = self.names(f)["a tie that is ambiguous at verify time"]
+        self.assertIn("1 citing records name an own half", gap["why"])
+        self.assertIn("1 ambiguous", f["detail"])
+
+    def test_live_a_second_held_half_under_the_nonce_makes_the_tie_ambiguous(self):
+        held = self.ledger() / "received-capsules.jsonl"
+        first = json.loads(held.read_text())
+        second = self.body(first)
+        second["action_id"] = "mesh-poc/second"
+        sealed = self.seal(second, first["key_id"])
+        held.write_text(held.read_text() + json.dumps(sealed, separators=(",", ":")) + "\n")
+        f = self.run_live()
+        self.assertIn("a tie that is ambiguous at verify time", self.names(f))
+
+    def test_live_an_inclusion_line_with_a_digest_the_checkpoint_does_not_have_fails(self):
+        path = self.ledger() / "received-inclusion.jsonl"
+        inc = json.loads(path.read_text())
+        inc["checkpoint_digest"] = "ee" * 32
+        path.write_text(json.dumps(inc) + "\n")
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("recomputed from the held checkpoint", f["detail"])
+
+    def test_live_an_inclusion_record_altered_after_sealing_fails(self):
+        records = self.lines()
+        for r in records:
+            if "counterparty_inclusion" in (r["model_attestation"].get("compute_attestation") or {}):
+                r["action_id"] += "-altered"
+        self.write_lines(records)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("held-1 inclusion_cited", f["detail"])
+        self.assertIn("recomputed", f["detail"])
+
+    def test_live_a_driver_that_prints_no_checkpoint_digest_stops_the_step(self):
+        old = self.tmp.name + "/old-driver"
+        Path(old).write_text("#!/bin/sh\ncase $1 in held) echo '{\"ok\": true, \"detail\": \"x\"}';; esac\n")
+        os.chmod(old, 0o755)
+        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
+                                                  LOOP_STEP05_DEAL_BIN=old))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("steps/05-deal.setup.sh", r.stderr)
+
+    def test_live_an_unknown_role_is_not_the_opposite_of_served(self):
+        def role(body):
+            body["model_attestation"]["compute_attestation"]["x-mesh-poc-v1"]["role"] = "observer"
+        self.set_own(role)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("not the opposite role", f["detail"])
+
+    def test_live_a_cutoff_that_is_not_an_rfc3339_time_with_a_zone_stops_the_step(self):
+        for bad in ("yesterday", "2026-10-30T00:00:00", ""):
+            r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
+                                                      LOOP_SEALED_SINCE=bad))
+            self.assertEqual(r.returncode, 2, bad)
+            self.assertIn("LOOP_SEALED_SINCE", r.stderr)
+
+    def test_live_a_cutoff_with_seconds_is_taken_at_its_minute(self):
+        stamp = self.citing()["timestamp"]  # a whole minute, as the plugin seals
+        self.assertTrue(stamp.endswith(":00Z") or ":00." in stamp, stamp)
+        f = self.run_live(LOOP_SEALED_SINCE=stamp.replace(":00Z", ":30Z"))
+        self.assertIn("1 halves, 1 tied", f["detail"])
+
+    def test_live_a_half_sealed_exactly_at_the_cutoff_is_current(self):
+        stamp = self.citing()["timestamp"]
+        f = self.run_live(LOOP_SEALED_SINCE=stamp)
+        self.assertIn("1 halves, 1 tied", f["detail"])
+
+    def test_live_no_counterparty_inclusion_record_for_a_current_half_fails(self):
+        self.write_lines([r for r in self.lines() if "counterparty_inclusion" not in
+                          (r["model_attestation"].get("compute_attestation") or {})])
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("held-1 inclusion_cited", f["detail"])
+
+    # judged only under the current build
+    def test_live_an_earlier_half_is_counted_and_not_judged_for_acceptance_or_tie(self):
+        self.reseal_citing(own_half_capsule_id=None)
+        stamp = self.citing()["timestamp"]
+        f = self.run_live(LOOP_SEALED_SINCE="2099-01-01T00:00:00Z")
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        names = self.names(f)
+        self.assertNotIn(step.LIVE_NEVER_TIED, names)
+        [acc] = self.acceptance_entries(f)
+        self.assertEqual(acc["what"], step.ACCEPTANCE_WHAT)
+        self.assertIn("0 halves, 0 tied", f["detail"])
+        self.assertIn("1 sealed earlier, not judged", f["detail"])
+        self.assertIn("no node holds a current-build half", acc["why"])
+        self.assertIn("sealed since 2099-01-01T00:00:00Z", f["detail"])
+        self.assertEqual(json.loads((self.out / "lab-a" / "checks.json").read_text())["sealed_since"], "2099-01-01T00:00:00Z")
+        # the same half is judged when the build started before it was sealed
+        f = self.run_live(LOOP_SEALED_SINCE="2000-01-01T00:00:00Z")
+        self.assertIn(step.LIVE_NEVER_TIED, self.names(f))
+        self.assertTrue(stamp)
+
+    def test_live_an_earlier_half_still_fails_on_its_bytes(self):
+        held = self.ledger() / "received-capsules.jsonl"
+        capsule = json.loads(held.read_text())
+        capsule["model_attestation"]["model_id"] = "another-model"
+        held.write_text(json.dumps(capsule, separators=(",", ":")) + "\n")
+        self.assertEqual(self.run_live(LOOP_SEALED_SINCE="2099-01-01T00:00:00Z")["result"], "FAIL")
+
+    # the node's own report of its sharing policy, loop#109
+    def test_live_sharing_effective_is_read_as_node_reported_unsigned(self):
+        (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(json.dumps(
+            {"v": 1, "share_record_at_completion": "counterparty", "source": "default",
+             "written_at": "2026-10-30T01:00:00Z"}))
+        f = self.run_live()
+        self.assertIn("node lab-a reports (node-reported, unsigned) share_record_at_completion counterparty from "
+                      "default at 2026-10-30T01:00:00Z", f["detail"])
+        self.assertIn("the push itself is judged from the sealed records", f["detail"])
+        self.assertIn("lab-a/sharing-effective.json", [p["path"] for p in f["proof"]])
+        self.assertEqual(self.names(f)[step.LIVE_DEFAULT_ABSENT["what"]]["why"].count("lab-b"), 1)
+        self.assertNotIn("lab-a", self.names(f)[step.LIVE_DEFAULT_ABSENT["what"]]["why"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_an_unknown_value_the_plugin_resolved_to_off_shows_its_raw_value(self):
+        (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(json.dumps(
+            {"v": 1, "share_record_at_completion": "off", "source": "console", "written_at": "t", "raw_value": "everyone"}))
+        self.assertIn("raw value 'everyone' is not one the plugin knows", self.run_live()["detail"])
+
+    def test_live_an_unknown_sharing_value_is_not_read_as_a_report(self):
+        (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(
+            json.dumps({"v": 1, "share_record_at_completion": "everyone"}))
+        self.assertNotIn("node-reported", self.run_live()["detail"])
 
 
 if __name__ == "__main__":
