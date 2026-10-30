@@ -1,5 +1,5 @@
 {
-  "action_id": "inference_completion/00643b42-5a2a-4686-a680-fbd8c26a6877",
+  "action_id": "inference_completion/2f69ce60-6b42-4f33-8bd7-4452e2dbd13e",
   "action_type": "decide",
   "assurance": {
     "attestation_mode": "self_attested",
@@ -7,7 +7,7 @@
     "ledger_mode": "standalone"
   },
   "canonicalization_id": "jcs",
-  "capsule_id": "c9cc3eea665b52bf12c2388e1ebb0542df9a4e14e00e453d0f46342c04ed3c88",
+  "capsule_id": "5267321154e4862d9a49d9384d5fafe1fdadaa77f31dd8b717fa2aa1ba529802",
   "developer": "loop-step-01",
   "disposition": {
     "approver": "policy",
@@ -32,7 +32,7 @@
     "provider": "rehearsal"
   },
   "operator": "live",
-  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458201dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d90127a05820c9cc3eea665b52bf12c2388e1ebb0542df9a4e14e00e453d0f46342c04ed3c8858406d5bb1d73d2c39d423b75495e4988aa35a813f6010240c14612106096a19e0ed49b64fa27306490c4c4fac35379a3ca0cccc127f56ba3dbbaa3670a7e3c41c0a",
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458201dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d90127a058205267321154e4862d9a49d9384d5fafe1fdadaa77f31dd8b717fa2aa1ba529802584075689e742cc77dd21c10ae6ca9444d88028b923595dc8d702930a88c85eb27c41ee2956d7c5ddad994c1f5ec26d614a9e71bab762438c26f4db33c79fbf71e0d",
   "spec_version": "draft-mih-scitt-agent-action-capsule-05",
-  "timestamp": "2026-10-30T02:31:45.361533Z"
+  "timestamp": "2026-10-30T03:15:01.939302Z"
 }

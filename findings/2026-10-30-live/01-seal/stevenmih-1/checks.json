@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried c9cc3eea665b52bf12c2388e1ebb0542df9a4e14e00e453d0f46342c04ed3c88, recomputed c9cc3eea665b52bf12c2388e1ebb0542df9a4e14e00e453d0f46342c04ed3c88",
+      "detail": "carried 5267321154e4862d9a49d9384d5fafe1fdadaa77f31dd8b717fa2aa1ba529802, recomputed 5267321154e4862d9a49d9384d5fafe1fdadaa77f31dd8b717fa2aa1ba529802",
       "ok": true
     },
     "class1": {
