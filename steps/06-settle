@@ -332,19 +332,25 @@ def crosscheck(found):
             seen.setdefault(h, []).append(name)
     paired, unpaired = {}, {}
     for h, names in sorted(seen.items()):
-        payers, payees = set(), set()
+        payers, payees, malformed = set(), set(), []
         for name, f in found.items():
             for o in f["settlement_observations"]:
                 if o.get("payment_hash") != h:
                     continue
-                if o.get("observed_by") == "payer" and is_int(o.get("amount_msat")):
+                role = o.get("observed_by")
+                if role == "payer" and is_int(o.get("amount_msat")):
                     payers.add((name, o["amount_msat"]))
-                elif o.get("observed_by") == "provider" and is_int(o.get("credited_msat")) and is_int(o.get("fee_msat")):
+                elif role == "provider" and is_int(o.get("credited_msat")) and is_int(o.get("fee_msat")):
                     payees.add((name, o["credited_msat"] + o["fee_msat"]))
+                else:
+                    malformed.append(name)  # no role, or a role without integer amounts
         payer_nodes, payee_nodes = sorted({n for n, _ in payers}), sorted({n for n, _ in payees})
         payer_amts, payee_amts = sorted({a for _, a in payers}), sorted({a for _, a in payees})
         if len(names) < len(found):
             unpaired[h] = f"recorded by {', '.join(sorted(names))} only"
+        elif malformed:
+            unpaired[h] = (f"an observation on {', '.join(sorted(set(malformed)))} has no payer or provider role "
+                           "or no integer amounts")
         elif not payers or not payees:
             unpaired[h] = "no payer observation or no provider observation, with amounts"
         elif len(payer_nodes) > 1 or len(payee_nodes) > 1:

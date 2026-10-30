@@ -534,12 +534,26 @@ class Step06SettleTest(unittest.TestCase):
         _, cross = self.crosscheck_of({
             "brattain": [payer(h("a"), 10), payer(h("b"), 10), payer(h("b"), 999), payer(h("c"), 10),
                          prov(h("c"), 9, 1), payer(h("d"), 10), payer(h("d"), 10)],
-            "shockley": [prov(h("a"), 9, 1), payer(h("a"), 10), prov(h("b"), 9, 1), {"payment_hash": h("c")},
+            "shockley": [prov(h("a"), 9, 1), payer(h("a"), 10), prov(h("b"), 9, 1),
                          prov(h("d"), 9, 1), prov(h("d"), 9, 1)]})
         self.assertIn("one node of each role is needed", cross["unpaired"][h("a")])  # payer on both nodes
         self.assertIn("conflicting amounts: payer [10, 999]", cross["unpaired"][h("b")])
-        self.assertEqual(cross["unpaired"][h("c")], "payer and provider observations are both on brattain")
+        self.assertEqual(cross["unpaired"][h("c")], "recorded by brattain only")  # one node holding both roles is not a pair
         self.assertEqual(cross["paired"][h("d")], {"payer": "brattain", "payee": "shockley", "amount_msat": 10})
+
+    def test_an_observation_without_integer_amounts_keeps_a_hash_unpaired(self):
+        h = "a" * 64
+        good = [{"observed_by": "payer", "payment_hash": h, "amount_msat": 10}]
+        for bad in ({"observed_by": "payer", "payment_hash": h, "amount_msat": True},
+                    {"observed_by": "payer", "payment_hash": h, "amount_msat": "10"},
+                    {"observed_by": "payer", "payment_hash": h}, {"payment_hash": h}):
+            with self.subTest(bad=bad):
+                _, cross = self.crosscheck_of({
+                    "brattain": good,
+                    "shockley": [{"observed_by": "provider", "payment_hash": h, "credited_msat": 9, "fee_msat": 1},
+                                 bad]})
+                self.assertEqual(cross["paired"], {})
+                self.assertIn("shockley has no payer or provider role or no integer amounts", cross["unpaired"][h])
 
     def test_the_crosscheck_says_so_when_every_hash_pairs_and_when_there_is_nothing_to_compare(self):
         both = [({"brattain": [{"observed_by": "payer", "payment_hash": "a" * 64, "amount_msat": 10}],
