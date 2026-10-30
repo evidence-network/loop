@@ -1,5 +1,5 @@
 {
- "about": "controller-binding/0 records copied from agent-action-capsule vectors/controller-binding-v0/vectors.json (BSD-3-Clause, via Mesh-LLM/capsules-plugin vectors/, commit 5714205f): the test binding's octets, by case id. tests/test_step05_deal.py writes one as a sender's controller-binding.json.",
+ "about": "controller-binding/0 records copied from agent-action-capsule vectors/controller-binding-v0/vectors.json (BSD-3-Clause, via Mesh-LLM/capsules-plugin vectors/, commit 5714205f): the test binding's octets, by case id. tests/test_step05_deal.py writes one as a sender's controller-binding.json. valid-nostr-key is the go/v0.16.0 vector of a half's Ed25519 key (keys[1]) bound to a bip340 (Nostr) key (keys[0]).",
  "cases": {
   "valid-same-controller": {
    "binding": "{\"binding_version\":\"controller-binding/0\",\"claim\":\"same_controller_asserted\",\"issued_at\":\"2026-10-01T00:00:00Z\",\"keys\":[\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c\"],\"method\":\"dual_signature/0\",\"nonce\":\"ceremony-1\",\"not_after\":\"2027-10-01T00:00:00Z\",\"not_before\":\"2026-10-01T00:00:00Z\",\"revocation\":\"revocation_statement/0\",\"sigs\":[{\"key_id\":\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"sig\":\"97c55701487873ee125a548b8b745406ca2757858e80ccd5394166521e442fab0cf04e0fc9fa460f2de8bc2d1926b319d52316c0b04dbaf64ff16864bcd8040f\"},{\"key_id\":\"f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c\",\"sig\":\"5734793e2d6624fb893b0d1a01aeff23ad3a861b99fe6082e088f483c4ee9c5c2f533be102777c7051ebb5a2fe8c0b244eae066ec12856ec5f6c2fbe7bd10604\"}]}",
@@ -27,6 +27,13 @@
    "keys": [
     "8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f",
     "f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c"
+   ]
+  },
+  "valid-nostr-key": {
+   "binding": "{\"binding_version\":\"controller-binding/0\",\"claim\":\"same_controller_asserted\",\"issued_at\":\"2026-10-01T00:00:00Z\",\"key_types\":[\"bip340\",\"ed25519\"],\"keys\":[\"7865159584c6329b8b1d52cda7468eb0041baeccd09e3dd81e708718930d0b68\",\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\"],\"method\":\"dual_signature/0\",\"nonce\":\"ba7049943ee012d57f9f2bd4aae91bd2\",\"not_after\":\"2027-10-01T00:00:00Z\",\"not_before\":\"2026-10-01T00:00:00Z\",\"revocation\":\"revocation_statement/0\",\"sigs\":[{\"key_id\":\"7865159584c6329b8b1d52cda7468eb0041baeccd09e3dd81e708718930d0b68\",\"sig\":{\"created_at\":1790812800,\"sig\":\"38cc477462f9d45aabfffe9b15a8bc839988bd01bc071dacafca438d303bd1673b495824861fe727d1635526b081cfbeec9c370ec98c1483adfa9736cc46e6fc\"}},{\"key_id\":\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"sig\":\"dfc4d4bce9915a31e2cca9b67d2f9f4463674c428d97caa8464f3e6ac24726d434d15321d8ad6c1ee3ea0236ffb151c11df2d4154ef0767f54c37a4c026aa305\"}]}",
+   "keys": [
+    "7865159584c6329b8b1d52cda7468eb0041baeccd09e3dd81e708718930d0b68",
+    "8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f"
    ]
   }
  }

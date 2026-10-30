@@ -36,7 +36,7 @@ none is a not_checked entry. The own book's entry, where it names a
 checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding record is checked in a second language,
-`cross_language binding` (aac-go go/v0.15.0): binding.json, as join.sh wrote
+`cross_language binding` (aac-go go/v0.16.0): binding.json, as join.sh wrote
 it, must have the digest controller.json names, name the node key and apply
 now (form, both signatures, window). That is "the binding applies", not a
 trust verdict. Its revocation (loop#138) and the node key's role in it
@@ -88,8 +88,7 @@ never a value read back from the commitment. A node with no console given is NOT
 A bound node's record is then read from the `data_dir` the population gives and checked by the
 Go verifier against that digest: a record that does not name the node's listed key or does not
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
-have bound again), or uses a method or a key type the verifier lacks (bip340, AAC#457,
-loop#140) is NOT_CHECKED. A binding that applies leaves two NOT_CHECKED entries: revocation and role.
+have bound again), or uses a method the verifier lacks is NOT_CHECKED. A binding that applies leaves two NOT_CHECKED entries: revocation and role.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -133,7 +132,7 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # No released verifier the loop can call for a stapled history_card/1 (as step 03).
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
-# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.15.0,
+# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.16.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
 # inside its window now. That is "the binding applies" (form, both signatures, window; revocation not FAIL), not a
 # trust verdict, and `Binds` takes either key of the binding, so which role the node key has in it is not checked
@@ -165,8 +164,7 @@ def cross_language():
 def binding_check(name, raw, digest, key, at):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, or does not name the key); "unread" (it
-    is not the binding `digest` names); "unsupported" (a method the verifier lacks); "unsupported_key_type" (INTERIM,
-    loop#140: it declares a key type, bip340, the pinned verifier lacks, so it said FAIL without a bad binding)."""
+    is not the binding `digest` names); "unsupported" (a method the verifier lacks)."""
     try:
         verdict, report, err, code = bv.verify(cross_language(), raw, key, [at])
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -179,9 +177,6 @@ def binding_check(name, raw, digest, key, at):
         return "unread", f"{name}'s binding is {report.get('binding_digest')}, not the {digest} it is held as"
     props = report.get("properties") or {}
     keys = report.get("keys") or []
-    if verdict == "bad" and key in keys and (lacking := bv.unsupported_key_types(raw, len(keys))):
-        return "unsupported_key_type", (f"{name}'s binding {digest} declares key type {', '.join(lacking)}, which the "
-                                        f"pinned verifier does not implement ({bv.UNSUPPORTED_KEY_TYPE_ISSUE})")
     if verdict == "bad":
         why = ("does not name the node's key" if key not in keys else
                ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s == "FAIL"))
@@ -195,9 +190,8 @@ def binding_check(name, raw, digest, key, at):
 
 def binding_unchecked(state, detail):
     """The not_checked entry for a binding_check state that is neither ok nor bad, None for those two."""
-    why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method",
-           "unsupported_key_type": "the verifier lacks its key type"}.get(state)
-    issue = {"unsupported_key_type": bv.UNSUPPORTED_KEY_TYPE_ISSUE, "unread": live.ISSUE}.get(state, bv.UNSUPPORTED_METHOD_ISSUE)
+    why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method"}.get(state)
+    issue = live.ISSUE if state == "unread" else bv.UNSUPPORTED_METHOD_ISSUE
     return {"what": "the controller binding record, checked by a second verifier", "why": f"{why}: {detail}",
             "issue": issue} if why else None
 

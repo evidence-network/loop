@@ -82,7 +82,7 @@ the node made on the old stream still bind until their `until`.
 A controller binding says that several subjects (nodes, or a node and a
 personal agent) are under one controller. Only a verifier can say a binding
 holds. Steps 05 and 12 check a binding record with aac-go's
-`cross_language binding` (Controller Binding v0, go/v0.15.0), but that
+`cross_language binding` (Controller Binding v0, go/v0.16.0), but that
 writes no verdict and no `binding-verifier` is pinned, so this repository
 groups no subjects by it. A verifier's verdict would be published as
 `bindings/<controller_key_id>.json` (`binding-verdict/0`; see

@@ -1112,18 +1112,6 @@ class PluginToolsRunTest(Tmp):
         entry = next(i for i in r["not_checked"] if "second verifier" in i["what"])
         self.assertIn(f"not the {'e' * 64} it is held as", entry["why"])
 
-    @needs_cross
-    def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_a_fail(self):
-        # INTERIM (loop#140): remove with bv.UNSUPPORTED_KEY_TYPE_ISSUE.
-        raw = json.loads((ALICE / "binding.json").read_text())
-        raw["key_types"] = ["ed25519", "bip340"]
-        text = json.dumps(raw)
-        digest = step.bv.verify(step.cross_language(), text, raw["keys"][0], [FIXTURE_AT])[1]["binding_digest"]
-        r = self.run_bound(text, digest)
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        entry = next(i for i in r["not_checked"] if "second verifier" in i["what"])
-        self.assertEqual(entry["issue"], step.bv.UNSUPPORTED_KEY_TYPE_ISSUE)
-
     def test_a_node_with_no_readable_record_is_not_checked(self):
         r = self.run_one(before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST)
         entry = next(i for i in r["not_checked"] if i["what"] == "alice: the controller binding")
