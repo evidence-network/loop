@@ -1,9 +1,9 @@
 {
   "ecosystems": {
     "mesh": {
-      "findings": "findings/2026-10-30-live",
+      "findings": "findings/2026-10-30-live-2",
       "pins": {
-        "aac-go": "action-state-group/agent-action-capsule go/v0.15.0",
+        "aac-go": "action-state-group/agent-action-capsule go/v0.16.0",
         "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
         "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
         "capsulectl": "action-state-group/evidencebook v0.8.1",
@@ -22,7 +22,7 @@
       },
       "steps": {
         "01": {
-          "finding_sha256": "1e2ba88cd5f1326807e08d1ac857e558f0b18c52654d7950fded61f929d88e28",
+          "finding_sha256": "008b55dcafa99d70a9a153656a5aac3d7c972b2269f764df47c52bea220fe368",
           "result": "PASS"
         },
         "02": {
@@ -38,7 +38,7 @@
           "result": "PASS"
         },
         "05": {
-          "finding_sha256": "0c2dd208534f42c177298351e08ea971a3714b363de368ec055d3da6bc3c15cb",
+          "finding_sha256": "4e45ce6beef77100ce94e629a447103bd62eec6a9c310bddd0f4127c87036747",
           "result": "NOT_CHECKED"
         },
         "07": {
@@ -50,7 +50,7 @@
           "result": "PASS"
         },
         "12": {
-          "finding_sha256": "0518105877342220dc65ca20c21c5ae29f9e73b62dbfcba5f8ac602e0119ad92",
+          "finding_sha256": "10fb59b1be9a0d641d081f9c33b436d6afa0061136af0042731aa9744f2c2444",
           "result": "NOT_CHECKED"
         }
       }
