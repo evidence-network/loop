@@ -1,0 +1,43 @@
+{
+  "ecosystems": {
+    "mesh": {
+      "findings": "findings/2026-10-30-live",
+      "pin_set_sha256": "858fa017e627fe0d32f43c72d7b98b3ad131897564ef7b1788d4d4fab2a50584",
+      "steps": {
+        "01": {
+          "finding_sha256": "1e2ba88cd5f1326807e08d1ac857e558f0b18c52654d7950fded61f929d88e28",
+          "result": "PASS"
+        },
+        "02": {
+          "finding_sha256": "95a901b4b7f43564f97b26f70b0aaf7c72bc69da3958c0079ac6214705de07a4",
+          "result": "NOT_CHECKED"
+        },
+        "03": {
+          "finding_sha256": "e36fca2ef2953220b27707b68d6d05e134d54a103dd403e1292be4f4ea5df61c",
+          "result": "PASS"
+        },
+        "04": {
+          "finding_sha256": "c5c4033ec91dd0ac7c1f6ae1110d30f6a34c642e665628e2935eecf55b24c7f3",
+          "result": "PASS"
+        },
+        "05": {
+          "finding_sha256": "0c2dd208534f42c177298351e08ea971a3714b363de368ec055d3da6bc3c15cb",
+          "result": "NOT_CHECKED"
+        },
+        "07": {
+          "finding_sha256": "c669b54c88873c7765877550159d9594905622115f5f81bfd8bbf21ce9f9ccea",
+          "result": "NOT_CHECKED"
+        },
+        "09": {
+          "finding_sha256": "b2e08f9bcb41dc6347b98cb5906739f9c30a9f7d68ef5401e42849cfe18cba6c",
+          "result": "PASS"
+        },
+        "12": {
+          "finding_sha256": "0518105877342220dc65ca20c21c5ae29f9e73b62dbfcba5f8ac602e0119ad92",
+          "result": "NOT_CHECKED"
+        }
+      }
+    }
+  },
+  "not_checked_is_regression": true
+}
