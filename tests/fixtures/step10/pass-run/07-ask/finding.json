@@ -1,0 +1,22 @@
+{
+  "asserts": "an ask is answered or its absence recorded (fixture stand-in)",
+  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "finished": "2026-09-14T10:02:30Z",
+  "name": "ask",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "alice/asks/bob/exchange/request.json",
+      "sha256": "8817199cc98bbbe52bed9ccf2a63d74bd86f0e9125ae94364725e8a5a39346e3"
+    },
+    {
+      "path": "alice/asks/bob/exchange/outcome.json",
+      "sha256": "4b7065c71a59ac32a68ed7991eb5951ea37cbaf0adf6344ea76a46f7208731d1"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:02:00Z",
+  "step": "07"
+}

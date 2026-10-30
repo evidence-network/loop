@@ -1,0 +1,26 @@
+{
+  "asserts": "both sides seal halves of one rehearsal deal (fixture stand-in)",
+  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "finished": "2026-09-14T10:00:30Z",
+  "name": "deal",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "deal.json",
+      "sha256": "bf56bd12b0589681c0d963fe1d8034cd22329cef0751d230128a2077e169aaef"
+    },
+    {
+      "path": "alice/half.json",
+      "sha256": "41f6b1f7e02e710622e89bff4bc8818277dc35cae8eaa1b7ba04f879fe478d51"
+    },
+    {
+      "path": "bob/half.json",
+      "sha256": "af3dccf55d0f9b14b3886aa631cf10d0d3683adf1881e68890a08f1ceaeed86b"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:00:00Z",
+  "step": "05"
+}

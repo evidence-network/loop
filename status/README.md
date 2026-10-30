@@ -29,6 +29,11 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   runs last in stage 1 and re-derives every other step's finding in the run
   from its proof bytes; a step it could not re-derive is in its `not_checked`,
   never in its PASS. Its `verified.json` is what steps 10 and 11 read.
+- Row 10 (Judge) is step 10's own finding, read like any other row. Step 10
+  reads only 08's manifest and the records of the steps it shows reproduced,
+  in a window of 12 whole closed months before 08 ran. Until a run's month
+  closes, its records are outside the window and the row reads `NOT_CHECKED`;
+  a step 08 did not reproduce is a `not_checked` entry on the row.
 - Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,
   until their place on the page is settled. Setting `DROP_HELD = True` drops them.
 - The five numbers, each per population: minutes to the first sealed record

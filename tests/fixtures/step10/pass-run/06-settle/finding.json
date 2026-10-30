@@ -1,0 +1,22 @@
+{
+  "asserts": "a settlement for the exchange is on the rehearsal rail, final (fixture stand-in)",
+  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "finished": "2026-09-14T10:01:30Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "exchange.json",
+      "sha256": "841d042c5d7d38f5b477754538e4bfe7483bacf12208b708f0f5e78037b2ef59"
+    },
+    {
+      "path": "ledger.jsonl",
+      "sha256": "2c6a1f4fd2a58305d74e1c70a91da5d88c06f168cb09083335e1796b5e3bf6d8"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:01:00Z",
+  "step": "06"
+}

@@ -1,0 +1,22 @@
+{
+  "asserts": "the referee seals an adjudication Result (fixture stand-in)",
+  "detail": "a fixture stand-in for step 10's PASS case, dated in a closed month",
+  "finished": "2026-09-14T10:03:30Z",
+  "name": "dispute",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "dispute.json",
+      "sha256": "5c81c5c67393a032230764ee063c6c7626135d45e2b538477879f450f8e7acec"
+    },
+    {
+      "path": "outcome.json",
+      "sha256": "1068ee87dc724634484e6027a5d043500a252f0f79997a1522689312745e3c36"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-09-14T10:03:00Z",
+  "step": "09"
+}

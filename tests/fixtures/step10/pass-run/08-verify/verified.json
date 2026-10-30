@@ -1,0 +1,131 @@
+{
+  "population": "rehearsal",
+  "result": "PASS",
+  "run": "pass-run",
+  "steps": [
+    {
+      "dir": "05-deal",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "61087f7bfdc2161f297f2716c65926a693fbad3b2dd2fa6c72564dee764543c5"
+        },
+        {
+          "path": "deal.json",
+          "sha256": "bf56bd12b0589681c0d963fe1d8034cd22329cef0751d230128a2077e169aaef"
+        },
+        {
+          "path": "alice/half.json",
+          "sha256": "41f6b1f7e02e710622e89bff4bc8818277dc35cae8eaa1b7ba04f879fe478d51"
+        },
+        {
+          "path": "bob/half.json",
+          "sha256": "af3dccf55d0f9b14b3886aa631cf10d0d3683adf1881e68890a08f1ceaeed86b"
+        }
+      ],
+      "name": "deal",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "status": "reproduced",
+      "step": "05"
+    },
+    {
+      "dir": "06-settle",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "2c9736dc657a3b2fee14ad94dcd22a0e345374eceb294760a25c0b92f5c2f579"
+        },
+        {
+          "path": "exchange.json",
+          "sha256": "841d042c5d7d38f5b477754538e4bfe7483bacf12208b708f0f5e78037b2ef59"
+        },
+        {
+          "path": "ledger.jsonl",
+          "sha256": "2c6a1f4fd2a58305d74e1c70a91da5d88c06f168cb09083335e1796b5e3bf6d8"
+        }
+      ],
+      "name": "settle",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "status": "reproduced",
+      "step": "06"
+    },
+    {
+      "dir": "07-ask",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "69eef0eae2e685c766928e9f3c732bddc5a85cd6e27262c79b7ae4871446a8ca"
+        },
+        {
+          "path": "alice/asks/bob/exchange/request.json",
+          "sha256": "8817199cc98bbbe52bed9ccf2a63d74bd86f0e9125ae94364725e8a5a39346e3"
+        },
+        {
+          "path": "alice/asks/bob/exchange/outcome.json",
+          "sha256": "4b7065c71a59ac32a68ed7991eb5951ea37cbaf0adf6344ea76a46f7208731d1"
+        }
+      ],
+      "name": "ask",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "status": "reproduced",
+      "step": "07"
+    },
+    {
+      "dir": "09-dispute",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "a8a1270be98a51b7825051e65c3cd20efbf871440705813b5831519dad1dabdc"
+        },
+        {
+          "path": "dispute.json",
+          "sha256": "5c81c5c67393a032230764ee063c6c7626135d45e2b538477879f450f8e7acec"
+        },
+        {
+          "path": "outcome.json",
+          "sha256": "1068ee87dc724634484e6027a5d043500a252f0f79997a1522689312745e3c36"
+        }
+      ],
+      "name": "dispute",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "status": "reproduced",
+      "step": "09"
+    }
+  ]
+}
