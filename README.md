@@ -19,8 +19,9 @@ Several products are built from the same parts (sealed records, books, evidence 
 admission, settlement), and each part moves on its own release. The loop is how they keep
 working together: it runs the same steps (seal, book, advertise, admit, deal and push,
 settle, ask, verify, dispute, judge, report, join) against pinned versions of those parts, so
-a change that breaks something shows up as a step that stops passing. The bar is that no step
-that passed stops passing, not that every step passes.
+a change that breaks something shows up as a step that stops passing. On the live runs the bar
+is that no step that passed stops passing, not that every step passes; on the rehearsal
+population every step must pass.
 
 One loop, two layers:
 
@@ -38,8 +39,8 @@ to not checked ([#149](https://github.com/evidence-network/loop/issues/149)), an
 that picks the ecosystem, `--ecosystem mesh|muse|cross`
 ([#150](https://github.com/evidence-network/loop/issues/150)).
 
-How the network grows is a separate report, not part of this check: planned under `/growth/`
-([#151](https://github.com/evidence-network/loop/issues/151)).
+How the network grows is a separate report, not part of this check: planned as its own page on
+the site, beside `/stats/` ([#151](https://github.com/evidence-network/loop/issues/151)).
 
 ## What is here
 
@@ -60,8 +61,8 @@ How the network grows is a separate report, not part of this check: planned unde
 
 The network is in its lab stage: the nodes are run by known operators on a lab mesh. To take
 part you run a node (a mesh host build with the capsules plugin) as a full node on that mesh,
-then add your entry to `nodes/` by pull request. [`JOIN-LAB.md`](JOIN-LAB.md) covers the
-install; if it does not work for you, ask in an issue.
+then add your entry to `nodes/` by pull request. [`JOIN-LAB.md`](JOIN-LAB.md) covers creating
+the book and publishing its commitment; for installing the mesh host and plugin, ask in an issue.
 
 What joining publishes, in this repository and from then on in its history:
 
