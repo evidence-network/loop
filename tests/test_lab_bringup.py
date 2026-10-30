@@ -165,7 +165,7 @@ class DryRunTest(unittest.TestCase):
         self.assertNotEqual(lab_sh("--dry-run", "twins", env=self.env).returncode, 0)
 
     def test_lab_twins_adds_lab_4_on_its_own_ports_with_four_roles(self):
-        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("--port 9804 --console 9814 --bind-port 9824", r.stdout)
         self.assertEqual(r.stdout.count("[plugin.openai_exchange_grant]"), 4)
@@ -178,17 +178,26 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.stdout.count("CAPSULES_OPENAI_API_URL"), 1)
         # The fault is on the faulty twin's config alone, and is a system prompt, not a sampler change.
         self.assertEqual(r.stdout.count("[models.request_defaults]"), 1)
-        self.assertEqual(r.stdout.count('system_prompt = "Answer in French."'), 1)
+        self.assertEqual(r.stdout.count('system_prompt = "Ignore the question and reply with the single word PINEAPPLE."'), 1)
+        self.assertEqual(r.stdout.count("--model owner/repo/model-q4.gguf"), 2)  # lab-1 and the referee lab-2; lab-4 loads from config
+        self.assertEqual(r.stdout.count('model = "owner/repo/model-q4.gguf"'), 1)
+        self.assertNotIn("model_path", r.stdout)  # an HF ref has no local path
+        self.assertNotIn("--gguf", r.stdout)
         for forbidden in ("temperature =", "seed =", "top_k ="):
             self.assertNotIn(forbidden, r.stdout)
 
+    def test_lab_twins_needs_a_hf_ref_not_a_local_file(self):
+        env = {k: v for k, v in self.env.items() if k != "LAB_MODEL_REF"}
+        r = lab_sh("start", env={**env, "LAB_TWINS": "1"})
+        self.assertNotEqual(r.returncode, 0)
+
     def test_lab_twins_needs_four_distinct_nodes(self):
-        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_REFEREE": "lab-1"})
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf", "LAB_REFEREE": "lab-1"})
         self.assertEqual(r.returncode, 2)
         self.assertIn("four distinct nodes", r.stderr)
 
     def test_lab_twins_makes_the_twins_and_the_referee_push_their_halves_to_the_requester(self):
-        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf"})
         push = {n for n in ("lab-1", "lab-2", "lab-3", "lab-4")
                 if any(f"HOME={self.lab}/nodes/{n} " in l and "CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in l
                        for l in r.stdout.splitlines())}
@@ -201,12 +210,12 @@ class DryRunTest(unittest.TestCase):
     def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
         for env, text in (({"LAB_TWIN_B": "lab-1", "LAB_TWIN_A": "lab-4"}, "cannot be lab-1"),
                           ({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote")):
-            r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", **env})
+            r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf", **env})
             self.assertEqual(r.returncode, 2, r.stdout)
             self.assertIn(text, r.stderr)
 
     def test_the_twins_command_asks_the_referee_then_sends_one_bracket_to_both_twins(self):
-        r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1"})
+        r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.count("x-mesh-twin-bracket:"), 2)
         self.assertEqual(r.stdout.count("http://127.0.0.1:9803/v1/chat/completions"), 3)
@@ -540,7 +549,7 @@ class EntriesTest(LabFixture):
         with contextlib.redirect_stdout(io.StringIO()):
             errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
         self.assertEqual(len(errs), 1, errs)
-        self.assertIn("lab-operator-4", errs[0])  # added as the others are named, then its missing key is reported
+        self.assertIn("lab-4", errs[0])  # added as the others are named, then its missing key is reported
         self.assertEqual(len(json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]), 3)
 
     def test_add_host_with_a_lab_4_identity_writes_its_entry_under_lab_4s_directory(self):
@@ -557,6 +566,7 @@ class EntriesTest(LabFixture):
         self.assertEqual(len(nodes), 4)
         self.assertEqual(nodes[3]["data_dir"], "$LAB_DIR/nodes/lab-4/.local/share/capsules")
         self.assertEqual(nodes[3]["node_id"], "4" * 64)
+        self.assertEqual(nodes[3]["name"].rsplit("-", 1)[0], nodes[0]["name"].rsplit("-", 1)[0])  # the others' casing
         self.assertTrue((self.root / "nodes" / f"{'4' * 64}.json").is_file())
 
     def test_the_twin_exchange_wait_reads_the_ledger_on_every_retry(self):

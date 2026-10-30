@@ -128,7 +128,9 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     # A lab host directory the population does not list yet (lab-4 with LAB_TWINS=1) joins it, named as the others are.
     for host in add_hosts:
         if not any(host_name(n) == host for n in pop["nodes"]):
-            pop["nodes"].append({"name": f"{operator}-{host.rsplit('-', 1)[-1]}", "host": "lab",
+            # Named as the others are (stevenmih-1..3), not from the operator's handle, which may differ in case.
+            prefix = next((n["name"].rsplit("-", 1)[0] for n in pop["nodes"] if "-" in n["name"]), operator.lower())
+            pop["nodes"].append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
                                  "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules"})
     writes = []
     reporter_identity = None
