@@ -386,6 +386,104 @@ VERIFIED = {"checkpoints": "verified", "history_card": "verified_history_card"}
 LISTED = ALICE["key_id"]  # the fixture commitment's key stands in for a lab node's listed key
 
 
+LIVE = FIX / "live"  # the lab's real signed commitments for stevenmih-1 (2026-10-30), before and after the plugin move
+
+
+class LiveCommitmentTest(Tmp):
+    """live_commitment() on real signed records: the join commitment from 02:31Z (policy 5a45151b..., the old
+    plugin's) and the one published at 08:21:36Z (policy 8f10b44c..., d1f4edc's, a COSE checkpoint)."""
+    OLD, NEW = "5a45151b78ff9a0a6f4ae396a7cd8212cd3088e0a313147064c12a631dbc8a5f", \
+        "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73"
+
+    def setUp(self):
+        super().setUp()
+        self.runs, self.published = Path(self.tmp.name) / "runs", Path(self.tmp.name) / "published"
+        self.entry = json.loads((LIVE / "entry.json").read_text())
+        self.node = f"{self.entry['node_id']}.json"
+        for name, path in (("LAB_RUNS", self.runs), ("PUBLISHED", self.published)):
+            patcher = mock.patch.object(step, name, path)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def put_old_join(self):
+        shutil.copytree(LIVE / "old-join", self.runs / "2026-10-30" / "join" / "stevenmih-1")
+
+    def put_published(self):
+        shutil.copytree(LIVE / "published", self.published)
+
+    def test_the_newer_published_commitment_wins_over_the_stale_join_record(self):
+        self.put_old_join()
+        self.put_published()
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertEqual((adv["policy_digest"], ncs), (self.NEW, []))
+        self.assertEqual(adv["commitment"], str(self.published / self.node))
+
+    def test_the_stale_join_record_alone_is_still_used(self):
+        self.put_old_join()
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertEqual((adv["policy_digest"], ncs), (self.OLD, []))
+
+    def test_a_newer_join_record_wins_over_an_older_published_commitment(self):
+        # The same two records, swapped between the places: the newer one is chosen wherever it sits.
+        shutil.copytree(LIVE / "published", self.runs / "2026-10-30" / "join" / "stevenmih-1")
+        shutil.copytree(LIVE / "old-join", self.published)
+        shutil.copy(self.published / "commitment.json", self.published / self.node)
+        (self.published / "commitment.json").unlink()
+        shutil.copy(self.runs / "2026-10-30" / "join" / "stevenmih-1" / self.node,
+                    self.runs / "2026-10-30" / "join" / "stevenmih-1" / "commitment.json")
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertEqual((adv["policy_digest"], ncs), (self.NEW, []))
+        self.assertIn("join", adv["commitment"])
+
+    def test_a_published_commitment_that_does_not_verify_is_skipped_and_named(self):
+        self.put_old_join()
+        self.put_published()
+        path = self.published / self.node
+        doc = json.loads(path.read_text())
+        doc["answers_within"] = "PT9M"  # signed over: the signature no longer holds
+        path.write_text(json.dumps(doc))
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertEqual(adv["policy_digest"], self.OLD)
+        self.assertEqual(len(ncs), 1)
+        self.assertIn("does not verify", ncs[0]["why"])
+        self.assertEqual(ncs[0]["issue"], step.NO_COMMITMENT_ISSUE)
+
+    def test_no_record_that_verifies_gives_no_deadline_and_names_each(self):
+        self.put_published()
+        (self.published / self.node).write_text("{}")
+        self.assertEqual(step.live_commitment({**self.entry, "key_id": "9" * 64})[0], None)
+        path = self.published / self.node
+        doc = json.loads((LIVE / "published" / self.node).read_text())
+        doc["answers_within"] = "PT9M"
+        path.write_text(json.dumps(doc))
+        adv, ncs = step.live_commitment(self.entry)
+        self.assertIsNone(adv)
+        self.assertEqual(len(ncs), 1)
+
+    def test_an_issued_at_that_is_not_a_utc_timestamp_is_not_ranked(self):
+        for bad in (None, 5, "2026-10-30", "2026-10-30T08:21:36+00:00", "2026-10-30 08:21:36Z"):
+            self.assertIsNone(step.commitment_time({"issued_at": bad}), bad)
+        self.assertEqual(step.commitment_time({"issued_at": "2026-10-30T08:21:36Z"}),
+                         dt.datetime(2026, 10, 30, 8, 21, 36, tzinfo=dt.timezone.utc))
+
+    def test_a_published_commitments_cose_checkpoint_gives_its_book_and_key(self):
+        adv = step.step12.advertised(LIVE / "published", self.node)
+        self.assertEqual(adv["book_id"], "capsules/511b5b4246cf58e7")
+        self.assertEqual(adv["checkpoint_key"], self.entry["key_id"])
+        self.assertIn(adv["book_id"], adv["streams"])
+
+    def test_a_join_records_json_checkpoint_still_reads(self):
+        adv = step.step12.advertised(LIVE / "old-join")
+        self.assertEqual((adv["book_id"], adv["policy_digest"]), ("lab-1-book", self.OLD))
+
+    def test_a_checkpoint_that_is_neither_form_does_not_read(self):
+        doc = json.loads((LIVE / "published" / self.node).read_text())
+        for bad in (b"\xd2\x84\x40\xa0\x40\x40", b"\xd2", b"not a checkpoint"):
+            doc["checkpoint"]["bytes"] = base64.urlsafe_b64encode(bad).decode()
+            with self.assertRaises(ValueError):
+                step.step12.checkpoint_member(doc)
+
+
 class ReporterBackendTest(Tmp):
     def setUp(self):
         super().setUp()
@@ -536,17 +634,18 @@ class ReporterBackendTest(Tmp):
         self.publish()
         r = self.refusal_with_listed_commitment()
         self.assertNotEqual(r["result"], "FAIL", r["detail"])
-        self.assertNotIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
         timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
         self.assertEqual(timing["commitment"], str(self.published / f"{'1' * 64}.json"))
 
-    def test_a_newer_join_record_still_wins_over_an_older_published_commitment(self):
-        self.age_join("2999-01-01T00:00:00Z")  # newer, so chosen; its signature no longer holds
+    def test_a_newer_join_record_that_does_not_verify_cannot_hide_a_verifying_published_one(self):
+        self.age_join("2999-01-01T00:00:00Z")  # newer, but its signature no longer holds
         self.publish()
         r = self.refusal_with_listed_commitment()
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
-        self.assertTrue(any("does not verify" in i["why"] for i in r["not_checked"]), r["not_checked"])
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+        timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
+        self.assertEqual(timing["commitment"], str(self.published / f"{'1' * 64}.json"))
+        self.assertTrue(any("does not verify" in i["why"] and "join" in i["why"] for i in r["not_checked"]),
+                        r["not_checked"])
 
     def test_the_published_commitment_alone_gives_the_deadline_and_pins_the_policy(self):
         shutil.rmtree(step.LAB_RUNS)
@@ -555,6 +654,13 @@ class ReporterBackendTest(Tmp):
         self.assertNotEqual(r["result"], "FAIL", r["detail"])
         timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
         self.assertEqual(timing["answers_within"], "PT1M")
+
+    def test_a_tie_in_issued_at_goes_to_the_published_commitment(self):
+        self.publish()  # the same bytes as the join record: equal issued_at
+        r = self.refusal_with_listed_commitment()
+        self.assertNotEqual(r["result"], "FAIL", r["detail"])
+        timing = json.loads(next(self.out.glob("lab-1/**/timing.json")).read_text())
+        self.assertEqual(timing["commitment"], str(self.published / f"{'1' * 64}.json"))
 
     def test_a_refusal_naming_neither_digest_is_a_fail_with_a_published_commitment(self):
         self.age_join("2020-01-01T00:00:00Z")

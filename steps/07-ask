@@ -58,8 +58,9 @@ key the node's host announces, which must be the listed key; a stranger-safe
 subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
 `answers_within` (the newer by `issued_at` of the node's newest lab/runs/*/join/ commitment and its published
-nodes/commitments/<node_id>.json: the join record is only as fresh as the last lab pack, so after a plugin move
-it pins the old policy, while the published one is what step 03 verifies), and an answer not in by it is not counted
+nodes/commitments/<node_id>.json that verifies and has a UTC issued_at, a tie going to the published one: the join
+record is only as fresh as the last lab pack, so after a plugin move it pins the old policy, while the published
+one is what step 03 verifies; a record skipped is named in not_checked), and an answer not in by it is not counted
 as answered.
 
 The pinned plugin seals each ask as an evidence_request before it sends it, and the reply as an evidence_response
@@ -668,39 +669,51 @@ def run_book(pop, out, tmp):
 
 
 # --- Backend "reporter": Mesh nodes, asked through the daily reporter ---------
+def commitment_time(doc):
+    """A commitment's issued_at as an aware datetime, or None when it is not a UTC `...Z` timestamp."""
+    text = doc.get("issued_at")
+    try:
+        return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
 def live_commitment(entry):
-    """(advertised, not_checked) for a live node: the newer of its signed join commitment under lab/runs and its
-    published one under nodes/commitments, by `issued_at` (never by file order).
+    """(advertised, [not_checked]) for a live node: the newest by `issued_at` of the node's signed commitments that
+    verify, among its join records under lab/runs and its published one under nodes/commitments.
 
     The pinned plugin signs a different policy after a plugin move, and lab/runs is only as fresh as the last
-    lab pack, while the published commitment is the one step 03 verifies against the listed key. A tie goes to
-    the published one. The record chosen still has to verify before anything in it is used.
+    lab pack, while the published commitment is the one step 03 verifies against the listed key. Only a record
+    that verifies and has a UTC `issued_at` is ranked, so an unusable newer record cannot hide a good one; each
+    one skipped is named in not_checked. A tie goes to the published record.
     """
-    found = []  # (issued_at, order, directory, file name)
-    for order, path in enumerate(sorted(LAB_RUNS.glob("*/join/*/commitment.json"))):
-        found.append((path, path.parent, path.name, order))
+    found = sorted(LAB_RUNS.glob("*/join/*/commitment.json"))
     published = PUBLISHED / f"{entry.get('node_id')}.json"
     if published.is_file():
-        found.append((published, published.parent, published.name, len(found)))
-    ranked = []
-    for path, adv_dir, name, order in found:
+        found.append(published)  # last, so a tie in issued_at goes to it
+    ranked, skipped = [], []  # ranked: (issued_at, position, path, advertised)
+    for order, path in enumerate(found):
         try:
             doc = load(path)
         except (OSError, ValueError):
             continue
-        if isinstance(doc, dict) and doc.get("key_id") == entry.get("key_id"):
-            issued = doc.get("issued_at")
-            ranked.append((issued if isinstance(issued, str) else "", order, path, adv_dir, name))
+        if not isinstance(doc, dict) or doc.get("key_id") != entry.get("key_id"):
+            continue
+        adv, errs = advertisement(path.parent, path.name)
+        issued = commitment_time(doc)
+        if adv is not None and issued is None:
+            errs = ["issued_at is not a UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"]
+        if errs:
+            skipped.append({"what": "the deadline (answers_within): a commitment record of the node",
+                            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE})
+        else:
+            ranked.append((issued, order, path, adv))
     if not ranked:
-        return None, {"what": "the deadline (answers_within)",
-                      "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments",
-                      "issue": NO_COMMITMENT_ISSUE}
-    _, _, path, adv_dir, name = max(ranked, key=lambda r: r[:2])
-    adv, errs = advertisement(adv_dir, name)
-    if adv is None:
-        return None, {"what": "the deadline (answers_within)", "why": "; ".join(errs), "issue": NO_COMMITMENT_ISSUE}
+        return None, skipped or [{"what": "the deadline (answers_within)", "issue": NO_COMMITMENT_ISSUE,
+                                  "why": "no signed commitment for the node's listed key under lab/runs or nodes/commitments"}]
+    _, _, path, adv = max(ranked, key=lambda r: r[:2])
     adv["commitment"] = str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
-    return adv, None
+    return adv, skipped
 
 
 def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
@@ -1020,9 +1033,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                                  "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
             lines.append(f"{name}: not asked, no nodes/ entry")
             continue
-        adv, nc = live_commitment(entry)
-        if nc:
-            merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
+        adv, ncs = live_commitment(entry)
+        merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"} for nc in ncs])
         node_dir = out / name
         if node_dir.exists():
             shutil.rmtree(node_dir)

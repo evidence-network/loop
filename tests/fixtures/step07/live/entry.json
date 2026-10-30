@@ -1,0 +1,17 @@
+{
+  "ask_route": "mesh",
+  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
+  "disclosure": {
+    "policy": "counterparties",
+    "stranger_safe": [
+      "checkpoints",
+      "history_card/1"
+    ]
+  },
+  "host_build": "mesh-llm fc35ee4968dff4563f1adb981a5dd33b1ce8fd58 (contains mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123, mesh-llm-pr-2620 1d96a0205ed77959485159d2110259fd32ccb35e), binary sha256 f999484cf37bf4b11075990666eb8a49113750ee6e8f975f815eb894eb66a7f6; no relay until Mesh-LLM/capsules-plugin#48 is closed",
+  "key_id": "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+  "mesh": "lab",
+  "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+  "operator": "StevenMih",
+  "plugin_version": "capsules d1f4edc09a9546d0c54a3bc8572251436ba47e59, binary sha256 4e7eeb9aacd65bf801a47bda84e82abc1bed66a37e2f98b66969cc3b4010b261"
+}
