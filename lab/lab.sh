@@ -74,6 +74,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 NODES=(lab-1 lab-2 lab-3)
 TWINS=${LAB_TWINS:-0}
+KEY_SETTLE=${LAB_KEY_SETTLE:-30}
 TWIN_A=${LAB_TWIN_A:-lab-1}
 TWIN_B=${LAB_TWIN_B:-lab-4}
 REFEREE=${LAB_REFEREE:-lab-2}
@@ -103,6 +104,7 @@ serves_model() { [ "$1" = lab-1 ] || { [ "$TWINS" = 1 ] && { [ "$1" = "$TWIN_A" 
 LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
+REQUESTER_OR_REPORTER=${LAB_REQUESTER:-$REPORTER}
 MODEL_NAME=${LAB_MODEL_NAME:-${MODEL_REF:-lab-model}}
 # With an HF ref the name is the one lab-1 listed at start (run/model-name), unless LAB_MODEL_NAME says otherwise.
 if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ -s "${LAB_DIR:-/nonexistent}/run/model-name" ]; then
@@ -189,6 +191,21 @@ have = {(n, digest(h)) for h in held for n in {json.dumps(h)} if digest(h)}
 ok = len(need) >= 2 and all(any(p in text and d == hd for text, hd in have) for p, d in need)
 sys.exit(0 if ok else 1)
 PY
+}
+# Every other node has a plugin key for the plugin `capsules` in NODE's host /api/plugin-keys (the answer peer_keys::announced folds).
+keys_announced() {
+  curl -fsS "$(console "$1")/api/plugin-keys" | python3 -c 'import json,sys
+d = json.load(sys.stdin); want = int(sys.argv[1]) - 1
+have = [p for p, k in (d.get("peers") or {}).items() if isinstance(k, dict) and k.get("capsules")]
+sys.exit(0 if len(have) >= want else 1)' "${#NODES[@]}"
+}
+# The first model a peer of NODE advertises serving (/api/status peers[].serving_models).
+advertised_name() {
+  curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys
+for p in json.load(sys.stdin).get("peers") or []:
+    for m in p.get("serving_models") or []:
+        print(m if isinstance(m, str) else m.get("name") or m.get("id")); sys.exit(0)
+sys.exit(1)'
 }
 node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
@@ -517,6 +534,18 @@ cmd_start() {
     fi
   done
   for n in "${NODES[@]}"; do wait_for 120 "$n's plugin knows its node id" knows_own_id "$n"; done
+  # A push is accepted only from a peer whose key this node's plugin holds (peer_keys::accepted_via); the plugin reads the keys
+  # from its host's /api/plugin-keys, so wait until every host lists all the others, then give the plugins time to read them.
+  # A push sent earlier is refused signature_unverified and never retried.
+  for n in "${NODES[@]}"; do wait_for 300 "$n's host announces the other nodes' plugin keys" keys_announced "$n"; done
+  if [ "$DRY" = 1 ]; then echo "  (then ${KEY_SETTLE}s for the plugins to read them: LAB_KEY_SETTLE)"; else sleep "$KEY_SETTLE"; fi
+  # The name every host forwards under is the one the peers advertise (no @revision), not lab-1's own /v1/models id: the
+  # requester rewrites `model` to it before forwarding, so a request body naming anything else seals another request digest.
+  if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ "$DRY" = 0 ]; then
+    MODEL_NAME=$(advertised_name "$REQUESTER_OR_REPORTER") || die "$REQUESTER_OR_REPORTER's peers advertise no served model"
+    echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
+    echo "advertised model name: $MODEL_NAME"
+  fi
   cmd_status
 }
 
@@ -678,6 +707,8 @@ cmd_twins() {
   b=$(node_id "$TWIN_B") || die "twin B $TWIN_B has no node id yet"
   [ "$DRY" = 1 ] || [ -s "$LAB_DIR/twin-fault.json" ] || die "no $LAB_DIR/twin-fault.json: start the lab with LAB_TWINS=1 first"
   run mkdir -p "$LAB_DIR/twins"
+  local rejected_before
+  rejected_before=$(wc -l < "$led/rejected-record-pushes.jsonl" 2> /dev/null | tr -d ' ') || rejected_before=0
   local api="http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
   # 1. The requester asks the referee once. The plugin takes a referee as eligible only when it holds a half from it
   #    (referee/live.rs candidates), and that push arrives after the exchange completes: wait for it.
@@ -692,6 +723,10 @@ cmd_twins() {
   # 3. Stock mesh-llm passes plugins no exchange text, so the client that marked the pair supplies it (INSTALL.md,
   #    "Sharing policy"): the request and both answers, each checked against what the requester's own records sealed.
   wait_for 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
+  # A push refused signature_unverified is never retried: say so now, not as a timeout of the half wait below.
+  if [ "$DRY" = 0 ] && [ "$(wc -l < "$led/rejected-record-pushes.jsonl" 2> /dev/null | tr -d ' ')" -gt "${rejected_before:-0}" ]; then
+    die "the requester refused pushes during this run ($led/rejected-record-pushes.jsonl): the plugins had not read each other's keys; stop, wait for LAB_KEY_SETTLE after start, and run twins again"
+  fi
   # The plugin considers the pair when the texts are supplied and does not look again when a half lands later, so
   # supply them only after each twin's own signed half has been pushed to the requester.
   wait_for 180 "the requester holds each twin's signed half of this pair" halves_held "$bracket" "$led"

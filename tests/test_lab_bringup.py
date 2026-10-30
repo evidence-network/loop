@@ -220,6 +220,34 @@ class DryRunTest(unittest.TestCase):
         (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "d1"))
         self.assertEqual(held(), 0)
 
+    def test_start_waits_for_the_announced_keys_and_takes_the_advertised_name(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for n in ("lab-1", "lab-2", "lab-3", "lab-4"):
+            self.assertIn(f"{n}'s host announces the other nodes' plugin keys", r.stdout)
+        self.assertIn("LAB_KEY_SETTLE", r.stdout)
+        text = (ROOT / "lab" / "lab.sh").read_text()
+        self.assertIn("advertised_name", text)
+
+    def _bash(self, body, status):
+        script = ('eval "$(sed -n "/^keys_announced()/,/^}/p;/^advertised_name()/,/^}/p" "$LAB")"; console() { echo "http://x/$1"; }; '
+                  f'curl() {{ cat <<\'J\'\n{status}\nJ\n}}; NODES=(lab-1 lab-2 lab-3); {body}')
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB)})
+
+    def test_keys_announced_needs_every_other_nodes_plugin_key(self):
+        keys = lambda n: json.dumps({"node_id": "a", "peers": {f"p{i}": {"capsules": "k" * 64} for i in range(n)}})
+        self.assertEqual(self._bash("keys_announced lab-1", keys(1)).returncode, 1)
+        self.assertEqual(self._bash("keys_announced lab-1", keys(2)).returncode, 0)
+        withdrawn = json.dumps({"peers": {"p0": {"capsules": "k" * 64}, "p1": {}}})
+        self.assertEqual(self._bash("keys_announced lab-1", withdrawn).returncode, 1)
+
+    def test_the_advertised_name_is_the_first_a_peer_serves(self):
+        status = json.dumps({"peers": [{"serving_models": []},
+                                       {"serving_models": ["Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m"]}]})
+        r = self._bash("advertised_name lab-3", status)
+        self.assertEqual(r.stdout.strip(), "Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m", r.stderr)
+        self.assertEqual(self._bash("advertised_name lab-3", json.dumps({"peers": []})).returncode, 1)
+
     def test_join_skips_a_node_that_has_already_joined(self):
         # join.sh fails on a node with a book profile already: a second `join` must not repeat lab-1..3.
         script = 'eval "$(sed -n "/^cmd_join()/,/^}/p" "$LAB")"; die() { echo "$*"; exit 2; }; DRY=0; ROOT=/nonexistent; ' \
