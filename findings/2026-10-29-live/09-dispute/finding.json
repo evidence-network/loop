@@ -1,11 +1,11 @@
 {
   "asserts": "the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; the party's book holds the matching adjudication_received with the same Result bytes as the referee's adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded",
   "detail": "node stevenmih-1: 0 held Result line(s); node stevenmih-2: 0 held Result line(s); node stevenmih-3: 0 held Result line(s). Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close on Mesh, so none is asserted. Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD).",
-  "finished": "2026-10-30T00:13:13Z",
+  "finished": "2026-10-30T00:27:35Z",
   "name": "dispute",
   "not_checked": [
     {
-      "issue": "Mesh-LLM/capsules-plugin#102",
+      "issue": "Mesh-LLM/capsules-plugin#126",
       "what": "an adjudication Result on a twin pair, held by a lab node with its adjudication_received",
       "why": "no lab node's data dir holds a Result (no issued-adjudications.jsonl or received-adjudications.jsonl line): the referee has not run an adjudication end to end on the lab nodes, and this step never seals one on a live node"
     }
@@ -44,6 +44,6 @@
     }
   ],
   "result": "NOT_CHECKED",
-  "started": "2026-10-30T00:13:13Z",
+  "started": "2026-10-30T00:27:35Z",
   "step": "09"
 }
