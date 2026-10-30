@@ -125,7 +125,7 @@ ASSERTS = ("one command on the pinned release keeps a controller binding for the
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
            "advertised policy")
-PINNED = ["capsulectl", "capsulectl-book"]
+PINNED = ["capsulectl", "capsulectl-book", "aac-go"]
 PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
          "doctor.json", "join.json"]
@@ -167,9 +167,14 @@ def binding_check(name, raw, digest, key, at):
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, or does not name the key); "unread" (it
     is not the binding `digest` names); "unsupported" (a method the verifier lacks); "unsupported_key_type" (INTERIM,
     loop#140: it declares a key type, bip340, the pinned verifier lacks, so it said FAIL without a bad binding)."""
-    verdict, report, err, code = bv.verify(cross_language(), raw, key, [at])
+    try:
+        verdict, report, err, code = bv.verify(cross_language(), raw, key, [at])
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise SystemExit(f"12-join: cross_language binding did not run ({e}); run steps/01-seal.setup.sh")
     if verdict is None:
         raise SystemExit(f"12-join: cross_language binding exited {code} ({err}); run steps/01-seal.setup.sh")
+    if not report.get("binding_digest"):
+        return "unread", f"the verifier gave no report on {name}'s binding record"
     if report.get("binding_digest") != digest:
         return "unread", f"{name}'s binding is {report.get('binding_digest')}, not the {digest} it is held as"
     props = report.get("properties") or {}
@@ -521,11 +526,6 @@ def post_json(url, body, timeout):
 
 
 def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
-    """(failure or None, not_checked or None, line) for the controller binding of one node."""
-    return binding_digests(name, node_id, key_id, doctor_console, commitment_console, timeout)[:3]
-
-
-def binding_digests(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
     """(failure or None, not_checked or None, line, held digest or None) for the controller binding of one node.
 
     Its doctor, asked through its own console, says bound (with the binding digest) or unbound; its commitment,
@@ -571,25 +571,28 @@ def binding_digests(name, node_id, key_id, doctor_console, commitment_console, t
                              "names none"), held
 
 
-def live_binding_record(name, node, entry, held, at):
-    """(failure or None, not_checked list, line or None) of the Go verifier on the record the node holds in its
-    data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports `held`.
-    A node that holds no binding has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
+def live_binding_record(name, node, entry, held, at, node_dir):
+    """(failure or None, not_checked list, line or None, proof paths) of the Go verifier on the record the node
+    holds in its data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports
+    `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them. A node that holds no
+    binding has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
     if not held:
-        return None, [], None
+        return None, [], None, []
     data_dir = live.path(node, "data_dir")
     try:
         raw = (data_dir / BINDING_FILE).read_text(encoding="utf-8")
     except (OSError, ValueError, TypeError):
         return None, [no_binding(name, f"it has no readable {BINDING_FILE} in its data_dir (the population's) to "
-                                       "check the record by")], None
+                                       "check the record by")], None, []
+    (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
+    kept = [f"{name}/{BINDING_FILE}"]
     state, detail = binding_check(name, raw, held, entry["key_id"], at)
     if state == "bad":
-        return f"{name}: {detail}", [], None
+        return f"{name}: {detail}", [], None, kept
     unchecked = binding_unchecked(state, detail)
     if unchecked:
-        return None, [{**unchecked, "what": f"{name}: {unchecked['what']}"}], None
-    return None, [BINDING_REVOCATION, BINDING_ROLE], f"{name}: {detail}"
+        return None, [{**unchecked, "what": f"{name}: {unchecked['what']}"}], None, kept
+    return None, [BINDING_REVOCATION, BINDING_ROLE], f"{name}: {detail}", kept
 
 
 def no_binding(name, why):
@@ -826,6 +829,7 @@ def no_second_console(name):
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, node_consoles=None):
     failures, not_checked, proof, lines = [], list(LIVE_NOT_CHECKED), [], []
     at = daily_report.utc_now()
+    bind_at = utc_now()  # one time for every node's binding window
     for node in pop["nodes"]:
         name = node["name"]
         asker, via = console, "the reporter's console"
@@ -863,7 +867,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"}])
         own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
         if own:
-            fail, nc, line, held = binding_digests(name, entry["node_id"], entry["key_id"], own, asker, timeout)
+            fail, nc, line, held = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
             if fail:
                 bad.append(fail)
             if nc:
@@ -871,7 +875,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             if line:
                 lines.append(line)
             if not fail and not nc:
-                fail, ncs, line = live_binding_record(name, node, entry, held, utc_now())
+                fail, ncs, line, kept = live_binding_record(name, node, entry, held, bind_at, node_dir)
+                proof += kept
                 if fail:
                     bad.append(fail)
                 merge(not_checked, ncs)
@@ -973,7 +978,7 @@ def decide(work, population, started, pop_dir):
 def conclude(out, population, failures, not_checked, proof, lines, started, which="doctor"):
     """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
-    pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
+    pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go"]
     shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
     detail = f"probe backend: {which}. " + "; ".join(shown) + "."
     if result == "PASS":  # a PASS covers its assertion; the binding's own verification is outside it

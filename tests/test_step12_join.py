@@ -132,7 +132,7 @@ class DoctorBackendTest(Tmp):
         # the node key's role in the binding (AAC#468).
         self.assertEqual([i for _, i in finding.gaps(r["detail"])],
                          ["evidence-network/loop#138", "action-state-group/agent-action-capsule#468"])
-        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book"})
+        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
                       json.loads((self.out / node / "doctor.json").read_text())["findings"]}
@@ -625,7 +625,7 @@ class ReporterBackendTest(Tmp):
         real = step.post_json
         step.post_json = lambda url, body, timeout: {"commitment": [1]}
         try:
-            fail, nc, _ = step.check_binding("lab-1", "1" * 64, LISTED, "http://x", "http://y", 1)
+            fail, nc, _, _ = step.check_binding("lab-1", "1" * 64, LISTED, "http://x", "http://y", 1)
         finally:
             step.post_json = real
         self.assertIsNone(fail)
@@ -1000,8 +1000,7 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap names only what the pinned plugin leaves unchecked: revocation, and a check outside the
-    node. The plugin's join and doctor --probe are no longer loop-wide gaps."""
+    """The binding gaps are what the verifier leaves unchecked: revocation (loop#138) and the key's role (AAC#468). The plugin's join and doctor --probe are no longer loop-wide gaps."""
 
     def test_the_binding_gaps_are_revocation_and_the_keys_role(self):
         self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#138")
@@ -1068,6 +1067,24 @@ class PluginToolsRunTest(Tmp):
         self.assertEqual([i["what"] for i in r["not_checked"]],
                          [i["what"] for i in step.LIVE_NOT_CHECKED] + [step.BINDING_REVOCATION["what"],
                                                                      step.BINDING_ROLE["what"]])
+
+    @needs_cross
+    def test_the_record_that_was_checked_is_kept_as_proof(self):
+        r = self.run_bound()
+        self.assertIn("alice/controller-binding.json", [x["path"] for x in r["proof"]])
+        self.assertEqual((self.out / "alice" / step.BINDING_FILE).read_text(), (ALICE / "binding.json").read_text())
+
+    def test_a_missing_verifier_stops_the_step_in_both_backends(self):
+        real = os.environ.get("LOOP_TOOLS")
+        os.environ["LOOP_TOOLS"] = str(Path(self.tmp.name) / "empty")
+        try:
+            with self.assertRaises(SystemExit) as live:
+                step.binding_check("alice", (ALICE / "binding.json").read_text(), BINDING_DIGEST, ALICE_DOC["key_id"], FIXTURE_AT)
+            with self.assertRaises(SystemExit):
+                step.check_binding_record(ALICE, FIXTURE_AT)
+        finally:
+            os.environ.pop("LOOP_TOOLS") if real is None else os.environ.__setitem__("LOOP_TOOLS", real)
+        self.assertIn("steps/01-seal.setup.sh", str(live.exception))
 
     @needs_cross
     def test_a_held_binding_that_does_not_name_the_nodes_key_is_a_fail(self):

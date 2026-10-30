@@ -125,11 +125,10 @@ with the issue that owns it.
 These are never shown as checked.
 
 - No `binding-verifier` is pinned, so your key reads as unbound for
-  grouping. join.sh signs the `controller-binding/0` record and doctor finds
-  it naming your key; step 12 also checks the record in a second language
-  (`cross_language binding`, aac-go go/v0.15.0), which writes no verdict.
-  Revocation and your key's role in the binding stay outside step 12's
-  assertion.
+  grouping: the second-language check of your binding record writes no
+  verdict.
+- Your binding's revocation, and your key's role in it (the verifier takes
+  either of the binding's two keys), are not checked.
 - Mesh nodes keep their book in the capsules plugin. The pinned plugin has
   its own `join` and `doctor --probe` (capsules-plugin PR #81) and signs and
   serves the commitment (PR #75); step 12 asks the node through the daily

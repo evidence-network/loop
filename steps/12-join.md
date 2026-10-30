@@ -53,9 +53,11 @@ With no published file, the detail says nothing is compared.
   (`controller-binding.json` in its `data_dir`, or `binding.json` for a
   node `join.sh` joined), which must have the digest doctor reports, name
   the node key and apply now (form, both signatures and window). That is
-  "the binding applies", not a trust verdict. A binding that does not apply
-  is a failure; a record that cannot be read, another binding than doctor's,
-  or a method or key type the verifier lacks is NOT_CHECKED.
+  "the binding applies", not a trust verdict. For a Mesh node, a binding that
+  does not apply is a failure; a record that cannot be read, another binding
+  than doctor's, or a method or key type the verifier lacks is NOT_CHECKED.
+  For a node `join.sh` joined, a record that does not hold in any of those
+  ways is a failure, and the record checked is kept in the finding's proof.
 - The signed commitment and the policy digest that the reporter's answers are
   matched against: `nodes/` entries are unsigned.
 

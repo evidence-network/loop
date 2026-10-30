@@ -7,6 +7,8 @@
 # lock. The binaries go to $LOOP_TOOLS/bin (default
 # ~/.cache/evidence-network-loop/bin), where join.sh and steps/02-book and
 # 12-join look for them, with capsulectl.built-from naming the tag and commit.
+# The step also runs aac-go's cross_language binding on each binding record, which
+# steps/01-seal.setup.sh installs; the step stops, and says so, when it is missing.
 # Needs git and go (the version capsulectl/go.mod names, or a newer one); openssl 3
 # and python3 come from the host.
 set -euo pipefail
