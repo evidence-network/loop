@@ -1,0 +1,534 @@
+#!/usr/bin/env python3
+"""Step 08 Verify: an outsider reproduces every finding of the run, offline, from the run's bundle alone.
+
+Usage: 08-verify --population DIR --out RUN/08-verify
+
+RUN is the loop run (the parent of --out). For each other `<NN>-<name>/` in it
+this step, with no account and no network call:
+
+  integrity     the finding passes steps/finding.py's check (every proof file it
+                names is there and matches its sha256), it is of this run's
+                population, and every key its proof relies on is the key the
+                repository lists for that party (population/<p>/, never a key
+                read from the bundle);
+  reproduction  the files the finding names in `proof`, and only those, are
+                copied into a scratch `<NN>-<name>/`, and the step's own judge,
+                loaded read-only from steps/, decides again on them: the
+                re-derived result and not_checked list must be the recorded
+                ones. The judges re-run the signature, checkpoint and inclusion
+                checks with the step's pinned verifiers (all local), so those
+                are re-run on the cited bytes under the repository's keys. A
+                mismatch is a FAIL naming the step.
+  coverage      a step whose proof is not enough to re-derive its result (its
+                judge needs bytes the finding does not cite, a live data dir, or
+                a verifier not installed here) is never passed on trust: it is a
+                not_checked entry {what, why, issue} saying what is missing.
+
+The finding is FAIL when any step fails integrity or reproduction, NOT_CHECKED
+when every step present held but one or more could not be reproduced, and PASS
+only when every step present was integrity-checked and reproduced.
+verified.json, beside the finding, is the manifest steps 10 and 11 read: per
+step, its recorded and re-derived result and not_checked, its status, what did
+not hold, and the sha256 of every file this step read (finding.json and each
+proof file).
+
+What each step's proof is, and how its judge is re-run, is steps/08-verify.md.
+Exit 0 once the finding is written, whatever the result.
+"""
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import re
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_commitment as cc  # noqa: E402
+import finding  # noqa: E402
+
+ISSUE = "evidence-network/loop#24"
+ASSERTS = ("an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file "
+           "matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, "
+           "run again on the proof bytes it cites, gives the result and not_checked list the step recorded")
+# A finding loop.sh wrote because the step broke: there is no judge to run again.
+BROKE = "the step runs to the end and writes its finding"
+# Files a status-page number is read from: the re-derived bytes must be the recorded ones.
+NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
+
+
+def stages():
+    """{stage: [step numbers]} as loop.sh lists them (STAGE_<n>="01 02 ..."): the one list of what a stage runs."""
+    text = (ROOT / "loop.sh").read_text(encoding="utf-8")
+    return {m.group(1): m.group(2).split() for m in re.finditer(r'^STAGE_(\w+)="([0-9 ]+)"', text, re.M)}
+
+
+STAGES = stages()
+
+
+class Mismatch(Exception):
+    """The re-run changed bytes the finding cites; the argument says which."""
+
+
+class Unreproducible(Exception):
+    """The step's result cannot be re-derived here; args are (what, why)."""
+
+
+def load(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def step_module(base):
+    """steps/<base> as a module (its own fresh copy: the step's file is read, never changed)."""
+    loader = importlib.machinery.SourceFileLoader(f"verify_{base.replace('-', '_')}", str(HERE / base))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def pub_key(pem):
+    """The raw Ed25519 public key (hex) of an SPKI PEM file in the repository."""
+    return cc.key_id_of(cc.spki_from_pem(Path(pem).read_text(encoding="utf-8")))
+
+
+def repo_path(p):
+    p = Path(p)
+    return p if p.is_absolute() else ROOT / p
+
+
+def node_pubs(pop_dir):
+    """{node name: raw public key} of the population's nodes, from the repository's key files."""
+    return {n["name"]: pub_key(repo_path(n["key_dir"]) / "node-key.pub.pem")
+            for n in load(Path(pop_dir) / "population.json")["nodes"]}
+
+
+def nodes_of(work, pop_dir):
+    """The population's nodes whose directory the step wrote."""
+    return [n for n in node_pubs(pop_dir) if (work / n).is_dir()]
+
+
+def need(path, what, tool):
+    if path is None or not Path(path).is_file():
+        raise Unreproducible(f"{what}: its judge, run again here", f"{tool} is not installed where 08 runs "
+                                                                   f"({path}); its setup.sh installs it")
+    return path
+
+
+class Ctx:
+    """One step: its bundle dir, the scratch copy of its proof (named as the step's dir), its finding."""
+
+    def __init__(self, bundle, work, tmp, pop_dir, record):
+        self.bundle, self.work, self.tmp, self.pop, self.record = bundle, work, tmp, Path(pop_dir), record
+        self.population = record["population"]
+        self.started = record["started"]
+
+
+# --- Keys: each key the proof relies on is the repository's ------------------------------
+def keys_01(c):
+    node = load(c.work / "checks.json").get("node")
+    pubs = node_pubs(c.pop)
+    got = load(c.work / "capsule.json").get("key_id")
+    return [] if pubs.get(node) == got else [f"capsule.json key_id {got} is not the repository key of node {node}"]
+
+
+def keys_02(c):
+    w = load(c.pop / "population.json").get("witness")
+    if not (c.work / "witnesses.json").is_file():
+        return ["the population names a witness but witnesses.json is not in the proof"] if w else []
+    if not w or repo_path(w["directory"]).read_bytes() != (c.work / "witnesses.json").read_bytes():
+        return ["witnesses.json is not the repository's witness directory"]
+    return []
+
+
+def keys_commitments(c, path):
+    pubs, bad = node_pubs(c.pop), []
+    for n in pubs:
+        f = c.work / path.format(n=n)
+        if f.is_file():
+            got = load(f).get("key_id")
+            if got != pubs[n]:
+                bad.append(f"{f.relative_to(c.work)} key_id {got} is not the repository key of node {n}")
+    return bad
+
+
+def keys_04(c):
+    """The scenarios step 04 must have judged are the repository's, not the ones its own finding lists."""
+    want = {d.name for d in (c.pop / "step04" / "scenarios").iterdir() if d.is_dir()}
+    have = {Path(p["path"]).parts[1] for p in c.record["proof"] if p["path"].startswith("scenarios/")}
+    return ([f"scenario {n} is in the repository but not in the finding's proof" for n in sorted(want - have)]
+            + [f"scenario {n} is in the finding's proof but not in the repository" for n in sorted(have - want)])
+
+
+def keys_05(c):
+    """Each controller declaration is the repository's: its id, its controller key and the node keys it covers."""
+    want = {}
+    for ctl in load(c.pop / "step05" / "controllers.json")["controllers"]:
+        key = pub_key(repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
+        want[ctl["id"]] = (key, sorted(node_pubs(c.pop)[n] for n in ctl["nodes"]))
+    got, decls = {}, load(c.work / "declarations.json")
+    for d in decls:
+        got[d.get("controller_id")] = (d.get("controller_key"), sorted(d.get("evidence_keys") or []))
+    # The driver reads every declaration, so a repeated id would let an unchecked one stand behind a checked one.
+    if len(decls) != len(got):
+        return ["declarations.json repeats a controller id"]
+    return [f"declarations.json controller {i} is {got.get(i)}, the repository's is {want.get(i)}"
+            for i in sorted(set(want) | set(got), key=str) if got.get(i) != want.get(i)]
+
+
+def keys_06(c):
+    decl = load(c.pop / "rail" / "rail.json")
+    if (c.pop / "rail" / decl["public_key"]).read_bytes() != (c.work / "rail-key.pub.pem").read_bytes():
+        return ["rail-key.pub.pem is not the repository's rail key"]
+    return []
+
+
+def keys_07(c, m):
+    pubs, bad = node_pubs(c.pop), []
+    # Every ask the step puts to every node pair is in the proof, so a proof cut down to nothing to judge can't read PASS.
+    for a in pubs:
+        for b in pubs:
+            if a != b:
+                bad += [f"the proof holds no {a}/asks/{b}/{name}/request.json" for name in sorted(m.ASKS)
+                        if not (c.work / a / "asks" / b / name / "request.json").is_file()]
+    for n in nodes_of(c.work, c.pop):
+        f = c.work / n / "advertised" / "book.json"
+        got = load(f).get("node_key") if f.is_file() else None
+        if f.is_file() and got != pubs[n]:
+            bad.append(f"{n}/advertised/book.json node_key {got} is not the repository key of node {n}")
+    bad += [f"the proof holds no book of node {n}" for n in sorted(pubs) if not (c.work / n / "advertised" / "book.json").is_file()]
+    return bad + keys_commitments(c, "{n}/advertised/commitment.json")
+
+
+def keys_09(c, m):
+    """The dispute is the repository's (roles, node ids, key directories), byte for byte; the announced keys are its keys."""
+    repo = c.pop / "step09" / "dispute.json"
+    if repo.read_bytes() != (c.work / "dispute.json").read_bytes():
+        return ["dispute.json is not the repository's step09/dispute.json"]
+    doc, announced = load(c.work / "dispute.json"), load(c.work / "announced.json")["announced_keys"]
+    bad = []
+    for name, entry in doc["nodes"].items():
+        want = pub_key(m.key_dir_of(c.pop, name, entry) / "node-key.pub.pem")
+        if announced.get(entry["node_id"]) != want:
+            bad.append(f"announced.json key of {name} is {announced.get(entry['node_id'])}, the repository's is {want}")
+    return bad
+
+
+# --- Re-derivation: the step's own judge on the copied proof bytes ------------------------
+# Each returns the re-derived finding (a dict), or raises Unreproducible.
+def rederive_01(m, c):
+    python, verifier = m.tools()
+    _, missing = m.installed_pins(python, verifier)
+    missing = [x for x in missing if x["what"] != "capsule-emit"]  # nothing is sealed again
+    if missing:
+        raise Unreproducible("step 01: its judge, run again here", "; ".join(x["why"] for x in missing))
+    node = load(c.work / "checks.json")["node"]
+    # The step's own --sealed path: it checks the given capsule exactly as it checks one it sealed.
+    m.main(["--population", str(c.pop), "--out", str(c.work), "--node", node, "--sealed", str(c.bundle / "capsule.json")])
+    return load(c.work / "finding.json")
+
+
+def rederive_02(m, c):
+    bin_ = need(m.driver(), "step 02", "the loop-step02-book driver")
+    population, _, pub = m.node(c.pop, "alice")
+    return m.decide(bin_, c.work, population=population, book_id=f"{population}-alice", pub=pub, started=c.started)
+
+
+def rederive_03(m, c):
+    if shutil.which("git") is None:
+        raise Unreproducible("step 03: its judge, run again here", "git is not installed where 08 runs")
+    if shutil.which("openssl") is None:
+        raise Unreproducible("step 03: its judge, run again here", "openssl is not installed where 08 runs")
+    src = c.tmp / "carrier.bundle"
+    shutil.copyfile(c.work / "carrier.bundle", src)
+    inputs = {n["name"]: n.get("inputs") for n in load(c.work / "verification.json").get("nodes", [])}
+
+    def from_bundle(population, node, carrier):
+        # In place of signing and publishing: the carrier is the bundle's, and check_node reads its HEAD.
+        if m.git(carrier, "rev-parse", "-q", "--verify", "HEAD", check=False).returncode != 0:
+            m.git(carrier, "fetch", "-q", str(src), "HEAD")
+            m.git(carrier, "reset", "-q", "--hard", "FETCH_HEAD")
+        key_id = pub_key(repo_path(node["key_dir"]) / "node-key.pub.pem")
+        return {"name": node["name"], "node_id": node.get("node_id") or key_id, "key_id": key_id,
+                "inputs": inputs.get(node["name"]), "signed_by": "the harness, with the node's rehearsal TEST key",
+                "published_commit": m.git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}, key_id
+
+    m.rehearsal_node = from_bundle
+    m.main(["--population", str(c.pop), "--out", str(c.work)])
+    # The judge writes its commitment and policy files again from the carrier; the cited ones must be those bytes,
+    # or a corrupted cited file would be replaced by a good one before it is judged.
+    changed = [p["path"] for p in c.record["proof"] if p["path"].endswith((".commitment.json", ".policy.json"))
+               and (c.work / p["path"]).read_bytes() != (c.bundle / p["path"]).read_bytes()]
+    if changed:
+        raise Mismatch(f"the judge's own copy of {', '.join(changed)} differs from the cited bytes")
+    return load(c.work / "finding.json")
+
+
+def rederive_04(m, c):
+    bin_ = need(m.capsulectl(), "step 04", "capsulectl")
+    buyer = m.book_keys.pub_hex(repo_path(next(n["key_dir"] for n in load(c.pop / "population.json")["nodes"]
+                                               if n["name"] == "bob")) / "node-key.pub.pem")
+    results, outcomes, proof = {}, {}, []
+    names = sorted({Path(p["path"]).parts[1] for p in c.record["proof"] if p["path"].startswith("scenarios/")})
+    for name in names:
+        sd = c.work / "scenarios" / name
+        verdict = m.verify_bundle(bin_, c.tmp / "04", sd / "bundle.json")
+        (sd / "verify.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
+        results[name], block = m.judge(sd, verdict, buyer)
+        if block is not None:
+            outcomes[name] = m.verdict_of(block)
+        proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json", "decision.json")]
+    # main_rehearsal's decision, as it writes it: FAIL when a check did not hold, else PASS; never not_checked.
+    refused = sorted(n for n, o in outcomes.items() if o == "NO")
+    counts = {"decisions": len(outcomes), "refused": len(refused),
+              "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in m.VERDICTS}}
+    (c.work / "counts.json").write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
+    failed = [f"{n}: {x['check']}" for n, cs in results.items() for x in cs if not x["ok"]]
+    return {"result": "FAIL" if failed else "PASS", "not_checked": []}
+
+
+def rederive_05(m, c):
+    bin_ = need(m.driver(), "step 05", "the loop-step05-deal driver")
+    population, keys = m.nodes(c.pop)
+    return m.decide(bin_, c.work, population=population, keys=keys, started=c.started)
+
+
+def rederive_06(m, c):
+    return m.decide(c.work, population=c.population, nodes=m.nodes_of(c.pop), started=c.started)
+
+
+def rederive_07(m, c):
+    cap = need(m.tools(), "step 07", "capsulectl")
+    pubs = node_pubs(c.pop)
+    keys = {n: load(c.work / n / "advertised" / "book.json")["node_key"] for n in pubs
+            if (c.work / n / "advertised" / "book.json").is_file()}
+    not_checked = []
+    failures, answered, proof, lines = m.judge_run(c.work, keys, cap, c.tmp, not_checked)
+    return m.conclude(c.work, c.population, failures, not_checked, answered, proof, lines, c.started, "book")
+
+
+def rederive_09(m, c):
+    if shutil.which("openssl") is None:
+        raise Unreproducible("step 09: its judge, run again here", "openssl is not installed where 08 runs")
+    return m.decide(c.work, population=c.population, started=c.started)
+
+
+def rederive_12(m, c):
+    need(m.tools(), "step 12", "capsulectl")
+    return m.decide(c.work, c.population, c.started, c.pop)
+
+
+STEPS = {
+    "01": (rederive_01, keys_01),
+    "02": (rederive_02, keys_02),
+    "03": (rederive_03, lambda c: keys_commitments(c, "{n}.commitment.json")),
+    "04": (rederive_04, keys_04),
+    "05": (rederive_05, keys_05),
+    "06": (rederive_06, keys_06),
+    "07": (rederive_07, keys_07),
+    "09": (rederive_09, keys_09),
+    "12": (rederive_12, lambda c: keys_commitments(c, "{n}/commitment.json")),
+}
+
+
+# Key checks that read the step module too (its ASKS, its key_dir_of).
+NEEDS_MODULE = {"07", "09"}
+
+
+def canon(items):
+    return sorted(json.dumps(x, sort_keys=True) for x in items)
+
+
+def mismatches(recorded, again):
+    """What differs between the recorded finding and the re-derived one: result, then not_checked."""
+    out = []
+    if again["result"] != recorded["result"]:
+        out.append(f"recorded {recorded['result']}, re-derived {again['result']}")
+    if canon(again["not_checked"]) != canon(recorded["not_checked"]):
+        out.append(f"recorded not_checked {canon(recorded['not_checked'])}, re-derived {canon(again['not_checked'])}")
+    return out
+
+
+def verify_step(d, pop_dir, population, tmp):
+    """One step's manifest entry: {step, name, status, recorded, rederived, problems, not_checked, files}."""
+    nn, name = d.name.split("-", 1)
+    entry = {"step": nn, "name": name, "dir": d.name, "recorded": None, "rederived": None, "problems": [],
+             "not_checked": None, "files": []}
+
+    def done(status):
+        entry["status"] = status
+        return entry
+
+    f = d / "finding.json"
+    try:
+        record = load(f)
+    except (OSError, ValueError) as e:
+        entry["problems"].append(f"finding.json is not readable JSON ({e})")
+        return done("failed")
+    entry["files"].append({"path": "finding.json", "sha256": finding.sha256(f)})
+    if not isinstance(record, dict):
+        entry["problems"].append("finding.json is not an object")
+        return done("failed")
+    try:
+        errs = finding.check_record(d, record)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        errs = [f"finding.json could not be checked ({type(e).__name__}: {str(e)[:200]})"]
+    if errs:
+        entry["problems"] += errs
+        return done("failed")
+    entry["recorded"] = {"result": record["result"], "not_checked": record["not_checked"]}
+    entry["files"] += [{"path": p["path"], "sha256": finding.sha256(d / p["path"])} for p in record["proof"]]
+    if record["population"] != population:
+        entry["problems"].append(f"population is {record['population']}, this run is {population}")
+        return done("failed")
+
+    # Only the cited proof bytes, in a dir named as the step's, so the judge sees nothing else.
+    work = Path(tmp) / "work" / d.name
+    scratch = Path(tmp) / "scratch" / d.name
+    work.mkdir(parents=True)
+    scratch.mkdir(parents=True)
+    for p in record["proof"]:
+        (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(d / p["path"], work / p["path"])
+    c = Ctx(d, work, scratch, pop_dir, record)
+
+    try:
+        if record["asserts"] == BROKE and record["result"] == "FAIL":
+            raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
+                                 "loop.sh wrote this FAIL because the step broke before writing its own finding; "
+                                 "there is no judged result to run again")
+        if population != "rehearsal":
+            raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
+                                 "a live judge reads the lab node's data dir or console, which the bundle does not "
+                                 "carry, and the live node keys are not listed in the repository")
+        if nn not in STEPS:
+            raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
+                                 "08 has no re-derivation for this step yet")
+        rederive, keys = STEPS[nn]
+        if not (HERE / d.name).is_file():
+            raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
+                                 f"there is no step script steps/{d.name} to take its judge from")
+        m = step_module(d.name)
+        try:
+            bad = keys(c, m) if nn in NEEDS_MODULE else keys(c)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            bad = [f"the keys in the proof could not be read ({e})"]
+        if bad:
+            entry["problems"] += bad
+            return done("failed")
+        again = rederive(m, c)
+    except Unreproducible as e:
+        what, why = e.args
+        entry["not_checked"] = {"what": what, "why": why, "issue": ISSUE}
+        return done("not_reproduced")
+    except Mismatch as e:
+        entry["problems"].append(str(e))
+        return done("failed")
+    except (Exception, SystemExit) as e:  # the step's judge broke on bytes it had decided on
+        entry["problems"].append(f"the step's judge did not run to the end on its proof bytes ({type(e).__name__}: "
+                                 f"{str(e)[:300]})")
+        return done("failed")
+
+    entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
+    entry["problems"] += mismatches(record, again)
+    entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in NUMBERS.get(nn, [])
+                          if n in {p["path"] for p in record["proof"]} and (work / n).read_bytes() != (d / n).read_bytes()]
+    return done("failed" if entry["problems"] else "reproduced")
+
+
+def expected_steps(run):
+    """The step numbers run.json says the run holds, or None when it does not say."""
+    try:
+        steps = load(Path(run) / "run.json").get("steps")
+    except (OSError, ValueError, AttributeError):
+        return None
+    ok = isinstance(steps, list) and steps and all(isinstance(s, str) and re.fullmatch(r"\d\d", s) for s in steps)
+    return steps if ok else None
+
+
+def verify_run(run, out, pop_dir, population):
+    """[manifest entries] for every step dir in run except out's, and one failed entry for each step
+    run.json lists that has no dir."""
+    entries = []
+    own = Path(out).resolve().name.split("-", 1)[0]
+    for nn in expected_steps(run) or []:
+        if nn != own and not any(finding.STEP_DIR.match(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):
+            entries.append({"step": nn, "name": None, "dir": f"{nn}-?", "recorded": None, "rederived": None,
+                            "problems": [f"run.json lists step {nn} but the run holds no {nn}-*/finding.json"],
+                            "not_checked": None, "files": [], "status": "failed"})
+    for d in sorted(p for p in Path(run).iterdir() if p.is_dir()):
+        if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.match(d.name):
+            continue
+        with tempfile.TemporaryDirectory(prefix="08-verify-") as tmp:
+            entries.append(verify_step(d, pop_dir, population, tmp))
+    return entries
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    out = a.out.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    for p in ("finding.json", "verified.json"):
+        (out / p).unlink(missing_ok=True)
+    population = load(a.population / "population.json")["population"]
+    entries = verify_run(out.parent, out, a.population.resolve(), population)
+
+    failed = [e for e in entries if e["status"] == "failed"]
+    unrun = [e for e in entries if e["status"] == "not_reproduced"]
+    not_checked = [e["not_checked"] for e in unrun]
+    listed = expected_steps(out.parent)
+    if listed is None:
+        not_checked.append({"what": "which steps the run holds",
+                            "why": f"{out.parent.name}/run.json lists no steps, so 08 cannot tell a step left out "
+                                   "from a step never run",
+                            "issue": ISSUE})
+    else:
+        # The stage's steps are loop.sh's list, so a run.json cut down to fewer steps can't read as the whole stage.
+        stage = load(out.parent / "run.json").get("stage")
+        full = STAGES.get(stage) if isinstance(stage, str) else None
+        if full is None:
+            not_checked.append({"what": "which steps the stage holds",
+                                "why": f"run.json names stage {stage!r}, which loop.sh does not list", "issue": ISSUE})
+        else:
+            own = out.name.split("-", 1)[0]
+            not_checked += [{"what": f"step {nn}: its finding reproduced",
+                             "why": f"this run did not run step {nn} of stage {stage} (run.json lists "
+                                    f"{', '.join(listed)})", "issue": ISSUE} for nn in full if nn not in listed and nn != own]
+    if not entries:
+        not_checked = [{"what": "the run's findings", "why": f"{out.parent.name} holds no other step's finding",
+                        "issue": ISSUE}]
+    result = "FAIL" if failed else ("NOT_CHECKED" if not_checked else "PASS")
+    manifest = {"run": out.parent.name, "population": population, "result": result, "steps": entries,
+                "run_json": {"sha256": finding.sha256(out.parent / "run.json") if (out.parent / "run.json").is_file() else None,
+                             "steps": listed}}
+    (out / "verified.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+
+    lines = []
+    for e in entries:
+        if e["status"] == "reproduced":
+            lines.append(f"{e['dir']}: reproduced {e['recorded']['result']}")
+        elif e["status"] == "not_reproduced":
+            lines.append(f"{e['dir']}: recorded {e['recorded']['result']}, not reproduced")
+        else:
+            lines.append(f"{e['dir']}: did not hold: {'; '.join(e['problems'])}")
+    detail = (f"run {out.parent.name}, offline, from the bundle and the repository's keys only: "
+              + ("; ".join(lines) or "no step findings") + ". The manifest, per step, is this step's proof file.")
+    pinned = sorted({n for e in entries if e["status"] == "reproduced"
+                     for n in load(out.parent / e["dir"] / "finding.json")["pinned"]})
+    finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=["verified.json"],
+                  detail=detail, not_checked=not_checked, started=started)
+    print(f"08-verify: {result}: {detail}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

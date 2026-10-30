@@ -8,7 +8,7 @@
 # exits non-zero, gets a FAIL finding written here through steps/finding.py, naming what
 # broke. Then `steps/finding.py check DIR` runs, status/findings.py writes DIR/index.md,
 # and one line per step is printed: `NN name RESULT`. Before the first step it writes
-# DIR/run.json: {"stage", "population", "started"} (UTC), the run's own start.
+# DIR/run.json: {"stage", "population", "started", "steps"} (UTC), the run's own start and the step numbers it runs.
 #
 # Exit 0: every step has a valid finding (FAIL and NOT_CHECKED included: the result is in
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
@@ -45,8 +45,8 @@ export PYTHONDONTWRITEBYTECODE=1
 export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
-declare -A NAMES=([01]=seal [02]=book [03]=advertise [12]=join)
-STAGE_1="01 02 03 12"
+declare -A NAMES=([01]=seal [02]=book [03]=advertise [08]=verify [12]=join)
+STAGE_1="01 02 03 12 08"
 
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
@@ -86,6 +86,8 @@ if [ -n "$only" ]; then
     [[ " $steps " == *" $nn "* ]] || die "step $nn is not in stage $stage ($steps)"
   done
   steps=${only//,/ }
+  # 08 reproduces the findings of the steps that ran before it in this run, so it runs last.
+  if [[ " $steps " == *" 08 "* ]]; then steps="${steps/08/} 08"; steps=$(echo $steps); fi
 fi
 
 findings_root=${LOOP_FINDINGS:-$ROOT/findings}
@@ -129,10 +131,10 @@ PY
 }
 
 # The run's start, before the first step: what the status page measures its minutes from.
-python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" <<'PY' || die "cannot write $out/run.json"
+python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
 import json, sys
-path, stage, population, started, ecosystem = sys.argv[1:]
-run = {"stage": stage, "population": population, "started": started}
+path, stage, population, started, ecosystem, *steps = sys.argv[1:]
+run = {"stage": stage, "population": population, "started": started, "steps": steps}
 if ecosystem != "mesh":
     run["ecosystem"] = ecosystem
 with open(path, "w") as f:

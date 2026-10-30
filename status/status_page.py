@@ -75,7 +75,7 @@ STEPS = (
     Step(6, "Settle", "A settlement object for the exchange exists on the rail, with finality.", NODE_SIDE, "M2"),
     Step(7, "Ask", "A request gets a signed artifact or a signed refusal, or its absence is recorded.", NODE_SIDE, "M2"),
     Step(8, "Verify", "An outside party reproduces every finding offline from the bundle, with no account and no "
-                      "network call.", HARNESS, None),
+                      "network call.", HARNESS, "M3"),
     Step(9, "Dispute", "One party disputes, a referee seals a Result, and the close reads AGREED, CONTESTED or "
                        "UNILATERAL.", NODE_SIDE, "M3"),
     Step(10, "Judge", "A pack runs over the window, and its sealed Result cites every record it read.", HARNESS, "M3"),

@@ -614,7 +614,8 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("01 seal PASS", r.stdout)
         meta = json.loads((run / "run.json").read_text())
-        self.assertEqual(sorted(meta), ["population", "stage", "started"])
+        self.assertEqual(sorted(meta), ["population", "stage", "started", "steps"])
+        self.assertEqual(meta["steps"], ["01", "02", "03", "12", "08"])
         self.assertEqual((meta["stage"], meta["population"]), ("1", "rehearsal"))
         seal = json.loads((run / "01-seal" / "finding.json").read_text())
         self.assertLessEqual(meta["started"], seal["started"])  # written before the first step

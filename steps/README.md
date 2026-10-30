@@ -4,7 +4,7 @@
 runs the stage's steps in order. With `--strict` (CI) a rehearsal run with a
 `FAIL` or `MALFORMED` step exits 3, so the job fails; a live run is reported
 and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
-03 Advertise and 12 Join.
+03 Advertise and 12 Join, then 08 Verify, which reproduces their findings.
 
 `--ecosystem` (default `mesh`) names what the steps run against; steps 01 to 12 are the
 same assertions in every ecosystem, and steps only one ecosystem needs are numbered 13

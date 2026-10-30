@@ -61,7 +61,7 @@ class LoopTest(unittest.TestCase):
         f.chmod(0o755 if executable else 0o644)
 
     def all_steps(self, **how):
-        for name in ("01-seal", "02-book", "03-advertise", "12-join"):
+        for name in ("01-seal", "02-book", "03-advertise", "12-join", "08-verify"):
             if how.get(name) != "missing":
                 self.step(name, how.get(name, "pass"))
 
@@ -80,7 +80,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.loop("--out", str(a)).returncode, 0)
         self.assertEqual(self.loop("--ecosystem", "mesh", "--out", str(b)).returncode, 0)
         run = json.loads((a / "run.json").read_text())
-        self.assertEqual(sorted(run), ["population", "stage", "started"])
+        self.assertEqual(sorted(run), ["population", "stage", "started", "steps"])
         self.assertEqual(json.loads((b / "run.json").read_text()).keys(), run.keys())
         for base in ("01-seal", "02-book", "03-advertise", "12-join"):
             self.assertEqual(self.finding(base, a)["result"], self.finding(base, b)["result"])
@@ -94,7 +94,8 @@ class LoopTest(unittest.TestCase):
                 r = self.loop("--ecosystem", eco, "--strict")  # no steps directory content needed: none run
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
-                                                         "03 advertise NOT_CHECKED", "12 join NOT_CHECKED"])
+                                                         "03 advertise NOT_CHECKED", "12 join NOT_CHECKED",
+                                                         "08 verify NOT_CHECKED"])
                 out = self.dir / "findings" / eco / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
                 run = json.loads((out / "run.json").read_text())
                 self.assertEqual((run["ecosystem"], run["population"], run["stage"]), (eco, "rehearsal", "1"))
@@ -132,7 +133,8 @@ class LoopTest(unittest.TestCase):
         self.all_steps()
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS"])
+        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
+                                                 "08 verify PASS"])
         index = (self.out / "index.md").read_text()
         for base in ("01-seal", "02-book", "03-advertise", "12-join"):
             self.assertIn(f"]({base}/finding.json)", index)
@@ -157,7 +159,8 @@ class LoopTest(unittest.TestCase):
         (self.steps / "02-book.d").mkdir()
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS"])
+        self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
+                                                 "08 verify PASS"])
 
     def test_a_crashing_step_is_a_fail_finding_with_its_output(self):
         self.all_steps(**{"03-advertise": "crash"})
@@ -248,6 +251,11 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--out", str(self.out), "--steps", "01,12")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "12 join PASS"])
+        # 08 reproduces what ran before it, so it runs last whatever order --steps gives; run.json lists that order.
+        r = self.loop("--out", str(self.out), "--steps", "08,01")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([x.split()[0] for x in r.stdout.splitlines()], ["01", "08"])
+        self.assertEqual(json.loads((self.out / "run.json").read_text())["steps"], ["01", "08"])
         self.assertEqual(self.loop("--out", str(self.out), "--steps", "04").returncode, 2)
         self.assertEqual(self.loop("--population", "staging").returncode, 2)
 
