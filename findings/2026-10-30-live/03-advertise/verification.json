@@ -2,38 +2,74 @@
   "nodes": [
     {
       "carrier": "git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json",
-      "errors": [
-        "no commitment at HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json"
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "8b5b645f1d0e41ffd6107eb7a4f382caeac3091f213ff0d3ed4ca1efcf8fa6bc",
+          "stream": "capsules/511b5b4246cf58e7",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
       ],
       "key_id": "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
       "name": "stevenmih-1",
       "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
       "notes": [],
-      "result": "NOT_CHECKED",
+      "policy_digest": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73",
+      "result": "PASS",
+      "sha256": "22fd29258a225b0533961d6de284424a854d7f7b5baaf9c23aa8474cf052d4be",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     },
     {
       "carrier": "git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
-      "errors": [
-        "no commitment at HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json"
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "a1a434b2b377d7e1358b6fd80df7aa3e6e772066028152682551f321fc3df299",
+          "stream": "capsules/7e04d3e3fec1332f",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
       ],
       "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
       "name": "stevenmih-2",
       "node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
       "notes": [],
-      "result": "NOT_CHECKED",
+      "policy_digest": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165",
+      "result": "PASS",
+      "sha256": "c384ae358b1416d7cfaa4dbd1f93324f14e19cfdcee2bfcec89093b383900d4d",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     },
     {
       "carrier": "git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
-      "errors": [
-        "no commitment at HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json"
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "201d1458aed2e44a8149de04d664c4716d3b13f820447f07521a2cc4c2c31085",
+          "stream": "capsules/93d20518801ba715",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
       ],
       "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
       "name": "stevenmih-3",
       "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
       "notes": [],
-      "result": "NOT_CHECKED",
+      "policy_digest": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25",
+      "result": "PASS",
+      "sha256": "7cbd4934e9fab32aa62ce4f6fd4f9106e0be9745fee1078d6aca468bd49aea44",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     }
   ],
