@@ -550,11 +550,17 @@ Step 09 reads a Result the plugin sealed; it never makes one. The referee needs
 four distinct nodes (the requester and both twins are out of its pool), so with
 `LAB_TWINS=1` the lab gains `lab-4` (ports 9804, 9814, 9824) and these roles,
 each overridable: requester `lab-3`, twin A `lab-1`, faulty twin B `lab-4`,
-referee `lab-2`. Twin A, twin B and the referee serve the model; `LAB_MODEL`
-must be an absolute path to a regular file.
+referee `lab-2`. Twin A, twin B and the referee serve the model, from the same
+Hugging Face ref (`LAB_MODEL_REF`, a download, no spend): mesh-llm gives a local
+GGUF path no identity hash, and the referee then refuses the pair as
+`not_comparable` (`model_hash_unknown`). The ref the lab's model comes from is
+`Qwen/Qwen2.5-0.5B-Instruct-GGUF@9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf`
+(sha256 `74a4da8c…`, the weights digest in the halves); `/v1/models` lists it as
+`…:q4_k_m`, and `start` saves that name for `twins`. `join` skips a node whose
+`$LAB_DIR/join/<node>` exists (join.sh fails on a node that has joined).
 
 **Lab-only fault injection.** Twin B's `config.toml` gets a per-model
-`system_prompt` (`LAB_FAULT_SYSTEM_PROMPT`, default "Answer in French.") so its
+`system_prompt` (`LAB_FAULT_SYSTEM_PROMPT`, default: reply with the single word PINEAPPLE) so its
 answer differs from twin A's under the same model hash and weights digest. No
 temperature, seed or sampler override. `twin-fault.json` records it and step 09
 says "INJECTED DIFFERENCE" in the finding. The requester gets the plugin's
