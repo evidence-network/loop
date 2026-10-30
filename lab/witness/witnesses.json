@@ -1,0 +1,4 @@
+{
+  "about": "The lab's test witness: one key the lab host holds for its own nodes' books, apart from every node it witnesses. One organization's test witness, not a witness for the network. lab/lab.sh witness adds each key as its own entry with the time its receipts count from (not_before); entries are only added, so a rotated-out key's receipts still verify. Step 02 picks the entry by the receipt's key id.",
+  "witnesses": []
+}

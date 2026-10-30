@@ -155,12 +155,28 @@ class DryRunTest(unittest.TestCase):
     def test_all_runs_check_then_tools_then_the_rest(self):
         marks = [("check", "merge-base --is-ancestor"), ("tools", "steps/01-seal.setup.sh"),
                  ("start", " serve --config "), ("exchange", "/v1/chat/completions"),
-                 ("join", "join.sh --name lab-1"), ("bind", "lab/bind.py --console"),
+                 ("join", "join.sh --name lab-1"), ("witness", "lab/witness.py list"),
+                 ("bind", "lab/bind.py --console"),
                  ("entries", "would write nodes/<"),
                  ("loop", "loop.sh --stage 1"), ("pack", "would pack")]
         at = [(self.out.find(text), name) for name, text in marks]
         self.assertTrue(all(i >= 0 for i, _ in at), at)
         self.assertEqual([name for _, name in sorted(at)], [name for name, _ in marks])
+
+    def test_witness_keeps_its_key_in_the_lab_dir_and_points_every_book_at_it(self):
+        r = lab_sh("--dry-run", "witness", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        key = f"{self.lab}/witness/witness-key.pem"
+        self.assertIn(f"openssl genpkey -algorithm ed25519 -out {key}", r.stdout)
+        self.assertIn(f"chmod 600 {key}", r.stdout)
+        self.assertIn(f"chmod 700 {self.lab}/witness", r.stdout)
+        self.assertIn(f"lab/witness.py list --key {key} --listing {ROOT}/lab/witness/witnesses.json", r.stdout)
+        for name in ("lab-1", "lab-2", "lab-3"):
+            self.assertIn(f"XDG_CONFIG_HOME={self.lab}/nodes/{name}/join-book/config ", r.stdout)
+            self.assertIn(f"profile update --profile {name} --checkpoint-endpoint https://127.0.0.1:9830 ", r.stdout)
+        self.assertIn(f"serve --key {key} ", r.stdout)
+        self.assertIn("tmux new-window -d -t loop-lab -n witness", r.stdout)
+        self.assertIn(f"LOOP_WITNESS_CA={self.lab}/witness/tls-cert.pem", self.out)
 
     def test_bind_covers_every_node_but_the_reporter_and_keeps_its_key_in_the_lab_dir(self):
         r = lab_sh("--dry-run", "bind", env=self.env)
@@ -931,5 +947,65 @@ class PackTest(LabFixture):
         self.assertFalse(self.out.exists())
 
 
+class WitnessListingTest(unittest.TestCase):
+    """lab/witness.py list: the lab test witness's entries only grow, and never name a node's key."""
+
+    def setUp(self):
+        if shutil.which("openssl") is None:
+            self.skipTest("SKIPPED LOUDLY: openssl is not installed")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.listing = self.tmp / "witnesses.json"
+        # An empty listing of the committed shape: committing the lab's real entry must not change these tests.
+        self.listing.write_text(json.dumps({**json.loads((ROOT / "lab" / "witness" / "witnesses.json").read_text()),
+                                            "witnesses": []}))
+        self.lab = self.tmp / "lab"
+        keys = self.lab / "nodes" / "lab-1" / ".local" / "share" / "capsules" / "keys"
+        keys.mkdir(parents=True)
+        shutil.copy(ROOT / "tests" / "fixtures" / "step02" / "rehearsal" / "keys" / "alice" / "node-key.pub.pem", keys)
+
+    def key(self, name):
+        pem = self.tmp / f"{name}.pem"
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(pem)], check=True,
+                       capture_output=True)
+        return pem
+
+    def list_key(self, pem, *extra):
+        return subprocess.run([sys.executable, "-B", str(ROOT / "lab" / "witness.py"), "list", "--key", str(pem),
+                               "--listing", str(self.listing), "--lab-dir", str(self.lab), *extra],
+                              capture_output=True, text=True)
+
+    def entries(self):
+        return json.loads(self.listing.read_text())["witnesses"]
+
+    def test_the_committed_listing_is_the_labs_test_witness_only(self):
+        doc = json.loads((ROOT / "lab" / "witness" / "witnesses.json").read_text())
+        self.assertIn("not a witness for the network", doc["about"])
+        ids = [e["key_id"] for e in doc["witnesses"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        for e in doc["witnesses"]:
+            self.assertEqual(e["name"], "lab-test-witness")
+            self.assertRegex(e["key_id"], r"^[0-9a-f]{64}$")
+            self.assertRegex(e["not_before"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+
+    def test_a_rotation_adds_an_entry_and_keeps_the_old_one(self):
+        old, new = self.key("old"), self.key("new")
+        a = self.list_key(old, "--not-before", "2026-01-01T00:00:00Z")
+        self.assertEqual(a.returncode, 0, a.stderr)
+        self.assertEqual(self.list_key(old).stdout, a.stdout)  # listing the same key again changes nothing
+        b = self.list_key(new, "--not-before", "2026-06-01T00:00:00Z")
+        self.assertEqual(b.returncode, 0, b.stderr)
+        self.assertEqual([(e["key_id"], e["not_before"]) for e in self.entries()],
+                         [(a.stdout.strip(), "2026-01-01T00:00:00Z"), (b.stdout.strip(), "2026-06-01T00:00:00Z")])
+
+    def test_a_nodes_key_is_refused(self):
+        alice = ROOT / "tests" / "fixtures" / "step02" / "rehearsal" / "keys" / "alice" / "node-key.pem"
+        r = self.list_key(alice)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("lab-1's plugin key", r.stderr)
+        self.assertEqual(self.entries(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
+
