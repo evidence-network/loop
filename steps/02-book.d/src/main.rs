@@ -5,6 +5,7 @@
 //!   loop-step02-book reseal  --key PEM --record FILE
 //!   loop-step02-book witness --key PEM --url URL --checkpoint FILE
 //!   loop-step02-book verify  --pub PEM --book-id ID --dir DIR [--witnesses FILE]
+//!   loop-step02-book lab-receipt --key PEM --statement FILE --at UNIX
 //!
 //! `book` opens a fresh book, appends two records sealed with the key (an
 //! opening record, then the record the step asserts on), cuts a signed
@@ -30,6 +31,12 @@
 //! on a receipt AAC's witness verifier passes under that directory. It prints one JSON object
 //! and exits 0 when every check held, 1 when any did not, 2 on a usage or
 //! input error.
+//!
+//! `lab-receipt` is the lab test witness's signer (lab/witness.py runs it, on
+//! the lab host, with the witness's own key): given a book's raw COSE
+//! checkpoint statement it checks the statement's signature with
+//! checkpointed-local-log and prints the `POST /checkpoints` response a CLL
+//! witness client reads, its receipt naming the key id and the signing time.
 //!
 //! `reseal` re-signs an edited record.json with the key: tests use it to
 //! plant a record rewritten after append by its own producer.
@@ -62,7 +69,8 @@ fn main() -> ExitCode {
         Some("reseal") => flags(&args[1..]).and_then(|f| reseal(&f)).map(|_| 0),
         Some("witness") => flags(&args[1..]).and_then(|f| witness(&f)).map(|_| 0),
         Some("verify") => flags(&args[1..]).and_then(|f| verify(&f)),
-        _ => Err("usage: loop-step02-book book|reseal|witness|verify [flags]; see the source header".into()),
+        Some("lab-receipt") => flags(&args[1..]).and_then(|f| lab_receipt(&f)).map(|_| 0),
+        _ => Err("usage: loop-step02-book book|reseal|witness|verify|lab-receipt [flags]; see the source header".into()),
     };
     match result {
         Ok(code) => ExitCode::from(code),
@@ -220,19 +228,39 @@ fn reseal(f: &Flags) -> Result<(), String> {
 /// path] under 396, and the detached payload the leaf hash of the entry.
 fn receipt(cp: &Checkpoint, ts_url: &str, key: &SigningKey) -> Result<WitnessEntry, String> {
     use base64::Engine as _;
+    let digest = hex::decode(cp.digest()).map_err(|e| e.to_string())?;
+    let (entry, bytes) = signed_receipt(&digest, key, None)?;
+    Ok(WitnessEntry {
+        ts_url: ts_url.to_string(),
+        entry_hash: hex::encode(entry),
+        receipt_b64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        leaf_index: 0,
+        tree_size: 1,
+        is_stub: false,
+    })
+}
+
+/// A one-entry RFC 9162 COSE receipt over a checkpoint digest: (entry hash,
+/// tagged COSE_Sign1 bytes). With `at`, the protected header also carries
+/// the witness's key id (label 4, the raw Ed25519 public key) and the time
+/// it signed (CWT claims, label 15, iat = 6), so a verifier picks the key by
+/// its id and checks the time against that key's listing.
+fn signed_receipt(digest: &[u8], key: &SigningKey, at: Option<i64>) -> Result<([u8; 32], Vec<u8>), String> {
     use coset::{cbor::value::Value as Cbor, iana, TaggedCborSerializable};
     use sha2::{Digest, Sha256};
-    let digest = hex::decode(cp.digest()).map_err(|e| e.to_string())?;
-    let entry: [u8; 32] = Sha256::digest(&digest).into();
+    let entry: [u8; 32] = Sha256::digest(digest).into();
     let leaf: [u8; 32] = Sha256::digest([&[0u8][..], &entry].concat()).into();
     let proof = vec![0x83, 0x01, 0x00, 0x80];
+    let mut protected = coset::HeaderBuilder::new()
+        .algorithm(iana::Algorithm::EdDSA)
+        .value(395, Cbor::Integer(1.into()));
+    if let Some(at) = at {
+        protected = protected
+            .key_id(key.verifying_key().to_bytes().to_vec())
+            .value(15, Cbor::Map(vec![(Cbor::Integer(6.into()), Cbor::Integer(at.into()))]));
+    }
     let mut sign1 = coset::CoseSign1Builder::new()
-        .protected(
-            coset::HeaderBuilder::new()
-                .algorithm(iana::Algorithm::EdDSA)
-                .value(395, Cbor::Integer(1.into()))
-                .build(),
-        )
+        .protected(protected.build())
         .unprotected(
             coset::HeaderBuilder::new()
                 .value(396, Cbor::Map(vec![(Cbor::Integer((-1).into()), Cbor::Array(vec![Cbor::Bytes(proof)]))]))
@@ -242,15 +270,35 @@ fn receipt(cp: &Checkpoint, ts_url: &str, key: &SigningKey) -> Result<WitnessEnt
         .create_signature(b"", |tbs| key.sign(tbs).to_bytes().to_vec())
         .build();
     sign1.payload = None;
-    Ok(WitnessEntry {
-        ts_url: ts_url.to_string(),
-        entry_hash: hex::encode(entry),
-        receipt_b64: base64::engine::general_purpose::STANDARD
-            .encode(sign1.to_tagged_vec().map_err(|e| e.to_string())?),
-        leaf_index: 0,
-        tree_size: 1,
-        is_stub: false,
-    })
+    Ok((entry, sign1.to_tagged_vec().map_err(|e| e.to_string())?))
+}
+
+/// The lab test witness's answer to `POST <endpoint>/checkpoints` (lab/witness.py
+/// serves it): given the raw COSE checkpoint statement a book delivers, it checks
+/// the statement's own signature with checkpointed-local-log, then signs a receipt
+/// over the checkpoint's digest with its key, stating its key id and the time.
+/// Prints the response body the CLL witness client reads.
+fn lab_receipt(f: &Flags) -> Result<(), String> {
+    use base64::Engine as _;
+    let key = signing_key(need(f, "key")?)?;
+    let at: i64 = need(f, "at")?.parse().map_err(|e| format!("--at: {e}"))?;
+    let statement = read(Path::new(need(f, "statement")?))?;
+    let checked = cll::checkpoint::verify_checkpoint_cose_offline(&statement);
+    let decoded = match (checked.ok, checked.decoded) {
+        (true, Some(d)) => d,
+        _ => return Err(format!("the checkpoint statement does not verify: {}", checked.errors.join("; "))),
+    };
+    let digest = hex::decode(decoded.to_checkpoint_record().digest()).map_err(|e| e.to_string())?;
+    let (entry, bytes) = signed_receipt(&digest, &key, Some(at))?;
+    let body = json!({
+        "receipt_b64": base64::engine::general_purpose::STANDARD.encode(bytes),
+        "entry_hash": hex::encode(entry),
+        "entry_hash_scheme": "legacy",
+        "leaf_index": 0,
+        "tree_size": 1,
+    });
+    println!("{body}");
+    Ok(())
 }
 
 fn witness(f: &Flags) -> Result<(), String> {

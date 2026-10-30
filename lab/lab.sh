@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|bind|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -14,6 +14,13 @@
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
 #   join      ./join.sh for each node, with its plugin key and a new controller key (a node whose
 #             $LAB_DIR/join/<node> already exists is skipped: join.sh fails on a node that has joined)
+#   witness   the lab's test witness: one Ed25519 key of its own under $LAB_DIR/witness (mode 600, never in
+#             this tree; refused if it is any node's key), its public key added as its own entry to
+#             lab/witness/witnesses.json (an entry already there is kept), each node's join book profile
+#             pointed at it, and lab/witness.py serving it on 127.0.0.1 (HTTPS, port base+30, its
+#             certificate under $LAB_DIR/witness). Step 02 then gets a receipt on each book's checkpoint
+#             and checks it against the listing. Run it after join and tools. One organization's test
+#             witness for its own lab, not a witness for the network
 #   bind      each node's own join ceremony (capsules-plugin#121) with a test Nostr key kept in
 #             $LAB_DIR/controllers/<node>/nostr.key, so doctor reports the controller binding and the
 #             commitment names its digest. All nodes but the reporter (it stays unbound, the binding being
@@ -38,8 +45,8 @@
 #   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
-#   stop      SIGTERM every node and wait for its shutdown checkpoint
-#   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
+#   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
+#   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
 # changes nothing.
@@ -590,6 +597,7 @@ cmd_stop() {
     p=$(pid_of "$n") || continue
     kill -TERM "$p" 2> /dev/null || true
   done
+  [ "$DRY" = 1 ] && say kill -TERM "<pid in $(pidfile witness)>"
   [ "$DRY" = 1 ] && { echo "  (wait up to 30s for the shutdown checkpoints, then kill -KILL what is left)"; return 0; }
   local _ any
   for _ in $(seq 60); do
@@ -602,8 +610,10 @@ cmd_stop() {
     if alive "$n"; then kill -KILL "$(pid_of "$n")" 2> /dev/null || true; fi
     rm -f "$(pidfile "$n")"
   done
+  p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true
+  rm -f "$(pidfile witness)"
   tmux kill-session -t "$SESSION" 2> /dev/null || true
-  echo "stopped ${NODES[*]}"
+  echo "stopped ${NODES[*]} and the witness"
 }
 
 cmd_status() {
@@ -680,6 +690,69 @@ cmd_bind() {
   done
 }
 
+# --- witness ----------------------------------------------------------------------------------
+# The lab's test witness signs with its own key, held only under $LAB_DIR/witness and read only by
+# its own process (lab/witness.py, which signs with step 02's driver); never a node's key, never in
+# this tree. Its listing in lab/witness/witnesses.json only grows: a new key is a new entry with its
+# not_before, and old entries stay so old receipts still verify.
+witness_port() { echo $((BASE + 30)); }
+witness_driver() { echo "${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/02-book/bin/loop-step02-book"; }
+capsulectl_bin() { echo "${CAPSULECTL:-${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/bin/capsulectl}"; }
+
+cmd_witness() {
+  local dir=$LAB_DIR/witness n pub launcher=$LAB_DIR/run/witness.sh
+  local key=$dir/witness-key.pem cert=$dir/tls-cert.pem tls=$dir/tls-key.pem
+  [ "$DRY" = 1 ] || [ -x "$(witness_driver)" ] || die "no $(witness_driver): run lab/lab.sh tools first"
+  run mkdir -p "$dir" "$LAB_DIR/run" "$LAB_DIR/logs"
+  run chmod 700 "$dir" "$LAB_DIR/run"
+  if [ "$DRY" = 1 ] || [ ! -f "$key" ]; then
+    run openssl genpkey -algorithm ed25519 -out "$key"
+    run chmod 600 "$key"
+  fi
+  if [ "$DRY" = 1 ] || [ ! -f "$cert" ]; then
+    run openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout "$tls" -out "$cert" \
+      -days 365 -subj /CN=lab-test-witness -addext subjectAltName=IP:127.0.0.1
+    run chmod 600 "$tls"
+  fi
+  if [ "$DRY" = 1 ]; then
+    say python3 -B "$ROOT/lab/witness.py" list --key "$key" --listing "$ROOT/lab/witness/witnesses.json" --lab-dir "$LAB_DIR"
+    pub='<witness key id>'
+  else
+    pub=$(python3 -B "$ROOT/lab/witness.py" list --key "$key" --listing "$ROOT/lab/witness/witnesses.json" \
+      --lab-dir "$LAB_DIR") || die "the witness key was not listed"
+  fi
+  for n in "${NODES[@]}"; do
+    [ "$DRY" = 1 ] || [ -d "$(home_of "$n")/join-book/config" ] || die "$n has no join book yet: run lab/lab.sh join first"
+    run env XDG_CONFIG_HOME="$(home_of "$n")/join-book/config" "$(capsulectl_bin)" profile update --profile "$n" \
+      --checkpoint-endpoint "https://127.0.0.1:$(witness_port)" --checkpoint-public-key "$pub"
+  done
+  if [ "$DRY" = 0 ] && alive witness; then echo "witness already running (pid $(pid_of witness))"; return 0; fi
+  [ "$DRY" = 1 ] || port_free "$(witness_port)" || die "port $(witness_port) is in use: pick another LAB_PORT_BASE"
+  local body
+  body=$(
+    echo '#!/usr/bin/env bash'
+    echo "# the lab test witness: started by lab/lab.sh witness."
+    printf 'echo $$ > %q\n' "$(pidfile witness)"
+    printf 'exec python3 -B %q serve --key %q --cert %q --tls-key %q --port %q --driver %q' "$ROOT/lab/witness.py" \
+      "$key" "$cert" "$tls" "$(witness_port)" "$(witness_driver)"
+    printf ' < /dev/null >> %q 2>&1\n' "$(logfile witness)"
+  )
+  if [ "$DRY" = 1 ]; then
+    echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
+  else
+    printf '%s\n' "$body" > "$launcher" && chmod 700 "$launcher"
+  fi
+  local cmd
+  cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile witness)")
+  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "$SESSION" -n witness "$cmd"
+  else
+    run tmux new-session -d -s "$SESSION" -n witness "$cmd"
+  fi
+  still_up witness || die "the witness exited at once"
+  echo "started the lab test witness $pub on port $(witness_port); commit lab/witness/witnesses.json"
+}
+
 # --- entries / loop / pack --------------------------------------------------------------------
 cmd_entries() {
   need LAB_OPERATOR
@@ -721,7 +794,8 @@ cmd_loop() {
   local second self node_consoles
   ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
-    LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$node_consoles" "$ROOT/loop.sh" --stage 1 --population live \
+    LAB_DIR="$LAB_DIR" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
+    "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -837,10 +911,10 @@ cmd_all() {
   cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
-  cmd_join; cmd_bind; cmd_entries; cmd_loop; cmd_pack
+  cmd_join; cmd_witness; cmd_bind; cmd_entries; cmd_loop; cmd_pack
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | bind | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | witness | bind | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
