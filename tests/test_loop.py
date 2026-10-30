@@ -111,6 +111,18 @@ class LoopTest(unittest.TestCase):
         out = self.dir / "findings" / "muse" / f"{dt.datetime.now(dt.timezone.utc):%F}-live"
         self.assertEqual(self.finding("12-join", out)["population"], "live")
 
+    def test_one_out_directory_never_holds_two_ecosystems(self):
+        self.all_steps()
+        self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
+        r = self.loop("--ecosystem", "muse", "--out", str(self.out))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("another population or ecosystem", r.stderr)
+        self.assertEqual(self.finding("01-seal")["result"], "PASS")
+        self.assertNotIn("ecosystem", json.loads((self.out / "run.json").read_text()))
+        muse = self.dir / "muse"
+        self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(muse)).returncode, 0)
+        self.assertEqual(self.loop("--ecosystem", "cross", "--out", str(muse)).returncode, 2)
+
     def test_an_unknown_ecosystem_is_a_usage_error(self):
         r = self.loop("--ecosystem", "other")
         self.assertEqual(r.returncode, 2)

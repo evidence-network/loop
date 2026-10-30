@@ -93,17 +93,25 @@ findings_root=${LOOP_FINDINGS:-$ROOT/findings}
 out=${out:-$findings_root/$(date -u +%F)-$population}
 mkdir -p "$out" && out=$(cd "$out" && pwd) && [ -n "$out" ] || die "cannot make the out directory '$out'"
 
-# Rehearsal and live findings never share a directory.
-python3 -B - "$out" "$population" <<'PY' || die "$out holds findings of another population; use another --out"
+# Rehearsal and live findings never share a directory, nor do two ecosystems' (a run.json without
+# "ecosystem" is mesh).
+python3 -B - "$out" "$population" "$ecosystem" <<'PY' || die "$out holds findings of another population or ecosystem; use another --out"
 import json, sys
 from pathlib import Path
-for f in Path(sys.argv[1]).glob("*/finding.json"):
+out, population, ecosystem = sys.argv[1:]
+for f in Path(out).glob("*/finding.json"):
     try:
         p = json.loads(f.read_text()).get("population")
     except (ValueError, AttributeError):
         continue
-    if p != sys.argv[2]:
+    if p != population:
         sys.exit(1)
+try:
+    e = json.loads((Path(out) / "run.json").read_text()).get("ecosystem", "mesh")
+except (OSError, ValueError, AttributeError):
+    e = ecosystem
+if e != ecosystem:
+    sys.exit(1)
 PY
 
 # fail <step dir> <started> <detail> [proof file in step dir]

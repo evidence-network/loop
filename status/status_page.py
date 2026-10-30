@@ -518,7 +518,7 @@ def badge_label(rs):
     return ", ".join(f"{p} {counts(rs, p)}" for p in POPULATIONS)
 
 
-def badge(rs):
+def badge(rs, eco="mesh"):
     """A flat SVG badge: "loop" beside one row per population, "<population> <counts>", each row coloured by that
     population's worst row. Two rows keep it narrow enough for a phone."""
     rows = [(f"{p} {counts(rs, p)}", BADGE_COLOURS[worst(rs, p)]) for p in POPULATIONS]
@@ -531,8 +531,9 @@ def badge(rs):
         rects.append(f'<rect x="{head}" y="{20 * i}" width="{w}" height="20" fill="{colour}"/>')
         texts.append(f'<text x="{head + w / 2}" y="{20 * i + 14}">{e(text)}</text>')
     label = e(badge_label(rs))
+    name = "loop" if eco == "mesh" else f"loop ({eco})"
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{head + w}" height="{height}" role="img" '
-            f'aria-label="loop: {label}"><title>loop: {label} (each colour is the worst row of its population)</title>'
+            f'aria-label="{name}: {label}"><title>{name}: {label} (each colour is the worst row of its population)</title>'
             f"{''.join(rects)}"
             f'<g fill="#fff" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11" text-anchor="middle">'
             f"{''.join(texts)}</g></svg>\n")
@@ -615,7 +616,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Loop status</title>
+<title>Loop status{eco_suffix}</title>
 <style>
 :root {{ --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
         --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; --gap: #a86a00; }}
@@ -649,7 +650,7 @@ p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; overflow-wrap: 
 </head>
 <body>
 <main>
-<h1>Loop status</h1>
+<h1>Loop status{eco_suffix}</h1>
 <p><img src="badge.svg" alt="loop: {badge_alt}"></p>
 <p>The loop is the network's test harness: one step per fact, from sealing a record to a new node joining. Each
 step writes a finding with its proof files. Each row below is one step; the two columns are the newest rehearsal
@@ -685,13 +686,13 @@ number that cannot be measured yet says so, with the milestone it waits for; it 
 """
 
 
-def render(rs, runs, lock):
-    return PAGE.format(badge_alt=e(badge_label(rs)), lock=e(LOCK),
+def render(rs, runs, lock, eco="mesh"):
+    return PAGE.format(badge_alt=e(badge_label(rs)), lock=e(LOCK), eco_suffix="" if eco == "mesh" else f" ({e(eco)})",
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
 
-def build(findings_dir, lock_path, out):
+def build(findings_dir, lock_path, out, eco="mesh"):
     lock = read_lock(lock_path)
     runs = {p: read_run(p, d) for p, d in latest_runs(findings_dir).items()}
     rs = rows(runs)
@@ -709,8 +710,8 @@ def build(findings_dir, lock_path, out):
     except StatusError:
         shutil.rmtree(out)
         raise
-    (out / "index.html").write_text(render(rs, runs, lock), encoding="utf-8")
-    (out / "badge.svg").write_text(badge(rs), encoding="utf-8")
+    (out / "index.html").write_text(render(rs, runs, lock, eco), encoding="utf-8")
+    (out / "badge.svg").write_text(badge(rs, eco), encoding="utf-8")
     return rs
 
 
@@ -729,7 +730,7 @@ def main(argv):
     findings_dir = Path(args[0] if args else FINDINGS if eco == "mesh" else f"{FINDINGS}/{eco}")
     opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{eco}")
     try:
-        rs = build(findings_dir, opts["--lock"], opts["--out"])
+        rs = build(findings_dir, opts["--lock"], opts["--out"], eco)
     except StatusError as err:
         for p in err.problems:
             print(p, file=sys.stderr)

@@ -139,7 +139,10 @@ class StatusPageTest(unittest.TestCase):
             os.chdir(cwd)
         self.assertEqual(code, 0, err.getvalue())
         self.assertEqual(bad, 2)
-        self.assertTrue((self.dir / "_site" / "status-muse" / "index.html").is_file())
+        page = (self.dir / "_site" / "status-muse" / "index.html").read_text()
+        self.assertIn("<title>Loop status (muse)</title>", page)
+        self.assertIn("<h1>Loop status (muse)</h1>", page)
+        self.assertIn("loop (muse):", (self.dir / "_site" / "status-muse" / "badge.svg").read_text())
         self.assertFalse((self.dir / "_site" / "status").exists())
 
     def build(self):
