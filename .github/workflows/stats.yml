@@ -17,7 +17,10 @@ jobs:
   site:
     runs-on: ubuntu-latest
     steps:
+      # Full history: the growth report judges each week against the commitments as committed then.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Stats site tests
         run: python3 -B -m unittest discover -s tests -p test_site.py -v
       - name: Status page tests
@@ -41,6 +44,10 @@ jobs:
       # without a finding, contrast in both schemes and on the dark canvas, and /stats/ unchanged by its build.
       - name: Watch page tests
         run: python3 -B -m unittest discover -s tests -p test_watch.py -v
+      # The growth report (site/growth.py): weeks judged at their own end, volume equal to the cards, a failing
+      # commitment kept in the denominator, no per-node volume, wording, and no read of stats/ or findings.
+      - name: Growth report tests
+        run: python3 -B -m unittest discover -s tests -p test_growth.py -v
       # The page built from the committed fixtures, byte for byte against the
       # committed expected page. It is built outside _site and never deployed.
       - name: Stats page against the committed expected page
@@ -78,6 +85,12 @@ jobs:
       # It runs after build.py, which empties _site. Its scripts (and the vendored d3) run on this page only.
       - name: Build the watch page
         run: python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehearsal --ondemand stats/data/ondemand --findings findings --nodes nodes --population population --commitments lab/runs --bindings bindings --lock versions.lock --out _site
+      # The growth report, into _site/growth/ (Pages URL /loop/growth/): its own report, from nodes/ and
+      # nodes/commitments/ in git history only. It reads nothing under stats/ and findings/, and /stats/ reads nothing from it.
+      - name: Build the growth report
+        run: python3 -B site/growth.py --out _site
+      - name: No personal data in the growth report
+        run: python3 scripts/check_personal_data.py _site/growth/data.json _site/growth/index.html
       # What the page publishes holds no personal data: scanned after the build, since the page decodes the
       # stapled history cards, so text inside their bytes reaches data.json without being in a committed file as text.
       - name: No personal data in the watch page

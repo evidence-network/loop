@@ -226,3 +226,28 @@ finding's reference, finality and exchange checks held, else absent; 07, an
 `outcome.json` (`artifact`, `refusal`, `recorded_absence`), or the reporter
 backend's verification line, from the node the reporter runs on. A rehearsal
 finding belongs to the slot its run started in.
+
+## The growth report
+
+`growth.py` builds `_site/growth/` (Pages URL `/loop/growth/`): a report of its
+own, separate from the stats page, the status page and the no-regression gate
+(loop#151, ruling ops dd525c02). It reads `nodes/` and `nodes/commitments/` from
+git history and nothing under `stats/` or `findings/`.
+
+```sh
+python3 -B site/growth.py --out _site   # writes _site/growth/index.html and data.json
+```
+
+Each Monday-to-Sunday week (UTC, the last one cut at the ref's commit time) is
+judged against the tree as committed at the end of that week, not today's files:
+`scripts/check_commitment.py` checks every listed node's commitment and the cards
+stapled to it offline. A week shows the nodes with a verifying card, of those
+listed, and the checkpoints cut and records sealed from those nodes, as network
+totals and split by community, with the witnessed checkpoints of those cut. A
+failing or missing commitment stays in the denominator and the node table says
+why. **Records sealed** is the log entries covered by a signed checkpoint,
+padding and admission decisions included: evidence activity, never deals. A
+card's first checkpoint is "stated, not proven" unless it carries a witness
+receipt. There is no per-node volume (Sherlock2, Buzz 12950c3a);
+an operator-chosen column can be added later.
+Needs full git history (`fetch-depth: 0`). `tests/test_growth.py` holds it.
