@@ -13,10 +13,13 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
 2. **The window.** It covers 12 whole closed calendar months before the as-of month, `[first of as-of month
    minus 12 months, first of as-of month)`. It is never rolling: it moves only when a month closes. The
    period and count are in `steps/10-judge.d/pack.json`.
-3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05, `ledger.jsonl` for 06, each `request.json` of an ask for 07, `dispute.json` and `outcome.json` for 09 (`records` in `steps/10-judge.d/pack.json`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
-   The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
+3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05, `ledger.jsonl` for 06, each `request.json` of an ask for 07, `dispute.json` for 09 (the referee's `outcome.json` stays 08's, beside it; `records` in `steps/10-judge.d/pack.json`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
+   A settlement is one step 06's ledger: its `ledger.jsonl` holds one line per exchange, and 11 counts those
+   exchanges. The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
    step's `finding.json` is read only after its bytes match 08's digest, and only for its `finished`. The
-   step's records are in the window when that instant is. A record whose bytes no longer match 08's digest
+   step's records are in the window when that instant is, not when the dates inside a record's bytes say, since
+   a record's own clock is the operator's. A Result's `generated_at` is the window's end, so a rerun over the same
+   records has the same document. A record whose bytes no longer match 08's digest
    is a FAIL.
 4. **Refused, not read, named in detail:** a file 08 does not list, a step outside the window, and a step
    that is not one of the pack's kinds. A step 08 did not reproduce is outside the window too, with a
@@ -80,7 +83,7 @@ The proof is:
 A run's records are made in the month it runs, so until that month closes they are outside the window. The
 window is never shortened for that. Instead, when `RUN` holds no `08-verify/`, the step judges the population's
 committed stand-in run, `population/rehearsal/step10/run`: four stand-in findings (05, 06, 07, 09) dated
-September 2026, and 08's manifest finished in October 2026. Its detail says the records are that committed
+September 2026 in their findings (the records' own bytes keep the clock of the day the stand-in was generated), and 08's manifest finished in October 2026. Its detail says the records are that committed
 stand-in, not this run's, and `window.json` names its `source` as `stand-in`. So `steps/10-judge --population
 population/rehearsal --out DIR/10-judge` on a run without 08 is PASS.
 

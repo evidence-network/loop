@@ -178,7 +178,6 @@ class ManifestTest(Base):
         self.assertFalse((self.run / "10-judge" / "bundles").exists())
 
 
-@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 def records_of(manifest):
     """{dir/path: sha256} of the primary record files of each kind that the manifest lists."""
     kinds = json.loads((ROOT / "steps" / "10-judge.d" / "pack.json").read_text())["kinds"]
@@ -186,6 +185,7 @@ def records_of(manifest):
             for x in e["files"] if any(fnmatch.fnmatchcase(x["path"], g) for g in kinds[e["step"]]["records"])}
 
 
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 class JudgeTest(Base):
     def test_passes_offline_citing_every_record_in_the_window(self):
         def no_network(*a, **k):
@@ -304,8 +304,8 @@ class JudgeTest(Base):
 
         def omit(*a, **k):
             docs = real(*a, **k)
-            for c in docs["09-dispute"]["claims"]:
-                c["evidence"] = [e for e in c["evidence"] if e != "09-dispute/outcome.json"]
+            for c in docs["07-ask"]["claims"]:
+                c["evidence"] = [e for e in c["evidence"] if e != "07-ask/alice/asks/bob/exchange/request.json"]
             return docs
         return mock.patch.object(step, "judge_records", side_effect=omit)
 
@@ -313,10 +313,38 @@ class JudgeTest(Base):
         with self.omit_one():
             f = self.judge()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("no Result cites 09-dispute/outcome.json", f["detail"])
+        self.assertIn("no Result cites 07-ask/alice/asks/bob/exchange/request.json", f["detail"])
 
     def test_mutant_without_the_complete_check_the_omission_passes(self):
         with self.omit_one(), mock.patch.object(step, "check_complete", return_value=[]):
+            self.assertEqual(self.judge()["result"], "PASS")
+
+    def cite_twice(self):
+        """05's Result cites deal.json with a wrong digest first, then the right one."""
+        real = step.open_bundle
+
+        def twice(path, verdict, key):
+            root, statement, disclosed, problems = real(path, verdict, key)
+            if path.name == "05-deal.bundle.json":
+                fake = "ff" * 32
+                disclosed = {**disclosed, fake: {"step": "05-deal", "path": "deal.json", "sha256": "0" * 64}}
+                claim = statement["claims"][0]
+                statement = {**statement, "claims": [{**claim, "evidence": [{"digest": fake}, *claim["evidence"]]},
+                                                     *statement["claims"][1:]]}
+            return root, statement, disclosed, problems
+        return mock.patch.object(step, "open_bundle", side_effect=twice)
+
+    def test_planted_a_record_cited_with_two_digests_fails(self):
+        with self.cite_twice():
+            f = self.judge()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("05-deal/deal.json is cited with two different sha256 digests", f["detail"])
+
+    def test_mutant_without_the_cited_once_check_the_wrong_digest_passes(self):
+        def last_wins(cited, key, sha, where):  # what the check replaced: a dict that keeps the last digest
+            cited[key] = sha
+            return []
+        with self.cite_twice(), mock.patch.object(step, "check_cited_once", side_effect=last_wins):
             self.assertEqual(self.judge()["result"], "PASS")
 
     def cite_outside(self):
@@ -466,7 +494,7 @@ class StandInTest(unittest.TestCase):
         by_step = {}
         for r in records:
             by_step[r["step"]] = by_step.get(r["step"], 0) + 1
-        self.assertEqual(by_step, {"05": 1, "06": 1, "07": 6, "09": 2})
+        self.assertEqual(by_step, {"05": 1, "06": 1, "07": 6, "09": 1})
         self.assertEqual(finding.gaps(f["detail"]), [("the pack is loop's own deterministic copy of terms 1-3, not a "
                                                       "pinned evidencebook-skills pack", step.PACK_ISSUE)])
 
@@ -507,13 +535,13 @@ class StandInTest(unittest.TestCase):
 
         def omit(*a, **k):
             docs = real(*a, **k)
-            for c in docs["09-dispute"]["claims"]:
-                c["evidence"] = [e for e in c["evidence"] if e != "09-dispute/outcome.json"]
+            for c in docs["07-ask"]["claims"]:
+                c["evidence"] = [e for e in c["evidence"] if e != "07-ask/alice/asks/bob/exchange/request.json"]
             return docs
         with mock.patch.object(step, "judge_records", side_effect=omit):
             f = self.judge()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("no Result cites 09-dispute/outcome.json", f["detail"])
+        self.assertIn("no Result cites 07-ask/alice/asks/bob/exchange/request.json", f["detail"])
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ def select(run, manifest, start, end, pack):
         if e["status"] != "reproduced":
             refused.append(f"{e['dir']}: {len(files)} files, {e['status']} by 08")
             not_checked.append({"what": f"step {e['step']}: its records, judged in the window",
-                                "why": f"step 08 shows it {e['status']}, so its records are outside the window and "
+                                "why": f"step 08 shows it {e['status']}, so its records are not verified by 08 and "
                                        "this step does not read them", "issue": ISSUE})
             continue
         if e["step"] not in pack["kinds"]:
@@ -218,7 +218,7 @@ def result_doc(claims, pack, start, end, extra=None):
     for c in claims:
         c["contract_ref"] = pack["contract_ref"]
         buckets[c["verdict"]].append(c["id"])
-    doc = {"result_version": "evidence-result-v0", "generated_at": finding.now(), "claims": claims,
+    doc = {"result_version": "evidence-result-v0", "generated_at": stamp(end), "claims": claims,
            "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
                                       "unknown_count": 0}, "buckets": buckets},
            "x-window": {"start": stamp(start), "end": stamp(end), "period": pack["window"]["period"],
@@ -392,6 +392,11 @@ def evidence(statement):
     return [e["digest"] for c in statement.get("claims", []) for e in c.get("evidence", [])]
 
 
+def check_cited_once(cited, key, sha, where):
+    """A record cited twice has one digest: a later citation must not hide a wrong one behind the first."""
+    return [] if cited.setdefault(key, sha) == sha else [f"{where}: {key} is cited with two different sha256 digests"]
+
+
 def check_complete(window, cited):
     """Every record in the window is cited by a finer Result."""
     return [f"no Result cites {k} ({s[:12]}), a record in the window" for k, s in sorted(window.items())
@@ -434,7 +439,8 @@ def judge(out, records, capsulectl, judge_key, tmp):
             if not {"step", "path", "sha256"} <= set(p):
                 problems.append(f"{path.name}: cited record {digest[:12]} is not a disclosed record capsule")
                 continue
-            cited[f"{p['step']}/{p['path']}"] = p["sha256"]
+            key = f"{p['step']}/{p['path']}"
+            problems += check_cited_once(cited, key, p["sha256"], path.name)
         lines.append(f"{path.name.replace('.bundle.json', '')}: {len(statement.get('claims', []))} claim(s), "
                      f"{len(set(evidence(statement)))} records cited, "
                      + ", ".join(f"{c['requirement_ref']} {c['verdict']}" for c in statement.get("claims", [])))

@@ -68,8 +68,7 @@
         }
       ],
       "records": [
-        "dispute.json",
-        "outcome.json"
+        "dispute.json"
       ]
     }
   }
