@@ -1,0 +1,12 @@
+{
+  "about": "Issues that have closed, with what closed them. A live gap (a not_checked entry, a gap sentence in a PASS detail, or an issue a step or a doc names as the owner of a gap) never cites one: a closed issue is not a reason. tests/test_live_gaps.py reads this file. Add an issue here when it closes, then fix every citation the test finds.",
+  "closed": {
+    "Mesh-LLM/capsules-plugin#51": "closed by capsules-plugin PR #75 (f99e1837), in the pin",
+    "Mesh-LLM/capsules-plugin#53": "PR #81 (5d2d1021) and PR #85 (a8fa3f04) are in the pin",
+    "Mesh-LLM/capsules-plugin#57": "closed by capsules-plugin PR #82 (06532ef9), in the pin",
+    "Mesh-LLM/capsules-plugin#58": "closed by capsules-plugin PR #102 (01f0921e), the pinned commit",
+    "Mesh-LLM/capsules-plugin#68": "closed by capsules-plugin PR #72 (c7dd3bdb), in the pin",
+    "Mesh-LLM/capsules-plugin#69": "closed by capsules-plugin PR #77 (56ae557b), in the pin",
+    "Mesh-LLM/capsules-plugin#54": "closed by capsules-plugin PR #121 (196ed195), after the pin"
+  }
+}

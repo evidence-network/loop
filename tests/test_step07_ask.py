@@ -415,7 +415,7 @@ class ReporterBackendTest(Tmp):
     def test_a_node_with_no_signed_commitment_has_no_deadline_and_no_answer_counted(self):
         r = self.run_live(VERIFIED, announced="4" * 64, key="4" * 64)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn("Mesh-LLM/capsules-plugin#51", self.issues(r))
+        self.assertIn(step.NO_COMMITMENT_ISSUE, self.issues(r))
         self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
 
     def test_a_self_node_without_a_second_console_is_not_checked_never_asked(self):

@@ -10,8 +10,10 @@
 #   publishes as a test vector (capsules-plugin v0.1.5,
 #   vectors/record_push_bundle_rust.json, Apache-2.0, checked against that tag's
 #   vectors/SHA256SUMS), split into the plugin's three held stores, and its own
-#   ledger carries a record citing that half as counterparty_half, sealed here
-#   with the AAC Go reference (step 01's cross_language, at the aac-go pin).
+#   ledger carries a record citing that half as counterparty_half, with the
+#   received_half block the pinned plugin writes (accepted_via host_announced),
+#   sealed here with the AAC Go reference (step 01's cross_language, at the
+#   aac-go pin).
 #   lab-b holds nothing.
 # These keys are test keys, committed on purpose, never used by a live node.
 #   tests/fixtures/step05/make_fixtures.sh   (needs openssl, python3, curl, and
@@ -82,6 +84,10 @@ body["action_id"] = f"mesh-poc/received-half-citation/{cid}"
 body["operator"] = "lab-a"
 body["references"] = [{"type": "capsule", "digest_alg": "SHA-256", "digest": cid,
                        "citation_purpose": "counterparty_half"}]
+# How the receiver accepted the half, as the pinned plugin records it (capsules-plugin PR #77).
+body["model_attestation"]["compute_attestation"]["received_half"] = {
+    "cited_capsule_id": cid, "received_from": "lab-b", "via": "push", "received_at": "2026-10-28T00:00:00Z",
+    "signature_ok": True, "sender_key_id": half["key_id"], "accepted_via": "host_announced"}
 r = subprocess.run([cross, "seal"], input=json.dumps(body).encode(), capture_output=True, check=True)
 citing = json.loads(r.stdout)
 citing["key_id"] = der[12:].hex()

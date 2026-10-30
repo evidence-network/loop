@@ -11,6 +11,9 @@ import os
 from pathlib import Path
 
 ISSUE = "evidence-network/loop: the live lab run, which fills population/live"
+# A gap that is still open and that no open issue names yet: it is listed with
+# this until one is filed, never with an issue that has closed.
+NO_ISSUE_YET = "no open issue yet (to be filed)"
 ORDER = {"PASS": 0, "NOT_CHECKED": 1, "FAIL": 2}
 
 

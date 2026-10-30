@@ -504,11 +504,13 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(step.backend({"population": "rehearsal"}), "doctor")
         self.assertEqual(step.backend({"population": "rehearsal", "probe": "reporter"}), "reporter")
 
-    def test_verified_answers_still_read_not_checked_on_the_plugin_issues(self):
+    def test_verified_answers_still_read_not_checked_on_the_open_gaps(self):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertTrue({"Mesh-LLM/capsules-plugin#53", "Mesh-LLM/capsules-plugin#51"} <= issues)
+        self.assertTrue({"evidence-network/loop: step 12's reporter probe backend drives the plugin's join",
+                         "evidence-network/loop: step 12's reporter probe backend drives the plugin's doctor --probe",
+                         "no open issue yet (to be filed)"} <= issues, issues)
         self.assertIn("lab-1/attempts", " ".join(p["path"] for p in r["proof"]))
 
     def test_an_answer_verified_under_a_key_other_than_the_listed_one_is_a_fail(self):

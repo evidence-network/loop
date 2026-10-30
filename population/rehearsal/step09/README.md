@@ -2,8 +2,8 @@
 
 On Mesh a dispute is an adjudication only: the referee compares two twins'
 answers to one request, seals a Result, and delivers it to the nodes it concerns.
-There is no party-sealed `dispute`, `dispute_response` or `close` on Mesh
-(Mesh-LLM/capsules-plugin#58).
+There is no party-sealed `dispute`, `dispute_response` or `close` on Mesh: the
+capsules plugin dropped them, and seals the referee's verdict instead (its PR #102).
 
 - `dispute.json`: what steps/09-dispute acts out.
   - `nodes`: each node's id. The plugin keeps a node id apart from its key, so the

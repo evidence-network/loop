@@ -109,8 +109,9 @@ class Step05DealRehearsalTest(unittest.TestCase):
                              1 if c == "halves_of_one_exchange" else 2, c)
             self.assertIn(c, f["detail"])
         self.assertEqual(finding.gaps(f["detail"]), [(
-            "the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d) until "
-            "the capsules plugin's lands", "Mesh-LLM/capsules-plugin#69")])
+            "the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the "
+            "controller-binding/0 the pinned capsules plugin reads, whose signatures no released verifier checks",
+            "action-state-group/agent-action-capsule#432")])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(set(f["pinned"]), {"evidencebook", "checkpointed-local-log"})
         paths = {p["path"] for p in f["proof"]}
@@ -176,7 +177,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
         f = self.decide(started)
         # Bob finds no verifying declaration for Alice's key and falls back to the stopgap.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual(f["not_checked"][0]["issue"], "Mesh-LLM/capsules-plugin#69")
+        self.assertEqual(f["not_checked"][0]["issue"], step.ACCEPTANCE_ISSUE)
         self.assertIn("operator_stopgap (bob)", f["detail"])
         self.assert_clean()
 
@@ -209,7 +210,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
                 started = self.dealt(settings=self.with_settings(alice={"accepted_via": via}))
                 f = self.decide(started)
                 self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
-                self.assertEqual([n["issue"] for n in f["not_checked"]], ["Mesh-LLM/capsules-plugin#69"])
+                self.assertEqual([n["issue"] for n in f["not_checked"]], [step.ACCEPTANCE_ISSUE])
                 self.assertIn(f"{via} (alice)", f["not_checked"][0]["why"])
                 self.assertEqual(self.failed(), set())
                 self.assert_clean()
@@ -261,17 +262,43 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads((self.out / "finding.json").read_text())
 
+    def reseal_citing(self, **received_half):
+        """Seal lab-a's citing record again with these received_half members changed (None drops one)."""
+        path = self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        old = json.loads(path.read_text())
+        body = {k: v for k, v in old.items() if k not in ("capsule_id", "signature", "key_id", "chain")}
+        rh = body["model_attestation"]["compute_attestation"]["received_half"]
+        for k, v in received_half.items():
+            rh.pop(k, None) if v is None else rh.__setitem__(k, v)
+        r = subprocess.run([str(CROSS), "seal"], input=json.dumps(body).encode(), capture_output=True, check=True)
+        citing = dict(json.loads(r.stdout), key_id=old["key_id"])
+        path.write_text(json.dumps(citing, separators=(",", ":")) + "\n")
+        return old
+
+    def acceptance_entries(self, f):
+        return [n for n in f["not_checked"] if n["what"] == step.ACCEPTANCE_WHAT]
+
     def test_live_held_halves_check_and_the_rest_is_not_checked_under_its_issues(self):
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         issues = {n["issue"] for n in f["not_checked"]}
-        for i in ("Mesh-LLM/capsules-plugin#49", "Mesh-LLM/capsules-plugin#68", "Mesh-LLM/capsules-plugin#69",
-                  "action-state-group/agent-action-capsule#431"):
+        for i in ("Mesh-LLM/capsules-plugin#49", step.ACCEPTANCE_ISSUE,
+                  "action-state-group/agent-action-capsule#431", step.live.NO_ISSUE_YET):
             self.assertIn(i, issues)
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertEqual(len(checks), 1)
         self.assertTrue(all(v["ok"] for v in checks[0].values() if isinstance(v, dict)), checks)
+        self.assertEqual(checks[0]["accepted"]["via"], "host_announced")
         self.assertIn("node lab-b: holds no pushed half", f["detail"])
+        self.assertIn("accepted the half's key via host_announced", f["detail"])
+        self.assertIn({"what": "lab-b: a pushed half held", "why": "the node holds no pushed half from the lab "
+                       "run's exchanges", "issue": step.live.ISSUE}, f["not_checked"])
+        default = next(n for n in f["not_checked"] if n["what"] == step.LIVE_DEFAULT["what"])
+        self.assertIn("capsules-plugin PR #72, in the pin", default["why"])
+        [acc] = self.acceptance_entries(f)
+        self.assertEqual(acc["issue"], step.ACCEPTANCE_ISSUE)
+        self.assertIn("capsules-plugin PR #77, in the pin", acc["why"])
+        self.assertIn("say host_announced: no node sends a controller declaration yet", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
@@ -292,6 +319,52 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("held-1 cited", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
+
+    # acceptance, read from the citing record the pinned plugin seals (capsules-plugin PR #77)
+    def test_live_a_citing_record_accepting_another_key_than_the_halfs_fails(self):
+        self.reseal_citing(sender_key_id="ab" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("held-1 accepted (the citing record accepted key " + "ab" * 32, f["detail"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_an_unknown_accepted_via_fails(self):
+        self.reseal_citing(accepted_via="transport_id")
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("unknown accepted_via 'transport_id'", f["detail"])
+
+    def test_live_acceptance_under_a_declaration_leaves_only_the_declarations_signatures(self):
+        self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
+                           controller_anchor_key_id="ef" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(self.acceptance_entries(f), [])
+        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+        self.assertNotIn(step.ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_declaration_anchored_on_the_nodes_own_key_fails(self):
+        own = json.loads((self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl").read_text())["key_id"]
+        self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
+                           controller_anchor_key_id=own)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a declaration anchored on the node's own key", f["detail"])
+
+    def test_live_a_declaration_without_its_digest_fails(self):
+        self.reseal_citing(accepted_via="controller_declaration", controller_anchor_key_id="ef" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("no binding digest or anchor key", f["detail"])
+
+    def test_live_a_citing_record_with_no_accepted_via_is_not_checked_never_a_pass(self):
+        self.reseal_citing(accepted_via=None, sender_key_id=None)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        [acc] = self.acceptance_entries(f)
+        self.assertEqual(acc["issue"], step.LIVE_NO_VIA)
+        self.assertIn("sealed by a build before the pinned one", acc["why"])
 
 
 if __name__ == "__main__":

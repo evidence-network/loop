@@ -17,10 +17,12 @@ stapled card's stream (scripts/history_cards.py).
   nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
   file, so `git show` can be re-run on exactly what was fetched.
 - live: the harness never signs for a live node. A live commitment is one the
-  node signed and published itself (Mesh-LLM/capsules-plugin#51); this reads
-  the carrier's HEAD (--carrier, default this repository), publishes nothing,
-  and requires the commitment to be under the key_id the list holds for that
-  node. A node with no commitment there yet is NOT_CHECKED on that issue.
+  node signed and published itself; the pinned capsules plugin signs and serves
+  it (capsules-plugin PR #75, in the pin) and hands it to its operator, who
+  adds it here by pull request. This reads the carrier's HEAD (--carrier,
+  default this repository), publishes nothing, and requires the commitment to
+  be under the key_id the list holds for that node. A node with no commitment
+  there yet is NOT_CHECKED: nobody has published it (LIVE_GAP).
 
 Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
@@ -44,6 +46,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
 import history_cards as hc  # noqa: E402
 import finding  # noqa: E402
+from live import NO_ISSUE_YET  # noqa: E402
 
 ASSERTS = ("the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git "
            "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
@@ -51,8 +54,11 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "signed policy's bytes")
 # No released verifier for a stapled history_card/1 that the loop can call.
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
-# The node itself signs and publishes its commitment (component side).
-LIVE_ISSUE = "Mesh-LLM/capsules-plugin#51"
+# The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
+# What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
+LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
+            "(capsules-plugin PR #75, in the pin), but it has not been published to nodes/commitments/ yet")
+LIVE_ISSUE = NO_ISSUE_YET
 CHECKPOINT_ISSUE = "evidence-network/loop: step 02 Book (steps/02-book) verifies the checkpoint"
 GIT_ID = ["-c", "user.name=loop rehearsal", "-c", "user.email=rehearsal@loop.invalid", "-c", "commit.gpgsign=false"]
 
@@ -279,8 +285,8 @@ def main(argv=None):
 
     results = {r["result"] for r in records}
     not_checked = [{"what": f"{r['name']}: the node-signed commitment is published and verifies",
-                    "why": "; ".join(r["errors"]) + ("; a live commitment is signed by the node, never by the "
-                                                     "harness, and nodes do not publish one yet" if live else ""),
+                    "why": "; ".join(r["errors"]) + (f"; a live commitment is signed by the node, never by the "
+                                                     f"harness: {LIVE_GAP}" if live else ""),
                     "issue": LIVE_ISSUE if live else "evidence-network/loop: step 12 Join (steps/12-join) publishes it"}
                    for r in records if r["result"] == "NOT_CHECKED"]
     checked = [r for r in records if r["result"] == "PASS"]

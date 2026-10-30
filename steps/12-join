@@ -365,16 +365,17 @@ LIVE_NOT_CHECKED = [
     {"what": "one command that binds the key, creates the book and publishes the commitment on a Mesh node",
      "why": "a Mesh node's book is the capsules plugin's; join.sh does not run against it, and this step "
             "does not drive the plugin's join",
-     "issue": "Mesh-LLM/capsules-plugin#53"},
+     "issue": "evidence-network/loop: step 12's reporter probe backend drives the plugin's join"},
     {"what": "doctor --probe on a Mesh node",
      "why": "the probe is the daily reporter's mesh_evidence_request path until the loop drives the plugin's "
             "doctor --probe",
-     "issue": "Mesh-LLM/capsules-plugin#53"},
+     "issue": "evidence-network/loop: step 12's reporter probe backend drives the plugin's doctor --probe"},
     NO_BINDING_VERIFIER,
     {"what": "the signed commitment and the policy digest the answers are matched against",
-     "why": "nodes/ entries are unsigned and carry no policy digest; the probe is matched against the entry's "
-            "listed key and stranger_safe subjects only",
-     "issue": "Mesh-LLM/capsules-plugin#51"},
+     "why": "the pinned plugin signs and serves the commitment (capsules-plugin PR #75), but nodes/ entries are "
+            "unsigned and carry no policy digest; the probe is matched against the entry's listed key and "
+            "stranger_safe subjects only",
+     "issue": "no open issue yet (to be filed)"},
 ]
 
 
@@ -444,7 +445,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
 
 
 def no_binding(name, why):
-    return {"what": f"{name}: the controller binding", "why": why, "issue": "Mesh-LLM/capsules-plugin#54"}
+    return {"what": f"{name}: the controller binding", "why": why, "issue": "fixed upstream in capsules-plugin PR #121 (196ed195, join runs the controller binding ceremony), not in the pinned build; loop re-pins next"}
 
 
 def listed_entry(node):
@@ -470,7 +471,7 @@ def judge_reporter_line(stem, line, entry):
                else "does not verify under the announced key")
         return f"the {name} answer {why}: {line}", None
     return None, {"what": f"the {name} probe answer", "why": f"the reporter got no verifiable answer: {line}",
-                  "issue": "Mesh-LLM/capsules-plugin#53"}
+                  "issue": "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"}
 
 
 def said(line):

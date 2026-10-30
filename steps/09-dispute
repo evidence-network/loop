@@ -8,8 +8,8 @@ a pair of twins' answers to one request (a twin comparison, as the plugin's
 referee does) and delivers it to the nodes it concerns, each of which
 holds it and seals its own `adjudication_received` record citing it. There
 is no party-to-party path (no party-sealed `dispute`, `dispute_response` or
-`close`; Mesh-LLM/capsules-plugin#58 dropped it for Mesh, and #102 seals the
-referee's verdict on both nodes in the plugin's two-node e2e), so this step
+`close`: the plugin dropped them for Mesh, and its PR #102 seals the
+referee's verdict on both nodes in its two-node e2e), so this step
 asserts none, and a party-sealed record presented as the adjudication fails.
 
 Records are AAC capsules as the pinned capsules plugin seals them
