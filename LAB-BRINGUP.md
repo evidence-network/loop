@@ -14,12 +14,12 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|twins|dispute|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
-`exchange`, a wait for each node's first checkpoint, `join`, `entries`,
-`loop`, `pack`. It stops at the first command that fails: a build that is
+`exchange`, a wait for each node's first checkpoint, `join`, `witness`,
+`bind`, `entries`, `loop`, `pack`. It stops at the first command that fails: a build that is
 not the pinned one (`check`) or a step setup that failed (`tools`) stops it
 before any node starts, with each reason in `$LAB_DIR/build.json`.
 
@@ -146,6 +146,13 @@ If any setup failed, it names each one with its exit code, exits 1, and
 `tools` run passes them all. `entries` refuses such a build. Report what it
 printed rather than starting nodes without a step's tools.
 
+`tools` also builds step 02's driver
+(`~/.cache/evidence-network-loop/02-book/bin/loop-step02-book`), which the lab
+test witness signs its receipts with (`lab/lab.sh witness`, section 3). Run
+`lab/lab.sh tools` again after every pull that changes `steps/02-book.d/`,
+then restart the witness (`kill $(cat $LAB_DIR/run/witness.pid)`, then
+`lab/lab.sh witness`) so it signs with the new build.
+
 ## 2. Three nodes on one host
 
 ```sh
@@ -268,6 +275,45 @@ relay; the output names the binding digest only. The reporter stays unbound on p
 optional, so one live run of step 12 shows both states. A node that already reports bound is left as it
 is unless `LAB_REBIND=1`. The key stays in `$LAB_DIR/controllers/`, which the pack never takes.
 
+### The lab test witness
+
+```sh
+lab/lab.sh --dry-run witness
+lab/lab.sh witness
+```
+
+Run it after `join` and `tools`, before `loop`. It sets up the lab's test
+witness, the witness step 02 checks each book's checkpoint receipt against:
+
+1. makes the witness's own Ed25519 key, `$LAB_DIR/witness/witness-key.pem`
+   (dir 0700, key 0600), unless one is already there. It never goes into this
+   tree or the tarball, and it is never a node's key: `lab/witness.py list`
+   refuses a key that is any node's plugin key or controller key;
+2. makes a self-signed certificate for 127.0.0.1 beside it
+   (`tls-cert.pem`, `tls-key.pem`): the pinned CLL witness client speaks only
+   HTTPS;
+3. adds the key's public half to
+   [`lab/witness/witnesses.json`](lab/witness/witnesses.json) as its own
+   entry, `{name: lab-test-witness, key_id, not_before}`. Entries are only
+   added: a key already listed is left as it is, and a rotated-out key keeps
+   its entry, so the receipts it signed still verify;
+4. points each node's join-book profile at the witness
+   (`capsulectl profile update --checkpoint-endpoint https://127.0.0.1:<port base+30>
+   --checkpoint-public-key <key id>`);
+5. starts [`lab/witness.py`](lab/witness.py) in the tmux session, serving
+   `POST /checkpoints` on that port. Each receipt names the witness's key id
+   and the time it signed. `lab/lab.sh stop` stops it.
+
+Commit the updated `lab/witness/witnesses.json` (the public key only) in a
+PR. Until that entry is in the clone the loop runs from, step 02 FAILs
+`witness_listed` on each node. This is one organization's test witness for its
+own lab, not a witness for the network.
+
+To rotate: move `witness-key.pem` aside, run `lab/lab.sh witness` (a new key,
+a new entry, the old entry kept), then restart the witness
+(`kill $(cat $LAB_DIR/run/witness.pid)`, then `lab/lab.sh witness`), and
+commit the listing.
+
 ### The entries
 
 ```sh
@@ -339,8 +385,14 @@ This runs, from this clone:
 
 ```sh
 LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=lab-3 LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 \
-  LAB_DIR=$LAB_DIR ./loop.sh --stage 1 --population live --out findings/<date>-live
+  LAB_DIR=$LAB_DIR LOOP_WITNESS_CA=$LAB_DIR/witness/tls-cert.pem \
+  ./loop.sh --stage 1 --population live --out findings/<date>-live
 ```
+
+`LOOP_WITNESS_CA` is the lab test witness's certificate: step 02 hands it to
+capsulectl (as `SSL_CERT_FILE`, for its own calls only) so the book can deliver
+its checkpoint over HTTPS. Run step 02 by hand with it set too; without it
+the delivery fails TLS and the witness part is NOT_CHECKED, saying why.
 
 `LOOP_CONSOLE` is the reporter node's console: step 12 asks each other node
 through it. A node can't be asked through its own console, so
@@ -369,8 +421,13 @@ Steps 01 and 02 find each node's own key and book through
 Both are written with `$LAB_DIR` unexpanded, so no host path goes into the
 repository; the steps expand it from the environment, which is why
 `lab/lab.sh loop` passes `LAB_DIR` to `loop.sh`. A node whose path is unset
-or not readable by the user running the loop is NOT_CHECKED with
-`data_dir` (or `book_dir`) `not set or unreadable`, never a FAIL.
+or not readable by the user running the loop is NOT_CHECKED, never a FAIL,
+and says which: `book_dir names $LAB_DIR, which this step's environment does
+not set` when `LAB_DIR` is not in the environment (the step also prints it),
+`book_dir has no readable <file>` when a file it needs is missing, or
+`data_dir` (or `book_dir`) `not set or unreadable`. Step 02 finds each book's
+profile by its store (`join.sh` names it after `lab-N`, not after the node's
+name in `population.json`).
 
 What to expect from each step on the live population today, so each
 result is read for what it is. Every step writes one finding, the worst
@@ -385,10 +442,16 @@ over the three nodes, and its `detail` lists each node:
   and the check.
 - `02 book`: for each node, the pinned capsulectl appends a capsule sealed
   with the node's key to the book under its `book_dir` and verifies it
-  under that book's checkpoint key. NOT_CHECKED at best: the book's
-  checkpoint carries no witness receipt on a lab node, and the pinned
-  evidencebook has no receipt verifier. A FAIL names the node and the
-  check.
+  under that book's checkpoint key. It then delivers the new checkpoint to
+  the lab test witness (`capsulectl cll checkpoint publish`), and
+  `capsulectl cll checkpoint status` re-verifies the receipt the book stored.
+  The step picks the receipt's entry in `lab/witness/witnesses.json` by the
+  receipt's key id. PASS when every node's book checks hold and its receipt
+  is from a listed key that is not any node's key, is the key it verifies
+  under, and signed at or after its entry's `not_before`. NOT_CHECKED for the
+  witness part when a book names no witness (run `lab/lab.sh witness`) or its
+  witness gave no receipt (is it running? is `LOOP_WITNESS_CA` set?). A FAIL
+  names the node and the check.
 - `03 advertise`: reads each node's commitment from this repository's
   `nodes/commitments/` and signs nothing for a live node. NOT_CHECKED
   until each node's commitment, which the pinned plugin signs and serves
