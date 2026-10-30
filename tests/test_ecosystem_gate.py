@@ -45,7 +45,7 @@ class GateTest(unittest.TestCase):
         return out
 
     def update(self, name, results, eco="mesh", population="live"):
-        return gate.cmd_update(eco, self.run_dir(name, results, population), self.baseline, LOCK)
+        return gate.cmd_update(eco, self.run_dir(name, results, population), self.baseline)
 
     def test_update_writes_the_baseline_and_verify_accepts_it(self):
         self.assertEqual(self.update("a", {"01": "PASS", "02": "NOT_CHECKED"}), [])
@@ -53,7 +53,7 @@ class GateTest(unittest.TestCase):
         self.assertEqual({k: v["result"] for k, v in doc["ecosystems"]["mesh"]["steps"].items()},
                          {"01": "PASS", "02": "NOT_CHECKED"})
         self.assertTrue(doc["not_checked_is_regression"])
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK, True), [])
+        self.assertEqual(gate.cmd_verify(self.baseline, LOCK), [])
 
     def test_planted_pass_to_fail_is_refused(self):
         self.update("a", {"01": "PASS", "02": "PASS"})
@@ -99,7 +99,7 @@ class GateTest(unittest.TestCase):
         doc = json.loads(self.baseline.read_text())
         doc["ecosystems"]["mesh"]["steps"]["01"]["result"] = "PASS"
         gate.write(self.baseline, doc)
-        self.assertEqual(gate.cmd_verify(self.baseline, LOCK, False),
+        self.assertEqual(gate.cmd_verify(self.baseline, LOCK),
                          ["mesh: steps differ from the findings in findings/a"])
 
     def test_verify_refuses_a_baseline_from_other_pins_when_the_lock_changed(self):
@@ -107,8 +107,58 @@ class GateTest(unittest.TestCase):
         other = self.dir / "versions.lock"
         other.write_text(LOCK.read_text().replace("capsulectl action-state-group/evidencebook v0.8.1",
                                                   "capsulectl action-state-group/evidencebook v0.8.2"))
-        self.assertEqual(gate.cmd_verify(self.baseline, other, False), [])
-        self.assertEqual(len(gate.cmd_verify(self.baseline, other, True)), 1)
+        self.assertEqual(len(gate.cmd_verify(self.baseline, other)), 1)
+
+    def test_verify_refuses_a_findings_record_changed_after_the_fact(self):
+        self.update("a", {"01": "PASS"})
+        f = self.dir / "findings" / "a" / "01-step" / "finding.json"
+        r = json.loads(f.read_text())
+        r["proof"] = []
+        f.write_text(json.dumps(r, indent=2, sort_keys=True) + "\n")
+        doc = json.loads(self.baseline.read_text())
+        doc["ecosystems"]["mesh"]["steps"]["01"]["finding_sha256"] = finding.sha256(f)
+        gate.write(self.baseline, doc)
+        errs = gate.cmd_verify(self.baseline, LOCK)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("a PASS needs the proof bytes", errs[0])
+
+    def test_two_directories_for_one_step_are_refused(self):
+        out = self.run_dir("a", {"01": "FAIL"})
+        other = out / "01-other"
+        other.mkdir()
+        finding.write(other, result="PASS", population="live", asserts="a fact holds", pinned=[],
+                      proof=["p.txt"] if (other / "p.txt").write_text("x") else [], detail="d", started=finding.now())
+        errs = gate.cmd_update("mesh", out, self.baseline)
+        self.assertEqual(errs, ["01-step: step 01 has more than one directory"])
+
+    def test_check_refuses_new_pins_with_the_old_findings(self):
+        self.update("a", {"01": "PASS"})
+        old = self.dir / "old.json"
+        old.write_text(self.baseline.read_text())
+        new = json.loads(old.read_text())
+        new["ecosystems"]["mesh"]["pin_set_sha256"] = "0" * 64
+        newp = self.dir / "new.json"
+        newp.write_text(json.dumps(new))
+        self.assertEqual(len(gate.cmd_check(old, newp)), 1)
+        new["ecosystems"]["mesh"]["findings"] = "findings/b"
+        newp.write_text(json.dumps(new))
+        self.assertEqual(gate.cmd_check(old, newp), [])
+
+    def test_check_allows_pass_to_not_checked_when_the_base_switch_is_off(self):
+        self.update("a", {"01": "PASS"})
+        doc = json.loads(self.baseline.read_text())
+        doc["not_checked_is_regression"] = False
+        old = self.dir / "old.json"
+        old.write_text(json.dumps(doc))
+        doc["ecosystems"]["mesh"]["steps"]["01"]["result"] = "NOT_CHECKED"
+        newp = self.dir / "new.json"
+        newp.write_text(json.dumps(doc))
+        self.assertEqual(gate.cmd_check(old, newp), [])
+
+    def test_exit_codes(self):
+        self.update("a", {"01": "PASS"})
+        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.baseline), "--lock", str(LOCK)]), 0)
+        self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.dir / "nope.json"), "--lock", str(LOCK)]), 1)
 
     def test_pin_set_digest_ignores_comments(self):
         other = self.dir / "versions.lock"
@@ -119,12 +169,12 @@ class GateTest(unittest.TestCase):
         self.assertTrue(self.update("r", {"01": "PASS"}, population="rehearsal"))
         out = self.run_dir("m", {"01": "PASS"})
         (out / "01-step" / "p.txt").write_text("changed\n")
-        self.assertTrue(gate.cmd_update("mesh", out, self.baseline, LOCK))
+        self.assertTrue(gate.cmd_update("mesh", out, self.baseline))
         self.assertFalse(self.baseline.exists())
 
     def test_committed_mesh_baseline_matches_its_findings(self):
         gate.ROOT = self._root
-        self.assertEqual(gate.cmd_verify(gate.BASELINE, LOCK, True), [])
+        self.assertEqual(gate.cmd_verify(gate.BASELINE, LOCK), [])
 
 
 if __name__ == "__main__":

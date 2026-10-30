@@ -20,14 +20,8 @@ jobs:
           persist-credentials: false
       - name: Gate tests
         run: python3 -B -m unittest tests.test_ecosystem_gate -v
-      - name: The baseline matches its committed findings
-        run: |
-          set -e
-          changed=
-          if [ "${{ github.event_name }}" = pull_request ]; then
-            git diff --quiet "${{ github.event.pull_request.base.sha }}" HEAD -- versions.lock || changed=--lock-changed
-          fi
-          python3 -B scripts/ecosystem_gate.py verify $changed
+      - name: The baseline matches its committed findings and the current pins
+        run: python3 -B scripts/ecosystem_gate.py verify
       - name: No step goes green to red against the base branch
         if: github.event_name == 'pull_request'
         run: |
