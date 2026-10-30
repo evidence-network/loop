@@ -321,7 +321,7 @@ def binding_digest(text):
 
 @unittest.skipUnless(HAS_CROSS, NO_CROSS)
 class Step05BindingCheckTest(unittest.TestCase):
-    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.15.0)."""
+    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.16.0)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -376,37 +376,35 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "unsupported", detail)
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
-    def with_key_types(self, types, key=None):
-        # INTERIM (loop#140): remove with step.UNSUPPORTED_KEY_TYPE_ISSUE.
+    def test_a_binding_of_the_halfs_ed25519_key_to_a_bip340_key_applies(self):
+        # aac-go go/v0.16.0 (AAC#458): the controller key is bip340, the half's evidence key Ed25519.
+        keys = BINDINGS["valid-nostr-key"]["keys"]
+        state, detail = self.check("valid-nostr-key", key=keys[1], times=("2026-10-30T00:00:00Z",))
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("signatures and window PASS", detail)
+
+    def test_a_bip340_binding_with_one_altered_signature_byte_fails_its_signatures(self):
+        case = BINDINGS["valid-nostr-key"]
+        doc = json.loads(case["binding"])
+        sig = doc["sigs"][0]["sig"]["sig"]
+        doc["sigs"][0]["sig"]["sig"] = ("0" if sig[0] != "0" else "1") + sig[1:]
+        BINDINGS["bad-nostr-sig"] = {"binding": json.dumps(doc), "keys": case["keys"]}
+        self.addCleanup(BINDINGS.pop, "bad-nostr-sig", None)
+        state, detail = self.check("bad-nostr-sig", key=case["keys"][1], times=("2026-10-30T00:00:00Z",))
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("signatures FAIL", detail)
+
+    def test_a_declared_bip340_key_type_is_no_longer_downgraded(self):
+        # aac-go go/v0.16.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
         keys = BINDINGS["valid-same-controller"]["keys"]
-        text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": types})
+        text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": ["ed25519", "bip340"]})
         BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
         self.addCleanup(BINDINGS.pop, "with-key-types", None)
-        return self.check("with-key-types", key=key)
-
-    def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_bad(self):
-        state, detail = self.with_key_types(["ed25519", "bip340"])
-        self.assertEqual(state, "unsupported_key_type", detail)
-        self.assertIn("bip340", detail)
-        self.assertIn(step.UNSUPPORTED_KEY_TYPE_ISSUE, detail)
-        self.assertIn("signatures not verified", detail)
-
-    def test_a_binding_declaring_only_ed25519_key_types_goes_to_the_verifier(self):
-        state, detail = self.with_key_types(["ed25519"])
-        self.assertEqual(state, "bad", detail)  # no unsupported type declared: the extra member is a bad binding, as before
-
-    def test_an_unsupported_key_type_does_not_hide_a_key_the_binding_does_not_name(self):
-        state, detail = self.with_key_types(["ed25519", "bip340"], key="ab" * 32)
+        state, detail = self.check("with-key-types")
         self.assertEqual(state, "bad", detail)
-        self.assertIn("does not name the half's key", detail)
-
-    def test_a_malformed_key_type_is_bad_not_unsupported(self):
-        for types in (["bip340"], ["ed25519", "rsa"], ["ed25519", "bip340", "rsa"]):
-            state, detail = self.with_key_types(types)
-            self.assertEqual(state, "bad", detail)
 
     def test_only_a_check_that_ran_and_passed_is_verified(self):
-        for state in ("unread", "unsupported", "unsupported_key_type", "unlisted", "unkeyed", "unclaimed", "uncited"):
+        for state in ("unread", "unsupported", "unlisted", "unkeyed", "unclaimed", "uncited"):
             c = step.state_check(state, "d")
             self.assertEqual((c["ok"], c["verified"], c["state"]), (True, False, state), state)
         for state in ("never_tied", "ambiguous"):
@@ -416,15 +414,6 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(step.state_check("bad", "d")["ok"], False)
         self.assertEqual(step.state_check("bad", "d")["verified"], False)
         self.assertEqual((step.state_check("ok", "d")["ok"], step.state_check("ok", "d")["verified"]), (True, True))
-
-    def test_unsupported_key_types_reads_only_a_key_types_list(self):
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340"]}', 2), ["bip340"])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}', 2), [])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", 7]}', 2), [])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340"]}', 2), [])
-        self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340", "bip340"]}', 2), [])
-        for raw in ("{}", "not json", "[]", '{"key_types": "bip340"}', '{"key_types": ["ed25519"]}'):
-            self.assertEqual(step.unsupported_key_types(raw, 2), [], raw)
 
     def test_no_file_no_listing_or_another_binding_is_unread_never_bad(self):
         state, detail = self.check("valid-same-controller", file=False)
@@ -470,9 +459,6 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",
                                             step.BINDING_ROLE_ISSUE)])
         self.assertEqual(len(es), 4)
-        es = step.live_declarations({"unsupported_key_type": 2}, set())
-        self.assertEqual([(e["issue"], e["why"][:1]) for e in es], [(step.UNSUPPORTED_KEY_TYPE_ISSUE, "2")])
-        self.assertIn("signatures were not verified", es[0]["why"])
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
 

@@ -68,14 +68,12 @@ published commitment (`nodes/commitments/<node_id>.json` in this checkout, loop#
 the node whose `nodes/<node_id>.json` lists the half's key) counts as accepted under a controller
 declaration however the plugin first accepted the key. Whenever a current-build citing record names a binding
 digest, the binding itself is checked in a second language (`cross_language binding`, AAC#464, aac-go
-go/v0.15.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
+go/v0.16.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
 its `node_id`, listed in nodes/) must have that digest, name the half's evidence key and apply at the half's and
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
 applies", not a trust verdict and not which role the key has in it (AAC#468). A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
-not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role. Interim
-(loop#140): a binding the verifier rejects that declares a `key_types` entry it lacks (bip340, AAC#457) is also a
-not_checked entry, not a FAIL.
+not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role.
 
 The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
 `received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
@@ -95,7 +93,7 @@ Unset, every held half is judged. Current-build halves accepted on the evidence 
 whose published commitment carries no equal operator binding are their own entry ("halves from an
 unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
 read, are not_checked entries. Each held half's producer signature is checked in
-a second language (`cross_language signature`, AAC#463, aac-go go/v0.15.0): authored under the key the
+a second language (`cross_language signature`, AAC#463, aac-go go/v0.16.0): authored under the key the
 node's citing record accepted (`received_half.sender_key_id`) and, where the sender has a `nodes/<node_id>.json`
 listing, the key it publishes is ok (an unlisted sender is a not_checked entry: the key is self-attested); authored under another key or
 invalid is a FAIL; unclaimed (no signature) is a not_checked entry; a half the verifier cannot read is a FAIL, and only its
@@ -340,12 +338,8 @@ def live_declarations(counts, unread):
                     "why": f"{counts['unread']} cited bindings could not be checked: {'; '.join(sorted(unread))}"})
     if counts.get("unsupported"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": bv.UNSUPPORTED_METHOD_ISSUE,
-                    "why": f"{counts['unsupported']} cited bindings use a method `cross_language binding` does not "
+                    "why": f"{counts['unsupported']} cited bindings use a method or key type `cross_language binding` does not "
                            f"implement"})
-    if counts.get("unsupported_key_type"):
-        out.append({"what": LIVE_DECLARATION_WHAT, "issue": UNSUPPORTED_KEY_TYPE_ISSUE,
-                    "why": f"{counts['unsupported_key_type']} cited bindings declare a key type (AAC#457) the pinned "
-                           f"`cross_language binding` does not implement, so their signatures were not verified: not checked, neither PASS nor bad"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
                     "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no revocation "
@@ -357,6 +351,7 @@ def live_declarations(counts, unread):
     return out
 
 
+LIVE_UNLISTED = "evidence-network/loop#174"  # a sender with no nodes/ listing: its key is only self-attested
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
@@ -408,7 +403,8 @@ def live_unclaimed(unclaimed, unkeyed, unlisted):
         parts.append(f"{unlisted} verify under the key the node accepted, but the sender they were received from has "
                      f"no nodes/<node_id>.json listing to hold that key to, so it is only self-attested")
     return {"what": "the held half's producer signature, in a second language",
-            "issue": LIVE_NO_VIA if unkeyed and not unclaimed and not unlisted else live.NO_ISSUE_YET,
+            "issue": (LIVE_NO_VIA if unkeyed and not unclaimed and not unlisted else
+                      LIVE_UNLISTED if unlisted and not unclaimed and not unkeyed else live.NO_ISSUE_YET),
             "why": "held halves: " + "; ".join(parts)}
 
 
@@ -577,12 +573,10 @@ def state_check(state, detail, passed="ok"):
 
 
 BINDING_VERDICT_EXIT = bv.VERDICT_EXIT
-UNSUPPORTED_KEY_TYPE_ISSUE = bv.UNSUPPORTED_KEY_TYPE_ISSUE
-unsupported_key_types = bv.unsupported_key_types
 
 
 def binding_check(digest, half, citing, peers):
-    """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.15.0) on the controller
+    """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.16.0) on the controller
     binding the citing record names by `digest`: (state, detail).
 
     The bytes are the sender's own controller-binding.json in its data dir (capsules-plugin controller_binding::
@@ -594,9 +588,9 @@ def binding_check(digest, half, citing, peers):
     a revocation statement.
 
     state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key);
-    "unsupported_key_type" (the verifier rejects it and it declares a key type the verifier lacks); "unread"
-    (its bytes are not available, or are not the binding the record names); "unsupported" (a method the verifier
-    does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
+    "unread"
+    (its bytes are not available, or are not the binding the record names); "unsupported" (a method or key type the
+    verifier does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
     binding the record names: "unread"."""
     key = half.get("key_id")
     if not is_key(key):
@@ -623,9 +617,6 @@ def binding_check(digest, half, citing, peers):
         return "unread", (f"{name}'s {BINDING_FILE} is binding {report.get('binding_digest')}, not the {digest} the "
                           f"citing record names (the node may have bound again since)")
     props = report.get("properties") or {}
-    if verdict == "bad" and key in (report.get("keys") or []) and (lacking := unsupported_key_types(raw, len(report.get("keys") or []))):
-        return "unsupported_key_type", (f"binding {digest} ({name}) declares key type {', '.join(lacking)}, which the "
-                                        f"pinned verifier does not implement ({UNSUPPORTED_KEY_TYPE_ISSUE}); signatures not verified")
     if verdict == "bad":
         why = ("does not name the half's key" if key not in (report.get("keys") or []) else
                ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s == "FAIL"))

@@ -1,0 +1,35 @@
+{
+  "checks": {
+    "capsule_id": {
+      "detail": "carried b25be14b09ee04105cedb71745e96d9d7c2d5c8a605ae32a254078d27d5f0207, recomputed b25be14b09ee04105cedb71745e96d9d7c2d5c8a605ae32a254078d27d5f0207",
+      "ok": true
+    },
+    "class1": {
+      "detail": "Class 1 ok",
+      "ok": true
+    },
+    "effect_class": {
+      "detail": "effect_attestation 'runtime_claimed': sealed in the producer's own process reads runtime_claimed",
+      "ok": true
+    },
+    "key": {
+      "detail": "key_id 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9, node public key 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+      "ok": true
+    },
+    "model": {
+      "detail": "model_attestation {\"compute_attestation\": {\"agent_input_digest\": \"1390191acf93ead6e9c15bce5a3b0fbe517eb1ba430bb4c35f61e574fe0f1d29\", \"agent_output_digest\": \"cce5ecc272e032155464ec4417189890cafb9be4609380cad1b76c049407f09c\"}, \"model_id\": \"rehearsal-model\", \"provider\": \"rehearsal\"}",
+      "ok": true
+    },
+    "signature": {
+      "detail": "authored under 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9, the key the node publishes",
+      "ok": true,
+      "state": "ok"
+    }
+  },
+  "installed": {
+    "aac-go": "0.16.0",
+    "capsule-emit": "0.13.0"
+  },
+  "node": "stevenmih-1",
+  "sealed_by": "capsule-emit, in this process"
+}
