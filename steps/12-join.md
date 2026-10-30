@@ -44,13 +44,18 @@ With no published file, the detail says nothing is compared.
 
 ## What stays open
 
-- The controller binding's revocation, and a check of the binding record by
-  a verifier outside the node. Before doctor reports a binding bound, the
-  pinned plugin checks its form, both signatures, its window, and that it
-  binds the node key. It reads no revocation (the loop's own read is
-  evidence-network/loop#138), and doctor names the binding
-  only by its digest, so the loop has no record to check
-  (action-state-group/agent-action-capsule#432).
+- The controller binding's revocation (evidence-network/loop#138: no
+  revocation statement is read from the lab), and the node key's role in
+  its binding (action-state-group/agent-action-capsule#468: the verifier
+  checks that the binding names the key, either of its two keys). The
+  record itself is checked in a second language: `cross_language binding`
+  (aac-go go/v0.15.0) runs on the record the node holds
+  (`controller-binding.json` in its `data_dir`, or `binding.json` for a
+  node `join.sh` joined), which must have the digest doctor reports, name
+  the node key and apply now (form, both signatures and window). That is
+  "the binding applies", not a trust verdict. A binding that does not apply
+  is a failure; a record that cannot be read, another binding than doctor's,
+  or a method or key type the verifier lacks is NOT_CHECKED.
 - The signed commitment and the policy digest that the reporter's answers are
   matched against: `nodes/` entries are unsigned.
 

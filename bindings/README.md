@@ -3,8 +3,9 @@
 Controller binding verdicts: one file per controller, named
 `<controller_key_id>.json`. This repository only reads them. A verdict is
 written by a binding verifier pinned in `versions.lock`. None is pinned
-today (Controller Binding v0, action-state-group/agent-action-capsule#432),
-so this folder holds no verdicts yet.
+today: aac-go's `cross_language binding` (Controller Binding v0) checks a
+binding record inside steps 05 and 12 but writes no verdict, so this folder
+holds no verdicts yet.
 
 ```json
 {"profile": "binding-verdict/0",

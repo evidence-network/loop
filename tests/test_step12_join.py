@@ -38,8 +38,14 @@ def load_step():
 
 step = load_step()
 finding = step.finding
+FIXTURE_AT = "2026-11-01T00:00:00Z"  # inside the joined fixtures' binding window
 CAPSULECTL = step.tools()
 NO_TOOL = f"capsulectl not installed at {CAPSULECTL}: run steps/12-join.setup.sh (CI does)"
+
+
+CROSS = step.cross_language()
+NO_CROSS = f"cross_language not installed at {CROSS}: run steps/01-seal.setup.sh (CI does)"
+needs_cross = unittest.skipUnless(CROSS.is_file() and os.access(CROSS, os.X_OK), NO_CROSS)
 
 
 def needs_capsulectl(test):
@@ -71,6 +77,50 @@ class Tmp(unittest.TestCase):
                              [f"alice/{p}" for p in proof], ["alice: joined"], finding.now())
 
 
+@needs_cross
+class BindingRecordTest(Tmp):
+    """check_binding_record: binding.json, as join.sh wrote it, is checked by the Go verifier."""
+
+    def test_the_fixture_binding_applies(self):
+        self.assertEqual(step.check_binding_record(self.joined(), FIXTURE_AT), [])
+
+    def test_a_binding_outside_its_window_does_not_hold(self):
+        errs = step.check_binding_record(self.joined(), "2031-01-01T00:00:00Z")
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("controller_binding_window FAIL", errs[0])
+
+    def test_a_binding_naming_another_key_than_the_nodes_does_not_hold(self):
+        node = self.joined()
+        c = json.loads((node / "controller.json").read_text())
+        c["node_key"] = "ab" * 32
+        (node / "controller.json").write_text(json.dumps(c))
+        errs = step.check_binding_record(node, FIXTURE_AT)
+        self.assertIn("does not name the node's key", errs[0])
+
+    def test_a_binding_altered_after_signing_does_not_hold(self):
+        node = self.joined()
+        b = json.loads((node / "binding.json").read_text())
+        b["claim"] = "same_controller_asserted "
+        (node / "binding.json").write_text(json.dumps(b))
+        errs = step.check_binding_record(node, FIXTURE_AT)
+        self.assertEqual(len(errs), 1, errs)
+
+    def test_files_that_are_not_the_binding_join_writes_do_not_hold(self):
+        node = self.joined()
+        (node / "binding.json").write_text("not json")
+        self.assertIn("does not hold: unread", step.check_binding_record(node, FIXTURE_AT)[0])
+        (node / "binding.json").unlink()
+        self.assertIn("not the controller binding join.sh writes", step.check_binding_record(node, FIXTURE_AT)[0])
+
+    def test_a_method_the_verifier_lacks_does_not_hold_here(self):
+        node = self.joined()
+        b = json.loads((node / "binding.json").read_text())
+        b["method"] = "x-unknown/0"
+        (node / "binding.json").write_text(json.dumps(b))
+        errs = step.check_binding_record(node, FIXTURE_AT)
+        self.assertEqual(len(errs), 1, errs)
+
+
 class DoctorBackendTest(Tmp):
     @needs_capsulectl
     def test_rehearsal_population_joins_and_passes_citing_the_binding_gap(self):
@@ -78,8 +128,10 @@ class DoctorBackendTest(Tmp):
         r = json.loads((self.out / "finding.json").read_text())
         self.assertEqual(r["result"], "PASS", r["detail"])
         self.assertEqual(r["not_checked"], [])
-        # The binding's own verification is outside the assertion: one cited gap, AAC #432.
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#432"])
+        # The record is checked by the Go verifier; what stays outside the assertion: revocation (loop#138) and
+        # the node key's role in the binding (AAC#468).
+        self.assertEqual([i for _, i in finding.gaps(r["detail"])],
+                         ["evidence-network/loop#138", "action-state-group/agent-action-capsule#468"])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -160,7 +212,7 @@ class DoctorBackendTest(Tmp):
     @needs_capsulectl
     def test_the_unaltered_fixture_holds(self):
         node = self.joined()
-        errs, nc, _ = step.judge(node, CAPSULECTL, Path(self.tmp.name) / "work")
+        errs, nc, _ = step.judge(node, CAPSULECTL, Path(self.tmp.name) / "work", at=FIXTURE_AT)
         self.assertEqual((errs, nc), ([], []))
 
     def test_a_commitment_altered_after_signing_is_a_fail(self):
@@ -204,7 +256,7 @@ class DoctorBackendTest(Tmp):
         node = self.joined()
         # bob's book answered the request alice's stranger sent.
         shutil.copy(FIX / "wrong-key" / "checkpoints.answer.json", node / "probe" / "checkpoints.answer.json")
-        errs, nc, proof = step.judge(node, CAPSULECTL, Path(self.tmp.name) / "work")
+        errs, nc, proof = step.judge(node, CAPSULECTL, Path(self.tmp.name) / "work", at=FIXTURE_AT)
         self.assertTrue(any("does not verify under the advertised" in e for e in errs), errs)
         self.assertEqual(self.conclude(errs, nc, proof)["result"], "FAIL")
         self.assertEqual(finding.check(self.out.parent), [])
@@ -441,7 +493,8 @@ class ReporterBackendTest(Tmp):
         r = self.run_lab("self", "second", doctor=("bound", self.D), committed=self.D)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn(f"lab-3: doctor reports the controller binding bound ({self.D}); its signed commitment, fetched through the console that asks it, names the same digest", r["detail"])
-        self.assertNotIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
+        # No data_dir in the population: the record behind the digest cannot be read.
+        self.assertIn("lab-3: the controller binding", " ".join(i["what"] for i in r["not_checked"]))
 
     def test_an_unbound_node_with_no_digest_in_its_commitment_holds_the_binding_is_optional(self):
         r = self.run_lab("self", "second", doctor=("unbound", None))
@@ -590,8 +643,8 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertTrue({"action-state-group/agent-action-capsule#432", "evidence-network/loop#161"} <= issues,
-                        issues)
+        self.assertIn("evidence-network/loop#161", issues)
+        self.assertFalse([i for i in issues if i.endswith("agent-action-capsule#432")])
         # The plugin's join and doctor --probe are no longer loop-wide gaps: per node, and here no console is held.
         self.assertNotIn("one command that binds the key, creates the book and publishes the commitment on a Mesh "
                          "node", [i["what"] for i in r["not_checked"]])
@@ -620,6 +673,7 @@ class ReporterBackendTest(Tmp):
 ALICE = FIX / "joined" / "alice"
 ALICE_DOC = json.loads((ALICE / "commitment.json").read_text())
 ALICE_ID = ALICE_DOC["node_id"]
+BINDING_DIGEST = json.loads((ALICE / "controller.json").read_text())["binding_digest"]
 ALICE_ENTRY = {"name": "alice", "node_id": ALICE_ID, "key_id": ALICE_DOC["key_id"],
                "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}
 OPENSSL_ = shutil.which("openssl")
@@ -949,30 +1003,24 @@ class BindingGapTest(unittest.TestCase):
     """The binding gap names only what the pinned plugin leaves unchecked: revocation, and a check outside the
     node. The plugin's join and doctor --probe are no longer loop-wide gaps."""
 
-    def test_the_binding_gap_is_narrowed_to_revocation_and_an_outside_check(self):
-        self.assertEqual(step.NO_BINDING_VERIFIER, {
-            "what": "the controller binding's revocation, and a check of the binding record by a verifier outside "
-                    "the node",
-            "why": "the pinned plugin checks the binding's form, both signatures, its window and that it binds the "
-                   "node key before doctor reports it bound, but reads no revocation (CB section 5); doctor names "
-                   "the binding by digest only, so the loop holds no record to check itself",
-            "issue": "action-state-group/agent-action-capsule#432"})
+    def test_the_binding_gaps_are_revocation_and_the_keys_role(self):
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#138")
+        self.assertEqual(step.BINDING_ROLE["issue"], "action-state-group/agent-action-capsule#468")
 
-    def test_the_live_gaps_are_the_binding_and_the_signed_commitment_only(self):
+    def test_the_live_gap_for_every_run_is_the_signed_commitment_only(self):
         self.assertEqual([i["what"] for i in step.LIVE_NOT_CHECKED], [
-            step.NO_BINDING_VERIFIER["what"], "the signed commitment and the policy digest the answers are matched "
-                                              "against"])
+            "the signed commitment and the policy digest the answers are matched against"])
 
 
 @unittest.skipUnless(OPENSSL_, NO_OPENSSL)
 class PluginToolsRunTest(Tmp):
     """The whole step on a live population of one node, with its own console given."""
 
-    def run_one(self, **kw):
+    def run_one(self, data_dir=None, **kw):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
-        (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None,
-                                                             "nodes": [ALICE_ENTRY]}))
+        node = {**ALICE_ENTRY, **({"data_dir": str(data_dir)} if data_dir else {})}
+        (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [node]}))
         asker = FakeConsole(VERIFIED, ALICE_DOC["key_id"], key_id=ALICE_DOC["key_id"],
                             committed=kw.pop("committed", None))
         own = PluginConsole(**kw)
@@ -990,11 +1038,80 @@ class PluginToolsRunTest(Tmp):
     def test_a_healthy_node_reads_not_checked_on_the_binding_and_signed_commitment_gaps_only(self):
         r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertEqual(r["not_checked"], step.LIVE_NOT_CHECKED)
+        # The population has no data_dir, so the record behind the digest cannot be read.
+        self.assertEqual([i["what"] for i in r["not_checked"]],
+                         [i["what"] for i in step.LIVE_NOT_CHECKED] + ["alice: the controller binding"])
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", r["detail"])
         for p in ("alice/doctor-probe.json", "alice/join.json", "alice/commitment.json",
                   "alice/disclosure-policy.json", "alice/doctor-after.json"):
             self.assertIn(p, [x["path"] for x in r["proof"]])
+
+    def data_dir(self, binding=None):
+        """A data_dir holding `binding` (default: alice's, as join.sh wrote it) as controller-binding.json."""
+        d = Path(self.tmp.name) / "data"
+        d.mkdir(exist_ok=True)
+        (d / step.BINDING_FILE).write_text(binding if binding is not None else (ALICE / "binding.json").read_text())
+        return d
+
+    def run_bound(self, binding=None, digest=BINDING_DIGEST):
+        real, step.utc_now = step.utc_now, lambda: FIXTURE_AT
+        try:
+            return self.run_one(data_dir=self.data_dir(binding), before=("bound", digest), committed=digest)
+        finally:
+            step.utc_now = real
+
+    @needs_cross
+    def test_a_held_binding_that_applies_leaves_revocation_and_the_keys_role(self):
+        r = self.run_bound()
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key and applies at {FIXTURE_AT}", r["detail"])
+        self.assertEqual([i["what"] for i in r["not_checked"]],
+                         [i["what"] for i in step.LIVE_NOT_CHECKED] + [step.BINDING_REVOCATION["what"],
+                                                                     step.BINDING_ROLE["what"]])
+
+    @needs_cross
+    def test_a_held_binding_that_does_not_name_the_nodes_key_is_a_fail(self):
+        raw = json.loads((ALICE / "binding.json").read_text())
+        raw["keys"] = [raw["keys"][0], "ab" * 32]
+        text = json.dumps(raw)
+        digest = step.bv.verify(step.cross_language(), text, raw["keys"][0], [FIXTURE_AT])[1]["binding_digest"]
+        r = self.run_bound(text, digest)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: alice's binding", r["detail"])
+
+    @needs_cross
+    def test_a_held_binding_outside_its_window_is_a_fail(self):
+        real, step.utc_now = step.utc_now, lambda: "2030-01-01T00:00:00Z"
+        try:
+            r = self.run_one(data_dir=self.data_dir(), before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST)
+        finally:
+            step.utc_now = real
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("controller_binding_window FAIL", r["detail"])
+
+    @needs_cross
+    def test_another_binding_than_doctors_is_not_checked_never_a_fail(self):
+        r = self.run_bound(digest="e" * 64)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        entry = next(i for i in r["not_checked"] if "second verifier" in i["what"])
+        self.assertIn(f"not the {'e' * 64} it is held as", entry["why"])
+
+    @needs_cross
+    def test_a_binding_declaring_a_key_type_the_verifier_lacks_is_not_checked_not_a_fail(self):
+        # INTERIM (loop#140): remove with bv.UNSUPPORTED_KEY_TYPE_ISSUE.
+        raw = json.loads((ALICE / "binding.json").read_text())
+        raw["key_types"] = ["ed25519", "bip340"]
+        text = json.dumps(raw)
+        digest = step.bv.verify(step.cross_language(), text, raw["keys"][0], [FIXTURE_AT])[1]["binding_digest"]
+        r = self.run_bound(text, digest)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        entry = next(i for i in r["not_checked"] if "second verifier" in i["what"])
+        self.assertEqual(entry["issue"], step.bv.UNSUPPORTED_KEY_TYPE_ISSUE)
+
+    def test_a_node_with_no_readable_record_is_not_checked(self):
+        r = self.run_one(before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST)
+        entry = next(i for i in r["not_checked"] if i["what"] == "alice: the controller binding")
+        self.assertIn("no readable controller-binding.json", entry["why"])
 
     def test_an_unbound_node_reads_not_checked_in_a_whole_run(self):
         r = self.run_one()

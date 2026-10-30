@@ -124,6 +124,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import binding_verify as bv  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
@@ -574,28 +576,9 @@ def state_check(state, detail, passed="ok"):
     return {"ok": state != "bad", "verified": state == passed, "state": state, "detail": detail}
 
 
-BINDING_VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
-
-# INTERIM (loop#140): the plugin writes bindings with key_types ["ed25519", "bip340"] (AAC#457, spec PR AAC#458), which
-# the pinned aac-go (Ed25519-only controller binding v0) cannot check. The verifier then says FAIL, but it lacks the
-# key type; it did not find a bad binding. Remove this, the branch in binding_check, its declaration and its tests
-# once AAC#458 merges, aac-go ships bip340, the loop repins and step 05 reruns.
-UNSUPPORTED_KEY_TYPE_ISSUE = "action-state-group/agent-action-capsule#457"
-KNOWN_KEY_TYPES = {"ed25519", "bip340"}  # AAC#457 defines these two; any other token makes the list malformed (bad)
-UNSUPPORTED_KEY_TYPES = {"bip340"}
-
-
-def unsupported_key_types(raw, nkeys):
-    """The key types a binding declares in `key_types` that the pinned verifier lacks, sorted; none when any
-    declared type is not one AAC#457 defines or the list is not one token per key (the binding is then malformed,
-    not unsupported)."""
-    try:
-        types = json.loads(raw).get("key_types")
-    except (ValueError, AttributeError):
-        return []
-    if not isinstance(types, list) or len(types) != nkeys or not all(isinstance(t, str) and t in KNOWN_KEY_TYPES for t in types):
-        return []
-    return sorted(set(types) & UNSUPPORTED_KEY_TYPES)
+BINDING_VERDICT_EXIT = bv.VERDICT_EXIT
+UNSUPPORTED_KEY_TYPE_ISSUE = bv.UNSUPPORTED_KEY_TYPE_ISSUE
+unsupported_key_types = bv.unsupported_key_types
 
 
 def binding_check(digest, half, citing, peers):
@@ -632,13 +615,9 @@ def binding_check(digest, half, citing, peers):
     if not all(issued):
         return "unread", "the half or the citing record carries no readable timestamp to hold the window to"
     times = sorted(set(issued))
-    v = subprocess.run([str(cross_language()), "binding"], capture_output=True, timeout=120,
-                       input=json.dumps({"binding": raw, "at": times, "key": key}).encode())
-    err = v.stderr.decode(errors="replace").strip()
-    verdict = BINDING_VERDICT_EXIT.get(v.returncode)
-    report = parsed(v.stdout.decode(errors="replace")) or {}
+    verdict, report, err, code = bv.verify(cross_language(), raw, key, times)
     if verdict is None:
-        raise RuntimeError(f"cross_language binding exited {v.returncode} ({err}); "
+        raise RuntimeError(f"cross_language binding exited {code} ({err}); "
                            f"run steps/01-seal.setup.sh for the pinned aac-go")
     if report.get("binding_digest") != digest:
         return "unread", (f"{name}'s {BINDING_FILE} is binding {report.get('binding_digest')}, not the {digest} the "
