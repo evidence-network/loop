@@ -21,7 +21,8 @@ It refuses when DIR/build.json says the build is not the pinned one, and when th
 reporter's private key is readable beyond its user.
 
 pack: one tarball, DIR/out/loop-lab-<date>.tgz, whose paths are this repository's:
-  nodes/<node_id>.json, population/live/population.json, reporter/reporter.json,
+  nodes/<node_id>.json, nodes/commitments/<node_id>.json and nodes/commitments/policies/<node_id>.json
+  (lab/commitments.py), population/live/population.json, reporter/reporter.json,
   findings/<date>-live/..., and lab/runs/<date>/ (build.json, join/<name>/... as
   join.sh wrote it, MANIFEST.json with every packed file's sha256).
 No key material goes in: a *.seed or *.pem file is left out, and a file holding a
@@ -45,6 +46,7 @@ import reporter_key  # noqa: E402
 
 SKIP_SUFFIXES = (".seed", ".pem")
 PRIVATE_MARK = b"PRIVATE KEY-----"
+NOSTR_KEY = re.compile(rb"\b(?:npub|nsec)1[02-9ac-hj-np-z]{20,}")
 
 
 def load(path):
@@ -224,6 +226,9 @@ def plan(root, lab_dir, day):
     for node in pop["nodes"]:
         if node.get("node_id"):
             files.append((f"nodes/{node['node_id']}.json", root / "nodes" / f"{node['node_id']}.json"))
+            for sub in ("", "policies/"):
+                rel = f"nodes/commitments/{sub}{node['node_id']}.json"
+                files.append((rel, root / rel))
         else:
             missing.append(f"nodes/<{node['name']} node_id>.json (run lab/lab.sh entries)")
     files.append(("population/live/population.json", pop_path))
@@ -263,6 +268,8 @@ def refuse_secrets(files, lab_dir):
         data = path.read_bytes()
         if PRIVATE_MARK in data:
             errs.append(f"{arc}: holds a private key; it is never packed")
+        if NOSTR_KEY.search(data):
+            errs.append(f"{arc}: holds a Nostr key (npub or nsec); the tree carries none")
         if token and token in data:
             errs.append(f"{arc}: holds the mesh invite token; it is never packed")
     return errs

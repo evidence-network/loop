@@ -14,12 +14,12 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|twins|dispute|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|bind|entries|commitments|loop|deal|settle|twins|dispute|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
-`exchange`, a wait for each node's first checkpoint, `join`, `entries`,
-`loop`, `pack`. It stops at the first command that fails: a build that is
+`exchange`, a wait for each node's first checkpoint, `join`, `bind`, `entries`,
+`commitments`, `loop`, `pack`. It stops at the first command that fails: a build that is
 not the pinned one (`check`) or a step setup that failed (`tools`) stops it
 before any node starts, with each reason in `$LAB_DIR/build.json`.
 
@@ -294,6 +294,29 @@ This writes, in this clone (it commits nothing):
 `entries` refuses if `$LAB_DIR/build.json` says the build is not the pinned
 one.
 
+### The commitments
+
+```sh
+lab/lab.sh --dry-run commitments
+lab/lab.sh commitments
+```
+
+Run it after `bind` and `entries`, with the nodes running. For each live node it asks the node's own console for
+the plugin's `commitment` tool (capsules-plugin#75) and writes, in this clone (it commits nothing):
+
+- **`nodes/commitments/<node_id>.json`**: the `commitment` member exactly as the plugin returned it, not
+  re-serialized;
+- **`nodes/commitments/policies/<node_id>.json`**: the policy bytes (the reply carries them in base64), which
+  the commitment's `lcap.policy_uri` and `lcap.policy_digest` name.
+
+The harness signs nothing. `commitments` refuses a commitment that `scripts/check_commitment.py` does not
+verify (which also refuses any member outside the profile, so no controller key or npub can ride along; a
+binding appears only as `controller_binding.digest`), one with no entry `nodes/<node_id>.json` here, or one not
+under the key that entry lists. Run it again after a later bind or checkpoint: a commitment that changed has
+its file replaced, one that did not is left alone. `pack` takes both files for each node and stops if either is
+missing or holds an `npub`/`nsec`. Step 03 reads them from this repository's `HEAD`, so they count once they
+are merged and the lab clone is up to date; the findings PR that carries them is the publication.
+
 ## 4. The reporter node
 
 `lab-3` is the reporter node (`LAB_REPORTER` chooses another). It is a lab
@@ -470,6 +493,7 @@ repository's, so a maintainer extracts it at the repository root:
 | Path in the tarball | From |
 | --- | --- |
 | `nodes/<node_id>.json` (three) | `entries` |
+| `nodes/commitments/<node_id>.json` and `nodes/commitments/policies/<node_id>.json` (three each) | `commitments` |
 | `population/live/population.json` | `entries` |
 | `reporter/reporter.json` | `entries` |
 | `findings/<date>-live/` | `loop` |

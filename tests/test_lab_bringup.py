@@ -127,6 +127,17 @@ class DryRunTest(unittest.TestCase):
                           f"--out {self.lab}/join/{name}", self.out)
             self.assertIn(f"rm -f {self.lab}/nodes/{name}/join-book/node.seed", self.out)
 
+    def test_commitments_from_each_live_node_console_after_bind_and_entries(self):
+        lines = self.out.splitlines()
+        cmds = [l for l in lines if "lab/commitments.py" in l]
+        self.assertEqual(len(cmds), 3, cmds)
+        for i, line in enumerate(cmds, 1):
+            self.assertIn(f"--console http://127.0.0.1:981{i}", line)
+        pos = lambda needle: next(i for i, l in enumerate(lines) if needle in l)
+        self.assertLess(pos("lab/bind.py"), pos("check_nodes.py"))
+        self.assertLess(pos("check_nodes.py"), pos("lab/commitments.py"))
+        self.assertLess(pos("lab/commitments.py"), pos("loop.sh --stage 1"))
+
     def test_loop_from_the_reporter_console_and_pack_list(self):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=stevenmih-3 "
                       "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LAB_DIR=", self.out)
@@ -842,6 +853,9 @@ class PackTest(LabFixture):
         for n in pop["nodes"]:
             n["node_id"] = self.ids[n["name"]]
             (self.root / "nodes" / f"{n['node_id']}.json").write_text("{}\n")
+            (self.root / "nodes" / "commitments" / "policies").mkdir(parents=True, exist_ok=True)
+            (self.root / "nodes" / "commitments" / f"{n['node_id']}.json").write_text("{}\n")
+            (self.root / "nodes" / "commitments" / "policies" / f"{n['node_id']}.json").write_text("{}\n")
         pop_path.write_text(json.dumps(pop))
         f = self.root / "findings" / f"{DAY}-live" / "12-join"
         f.mkdir(parents=True)
@@ -866,12 +880,26 @@ class PackTest(LabFixture):
                 self.assertEqual(hashlib.sha256(tar.extractfile(arc).read()).hexdigest(), digest)
         for node_id in self.ids.values():
             self.assertIn(f"nodes/{node_id}.json", names)
+            self.assertIn(f"nodes/commitments/{node_id}.json", names)
+            self.assertIn(f"nodes/commitments/policies/{node_id}.json", names)
         for arc in ("population/live/population.json", "reporter/reporter.json",
                     f"findings/{DAY}-live/12-join/finding.json", f"findings/{DAY}-live/run.json",
                     f"lab/runs/{DAY}/build.json", f"lab/runs/{DAY}/join/lab-2/commitment.json"):
             self.assertIn(arc, names)
         self.assertFalse([n for n in names if n.endswith((".seed", ".pem"))], names)
         self.assertEqual(set(manifest["files"]) | {f"lab/runs/{DAY}/MANIFEST.json"}, names)
+
+    def test_missing_commitments_stop_the_pack_naming_them(self):
+        node_id = next(iter(self.ids.values()))
+        (self.root / "nodes" / "commitments" / f"{node_id}.json").unlink()
+        errs = self.pack()
+        self.assertTrue(any(f"nodes/commitments/{node_id}.json" in e for e in errs), errs)
+
+    def test_refuses_a_nostr_key_in_a_commitment(self):
+        node_id = next(iter(self.ids.values()))
+        (self.root / "nodes" / "commitments" / f"{node_id}.json").write_text('{"controller": "npub1' + "q" * 58 + '"}\n')
+        errs = self.pack()
+        self.assertTrue(errs and "Nostr key" in errs[0], errs)
 
     def test_refuses_a_private_key(self):
         (self.lab / "join" / "lab-1" / "oops.json").write_text(
