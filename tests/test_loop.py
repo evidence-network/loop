@@ -250,6 +250,11 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--out", str(self.out), "--steps", "01,12")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "12 join PASS"])
+        # 08 reproduces what ran before it, so it runs last whatever order --steps gives; run.json lists that order.
+        r = self.loop("--out", str(self.out), "--steps", "08,01")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([x.split()[0] for x in r.stdout.splitlines()], ["01", "08"])
+        self.assertEqual(json.loads((self.out / "run.json").read_text())["steps"], ["01", "08"])
         self.assertEqual(self.loop("--out", str(self.out), "--steps", "04").returncode, 2)
         self.assertEqual(self.loop("--population", "staging").returncode, 2)
 

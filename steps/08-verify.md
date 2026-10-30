@@ -9,9 +9,14 @@ step's judge is loaded read-only from `steps/` with `importlib`.
 
 The expected steps come from the run's own `run.json` `steps` list (loop.sh writes the step numbers it runs), never
 from the directories present. A listed step with no `<NN>-*/finding.json` is a FAIL naming it, so deleting a step's
-directory can't turn a run green or a NOT_CHECKED into a PASS. A `run.json` with no `steps` list is a NOT_CHECKED
+directory can't turn a run green or a NOT_CHECKED into a PASS. The stage's own step list is loop.sh's (`STAGE_<n>`), so a `run.json` that lists fewer steps than its stage
+(a `--steps` subset, or a trimmed list) gives a NOT_CHECKED entry per step not run, never a PASS; an unknown stage is
+NOT_CHECKED too. `verified.json` records `run.json`'s sha256 and its list. A `run.json` with no `steps` list is a NOT_CHECKED
 entry: 08 can't tell a step left out from one never run. Step 04's scenarios are the repository's
 (`population/<p>/step04/scenarios/`), never the list its own finding gives; one missing from its proof is a FAIL.
+The same holds for the other trust anchors: 05's controller declarations match `step05/controllers.json`, 07's proof
+holds every ask of every node pair, 09's `dispute.json` is `step09/dispute.json` byte for byte, and 02 with a
+witness in the population must carry `witnesses.json`.
 
 ## What it does, per step
 

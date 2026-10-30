@@ -62,6 +62,15 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 
 
+def stages():
+    """{stage: [step numbers]} as loop.sh lists them (STAGE_<n>="01 02 ..."): the one list of what a stage runs."""
+    text = (ROOT / "loop.sh").read_text(encoding="utf-8")
+    return {m.group(1): m.group(2).split() for m in re.finditer(r'^STAGE_(\w+)="([0-9 ]+)"', text, re.M)}
+
+
+STAGES = stages()
+
+
 class Mismatch(Exception):
     """The re-run changed bytes the finding cites; the argument says which."""
 
@@ -131,7 +140,7 @@ def keys_01(c):
 def keys_02(c):
     w = load(c.pop / "population.json").get("witness")
     if not (c.work / "witnesses.json").is_file():
-        return []
+        return ["the population names a witness but witnesses.json is not in the proof"] if w else []
     if not w or repo_path(w["directory"]).read_bytes() != (c.work / "witnesses.json").read_bytes():
         return ["witnesses.json is not the repository's witness directory"]
     return []
@@ -157,9 +166,16 @@ def keys_04(c):
 
 
 def keys_05(c):
-    known = {pub_key(p) for p in c.pop.rglob("*.pub.pem")}
-    return [f"declarations.json controller_key {d.get('controller_key')} is not a repository key"
-            for d in load(c.work / "declarations.json") if d.get("controller_key") not in known]
+    """Each controller declaration is the repository's: its id, its controller key and the node keys it covers."""
+    want = {}
+    for ctl in load(c.pop / "step05" / "controllers.json")["controllers"]:
+        key = pub_key(repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
+        want[ctl["id"]] = (key, sorted(node_pubs(c.pop)[n] for n in ctl["nodes"]))
+    got = {}
+    for d in load(c.work / "declarations.json"):
+        got[d.get("controller_id")] = (d.get("controller_key"), sorted(d.get("evidence_keys") or []))
+    return [f"declarations.json controller {i} is {got.get(i)}, the repository's is {want.get(i)}"
+            for i in sorted(set(want) | set(got), key=str) if got.get(i) != want.get(i)]
 
 
 def keys_06(c):
@@ -169,31 +185,31 @@ def keys_06(c):
     return []
 
 
-def keys_07(c):
+def keys_07(c, m):
     pubs, bad = node_pubs(c.pop), []
-    # A proof that holds no node, or no ask, has nothing for the judge to check and would read PASS.
-    bad += [f"the proof holds no book of node {n}" for n in sorted(pubs) if not (c.work / n / "advertised" / "book.json").is_file()]
-    if not list(c.work.glob("*/asks/*/*/request.json")):
-        bad.append("the proof holds no ask request")
+    # Every ask the step puts to every node pair is in the proof, so a proof cut down to nothing to judge can't read PASS.
+    for a in pubs:
+        for b in pubs:
+            if a != b:
+                bad += [f"the proof holds no {a}/asks/{b}/{name}/request.json" for name in sorted(m.ASKS)
+                        if not (c.work / a / "asks" / b / name / "request.json").is_file()]
     for n in nodes_of(c.work, c.pop):
         f = c.work / n / "advertised" / "book.json"
         got = load(f).get("node_key") if f.is_file() else None
         if f.is_file() and got != pubs[n]:
             bad.append(f"{n}/advertised/book.json node_key {got} is not the repository key of node {n}")
+    bad += [f"the proof holds no book of node {n}" for n in sorted(pubs) if not (c.work / n / "advertised" / "book.json").is_file()]
     return bad + keys_commitments(c, "{n}/advertised/commitment.json")
 
 
 def keys_09(c, m):
+    """The dispute is the repository's (roles, node ids, key directories), byte for byte; the announced keys are its keys."""
+    repo = c.pop / "step09" / "dispute.json"
+    if repo.read_bytes() != (c.work / "dispute.json").read_bytes():
+        return ["dispute.json is not the repository's step09/dispute.json"]
     doc, announced = load(c.work / "dispute.json"), load(c.work / "announced.json")["announced_keys"]
     bad = []
-    nodes = {n["name"]: n for n in load(c.pop / "population.json")["nodes"]}
     for name, entry in doc["nodes"].items():
-        # The bundle must not name where its own trusted key is: a key_dir is the repository's or it is refused.
-        kd = entry.get("key_dir")
-        if kd and (repo_path(kd) != repo_path(nodes[name]["key_dir"]) if name in nodes
-                   else not repo_path(kd).resolve().is_relative_to(c.pop.resolve())):
-            bad.append(f"dispute.json key_dir of {name} is not the repository's key directory for it")
-            continue
         want = pub_key(m.key_dir_of(c.pop, name, entry) / "node-key.pub.pem")
         if announced.get(entry["node_id"]) != want:
             bad.append(f"announced.json key of {name} is {announced.get(entry['node_id'])}, the repository's is {want}")
@@ -315,9 +331,13 @@ STEPS = {
     "05": (rederive_05, keys_05),
     "06": (rederive_06, keys_06),
     "07": (rederive_07, keys_07),
-    "09": (rederive_09, None),  # keys_09 needs the module
+    "09": (rederive_09, keys_09),
     "12": (rederive_12, lambda c: keys_commitments(c, "{n}/commitment.json")),
 }
+
+
+# Key checks that read the step module too (its ASKS, its key_dir_of).
+NEEDS_MODULE = {"07", "09"}
 
 
 def canon(items):
@@ -354,7 +374,10 @@ def verify_step(d, pop_dir, population, tmp):
     if not isinstance(record, dict):
         entry["problems"].append("finding.json is not an object")
         return done("failed")
-    errs = finding.check_record(d, record)
+    try:
+        errs = finding.check_record(d, record)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        errs = [f"finding.json could not be checked ({type(e).__name__}: {str(e)[:200]})"]
     if errs:
         entry["problems"] += errs
         return done("failed")
@@ -375,7 +398,7 @@ def verify_step(d, pop_dir, population, tmp):
     c = Ctx(d, work, scratch, pop_dir, record)
 
     try:
-        if record["asserts"] == BROKE:
+        if record["asserts"] == BROKE and record["result"] == "FAIL":
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
                                  "loop.sh wrote this FAIL because the step broke before writing its own finding; "
                                  "there is no judged result to run again")
@@ -392,7 +415,7 @@ def verify_step(d, pop_dir, population, tmp):
                                  f"there is no step script steps/{d.name} to take its judge from")
         m = step_module(d.name)
         try:
-            bad = keys(c) if keys else keys_09(c, m)
+            bad = keys(c, m) if nn in NEEDS_MODULE else keys(c)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
             bad = [f"the keys in the proof could not be read ({e})"]
         if bad:
@@ -414,7 +437,7 @@ def verify_step(d, pop_dir, population, tmp):
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
     entry["problems"] += mismatches(record, again)
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in NUMBERS.get(nn, [])
-                          if (d / n).is_file() and (work / n).read_bytes() != (d / n).read_bytes()]
+                          if n in {p["path"] for p in record["proof"]} and (work / n).read_bytes() != (d / n).read_bytes()]
     return done("failed" if entry["problems"] else "reproduced")
 
 
@@ -462,16 +485,31 @@ def main(argv=None):
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
-    if expected_steps(out.parent) is None:
+    listed = expected_steps(out.parent)
+    if listed is None:
         not_checked.append({"what": "which steps the run holds",
                             "why": f"{out.parent.name}/run.json lists no steps, so 08 cannot tell a step left out "
                                    "from a step never run",
                             "issue": ISSUE})
+    else:
+        # The stage's steps are loop.sh's list, so a run.json cut down to fewer steps can't read as the whole stage.
+        stage = load(out.parent / "run.json").get("stage")
+        full = STAGES.get(stage)
+        if full is None:
+            not_checked.append({"what": "which steps the stage holds",
+                                "why": f"run.json names stage {stage!r}, which loop.sh does not list", "issue": ISSUE})
+        else:
+            own = out.name.split("-", 1)[0]
+            not_checked += [{"what": f"step {nn}: its finding reproduced",
+                             "why": f"this run did not run step {nn} of stage {stage} (run.json lists "
+                                    f"{', '.join(listed)})", "issue": ISSUE} for nn in full if nn not in listed and nn != own]
     if not entries:
         not_checked = [{"what": "the run's findings", "why": f"{out.parent.name} holds no other step's finding",
                         "issue": ISSUE}]
     result = "FAIL" if failed else ("NOT_CHECKED" if not_checked else "PASS")
-    manifest = {"run": out.parent.name, "population": population, "result": result, "steps": entries}
+    manifest = {"run": out.parent.name, "population": population, "result": result, "steps": entries,
+                "run_json": {"sha256": finding.sha256(out.parent / "run.json") if (out.parent / "run.json").is_file() else None,
+                             "steps": listed}}
     (out / "verified.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
     lines = []

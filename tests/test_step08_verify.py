@@ -74,9 +74,13 @@ def rehash(step_dir):
     dump(step_dir / "finding.json", f)
 
 
-def write_run_json(run, steps, population="rehearsal"):
+def write_run_json(run, steps, population="rehearsal", stage=None):
+    """run.json for a test run; its stage is one of its own (listing exactly these steps) unless stage is given."""
     Path(run).mkdir(parents=True, exist_ok=True)
-    dump(Path(run) / "run.json", {"population": population, "stage": "1", "started": "2026-10-30T00:00:00Z",
+    if stage is None:
+        stage = "t-" + "".join(steps)
+        step.STAGES[stage] = list(steps)
+    dump(Path(run) / "run.json", {"population": population, "stage": stage, "started": "2026-10-30T00:00:00Z",
                                    "steps": steps})
 
 
@@ -221,7 +225,7 @@ class Step08Test(unittest.TestCase):
         self.assertFailsNaming("09-dispute", entries, verdict)
         self.assertIn("the repository's is", verdict["detail"])
         # Mutant: without the key check the judge still catches it here (the key signs nothing it accepts).
-        with mock.patch.object(step, "keys_09", return_value=[]):
+        with mock.patch.dict(step.STEPS, {"09": (step.rederive_09, lambda c, m: [])}):
             verdict, _ = verify(self.run)
         self.assertEqual(verdict["result"], "FAIL")
         self.assertIn("re-derived FAIL", verdict["detail"])
@@ -286,7 +290,8 @@ class Step08Test(unittest.TestCase):
         (sd / "declarations.json").write_text("[]\n")
         finding.write(sd, result="PASS", population="rehearsal", asserts="a deal", pinned=[],
                       proof=["deal.json", "declarations.json"], detail="", started=finding.now())
-        with mock.patch.dict(os.environ, {"LOOP_STEP05_DEAL_BIN": str(Path(self.tmp.name) / "none")}):
+        with mock.patch.dict(os.environ, {"LOOP_STEP05_DEAL_BIN": str(Path(self.tmp.name) / "none")}), \
+                mock.patch.dict(step.STEPS, {"05": (step.rederive_05, lambda c: [])}):  # a stub fixture has no keys
             verdict, entries = verify(self.run)
         self.assertEqual(verdict["result"], "NOT_CHECKED")
         self.assertEqual(entries["05-deal"]["status"], "not_reproduced")
@@ -331,7 +336,42 @@ class Step08Test(unittest.TestCase):
         rehash(d)
         f, entries = verify(self.run)
         self.assertFailsNaming("09-dispute", entries, f)
-        self.assertIn("dispute.json key_dir of alice is not the repository's key directory", f["detail"])
+        self.assertIn("dispute.json is not the repository's step09/dispute.json", f["detail"])
+
+    def test_a_referee_swapped_for_the_requester_fails(self):
+        d = self.run / "09-dispute"
+        doc = load(d / "dispute.json")
+        doc["nodes"]["referee"]["key_dir"] = doc["nodes"]["requester"]["key_dir"]
+        dump(d / "dispute.json", doc)
+        rehash(d)
+        f, entries = verify(self.run)
+        self.assertFailsNaming("09-dispute", entries, f)
+
+    def test_a_run_json_cut_to_fewer_steps_than_its_stage_is_not_a_pass(self):
+        write_run_json(self.run, ["03", "06", "09", "08"], stage="1")  # stage 1 is loop.sh's 01 02 03 12 08
+        f, _ = verify(self.run)
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertTrue(any(x["what"] == "step 01: its finding reproduced" for x in f["not_checked"]), f["not_checked"])
+        manifest = load(self.run / "08-verify" / "verified.json")
+        self.assertEqual(manifest["run_json"]["steps"], ["03", "06", "09", "08"])
+        self.assertEqual(manifest["run_json"]["sha256"], finding.sha256(self.run / "run.json"))
+
+    def test_a_forged_pass_that_claims_loop_sh_broke_it_is_not_excused(self):
+        d = self.run / "06-settle"
+        f6 = load(d / "finding.json")
+        f6["asserts"] = step.BROKE
+        dump(d / "finding.json", f6)
+        f, entries = verify(self.run)
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", f["detail"])  # the claim excuses nothing
+
+    def test_a_malformed_finding_does_not_crash_08(self):
+        d = self.run / "06-settle"
+        f6 = load(d / "finding.json")
+        f6["proof"] = [5]
+        dump(d / "finding.json", f6)
+        f, entries = verify(self.run)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertTrue((self.run / "08-verify" / "verified.json").is_file())
 
     def test_a_corrupted_cited_commitment_the_judge_would_replace_fails(self):
         d = self.run / "03-advertise"
@@ -352,7 +392,7 @@ class Step08Test(unittest.TestCase):
         # Mutant: with the run.json list ignored, the missing step goes unnoticed.
         with mock.patch.object(step, "expected_steps", return_value=["03", "09", "08"]):
             f, _ = verify(self.run)
-        self.assertEqual(f["result"], "PASS")
+        self.assertNotIn("run.json lists step 06", f["detail"])
 
     def test_a_missing_live_step_does_not_turn_not_checked_into_pass(self):
         live = Path(self.tmp.name) / "live"
@@ -451,7 +491,7 @@ class Step08RehearsalTest(unittest.TestCase):
             v = load(out / "finding.json")
             self.assertEqual(v["result"], "FAIL", v["detail"])
             self.assertIn("the proof holds no book of node", v["detail"])
-            self.assertIn("the proof holds no ask request", v["detail"])
+            self.assertIn("the proof holds no alice/asks/bob/exchange/request.json", v["detail"])
 
     def test_a_scenario_dropped_from_04s_proof_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
