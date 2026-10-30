@@ -50,7 +50,7 @@
           "result": "PASS"
         },
         "12": {
-          "finding_sha256": "0518105877342220dc65ca20c21c5ae29f9e73b62dbfcba5f8ac602e0119ad92",
+          "finding_sha256": "78fbbc48271dc3214c8abe602a64cd88d870960ba319d760160e5b720365bf3d",
           "result": "NOT_CHECKED"
         }
       }
