@@ -57,6 +57,11 @@ witness receipt is unwitnessed; today's lab books are.
 Each card names its **community**: `mesh-llm` or `muse`. `join.sh` writes
 `mesh-llm`, and a `/0` card reads as `mesh-llm`.
 
+The live lab nodes' commitments are the ones their own plugin signs and serves (`commitment` tool,
+capsules-plugin#75). `lab/lab.sh commitments` writes the commitment as returned, byte for byte, with its policy
+at `nodes/commitments/policies/<node_id>.json`; the harness never signs for a live node. A commitment carries
+no controller key or npub, only `controller_binding.digest` when a binding exists.
+
 A card's witnesses are read from the witness receipts inside it, each naming
 its witness in a `witness` member (`RECEIPT_WITNESS` in
 `scripts/history_cards.py`). That name is **provisional** until a receipt

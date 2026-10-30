@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|bind|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -22,6 +22,10 @@
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
 #             (with LAB_TWINS) the four-node $LAB_DIR/population-twins/population.json that dispute reads, and
 #             reporter/reporter.json here
+#   commitments  each node's own signed commitment (the plugin's console `commitment` tool), written exactly as
+#             returned to nodes/commitments/<node_id>.json with its policy at nodes/commitments/policies/<node_id>.json,
+#             so step 03 can fetch it from HEAD once it is merged. Signs nothing; refuses one that does not verify
+#             or is not under the key nodes/<node_id>.json lists. Order: join, bind, entries, commitments, pack
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #             (and the reporter node itself from a second node's console)
 #   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
@@ -39,7 +43,7 @@
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and wait for its shutdown checkpoint
-#   all       check, tools, start, exchange, wait for the first checkpoints, join, entries, loop, pack
+#   all       check, tools, start, exchange, wait for the first checkpoints, join, bind, entries, commitments, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
 # changes nothing.
@@ -691,6 +695,16 @@ cmd_entries() {
   run python3 -B "$ROOT/scripts/check_nodes.py" "$ROOT/nodes"
 }
 
+# Publish each live node's own signed commitment (lab/commitments.py). After bind (a binding changes the
+# commitment) and entries (it checks the node's key against nodes/<node_id>.json).
+cmd_commitments() {
+  local n dry=(); [ "$DRY" = 1 ] && dry=(--dry-run)
+  for n in "${NODES[@]}"; do
+    [ "$n" = lab-4 ] && continue # twins-only: not a committed live node
+    run python3 -B "$ROOT/lab/commitments.py" --console "$(console "$n")" "${dry[@]+"${dry[@]}"}"
+  done
+}
+
 # The reporter's console, never the default 3131: other nodes on the lab host may answer there.
 # A node can't be asked through its own console, so steps 12 and 07 ask the reporter node through a
 # second node's console: lab-1's, or lab-2's when lab-1 is the reporter.
@@ -837,10 +851,10 @@ cmd_all() {
   cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
-  cmd_join; cmd_bind; cmd_entries; cmd_loop; cmd_pack
+  cmd_join; cmd_bind; cmd_entries; cmd_commitments; cmd_loop; cmd_pack
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | bind | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | bind | entries | commitments | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
