@@ -1,7 +1,7 @@
 {
   "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
   "detail": "stevenmih-1: PASS via git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json; stevenmih-2: PASS via git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json; stevenmih-3: PASS via git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json. Runner tools: OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0 (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (stevenmih-1, stevenmih-2, stevenmih-3) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (stevenmih-1, stevenmih-2, stevenmih-3) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
-  "finished": "2026-10-30T06:00:30Z",
+  "finished": "2026-10-30T08:47:02Z",
   "name": "advertise",
   "not_checked": [],
   "pinned": {},
@@ -9,7 +9,7 @@
   "proof": [
     {
       "path": "stevenmih-1.commitment.json",
-      "sha256": "22fd29258a225b0533961d6de284424a854d7f7b5baaf9c23aa8474cf052d4be"
+      "sha256": "9dea2090eb90b28ac3215afd4fb598a6a7e6cf1b3abaf264af1d8c11a97a860c"
     },
     {
       "path": "stevenmih-1.policy.json",
@@ -17,7 +17,7 @@
     },
     {
       "path": "stevenmih-2.commitment.json",
-      "sha256": "c384ae358b1416d7cfaa4dbd1f93324f14e19cfdcee2bfcec89093b383900d4d"
+      "sha256": "4e3639391fd6603c11774a68a73f49bfac19c050c56a8eb698a5a71f5d01ebce"
     },
     {
       "path": "stevenmih-2.policy.json",
@@ -25,7 +25,7 @@
     },
     {
       "path": "stevenmih-3.commitment.json",
-      "sha256": "7cbd4934e9fab32aa62ce4f6fd4f9106e0be9745fee1078d6aca468bd49aea44"
+      "sha256": "258e867d7469c49f023ca04fd7ac7fa5988e9e08fa626e2b1cec098abfb7b33a"
     },
     {
       "path": "stevenmih-3.policy.json",
@@ -33,10 +33,10 @@
     },
     {
       "path": "verification.json",
-      "sha256": "eebc5b6f479c1491e1321dc20efb2ca826e25a81c04c4419e610a1ebe8aa12c3"
+      "sha256": "bd2892a1411a7b03e1756e5efd9d5cc853ad05221936308802ab6bbd3356160d"
     }
   ],
   "result": "PASS",
-  "started": "2026-10-30T06:00:30Z",
+  "started": "2026-10-30T08:47:02Z",
   "step": "03"
 }

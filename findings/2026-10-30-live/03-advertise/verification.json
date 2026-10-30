@@ -8,7 +8,7 @@
           "community": "mesh-llm",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "8b5b645f1d0e41ffd6107eb7a4f382caeac3091f213ff0d3ed4ca1efcf8fa6bc",
+          "sha256": "7dd35e0b87f40788ce6cb8bf01047f18559eaef0ce02dd0eb694ecad47b07e36",
           "stream": "capsules/511b5b4246cf58e7",
           "stream_started": "2026-10-28",
           "witnesses": []
@@ -20,7 +20,7 @@
       "notes": [],
       "policy_digest": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73",
       "result": "PASS",
-      "sha256": "22fd29258a225b0533961d6de284424a854d7f7b5baaf9c23aa8474cf052d4be",
+      "sha256": "9dea2090eb90b28ac3215afd4fb598a6a7e6cf1b3abaf264af1d8c11a97a860c",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     },
@@ -32,7 +32,7 @@
           "community": "mesh-llm",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "a1a434b2b377d7e1358b6fd80df7aa3e6e772066028152682551f321fc3df299",
+          "sha256": "37e9d6962c65ca24b41e50281f5e611e1633b36603a8ac768ad1d499d6cd5510",
           "stream": "capsules/7e04d3e3fec1332f",
           "stream_started": "2026-10-28",
           "witnesses": []
@@ -44,7 +44,7 @@
       "notes": [],
       "policy_digest": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165",
       "result": "PASS",
-      "sha256": "c384ae358b1416d7cfaa4dbd1f93324f14e19cfdcee2bfcec89093b383900d4d",
+      "sha256": "4e3639391fd6603c11774a68a73f49bfac19c050c56a8eb698a5a71f5d01ebce",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     },
@@ -56,7 +56,7 @@
           "community": "mesh-llm",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "201d1458aed2e44a8149de04d664c4716d3b13f820447f07521a2cc4c2c31085",
+          "sha256": "9f476ae2a5705aa037d5268132d937f437045015e2aa47a15b9d2affb15b6215",
           "stream": "capsules/93d20518801ba715",
           "stream_started": "2026-10-28",
           "witnesses": []
@@ -68,7 +68,7 @@
       "notes": [],
       "policy_digest": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25",
       "result": "PASS",
-      "sha256": "7cbd4934e9fab32aa62ce4f6fd4f9106e0be9745fee1078d6aca468bd49aea44",
+      "sha256": "258e867d7469c49f023ca04fd7ac7fa5988e9e08fa626e2b1cec098abfb7b33a",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the node (never the harness)"
     }
