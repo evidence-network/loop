@@ -319,11 +319,7 @@ def rederive_09(m, c):
 
 
 def rederive_12(m, c):
-    raise Unreproducible(
-        "step 12: its result re-derived from its proof bytes",
-        "its judge verifies the kept probe answers again in the stranger's book (<node>/probe/stranger/: its keys, "
-        "profile and store holding the asked records), which the finding does not name in proof, so those bytes "
-        "are not cited by digest; and a FAIL also comes from join.sh's exit code, which the bundle does not carry")
+    return m.decide(c.work, c.population, c.started, c.pop)
 
 
 STEPS = {

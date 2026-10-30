@@ -261,27 +261,22 @@ class Step08Test(unittest.TestCase):
 
     # --- Not reproduced is never a pass ----------------------------------------------------------
     def test_a_step_that_cannot_be_reproduced_is_not_checked_not_pass(self):
-        sd = self.run / "12-join"
+        sd = self.run / "11-report"  # 08 has no re-derivation for step 11
         sd.mkdir()
         (sd / "alice").mkdir()
         shutil.copyfile(self.run / "03-advertise" / "alice.commitment.json", sd / "alice" / "commitment.json")
-        finding.write(sd, result="PASS", population="rehearsal", asserts="a join", pinned=[],
+        finding.write(sd, result="PASS", population="rehearsal", asserts="a report", pinned=[],
                       proof=["alice/commitment.json"], detail="", started=finding.now())
         verdict, entries = verify(self.run)
         self.assertEqual(verdict["result"], "NOT_CHECKED", verdict["detail"])
-        self.assertEqual(entries["12-join"]["status"], "not_reproduced")
-        self.assertIsNone(entries["12-join"]["rederived"])
+        self.assertEqual(entries["11-report"]["status"], "not_reproduced")
+        self.assertIsNone(entries["11-report"]["rederived"])
         [nc] = verdict["not_checked"]
         self.assertEqual(sorted(nc), ["issue", "what", "why"])
         self.assertEqual(nc["issue"], "evidence-network/loop#24")
-        self.assertIn("probe/stranger", nc["why"])
-        self.assertIn("12-join: recorded PASS, not reproduced", verdict["detail"])
+        self.assertIn("no re-derivation", nc["why"])
+        self.assertIn("11-report: recorded PASS, not reproduced", verdict["detail"])
         self.assertEqual(finding.check(self.run), [])
-        # Mutant: a 08 that took step 12's PASS on trust would pass the run.
-        trust = (lambda m, c: c.record, step.STEPS["12"][1])
-        with mock.patch.dict(step.STEPS, {"12": trust}):
-            verdict, _ = verify(self.run)
-        self.assertEqual(verdict["result"], "PASS")
 
     def test_a_step_whose_tool_is_missing_is_not_checked(self):
         sd = self.run / "05-deal"
@@ -479,7 +474,7 @@ class Step08NotCheckedListTest(unittest.TestCase):
 class Step08RehearsalTest(unittest.TestCase):
     """08 on a rehearsal run of every existing step: as steps/08-verify.md's table says."""
 
-    def test_every_step_but_12_is_reproduced(self):
+    def test_every_step_is_reproduced(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "2026-10-30-rehearsal"
             for base in ("01-seal", "02-book", "03-advertise", "04-admit", "05-deal", "06-settle", "07-ask",
@@ -489,9 +484,8 @@ class Step08RehearsalTest(unittest.TestCase):
             run_step("08-verify", run)
             f = load(run / "08-verify" / "finding.json")
             entries = {e["dir"]: e for e in load(run / "08-verify" / "verified.json")["steps"]}
-            self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
-            self.assertEqual({d: e["status"] for d, e in entries.items()},
-                             {**{d: "reproduced" for d in entries if d != "12-join"}, "12-join": "not_reproduced"})
+            self.assertEqual(f["result"], "PASS", f["detail"])
+            self.assertEqual({d: e["status"] for d, e in entries.items()}, {d: "reproduced" for d in entries})
             self.assertEqual(len(entries), 9)
             self.assertEqual(subprocess.run([sys.executable, "-B", str(STEPS / "finding.py"), "check", str(run)]
                                             ).returncode, 0)

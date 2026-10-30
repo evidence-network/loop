@@ -49,14 +49,7 @@ not hold, and the sha256 of every file 08 read.
 | 06 Settle | `decide` on the copies | node keys; `rail-key.pub.pem` is the repository's rail key | openssl |
 | 07 Ask | `judge_run` and `conclude` | each `advertised/book.json` `node_key`, each advertised commitment's `key_id` | capsulectl, capsulectl-book |
 | 09 Dispute | `decide` | each announced key (alice, bob, the step09 referee and requester) | openssl |
-| 12 Join | not reproduced | each commitment's `key_id` | |
-
-**12 is not reproduced.** Its judge verifies the kept probe answers again in the stranger's book
-(`<node>/probe/stranger/`: its keys, profile and the store that holds the asked records). The finding doesn't
-name those files in `proof`, so their bytes are not cited by digest. A FAIL can also come from join.sh's exit
-code, which the bundle doesn't carry. Either change would make it reproducible: cite the stranger's files, or
-re-verify the answers in a fresh verifier book from `request.json` alone, as step 07's `Verifier` does. Step 12
-also needs to record join.sh's exit code in a proof file.
+| 12 Join | `decide` on the cited proof (join.sh's kept exit code, the stranger's book) | each commitment's `key_id` | capsulectl |
 
 **Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a step whose tool isn't
 installed where 08 runs, a step 08 has no re-derivation for, and every live finding. A live judge reads a lab
