@@ -142,7 +142,9 @@ class StatusPageTest(unittest.TestCase):
         page = (self.dir / "_site" / "status-muse" / "index.html").read_text()
         self.assertIn("<title>Loop status (muse)</title>", page)
         self.assertIn("<h1>Loop status (muse)</h1>", page)
-        self.assertIn("loop (muse):", (self.dir / "_site" / "status-muse" / "badge.svg").read_text())
+        badge = (self.dir / "_site" / "status-muse" / "badge.svg").read_text()
+        self.assertIn("loop (muse):", badge)
+        self.assertIn(">loop (muse)</text>", badge)
         self.assertFalse((self.dir / "_site" / "status").exists())
 
     def build(self):

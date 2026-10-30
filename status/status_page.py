@@ -522,16 +522,16 @@ def badge(rs, eco="mesh"):
     """A flat SVG badge: "loop" beside one row per population, "<population> <counts>", each row coloured by that
     population's worst row. Two rows keep it narrow enough for a phone."""
     rows = [(f"{p} {counts(rs, p)}", BADGE_COLOURS[worst(rs, p)]) for p in POPULATIONS]
-    head = 10 + 7 * len("loop")
+    name = "loop" if eco == "mesh" else f"loop ({eco})"
+    head = 10 + 7 * len(name)
     w = max(10 + 7 * len(text) for text, _ in rows)
     height = 20 * len(rows)
     rects = [f'<rect x="0" width="{head}" height="{height}" fill="#3d3d3a"/>']
-    texts = [f'<text x="{head / 2}" y="{height / 2 + 4}">loop</text>']
+    texts = [f'<text x="{head / 2}" y="{height / 2 + 4}">{e(name)}</text>']
     for i, (text, colour) in enumerate(rows):
         rects.append(f'<rect x="{head}" y="{20 * i}" width="{w}" height="20" fill="{colour}"/>')
         texts.append(f'<text x="{head + w / 2}" y="{20 * i + 14}">{e(text)}</text>')
     label = e(badge_label(rs))
-    name = "loop" if eco == "mesh" else f"loop ({eco})"
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{head + w}" height="{height}" role="img" '
             f'aria-label="{name}: {label}"><title>{name}: {label} (each colour is the worst row of its population)</title>'
             f"{''.join(rects)}"
