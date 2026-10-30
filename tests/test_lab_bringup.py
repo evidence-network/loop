@@ -724,6 +724,26 @@ class EntriesTest(LabFixture):
         self.assertIn(f"lab/runs/{DAY}/population-twins/population.json", arcs)
         self.assertTrue(any("/join/" in a and a.endswith("-4/commitment.json") for a in arcs), sorted(arcs))
 
+    def test_a_later_entries_run_without_the_twins_node_drops_the_old_twins_population(self):
+        self._lab_4()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"]), [])
+        self.assertTrue((self.lab / "population-twins" / "population.json").is_file())
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pack.entries(self.root, self.lab, "lab-operator", "lab-3"), [])
+        self.assertFalse((self.lab / "population-twins" / "population.json").exists())
+        files, _ = pack.plan(self.root, self.lab, DAY)
+        self.assertFalse(any("population-twins" in a for a, _ in files))
+
+    def test_a_missing_twins_only_join_is_reported_by_the_pack(self):
+        self._lab_4()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+        with contextlib.redirect_stdout(io.StringIO()):
+            pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
+        _, missing = pack.plan(self.root, self.lab, DAY)
+        self.assertTrue(any("LAB_TWINS=1 lab/lab.sh join" in m for m in missing), missing)
+
     def test_the_reporter_cannot_be_the_twins_only_node(self):
         r = lab_sh("entries", env={"LAB_DIR": str(self.lab), "LAB_REPORTER": "lab-4", "LAB_OPERATOR": "x"})
         self.assertEqual(r.returncode, 2)

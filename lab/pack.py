@@ -139,6 +139,11 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
             extra.append({"name": f"{prefix}-{host.rsplit('-', 1)[-1]}", "host": "lab",
                           "data_dir": f"$LAB_DIR/nodes/{host}/.local/share/capsules",
                           "book_dir": f"$LAB_DIR/nodes/{host}/join-book"})
+    stale = Path(lab_dir) / "population-twins" / "population.json"
+    if not add_hosts and stale.is_file() and not dry_run:
+        # An entries run without the twins-only node: an earlier twins run's population must not ride along into this pack.
+        stale.unlink()
+        print(f"removed {stale} (left by an earlier twins run)")
     writes = []
     reporter_identity = None
     for node in pop["nodes"]:
@@ -240,7 +245,10 @@ def plan(root, lab_dir, day):
         files.append((f"{run}/population-twins/population.json", twins_path))
         for node in load(twins_path)["nodes"]:
             if host_name(node) not in {host_name(n) for n in pop["nodes"]}:
-                files += walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
+                joined = walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
+                if not joined:
+                    missing.append(f"{run}/join/{node['name']}/ (run LAB_TWINS=1 lab/lab.sh join)")
+                files += joined
     files = [(a, p) for a, p in files if not p.name.endswith(SKIP_SUFFIXES)]
     missing += [a for a, p in files if not p.is_file()]
     return [(a, p) for a, p in files if p.is_file()], missing
