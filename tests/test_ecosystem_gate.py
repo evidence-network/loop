@@ -67,7 +67,7 @@ class GateTest(unittest.TestCase):
         doc = json.loads(self.baseline.read_text())
         doc["not_checked_is_regression"] = False
         gate.write(self.baseline, doc)
-        self.assertEqual(self.update("c", {"01": "NOT_CHECKED"}), [])
+        self.assertEqual(self.update("c", {"01": "NOT_CHECKED"}), [])  # compare() itself still honours the switch
 
     def test_missing_step_is_a_regression(self):
         self.update("a", {"01": "PASS", "02": "PASS"})
@@ -175,6 +175,23 @@ class GateTest(unittest.TestCase):
         newp = self.dir / "new.json"
         newp.write_text(json.dumps(new))
         self.assertEqual(len(gate.cmd_check(old, newp)), 1)
+
+    def test_verify_requires_the_switch_on(self):
+        self.update("a", {"01": "PASS"})
+        doc = json.loads(self.baseline.read_text())
+        doc["not_checked_is_regression"] = False
+        gate.write(self.baseline, doc)
+        self.assertEqual(len(gate.cmd_verify(self.baseline)), 1)
+
+    def test_update_reads_a_missing_ecosystem_in_run_json_as_mesh(self):
+        out = self.run_dir("a", {"01": "PASS"})
+        (out / "run.json").write_text(json.dumps({"stage": "1", "population": "live", "started": "t"}))
+        self.assertEqual(gate.cmd_update("mesh", out, self.baseline), [])
+        self.assertEqual(len(gate.cmd_update("muse", out, self.baseline)), 1)
+        (out / "run.json").write_text(json.dumps({"ecosystem": "muse", "stage": "1", "population": "live",
+                                                  "started": "t"}))
+        self.assertEqual(len(gate.cmd_update("mesh", out, self.baseline)), 1)
+        self.assertEqual(gate.cmd_update("muse", out, self.baseline), [])
 
     def test_exit_codes(self):
         self.update("a", {"01": "PASS"})
