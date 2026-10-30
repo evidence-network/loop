@@ -359,8 +359,9 @@ def live_unclaimed(unclaimed, unkeyed):
     if unclaimed:
         parts.append(f"{unclaimed} are unclaimed: `cross_language signature` finds no producer signature on them")
     if unkeyed:
-        parts.append(f"{unkeyed} verify but their citing record names no sender_key_id, so the key was not compared")
-    return {"what": "the held half's producer signature, in a second language", "issue": live.ISSUE,
+        parts.append(f"{unkeyed} verify but their citing record names no sender_key_id (sealed by a build before the pinned one), so the key was not compared")
+    return {"what": "the held half's producer signature, in a second language",
+            "issue": LIVE_NO_VIA if not unclaimed else live.NO_ISSUE_YET,
             "why": "held halves: " + "; ".join(parts)}
 
 
@@ -422,7 +423,8 @@ def capsule_checks(raw):
 
 def signature_check(raw, expected_key):
     """The producer-signature verdict of the held record by the AAC Go verifier (`cross_language signature`), and
-    that it was authored under `expected_key`: (state, detail) with state "ok", "unclaimed" or "bad". Any exit
+    that it was authored under `expected_key`: (state, detail) with state "ok", "unclaimed", "unkeyed" (authored,
+    no key to compare it to) or "bad". Any exit
     other than authored, invalid or unclaimed means the step cannot run, not that the half is bad."""
     v = subprocess.run([str(cross_language()), "signature"], input=raw.encode(), capture_output=True, timeout=120)
     verdict = SIGNATURE_VERDICT_EXIT.get(v.returncode)
@@ -653,7 +655,7 @@ def tie(citing, nonce, role, own_lines, held):
 def live_node(bin_, name, data_dir, out, work):
     """Check every half the node holds: (result, proof, detail, pairs, summary).
 
-    summary: {"judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
+    summary: {"unclaimed", "unkeyed", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
     are judged on the halves sealed under the current build (LOOP_SEALED_SINCE); an earlier half still has its
     bytes, provenance, inclusion and citation checked."""
     out.mkdir(parents=True, exist_ok=True)
@@ -706,9 +708,6 @@ def live_node(bin_, name, data_dir, out, work):
             ok, detail = capsule_checks(citing[0])
             c["cited"] = {"ok": ok, "detail": f"record {parsed(citing[0]).get('capsule_id')} cites it: {detail}"}
             record = parsed(citing[0])
-            rh = ((record.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
-            state, detail = signature_check(raw, rh.get("sender_key_id") if isinstance(rh, dict) else None)
-            c["signature"] = {"ok": state != "bad", "state": state, "detail": detail}
             c["current_build"] = not before(record, since)
             if c["current_build"]:
                 c["accepted"] = accepted(record, capsule)
@@ -717,6 +716,12 @@ def live_node(bin_, name, data_dir, out, work):
                 c["tied"] = {"ok": state != "bad", "state": state, "detail": detail}
                 if inc is not None:
                     c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
+        # The producer signature is checked on every held half, cited or not; the key it must be authored under is
+        # the one the node's citing record accepted (none when no record cites it).
+        rh = (((parsed(citing[0]) or {}).get("model_attestation") or {}).get("compute_attestation") or {}).get(
+            "received_half") if citing else None
+        state, detail = signature_check(raw, rh.get("sender_key_id") if isinstance(rh, dict) else None)
+        c["signature"] = {"ok": state != "bad", "state": state, "detail": detail}
         checks.append(c)
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
                                                  "held": checks}, indent=2, sort_keys=True) + "\n")

@@ -610,6 +610,7 @@ class Step05DealLiveTest(unittest.TestCase):
     def test_live_a_half_authored_under_another_key_than_the_accepted_one_fails(self):
         self.reseal_citing(sender_key_id="ab" * 32)
         f = self.run_live()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("authored under key", f["detail"])
         self.assertIn("not the sender key the node accepted", f["detail"])
 
@@ -622,6 +623,15 @@ class Step05DealLiveTest(unittest.TestCase):
                          "unclaimed")
         gap = self.names(f)["the held half's producer signature, in a second language"]
         self.assertIn("1 are unclaimed", gap["why"])
+
+    def test_live_an_uncited_half_still_has_its_signature_checked(self):
+        records = [r for r in self.lines() if "received_half" not in (r["model_attestation"].get("compute_attestation") or {})]
+        self.write_lines(records)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("held-1 cited", f["detail"])
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertEqual(c["signature"]["state"], "unkeyed")
 
     def test_live_a_half_with_no_accepted_sender_key_is_unkeyed_not_a_pass(self):
         self.reseal_citing(accepted_via=None, sender_key_id=None)
