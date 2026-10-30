@@ -405,6 +405,18 @@ class Step05BindingCheckTest(unittest.TestCase):
             state, detail = self.with_key_types(types)
             self.assertEqual(state, "bad", detail)
 
+    def test_only_a_check_that_ran_and_passed_is_verified(self):
+        for state in ("unread", "unsupported", "unsupported_key_type", "unlisted", "unkeyed", "unclaimed", "uncited"):
+            c = step.state_check(state, "d")
+            self.assertEqual((c["ok"], c["verified"], c["state"]), (True, False, state), state)
+        for state in ("never_tied", "ambiguous"):
+            c = step.state_check(state, "d", passed="tied")
+            self.assertEqual((c["ok"], c["verified"]), (True, False), state)
+        self.assertTrue(step.state_check("tied", "d", passed="tied")["verified"])
+        self.assertEqual(step.state_check("bad", "d")["ok"], False)
+        self.assertEqual(step.state_check("bad", "d")["verified"], False)
+        self.assertEqual((step.state_check("ok", "d")["ok"], step.state_check("ok", "d")["verified"]), (True, True))
+
     def test_unsupported_key_types_reads_only_a_key_types_list(self):
         self.assertEqual(step.unsupported_key_types('{"key_types": ["ed25519", "bip340"]}', 2), ["bip340"])
         self.assertEqual(step.unsupported_key_types('{"key_types": ["bip340", "rsa"]}', 2), [])
