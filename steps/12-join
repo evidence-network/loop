@@ -401,7 +401,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     binding is optional. Only the digest is read, never the operator's key.
 
     Two ties keep the comparison about this node: the doctor console must answer as this node (its own
-    commitment names node_id), and the fetched commitment must be under the node's listed key. The plugin
+    commitment names node_id), and the fetched commitment must be under the node's listed key (key_id). The plugin
     reads both digests from the same held file, so this shows the node is consistent, not an independent check
     of the binding. A binding whose window closes between the two calls shows as one FAIL; that is rare, and
     a rerun settles it.
@@ -410,12 +410,14 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
         return None, no_binding(name, why), f"{name}: binding not read"
 
     own = post_json(doctor_console + OWN_COMMITMENT_ROUTE, {}, timeout)
-    answered_as = ((own or {}).get("commitment") or {}).get("node_id") if isinstance(own, dict) else None
+    mine = own.get("commitment") if isinstance(own, dict) else None
+    answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != node_id:
         return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
     doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
     findings = doctor.get("findings") if isinstance(doctor, dict) else None
-    found = {f.get("check"): f for f in findings if isinstance(f, dict)} if isinstance(findings, list) else {}
+    found = {f["check"]: f for f in findings if isinstance(f, dict) and isinstance(f.get("check"), str)} \
+        if isinstance(findings, list) else {}
     finding_ = found.get("controller_binding")
     if finding_ is None or finding_.get("state") not in ("bound", "unbound"):
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
@@ -428,7 +430,8 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
         return unreadable("its commitment could not be fetched and checked through the console that asks it"
                           + (f" ({'; '.join(map(str, fetched['problems']))})" if isinstance(fetched, dict)
                              and fetched.get("problems") else ""))
-    if fetched["commitment"].get("key_id") != key_id and fetched.get("announced_key") != "matches":
+    # announced_key only says the commitment matches the host's announced key, not the listed one.
+    if fetched["commitment"].get("key_id") != key_id:
         return unreadable(f"its commitment is not under the listed key {key_id}")
     named = (fetched["commitment"].get("controller_binding") or {}).get("digest")
     if named != held:

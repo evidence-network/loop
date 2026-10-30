@@ -479,6 +479,23 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn("not under the listed key", " ".join(i["why"] for i in r["not_checked"]))
 
+    def test_an_announced_key_does_not_stand_in_for_the_listed_key(self):
+        r = self.run_lab("self", "second", doctor=("unbound", None), key_id="7" * 64)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])  # the fake never sets announced_key: matches
+
+    def test_a_doctor_finding_whose_check_is_not_a_string_is_not_checked(self):
+        self.assert_unreadable_doctor({"findings": [{"check": []}]})
+
+    def test_an_own_commitment_that_is_not_an_object_is_not_checked(self):
+        real = step.post_json
+        step.post_json = lambda url, body, timeout: {"commitment": [1]}
+        try:
+            fail, nc, _ = step.check_binding("lab-1", "1" * 64, LISTED, "http://x", "http://y", 1)
+        finally:
+            step.post_json = real
+        self.assertIsNone(fail)
+        self.assertIn("answers as no node", nc["why"])
+
     def test_a_malformed_node_console_is_refused(self):
         self.assertEqual(step.main(["--population", str(self.out), "--out", str(self.out), "--node-console", "lab-1"]), 2)
 
