@@ -6,6 +6,7 @@ the AAC Go verifier step 01's setup installs. Without them these tests SKIP,
 saying so: they never pass without the verifier. With LOOP_REQUIRE_TOOLS=1
 (CI, after the setups ran) a missing tool is an error instead.
 """
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -430,6 +431,10 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertIn("accepted the half's key via host_announced", f["detail"])
         checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
         self.assertTrue(checks[0]["accepted"]["bound"] and checks[0]["accepted"]["ok"])
+        [node_file] = (self.nodes / "commitments").glob("*.json")
+        self.assertEqual(checks[0]["accepted"]["commitment"],
+                         {"path": f"nodes/commitments/{node_file.name}",
+                          "sha256": hashlib.sha256(node_file.read_bytes()).hexdigest()})
         self.assertEqual(finding.check(self.findings), [])
 
     def test_live_a_bound_key_with_no_same_controller_member_still_counts(self):
@@ -464,6 +469,19 @@ class Step05DealLiveTest(unittest.TestCase):
         f = self.run_live()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("a counterparty whose key is bound to the receiver's own controller", f["detail"])
+
+    def test_live_a_same_controller_counterparty_fails_even_with_no_accepted_via(self):
+        self.reseal_citing(accepted_via=None, same_controller_as_receiver=True)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a counterparty whose key is bound to the receiver's own controller", f["detail"])
+
+    def test_live_a_node_entry_with_no_commitment_file_stays_not_checked(self):
+        self.publish_binding("cd" * 32)
+        for f in (self.nodes / "commitments").glob("*.json"):
+            f.unlink()
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        self.assertEqual(len(self.acceptance_entries(self.run_live())), 1)
 
     def test_live_a_declaration_with_a_digest_and_no_anchor_key_is_accepted(self):
         self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32)

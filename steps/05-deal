@@ -87,6 +87,7 @@ step itself broke (no driver installed, unreadable population).
 """
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -288,9 +289,9 @@ LIVE_DEFAULT = {
 }
 VIA_KEY = ("host_announced", "operator_stopgap")
 LIVE_DECLARATION = {
-    "what": "the controller declaration a node accepted a half under",
-    "why": "the citing record names the declaration's digest and anchor key; its bytes are not in the data dir, "
-           "and no released verifier checks controller-binding/0",
+    "what": "the controller declaration or operator binding a node accepted a half under",
+    "why": "the citing record names the binding's digest (and its anchor key when it has one); its bytes are not "
+           "in the data dir, and no released verifier checks controller-binding/0",
     "issue": BINDING_VERIFIER_ISSUE,
 }
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
@@ -381,25 +382,29 @@ def is_key(v):
 
 
 def nodes_dir():
-    """The node list whose commitments the sender's binding is read from: this checkout's nodes/ (HEAD)."""
+    """The node list whose commitments the sender's binding is read from: this clone's nodes/ working tree, as
+    `lab.sh commitments` writes it (lab/commitments.py), not necessarily committed."""
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
 def published_binding(key_id):
-    """The controller_binding.digest in the commitment the node holding evidence key `key_id` published at
-    nodes/commitments/<node_id>.json (loop#88), or None: no such node, no commitment, or no binding."""
+    """(controller_binding.digest, {path, sha256}) of the commitment the node holding evidence key `key_id`
+    published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
+    commitment, and a None digest when the commitment carries no binding. The path and the sha256 of the bytes
+    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes."""
     d = nodes_dir()
     for entry in sorted(d.glob("*.json")):
         try:
             node = json.loads(entry.read_text(encoding="utf-8"))
             if node.get("key_id") != key_id:
                 continue
-            doc = json.loads((d / "commitments" / f"{node['node_id']}.json").read_text(encoding="utf-8"))
-            digest = (doc.get("controller_binding") or {}).get("digest")
+            raw = (d / "commitments" / f"{node['node_id']}.json").read_bytes()
+            digest = (json.loads(raw).get("controller_binding") or {}).get("digest")
         except (OSError, ValueError, KeyError, AttributeError):
             continue
-        return digest if is_key(digest) else None
-    return None
+        return (digest if is_key(digest) else None,
+                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest()})
+    return None, None
 
 
 def accepted(citing, half):
@@ -416,6 +421,9 @@ def accepted(citing, half):
     rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
     rh = rh if isinstance(rh, dict) else {}
     via = rh.get("accepted_via")
+    if rh.get("same_controller_as_receiver") is True:
+        return {"ok": False, "via": str(via) if via is not None else "none recorded", "bound": False,
+                "detail": "a counterparty whose key is bound to the receiver's own controller"}
     if via is None:
         return {"ok": True, "via": "none recorded", "detail": "the citing record names no accepted_via",
                 "bound": False}
@@ -426,9 +434,6 @@ def accepted(citing, half):
         return {"ok": False, "via": via, "bound": False,
                 "detail": f"the citing record accepted key {rh.get('sender_key_id')}, "
                           f"not the half's key {half.get('key_id')}"}
-    if rh.get("same_controller_as_receiver") is True:
-        return {"ok": False, "via": via, "bound": False,
-                "detail": "a counterparty whose key is bound to the receiver's own controller"}
     digest, anchor = rh.get("controller_binding_digest"), rh.get("controller_anchor_key_id")
     if via == "controller_declaration":
         if not is_key(digest) or (anchor is not None and not is_key(anchor)):
@@ -439,11 +444,13 @@ def accepted(citing, half):
         return {"ok": True, "via": via, "bound": True,
                 "detail": f"under declaration {digest}" + (f", anchored on {anchor}" if anchor else "")}
     if is_key(digest):
-        if digest == published_binding(half.get("key_id")):
-            return {"ok": True, "via": via, "bound": True,
+        published, commitment = published_binding(half.get("key_id"))
+        compared = {"commitment": commitment} if commitment else {}
+        if digest == published:
+            return {"ok": True, "via": via, "bound": True, **compared,
                     "detail": f"accepted the half's key {half.get('key_id')} via {via}, its operator binding "
                               f"{digest} the one in the sender's published commitment"}
-        return {"ok": True, "via": via, "bound": False,
+        return {"ok": True, "via": via, "bound": False, **compared,
                 "detail": f"accepted the half's key {half.get('key_id')} via {via}, naming operator binding "
                           f"{digest}, which the sender's published commitment does not carry"}
     return {"ok": True, "via": via, "bound": False,
