@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh: run one stage of the loop's steps, then check their findings.
 #
-#   ./loop.sh --stage 1 [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
+#   ./loop.sh --stage 1 [--ecosystem mesh|muse|cross] [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
 #
 # Each step runs as `steps/<NN>-<name> --population population/<p> --out DIR/<NN>-<name>`
 # and writes one finding.json there (see steps/README.md). A step that is missing, or
@@ -14,6 +14,12 @@
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
 # With --strict (CI) a rehearsal run whose summary has a FAIL or MALFORMED line exits 3, so
 # the job fails; a live run never does (live runs report, they do not gate).
+#
+# --ecosystem (default mesh) names what the steps run against. mesh is the loop as it has always
+# run: findings in findings/<date>-<population>/, run.json as above. muse and cross have no steps
+# yet: each step gets a NOT_CHECKED finding saying so (owned by loop#150), written to
+# findings/<ecosystem>/<date>-<population>/ with "ecosystem" added to run.json, and nothing runs.
+# Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
 # LOOP_STEP_TIMEOUT is each step's limit in seconds (default 1800).
@@ -45,10 +51,11 @@ STAGE_1="01 02 03 12"
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
 
-stage="" population=rehearsal out="" only="" strict=no
+stage="" ecosystem=mesh population=rehearsal out="" only="" strict=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --stage) stage=${2:-}; shift 2 || usage ;;
+    --ecosystem) ecosystem=${2:-}; shift 2 || usage ;;
     --population) population=${2:-}; shift 2 || usage ;;
     --out) out=${2:-}; shift 2 || usage ;;
     --steps) only=${2:-}; shift 2 || usage ;;
@@ -67,8 +74,12 @@ case "$population" in
   rehearsal|live) ;;
   *) die "population is rehearsal or live, not '$population'" ;;
 esac
+case "$ecosystem" in
+  mesh|muse|cross) ;;
+  *) die "ecosystem is mesh, muse or cross, not '$ecosystem'" ;;
+esac
 pop_dir=$ROOT/population/$population
-[ -f "$pop_dir/population.json" ] || die "$pop_dir/population.json is missing"
+[ "$ecosystem" = mesh ] && { [ -f "$pop_dir/population.json" ] || die "$pop_dir/population.json is missing"; }
 
 if [ -n "$only" ]; then
   for nn in ${only//,/ }; do
@@ -77,20 +88,30 @@ if [ -n "$only" ]; then
   steps=${only//,/ }
 fi
 
-out=${out:-${LOOP_FINDINGS:-$ROOT/findings}/$(date -u +%F)-$population}
+findings_root=${LOOP_FINDINGS:-$ROOT/findings}
+[ "$ecosystem" = mesh ] || findings_root=$findings_root/$ecosystem
+out=${out:-$findings_root/$(date -u +%F)-$population}
 mkdir -p "$out" && out=$(cd "$out" && pwd) && [ -n "$out" ] || die "cannot make the out directory '$out'"
 
-# Rehearsal and live findings never share a directory.
-python3 -B - "$out" "$population" <<'PY' || die "$out holds findings of another population; use another --out"
+# Rehearsal and live findings never share a directory, nor do two ecosystems' (a run.json without
+# "ecosystem" is mesh).
+python3 -B - "$out" "$population" "$ecosystem" <<'PY' || die "$out holds findings of another population or ecosystem; use another --out"
 import json, sys
 from pathlib import Path
-for f in Path(sys.argv[1]).glob("*/finding.json"):
+out, population, ecosystem = sys.argv[1:]
+for f in Path(out).glob("*/finding.json"):
     try:
         p = json.loads(f.read_text()).get("population")
     except (ValueError, AttributeError):
         continue
-    if p != sys.argv[2]:
+    if p != population:
         sys.exit(1)
+try:
+    e = json.loads((Path(out) / "run.json").read_text()).get("ecosystem", "mesh")
+except (OSError, ValueError, AttributeError):
+    e = ecosystem
+if e != ecosystem:
+    sys.exit(1)
 PY
 
 # fail <step dir> <started> <detail> [proof file in step dir]
@@ -108,11 +129,14 @@ PY
 }
 
 # The run's start, before the first step: what the status page measures its minutes from.
-python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" <<'PY' || die "cannot write $out/run.json"
+python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" <<'PY' || die "cannot write $out/run.json"
 import json, sys
-path, stage, population, started = sys.argv[1:]
+path, stage, population, started, ecosystem = sys.argv[1:]
+run = {"stage": stage, "population": population, "started": started}
+if ecosystem != "mesh":
+    run["ecosystem"] = ecosystem
 with open(path, "w") as f:
-    f.write(json.dumps({"stage": stage, "population": population, "started": started}, indent=2, sort_keys=True) + "\n")
+    f.write(json.dumps(run, indent=2, sort_keys=True) + "\n")
 PY
 
 ran=()
@@ -130,6 +154,22 @@ for nn in $steps; do
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "== $base" >&2
 
+  if [ "$ecosystem" != mesh ]; then
+    python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" <<'PY'
+import sys
+root, step_dir, started, ecosystem, nn, population = sys.argv[1:]
+sys.path.insert(0, root + "/steps")
+import finding
+finding.write(step_dir, result="NOT_CHECKED", population=population,
+              asserts=f"step {nn} holds for the {ecosystem} ecosystem", pinned=[], proof=[],
+              detail=f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it.",
+              not_checked=[{"what": f"step {nn} for the {ecosystem} ecosystem",
+                            "why": "no step for this ecosystem exists yet",
+                            "issue": "evidence-network/loop#150"}],
+              started=started)
+PY
+    continue
+  fi
   if [ ${#found[@]} -eq 0 ]; then
     fail "$sdir" "$started" "no step executable steps/$nn-* was found"
     continue

@@ -126,6 +126,27 @@ class StatusPageTest(unittest.TestCase):
         (d / "run.json").write_text(json.dumps({"stage": "1", "population": run_population or population,
                                                 "started": started}))
 
+    def test_ecosystem_flag_reads_that_ecosystems_findings_and_builds_beside_the_mesh_page(self):
+        self.findings = self.dir / "findings" / "muse"
+        self.write(1, "NOT_CHECKED", proof=(), not_checked=[{"what": "w", "why": "y", "issue": "o/r#1"}])
+        cwd, err = os.getcwd(), io.StringIO()
+        os.chdir(self.dir)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                code = status_page.main(["status_page.py", "--ecosystem", "muse", "--lock", str(ROOT / "versions.lock")])
+                bad = status_page.main(["status_page.py", "--ecosystem", "other"])
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(code, 0, err.getvalue())
+        self.assertEqual(bad, 2)
+        page = (self.dir / "_site" / "status-muse" / "index.html").read_text()
+        self.assertIn("<title>Loop status (muse)</title>", page)
+        self.assertIn("<h1>Loop status (muse)</h1>", page)
+        badge = (self.dir / "_site" / "status-muse" / "badge.svg").read_text()
+        self.assertIn("loop (muse):", badge)
+        self.assertIn(">loop (muse)</text>", badge)
+        self.assertFalse((self.dir / "_site" / "status").exists())
+
     def build(self):
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):

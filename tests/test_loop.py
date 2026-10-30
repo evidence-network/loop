@@ -74,6 +74,60 @@ class LoopTest(unittest.TestCase):
     def finding(self, base, out=None):
         return json.loads(((out or self.out) / base / "finding.json").read_text())
 
+    def test_mesh_is_the_default_ecosystem_and_its_output_is_unchanged(self):
+        self.all_steps()
+        a, b = self.dir / "a", self.dir / "b"
+        self.assertEqual(self.loop("--out", str(a)).returncode, 0)
+        self.assertEqual(self.loop("--ecosystem", "mesh", "--out", str(b)).returncode, 0)
+        run = json.loads((a / "run.json").read_text())
+        self.assertEqual(sorted(run), ["population", "stage", "started"])
+        self.assertEqual(json.loads((b / "run.json").read_text()).keys(), run.keys())
+        for base in ("01-seal", "02-book", "03-advertise", "12-join"):
+            self.assertEqual(self.finding(base, a)["result"], self.finding(base, b)["result"])
+        r = self.loop()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.dir / "findings" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal" / "run.json").is_file())
+
+    def test_muse_and_cross_run_nothing_and_say_not_checked_until_their_steps_exist(self):
+        for eco in ("muse", "cross"):
+            with self.subTest(eco=eco):
+                r = self.loop("--ecosystem", eco, "--strict")  # no steps directory content needed: none run
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
+                                                         "03 advertise NOT_CHECKED", "12 join NOT_CHECKED"])
+                out = self.dir / "findings" / eco / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+                run = json.loads((out / "run.json").read_text())
+                self.assertEqual((run["ecosystem"], run["population"], run["stage"]), (eco, "rehearsal", "1"))
+                f = self.finding("01-seal", out)
+                self.assertEqual((f["result"], f["population"]), ("NOT_CHECKED", "rehearsal"))
+                self.assertEqual(f["not_checked"][0]["issue"], "evidence-network/loop#150")
+                self.assertFalse((out / "01-seal" / "loop-step.log").exists())
+                self.assertEqual(subprocess.run(["python3", "-B", str(ROOT / "steps/finding.py"), "check",
+                                                 str(out)]).returncode, 0)
+
+    def test_muse_runs_the_live_population_without_a_population_directory(self):
+        r = self.loop("--ecosystem", "muse", "--population", "live")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = self.dir / "findings" / "muse" / f"{dt.datetime.now(dt.timezone.utc):%F}-live"
+        self.assertEqual(self.finding("12-join", out)["population"], "live")
+
+    def test_one_out_directory_never_holds_two_ecosystems(self):
+        self.all_steps()
+        self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
+        r = self.loop("--ecosystem", "muse", "--out", str(self.out))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("another population or ecosystem", r.stderr)
+        self.assertEqual(self.finding("01-seal")["result"], "PASS")
+        self.assertNotIn("ecosystem", json.loads((self.out / "run.json").read_text()))
+        muse = self.dir / "muse"
+        self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(muse)).returncode, 0)
+        self.assertEqual(self.loop("--ecosystem", "cross", "--out", str(muse)).returncode, 2)
+
+    def test_an_unknown_ecosystem_is_a_usage_error(self):
+        r = self.loop("--ecosystem", "other")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("ecosystem is mesh, muse or cross", r.stderr)
+
     def test_good_steps_pass_check_clean_and_are_indexed(self):
         self.all_steps()
         r = self.loop("--out", str(self.out))
