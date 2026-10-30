@@ -21,13 +21,6 @@
       "host": "lab",
       "data_dir": "$LAB_DIR/nodes/lab-3/.local/share/capsules",
       "book_dir": "$LAB_DIR/nodes/lab-3/join-book"
-    },
-    {
-      "name": "stevenmih-4",
-      "host": "lab",
-      "data_dir": "$LAB_DIR/nodes/lab-4/.local/share/capsules",
-      "node_id": "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
-      "book_dir": "$LAB_DIR/nodes/lab-4/join-book"
     }
   ],
   "rail": null
