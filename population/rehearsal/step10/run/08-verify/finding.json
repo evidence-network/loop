@@ -3,7 +3,28 @@
   "detail": "run run, offline, from the bundle and the repository's keys only: 05-deal: reproduced PASS; 06-settle: reproduced PASS; 07-ask: reproduced PASS; 09-dispute: reproduced PASS. The manifest, per step, is this step's proof file.",
   "finished": "2026-10-02T09:01:00Z",
   "name": "verify",
-  "not_checked": [],
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 01: its finding reproduced",
+      "why": "this run did not run step 01 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 02: its finding reproduced",
+      "why": "this run did not run step 02 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 03: its finding reproduced",
+      "why": "this run did not run step 03 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 12: its finding reproduced",
+      "why": "this run did not run step 12 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
+    }
+  ],
   "pinned": {
     "capsulectl": {
       "ref": "v0.8.1",
@@ -26,10 +47,10 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "728c14a842e4372f6a4e733484429caa72feeb7f9671e72671a1f48154148be5"
+      "sha256": "147b2a5cd1ddb3b3d69f2cc312edf021a15b9adb9a230b757708093d9a95904e"
     }
   ],
-  "result": "PASS",
+  "result": "NOT_CHECKED",
   "started": "2026-10-02T09:00:00Z",
   "step": "08"
 }

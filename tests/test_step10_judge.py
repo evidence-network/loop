@@ -484,7 +484,7 @@ class StandInTest(unittest.TestCase):
         r = subprocess.run([str(ROOT / "steps" / "08-verify"), "--population", str(POPULATION),
                             "--out", str(again / "08-verify")], env=env, cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(load(again / "08-verify" / "finding.json")["result"], "PASS", r.stderr)
+        self.assertEqual(load(again / "08-verify" / "finding.json")["result"], "NOT_CHECKED", r.stderr)  # steps of stage 1 not in the stand-in
         got = load(again / "08-verify" / "verified.json")
         want = load(committed / "verified.json")
         self.assertEqual({**got, "run": None}, {**want, "run": None})

@@ -46,14 +46,17 @@ def main():
             f["started"], f["finished"] = DAY.format(m=i, s=0), DAY.format(m=i, s=30)
             dump(run / base / "finding.json", f)
         dump(run / "run.json", {"population": "rehearsal", "stage": "1", "started": RUN_STARTED,
-                                "steps": [s.split("-")[0] for s in STEPS] + ["08"]})
+                                "steps": [s.split("-")[0] for s in STEPS] + ["08"]})  # stage 1 is loop.sh's; 08 reads it
         r = subprocess.run([str(ROOT / "steps" / "08-verify"), "--population", str(POP), "--out", str(run / "08-verify")],
                            env=env, cwd=ROOT, capture_output=True, text=True, timeout=900)
         if r.returncode != 0:
             sys.exit(f"08-verify exited {r.returncode}: {r.stderr[-1500:]}")
         f = json.loads((run / "08-verify" / "finding.json").read_text())
-        if f["result"] != "PASS":
-            sys.exit(f"08-verify is {f['result']}: {f['detail'][:1500]}")
+        # The stand-in holds four of stage 1's steps, so 08 honestly says the others were not run: NOT_CHECKED, with
+        # those entries and nothing else; every step it holds is reproduced.
+        other = [x for x in f["not_checked"] if not x["what"].startswith("step ") or "did not run" not in x["why"]]
+        if f["result"] != "NOT_CHECKED" or other:
+            sys.exit(f"08-verify is {f['result']}: {f['detail'][:1500]} {other}")
         f["started"], f["finished"] = VERIFIED
         dump(run / "08-verify" / "finding.json", f)
         shutil.rmtree(DEST, ignore_errors=True)

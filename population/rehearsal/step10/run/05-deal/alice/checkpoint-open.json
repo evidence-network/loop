@@ -3,10 +3,10 @@
   "kind": "mmr_checkpoint",
   "log_id": "rehearsal-alice-deal",
   "mmr_size": 1,
-  "root": "1f4c88ed54bd16842a8d5a072d201a12f67cac47691f453946b82964a176150c",
+  "root": "16d379ae94830cd7dcd6274ee250f005aa656625c1f76d2719a3f95185e6ce13",
   "prev_size": 0,
   "prev_root": "",
   "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
-  "timestamp": "2026-10-30T16:52:04Z",
-  "signature": "763dda31bc0e76ab61114258b8f47df6e7fe4fd9629bd25963130a59184810033443150bcae0925ba4d4a3fd6a5780fa97242d2ae9594d269375c808cad9b101"
+  "timestamp": "2026-10-30T18:15:54Z",
+  "signature": "58d8c9a2df16219f8b09e9dda6cacbd8acf9ee1d5ed6b559953ea8b8fcfb7a89d259d6910bf2d39a2f4e9fd3e6820ffbc66ac24572cc04ad5749635c480b2f06"
 }

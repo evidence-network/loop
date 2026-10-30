@@ -1,6 +1,6 @@
 {
   "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
-  "detail": "deal rehearsal-deal-2026-10-30T16:52:04Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD). Outside this step's assertion: the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it: evidence-network/loop#134.",
+  "detail": "deal rehearsal-deal-2026-10-30T18:15:54Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers. Spend: none; this step starts no exchange and pays nothing (would spend 0 USD). Outside this step's assertion: the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it: evidence-network/loop#134.",
   "finished": "2026-09-14T10:00:30Z",
   "name": "deal",
   "not_checked": [],
@@ -18,19 +18,19 @@
   "proof": [
     {
       "path": "deal.json",
-      "sha256": "28e0aececc89a377a27b1015b2aa9830548c9f4dd819c2e804864f0ca18d46c2"
+      "sha256": "1a88a67f3fa2096031a41f376f2f664a3c7045074a79e3490736419e2bdcdbc4"
     },
     {
       "path": "declarations.json",
-      "sha256": "9a6b6ed5278b6846889232e5cd9125873ea58bfd1b180fa5cc8e0258260e73b3"
+      "sha256": "da6d346d8e6755821d7f1a5054dd6e2b90bdbe1a8071237af80603d66d5e05d0"
     },
     {
       "path": "verify.json",
-      "sha256": "f88a2a8efbea4afa1c0f740798446e6067f26c3d956fa2d09127a7531b3e6066"
+      "sha256": "3b8487f42f0ed3d9c961f2529833fbbfdeacf055efd64f4cccc3dee221edc752"
     },
     {
       "path": "alice/checkpoint-open.json",
-      "sha256": "a0dab24018f2700fe6f56dbf1f2a933452772f6475e6a55cfe68bd505128cbbb"
+      "sha256": "951c36b5fd7522ea708e250bf3c43eec9d74969f9daff7d0ae942ddffa045fa1"
     },
     {
       "path": "alice/settings.json",
@@ -38,51 +38,51 @@
     },
     {
       "path": "alice/half.json",
-      "sha256": "4056d32226bd4a172b08eb7fa488c67510577367a9e7f34f39e60792599b92ca"
+      "sha256": "1290605f640bedc64ed9b9e4408dd85461f30f98fb1c3e5c02aceeb1b34d5257"
     },
     {
       "path": "alice/half-checkpoint.json",
-      "sha256": "ca526ad73327962b6b68644e249f796ef2782cceb40a15dd233fd32905cecaad"
+      "sha256": "59826257e0f0198393b3a651895b5c8f03daa089da17ccfe323dd86c72f0ce2f"
     },
     {
       "path": "alice/half-inclusion.json",
-      "sha256": "fa54e183f711bf6b14af657fa91c9594412f2d73769b3165b96120db62051940"
+      "sha256": "569b0aa91706408a0887b64cad806c5fbd85d5dac1dea9c2b90b93856210d12e"
     },
     {
       "path": "alice/push.json",
-      "sha256": "0471fa2707f9474f4e76158c72f290255db889df2dff96c5f8e01d3d4b69982a"
+      "sha256": "8af9ef8b6bdf35c171b8d77b74a2dc625b130f54c2e97f35306697c7d64476b5"
     },
     {
       "path": "alice/held/received-records.jsonl",
-      "sha256": "83835d9072c41154790f0ca9ab76b85cf1d314f57da823495ee1cd3b5f9fbf19"
+      "sha256": "63f19eb36aa62853acd0ad4942a085971d3198b20ea54c098f6ec7b6e18fb0ba"
     },
     {
       "path": "alice/held/received-provenance.jsonl",
-      "sha256": "c9dbcb9195e4328dd2d079f54de381db848e22b281ae0a894dddf7f9e97c8522"
+      "sha256": "39c1ba942b04000ea8f5c631fbb568763fb9dc6586071d016aff5d871916ce0a"
     },
     {
       "path": "alice/held/received-inclusion.jsonl",
-      "sha256": "f15fed292e59c558dfb8df2e0479e42f7d11ab98cd1a3d26a618e48362919801"
+      "sha256": "b7ea1794ba8fe3765b41c5056a69123a2b92bd7c324115228fee811c5eeb6a4a"
     },
     {
       "path": "alice/citing.json",
-      "sha256": "2fc657232aa747089d0a65e7e9b45a8bdad1abc10b8fa99b790b875d533ddfbb"
+      "sha256": "bfdf4d70af8a1fb1e7c7a536c60d678cbfe20b31c0e53a19b4e50f3349c0447a"
     },
     {
       "path": "alice/citing-inclusion.json",
-      "sha256": "804874afd87ded8da3ec42ffcdedaaeb06ee744a70d28103adaeea652a6482ce"
+      "sha256": "5d159452b4fa49cebb4f8c5bfc10373f443617dd663f6ffa7e10033bed669249"
     },
     {
       "path": "alice/checkpoint.json",
-      "sha256": "b3a1b1488d961f8f62beae20518fe92bdca4bf8989e6563cc366f7f6e40fdcfd"
+      "sha256": "c644689c4c5df57e0fb09138b4a4a6f1b6411e66624d730b1df2c30b442348ee"
     },
     {
       "path": "alice/placement.json",
-      "sha256": "191c44d1e447890c155d96484b68de029eed0a3f775c42ebc0b20095444432cb"
+      "sha256": "b76889fce02865817745e3ef6f6680cecf7bc5077de06b91183f33cc5779ca93"
     },
     {
       "path": "bob/checkpoint-open.json",
-      "sha256": "9fb274e385ef9558baed57920450dc0058625cc764dbb28558c6ff764b0a5749"
+      "sha256": "5d96329c605a5c689597f0fe3aa5a379190f25b6dbd846329a366d73e5af3dc4"
     },
     {
       "path": "bob/settings.json",
@@ -90,47 +90,47 @@
     },
     {
       "path": "bob/half.json",
-      "sha256": "325225a3844d6c1dd14bc580bf26fdf7e56bf6c496ac1f36ffb244c670169236"
+      "sha256": "10be5e520edcacfbbdf4a320df6e490bc90d0b6136bc4425e80b863536aed107"
     },
     {
       "path": "bob/half-checkpoint.json",
-      "sha256": "f1e2ff9ffce2949c7824f18f2d00b5dc290e7f874c93274041eaa1b25c5df429"
+      "sha256": "b317b1efc111e2d1281c09eb60821d2bb03ea5d7110d18b80f8b577ff6d4649a"
     },
     {
       "path": "bob/half-inclusion.json",
-      "sha256": "531e9eb85fc24b69b3fa7f22be89a0295c65c37b800be8f0745813596b483a9c"
+      "sha256": "2f8c204f9be6f669fc69602f3db495ca11d1b5ea54e88d1e1e47b321a94c6d4f"
     },
     {
       "path": "bob/push.json",
-      "sha256": "9f48f3f1cedbf4f4934beb887ee62149c6759942742915e2e904dfae58153fc6"
+      "sha256": "e9e9b650d2c923200d5de7fab1ec8bb7a10e267a9b831c434f74cd32579c527c"
     },
     {
       "path": "bob/held/received-records.jsonl",
-      "sha256": "9be62ef5bfa406b73065f3a6f28cfe3a8c46d20b2bc9deb45982bc0c43a5bfa9"
+      "sha256": "9e6f504be3e0af627c2ea577f75b7169ae122cd3b0cc8ac33131ac5dd7ad787c"
     },
     {
       "path": "bob/held/received-provenance.jsonl",
-      "sha256": "53b92808df9d10ef27e54f88df4c6138b3a54cd8c5e69cabe2b4a691b4bcfeaa"
+      "sha256": "f0080102a947a6d60a997f851d4274a12fc5c6438b569bc9ff8294d5b78fd7cb"
     },
     {
       "path": "bob/held/received-inclusion.jsonl",
-      "sha256": "6e11ca16e5b41554f4c62acec748d656e364452c05201bfa4631d379afb24237"
+      "sha256": "263faf145fff26af567dd9d6e86c7a40f31f3a67a8d230030e9e79f66d29c3a5"
     },
     {
       "path": "bob/citing.json",
-      "sha256": "25a6937e6ef19efc16665c90bc0fa83c97771dc04c813e3b426f707dfb858ab3"
+      "sha256": "60cc471b72587088400c239f3351994af23e4aba109ce1027e3cabfed7a9ccbd"
     },
     {
       "path": "bob/citing-inclusion.json",
-      "sha256": "8cc50e67e266d5efc1b4dfcd0643225f12bf9717c3d5911054aedb3a8ae04811"
+      "sha256": "fdd77608a9a068ba0de35bcd9fcb53062c7202f3fe5f7ca02e7d81ffe64d68e0"
     },
     {
       "path": "bob/checkpoint.json",
-      "sha256": "1f1b5efc9d914aa39ce14f57e6958399e69310572600f99f67be5c9c2dd84d68"
+      "sha256": "a1fb98fa887d7f392e47984dcbe897cd71cdd828410815b66bab2d70e2466d4d"
     },
     {
       "path": "bob/placement.json",
-      "sha256": "fc8fa0ea27e535f4295d8464cf12e69471006f3bfc7cdc9e0984ccbbe64f7e1b"
+      "sha256": "398dc500f10798a9bef9c07f4e5106698dcb3061956cd2f14ee382d41924095c"
     }
   ],
   "result": "PASS",
