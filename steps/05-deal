@@ -65,7 +65,7 @@ node's own key is a FAIL. A half accepted via `host_announced` or
 declaration yet (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
 do, or the loop cannot read, are not_checked entries: halves citing each other
 and the other side's checkpoint (capsules-plugin#130), the push on by default, which the
-pinned plugin does (PR #72) but a data dir does not show, the declaration's
+pinned plugin does (PR #72) but a data dir does not show (capsules-plugin#136), the declaration's
 own signatures (AAC#432), and the held half's signature in a second language
 (AAC#431). A node with no held half, or whose data_dir is not readable, is
 NOT_CHECKED. One finding, the worst over the nodes.
@@ -277,7 +277,7 @@ LIVE_DEFAULT = {
     "what": "each side pushing its half at completion by default",
     "why": "the pinned plugin defaults share_record_at_completion to counterparty (capsules-plugin PR #72, in "
            "the pin), but a node's setting is not in its data dir to read",
-    "issue": live.NO_ISSUE_YET,
+    "issue": "Mesh-LLM/capsules-plugin#136",
 }
 VIA_KEY = ("host_announced", "operator_stopgap")
 LIVE_DECLARATION = {
