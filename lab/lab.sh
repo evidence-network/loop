@@ -12,7 +12,8 @@
 #   start     lab-1 makes the mesh and serves the model; lab-2 and lab-3 join it. No relay.
 #   status    each node: pid, ports, node id, and the plugin keys its console lists
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
-#   join      ./join.sh for each node, with its plugin key and a new controller key
+#   join      ./join.sh for each node, with its plugin key and a new controller key (a node whose
+#             $LAB_DIR/join/<node> already exists is skipped: join.sh fails on a node that has joined)
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
 #             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
@@ -581,6 +582,11 @@ cmd_join() {
     key=$(data_of "$n")/keys/node-key.pem
     ctl=$LAB_DIR/controllers/$n/controller-key.pem
     [ "$DRY" = 1 ] || [ -f "$key" ] || die "$n has no plugin key at $key yet: is it started?"
+    # join.sh creates a book profile and fails on a node that has joined before: skip a node whose join output is already
+    # here (LAB_REJOIN=1 joins it again, after its join directory is removed).
+    if [ "$DRY" = 0 ] && [ -n "$(ls -A "$LAB_DIR/join/$n" 2> /dev/null)" ] && [ "${LAB_REJOIN:-0}" != 1 ]; then
+      echo "join: $n already joined ($LAB_DIR/join/$n); skipped"; continue
+    fi
     run mkdir -p "$LAB_DIR/controllers/$n"
     run chmod 700 "$LAB_DIR/controllers" "$LAB_DIR/controllers/$n"
     if [ "$DRY" = 1 ] || [ ! -f "$ctl" ]; then

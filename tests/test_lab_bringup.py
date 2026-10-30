@@ -220,6 +220,18 @@ class DryRunTest(unittest.TestCase):
         (led / "received-capsules.jsonl").write_text(rec("A" * 8, "d1") + rec("B" * 8, "d1"))
         self.assertEqual(held(), 0)
 
+    def test_join_skips_a_node_that_has_already_joined(self):
+        # join.sh fails on a node with a book profile already: a second `join` must not repeat lab-1..3.
+        script = 'eval "$(sed -n "/^cmd_join()/,/^}/p" "$LAB")"; die() { echo "$*"; exit 2; }; DRY=0; ROOT=/nonexistent; ' \
+                 'NODES=(lab-1 lab-2); run() { echo "RUN $*"; }; data_of() { echo "$LAB_DIR/data/$1"; }; ' \
+                 'home_of() { echo "$LAB_DIR/home/$1"; }; mkdir -p "$LAB_DIR/data/lab-1/keys" "$LAB_DIR/data/lab-2/keys" "$LAB_DIR/join/lab-1"; ' \
+                 'touch "$LAB_DIR/join/lab-1/doctor.json" "$LAB_DIR/data/lab-1/keys/node-key.pem" "$LAB_DIR/data/lab-2/keys/node-key.pem"; cmd_join'
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                           env={**os.environ, "LAB": str(LAB), "LAB_DIR": str(self.tmp / "labdir")})
+        self.assertIn("lab-1 already joined", r.stdout, r.stderr)
+        self.assertNotIn("--name lab-1", r.stdout)
+        self.assertIn("--name lab-2", r.stdout)
+
     def test_lab_twins_needs_four_distinct_nodes(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf", "LAB_REFEREE": "lab-1"})
         self.assertEqual(r.returncode, 2)

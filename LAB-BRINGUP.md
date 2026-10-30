@@ -548,7 +548,11 @@ each overridable: requester `lab-3`, twin A `lab-1`, faulty twin B `lab-4`,
 referee `lab-2`. Twin A, twin B and the referee serve the model, from the same
 Hugging Face ref (`LAB_MODEL_REF`, a download, no spend): mesh-llm gives a local
 GGUF path no identity hash, and the referee then refuses the pair as
-`not_comparable` (`model_hash_unknown`).
+`not_comparable` (`model_hash_unknown`). The ref the lab's model comes from is
+`Qwen/Qwen2.5-0.5B-Instruct-GGUF@9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf`
+(sha256 `74a4da8c…`, the weights digest in the halves); `/v1/models` lists it as
+`…:q4_k_m`, and `start` saves that name for `twins`. `join` skips a node whose
+`$LAB_DIR/join/<node>` exists (join.sh fails on a node that has joined).
 
 **Lab-only fault injection.** Twin B's `config.toml` gets a per-model
 `system_prompt` (`LAB_FAULT_SYSTEM_PROMPT`, default: reply with the single word PINEAPPLE) so its
