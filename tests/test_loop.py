@@ -80,7 +80,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.loop("--out", str(a)).returncode, 0)
         self.assertEqual(self.loop("--ecosystem", "mesh", "--out", str(b)).returncode, 0)
         run = json.loads((a / "run.json").read_text())
-        self.assertEqual(sorted(run), ["population", "stage", "started"])
+        self.assertEqual(sorted(run), ["population", "stage", "started", "steps"])
         self.assertEqual(json.loads((b / "run.json").read_text()).keys(), run.keys())
         for base in ("01-seal", "02-book", "03-advertise", "12-join"):
             self.assertEqual(self.finding(base, a)["result"], self.finding(base, b)["result"])
@@ -94,7 +94,8 @@ class LoopTest(unittest.TestCase):
                 r = self.loop("--ecosystem", eco, "--strict")  # no steps directory content needed: none run
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
-                                                         "03 advertise NOT_CHECKED", "12 join NOT_CHECKED"])
+                                                         "03 advertise NOT_CHECKED", "12 join NOT_CHECKED",
+                                                         "08 verify NOT_CHECKED"])
                 out = self.dir / "findings" / eco / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
                 run = json.loads((out / "run.json").read_text())
                 self.assertEqual((run["ecosystem"], run["population"], run["stage"]), (eco, "rehearsal", "1"))
