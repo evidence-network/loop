@@ -62,9 +62,9 @@ PR #77, in the pin): a record naming a key other than the half's, an unknown
 `accepted_via`, or a declaration with no binding digest or anchored on the
 node's own key is a FAIL. A half accepted via `host_announced` or
 `operator_stopgap` leaves acceptance not_checked: no node sends a controller
-declaration yet (ACCEPTANCE_ISSUE). The other parts the pinned plugin does not
+declaration yet (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
 do, or the loop cannot read, are not_checked entries: halves citing each other
-and the other side's checkpoint (#49), the push on by default, which the
+and the other side's checkpoint (capsules-plugin#130), the push on by default, which the
 pinned plugin does (PR #72) but a data dir does not show, the declaration's
 own signatures (AAC#432), and the held half's signature in a second language
 (AAC#431). A node with no held half, or whose data_dir is not readable, is
