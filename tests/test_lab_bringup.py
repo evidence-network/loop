@@ -235,11 +235,34 @@ class DryRunTest(unittest.TestCase):
         return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB)})
 
     def test_keys_announced_needs_every_other_nodes_plugin_key(self):
-        keys = lambda n: json.dumps({"node_id": "a", "peers": {f"p{i}": {"capsules": "k" * 64} for i in range(n)}})
+        keys = lambda n: json.dumps({"node_id": "a", "peers": {f"p{i}": {"capsules": "a" * 64} for i in range(n)}})
         self.assertEqual(self._bash("keys_announced lab-1", keys(1)).returncode, 1)
         self.assertEqual(self._bash("keys_announced lab-1", keys(2)).returncode, 0)
-        withdrawn = json.dumps({"peers": {"p0": {"capsules": "k" * 64}, "p1": {}}})
+        withdrawn = json.dumps({"peers": {"p0": {"capsules": "a" * 64}, "p1": {}}})
         self.assertEqual(self._bash("keys_announced lab-1", withdrawn).returncode, 1)
+        not_a_key = json.dumps({"peers": {"p0": {"capsules": "a" * 64}, "p1": {"capsules": "K" * 64}}})
+        self.assertEqual(self._bash("keys_announced lab-1", not_a_key).returncode, 1)  # the plugin keeps only 64 lowercase hex
+
+    def test_rejected_pushes_are_counted_and_explained_without_shell_noise(self):
+        f = self.tmp / "rej.jsonl"
+        script = ('eval "$(sed -n "/^rejected_count()/p;/^rejected_reasons()/,/^}/p" "$LAB")"; '
+                  'echo "count=$(rejected_count "$F")"; rejected_reasons "$F" 1')
+        run = lambda: subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                     env={**os.environ, "LAB": str(LAB), "F": str(f)})
+        r = run()  # no file: zero, silent
+        self.assertEqual((r.stdout.strip(), r.stderr), ("count=0", ""))
+        f.write_text('{"reason":"old"}\n{"reason":"signature_unverified"}\n{"reason":"model_mismatch"}\n')
+        r = run()
+        self.assertEqual(r.stdout.split(), ["count=3", "signature_unverified", "model_mismatch"])  # only lines past the first
+
+    def test_the_asking_node_is_the_requester_with_twins_and_lab_2_otherwise(self):
+        text = (ROOT / "lab" / "lab.sh").read_text()
+        self.assertIn("asker=lab-2", text)
+        self.assertIn("asker=$REQUESTER", text)
+        self.assertNotIn("REQUESTER_OR_REPORTER", text)
+
+    def test_the_key_settle_default_covers_one_plugin_read(self):
+        self.assertIn("KEY_SETTLE=${LAB_KEY_SETTLE:-40}", (ROOT / "lab" / "lab.sh").read_text())
 
     def test_the_advertised_name_is_the_first_a_peer_serves(self):
         status = json.dumps({"peers": [{"serving_models": []},

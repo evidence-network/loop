@@ -558,7 +558,7 @@ GGUF path no identity hash, and the referee then refuses the pair as
 (sha256 `74a4da8c…`, the weights digest in the halves); `/v1/models` lists it as
 `…:q4_k_m` (with the revision), but the name the hosts forward under is the one the peers advertise
 (`Qwen/Qwen2.5-0.5B-Instruct-GGUF:q4_k_m`, no revision): `start` waits until every host lists every
-other node's plugin key, waits `LAB_KEY_SETTLE` seconds (default 30) for the plugins to read them (a push
+other node's plugin key, waits `LAB_KEY_SETTLE` seconds (default 40: the plugin re-reads every 30 s with a 5 s timeout) for the plugins to read them (a push
 sent earlier is refused `signature_unverified` and never retried), then saves the advertised name for
 `exchange` and `twins`. `join` skips a node whose
 `$LAB_DIR/join/<node>` exists (join.sh fails on a node that has joined).

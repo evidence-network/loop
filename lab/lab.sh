@@ -49,9 +49,11 @@
 #             GGUF path gets no identity hash from mesh-llm (local_gguf_identity_from_source), and the referee then
 #             refuses the pair as not_comparable/model_hash_unknown; an HF ref gets one. Every serving node uses the
 #             same ref (a download, no spend). Needed for LAB_TWINS. Every serving node then loads it from its own config.toml
-#             [[models]] and the CLI names no model; start saves the name lab-1's /v1/models lists to run/model-name
-#   LAB_MODEL_NAME      the name it is served under (default lab-model; with LAB_MODEL_REF, the name /v1/models lists,
-#             default the ref itself)
+#             [[models]] and the CLI names no model. start saves the name the asking node's peers advertise in /api/status
+#             peers[].serving_models (no @revision) to run/model-name; /v1/models is used only for the routing wait
+#   LAB_MODEL_NAME      the name requests carry (default lab-model; with LAB_MODEL_REF, that advertised name)
+#   LAB_KEY_SETTLE      seconds start waits after every host lists every plugin key (default 40: the plugin re-reads
+#             /api/plugin-keys every 30s with a 5s timeout, peer_keys::announced EVERY and TIMEOUT)
 #   LAB_OPERATOR        the GitHub handle of whoever runs the nodes (entries)
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
 #   LAB_REPORTER        the reporter node (default lab-3)
@@ -74,7 +76,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 NODES=(lab-1 lab-2 lab-3)
 TWINS=${LAB_TWINS:-0}
-KEY_SETTLE=${LAB_KEY_SETTLE:-30}
+KEY_SETTLE=${LAB_KEY_SETTLE:-40}
 TWIN_A=${LAB_TWIN_A:-lab-1}
 TWIN_B=${LAB_TWIN_B:-lab-4}
 REFEREE=${LAB_REFEREE:-lab-2}
@@ -104,7 +106,6 @@ serves_model() { [ "$1" = lab-1 ] || { [ "$TWINS" = 1 ] && { [ "$1" = "$TWIN_A" 
 LAB_DIR=${LAB_DIR%/}
 BASE=${LAB_PORT_BASE:-9800}
 REPORTER=${LAB_REPORTER:-lab-3}
-REQUESTER_OR_REPORTER=${LAB_REQUESTER:-$REPORTER}
 MODEL_NAME=${LAB_MODEL_NAME:-${MODEL_REF:-lab-model}}
 # With an HF ref the name is the one lab-1 listed at start (run/model-name), unless LAB_MODEL_NAME says otherwise.
 if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ -s "${LAB_DIR:-/nonexistent}/run/model-name" ]; then
@@ -196,7 +197,8 @@ PY
 keys_announced() {
   curl -fsS "$(console "$1")/api/plugin-keys" | python3 -c 'import json,sys
 d = json.load(sys.stdin); want = int(sys.argv[1]) - 1
-have = [p for p, k in (d.get("peers") or {}).items() if isinstance(k, dict) and k.get("capsules")]
+import re
+have = [p for p, k in (d.get("peers") or {}).items() if isinstance(k, dict) and re.fullmatch("[0-9a-f]{64}", k.get("capsules") or "")]
 sys.exit(0 if len(have) >= want else 1)' "${#NODES[@]}"
 }
 # The first model a peer of NODE advertises serving (/api/status peers[].serving_models).
@@ -204,8 +206,17 @@ advertised_name() {
   curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys
 for p in json.load(sys.stdin).get("peers") or []:
     for m in p.get("serving_models") or []:
-        print(m if isinstance(m, str) else m.get("name") or m.get("id")); sys.exit(0)
+        print(m); sys.exit(0)
 sys.exit(1)'
+}
+rejected_count() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+# The reasons of the lines added to a rejected-record-pushes.jsonl past line N, one per line.
+rejected_reasons() { # FILE N
+  [ -f "$1" ] || return 0
+  tail -n +"$(($2 + 1))" "$1" | python3 -c 'import json,sys
+for l in sys.stdin:
+    try: print(json.loads(l).get("reason") or l.strip()[:200])
+    except ValueError: print(l.strip()[:200])'
 }
 node_ready() { curl -fsS "$(console "$1")/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
 model_ready() { curl -fsS "$(console lab-1)/api/status" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("llama_ready") is True else 1)'; }
@@ -542,7 +553,9 @@ cmd_start() {
   # The name every host forwards under is the one the peers advertise (no @revision), not lab-1's own /v1/models id: the
   # requester rewrites `model` to it before forwarding, so a request body naming anything else seals another request digest.
   if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ "$DRY" = 0 ]; then
-    MODEL_NAME=$(advertised_name "$REQUESTER_OR_REPORTER") || die "$REQUESTER_OR_REPORTER's peers advertise no served model"
+    local asker=lab-2   # exchange asks from lab-2 and lab-3; with LAB_TWINS the requester asks, and it serves nothing
+    [ "$TWINS" = 1 ] && asker=$REQUESTER
+    MODEL_NAME=$(advertised_name "$asker") || die "$asker's peers advertise no served model"
     echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
     echo "advertised model name: $MODEL_NAME"
   fi
@@ -707,14 +720,24 @@ cmd_twins() {
   b=$(node_id "$TWIN_B") || die "twin B $TWIN_B has no node id yet"
   [ "$DRY" = 1 ] || [ -s "$LAB_DIR/twin-fault.json" ] || die "no $LAB_DIR/twin-fault.json: start the lab with LAB_TWINS=1 first"
   run mkdir -p "$LAB_DIR/twins"
-  local rejected_before
-  rejected_before=$(wc -l < "$led/rejected-record-pushes.jsonl" 2> /dev/null | tr -d ' ') || rejected_before=0
+  local rejected_before rej="$led/rejected-record-pushes.jsonl"
+  rejected_before=$(rejected_count "$rej")
+  # A wait that times out says why when the requester refused a push meanwhile (the plugin logs the reason, and never retries).
+  twins_wait() { # SECONDS WHAT CMD...
+    local secs=$1 what=$2; shift 2
+    wait_for "$secs" "$what" "$@" && return 0
+    [ "$DRY" = 1 ] && return 0
+    local why; why=$(rejected_reasons "$rej" "$rejected_before" | sort | uniq -c | tr '\n' ';')
+    [ -z "$why" ] || echo "lab.sh: the requester refused pushes during this run ($rej): $why" >&2
+    case "$why" in *signature_unverified*) echo "lab.sh: signature_unverified: the plugins had not read each other's keys; wait LAB_KEY_SETTLE after start and run twins again" >&2 ;; esac
+    return 1
+  }
   local api="http://127.0.0.1:$(api_port "$REQUESTER")/v1/chat/completions"
   # 1. The requester asks the referee once. The plugin takes a referee as eligible only when it holds a half from it
   #    (referee/live.rs candidates), and that push arrives after the exchange completes: wait for it.
   run curl -fsS --max-time 180 -o "$LAB_DIR/twins/referee.json" -H 'content-type: application/json' \
     -H "x-mesh-target: $ref" -d "$body" "$api"
-  wait_for 180 "the requester holds a record pushed by the referee" grep -q "$ref" "$led/received-capsules.jsonl"
+  twins_wait 180 "the requester holds a record pushed by the referee" grep -q "$ref" "$led/received-capsules.jsonl"
   # 2. The same temperature-0 request to both twins under one bracket (the host never pairs on its own).
   run curl -fsS --max-time 180 -o "$LAB_DIR/twins/twin-a.json" -H 'content-type: application/json' \
     -H "x-mesh-target: $a" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
@@ -722,14 +745,10 @@ cmd_twins() {
     -H "x-mesh-target: $b" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
   # 3. Stock mesh-llm passes plugins no exchange text, so the client that marked the pair supplies it (INSTALL.md,
   #    "Sharing policy"): the request and both answers, each checked against what the requester's own records sealed.
-  wait_for 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
-  # A push refused signature_unverified is never retried: say so now, not as a timeout of the half wait below.
-  if [ "$DRY" = 0 ] && [ "$(wc -l < "$led/rejected-record-pushes.jsonl" 2> /dev/null | tr -d ' ')" -gt "${rejected_before:-0}" ]; then
-    die "the requester refused pushes during this run ($led/rejected-record-pushes.jsonl): the plugins had not read each other's keys; stop, wait for LAB_KEY_SETTLE after start, and run twins again"
-  fi
+  twins_wait 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
   # The plugin considers the pair when the texts are supplied and does not look again when a half lands later, so
   # supply them only after each twin's own signed half has been pushed to the requester.
-  wait_for 180 "the requester holds each twin's signed half of this pair" halves_held "$bracket" "$led"
+  twins_wait 180 "the requester holds each twin's signed half of this pair" halves_held "$bracket" "$led"
   if [ "$DRY" = 1 ]; then
     say curl -fsS -X POST "$(console "$REQUESTER")/api/plugins/capsules/tools/referee_supply_twin_texts" \
       "(twin_bracket_id $bracket, request_body, response_bodies twin-a.json twin-b.json)"
@@ -751,7 +770,7 @@ fault.update(roles={"requester": requester, "twin_a": twin_a, "twin_b": twin_b, 
              twin_bracket_id=bracket, supply_answer=answer)
 open(f"{lab}/twin-fault.json", "w").write(json.dumps(fault, indent=2, sort_keys=True) + "\n")
 PY
-  wait_for 300 "the requester holds the referee's Result for $bracket" grep -q "$bracket" "$led/received-adjudications.jsonl"
+  twins_wait 300 "the requester holds the referee's Result for $bracket" grep -q "$bracket" "$led/received-adjudications.jsonl"
 }
 
 cmd_dispute() {
