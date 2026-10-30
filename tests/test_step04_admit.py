@@ -95,7 +95,7 @@ class Rehearsal(unittest.TestCase):
             self.assertEqual([d["admission_decision"]["verdict"] for d in self.sealed(self.out, name)], [want], name)
         self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
         self.assertIn("would spend 0 USD", f["detail"])
-        self.assertIn("Mesh-LLM/capsules-plugin#55", f["detail"])
+        self.assertIn("Mesh-LLM/capsules-plugin#116", f["detail"])
         self.assertTrue(finding.gaps(f["detail"]))
 
     def test_a_no_has_no_deal_record(self):

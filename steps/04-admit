@@ -82,8 +82,8 @@ PLANT_SCENARIO = {"ask-outcome": "go", "limit-outcome": "go", "unsealed": "go", 
 DECISION, DEAL = "admission_decision", "deal_record"
 NO_SPEND = "Spend: none; this step pays nothing (would spend 0 USD)."
 GAPS = " ".join([
-    finding.outside("the decision as the plugin seals it in its own ledger; the rehearsal seals a fixture of its "
-                    "shape in the buyer's book", "Mesh-LLM/capsules-plugin#55"),
+    finding.outside("the decision as the plugin seals it in its own ledger (capsules-plugin#100) with its rows; the "
+                    "rehearsal seals a fixture of its shape in the buyer's book", "Mesh-LLM/capsules-plugin#116"),
     finding.outside("the deal record as step 05's deal half; the buyer's deal record here is a stand-in",
                     "Mesh-LLM/capsules-plugin#49"),
 ])
