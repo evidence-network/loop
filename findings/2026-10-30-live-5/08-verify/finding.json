@@ -1,0 +1,59 @@
+{
+  "asserts": "an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, run again on the proof bytes it cites, gives the result and not_checked list the step recorded",
+  "detail": "run 2026-10-30-live-5, offline, from the bundle and the repository's keys only: 01-seal: recorded PASS, not reproduced; 02-book: recorded PASS, not reproduced; 03-advertise: recorded PASS, not reproduced; 04-admit: recorded PASS, not reproduced; 05-deal: recorded NOT_CHECKED, not reproduced; 07-ask: recorded NOT_CHECKED, not reproduced; 09-dispute: recorded PASS, not reproduced; 12-join: recorded NOT_CHECKED, not reproduced. The manifest, per step, is this step's proof file.",
+  "finished": "2026-10-30T23:01:37Z",
+  "name": "verify",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 01: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 02: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 03: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 04: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 05: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 07: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 09: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    },
+    {
+      "issue": "evidence-network/loop#24",
+      "what": "step 12: its live result re-derived from its proof bytes",
+      "why": "a live judge reads the lab node's data dir or console, which the bundle does not carry, and the live node keys are not listed in the repository"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [
+    {
+      "path": "verified.json",
+      "sha256": "a5abce85a4c982b00bf687b4ffebbb033cf2652928b5fc9cffd6b47321559b43"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-30T23:01:37Z",
+  "step": "08"
+}
