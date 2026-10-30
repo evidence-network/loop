@@ -1,0 +1,7 @@
+# Findings: 2026-10-30-live
+
+Population: live. Each result is the step's own finding; open finding.json for what it asserts and pinned.
+
+| Step | Name | Result | Finding | Proof | Notes |
+|---|---|---|---|---|---|
+| 09 | dispute | PASS | [finding.json](09-dispute/finding.json) | [checks.json](09-dispute/checks.json), [outcome.json](09-dispute/outcome.json), [stevenmih-1/ledger/capsules.jsonl](09-dispute/stevenmih-1/ledger/capsules.jsonl), [stevenmih-1/ledger/received-capsules.jsonl](09-dispute/stevenmih-1/ledger/received-capsules.jsonl), [stevenmih-2/ledger/capsules.jsonl](09-dispute/stevenmih-2/ledger/capsules.jsonl), [stevenmih-2/ledger/issued-adjudications.jsonl](09-dispute/stevenmih-2/ledger/issued-adjudications.jsonl), [stevenmih-2/ledger/received-capsules.jsonl](09-dispute/stevenmih-2/ledger/received-capsules.jsonl), [stevenmih-3/ledger/capsules.jsonl](09-dispute/stevenmih-3/ledger/capsules.jsonl), [stevenmih-3/ledger/received-adjudications.jsonl](09-dispute/stevenmih-3/ledger/received-adjudications.jsonl), [stevenmih-3/ledger/received-capsules.jsonl](09-dispute/stevenmih-3/ledger/received-capsules.jsonl), [stevenmih-3/ledger/requested-adjudications.jsonl](09-dispute/stevenmih-3/ledger/requested-adjudications.jsonl), [stevenmih-4/ledger/capsules.jsonl](09-dispute/stevenmih-4/ledger/capsules.jsonl), [stevenmih-4/ledger/received-capsules.jsonl](09-dispute/stevenmih-4/ledger/received-capsules.jsonl), [twin-fault.json](09-dispute/twin-fault.json) |  |
