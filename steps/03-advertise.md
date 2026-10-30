@@ -23,8 +23,7 @@ read back. The finding names the carrier.
 - **live**: the harness never signs for a live node. A live commitment is
   signed by the node itself: the pinned capsules plugin signs and serves it
   (capsules-plugin PR #75, in the pin) and returns it to its operator, who
-  adds it under `nodes/commitments/` by pull request. None is published yet,
-  and no open issue tracks publishing it. The step reads the carrier's `HEAD`
+  adds it under `nodes/commitments/` by pull request. The step reads the carrier's `HEAD`
   (this repository by default, `--carrier` to name another), publishes
   nothing, and requires the commitment to be under the `key_id` that
   `nodes/<node_id>.json` lists. A node with no node id or no commitment there

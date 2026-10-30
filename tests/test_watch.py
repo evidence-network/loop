@@ -757,7 +757,7 @@ class WatchTest(unittest.TestCase):
             self.assertEqual(len(cards), 1, nid_)
             self.assertEqual(cards[0]["derivation"], "history_card/1")
             self.assertEqual((cards[0]["community"], cards[0]["history"]), ("mesh-llm", True))
-            self.assertRegex(cards[0]["stream"], r"^lab-\d-book$")
+            self.assertRegex(cards[0]["stream"], r"^capsules/[0-9a-f]{16}$")  # the plugin's stream name
             self.assertEqual(cards[0]["witnesses"], [])  # the lab books are unwitnessed
 
     def test_n_the_card_list_names_only_stream_derivation_and_witnesses(self):
