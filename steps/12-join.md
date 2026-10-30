@@ -13,8 +13,8 @@ is a write, so it is never sent to another node.
 1. `doctor {"probe": true}` (kept as `doctor-probe.json`). The plugin asks
    its own responder checkpoints, then history_card/1, as a stranger, in
    process.
-2. `join {}` (kept as `join.json`), with no binding argument, so it stores
-   no binding. Its commitment pair is kept as `commitment.json` and
+2. `join {}` (kept as `join.json`), a re-join with no binding argument, so it
+   stores no binding. Its commitment pair is kept as `commitment.json` and
    `disclosure-policy.json`.
 3. `doctor {}` (kept as `doctor-after.json`), to read the binding again.
 
@@ -26,7 +26,7 @@ is a write, so it is never sent to another node.
 | doctor's `policy_in_commitment` | `present` | `missing` for a served commitment that does not verify or advertises another policy | `missing` because no commitment is served yet |
 | join's commitment | verifies with step 03's checker, policy bytes included, under the listed `key_id`, for the listed `node_id` | any of those does not hold | join returns none |
 | join's `joined` | `true` | | `false`: each `pending` line is the reason |
-| the binding | doctor reports it the same before and after join | bound before join, then unbound or bound by another binding after | the state can't be read before join (join is then **not called**), or after it |
+| the binding | bound before the re-join and the same binding after | bound before the re-join, then unbound or bound by another binding after | unbound before and after (no controller binding recorded: `join {}` sends none), or the state can't be read before join (join is then **not called**) or after it |
 
 A node with no console given is NOT_CHECKED for all of these.
 

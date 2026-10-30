@@ -112,7 +112,7 @@ import finding  # noqa: E402
 import live  # noqa: E402
 import report_layout as layout  # noqa: E402
 
-ASSERTS = ("one command on the pinned release records a controller binding for the node key (its controller "
+ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
            "advertised policy")
@@ -530,7 +530,9 @@ def judge_doctor(reply):
     pic = found.get("policy_in_commitment")
     detail = str(pic.get("detail", "no detail")) if pic else ""
     # doctor.rs policy_in_commitment: `missing` both when no commitment is served yet (pending) and when the
-    # one served does not verify or advertises another policy (a failure); the detail says which.
+    # one served does not verify or advertises another policy (a failure); the detail says which. The prefix
+    # below is the pinned plugin's text for the first (capsules-plugin d1f4edc, doctor.rs); another wording
+    # reads as a failure, so a pin bump must recheck it.
     if pic is None or (pic.get("state") == "missing" and detail.startswith("no commitment is served")):
         nc.append({"what": "the commitment the node serves on commitment/1, carrying the policy it answers under",
                    "why": f"doctor: {detail}" if pic else "doctor reports no policy_in_commitment finding",
@@ -567,6 +569,8 @@ def judge_join(reply, entry, node_dir):
                 fails.append(f"join's commitment is under key {doc.get('key_id')}, not the listed key")
             if doc.get("node_id") != entry.get("node_id"):
                 fails.append(f"join's commitment is for node {doc.get('node_id')}, not this node")
+    # join runs the probes itself and files a mismatch under pending as well (doctor.rs), so judge its findings.
+    fails += [f"join: {x}" for x in judge_doctor(reply)[0]]
     if reply.get("joined") is not True:
         pending = reply.get("pending")
         nc.append({"what": "the plugin's join", "why": "join reports pending: " +
@@ -648,10 +652,13 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
     elif before[0] == "bound" and after != before:
         fails.append(f"{name}: the node was bound ({before[1]}) before join, and doctor after join reports "
                      + (f"it bound as {after[1]}" if after[0] == "bound" else "it unbound"))
+    elif before is not None and before[0] == "unbound" and after[0] == "unbound":
+        nc.append(nc_("the controller binding", "no controller binding recorded: the node was unbound before "
+                                                "the re-join and is after it (join {} sends no binding)"))
     if not fails and not nc:
         lines.append(f"{name}: doctor --probe finds both probes match and the commitment it serves carries its "
-                     "policy; join reports it joined, and its commitment holds under the listed key with its "
-                     f"policy bytes; the binding is {before[0]} before and after join")
+                     "policy; the re-join reports it joined, and its commitment holds under the listed key with "
+                     f"its policy bytes; the binding is {before[0]} before the re-join and {after[0]} after")
     return fails, nc, proof, lines
 
 
@@ -706,7 +713,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         asker, via = console, "the reporter's console"
         if self_node and name == self_node:
             if not second_console:
-                merge(not_checked, [no_second_console(name), no_binding(name, "its commitment was not fetched")])
+                merge(not_checked, [no_second_console(name), no_binding(name, "its commitment was not fetched"),
+                                    {"what": f"{name}: the plugin's doctor --probe and join",
+                                     "why": "the reporter's own node is not asked without a second console",
+                                     "issue": NO_SECOND_CONSOLE_ISSUE}])
                 lines.append(f"{name}: not asked, the reporter's own node and no second console")
                 continue
             asker, via = second_console, "a second node's console"

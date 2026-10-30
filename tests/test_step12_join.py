@@ -415,7 +415,10 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         for n in ("lab-1", "lab-2", "lab-3"):
             self.assertIn(f"{n}: doctor reports no controller binding held, and the signed commitment names none", r["detail"])
-        self.assertEqual([i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]], [])
+        self.assertEqual([i["what"] for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" in i["what"]],
+                         [f"{n}: the controller binding" for n in ("lab-1", "lab-2", "lab-3")])
+        self.assertTrue(all(i["why"].startswith("no controller binding recorded") for i in r["not_checked"]
+                            if i["what"].startswith("lab-") and "binding" in i["what"]))
 
     def test_each_node_doctor_is_asked_through_its_own_console_and_its_commitment_through_the_asker(self):
         d1, d2 = "1" * 64, "2" * 64
@@ -672,6 +675,7 @@ class PluginToolsTest(Tmp):
         super().tearDown()
 
     def tools(self, entry=ALICE_ENTRY, **kw):
+        kw.setdefault("before", ("bound", "d" * 64))  # an unbound node is NOT_CHECKED, which the tests below pin
         console = PluginConsole(**kw)
         node_dir = self.out / "alice"
         node_dir.mkdir(exist_ok=True)
@@ -687,16 +691,16 @@ class PluginToolsTest(Tmp):
     def whats(self, nc):
         return [i["what"] for i in nc]
 
-    def test_a_healthy_unbound_node_holds_on_every_part(self):
-        fails, nc, proof, lines = self.tools()
+    def test_a_healthy_bound_node_holds_on_every_part(self):
+        fails, nc, proof, lines = self.tools(before=("bound", "d" * 64))
         self.assertEqual((fails, nc), ([], []))
         self.assertEqual(self.console.doctor_bodies, [{"probe": True}, {}])
         self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
         self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
                                  "doctor-after.json"])
         self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), ALICE_DOC)
-        self.assertIn("; join reports it joined, and its commitment holds under the listed key", " ".join(lines))
-        self.assertIn("the binding is unbound before and after join", " ".join(lines))
+        self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
+        self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))
 
     def test_a_probe_doctor_finds_mismatched_is_a_fail(self):
         for check in step.DOCTOR_PROBES:
@@ -713,7 +717,7 @@ class PluginToolsTest(Tmp):
         def older(reply):
             reply["findings"] = [f for f in reply["findings"] if not f["check"].startswith("probe_")]
             return reply
-        fails, nc, _, _ = self.tools(doctor=older)
+        fails, nc, _, _ = self.tools(doctor=older, before=("bound", "d" * 64))
         self.assertEqual(fails, [])
         self.assertEqual(self.whats(nc), ["alice: doctor --probe probe_checkpoints",
                                           "alice: doctor --probe probe_history_card"])
@@ -783,7 +787,7 @@ class PluginToolsTest(Tmp):
     def test_a_bound_node_that_stays_bound_holds(self):
         fails, nc, _, lines = self.tools(before=("bound", self.D))
         self.assertEqual((fails, nc), ([], []))
-        self.assertIn("the binding is bound before and after join", " ".join(lines))
+        self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))
 
     def test_a_bound_node_that_comes_back_unbound_is_a_fail(self):
         fails, _, _, _ = self.tools(before=("bound", self.D), after=("unbound", None))
@@ -795,9 +799,30 @@ class PluginToolsTest(Tmp):
         self.assertEqual(fails, [f"alice: the node was bound ({self.D}) before join, and doctor after join reports "
                                  f"it bound as {'e' * 64}"])
 
+    def test_a_node_unbound_before_and_after_is_not_checked_not_held(self):
+        fails, nc, _, lines = self.tools(before=("unbound", None))
+        self.assertEqual(fails, [])
+        self.assertEqual([x for x in nc if x["what"] == "alice: the controller binding"],
+                         [{"what": "alice: the controller binding", "why": "no controller binding recorded: the node "
+                           "was unbound before the re-join and is after it (join {} sends no binding)",
+                           "issue": step.live.ISSUE}])
+        self.assertNotIn("the binding is", " ".join(lines))
+
     def test_an_unbound_node_that_comes_back_bound_is_not_a_fail(self):
         fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", self.D))
         self.assertEqual(fails, [])
+
+    def test_a_probe_mismatch_join_files_under_pending_is_a_fail(self):
+        def bad(reply):
+            reply["joined"] = False
+            reply["pending"] = ["probe_checkpoints: mismatch"]
+            for f in reply["findings"]:
+                if f["check"] == "probe_checkpoints":
+                    f["state"] = "mismatch"
+            return reply
+        fails, nc, _, _ = self.tools(join=bad)
+        self.assertEqual(len(fails), 1)
+        self.assertTrue(fails[0].startswith("alice: join: doctor --probe probe_checkpoints: mismatch"))
 
     def test_join_is_not_called_when_the_binding_state_cannot_be_read_first(self):
         fails, nc, proof, lines = self.tools(before=None)
@@ -840,7 +865,7 @@ class PluginToolsTest(Tmp):
         older = copy.deepcopy(ALICE_DOC)
         older["issued_at"] = "2026-01-01T00:00:00Z"
         (self.published / f"{ALICE_ID}.json").write_text(json.dumps(older))
-        fails, nc, _, lines = self.tools()
+        fails, nc, _, lines = self.tools(before=("bound", "d" * 64))
         self.assertEqual((fails, nc), ([], []))
         self.assertIn("alice: commitment changed: join's commitment is not the one published under "
                       "nodes/commitments/, so the findings run republishes it", lines)
@@ -894,13 +919,18 @@ class PluginToolsRunTest(Tmp):
         return json.loads((self.out / "finding.json").read_text())
 
     def test_a_healthy_node_reads_not_checked_on_the_binding_and_signed_commitment_gaps_only(self):
-        r = self.run_one()
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertEqual(r["not_checked"], step.LIVE_NOT_CHECKED)
-        self.assertIn("; join reports it joined, and its commitment holds under the listed key", r["detail"])
+        self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", r["detail"])
         for p in ("alice/doctor-probe.json", "alice/join.json", "alice/commitment.json",
                   "alice/disclosure-policy.json", "alice/doctor-after.json"):
             self.assertIn(p, [x["path"] for x in r["proof"]])
+
+    def test_an_unbound_node_reads_not_checked_in_a_whole_run(self):
+        r = self.run_one()
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("alice: the controller binding", [i["what"] for i in r["not_checked"]])
 
     def test_a_bound_node_join_unbinds_is_a_fail(self):
         D = "d" * 64
