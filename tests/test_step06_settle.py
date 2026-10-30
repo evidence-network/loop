@@ -380,6 +380,227 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(set(r["pinned"]), {"capsules", "mesh-llm-pr-2620"})
         self.assert_clean()
 
+    # The demo population: a named live-kind population takes the live path, with a window and a cross-check.
+    def demo_population(self, lab, **extra):
+        pop = Path(self.tmp.name) / "demo"
+        pop.mkdir()
+        doc = json.loads((ROOT / "population" / "demo" / "population.json").read_text())
+        for n in doc["nodes"]:
+            n["data_dir"] = f"$STEP06_LAB/{n['name']}"
+        doc.update(extra)
+        dump(pop / "population.json", doc)
+        return pop
+
+    def demo_ledgers(self, lab, rows):
+        """rows: {node: [(timestamp or None, payment_hash)]}; one terms leg per row."""
+        for name, recs in rows.items():
+            (lab / name / "ledger").mkdir(parents=True)
+            lines = []
+            for i, (ts, h) in enumerate(recs):
+                rec = {"capsule_id": f"{name}-{i}", "settlement": {"leg": "terms", "payment_ref": {
+                    "type": "ln.payment_hash", "value": h}}}
+                if ts:
+                    rec["timestamp"] = ts
+                lines.append(json.dumps(rec) + "\n")
+            (lab / name / "ledger" / "capsules.jsonl").write_text("".join(lines))
+
+    def test_the_demo_population_files_pin_the_demo_build(self):
+        doc = json.loads((ROOT / "population" / "demo" / "population.json").read_text())
+        self.assertEqual((doc["population"], doc["kind"], doc["rail"]), ("demo", "live", None))
+        self.assertEqual(doc["window"], {"from": "2026-10-30T17:58:00Z"})
+        pins = finding.pins()
+        self.assertEqual(pins["demo-capsules"][1], "f494845bb9e003d100429fc4c081fc11322551cc")
+        self.assertEqual(pins["demo-mesh-llm"], ("ethanyzhang/mesh-llm", "3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301"))
+
+    def test_a_named_live_kind_population_takes_the_live_path(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertEqual((r["result"], r["population"]), ("NOT_CHECKED", "demo"))
+        self.assertEqual(set(r["pinned"]), {"demo-capsules", "demo-mesh-llm"})
+        self.assertIn("Spend: none", r["detail"])
+        self.assertIn(step.ADAPTER_ISSUE, [n["issue"] for n in r["not_checked"]])
+        self.assert_clean()
+
+    def test_a_population_that_is_not_live_kind_still_needs_the_mock_rail(self):
+        pop = Path(self.tmp.name) / "other"
+        pop.mkdir()
+        dump(pop / "population.json", {"population": "demo", "nodes": [], "rail": None})
+        p = subprocess.run([str(STEP), "--population", str(pop), "--out", str(self.out)], capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+
+    def test_the_window_leaves_out_older_and_undated_records(self):
+        lab = Path(self.tmp.name) / "lab"
+        old, new = "11" * 32, "22" * 32
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T17:57:59Z", old), ("2026-10-30T17:58:00Z", new),
+                                             ("2026-10-30T13:00:00-05:00", new), (None, old)],
+                                "shockley": [("2026-10-02T00:00:00Z", old)]})
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        # 13:00-05:00 is 18:00Z: in; 17:57:59Z is out; no timestamp is left out and counted
+        self.assertEqual([l["payment_ref"]["value"] for l in rec["settlement_legs"]], [new, new])
+        self.assertEqual((rec["outside_window"], rec["undated"], rec["window_from"]), (1, 1, "2026-10-30T17:58:00Z"))
+        self.assertIn("node shockley: no settlement recorded", r["detail"])
+        self.assertIn("window from 2026-10-30T17:58:00Z: 1 settlement records before it", r["detail"])
+        why = next(n["why"] for n in r["not_checked"] if n["what"].endswith("of node shockley"))
+        self.assertIn("no settlement in the window from 2026-10-30T17:58:00Z (1 settlement records before it, 0 without", why)
+        self.assertNotIn("no wallet", why)
+
+    def test_records_that_are_not_settlement_records_are_not_counted_in_the_window(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)], "shockley": []})
+        pad = {"capsule_id": "p", "record_type": "padding"}
+        with (lab / "brattain" / "ledger" / "capsules.jsonl").open("a") as f:
+            f.write(json.dumps(pad) + "\n" + json.dumps(dict(pad, timestamp="2026-10-02T00:00:00Z")) + "\n")
+        self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        self.assertEqual((rec["outside_window"], rec["undated"], len(rec["settlement_legs"])), (0, 0, 1))
+
+    def test_no_window_counts_every_record(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-02T00:00:00Z", "11" * 32), (None, "22" * 32)],
+                                "shockley": []})
+        pop = self.demo_population(lab)
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["window"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+        rec = json.loads((self.out / "brattain" / "recorded.json").read_text())
+        self.assertEqual(len(rec["settlement_legs"]), 2)
+        self.assertNotIn("outside_window", rec)
+
+    def test_a_malformed_window_exits_2(self):
+        lab = Path(self.tmp.name) / "lab"
+        for bad in ({"from": "yesterday"}, {"from": "2026-10-30T17:58:00"}, {"since": "2026-10-30T17:58:00Z"}, "now"):
+            with self.subTest(window=bad):
+                pop = self.demo_population(lab)
+                doc = json.loads((pop / "population.json").read_text())
+                doc["window"] = bad
+                dump(pop / "population.json", doc)
+                p = subprocess.run([str(STEP), "--population", str(pop), "--out", str(self.out)],
+                                   capture_output=True, text=True, env=dict(os.environ, STEP06_LAB=str(lab)))
+                self.assertEqual(p.returncode, 2)
+                self.assertIn("window", p.stderr)
+                shutil.rmtree(pop)
+
+    def demo_observations(self, lab, rows):
+        """rows: {node: [obs]}, each obs a dict merged into a settlement observation at 18:00Z."""
+        for name, obs in rows.items():
+            (lab / name / "ledger").mkdir(parents=True)
+            lines = []
+            for i, o in enumerate(obs):
+                blk = {"phase": "output_settlement_observed", "source": "wallet_reported", **o}
+                lines.append(json.dumps({"capsule_id": f"{name}-{i}", "timestamp": "2026-10-30T18:00:00Z",
+                                         "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": blk}}})
+                             + "\n")
+            (lab / name / "ledger" / "capsules.jsonl").write_text("".join(lines))
+
+    def crosscheck_of(self, rows):
+        lab = Path(self.tmp.name) / "lab"
+        shutil.rmtree(lab, ignore_errors=True)
+        self.demo_observations(lab, rows)
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        shutil.rmtree(Path(self.tmp.name) / "demo")
+        return r, json.loads((self.out / "crosscheck.json").read_text())
+
+    def test_the_payment_hash_crosscheck_pairs_by_role_and_amount_and_stays_not_checked(self):
+        h = lambda c: c * 64
+        payer = lambda hash_, amt: {"observed_by": "payer", "payment_hash": hash_, "amount_msat": amt}
+        prov = lambda hash_, cred, fee: {"observed_by": "provider", "payment_hash": hash_, "credited_msat": cred,
+                                         "fee_msat": fee}
+        r, cross = self.crosscheck_of({
+            "brattain": [payer(h("a"), 1000), prov(h("b"), 495, 5), payer(h("c"), 700), payer(h("d"), 50),
+                         payer(h("e"), 10)],
+            "shockley": [prov(h("a"), 995, 5), payer(h("b"), 500), prov(h("c"), 600, 10), payer(h("d"), 50)]})
+        self.assertEqual(cross["paired"], {h("a"): {"payer": "brattain", "payee": "shockley", "amount_msat": 1000},
+                                           h("b"): {"payer": "shockley", "payee": "brattain", "amount_msat": 500}})
+        self.assertIn("differ", cross["unpaired"][h("c")])       # 700 != 610
+        self.assertIn("no payer observation or no provider", cross["unpaired"][h("d")])  # both payers
+        self.assertEqual(cross["unpaired"][h("e")], "recorded by brattain only")
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIn("crosscheck.json", [p["path"] for p in r["proof"]])
+        self.assertIn("2 paired", r["detail"])
+        self.assertIn("3 unpaired", r["detail"])
+        why = next(n["why"] for n in r["not_checked"] if "preimages" in n["what"])
+        self.assertIn("leave some payment hashes unpaired", why)
+        self.assertNotIn("pair every", why)
+
+    def test_the_crosscheck_does_not_pair_a_hash_other_records_contradict(self):
+        h = lambda c: c * 64
+        payer = lambda hash_, amt: {"observed_by": "payer", "payment_hash": hash_, "amount_msat": amt}
+        prov = lambda hash_, cred, fee: {"observed_by": "provider", "payment_hash": hash_, "credited_msat": cred,
+                                         "fee_msat": fee}
+        _, cross = self.crosscheck_of({
+            "brattain": [payer(h("a"), 10), payer(h("b"), 10), payer(h("b"), 999), payer(h("c"), 10),
+                         prov(h("c"), 9, 1), payer(h("d"), 10), payer(h("d"), 10)],
+            "shockley": [prov(h("a"), 9, 1), payer(h("a"), 10), prov(h("b"), 9, 1),
+                         prov(h("d"), 9, 1), prov(h("d"), 9, 1)]})
+        self.assertIn("one node of each role is needed", cross["unpaired"][h("a")])  # payer on both nodes
+        self.assertIn("conflicting amounts: payer [10, 999]", cross["unpaired"][h("b")])
+        self.assertEqual(cross["unpaired"][h("c")], "recorded by brattain only")  # one node holding both roles is not a pair
+        self.assertEqual(cross["paired"][h("d")], {"payer": "brattain", "payee": "shockley", "amount_msat": 10})
+
+    def test_an_observation_without_integer_amounts_keeps_a_hash_unpaired(self):
+        h = "a" * 64
+        good = [{"observed_by": "payer", "payment_hash": h, "amount_msat": 10}]
+        for bad in ({"observed_by": "payer", "payment_hash": h, "amount_msat": True},
+                    {"observed_by": "payer", "payment_hash": h, "amount_msat": "10"},
+                    {"observed_by": "payer", "payment_hash": h}, {"payment_hash": h}):
+            with self.subTest(bad=bad):
+                _, cross = self.crosscheck_of({
+                    "brattain": good,
+                    "shockley": [{"observed_by": "provider", "payment_hash": h, "credited_msat": 9, "fee_msat": 1},
+                                 bad]})
+                self.assertEqual(cross["paired"], {})
+                self.assertIn("shockley has no payer or provider role or no integer amounts", cross["unpaired"][h])
+
+    def test_the_crosscheck_says_so_when_every_hash_pairs_and_when_there_is_nothing_to_compare(self):
+        both = [({"brattain": [{"observed_by": "payer", "payment_hash": "a" * 64, "amount_msat": 10}],
+                  "shockley": [{"observed_by": "provider", "payment_hash": "a" * 64, "credited_msat": 9,
+                                "fee_msat": 1}]}, "pair every payment hash"),
+                ({"brattain": [], "shockley": []}, "hold no payment hash to compare")]
+        for rows, expect in both:
+            with self.subTest(expect=expect):
+                r, _ = self.crosscheck_of(rows)
+                self.assertIn(expect, next(n["why"] for n in r["not_checked"] if "preimages" in n["what"]))
+
+    def test_a_requested_crosscheck_with_one_node_unread_says_it_did_not_run(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)]})  # shockley has no data dir
+        r = self.run_step(self.demo_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertFalse((self.out / "crosscheck.json").exists())
+        self.assertIn("fewer than two nodes were read", r["detail"])
+        self.assertTrue([n for n in r["not_checked"] if "preimages" in n["what"] and "no comparison ran" in n["why"]])
+
+    def test_a_rerun_does_not_keep_an_earlier_crosscheck(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        pop = self.demo_population(lab)
+        env = dict(os.environ, STEP06_LAB=str(lab))
+        self.run_step(pop, env=env)
+        self.assertTrue((self.out / "crosscheck.json").exists())
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["crosscheck"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=env)
+        self.assertFalse((self.out / "crosscheck.json").exists())
+
+    def test_no_crosscheck_unless_the_population_asks(self):
+        lab = Path(self.tmp.name) / "lab"
+        self.demo_ledgers(lab, {"brattain": [("2026-10-30T18:00:00Z", "aa" * 32)],
+                                "shockley": [("2026-10-30T18:00:01Z", "aa" * 32)]})
+        pop = self.demo_population(lab)
+        doc = json.loads((pop / "population.json").read_text())
+        del doc["crosscheck"]
+        dump(pop / "population.json", doc)
+        self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+        self.assertFalse((self.out / "crosscheck.json").exists())
+
+    def test_a_node_with_no_settlement_cites_the_open_adapter_issue(self):
+        self.assertEqual(step.WALLET_ISSUE, step.ADAPTER_ISSUE)
+
     def test_the_step_never_reaches_for_a_wallet_or_the_network(self):
         source = STEP.read_text()
         for word in ("urllib", "socket", "http.client", "requests", "subprocess"):

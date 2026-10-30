@@ -55,3 +55,23 @@ path which is `null`, or not readable by the user running the loop, writes
 NOT_CHECKED for that node (`live node <name>`, issue `evidence-network/loop:
 the live lab run, which fills population/live`); it never crashes and never
 reads that as a FAIL.
+
+## demo/
+
+The two demo nodes Brattain and Shockley (the Devcon demo mesh), for a step that reads what live nodes
+recorded. `"population": "demo"` with `"kind": "live"`: step 06 takes its live path for it (read-only, never
+pays). It is not run by `loop.sh`; the owner of the nodes copies each node's capsules data dir (read-only) into
+a run directory, exports it as `$DEMO_DIR` (`$DEMO_DIR/brattain/capsules`, `$DEMO_DIR/shockley/capsules`), and
+runs `steps/06-settle --population population/demo --out findings/<date>-demo/06-settle`.
+
+- `pinned`: the nodes run a dev build, so the finding pins `demo-mesh-llm` and `demo-capsules` from
+  `versions.lock` (which says the build includes unmerged mesh-llm PRs), not the lab's pins.
+- `window.from`: only records whose signed capsule timestamp is at or after it count. For the 2026-10-30
+  run it is the M4 roll (17:58Z); older records come from older plugin builds and must not be attributed
+  to the pinned one.
+- `crosscheck: "payment_hash"`: the step pairs the payment hashes the two nodes recorded by role and amount
+  (`crosscheck.json`): one node's payer observation and the other's provider observation, the payer's
+  `amount_msat` equal to the provider's `credited_msat + fee_msat`. Unpaired hashes are listed with a reason.
+  Agreement is not finality; the result stays NOT_CHECKED on Mesh-LLM/capsules-plugin#83.
+- `node_id`: the peer id from the node's `CAPSULES_PEER_KEYS` (Sherlock2, Buzz thread on loop#183).
+- The run's `build.json` records the binary sha256 and the plugin archive sha256.
