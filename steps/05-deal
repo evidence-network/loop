@@ -567,11 +567,11 @@ def utc_second(value):
     return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if t is not None and t.tzinfo else None
 
 
-def state_check(state, detail):
+def state_check(state, detail, passed="ok"):
     """A binding or signature check as written to checks.json. `ok` means no check found it bad: it stays true for
     every state that is not a FAIL (unread, unsupported, unlisted, ...), which are not_checked entries. `verified`
-    is true only when the check ran and passed, so a reader never takes `ok` for a PASS."""
-    return {"ok": state != "bad", "verified": state == "ok", "state": state, "detail": detail}
+    is true only when the check ran and reached its passing state (`passed`), so a reader never takes `ok` for a PASS."""
+    return {"ok": state != "bad", "verified": state == passed, "state": state, "detail": detail}
 
 
 BINDING_VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
@@ -894,7 +894,7 @@ def live_node(bin_, name, data_dir, out, work, peers):
                     c["binding"] = state_check(state, detail)
                 nonce, role, _ = exchange_key(capsule)
                 state, detail = tie(record, nonce, role, own_lines, held)
-                c["tied"] = {"ok": state != "bad", "state": state, "detail": detail}
+                c["tied"] = state_check(state, detail, passed="tied")
                 if inc is not None:
                     c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
         # The producer signature is checked on every held half, cited or not; the key it must be authored under is

@@ -409,6 +409,10 @@ class Step05BindingCheckTest(unittest.TestCase):
         for state in ("unread", "unsupported", "unsupported_key_type", "unlisted", "unkeyed", "unclaimed", "uncited"):
             c = step.state_check(state, "d")
             self.assertEqual((c["ok"], c["verified"], c["state"]), (True, False, state), state)
+        for state in ("never_tied", "ambiguous"):
+            c = step.state_check(state, "d", passed="tied")
+            self.assertEqual((c["ok"], c["verified"]), (True, False), state)
+        self.assertTrue(step.state_check("tied", "d", passed="tied")["verified"])
         self.assertEqual(step.state_check("bad", "d")["ok"], False)
         self.assertEqual(step.state_check("bad", "d")["verified"], False)
         self.assertEqual((step.state_check("ok", "d")["ok"], step.state_check("ok", "d")["verified"]), (True, True))
