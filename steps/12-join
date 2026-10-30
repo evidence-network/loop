@@ -325,7 +325,9 @@ def judge(node_dir, capsulectl, work):
     errs += check_staple(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
     not_checked = []
-    proof = list(PROOF)
+    # The stranger's book too: the kept answers are verified again in it, so a rerun needs its bytes.
+    proof = list(PROOF) + sorted(str(f.relative_to(node_dir)) for f in (node_dir / "probe/stranger").rglob("*")
+                                 if f.is_file())
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
     for stream in sorted({x for x in adv["streams"] if x and x != adv["book_id"]}):
@@ -358,7 +360,6 @@ def run_doctor(pop, out, tmp):
     capsulectl = tools()
     if not capsulectl.is_file():
         raise SystemExit(f"12-join: no capsulectl at {capsulectl}; run steps/12-join.setup.sh")
-    failures, not_checked, proof, lines = [], [], [], []
     for node in pop["nodes"]:
         name = node["name"]
         key_dir = ROOT / node["key_dir"]  # relative to the repository root, as population.json gives it
@@ -375,14 +376,38 @@ def run_doctor(pop, out, tmp):
                             "--home", str(Path(tmp) / f"{name}-home")],
                            env=env, capture_output=True, text=True)
         (out / f"{name}.join.log").write_text(r.stdout + r.stderr)
-        proof.append(f"{name}.join.log")
-        if r.returncode != 0:
-            failures.append(f"{name}: join.sh did not complete (exit {r.returncode}); see {name}.join.log")
+        (out / f"{name}.join.exit").write_text(f"{r.returncode}\n")
+    return decide_nodes(out, [n["name"] for n in pop["nodes"]], capsulectl, tmp)
+
+
+def decide_nodes(out, names, capsulectl, tmp):
+    """Judge each joined node from the proof files in `out` alone: join.sh's kept exit code, then what it wrote.
+
+    Returns (failures, not_checked, proof, lines). Run and reproduction both come through here, so a rerun on
+    the cited bytes judges as the run did.
+    """
+    out = Path(out)
+    failures, not_checked, proof, lines = [], [], [], []
+    for name in names:
+        proof += [x for x in (f"{name}.join.log", f"{name}.join.exit") if (out / x).is_file()]
+        try:
+            code = int((out / f"{name}.join.exit").read_text().strip())
+        except (OSError, ValueError):
+            failures.append(f"{name}: join.sh's exit code is not kept in {name}.join.exit")
             continue
-        errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify")
+        if code != 0:
+            failures.append(f"{name}: join.sh did not complete (exit {code}); see {name}.join.log")
+            continue
+        node_out = out / name
+        try:
+            errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify")
+        except (OSError, ValueError, KeyError, TypeError) as e:  # a proof file altered or missing
+            failures.append(f"{name}: the proof could not be judged ({type(e).__name__}: {str(e)[:200]})")
+            errs, nc = [], []
+            p = list(PROOF) + [str(f.relative_to(node_out)) for f in sorted(node_out.rglob("*")) if f.is_file()]
         failures += [f"{name}: {e}" for e in errs]
         merge(not_checked, nc)
-        proof += [f"{name}/{x}" for x in p]
+        proof += [f"{name}/{x}" for x in dict.fromkeys(p) if (node_out / x).is_file()]
         lines.append(f"{name}: joined; the commitment verifies, doctor --probe finds both answers verify and match "
                      "the policy, and the kept answers verify under the advertised keys and match the advertised "
                      "policy" if not errs else f"{name}: {len(errs)} check(s) did not hold")
@@ -822,6 +847,25 @@ def main(argv=None):
     r = conclude(a.out, pop["population"], failures, not_checked, proof, lines, started, which)
     print(f"12-join: {r['result']}: {r['detail']}", file=sys.stderr)
     return 0
+
+
+def decide(work, population, started, pop_dir):
+    """Step 08's entry: the finding decided again from the proof files in `work` alone (the doctor backend).
+
+    The nodes are the population's (`pop_dir`/population.json), never the proof's own: a node whose join.sh exit
+    code the proof does not keep is a FAIL, as is a population with no nodes. No join.sh is run. It writes
+    finding.json and probe/*.verified.json into `work`, so the caller passes a scratch copy.
+    """
+    work = Path(work)
+    capsulectl = tools()
+    if not capsulectl.is_file():
+        raise SystemExit(f"12-join: no capsulectl at {capsulectl}; run steps/12-join.setup.sh")
+    names = [n["name"] for n in load(Path(pop_dir) / "population.json")["nodes"]]
+    with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
+        failures, not_checked, proof, lines = decide_nodes(work, names, capsulectl, tmp)
+    if not names:
+        failures.append("the population lists no nodes, so nothing was joined")
+    return conclude(work, population, failures, not_checked, proof, lines, started, "doctor")
 
 
 def conclude(out, population, failures, not_checked, proof, lines, started, which="doctor"):

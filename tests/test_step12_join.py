@@ -92,6 +92,71 @@ class DoctorBackendTest(Tmp):
             self.assertIn(f"{node}/probe/history_card.answer.json", [p["path"] for p in r["proof"]])
         self.assertEqual(finding.check(self.out.parent), [])
 
+    def reproduce(self, mutate=None):
+        """Step 08's way: only the cited proof files copied to a fresh dir, then decide() on them."""
+        r = json.loads((self.out / "finding.json").read_text())
+        work = Path(self.tmp.name) / "work" / "12-join"
+        for p in r["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.out / p["path"], work / p["path"])
+        if mutate:
+            mutate(work)
+        return r, step.decide(work, "rehearsal", finding.now(), FIX / "population")
+
+    @needs_capsulectl
+    def test_the_proof_cites_the_exit_code_and_the_strangers_book_and_reproduces_alone(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        r, again = self.reproduce()
+        cited = [p["path"] for p in r["proof"]]
+        for node in ("alice", "bob"):
+            self.assertIn(f"{node}.join.exit", cited)
+            self.assertIn(f"{node}.join.log", cited)
+            self.assertIn(f"{node}/probe/stranger/profile.json", cited)
+            self.assertIn(f"{node}/probe/stranger/signing.seed", cited)
+        self.assertEqual((again["result"], again["not_checked"]), (r["result"], r["not_checked"]))
+        self.assertEqual(again["result"], "PASS")
+
+    @needs_capsulectl
+    def test_one_changed_proof_byte_reproduces_as_a_fail(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        for rel in ("alice/probe/history_card.answer.json", "alice/probe/stranger/profile.json",
+                    "alice/commitment.json"):
+            def flip(work, rel=rel):
+                f = work / rel
+                b = bytearray(f.read_bytes())
+                b[len(b) // 2] ^= 1
+                f.write_bytes(bytes(b))
+            _, again = self.reproduce(flip)
+            self.assertEqual(again["result"], "FAIL", rel)
+
+    @needs_capsulectl
+    def test_a_missing_or_unreadable_exit_code_or_no_proof_at_all_reproduces_as_a_fail(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        _, again = self.reproduce(lambda work: (work / "alice.join.exit").unlink())
+        self.assertEqual(again["result"], "FAIL")
+        _, again = self.reproduce(lambda work: (work / "alice.join.exit").write_text("x\n"))
+        self.assertEqual(again["result"], "FAIL")
+        shutil.rmtree(Path(self.tmp.name) / "work")
+        _, again = self.reproduce(lambda work: [f.unlink() for f in work.glob("*.join.exit")])
+        self.assertEqual(again["result"], "FAIL")
+
+    @needs_capsulectl
+    def test_a_judged_file_removed_or_corrupt_still_reproduces_as_a_fail_citing_what_remains(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        _, again = self.reproduce(lambda work: (work / "alice/probe/stranger/profile.json").write_text("{"))
+        self.assertEqual(again["result"], "FAIL")
+        self.assertIn("alice/commitment.json", [p["path"] for p in again["proof"]])
+        shutil.rmtree(Path(self.tmp.name) / "work")
+        _, again = self.reproduce(lambda work: (work / "alice/commitment.json").unlink())
+        self.assertEqual(again["result"], "FAIL")
+
+    @needs_capsulectl
+    def test_a_kept_nonzero_join_exit_code_reproduces_as_a_fail(self):
+        self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        _, again = self.reproduce(lambda work: (work / "alice.join.exit").write_text("1\n"))
+        self.assertEqual(again["result"], "FAIL")
+        self.assertIn("alice: join.sh did not complete (exit 1)", again["detail"])
+
     @needs_capsulectl
     def test_the_unaltered_fixture_holds(self):
         node = self.joined()
