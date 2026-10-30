@@ -127,6 +127,8 @@ def load_key(path, make=False):
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(key.hex() + "\n")
+    if os.stat(path).st_mode & 0o077:
+        raise ValueError(f"{path} is readable beyond its user: chmod 600 it")
     with open(path) as f:
         return bytes.fromhex(f.read().strip())
 
