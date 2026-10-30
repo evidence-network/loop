@@ -59,7 +59,9 @@ subject is not refused for a withholding reason, as above). Each question is
 its own attempt with its own send and answer time. The deadline is the node's signed join commitment's
 `answers_within` (lab/runs/*/join/), and an answer not in by it is not counted
 as answered. Sealing before sending, the recorded absence and the exchange
-ask are NOT_CHECKED on Mesh-LLM/capsules-plugin#56. A node cannot be asked
+ask are NOT_CHECKED on evidence-network/loop#80: the pinned plugin seals each
+ask and its absence (capsules-plugin PR #110), and this step does not read
+those records yet. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
 first-answered.json names the first ask answered (a verified artifact or a
@@ -124,21 +126,20 @@ RESPONSE_RECORD = "evidence_response"
 ANSWERED = ("artifact", "refusal")
 DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
-SEAL_ISSUE = "Mesh-LLM/capsules-plugin#56"
-# #110 (seal each ask, and its absence when the window closes) and #112 (a refusal checked against the policy the
-# peer's commitment pins) fix it once the lab's pinned plugin (versions.lock) has them.
-SEAL_FIXES = "fixed by Mesh-LLM/capsules-plugin#110 and #112 once pinned"
+# The pinned plugin seals each ask before it sends it, and its absence when the window closes (capsules-plugin
+# PR #110); reading those sealed records is this step's gap.
+SEAL_ISSUE = "evidence-network/loop#80"
+SEAL_FIXES = "the pinned plugin seals it (capsules-plugin PR #110); this step does not read it yet"
 LIVE_NOT_CHECKED = [
     {"what": "the request sealed in the asker's book before it is sent",
-     "why": "mesh_evidence_request records no evidence_request before it sends (only an adjudication request is "
-            "recorded first), so there is no seal time to set against the send ("+SEAL_FIXES+")",
+     "why": "the step sets no seal time against the send ("+SEAL_FIXES+")",
      "issue": SEAL_ISSUE},
     {"what": "an absence recorded as a signed record when the window closes",
-     "why": "the plugin seals no recorded_absence; the reporter keeps an unsigned absence.txt ("+SEAL_FIXES+")",
+     "why": "the reporter keeps an unsigned absence.txt ("+SEAL_FIXES+")",
      "issue": SEAL_ISSUE},
     {"what": "a later exchange request on a Mesh node",
-     "why": "the reporter asks only the stranger-safe questions; an exchange ask is the step 7 flow the plugin "
-            "does not seal yet ("+SEAL_FIXES+")",
+     "why": "the reporter asks only the stranger-safe questions; the step drives no exchange ask on a Mesh node "
+            "yet",
      "issue": SEAL_ISSUE},
 ]
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
@@ -791,8 +792,8 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     write_json(out / "first-answered.json",
                {"answered_at": stamp(first[0]) if first else None,
                 "ask": first[1] if first else None,
-                # whether the asker sealed each request before sending it: the book backend does, the plugin
-                # does not yet (capsules-plugin#56, fixed by #110 and #112 once pinned)
+                # whether this step saw each request sealed before it was sent: the book backend does; the
+                # pinned plugin seals them too (capsules-plugin PR #110), and reading them is evidence-network/loop#80
                 "sealed": which == "book"})
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")

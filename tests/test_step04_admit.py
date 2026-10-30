@@ -95,7 +95,7 @@ class Rehearsal(unittest.TestCase):
             self.assertEqual([d["admission_decision"]["verdict"] for d in self.sealed(self.out, name)], [want], name)
         self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
         self.assertIn("would spend 0 USD", f["detail"])
-        self.assertIn("Mesh-LLM/capsules-plugin#116", f["detail"])
+        self.assertIn("evidence-network/loop#81", f["detail"])
         self.assertTrue(finding.gaps(f["detail"]))
 
     def test_a_no_has_no_deal_record(self):
@@ -205,7 +205,7 @@ class Live(unittest.TestCase):
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn("node lab-a: 2 of 4 ledger records carry an admission decision (1 GO, 1 NO)", f["detail"])
         self.assertEqual([p["path"] for p in f["proof"]], ["lab-a/decisions.jsonl"])
-        for issue in ("Mesh-LLM/capsules-plugin#116", "Mesh-LLM/mesh-llm#2061"):
+        for issue in ("evidence-network/loop#81", "Mesh-LLM/mesh-llm#2061"):
             self.assertIn(issue, f["detail"])
         self.assertEqual(sorted(f["pinned"]), ["capsules", "mesh-llm"])
         self.assertEqual(finding.check(out.parent), [])
@@ -214,7 +214,7 @@ class Live(unittest.TestCase):
         _, f = self.live_run(LIVE)
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("live node lab-c", [x["what"] for x in f["not_checked"]])
-        self.assertIn("Mesh-LLM/capsules-plugin#116", [x["issue"] for x in f["not_checked"]])
+        self.assertIn("evidence-network/loop#81", [x["issue"] for x in f["not_checked"]])
 
     def test_an_unreadable_policy_no_passes(self):
         cap = json.loads(self.good()[0])
@@ -249,6 +249,47 @@ class Live(unittest.TestCase):
         _, f = self.live_run(self.lab_with(['{"capsule_id":"00","action_type":"fyi"}']))
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("an admission decision on a lab node", [x["what"] for x in f["not_checked"]])
+
+    def with_rows(self, card=None, rows=None):
+        """A good decision as a build with capsules-plugin PR #116 seals it: five rows and the history-card read."""
+        cap = json.loads(self.good()[0])
+        d = cap["model_attestation"]["compute_attestation"]["admission_decision"]
+        d["rows"] = rows if rows is not None else [{"row": r, "result": x} for r, x in
+                                                   zip(step.ROWS, ("pass", "pass", "fail", "pass", "not_read"))]
+        d["reads"].append(card if card is not None else
+                          {"kind": "history_card", "derivation": "history_card/1",
+                           "commitment": {"alg": "SHA-256", "digest": "c" * 64}})
+        return cap
+
+    def test_a_decision_with_the_five_rows_passes(self):
+        for card in (None, {"kind": "history_card", "state": "not_read"}):
+            _, f = self.live_run(self.lab_with([json.dumps(self.with_rows(card))]))
+            self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_rows_and_decisions_from_an_earlier_build_pass_together(self):
+        _, f = self.live_run(self.lab_with(self.good() + [json.dumps(self.with_rows())]))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_malformed_rows_fail(self):
+        rows = [{"row": r, "result": "pass"} for r in step.ROWS]
+        for edit, why in ((lambda c: self.dec(c).update(rows=rows[::-1]), "five base-policy rows"),
+                          (lambda c: self.dec(c).update(rows=rows[:4]), "five base-policy rows"),
+                          (lambda c: self.dec(c)["rows"][2].update(result="maybe"), "five base-policy rows"),
+                          (lambda c: self.dec(c)["rows"][0].update(peer="a" * 64), "five base-policy rows"),
+                          (lambda c: self.dec(c)["reads"].pop(), "operator policy"),
+                          (lambda c: self.dec(c)["reads"].__setitem__(1, {"kind": "history_card"}), "history card"),
+                          (lambda c: self.dec(c)["reads"][1].update(peer="a" * 64), "history card"),
+                          (lambda c: self.dec(c).update(peer_commitment=None, verdict="NO",
+                                                        source="unreadable_target"), "names no peer")):
+            cap = self.with_rows()
+            edit(cap)
+            _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+            self.assertEqual(f["result"], "FAIL", why)
+            self.assertIn(why, f["detail"])
+
+    @staticmethod
+    def dec(cap):
+        return cap["model_attestation"]["compute_attestation"]["admission_decision"]
 
     def test_a_malformed_decision_fails(self):
         good = self.good()

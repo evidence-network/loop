@@ -380,11 +380,11 @@ over the three nodes, and its `detail` lists each node:
   Through each node's own console (`LOOP_NODE_CONSOLES`, which `loop` sets)
   it reads the controller binding: the digest the node's `doctor` reports
   must match the one its signed commitment names, or neither names one.
-  The plugin's own `join` and `doctor --probe`, the binding ceremony itself
-  (fixed upstream in capsules-plugin PR #121, not in the pinned build) and
-  the signed join/1 the join switch sends the reporter (in the pin; step 12
-  does not read it yet) read NOT_CHECKED, so the step reads NOT_CHECKED at
-  best. A FAIL names the node and the check.
+  The pinned plugin's `join` runs the binding ceremony (capsules-plugin PR
+  #121); step 12 reads the binding it leaves. The plugin's own `join` and
+  `doctor --probe` run by the step (evidence-network/loop#79) and the signed
+  join/1 the join switch sends the reporter (step 12 does not read it yet) read
+  NOT_CHECKED, so the step reads NOT_CHECKED at best. A FAIL names the node and the check.
 
 A FAIL is reported with the tarball as it is; do not work around it on the
 host.
