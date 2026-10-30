@@ -6,7 +6,9 @@ Usage: 10-judge --population DIR --out RUN/10-judge
 
 RUN is the loop run (the parent of --out). This step reads only step 08's
 manifest, RUN/08-verify/verified.json, and the files it lists for the steps it
-shows as `reproduced`:
+shows as `reproduced`. When RUN holds no 08-verify/, it judges the population's
+committed stand-in run instead (DIR/step10/run, dated in a closed month), and
+its detail says the records are that stand-in, not this run's:
 
   manifest   08's finding passes steps/finding.py's check and names
              verified.json in its proof with the sha256 the file has. The
@@ -64,7 +66,8 @@ import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 
 ISSUE = "evidence-network/loop#24"
-PACK_ISSUE = "action-state-group/evidencebook-skills#76"
+# The pack is loop's own deterministic copy of terms 1-3, not a pinned evidencebook-skills pack.
+PACK_ISSUE = "evidence-network/loop#111"
 PACK = HERE / "10-judge.d" / "pack.json"
 PINNED = ["capsulectl", "capsulectl-book"]
 ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 "
@@ -229,7 +232,7 @@ def judge_records(records, run, pack, start, end, not_checked):
                 if any(attested(Path(run) / d / r["path"]) for r in mine):
                     not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
                                         "why": "a record carries model_attestation and this pack has no "
-                                               "recomputation for it yet", "issue": PACK_ISSUE})
+                                               "recomputation for it yet", "issue": ISSUE})
                     claims.append(claim(cid, t["id"], "not_evaluable", refs, "model_attestation is present; this "
                                         "pack does not recompute it yet, so the term is not judged"))
                 else:
@@ -451,20 +454,24 @@ def main(argv=None):
     pack = load(PACK)
     keys = a.population.resolve() / "step10" / "keys"
     run = out.parent
+    # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
+    standin = a.population.resolve() / "step10" / "run"
+    standin = standin if not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir() else None
+    source = standin or run
 
     problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
     start = end = None
     pinned = []
     try:
         try:
-            manifest, as_of = read_manifest(run)
+            manifest, as_of = read_manifest(source)
         except ValueError as e:
             raise RuntimeError(str(e))
         if manifest.get("population") != population:
             raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
         start, end = window_of(as_of, pack["window"]["periods"])
-        records, refused, not_checked, problems = select(run, manifest, start, end, pack)
-        dump(out / "window.json", {"as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
+        records, refused, not_checked, problems = select(source, manifest, start, end, pack)
+        dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
                                    "period": pack["window"]["period"], "periods": pack["window"]["periods"],
                                    "records": records, "refused": refused})
         proof.append("window.json")
@@ -484,7 +491,7 @@ def main(argv=None):
                              "steps/10-judge.setup.sh installs them")
         pinned = PINNED
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
-            docs = judge_records(records, run, pack, start, end, not_checked)
+            docs = judge_records(records, source, pack, start, end, not_checked)
             book = Book(Path(tmp) / "book", capsulectl, keys)
             sealed = seal(book, records, docs, pack, start, end, out)
             problems, lines = judge(out, records, capsulectl, pub_hex(keys / "judge.pub.pem"), tmp)
@@ -501,15 +508,17 @@ def main(argv=None):
 
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
     window = f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)" if start else "no window"
-    detail = (f"run {run.name}, {window}, deterministic pack {pack['pack']} (no model): "
+    what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "
+            f"run's records" if standin else f"run {run.name}")
+    detail = (f"{what}, {window}, deterministic pack {pack['pack']} (no model): "
               f"{len(records)} records in the window from {len({r['dir'] for r in records})} steps. "
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
               + (f"Refused, not read: {'; '.join(refused)}. " if refused else "")
               + "Records are the files step 08's manifest lists, cited by sha256 through one capsule each.")
     if result == "PASS":
-        detail += " " + finding.outside("the inference-deals pack's own code over a node's real deal records, "
-                                        "which is not pinned here", PACK_ISSUE)
+        detail += " " + finding.outside("the pack is loop's own deterministic copy of terms 1-3, not a pinned "
+                                        "evidencebook-skills pack", PACK_ISSUE)
     finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned,
                   proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)

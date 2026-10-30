@@ -1,7 +1,7 @@
 {
   "population": "rehearsal",
   "result": "PASS",
-  "run": "pass-run",
+  "run": "run",
   "steps": [
     {
       "dir": "05-deal",

@@ -26,7 +26,7 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
 
 The pack is deterministic, with no model call. It uses the terms of the evidencebook-skills `inference-deals`
 pack (all `must_have`) on the rehearsal stand-ins. That pack's own code is not pinned in `versions.lock`, so it
-does not run here, and a PASS names that as a gap.
+does not run here. A PASS names that as a gap on evidence-network/loop#111; pinning the pack is its own PR.
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
 
@@ -77,10 +77,15 @@ The proof is:
 
 ## Rehearsal
 
-A run's records are made in the month it runs, so until that month closes they are outside the window. On
-today's rehearsal run the step is NOT_CHECKED, and step 12, which 08 does not reproduce, adds its own entry.
-The PASS case is `tests/fixtures/step10/pass-run`: four stand-in findings dated September 2026, and 08's
-manifest finished in October 2026.
+A run's records are made in the month it runs, so until that month closes they are outside the window. The
+window is never shortened for that. Instead, when `RUN` holds no `08-verify/`, the step judges the population's
+committed stand-in run, `population/rehearsal/step10/run`: four stand-in findings (05, 06, 07, 09) dated
+September 2026, and 08's manifest finished in October 2026. Its detail says the records are that committed
+stand-in, not this run's, and `window.json` names its `source` as `stand-in`. So `steps/10-judge --population
+population/rehearsal --out DIR/10-judge` on a run without 08 is PASS.
+
+Given a real run with 08's manifest, the step judges that run. While its records are all in the open month, it
+is NOT_CHECKED with that reason, and a step 08 did not reproduce (today, 12) adds its own entry.
 
 **Live** is NOT_CHECKED: 08 reproduces no live finding, and the live population lists no judge key.
 

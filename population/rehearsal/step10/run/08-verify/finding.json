@@ -1,0 +1,18 @@
+{
+  "asserts": "an outsider reproduces every finding of the run offline (step 10's committed stand-in manifest)",
+  "detail": "a committed stand-in manifest for step 10's rehearsal: every step reproduced",
+  "finished": "2026-10-02T09:01:00Z",
+  "name": "verify",
+  "not_checked": [],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "verified.json",
+      "sha256": "3ed19657bd1dcbe4032dabb7de5aa81ae397e7799d933f2f5cc1740beb5dab1c"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-02T09:00:00Z",
+  "step": "08"
+}

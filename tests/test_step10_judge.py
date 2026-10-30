@@ -1,7 +1,9 @@
 """steps/10-judge: a deterministic pack over a window of whole closed months, its Results sealed and verified offline.
 
-The base run is tests/fixtures/step10/pass-run: four stand-in step findings (05, 06, 07, 09) dated in September
-2026 and step 08's manifest showing each reproduced, with 08 finished in October 2026. Sealing and verifying need
+The base run is population/rehearsal/step10/run, the committed stand-in run: four stand-in step findings (05, 06,
+07, 09) dated in September 2026 and step 08's manifest showing each reproduced, with 08 finished in October 2026.
+Most tests copy it in as a run of their own (it has 08's manifest, so 10 judges it as that run); the StandIn tests
+give 10 a run without one, so it judges the population's stand-in. Sealing and verifying need
 the pinned capsulectl and capsulectl-book (steps/10-judge.setup.sh); without them those tests SKIP, saying so,
 and LOOP_REQUIRE_TOOLS=1 makes that an error. Each planted failure runs on a copy of the base run, and its mutant
 check shows which part of 10 catches it: with that part of 10 switched off, the plant goes through.
@@ -22,7 +24,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 STEPS = ROOT / "steps"
 POPULATION = ROOT / "population" / "rehearsal"
-BASE = ROOT / "tests" / "fixtures" / "step10" / "pass-run"
+BASE = POPULATION / "step10" / "run"
 
 sys.path.insert(0, str(STEPS))
 import finding  # noqa: E402
@@ -63,10 +65,10 @@ class Base(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def judge(self):
+    def judge(self, population=POPULATION):
         """Run 10 in this process on the run; its finding."""
         out = self.run / "10-judge"
-        step.main(["--population", str(POPULATION), "--out", str(out)])
+        step.main(["--population", str(population), "--out", str(out)])
         f = load(out / "finding.json")
         self.assertEqual(finding.check_record(out, f), [], f["detail"])
         return f
@@ -129,9 +131,13 @@ class WindowTest(unittest.TestCase):
 class ManifestTest(Base):
     """What 10 reads before it seals anything; none of this needs capsulectl."""
 
-    def test_no_manifest_is_not_checked(self):
+    def test_no_manifest_and_no_stand_in_is_not_checked(self):
+        # A population with no committed stand-in run (as the live one has none), and a run without 08.
+        population = Path(self.tmp.name) / "rehearsal"
+        shutil.copytree(POPULATION, population)
+        shutil.rmtree(population / "step10" / "run")
         shutil.rmtree(self.run / "08-verify")
-        f = self.judge()
+        f = self.judge(population)
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("08-verify/verified.json", f["not_checked"][0]["why"])
 
@@ -202,6 +208,10 @@ class JudgeTest(Base):
         self.assertEqual(claims["term-3"]["verdict"], "not_evaluable")
         self.assertEqual(claims["term-3"]["grade"], "self-attested")
         self.assertIn("provider states", claims["term-3"]["presentation"]["narrative"])
+        # Never a judged match: not SATISFIED, and in no met or not_met bucket.
+        self.assertNotEqual(claims["term-3"]["sufficiency"], "SATISFIED")
+        buckets = b["disclosures"][b["root"]]["agent_input"]["statement"]["aggregate"]["buckets"]
+        self.assertIn("05-deal:term-3", buckets["not_evaluable"])
 
     def test_term_3_with_model_attestation_is_not_checked(self):
         d = self.run / "05-deal" / "deal.json"
@@ -214,7 +224,7 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual([x["issue"] for x in f["not_checked"]], [step.PACK_ISSUE])
+        self.assertEqual([x["issue"] for x in f["not_checked"]], [step.ISSUE])
         self.assertIn("term-3", f["not_checked"][0]["what"])
 
     def test_a_verdict_comes_from_the_result_08_rederived(self):
@@ -398,6 +408,64 @@ class JudgeTest(Base):
             f = self.judge()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("is not under the repository's judge key", f["detail"])
+
+
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+class StandInTest(unittest.TestCase):
+    """A run without 08's manifest: 10 judges the population's committed stand-in run, and says so."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-step10-standin-")
+        self.population = Path(self.tmp.name) / "rehearsal"
+        shutil.copytree(POPULATION, self.population)
+        self.run = Path(self.tmp.name) / "run"
+        self.run.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def judge(self):
+        out = self.run / "10-judge"
+        step.main(["--population", str(self.population), "--out", str(out)])
+        f = load(out / "finding.json")
+        self.assertEqual(finding.check(self.run), [], f["detail"])
+        return f
+
+    def test_rehearsal_passes_on_the_committed_stand_in(self):
+        f = self.judge()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("the committed stand-in run population/rehearsal/step10/run (dated in a closed month), not "
+                      "this run's records", f["detail"])
+        self.assertEqual(load(self.run / "10-judge" / "window.json")["source"], "stand-in")
+        self.assertEqual(len(load(self.run / "10-judge" / "window.json")["records"]), 13)
+        self.assertEqual(finding.gaps(f["detail"]), [("the pack is loop's own deterministic copy of terms 1-3, not a "
+                                                      "pinned evidencebook-skills pack", step.PACK_ISSUE)])
+
+    def test_the_repository_stand_in_passes(self):
+        # The gate exactly: the repository's population, an empty run.
+        out = self.run / "10-judge"
+        step.main(["--population", str(POPULATION), "--out", str(out)])
+        self.assertEqual(load(out / "finding.json")["result"], "PASS")
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_planted_a_stand_in_record_changed_fails(self):
+        (self.population / "step10" / "run" / "06-settle" / "ledger.jsonl").write_text('{"settlement": "other"}\n')
+        f = self.judge()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("06-settle/ledger.jsonl does not match the sha256 08's manifest gives it", f["detail"])
+
+    def test_planted_a_result_over_the_stand_in_that_omits_one_record_fails(self):
+        real = step.judge_records
+
+        def omit(*a, **k):
+            docs = real(*a, **k)
+            for c in docs["09-dispute"]["claims"]:
+                c["evidence"] = [e for e in c["evidence"] if e != "09-dispute/outcome.json"]
+            return docs
+        with mock.patch.object(step, "judge_records", side_effect=omit):
+            f = self.judge()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("no Result cites 09-dispute/outcome.json", f["detail"])
 
 
 if __name__ == "__main__":
