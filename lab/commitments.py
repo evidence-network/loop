@@ -64,10 +64,22 @@ def members(text):
         out[key] = (start, i)
 
 
+def no_duplicates(pairs):
+    """A JSON object may not repeat a name: json.loads keeps the last, the file keeps every one."""
+    names = [k for k, _ in pairs]
+    dup = sorted({k for k in names if names.count(k) > 1})
+    if dup:
+        raise ValueError(f"repeats member {dup[0]!r}")
+    return dict(pairs)
+
+
 def take(raw):
     """(commitment text as returned, parsed commitment, policy bytes) from the console's reply, or a refusal."""
-    text = raw.decode("utf-8")
-    reply = json.loads(text)
+    try:
+        text = raw.decode("utf-8")
+        reply = json.loads(text, object_pairs_hook=no_duplicates)
+    except ValueError as e:  # UnicodeDecodeError is one
+        sys.exit(f"commitments: the node's reply is not usable JSON ({e}): {raw[:200]!r}")
     if not isinstance(reply, dict) or "commitment" not in reply or "policy" not in reply:
         sys.exit(f"commitments: the node returned no commitment: {text[:300]}")
     start, end = members(text)["commitment"]
@@ -90,7 +102,7 @@ def publish(console, root, dry_run=False):
     if doc["key_id"] != listed:
         sys.exit(f"commitments: the commitment for {node_id} is not under the key nodes/{node_id}.json lists")
     errs, _ = cc.verify(doc, lambda uri: policy if uri == f"policies/{node_id}.json" else None)
-    if doc["lcap"]["policy_uri"] != f"policies/{node_id}.json":
+    if not errs and doc["lcap"]["policy_uri"] != f"policies/{node_id}.json":
         errs.append(f"lcap.policy_uri is {doc['lcap']['policy_uri']!r}, not policies/{node_id}.json")
     if errs:
         sys.exit(f"commitments: the commitment for {node_id} does not verify: " + "; ".join(errs))

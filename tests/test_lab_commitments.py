@@ -152,6 +152,20 @@ class CommitmentsTest(unittest.TestCase):
         doc, policy = signed(lambda d: d["lcap"].update(policy_uri="disclosure-policy.json"))
         self.assertIn("policy_uri", self.refused(reply(doc, policy)))
 
+    def test_refuses_a_repeated_member_that_would_ride_along_unchecked(self):
+        text = json.dumps(self.doc, separators=(",", ":"))
+        sneaky = text.replace('"answers_within"', '"controller":"' + "ab" * 32 + '","controller":null,"answers_within"', 1)
+        body = ('{"policy":"%s","commitment":%s}' % (base64.b64encode(self.policy).decode(), sneaky)).encode()
+        self.assertIn("repeats member", self.refused(body))
+
+    def test_refuses_a_commitment_with_no_lcap_naming_the_reason_not_a_traceback(self):
+        doc = {k: v for k, v in self.doc.items() if k not in ("lcap", "sig")}
+        self.assertIn("does not verify", self.refused(reply(cc.sign(doc, KEY), self.policy)))
+
+    def test_refuses_a_reply_that_is_not_json(self):
+        self.assertIn("not usable JSON", self.refused(b"<html>wrong port</html>"))
+        self.assertIn("not usable JSON", self.refused(b"\xff\xfe"))
+
     def test_refuses_a_reply_with_no_commitment(self):
         self.assertIn("no commitment", self.refused(b'{"error":"no checkpoint yet"}'))
 
