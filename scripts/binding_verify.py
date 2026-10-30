@@ -7,11 +7,11 @@ import json
 import subprocess
 
 VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
-UNSUPPORTED_METHOD_ISSUE = "evidence-network/loop#166"  # exit 3: a binding method the verifier lacks
+UNSUPPORTED_METHOD_ISSUE = "evidence-network/loop#166"  # exit 3: a binding method or key type the verifier lacks
 
 def verify(verifier, raw, key, times):
     """(verdict, report, stderr, returncode) of `verifier binding` on the binding text `raw`, held to naming `key`
-    at every time in `times`. verdict is "ok", "bad" or "unsupported" (a method the verifier does not implement),
+    at every time in `times`. verdict is "ok", "bad" or "unsupported" (a method or key type the verifier does not implement),
     None for any other exit (usage error, old verifier): the caller stops. report is the verifier's JSON, {} when
     it is not."""
     v = subprocess.run([str(verifier), "binding"], capture_output=True, timeout=120,

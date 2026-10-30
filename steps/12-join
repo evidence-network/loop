@@ -88,7 +88,7 @@ never a value read back from the commitment. A node with no console given is NOT
 A bound node's record is then read from the `data_dir` the population gives and checked by the
 Go verifier against that digest: a record that does not name the node's listed key or does not
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
-have bound again), or uses a method the verifier lacks is NOT_CHECKED. A binding that applies leaves two NOT_CHECKED entries: revocation and role.
+have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies leaves two NOT_CHECKED entries: revocation and role.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -164,7 +164,7 @@ def cross_language():
 def binding_check(name, raw, digest, key, at):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, or does not name the key); "unread" (it
-    is not the binding `digest` names); "unsupported" (a method the verifier lacks)."""
+    is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks)."""
     try:
         verdict, report, err, code = bv.verify(cross_language(), raw, key, [at])
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -190,7 +190,7 @@ def binding_check(name, raw, digest, key, at):
 
 def binding_unchecked(state, detail):
     """The not_checked entry for a binding_check state that is neither ok nor bad, None for those two."""
-    why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method"}.get(state)
+    why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method or key type"}.get(state)
     issue = live.ISSUE if state == "unread" else bv.UNSUPPORTED_METHOD_ISSUE
     return {"what": "the controller binding record, checked by a second verifier", "why": f"{why}: {detail}",
             "issue": issue} if why else None

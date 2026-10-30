@@ -38,7 +38,7 @@
           "result": "PASS"
         },
         "05": {
-          "finding_sha256": "4e45ce6beef77100ce94e629a447103bd62eec6a9c310bddd0f4127c87036747",
+          "finding_sha256": "116ca2a96e4abff07919615e9d337374de4ed1b31733b9a7e6e1d6a8f1f049e5",
           "result": "NOT_CHECKED"
         },
         "07": {

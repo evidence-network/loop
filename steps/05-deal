@@ -338,7 +338,7 @@ def live_declarations(counts, unread):
                     "why": f"{counts['unread']} cited bindings could not be checked: {'; '.join(sorted(unread))}"})
     if counts.get("unsupported"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": bv.UNSUPPORTED_METHOD_ISSUE,
-                    "why": f"{counts['unsupported']} cited bindings use a method `cross_language binding` does not "
+                    "why": f"{counts['unsupported']} cited bindings use a method or key type `cross_language binding` does not "
                            f"implement"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
@@ -351,6 +351,7 @@ def live_declarations(counts, unread):
     return out
 
 
+LIVE_UNLISTED = "evidence-network/loop#174"  # a sender with no nodes/ listing: its key is only self-attested
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
@@ -402,7 +403,8 @@ def live_unclaimed(unclaimed, unkeyed, unlisted):
         parts.append(f"{unlisted} verify under the key the node accepted, but the sender they were received from has "
                      f"no nodes/<node_id>.json listing to hold that key to, so it is only self-attested")
     return {"what": "the held half's producer signature, in a second language",
-            "issue": LIVE_NO_VIA if unkeyed and not unclaimed and not unlisted else live.NO_ISSUE_YET,
+            "issue": (LIVE_NO_VIA if unkeyed and not unclaimed and not unlisted else
+                      LIVE_UNLISTED if unlisted and not unclaimed and not unkeyed else live.NO_ISSUE_YET),
             "why": "held halves: " + "; ".join(parts)}
 
 
@@ -587,8 +589,8 @@ def binding_check(digest, half, citing, peers):
 
     state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key);
     "unread"
-    (its bytes are not available, or are not the binding the record names); "unsupported" (a method the verifier
-    does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
+    (its bytes are not available, or are not the binding the record names); "unsupported" (a method or key type the
+    verifier does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
     binding the record names: "unread"."""
     key = half.get("key_id")
     if not is_key(key):

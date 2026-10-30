@@ -383,6 +383,17 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "ok", detail)
         self.assertIn("signatures and window PASS", detail)
 
+    def test_a_bip340_binding_with_one_altered_signature_byte_fails_its_signatures(self):
+        case = BINDINGS["valid-nostr-key"]
+        doc = json.loads(case["binding"])
+        sig = doc["sigs"][0]["sig"]["sig"]
+        doc["sigs"][0]["sig"]["sig"] = ("0" if sig[0] != "0" else "1") + sig[1:]
+        BINDINGS["bad-nostr-sig"] = {"binding": json.dumps(doc), "keys": case["keys"]}
+        self.addCleanup(BINDINGS.pop, "bad-nostr-sig", None)
+        state, detail = self.check("bad-nostr-sig", key=case["keys"][1], times=("2026-10-30T00:00:00Z",))
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("signatures FAIL", detail)
+
     def test_a_declared_bip340_key_type_is_no_longer_downgraded(self):
         # aac-go go/v0.16.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
         keys = BINDINGS["valid-same-controller"]["keys"]

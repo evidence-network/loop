@@ -20,7 +20,7 @@
       "why": "8 current-build halves accepted via host_announced from sender evidence keys 99d5ce4f8e9f9c24 (7), ec79b7685f15d1fb (1), with no operator binding digest equal to the one in the sender's published commitment; the pinned plugin accepts them on the evidence key (capsules-plugin PR #77), so this is the sender's missing binding, not a plugin gap"
     },
     {
-      "issue": "no open issue yet (to be filed)",
+      "issue": "evidence-network/loop#174",
       "what": "the held half's producer signature, in a second language",
       "why": "held halves: 3 verify under the key the node accepted, but the sender they were received from has no nodes/<node_id>.json listing to hold that key to, so it is only self-attested"
     }

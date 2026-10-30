@@ -1099,6 +1099,15 @@ class PluginToolsRunTest(Tmp):
         self.assertIn("alice: alice's binding", r["detail"])
 
     @needs_cross
+    def test_a_bip340_binding_of_the_nodes_ed25519_key_applies(self):
+        # aac-go go/v0.16.0 (AAC#458): the node key is keys[1] of the vector, the controller key bip340.
+        case = json.loads((ROOT / "tests/fixtures/step05/controller-bindings.json").read_text())["cases"]["valid-nostr-key"]
+        digest = step.bv.verify(step.cross_language(), case["binding"], case["keys"][1], [FIXTURE_AT])[1]["binding_digest"]
+        state, detail = step.binding_check("alice", case["binding"], digest, case["keys"][1], FIXTURE_AT)
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("signatures and window PASS", detail)
+
+    @needs_cross
     def test_a_held_binding_outside_its_window_is_a_fail(self):
         r = self.run_one(data_dir=self.data_dir(), before=("bound", BINDING_DIGEST), committed=BINDING_DIGEST,
                          run_at="2030-01-01T00:00:00Z")
