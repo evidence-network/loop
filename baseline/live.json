@@ -14,6 +14,7 @@
         "evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.2.0",
         "evidencebook": "action-state-group/evidencebook v0.8.1",
         "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.9",
+        "inference-deals": "action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf",
         "mesh-llm": "Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123",
         "mesh-llm-pr-2620": "Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e",
         "mesh-llm-pr-2649": "Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8",
