@@ -15,6 +15,7 @@
 #   join      ./join.sh for each node, with its plugin key and a new controller key (a node whose
 #             $LAB_DIR/join/<node> already exists is skipped: join.sh fails on a node that has joined)
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
+#             (with LAB_TWINS) the four-node $LAB_DIR/population-twins/population.json that dispute reads, and
 #             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #             (and the reporter node itself from a second node's console)
@@ -659,6 +660,8 @@ cmd_join() {
 # --- entries / loop / pack --------------------------------------------------------------------
 cmd_entries() {
   need LAB_OPERATOR
+  # The reporter is a committed live node; lab-4 is twins-only and not in population/live.
+  [ "$REPORTER" != lab-4 ] || die "LAB_REPORTER cannot be lab-4: it is a twins-only node, not in population/live"
   local dry=(); [ "$DRY" = 1 ] && dry=(--dry-run)
   python3 -B "$ROOT/lab/pack.py" entries --lab-dir "$LAB_DIR" --operator "$LAB_OPERATOR" \
     --reporter "$REPORTER" $([ "$TWINS" = 1 ] && echo --add-host lab-4) "${dry[@]+"${dry[@]}"}"
@@ -780,7 +783,10 @@ PY
 cmd_dispute() {
   local out=$ROOT/findings/$TODAY-live pop=$ROOT/population/live
   # A twins run has a fourth node that is not in the committed population: `LAB_TWINS=1 entries` wrote the four-node one under the lab dir.
-  [ "$TWINS" = 1 ] && pop=$LAB_DIR/population-twins
+  if [ "$TWINS" = 1 ]; then
+    pop=$LAB_DIR/population-twins
+    [ "$DRY" = 1 ] || [ -s "$pop/population.json" ] || die "no $pop/population.json: run LAB_TWINS=1 entries first"
+  fi
   run env LAB_DIR="$LAB_DIR" "$ROOT/steps/09-dispute" --population "$pop" --out "$out/09-dispute"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"

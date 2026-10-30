@@ -345,7 +345,11 @@ class DryRunTest(unittest.TestCase):
         self.assertIn(str(ROOT / "population" / "live"), r.stdout)
         # With LAB_TWINS the four-node population `entries` wrote under the lab dir is read.
         r = lab_sh("--dry-run", "dispute", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"{self.lab}/population-twins", r.stdout)
+        r = lab_sh("dispute", env={**self.env, "LAB_TWINS": "1"})  # not dry: no twins population yet
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("run LAB_TWINS=1 entries first", r.stderr)
 
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
@@ -694,6 +698,36 @@ class EntriesTest(LabFixture):
         self.assertEqual(twins[3]["node_id"], "4" * 64)
         self.assertEqual(twins[3]["name"].rsplit("-", 1)[0], twins[0]["name"].rsplit("-", 1)[0])  # the others' casing
         self.assertTrue(all(n.get("node_id") for n in twins))
+
+    def test_entries_dry_run_names_the_twins_population_outside_the_root_and_writes_nothing(self):
+        self._lab_4()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+        before = tree_digest(self.root)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", dry_run=True, add_hosts=["lab-4"])
+        self.assertEqual(errs, [])
+        self.assertIn(f"{self.lab}/population-twins/population.json", out.getvalue())
+        self.assertEqual(tree_digest(self.root), before)
+        self.assertFalse((self.lab / "population-twins").exists())
+
+    def test_the_pack_carries_the_twins_population_and_lab_4s_join(self):
+        self._lab_4()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"]), [])
+        j = self.lab / "join" / "lab-4"
+        j.mkdir(parents=True)
+        (j / "commitment.json").write_text("{}")
+        files, _ = pack.plan(self.root, self.lab, DAY)
+        arcs = {a for a, _ in files}
+        self.assertIn(f"lab/runs/{DAY}/population-twins/population.json", arcs)
+        self.assertTrue(any("/join/" in a and a.endswith("-4/commitment.json") for a in arcs), sorted(arcs))
+
+    def test_the_reporter_cannot_be_the_twins_only_node(self):
+        r = lab_sh("entries", env={"LAB_DIR": str(self.lab), "LAB_REPORTER": "lab-4", "LAB_OPERATOR": "x"})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("twins-only", r.stderr)
 
     def test_without_add_host_no_twins_population_is_written(self):
         self.assertEqual(self.entries(), [])

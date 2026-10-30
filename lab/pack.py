@@ -113,6 +113,8 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
             print(f"would write nodes/<{node['name']} node_id>.json "
                   f"(operator {operator}, consent check_nodes.CONSENT, mesh lab, ask_route mesh)")
         print("would write population/live/population.json (the node ids, data_dir and book_dir)")
+        for host in add_hosts:
+            print(f"would write {lab_dir}/population-twins/population.json (with {host}; not nodes/, not population/live)")
         print(f"would write reporter/reporter.json ({reporter}'s node_id and key_id)")
         return []
     if not build_path.is_file():
@@ -231,6 +233,14 @@ def plan(root, lab_dir, day):
         if not joined:
             missing.append(f"{run}/join/{node['name']}/ (run lab/lab.sh join)")
         files += joined
+    # A twins run (LAB_TWINS=1 entries): the four-node population its 09-dispute finding ran on, and the twins-only node's join
+    # output, as lab provenance under the run (neither is committed live: lab-4 is not in population/live or nodes/).
+    twins_path = lab_dir / "population-twins" / "population.json"
+    if twins_path.is_file():
+        files.append((f"{run}/population-twins/population.json", twins_path))
+        for node in load(twins_path)["nodes"]:
+            if host_name(node) not in {host_name(n) for n in pop["nodes"]}:
+                files += walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
     files = [(a, p) for a, p in files if not p.name.endswith(SKIP_SUFFIXES)]
     missing += [a for a, p in files if not p.is_file()]
     return [(a, p) for a, p in files if p.is_file()], missing
@@ -290,7 +300,7 @@ def main(argv=None):
     e = sub.add_parser("entries")
     e.add_argument("--operator", required=True)
     e.add_argument("--reporter", default="lab-3")
-    e.add_argument("--add-host", action="append", default=[], help="a lab host directory to add to the population")
+    e.add_argument("--add-host", action="append", default=[], help="a twins-only lab host directory (lab-4): written to the lab dir's population-twins/, not to population/live")
     p = sub.add_parser("pack")
     p.add_argument("--date", required=True)
     for s in (e, p):

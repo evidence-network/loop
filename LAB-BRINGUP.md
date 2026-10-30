@@ -575,4 +575,4 @@ Order: `stop` any running lab (nodes read their role at start; `start` refuses
 to keep a node started without it), `LAB_TWINS=1 start`, `exchange`, `join`,
 `LAB_TWINS=1 entries` (writes the four-node population under `$LAB_DIR/population-twins/`; `lab-4` stays out of `population/live` and `nodes/`), `LAB_TWINS=1 twins`
 (asks the referee, sends one `x-mesh-twin-bracket` pair, supplies the pair's
-text with `referee_supply_twin_texts`, waits for the Result), then `dispute`.
+text with `referee_supply_twin_texts`, waits for the Result), then `LAB_TWINS=1 dispute`.
