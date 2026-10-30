@@ -250,6 +250,24 @@ unchecked. On the lab build, the binding, `book doctor --probe` and the
 commitment's final format read as unchecked; that is expected (JOIN-LAB,
 "What the lab build does not do yet").
 
+### bind, for each node but the reporter
+
+```sh
+lab/lab.sh --dry-run bind
+lab/lab.sh bind
+```
+
+Run it after `join`, with the nodes running, and before `entries`, `loop` and `pack`: step 12 reads
+the plugin's commitment, which names the binding's digest only after the bind. For each node but the
+reporter this runs the plugin's own join ceremony (capsules-plugin#121) with a lab test Nostr key,
+`$LAB_DIR/controllers/<name>/nostr.key` (hex, 0600, made if absent): `join {"controller": <pubkey>}`
+returns an event, [`lab/nostr_sign.py`](lab/nostr_sign.py) signs it (BIP-340), `join
+{"controller_event": ...}` completes the binding, and `doctor` must then report
+`controller_binding: bound`. The event goes only to the node's own console and is never published to a
+relay; the output names the binding digest only. The reporter stays unbound on purpose: the binding is
+optional, so one live run of step 12 shows both states. A node that already reports bound is left as it
+is unless `LAB_REBIND=1`. The key stays in `$LAB_DIR/controllers/`, which the pack never takes.
+
 ### The entries
 
 ```sh

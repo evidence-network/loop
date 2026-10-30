@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|bind|entries|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -14,6 +14,11 @@
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
 #   join      ./join.sh for each node, with its plugin key and a new controller key (a node whose
 #             $LAB_DIR/join/<node> already exists is skipped: join.sh fails on a node that has joined)
+#   bind      each node's own join ceremony (capsules-plugin#121) with a test Nostr key kept in
+#             $LAB_DIR/controllers/<node>/nostr.key, so doctor reports the controller binding and the
+#             commitment names its digest. All nodes but the reporter (it stays unbound, the binding being
+#             optional); one already bound is left as it is unless LAB_REBIND=1. Order: join, bind, entries,
+#             loop, pack. The key never leaves the lab
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
 #             reporter/reporter.json here
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
@@ -655,6 +660,24 @@ cmd_join() {
   done
 }
 
+# Bind each node to its operator's test Nostr key through the plugin's own join ceremony
+# (capsules-plugin#121), so doctor reports the binding and the commitment names its digest. The keys are lab
+# test keys under $LAB_DIR/controllers/<node>/, never committed; the signed event goes only to the node's
+# own console. Run it after `join`, with the nodes running.
+cmd_bind() {
+  local n flag=()
+  [ "${LAB_REBIND:-0}" = 1 ] && flag=(--rebind)
+  for n in "${NODES[@]}"; do
+    # The reporter stays unbound: the binding is optional (Steven's step 12 ruling), so one live run of
+    # step 12 shows both of its states.
+    [ "$n" = "$REPORTER" ] && continue
+    run mkdir -p "$LAB_DIR/controllers/$n"
+    run chmod 700 "$LAB_DIR/controllers" "$LAB_DIR/controllers/$n"
+    run python3 -B "$ROOT/lab/bind.py" --console "$(console "$n")" --key "$LAB_DIR/controllers/$n/nostr.key" \
+      "${flag[@]+"${flag[@]}"}"
+  done
+}
+
 # --- entries / loop / pack --------------------------------------------------------------------
 cmd_entries() {
   need LAB_OPERATOR
@@ -805,10 +828,10 @@ cmd_all() {
   cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
-  cmd_join; cmd_entries; cmd_loop; cmd_pack
+  cmd_join; cmd_bind; cmd_entries; cmd_loop; cmd_pack
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | bind | entries | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
