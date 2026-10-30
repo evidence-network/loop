@@ -663,7 +663,8 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("held-1 cited", f["detail"])
         [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
-        self.assertEqual(c["signature"]["state"], "unkeyed")
+        self.assertEqual(c["signature"]["state"], "uncited")
+        self.assertNotIn("the held half's producer signature, in a second language", self.names(f))
 
     def test_live_a_half_with_no_accepted_sender_key_is_unkeyed_not_a_pass(self):
         self.reseal_citing(accepted_via=None, sender_key_id=None)

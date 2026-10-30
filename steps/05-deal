@@ -90,7 +90,8 @@ read, are not_checked entries: the declaration's own signatures (AAC#432). Each 
 a second language (`cross_language signature`, AAC#463, aac-go go/v0.15.0): authored under the key the
 node's citing record accepted (`received_half.sender_key_id`) and, where the sender has a `nodes/<node_id>.json`
 listing, the key it publishes is ok (an unlisted sender is a not_checked entry: the key is self-attested); authored under another key or
-invalid is a FAIL; unclaimed (no signature) is a not_checked entry; any other exit stops the step. A node with no held half,
+invalid is a FAIL; unclaimed (no signature) is a not_checked entry; a half the verifier cannot read is a FAIL, and only its
+usage exit (an aac-go without the mode) stops the step. A node with no held half,
 or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over the nodes.
 
 No spend: this step starts no exchange and pays nothing on either population.
@@ -681,7 +682,7 @@ def tie(citing, nonce, role, own_lines, held):
 def live_node(bin_, name, data_dir, out, work):
     """Check every half the node holds: (result, proof, detail, pairs, summary).
 
-    summary: {"unclaimed", "unkeyed", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
+    summary: {"unclaimed", "unkeyed", "unlisted", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
     are judged on the halves sealed under the current build (LOOP_SEALED_SINCE); an earlier half still has its
     bytes, provenance, inclusion and citation checked."""
     out.mkdir(parents=True, exist_ok=True)
@@ -748,6 +749,8 @@ def live_node(bin_, name, data_dir, out, work):
             "received_half") if citing else None
         state, detail = signature_check(raw, rh.get("sender_key_id") if isinstance(rh, dict) else None,
                                         listed_key((prov or {}).get("received_from")))
+        if not citing and state == "unkeyed":
+            state, detail = "uncited", detail.split(";")[0] + "; no record of the node cites it, so there is no accepted key"
         c["signature"] = {"ok": state != "bad", "state": state, "detail": detail}
         checks.append(c)
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
