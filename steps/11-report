@@ -146,7 +146,7 @@ def read_results(judged, manifest, capsulectl, judge_key, tmp):
             if not {"step", "path", "sha256"} <= set(p):
                 problems.append(f"{path.name}: cited record {digest[:12]} is not a disclosed record capsule")
                 continue
-            cited[f"{p['step']}/{p['path']}"] = p["sha256"]
+            problems += judge10.check_cited_once(cited, f"{p['step']}/{p['path']}", p["sha256"], path.name)
     if rollup is None:
         problems.append("step 10 left no roll-up bundle")
     problems += judge10.check_rollup(rollup_cites, finer_valid)

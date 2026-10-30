@@ -218,7 +218,7 @@ class ReportTest(Base):
         self.assertIn("Deals judged: 1 of 1 deal records", s["count:deal"])
         self.assertIn("Settlements judged: 1 of 1", s["count:settlement"])
         self.assertIn("Asks judged: 6 of 6", s["count:ask"])
-        self.assertIn("Disputes counted as found: 2 of 2", s["count:dispute"])
+        self.assertIn("Disputes counted as found: 1 of 1", s["count:dispute"])
         self.assertIn("term-2 (served as agreed): met in 1 of 1", s["term:term-2"])
         self.assertIn("not evaluable in 1 of 1", s["term:term-3"])
         self.assertIn("provider states", s["term:term-3"])
