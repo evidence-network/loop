@@ -401,8 +401,10 @@ class Rows(unittest.TestCase):
     def test_base_1_naming_a_peer_without_rows_is_a_fail(self):
         dropped = json.loads(json.dumps(ROWS116["all-pass"]))
         del dropped["rows"]
+        dropped["reads"].pop()  # the one-read shape, so the shape check passes and the rows rule is reached
         _, f = self.run_blocks(dropped)
         self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("names a peer but seals no rows", f["detail"])
 
     def test_the_read_rule_holds_on_both_shapes(self):
         # Rows: the policy read first, the card second. An earlier build: the policy read alone.
