@@ -60,9 +60,16 @@ whose capsule_id recomputes. That citing record carries how the node accepted
 the half (`received_half.accepted_via` and `sender_key_id`, capsules-plugin
 PR #77, in the pin): a record naming a key other than the half's, an unknown
 `accepted_via`, or a declaration with no binding digest or anchored on the
-node's own key is a FAIL. A half accepted via `host_announced` or
-`operator_stopgap` leaves acceptance not_checked: no node sends a controller
-declaration yet (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
+node's own key (a declaration under a bip340 anchor has no anchor key, so that
+check applies only when one is present), or `received_half.same_controller_as_receiver`
+true (capsules-plugin#135), is a FAIL. A side whose citing record names a
+`controller_binding_digest` equal to the `controller_binding.digest` in the sender's
+published commitment (`nodes/commitments/<node_id>.json` in this checkout, loop#88; the
+sender is the node whose `nodes/<node_id>.json` lists the half's key) counts as accepted
+under a controller declaration however the plugin first accepted the key, leaving only the
+binding's own signatures (AAC#432) unchecked. A half accepted via `host_announced` or
+`operator_stopgap` with no such digest, or one the commitment does not carry, leaves
+acceptance not_checked (ACCEPTANCE_ISSUE; live, LIVE_ACCEPTANCE_ISSUE, capsules-plugin#113). The other parts the pinned plugin does not
 do, or the loop cannot read, are not_checked entries: halves citing each other
 and the other side's checkpoint (capsules-plugin#130), the push on by default, which the
 pinned plugin does (PR #72) but a data dir does not show (capsules-plugin#136), the declaration's
@@ -80,6 +87,7 @@ step itself broke (no driver installed, unreadable population).
 """
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -281,9 +289,9 @@ LIVE_DEFAULT = {
 }
 VIA_KEY = ("host_announced", "operator_stopgap")
 LIVE_DECLARATION = {
-    "what": "the controller declaration a node accepted a half under",
-    "why": "the citing record names the declaration's digest and anchor key; its bytes are not in the data dir, "
-           "and no released verifier checks controller-binding/0",
+    "what": "the controller declaration or operator binding a node accepted a half under",
+    "why": "the citing record names the binding's digest (and its anchor key when it has one); its bytes are not "
+           "in the data dir, and no released verifier checks controller-binding/0",
     "issue": BINDING_VERIFIER_ISSUE,
 }
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
@@ -298,8 +306,8 @@ def live_acceptance(vias):
     """The not_checked entry for held halves accepted on the evidence key other than under a declaration."""
     return {"what": ACCEPTANCE_WHAT, "issue": LIVE_ACCEPTANCE_ISSUE,
             "why": f"the pinned capsules plugin accepts a push on the sender's evidence key (capsules-plugin PR #77, "
-                   f"in the pin) and records how; the citing records say {', '.join(vias)}: no node sends a "
-                   f"controller declaration yet"}
+                   f"in the pin) and records how; the citing records say {', '.join(vias)} with no operator binding "
+                   f"digest equal to the one in the sender's published commitment"}
 LIVE_SIGNATURE = {
     "what": "the held half's producer signature, in a second language",
     "why": "Class 1 does not include it and the pinned Go verifier has no envelope mode",
@@ -373,30 +381,80 @@ def is_key(v):
     return isinstance(v, str) and len(v) == 64 and set(v) <= HEX64
 
 
+def nodes_dir():
+    """The node list whose commitments the sender's binding is read from: this clone's nodes/ working tree, as
+    `lab.sh commitments` writes it (lab/commitments.py), not necessarily committed."""
+    return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+
+
+def published_binding(key_id):
+    """(controller_binding.digest, {path, sha256}) of the commitment the node holding evidence key `key_id`
+    published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
+    commitment, and a None digest when the commitment carries no binding. The path and the sha256 of the bytes
+    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes."""
+    d = nodes_dir()
+    for entry in sorted(d.glob("*.json")):
+        try:
+            node = json.loads(entry.read_text(encoding="utf-8"))
+            if node.get("key_id") != key_id:
+                continue
+            raw = (d / "commitments" / f"{node['node_id']}.json").read_bytes()
+            digest = (json.loads(raw).get("controller_binding") or {}).get("digest")
+        except (OSError, ValueError, KeyError, AttributeError):
+            continue
+        return (digest if is_key(digest) else None,
+                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest()})
+    return None, None
+
+
 def accepted(citing, half):
-    """How the node's citing record says it accepted the half (capsules-plugin PR #77): {ok, via, detail}.
+    """How the node's citing record says it accepted the half (capsules-plugin PR #77, #135): {ok, via, detail,
+    bound}.
 
     Not ok when the record contradicts itself: a sender key other than the half's, an unknown
-    accepted_via, or a declaration with no binding digest or anchored on the node's own key.
+    accepted_via, a declaration with no binding digest or anchored on the node's own key, or a
+    counterparty bound to the receiver's own controller (same_controller_as_receiver true). `bound` is
+    true when the record names a controller_binding_digest equal to the controller_binding.digest in the
+    sender's published commitment, however the key was accepted; a declaration has no anchor key under a
+    bip340 anchor, so the own-key check applies only when one is present.
     """
     rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
     rh = rh if isinstance(rh, dict) else {}
     via = rh.get("accepted_via")
+    if rh.get("same_controller_as_receiver") is True:
+        return {"ok": False, "via": str(via) if via is not None else "none recorded", "bound": False,
+                "detail": "a counterparty whose key is bound to the receiver's own controller"}
     if via is None:
-        return {"ok": True, "via": "none recorded", "detail": "the citing record names no accepted_via"}
+        return {"ok": True, "via": "none recorded", "detail": "the citing record names no accepted_via",
+                "bound": False}
     if via not in ACCEPT_MODES:
-        return {"ok": False, "via": str(via), "detail": f"the citing record names an unknown accepted_via {via!r}"}
+        return {"ok": False, "via": str(via), "bound": False,
+                "detail": f"the citing record names an unknown accepted_via {via!r}"}
     if rh.get("sender_key_id") != half.get("key_id"):
-        return {"ok": False, "via": via, "detail": f"the citing record accepted key {rh.get('sender_key_id')}, "
-                                                   f"not the half's key {half.get('key_id')}"}
+        return {"ok": False, "via": via, "bound": False,
+                "detail": f"the citing record accepted key {rh.get('sender_key_id')}, "
+                          f"not the half's key {half.get('key_id')}"}
+    digest, anchor = rh.get("controller_binding_digest"), rh.get("controller_anchor_key_id")
     if via == "controller_declaration":
-        digest, anchor = rh.get("controller_binding_digest"), rh.get("controller_anchor_key_id")
-        if not (is_key(digest) and is_key(anchor)):
-            return {"ok": False, "via": via, "detail": "a declaration with no binding digest or anchor key"}
-        if anchor == citing.get("key_id"):
-            return {"ok": False, "via": via, "detail": "a declaration anchored on the node's own key"}
-        return {"ok": True, "via": via, "detail": f"under declaration {digest}, anchored on {anchor}"}
-    return {"ok": True, "via": via, "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
+        if not is_key(digest) or (anchor is not None and not is_key(anchor)):
+            return {"ok": False, "via": via, "bound": False,
+                    "detail": "a declaration with no binding digest or a malformed anchor key"}
+        if anchor is not None and anchor == citing.get("key_id"):
+            return {"ok": False, "via": via, "bound": False, "detail": "a declaration anchored on the node's own key"}
+        return {"ok": True, "via": via, "bound": True,
+                "detail": f"under declaration {digest}" + (f", anchored on {anchor}" if anchor else "")}
+    if is_key(digest):
+        published, commitment = published_binding(half.get("key_id"))
+        compared = {"commitment": commitment} if commitment else {}
+        if digest == published:
+            return {"ok": True, "via": via, "bound": True, **compared,
+                    "detail": f"accepted the half's key {half.get('key_id')} via {via}, its operator binding "
+                              f"{digest} the one in the sender's published commitment"}
+        return {"ok": True, "via": via, "bound": False, **compared,
+                "detail": f"accepted the half's key {half.get('key_id')} via {via}, naming operator binding "
+                          f"{digest}, which the sender's published commitment does not carry"}
+    return {"ok": True, "via": via, "bound": False,
+            "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
 
 
 def exchange_key(capsule):
@@ -488,14 +546,18 @@ def live_node(bin_, name, data_dir, out, work):
     (out / "checks.json").write_text(json.dumps({"node": name, "held": checks}, indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
-    vias = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
+    recorded = sorted({c["accepted"]["via"] for c in checks if "accepted" in c})
+    # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
+    # controller declaration, however the plugin first accepted it.
+    vias = sorted({"controller_declaration" if c["accepted"]["bound"] else c["accepted"]["via"]
+                   for c in checks if "accepted" in c})
     pairs = [exchange_key(capsule) for capsule in map(lambda r: parsed(r) or {}, held)]
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, vias
     return "NOT_CHECKED", proof, (f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and "
                                   f"the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was "
                                   f"pushed with (evidencebook), and cited as counterparty_half by the node's own "
-                                  f"record, which says it accepted the half's key via {', '.join(vias)}"), pairs, vias
+                                  f"record, which says it accepted the half's key via {', '.join(recorded)}"), pairs, vias
 
 
 def main_live(pop, out, started):

@@ -6,6 +6,7 @@ the AAC Go verifier step 01's setup installs. Without them these tests SKIP,
 saying so: they never pass without the verifier. With LOOP_REQUIRE_TOOLS=1
 (CI, after the setups ran) a missing tool is an error instead.
 """
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -316,12 +317,25 @@ class Step05DealLiveTest(unittest.TestCase):
         shutil.copytree(LIVE, self.lab)
         self.findings = Path(self.tmp.name) / "findings"
         self.out = self.findings / "05-deal"
+        self.nodes = Path(self.tmp.name) / "nodes"
+        self.nodes.mkdir()
 
     def tearDown(self):
         self.tmp.cleanup()
 
+    def publish_binding(self, digest):
+        """lab-b, the sender of the half lab-a holds, lists its key and publishes a commitment (loop#88)
+        carrying this controller_binding.digest (None: a commitment with no binding)."""
+        half = json.loads((self.lab / "nodes" / "lab-a" / "data" / "ledger" / "received-capsules.jsonl").read_text())
+        node_id = "b1" * 32
+        (self.nodes / f"{node_id}.json").write_text(json.dumps({"node_id": node_id, "key_id": half["key_id"]}))
+        (self.nodes / "commitments").mkdir(exist_ok=True)
+        doc = {} if digest is None else {"controller_binding": {"digest": digest}}
+        (self.nodes / "commitments" / f"{node_id}.json").write_text(json.dumps(doc))
+
     def run_live(self):
-        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab)))
+        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab),
+                                                  LOOP_NODES_DIR=str(self.nodes)))
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads((self.out / "finding.json").read_text())
 
@@ -361,7 +375,7 @@ class Step05DealLiveTest(unittest.TestCase):
         [acc] = self.acceptance_entries(f)
         self.assertEqual(acc["issue"], step.LIVE_ACCEPTANCE_ISSUE)
         self.assertIn("capsules-plugin PR #77, in the pin", acc["why"])
-        self.assertIn("say host_announced: no node sends a controller declaration yet", acc["why"])
+        self.assertIn("say host_announced with no operator binding digest equal to the one in the sender's published commitment", acc["why"])
         self.assertIn("node lab-c: not checked", f["detail"])
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
@@ -407,6 +421,80 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertNotIn(step.LIVE_ACCEPTANCE_ISSUE, {n["issue"] for n in f["not_checked"]})
         self.assertEqual(finding.check(self.findings), [])
 
+    def test_live_a_host_announced_key_with_the_published_binding_digest_counts_as_bound(self):
+        self.publish_binding("cd" * 32)
+        self.reseal_citing(controller_binding_digest="cd" * 32, same_controller_as_receiver=False)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(self.acceptance_entries(f), [])
+        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+        self.assertIn("accepted the half's key via host_announced", f["detail"])
+        checks = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(checks[0]["accepted"]["bound"] and checks[0]["accepted"]["ok"])
+        [node_file] = (self.nodes / "commitments").glob("*.json")
+        self.assertEqual(checks[0]["accepted"]["commitment"],
+                         {"path": f"nodes/commitments/{node_file.name}",
+                          "sha256": hashlib.sha256(node_file.read_bytes()).hexdigest()})
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_bound_key_with_no_same_controller_member_still_counts(self):
+        self.publish_binding("cd" * 32)
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        self.assertEqual(self.acceptance_entries(self.run_live()), [])
+
+    def test_live_a_host_announced_key_with_no_digest_stays_not_checked(self):
+        self.publish_binding("cd" * 32)
+        f = self.run_live()
+        self.assertEqual(len(self.acceptance_entries(f)), 1)
+
+    def test_live_a_digest_the_commitment_does_not_carry_stays_not_checked(self):
+        self.publish_binding("ab" * 32)
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(len(self.acceptance_entries(f)), 1)
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertFalse(c["accepted"]["bound"])
+        self.assertIn("which the sender's published commitment does not carry", c["accepted"]["detail"])
+
+    def test_live_a_digest_with_no_published_binding_or_commitment_stays_not_checked(self):
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        self.assertEqual(len(self.acceptance_entries(self.run_live())), 1)
+        self.publish_binding(None)
+        self.assertEqual(len(self.acceptance_entries(self.run_live())), 1)
+
+    def test_live_a_counterparty_bound_to_the_receivers_own_controller_fails(self):
+        self.publish_binding("cd" * 32)
+        self.reseal_citing(controller_binding_digest="cd" * 32, same_controller_as_receiver=True)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a counterparty whose key is bound to the receiver's own controller", f["detail"])
+
+    def test_live_a_same_controller_counterparty_fails_even_with_no_accepted_via(self):
+        self.reseal_citing(accepted_via=None, same_controller_as_receiver=True)
+        f = self.run_live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("a counterparty whose key is bound to the receiver's own controller", f["detail"])
+
+    def test_live_a_node_entry_with_no_commitment_file_stays_not_checked(self):
+        self.publish_binding("cd" * 32)
+        for f in (self.nodes / "commitments").glob("*.json"):
+            f.unlink()
+        self.reseal_citing(controller_binding_digest="cd" * 32)
+        self.assertEqual(len(self.acceptance_entries(self.run_live())), 1)
+
+    def test_live_a_declaration_with_a_digest_and_no_anchor_key_is_accepted(self):
+        self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32)
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertEqual(self.acceptance_entries(f), [])
+        self.assertIn(step.LIVE_DECLARATION, f["not_checked"])
+
+    def test_live_a_declaration_with_a_malformed_anchor_key_fails(self):
+        self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
+                           controller_anchor_key_id="zz")
+        self.assertEqual(self.run_live()["result"], "FAIL")
+
     def test_live_a_declaration_anchored_on_the_nodes_own_key_fails(self):
         own = json.loads((self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl").read_text())["key_id"]
         self.reseal_citing(accepted_via="controller_declaration", controller_binding_digest="cd" * 32,
@@ -419,7 +507,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.reseal_citing(accepted_via="controller_declaration", controller_anchor_key_id="ef" * 32)
         f = self.run_live()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("no binding digest or anchor key", f["detail"])
+        self.assertIn("no binding digest or a malformed anchor key", f["detail"])
 
     def test_live_a_citing_record_with_no_accepted_via_is_not_checked_never_a_pass(self):
         self.reseal_citing(accepted_via=None, sender_key_id=None)
