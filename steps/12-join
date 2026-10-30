@@ -197,7 +197,7 @@ def binding_unchecked(state, detail):
     """The not_checked entry for a binding_check state that is neither ok nor bad, None for those two."""
     why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method",
            "unsupported_key_type": "the verifier lacks its key type"}.get(state)
-    issue = {"unsupported_key_type": bv.UNSUPPORTED_KEY_TYPE_ISSUE, "unread": live.ISSUE}.get(state, live.NO_ISSUE_YET)
+    issue = {"unsupported_key_type": bv.UNSUPPORTED_KEY_TYPE_ISSUE, "unread": live.ISSUE}.get(state, bv.UNSUPPORTED_METHOD_ISSUE)
     return {"what": "the controller binding record, checked by a second verifier", "why": f"{why}: {detail}",
             "issue": issue} if why else None
 

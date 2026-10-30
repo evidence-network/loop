@@ -339,7 +339,7 @@ def live_declarations(counts, unread):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,
                     "why": f"{counts['unread']} cited bindings could not be checked: {'; '.join(sorted(unread))}"})
     if counts.get("unsupported"):
-        out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.NO_ISSUE_YET,
+        out.append({"what": LIVE_DECLARATION_WHAT, "issue": bv.UNSUPPORTED_METHOD_ISSUE,
                     "why": f"{counts['unsupported']} cited bindings use a method `cross_language binding` does not "
                            f"implement"})
     if counts.get("unsupported_key_type"):

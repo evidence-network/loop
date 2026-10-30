@@ -464,7 +464,7 @@ class Step05BindingCheckTest(unittest.TestCase):
                                     {"lab-b has no readable controller-binding.json in its data_dir"})
         by = {(e["what"], e["issue"]): e["why"] for e in es}
         self.assertIn("1 cited bindings could not be checked", by[(step.LIVE_DECLARATION_WHAT, step.live.ISSUE)])
-        self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.live.NO_ISSUE_YET)])
+        self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.bv.UNSUPPORTED_METHOD_ISSUE)])
         self.assertIn("revocation NOT_CHECKED", by[("revocation of the controller bindings that apply",
                                                     step.BINDING_REVOCATION_ISSUE)])
         self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",

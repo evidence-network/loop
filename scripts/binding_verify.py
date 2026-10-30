@@ -7,6 +7,7 @@ import json
 import subprocess
 
 VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
+UNSUPPORTED_METHOD_ISSUE = "evidence-network/loop#166"  # exit 3: a binding method the verifier lacks
 
 # INTERIM (loop#140): the plugin writes bindings with key_types ["ed25519", "bip340"] (AAC#457, spec PR AAC#458), which
 # the pinned aac-go (Ed25519-only controller binding v0) cannot check. The verifier then says FAIL, but it lacks the
