@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|entries|loop|deal|settle|twins|dispute|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -538,3 +538,26 @@ own key and its peers'. If a key is missing:
 8. **Answers but no checkpoint.** An answer of `coverage_unsatisfiable`
    (recorded as `no_checkpoint_yet`) is not a key problem: the node has not
    cut its first checkpoint yet. Run `exchange` and wait 300 seconds.
+
+## A real step 09 Result: four roles and an injected difference (`LAB_TWINS=1`)
+
+Step 09 reads a Result the plugin sealed; it never makes one. The referee needs
+four distinct nodes (the requester and both twins are out of its pool), so with
+`LAB_TWINS=1` the lab gains `lab-4` (ports 9804, 9814, 9824) and these roles,
+each overridable: requester `lab-3`, twin A `lab-1`, faulty twin B `lab-4`,
+referee `lab-2`. Twin A, twin B and the referee serve the model; `LAB_MODEL`
+must be an absolute path to a regular file.
+
+**Lab-only fault injection.** Twin B's `config.toml` gets a per-model
+`system_prompt` (`LAB_FAULT_SYSTEM_PROMPT`, default "Answer in French.") so its
+answer differs from twin A's under the same model hash and weights digest. No
+temperature, seed or sampler override. `twin-fault.json` records it and step 09
+says "INJECTED DIFFERENCE" in the finding. The requester gets the plugin's
+`adjudicate_differing_twins` switch (off by default: it sends the twins' request
+and both answers to the referee) and `CAPSULES_OPENAI_API_URL` for its own API.
+
+Order: `stop` any running lab (nodes read their role at start; `start` refuses
+to keep a node started without it), `LAB_TWINS=1 start`, `exchange`, `join`,
+`LAB_TWINS=1 entries` (adds `lab-4` to `population/live`), `LAB_TWINS=1 twins`
+(asks the referee, sends one `x-mesh-twin-bracket` pair, supplies the pair's
+text with `referee_supply_twin_texts`, waits for the Result), then `dispute`.

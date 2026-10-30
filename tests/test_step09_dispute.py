@@ -348,6 +348,28 @@ class LiveTest(Tmp):
         r = self.live(d)
         self.assertEqual(r["result"], "FAIL")
 
+    def test_an_injected_difference_is_labelled_plainly_in_the_finding(self):
+        d = self.copy()
+        held = json.loads((d / "nodes" / "lab-1" / "data" / "ledger" / "received-adjudications.jsonl").read_text())
+        bracket = held["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"]
+        fault = {"injected_difference": {"node": "lab-4", "kind": "system_prompt", "value": "Answer in French."},
+                 "roles": {"requester": "lab-3", "twin_a": "lab-1", "twin_b": "lab-4", "referee": "lab-2"},
+                 "twin_bracket_id": "some-other-day"}
+        (d / "twin-fault.json").write_text(json.dumps(fault))
+        r = self.live(d)  # a label whose bracket no held Result carries is not applied
+        self.assertNotIn("INJECTED DIFFERENCE", r["detail"])
+        self.assertIn("not applied to this finding", r["detail"])
+        (d / "twin-fault.json").write_text(json.dumps(dict(fault, twin_bracket_id=bracket)))
+        r = self.live(d)
+        self.assertIn("INJECTED DIFFERENCE", r["detail"])
+        self.assertIn("system_prompt on lab-4 = 'Answer in French.'", r["detail"])
+        self.assertIn("twin-fault.json", {p["path"] for p in r["proof"]})
+
+    def test_no_injected_difference_is_claimed_without_the_lab_file(self):
+        self.assertNotIn("INJECTED", self.live(self.copy())["detail"])
+        with mock.patch.dict(os.environ, {"LAB_DIR": ""}):  # no LAB_DIR: never read a file from the working directory
+            self.assertEqual(step.injected_difference(self.out, {"b"}), "")
+
     def test_empty_received_files_hold_no_result_and_are_not_checked(self):
         d = self.copy()
         for f in d.rglob("received-adjudications.jsonl"):

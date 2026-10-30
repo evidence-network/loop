@@ -157,6 +157,68 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.stdout.count("admission = true"), 3)
         self.assertEqual(r.stdout.count('phases = ["backend_selected"]'), 3)
 
+    def test_without_lab_twins_the_lab_is_three_nodes_with_no_fault(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertNotIn("lab-4", r.stdout)
+        self.assertNotIn("ADJUDICATE_DIFFERING_TWINS", r.stdout)
+        self.assertNotIn("request_defaults", r.stdout)
+        self.assertNotEqual(lab_sh("--dry-run", "twins", env=self.env).returncode, 0)
+
+    def test_lab_twins_adds_lab_4_on_its_own_ports_with_four_roles(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("--port 9804 --console 9814 --bind-port 9824", r.stdout)
+        self.assertEqual(r.stdout.count("[plugin.openai_exchange_grant]"), 4)
+        # Only the requester (lab-3) turns the referee switch on.
+        on = [l for l in r.stdout.splitlines() if "CAPSULES_ADJUDICATE_DIFFERING_TWINS=on" in l]
+        self.assertEqual(len(on), 1)
+        self.assertIn(f"HOME={self.lab}/nodes/lab-3 ", on[0])
+        # The referee's re-answer goes to the requester's own API, not the plugin's 9337 default.
+        self.assertIn("CAPSULES_OPENAI_API_URL=http://127.0.0.1:9803", on[0])
+        self.assertEqual(r.stdout.count("CAPSULES_OPENAI_API_URL"), 1)
+        # The fault is on the faulty twin's config alone, and is a system prompt, not a sampler change.
+        self.assertEqual(r.stdout.count("[models.request_defaults]"), 1)
+        self.assertEqual(r.stdout.count('system_prompt = "Answer in French."'), 1)
+        for forbidden in ("temperature =", "seed =", "top_k ="):
+            self.assertNotIn(forbidden, r.stdout)
+
+    def test_lab_twins_needs_four_distinct_nodes(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", "LAB_REFEREE": "lab-1"})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("four distinct nodes", r.stderr)
+
+    def test_lab_twins_makes_the_twins_and_the_referee_push_their_halves_to_the_requester(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1"})
+        push = {n for n in ("lab-1", "lab-2", "lab-3", "lab-4")
+                if any(f"HOME={self.lab}/nodes/{n} " in l and "CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty" in l
+                       for l in r.stdout.splitlines())}
+        self.assertEqual(push, {"lab-1", "lab-2", "lab-4"})  # not the requester lab-3
+
+    def test_stop_includes_lab_4_without_lab_twins(self):
+        r = lab_sh("--dry-run", "stop", env=self.env)
+        self.assertIn("lab-4.pid", r.stdout)
+
+    def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
+        for env, text in (({"LAB_TWIN_B": "lab-1", "LAB_TWIN_A": "lab-4"}, "cannot be lab-1"),
+                          ({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote")):
+            r = lab_sh("--dry-run", "start", env={**self.env, "LAB_TWINS": "1", **env})
+            self.assertEqual(r.returncode, 2, r.stdout)
+            self.assertIn(text, r.stderr)
+
+    def test_the_twins_command_asks_the_referee_then_sends_one_bracket_to_both_twins(self):
+        r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.count("x-mesh-twin-bracket:"), 2)
+        self.assertEqual(r.stdout.count("http://127.0.0.1:9803/v1/chat/completions"), 3)
+        self.assertIn("twin-fault.json", r.stdout)
+        # Stock mesh-llm passes plugins no exchange text: the client supplies the pair's request and answers.
+        self.assertIn("referee_supply_twin_texts", r.stdout)
+
+    def test_dispute_runs_step_09_read_only_on_the_live_population(self):
+        r = lab_sh("--dry-run", "dispute", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("steps/09-dispute --population", r.stdout)
+
     def test_port_base_moves_every_port(self):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PORT_BASE": "9900"})
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -473,6 +535,37 @@ class EntriesTest(LabFixture):
         subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(self.tmp / "k.pem")], check=True)
         subprocess.run(["openssl", "pkey", "-in", str(self.tmp / "k.pem"), "-pubout", "-out",
                         str(d / "node-key.pub.pem")], check=True)
+
+    def test_add_host_puts_lab_4_in_the_population_and_needs_its_key(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("lab-operator-4", errs[0])  # added as the others are named, then its missing key is reported
+        self.assertEqual(len(json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]), 3)
+
+    def test_add_host_with_a_lab_4_identity_writes_its_entry_under_lab_4s_directory(self):
+        d = pack.data_dir(self.lab, "lab-4")
+        (d / "keys").mkdir(parents=True)
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(self.tmp / "k4.pem")], check=True)
+        subprocess.run(["openssl", "pkey", "-in", str(self.tmp / "k4.pem"), "-pubout", "-out",
+                        str(d / "keys" / "node-key.pub.pem")], check=True)
+        (d / "self-peer-id").write_text("4" * 64 + "\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            errs = pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"])
+        self.assertEqual(errs, [])
+        nodes = json.loads((self.root / "population" / "live" / "population.json").read_text())["nodes"]
+        self.assertEqual(len(nodes), 4)
+        self.assertEqual(nodes[3]["data_dir"], "$LAB_DIR/nodes/lab-4/.local/share/capsules")
+        self.assertEqual(nodes[3]["node_id"], "4" * 64)
+        self.assertTrue((self.root / "nodes" / f"{'4' * 64}.json").is_file())
+
+    def test_the_twin_exchange_wait_reads_the_ledger_on_every_retry(self):
+        led = self.tmp / "capsules.jsonl"
+        script = ('eval "$(sed -n "/^sealed_twice()/p" "$LAB")"; '
+                  '(sleep 1; echo b-1 >> "$LED"; echo b-1 >> "$LED") & '
+                  'for i in 1 2 3 4 5 6 7 8; do sealed_twice b-1 "$LED" && echo seen && exit 0; sleep 0.5; done; echo never')
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB), "LED": str(led)})
+        self.assertEqual(r.stdout.strip(), "seen", r.stderr)
 
     def test_writes_entries_that_pass_check_nodes(self):
         self.assertEqual(self.entries(), [])
