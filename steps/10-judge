@@ -72,7 +72,7 @@ ISSUE = "evidence-network/loop#24"
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
 GAP_ISSUE = "evidence-network/loop#157"
 BINDING = HERE / "10-judge.d" / "binding.json"
-PACK_FILES = ("contracts/inference-deals/0.1.0.json", "packs/inference-deals/compiled/compiled.json")
+COMPILED = "packs/inference-deals/compiled/compiled.json"
 PINNED = ["capsulectl", "capsulectl-book"]
 ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 "
            "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
@@ -122,25 +122,42 @@ def load_pack():
     binding names which stand-in record files feed which term. NotChecked when the pinned pack is not fetched."""
     repo, ref = pin("inference-deals")
     where = tools_dir() / "packs" / f"inference-deals-{ref}"
-    if not all((where / f).is_file() for f in PACK_FILES):
-        raise NotChecked("the pinned inference-deals pack", f"{repo} {ref} is not fetched into {where}; "
+    missing = NotChecked("the pinned inference-deals pack", f"{repo} {ref} is not fetched into {where}; "
                                                             "steps/10-judge.setup.sh fetches it")
-    contract, compiled = (load(where / f) for f in PACK_FILES)
+    if not (where / COMPILED).is_file():
+        raise missing
+    compiled = load(where / COMPILED)
+    name, _, version = compiled["contract_ref"].partition("@")
+    if not (where / "contracts" / name / f"{version}.json").is_file():
+        raise missing
+    contract = load(where / "contracts" / name / f"{version}.json")
+    if f"{contract['id']}@{contract['version']}" != compiled["contract_ref"]:
+        raise NotChecked("the pinned inference-deals pack", f"its contract {contract['id']}@{contract['version']} "
+                                                            f"is not the {compiled['contract_ref']} its compiled.json names")
     reqs = {r["id"]: r for r in contract["requirements"]}
     binding = load(BINDING)
+    bound = {t["requirement"] for k in binding["kinds"].values() for t in k["terms"] if "requirement" in t}
+    if set(reqs) != bound:
+        raise NotChecked("the pinned inference-deals pack's terms", f"binding.json binds {sorted(bound)}, the pinned pack "
+                                                                    f"has {sorted(reqs)}; bind each term before pinning it")
+    soft = sorted(r["id"] for r in reqs.values() if r["tier"] != "must_have")
+    if soft:
+        raise NotChecked("the pinned inference-deals pack's terms", f"{soft} are not must_have; this step judges "
+                                                                    "must_have terms only")
     kinds = {}
     for nn, k in binding["kinds"].items():
         terms = []
         for t in k["terms"]:
             if "requirement" in t:
                 r = reqs[t["requirement"]]
-                terms.append({"id": r["id"], "name": r["statement"], "must_have": r["tier"] == "must_have",
+                terms.append({"id": r["id"], "name": r["statement"], "must_have": True,
                               **({"model_attestation": True} if t.get("model_attestation") else {})})
             else:
                 terms.append({"id": t["id"], "name": t["name"], "must_have": True, "own": True,
                               **({"counted": True} if t.get("counted") else {})})
         kinds[nn] = {"kind": k["kind"], "records": k["records"], "terms": terms}
     return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
+            "own_contract_ref": binding["own_contract_ref"],
             "window": {"period": "month", "periods": compiled["window"]["months"]},
             "verdicts": binding["verdicts"], "kinds": kinds, "pin": f"{repo} {ref}"}
 
@@ -245,10 +262,10 @@ def attested(path):
     return False
 
 
-def claim(cid, requirement, verdict, refs, narrative=None):
+def claim(cid, requirement, verdict, refs, contract_ref, narrative=None):
     """One claim; `evidence` holds record refs until seal() puts the capsule digests in."""
     sufficiency = "SATISFIED" if verdict in ("met", "not_met") else "INSUFFICIENT"
-    c = {"id": cid, "contract_ref": None, "requirement_ref": requirement, "tier": "recomputed",
+    c = {"id": cid, "contract_ref": contract_ref, "requirement_ref": requirement, "tier": "recomputed",
          "grade": "self-attested", "sufficiency": sufficiency, "verdict": verdict, "evidence": list(refs),
          "proofs": []}
     if narrative:
@@ -262,7 +279,6 @@ def claim(cid, requirement, verdict, refs, narrative=None):
 def result_doc(claims, pack, start, end, extra=None):
     buckets = {"met": [], "not_met": [], "not_evaluable": []}
     for c in claims:
-        c["contract_ref"] = pack["contract_ref"]
         buckets[c["verdict"]].append(c["id"])
     doc = {"result_version": "evidence-result-v0", "generated_at": stamp(end), "claims": claims,
            "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
@@ -283,19 +299,20 @@ def judge_records(records, run, pack, start, end, not_checked):
         claims = []
         for t in pack["kinds"][nn]["terms"]:
             cid = f"{d}:{t['id']}"
+            cref = pack["own_contract_ref"] if t.get("own") else pack["contract_ref"]
             if t.get("model_attestation"):
                 if any(attested(Path(run) / d / r["path"]) for r in mine):
                     not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
                                         "why": "a record carries model_attestation and this pack has no "
                                                "recomputation for it yet", "issue": ISSUE})
-                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "model_attestation is present; this "
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, cref, "model_attestation is present; this "
                                         "pack does not recompute it yet, so the term is not judged"))
                 else:
-                    claims.append(claim(cid, t["id"], "not_evaluable", refs, "provider states the model it "
+                    claims.append(claim(cid, t["id"], "not_evaluable", refs, cref, "provider states the model it "
                                         "served (self-attested); no record carries model_attestation, so this is "
                                         "never a judged match"))
             else:
-                claims.append(claim(cid, t["id"], verdict, refs))
+                claims.append(claim(cid, t["id"], verdict, refs, cref))
         docs[d] = result_doc(claims, pack, start, end)
     return docs
 
@@ -306,7 +323,7 @@ def rollup_doc(finer, pack, start, end):
     for d, (rid, doc) in sorted(finer.items()):
         verdicts = {c["verdict"] for c in doc["claims"]}
         worst = next(v for v in ("not_met", "not_evaluable", "met") if v in verdicts)
-        claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid]))
+        claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid], pack["own_contract_ref"]))
     return result_doc(claims, pack, start, end)
 
 
@@ -551,7 +568,7 @@ def main(argv=None):
             raise NotChecked("the pack's Results, sealed and verified offline",
                              f"capsulectl and capsulectl-book are not installed ({capsulectl.parent}); "
                              "steps/10-judge.setup.sh installs them")
-        pinned = PINNED
+        pinned = PINNED + ["inference-deals"]
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
             docs = judge_records(records, source, pack, start, end, not_checked)
             book = Book(Path(tmp) / "book", capsulectl, keys)

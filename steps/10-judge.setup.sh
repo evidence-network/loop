@@ -15,9 +15,12 @@ read -r repo ref <<<"$(awk '$1 == "inference-deals" { print $2, $3 }' "$root/ver
 [ -n "${ref:-}" ] || { echo "10-judge.setup: inference-deals is not pinned" >&2; exit 1; }
 [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "10-judge.setup: inference-deals must be pinned to a full commit SHA (got $ref)" >&2; exit 1; }
 dest="${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/packs/inference-deals-$ref"
-files=(contracts/inference-deals/0.1.0.json packs/inference-deals/compiled/compiled.json)
-have=1; for f in "${files[@]}"; do [ -f "$dest/$f" ] || have=0; done
-if [ "$have" = 1 ]; then echo "10-judge.setup: inference-deals $repo $ref already in $dest" >&2; exit 0; fi
+compiled=packs/inference-deals/compiled/compiled.json
+# The contract file is the one compiled.json's contract_ref (name@version) names.
+contract_of() { python3 -c 'import json,sys; n,_,v=json.load(open(sys.argv[1]))["contract_ref"].partition("@"); print(f"contracts/{n}/{v}.json")' "$1"; }
+if [ -f "$dest/$compiled" ] && [ -f "$dest/$(contract_of "$dest/$compiled")" ]; then
+  echo "10-judge.setup: inference-deals $repo $ref already in $dest" >&2; exit 0
+fi
 
 src="$(mktemp -d)"
 trap 'rm -rf "$src"' EXIT
@@ -26,6 +29,6 @@ git -C "$src" -c advice.detachedHead=false fetch -q --depth 1 "https://github.co
 git -C "$src" -c advice.detachedHead=false checkout -q FETCH_HEAD
 [ "$(git -C "$src" rev-parse HEAD)" = "$ref" ] || { echo "10-judge.setup: fetched $(git -C "$src" rev-parse HEAD), not $ref" >&2; exit 1; }
 rm -rf "$dest.tmp"; mkdir -p "$dest.tmp"
-for f in "${files[@]}"; do mkdir -p "$dest.tmp/$(dirname "$f")"; cp "$src/$f" "$dest.tmp/$f"; done
+for f in "$compiled" "$(contract_of "$src/$compiled")"; do mkdir -p "$dest.tmp/$(dirname "$f")"; cp "$src/$f" "$dest.tmp/$f"; done
 rm -rf "$dest"; mv "$dest.tmp" "$dest"
 echo "10-judge.setup: inference-deals from $repo $ref in $dest" >&2

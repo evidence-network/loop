@@ -37,8 +37,17 @@ step = importlib.util.module_from_spec(_spec)
 _loader.exec_module(step)
 
 TOOLS_DIR = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
-HAS_TOOLS = all(p.is_file() for p in step.tools())
-NO_TOOLS = "SKIPPED LOUDLY: capsulectl and capsulectl-book are not installed; run steps/10-judge.setup.sh"
+def _has_pack():
+    try:
+        step.load_pack()
+        return True
+    except step.NotChecked:
+        return False
+
+
+HAS_TOOLS = all(p.is_file() for p in step.tools()) and _has_pack()
+NO_TOOLS = ("SKIPPED LOUDLY: capsulectl, capsulectl-book and the pinned inference-deals pack are not installed; "
+            "run steps/10-judge.setup.sh")
 if not HAS_TOOLS:
     if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":
         raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_TOOLS}")
@@ -131,6 +140,7 @@ class WindowTest(unittest.TestCase):
         self.assertNotEqual(first, step.window_of(utc("2026-11-01T00:00:00Z")))
 
 
+@unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 class ManifestTest(Base):
     """What 10 reads before it seals anything; none of this needs capsulectl."""
 
@@ -206,6 +216,49 @@ class PinnedPackTest(Base):
                 if x.suffix == ".json":
                     self.assertNotIn("served the model it named", x.read_text().lower(), x)
 
+    def pack_dir(self):
+        repo, ref = step.pin("inference-deals")
+        return step.tools_dir() / "packs" / f"inference-deals-{ref}"
+
+    def with_pack(self, edit):
+        """A scratch LOOP_TOOLS holding a copy of the fetched pack that `edit(dir)` has changed."""
+        tools = Path(self.tmp.name) / "tools"
+        shutil.copytree(self.pack_dir(), tools / "packs" / self.pack_dir().name)
+        edit(tools / "packs" / self.pack_dir().name)
+        return mock.patch.dict(os.environ, {"LOOP_TOOLS": str(tools)})
+
+    def test_a_term_the_binding_does_not_bind_is_not_checked(self):
+        def add(d):
+            f = d / "contracts" / "inference-deals" / "0.1.0.json"
+            c = load(f)
+            c["requirements"].append({**c["requirements"][0], "id": "come_through.new_term"})
+            dump(f, c)
+        with self.with_pack(add), self.assertRaises(step.NotChecked) as e:
+            step.load_pack()
+        self.assertIn("come_through.new_term", e.exception.args[1])
+
+    def test_a_term_that_is_not_must_have_is_not_checked(self):
+        def soften(d):
+            f = d / "contracts" / "inference-deals" / "0.1.0.json"
+            c = load(f)
+            c["requirements"][0]["tier"] = "informational"
+            dump(f, c)
+        with self.with_pack(soften), self.assertRaises(step.NotChecked) as e:
+            step.load_pack()
+        self.assertIn("must_have", e.exception.args[1])
+
+    def test_the_loops_own_claims_do_not_carry_the_packs_contract(self):
+        pack = step.load_pack()
+        self.judge()
+        refs = {}
+        for path in (self.run / "10-judge" / "bundles").glob("*.bundle.json"):
+            b = load(path)
+            for c in b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"]:
+                refs[c["requirement_ref"]] = c["contract_ref"]
+        self.assertEqual(refs["come_through.paid_as_agreed"], pack["contract_ref"])
+        self.assertEqual(refs["ask-answered"], pack["own_contract_ref"])
+        self.assertNotEqual(pack["own_contract_ref"], pack["contract_ref"])
+
     def test_a_pack_not_fetched_is_not_checked_not_a_pass(self):
         with tempfile.TemporaryDirectory() as empty, mock.patch.dict(os.environ, {"LOOP_TOOLS": empty}):
             f = self.judge()
@@ -224,7 +277,7 @@ class JudgeTest(Base):
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertEqual(f["not_checked"], [])
-        self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book"])
+        self.assertEqual(sorted(f["pinned"]), ["capsulectl", "capsulectl-book", "inference-deals"])
         self.assertEqual(self.cited(), self.window_records())
         out = self.run / "10-judge"
         names = sorted(p.name for p in (out / "bundles").iterdir())

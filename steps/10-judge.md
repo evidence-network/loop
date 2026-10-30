@@ -30,7 +30,9 @@ The pack is deterministic, with no model call. It is the evidencebook-skills `in
 commit `versions.lock` pins (`inference-deals`; the repository has no release tags). `10-judge.setup.sh` fetches
 that commit's contract and `compiled.json` into `$LOOP_TOOLS/packs/inference-deals-<sha>`, and the step reads
 the terms (`come_through.paid_as_agreed`, `served_as_agreed`, `served_named_model`), their tier (all `must_have`)
-and the window length from there. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
+and the window length from there. A pinned pack whose terms the binding does not bind, or with a term that is not
+`must_have`, is NOT_CHECKED. The loop's own claims (07 asks, 09 disputes, the roll-up) carry the loop's own
+`own_contract_ref`, never the pack's. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
 says which stand-in record files feed which term. When the pinned pack is not fetched, the step is NOT_CHECKED,
 never a PASS. The pack's own evaluator reads a node's real Mesh book records, which the rehearsal stand-ins are
 not, so it does not run here: the step applies the pack's terms to the results 08 re-derived. A PASS names that

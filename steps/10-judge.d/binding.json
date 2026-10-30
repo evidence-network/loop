@@ -1,6 +1,7 @@
 {
   "binds": "the pinned inference-deals pack (versions.lock `inference-deals`) onto the loop's rehearsal stand-ins; the pack's terms, tiers and window come from the pinned pack, not from this file",
   "pack": "inference-deals",
+  "own_contract_ref": "loop-inference-deals-rehearsal@v0",
   "verdicts": {
     "PASS": "met",
     "FAIL": "not_met",
