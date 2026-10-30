@@ -445,7 +445,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
 
 
 def no_binding(name, why):
-    return {"what": f"{name}: the controller binding", "why": why, "issue": "fixed upstream in capsules-plugin PR #121 (196ed195, join runs the controller binding ceremony), not in the pinned build; loop re-pins next"}
+    return {"what": f"{name}: the controller binding", "why": why, "issue": "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"}
 
 
 def listed_entry(node):

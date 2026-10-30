@@ -328,7 +328,7 @@ class ReporterBackendTest(Tmp):
     def test_verified_answers_in_time_read_not_checked_on_the_sealing_issue_and_count_as_answered(self):
         r = self.run_live(VERIFIED)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertEqual(self.issues(r), ["Mesh-LLM/capsules-plugin#56"])
+        self.assertEqual(self.issues(r), [step.SEAL_ISSUE])
         self.assertEqual(sorted(r["pinned"]), ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"])
         first = json.loads((self.out / "first-answered.json").read_text())
         self.assertTrue(first["answered_at"])

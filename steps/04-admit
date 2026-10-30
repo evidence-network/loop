@@ -43,8 +43,11 @@ node's ledger (the lab grants it the hook, lab/lab.sh). For each lab node whose
 data_dir is readable the step reads those blocks, read-only, and checks each is
 GO or NO, names its source, cites the operator policy by digest and names the
 peer by commitment only. PASS when every node reads and at least one is found
-and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The five rows are
-Mesh-LLM/capsules-plugin#116, not yet pinned.
+and all hold; FAIL when one found is malformed; NOT_CHECKED otherwise. The pinned plugin
+also seals the base policy's five rows with each decision that names a peer,
+and a second read, the peer's history card (capsules-plugin PR #116): the step
+checks their shape, and a decision sealed by an earlier build has neither.
+Whether each row was evaluated right is evidence-network/loop#81.
 
 No spend: nothing is paid on either population.
 
@@ -83,7 +86,7 @@ DECISION, DEAL = "admission_decision", "deal_record"
 NO_SPEND = "Spend: none; this step pays nothing (would spend 0 USD)."
 GAPS = " ".join([
     finding.outside("the decision as the plugin seals it in its own ledger (capsules-plugin#100) with its rows; the "
-                    "rehearsal seals a fixture of its shape in the buyer's book", "Mesh-LLM/capsules-plugin#116"),
+                    "rehearsal seals a fixture of its shape in the buyer's book", "evidence-network/loop#81"),
     finding.outside("the deal record as step 05's deal half; the buyer's deal record here is a stand-in",
                     "Mesh-LLM/capsules-plugin#49"),
 ])
@@ -354,9 +357,10 @@ def main_rehearsal(pop_dir, out, started, plant=None):
 # The step reads those blocks, read-only, and checks their shape; it evaluates no Terms Pack.
 LIVE_NOT_CHECKED = [
     {"what": "the five base-policy rows (identity, key age, performed-and-settled, disputes, corroboration) sealed "
-             "with each decision",
-     "why": "the pinned plugin seals the verdict, its source and the operator policy it read, and no rows",
-     "issue": "Mesh-LLM/capsules-plugin#116"},
+             "with each decision, evaluated right",
+     "why": "the pinned plugin seals the rows (capsules-plugin PR #116); the step checks their names and results, "
+            "not the evaluation behind them",
+     "issue": "evidence-network/loop#81"},
     {"what": "each ledger record's producer signature and capsule_id",
      "why": "the step reads the node's ledger lines as written and verifies neither",
      "issue": "action-state-group/agent-action-capsule#431"},
@@ -366,7 +370,7 @@ LIVE_NOT_CHECKED = [
 ]
 VERDICTS = ("GO", "NO")
 LIVE_GAPS = " ".join([
-    finding.outside("the five base-policy rows sealed with each decision", "Mesh-LLM/capsules-plugin#116"),
+    finding.outside("the five base-policy rows sealed with each decision, evaluated right", "evidence-network/loop#81"),
     finding.outside("each ledger record's producer signature and capsule_id", "action-state-group/agent-action-capsule#431"),
     finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
 ])
@@ -374,7 +378,10 @@ LIVE_GAPS = " ".join([
 
 ABSENT = object()
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-KEYS = {"peer_commitment", "verdict", "source", "reads", "request_id", "attempt", "model"}
+KEYS = {"peer_commitment", "verdict", "source", "reads", "rows", "request_id", "attempt", "model"}
+# The base policy's rows, in the order the plugin lists them, and a row's results (capsules-plugin admission/base.rs).
+ROWS = ("identity", "key_age", "performed_and_settled", "disputes", "corroboration")
+ROW_RESULTS = ("pass", "fail", "not_read")
 
 
 def decision_block(ln):
@@ -402,9 +409,11 @@ def block_problems(blk):
     if sorted(set(blk) - KEYS):
         errs.append(f"unexpected members {', '.join(sorted(set(blk) - KEYS))}")
     reads = blk.get("reads")
-    # Exactly the one operator-policy read the pinned plugin writes; a pin that adds reads (capsules-plugin#116)
-    # extends this check with it.
-    pol = reads[0] if isinstance(reads, list) and len(reads) == 1 and isinstance(reads[0], dict) else {}
+    rows = blk.get("rows", ABSENT)
+    # The operator-policy read first. A decision with rows (capsules-plugin PR #116) has one more read, the
+    # peer's history card; one sealed by an earlier build has neither.
+    want = 1 if rows is ABSENT else 2
+    pol = reads[0] if isinstance(reads, list) and len(reads) == want and isinstance(reads[0], dict) else {}
     # With no readable operator policy the plugin seals a NO and no digest, whether the policy or the target
     # was unreadable first; every other decision cites the policy's digest.
     unread = blk.get("source") in ("unreadable_policy", "unreadable_target") and blk.get("verdict") == "NO" \
@@ -417,6 +426,19 @@ def block_problems(blk):
     no_peer = blk.get("verdict") == "NO" and blk.get("source") == "unreadable_target"
     if not (digest_ok(pc) or (pc is None and no_peer)):
         errs.append("peer_commitment is missing or not a commitment")
+    if rows is not ABSENT:
+        if pc is None:
+            errs.append("rows on a decision that names no peer")
+        if not (isinstance(rows, list) and len(rows) == len(ROWS)
+                and all(isinstance(x, dict) and set(x) == {"row", "result"} and x["row"] == name
+                        and x["result"] in ROW_RESULTS for x, name in zip(rows, ROWS))):
+            errs.append("rows are not the five base-policy rows in order, each pass, fail or not_read")
+        card = reads[1] if isinstance(reads, list) and len(reads) == 2 else None
+        if not (card == {"kind": "history_card", "state": "not_read"}
+                or (isinstance(card, dict) and set(card) == {"kind", "derivation", "commitment"}
+                    and card["kind"] == "history_card" and card["derivation"] == "history_card/1"
+                    and digest_ok(card["commitment"]))):
+            errs.append("the second read is not the peer's history card")
     return errs
 
 
