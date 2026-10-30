@@ -1,7 +1,7 @@
 {
-  "asserts": "a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
-  "detail": "node stevenmih-1: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node stevenmih-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; node stevenmih-3: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key. Outside this step's assertion: the producer envelope signature is not verified in a second language (Class 1 does not include it; only key_id is matched to the node's key): action-state-group/agent-action-capsule#431.",
-  "finished": "2026-10-30T09:11:08Z",
+  "asserts": "a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
+  "detail": "node stevenmih-1: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9, the key the node publishes; node stevenmih-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node publishes; node stevenmih-3: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node publishes",
+  "finished": "2026-10-30T15:27:45Z",
   "name": "seal",
   "not_checked": [],
   "pinned": {
@@ -18,42 +18,42 @@
   "proof": [
     {
       "path": "stevenmih-1/capsule.json",
-      "sha256": "615f17c0477f5d0c7dec30a64ac50c29c11958c0e81e732b04efeead92324129"
+      "sha256": "72831259024d8f9c5a88ef21a1be5f880d16e0e973547e155a0416cf9086dc70"
     },
     {
       "path": "stevenmih-1/verifier.json",
-      "sha256": "fd8f524bede36dada5595a28fa1c22c8fe4f118244cd8846791b65585076305c"
+      "sha256": "d6ae3e23295c6dfa611725b76472d29da31ea4ed25d7bb5da22311ea1e61ecb7"
     },
     {
       "path": "stevenmih-1/checks.json",
-      "sha256": "1cca536a52b00d8ca51ca39ae5bda92f9043518714c3b254f701c84b600ca57e"
+      "sha256": "922c23c51bcdf3efb8e6ce172046a30df9c24f0402668a29698bcafbb7de5fc4"
     },
     {
       "path": "stevenmih-2/capsule.json",
-      "sha256": "7d7720ed21c8e45146f75294a51a126426e8909671cfe7e07b9de77fa2c9773f"
+      "sha256": "33d7753f6924a8de221ebf55afff197f7961f89efcaa70ae9a16004589c7f758"
     },
     {
       "path": "stevenmih-2/verifier.json",
-      "sha256": "57c1fbe68d013f6da7b14e5b38ce17f8fe5ddd64fcdb5c391e5b9b7c00144259"
+      "sha256": "c9c24e9e18460a59be3450fccffc54260f2d9b53d2e35f76e579f9224991f25f"
     },
     {
       "path": "stevenmih-2/checks.json",
-      "sha256": "4a1fff45d49b4a2805e3c649541f0b4fbf1338ca339e275255007c301594681e"
+      "sha256": "4416fd8802b5c56b8a7ce88a0cdcb5bc4054bb21ec5097410b74770c5a2cce49"
     },
     {
       "path": "stevenmih-3/capsule.json",
-      "sha256": "f36c874bf6f57c3286f27ec18e60e34f3cc10d2836f27d1dd034b6816a42bd1a"
+      "sha256": "a2041d67f15a290115c6b2ce64d99664682ee19dc276ea2403e6cc9475b992d5"
     },
     {
       "path": "stevenmih-3/verifier.json",
-      "sha256": "f11f331570ba26f2f94e45f3ceea8dcc902dd45f3a09357d36885fca1b8bc5f1"
+      "sha256": "628bbd06605010943d0b36c39e6f494e59a9db8cf3fc66bdc3fbb1ad8c036304"
     },
     {
       "path": "stevenmih-3/checks.json",
-      "sha256": "60e80322127bb07ca77a2395711b7d4913d76bc3d79ee6b9c38fe4944c44a926"
+      "sha256": "b4ec9b3a60a9446893c12996fa15d0cc0eebcbcf148d9d55457119bda5489f70"
     }
   ],
   "result": "PASS",
-  "started": "2026-10-30T09:11:07Z",
+  "started": "2026-10-30T15:27:44Z",
   "step": "01"
 }

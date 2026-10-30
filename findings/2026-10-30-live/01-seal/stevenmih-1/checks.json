@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried 65361448f20027f6ec42b74b14c3206b43f30b63748a0a8b8e74bef6eceb1ba3, recomputed 65361448f20027f6ec42b74b14c3206b43f30b63748a0a8b8e74bef6eceb1ba3",
+      "detail": "carried 6de914f1b5ee303d21ac7c2c79430f71a11af5e673c0b5d867da1d3dcbb9b6a4, recomputed 6de914f1b5ee303d21ac7c2c79430f71a11af5e673c0b5d867da1d3dcbb9b6a4",
       "ok": true
     },
     "class1": {
@@ -19,6 +19,11 @@
     "model": {
       "detail": "model_attestation {\"compute_attestation\": {\"agent_input_digest\": \"1390191acf93ead6e9c15bce5a3b0fbe517eb1ba430bb4c35f61e574fe0f1d29\", \"agent_output_digest\": \"cce5ecc272e032155464ec4417189890cafb9be4609380cad1b76c049407f09c\"}, \"model_id\": \"rehearsal-model\", \"provider\": \"rehearsal\"}",
       "ok": true
+    },
+    "signature": {
+      "detail": "authored under 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9, the key the node publishes",
+      "ok": true,
+      "state": "ok"
     }
   },
   "installed": {
