@@ -18,5 +18,5 @@ This note sits beside the generated `finding.json` and is not part of its proof 
   `recorded_received`, `matches_issued`) were read from each node's data directory at run time and are not in
   the proof; lab-4's declared entry is in git history at 7fb0029. `result_signed` and `result_is_adjudication`
   re-check from the committed bytes alone.
-- **Pin.** The run was on capsules `01f0921e`; `versions.lock` on main has moved since, so `finding.py check`
-  reports the pin mismatch, as it does for the 2026-10-29 findings.
+- **Pin.** Rerun 2026-10-30T08:34Z on capsules `d1f4edc` (the lab build of step 05), bracket
+  `lab-twins-20261030T083448Z`; the first run of this finding was on `01f0921e`.
