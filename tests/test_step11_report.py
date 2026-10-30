@@ -332,25 +332,31 @@ class ReportTest(Base):
 
     def test_the_count_comes_from_contents_not_names(self):
         self.add_record("06-settle", "ledger.jsonl", {"note": "named like a deal, and not one", "deal": "x"},
-                        {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+                        {"exchange_id": "fixture-ex-2"})
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("sealed deal: 2 of 5 exchanges", self.summaries()["exchanges:deals"])
+        self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
 
-    def test_one_deal_of_several_sealed_steps_counts_once(self):
-        line = {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"}
+    def test_a_settlement_line_that_names_a_deal_seals_none(self):
+        self.add_record("06-settle", "ledger.jsonl", {"deal_id": "deal-random-2", "exchange_id": "fixture-ex-2"})
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertNotIn("deal-random-2", json.dumps(self.statement()))
+        self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
+
+    def test_one_exchange_named_twice_counts_once(self):
+        line = {"exchange_id": "fixture-ex-2"}
         self.add_record("06-settle", "ledger.jsonl", line, line)
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertIn("sealed deal: 2 of 5 exchanges", self.summaries()["exchanges:deals"])
+        self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
 
-    def test_more_deals_than_exchanges_fails_the_denominator_check(self):
-        self.add_record("06-settle", "ledger.jsonl", *({"deal_id": f"deal-random-{i}"} for i in range(2, 6)))
-        f = self.report()
+    def test_planted_more_deals_than_exchanges_fails_the_denominator_check(self):
+        with self.with_figure(text="5 of 4 exchanges"):
+            f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("'5 of 4' has no denominator", f["detail"])
 
     def uncited_deal(self):
         """A deal-like file and an exchange in the step dirs, which no Result cites and 08 does not list."""
-        dump(self.run / "05-deal" / "extra-deal.json", {"buyer": "mallory", "deal": "uncited-deal"})
+        dump(self.run / "05-deal" / "extra-deal.json", {"deal_id": "uncited-deal"})
         dump(self.run / "06-settle" / "extra-exchange.json", {"exchange": "uncited-exchange"})
 
     def test_planted_an_uncited_deal_like_file_does_not_change_the_count(self):
@@ -381,7 +387,7 @@ class ReportTest(Base):
         self.assertIn("uncited-exchange", found["exchanges"])
 
     def change_cited_deal(self):
-        dump(self.run / "05-deal" / "deal.json", {"buyer": "alice", "deal": "fixture-deal-1", "provider": "mallory"})
+        dump(self.run / "05-deal" / "deal.json", {"deal_id": "fixture-deal-1", "provider": "mallory"})
 
     def test_planted_a_cited_deal_changed_after_10_is_refused(self):
         self.change_cited_deal()
@@ -513,9 +519,60 @@ class ReportTest(Base):
                 mock.patch.object(step, "check_no_paid_product", return_value=[]):
             self.assertEqual(self.report()["result"], "PASS")
 
+    def test_prices_and_payments_are_allowed_and_longer_words_do_not_match(self):
+        self.assertEqual(step.PAID_WORD.findall("pricing, a payment of 5 USDC, upgraded, a subscribed key, aEnterpriseb"), [])
+        self.assertEqual(step.PAID_WORD.findall("Contact sales for Premium"), ["Contact sales", "Premium"])
+
+    def test_planted_a_report_result_bundle_that_does_not_verify_fails(self):
+        real = step.judge10.verify_bundle
+
+        def broken(capsulectl, path, tmp):
+            return {**real(capsulectl, path, tmp), "verdict": "INVALID"} if Path(path).name == "result.bundle.json" \
+                else real(capsulectl, path, tmp)
+        with mock.patch.object(step.judge10, "verify_bundle", broken):
+            f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("the report Result's bundle does not verify: INVALID", f["detail"])
+
+    def test_mutant_without_the_result_bundle_check_the_broken_bundle_passes(self):
+        real = step.judge10.verify_bundle
+
+        def broken(capsulectl, path, tmp):
+            return {**real(capsulectl, path, tmp), "verdict": "INVALID"} if Path(path).name == "result.bundle.json" \
+                else real(capsulectl, path, tmp)
+        with mock.patch.object(step.judge10, "verify_bundle", broken), \
+                mock.patch.object(step, "check_result_bundle", return_value=[]):
+            self.assertEqual(self.report()["result"], "PASS")
+
+    def test_a_copy_of_a_bundle_beside_10s_bundles_is_not_a_second_result(self):
+        before = self.report()
+        shutil.copy(self.run / "10-judge" / "bundles" / "06-settle.bundle.json",
+                    self.run / "10-judge" / "bundles" / "06-settle-copy.bundle.json")
+        figures = lambda: json.dumps(load(self.run / "11-report" / "report.json")["figures"])  # noqa: E731
+        first = figures()
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertEqual(figures(), first)
+
+    def test_planted_a_copied_bundle_named_in_10s_proof_fails(self):
+        j = self.run / "10-judge"
+        shutil.copy(j / "bundles" / "06-settle.bundle.json", j / "bundles" / "06-settle-copy.bundle.json")
+        record = load(j / "finding.json")
+        record["proof"].append({"path": "bundles/06-settle-copy.bundle.json",
+                                "sha256": finding.sha256(j / "bundles" / "06-settle-copy.bundle.json")})
+        dump(j / "finding.json", record)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("is a second bundle of a Result already read", f["detail"])
+
+    def test_a_second_run_leaves_no_stale_standin_folder(self):
+        (self.run / "11-report" / "standin").mkdir(parents=True)
+        (self.run / "11-report" / "standin" / "old.json").write_text("{}")
+        self.assertEqual(self.report()["result"], "PASS")
+        self.assertFalse((self.run / "11-report" / "standin").exists())
+
     def test_the_real_page_holds_no_paid_product_text(self):
         self.assertEqual(self.report()["result"], "PASS")
-        self.assertEqual(step.check_no_paid_product(self.page, load(self.run / "11-report" / "report.json")["figures"]), [])
+        self.assertEqual(step.check_no_paid_product(self.page, load(self.run / "11-report" / "report.json")), [])
 
     def test_mutant_without_the_score_check_the_score_field_passes(self):
         with self.with_figure(score=9), mock.patch.object(step, "check_no_score", return_value=[]):

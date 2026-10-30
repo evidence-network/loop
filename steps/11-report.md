@@ -7,7 +7,8 @@ happened over the window and that decisions cited them. It never writes into ano
 ## What it reads
 
 1. **08's manifest.** 08's finding passes `steps/finding.py`'s check and names `verified.json` in `proof`.
-2. **10's Results.** 10's finding passes the same check and is PASS. Each bundle is `VALID` under `capsulectl verify
+2. **10's Results.** 10's finding passes the same check and is PASS. Only the bundles its `proof` names are read, and
+   no two are the same Result. Each bundle is `VALID` under `capsulectl verify
    --bundle` and under the repository's judge key. The roll-up cites exactly the finer Results. Every record they
    cite has the sha256 08's manifest gives it, in a step 08 reproduced.
 
@@ -30,9 +31,9 @@ cited capsule's payload is the record's `{step, path, sha256}`.
 | decisions | the roll-up | k of n finer Results cited; met, not met and not evaluable, each k of n roll-up claims |
 | exchanges | paid exchanges, each from the payer's sealed deal, when a cited record names a deal or an exchange | distinct deals of distinct exchanges |
 
-The count comes from the records' contents, never their names. A deal is a distinct top-level `deal_id` (a sealed
-`x-deal-v0` step), or on the stand-in a distinct `deal` with a `buyer`. An exchange is a distinct top-level `exchange`
-or `exchange_id`. No sealed `x-deal-v0` record has reached a run yet, so the `deal_id` form is tested on a fixture only.
+The count comes from the records' contents, never their names. A deal is a distinct top-level `deal_id` in a cited deal record (05's);
+a settlement line that carries a `deal_id` seals no deal. An exchange is a distinct top-level `exchange`
+or `exchange_id`. The stand-in's deal names no exchange, so its page reads "1 of 4": the deal against the four exchanges 06's ledger holds.
 
 For now only the payer seals a deal for a paid exchange, so each deal counts one paid exchange. A provider-side deal is
 never expected or reported as missing, and no check compares two sides' deals. A PASS names that gap on
@@ -61,7 +62,8 @@ page the publisher issued) is capsule-viewer#158, and a PASS names that gap.
 | denominators | outside "k of n" with k <= n, a figure's text holds a digit only in a step's name or a term id | a figure reading "3 paid exchanges" |
 | cited only | the exchanges figure counts only records a Result cites, each matching 08's digest | an extra deal-like file in the step dir, not cited; a cited deal record changed after 10 sealed |
 | rebuilds | two rebuilds of the page from `result.bundle.json` have the same bytes, and those are the bytes the seal holds | a rebuild that differs from the other, and rebuilds that are not the sealed bytes |
-| no paid product | no enterprise or paid-product text in the page's bundle, its HTML outside scripts, or `report.json` | a figure reading "Upgrade to Enterprise" |
+| result bundle | the report Result's bundle, which the page embeds, is `VALID` | a bundle whose verdict is not VALID |
+| no paid product | no enterprise or paid-product text (prices and payments are allowed) in the page's bundle, its HTML outside scripts, or `report.json` | a figure reading "Upgrade to Enterprise" |
 | no score | no score-like field or word in the page's bundle, its HTML outside scripts, or `report.json` | a figure with a `score` field |
 
 Each plant has a mutant test: with that check switched off, the plant reads PASS. The builder's viewer script is

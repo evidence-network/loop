@@ -36,6 +36,7 @@ are the deal and settlement records 10's Results cite, for the exchanges figure:
                              pinned code and is not scanned.
                 rebuilds     two rebuilds of the page have the same bytes, and
                              they are the sealed bytes;
+                result bundle   the report Result's bundle verifies;
                 no paid product  no enterprise or paid-product text in the page.
 
 The reporting book is, on rehearsal, a scratch book under the repository's TEST
@@ -87,7 +88,10 @@ FRACTION = re.compile(r"\b(\d+) of (\d+)\b")
 IDENTIFIER = re.compile(r"\bstep \d{2}\b|\b\d{2}-[a-z][a-z-]*\b|\bterm-\d+\b")
 SCORE_WORD = re.compile(r"(?<![A-Za-z0-9+/=])(?:score|rank|rating|leaderboard)s?(?![A-Za-z0-9+/=])", re.I)
 SCORE_KEY = re.compile(r"score|rank|rating|leaderboard", re.I)
-PAID_WORD = re.compile(r"enterprise|premium|pricing|upgrade|subscri(?:be|ption)|contact sales|paid (?:plan|tier|product)", re.I)
+# Prices and payments may show on a public surface; an enterprise or paid-product offer may not. Guarded like SCORE_WORD,
+# so a base64 run or a longer word does not match.
+PAID_WORD = re.compile(r"(?<![A-Za-z0-9+/=])(?:enterprise|premium|upgrade|subscribe|subscription|contact sales|"
+                       r"paid (?:plan|tier|product))(?![A-Za-z0-9+/=])", re.I)
 BUNDLE_SCRIPT = re.compile(r"<script[^>]*>\s*window\.__BUNDLE__ = (.*?);?\s*</script>", re.S)
 SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
 
@@ -126,14 +130,19 @@ def check_records(manifest, cited):
             for k, s in sorted(cited.items()) if listed.get(k) != s]
 
 
-def read_results(judged, manifest, capsulectl, judge_key, tmp):
-    """(finer {dir: statement}, rollup statement, cited {ref: sha256}, problems) from 10's bundles."""
-    problems, finer, finer_valid, cited = [], {}, set(), {}
+def read_results(judged, record, manifest, capsulectl, judge_key, tmp):
+    """(finer {dir: statement}, rollup statement, cited {ref: sha256}, problems) from the bundles 10's finding binds."""
+    problems, finer, finer_valid, cited, roots = [], {}, set(), {}, set()
     rollup, rollup_cites = None, []
-    bundles = sorted((judged / "bundles").glob("*.bundle.json"))
+    # Only the bundles 10's proof names: a copy dropped beside them would otherwise be counted as another Result.
+    bundles = sorted(judged / p["path"] for p in record["proof"]
+                     if p["path"].startswith("bundles/") and p["path"].endswith(".bundle.json"))
     for path in bundles:
         root, statement, disclosed, probs = judge10.open_bundle(path, judge10.verify_bundle(capsulectl, path, tmp), judge_key)
         problems += probs
+        if root in roots:
+            problems.append(f"{path.name} is a second bundle of a Result already read")
+        roots.add(root)
         name = path.name.replace(".bundle.json", "")
         if name == "rollup":
             rollup, rollup_cites = statement, judge10.evidence(statement)
@@ -178,10 +187,8 @@ def documents(path):
 
 
 def deal_of(doc):
-    """The deal id a record seals, or None: a sealed step's top-level deal_id, or the stand-in's buyer-named deal."""
-    if isinstance(doc.get("deal_id"), str) and doc["deal_id"]:
-        return doc["deal_id"]
-    return doc["deal"] if isinstance(doc.get("deal"), str) and doc["deal"] and doc.get("buyer") else None
+    """The deal id a deal record seals, or None: its top-level deal_id."""
+    return doc["deal_id"] if isinstance(doc.get("deal_id"), str) and doc["deal_id"] else None
 
 
 def exchange_of(doc):
@@ -194,11 +201,14 @@ def exchange_of(doc):
 def count_exchanges(source, cited, pack):
     """{"deals": {id: refs}, "exchanges": {id: refs}} from the cited records' contents; raises Refused on a bad digest."""
     found = {"deals": {}, "exchanges": {}}
+    kinds = {nn: k["kind"] for nn, k in pack["kinds"].items()}
     for ref, path, sha in cited_records(source, cited, pack):
         if not record_holds(path, sha):
             raise Refused(f"{ref} does not match the sha256 08's manifest gives it")
         for doc in documents(path):
-            for name, value in (("deals", deal_of(doc)), ("exchanges", exchange_of(doc))):
+            # A deal is sealed by a deal record; a settlement line that carries a deal_id seals nothing.
+            for name, value in (("deals", deal_of(doc) if kinds[ref[:2]] == "deal" else None),
+                                ("exchanges", exchange_of(doc))):
                 if value:
                     found[name].setdefault(value, set()).add(ref)
     return found
@@ -449,17 +459,23 @@ def score_like(x, where=""):
     return out
 
 
-def check_no_score(page, figures):
-    """No score-like field or word in the page's bundle, its HTML outside scripts, or the figures it renders from."""
-    hits = score_like(page_bundle(page), "page") + score_like(figures, "figures")
+def check_no_score(page, report):
+    """No score-like field or word in the page's bundle, its HTML outside scripts, or the report.json it is written with."""
+    hits = score_like(page_bundle(page), "page") + score_like(report, "report.json")
     html = SCRIPT.sub("", Path(page).read_text(encoding="utf-8"))
     hits += [f"page html: {m.group(0)}" for m in SCORE_WORD.finditer(html)]
     return [f"a score-like field: {h}" for h in hits]
 
 
-def check_no_paid_product(page, figures):
-    """No enterprise or paid-product text in the page's bundle, its HTML outside scripts, or the figures it renders from."""
-    texts = json.dumps(page_bundle(page)) + json.dumps(figures) + SCRIPT.sub("", Path(page).read_text(encoding="utf-8"))
+def check_result_bundle(verdict):
+    """The report Result's bundle, which the page embeds, verifies."""
+    return [] if verdict.get("verdict") == "VALID" else \
+        [f"the report Result's bundle does not verify: {verdict.get('verdict') or 'no verdict'}"]
+
+
+def check_no_paid_product(page, report):
+    """No enterprise or paid-product text in the page's bundle, its HTML outside scripts, or the report.json it is written with."""
+    texts = " ".join(re.findall(r'"[^"]*"', json.dumps(page_bundle(page)))) + " " + json.dumps(report) + " " + SCRIPT.sub("", Path(page).read_text(encoding="utf-8"))
     return [f"paid-product text: {m.group(0)!r}" for m in PAID_WORD.finditer(texts)][:5]
 
 
@@ -504,7 +520,7 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
 def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
     judged, source, is_standin = run_inputs(run, out, population, population_dir)
-    read_judge(judged)
+    record = read_judge(judged)
     try:
         manifest, _ = judge10.read_manifest(source)
     except judge10.NotChecked as e:
@@ -520,7 +536,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     if not (capsulectl.is_file() and plugin.is_file()):
         raise NotChecked("the report page, built and sealed", f"capsulectl and capsulectl-book are not installed "
                          f"({capsulectl.parent}); steps/11-report.setup.sh installs them")
-    finer, rollup, cited, problems = read_results(judged, manifest, capsulectl, judge10.pub_hex(judge_pub), tmp)
+    finer, rollup, cited, problems = read_results(judged, record, manifest, capsulectl, judge10.pub_hex(judge_pub), tmp)
     if problems:
         raise Refused("; ".join(problems))
     pack = load(judge10.PACK)
@@ -546,21 +562,23 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     rebuilt = [Path(tmp) / f"rebuild-{i}.html" for i in (1, 2)]
     for r in rebuilt:
         book.rebuild(bundle, r)
-    dump(out / "report.json", {"source": "stand-in" if is_standin else "run", "figures": figures,
-                               "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
-                               "built_by": tool_versions(capsulectl, plugin),
-                               "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
-                               "rollup_sha256": finding.sha256(judged / "bundles" / "rollup.bundle.json")})
+    report_json = {"source": "stand-in" if is_standin else "run", "figures": figures,
+                   "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
+                   "built_by": tool_versions(capsulectl, plugin),
+                   "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
+                   "rollup_sha256": finding.sha256(judged / "bundles" / "rollup.bundle.json")}
+    dump(out / "report.json", report_json)
     dump(out / "check.json", {"build": {k: built.get(k) for k in ("bundle_digest", "root", "page_seal", "verdict")},
                               "check": answer, "seal_verdict": verdict.get("verdict")})
     proof += ["report.json", "result.bundle.json", "seal.bundle.json", "check.json"]
     if is_standin:
         proof += [f"standin/10-judge/{p.relative_to(judged)}" for p in sorted(judged.rglob("*")) if p.is_file()]
     problems = check_seal(page, answer, seal, verdict, key) + check_rebuilds(rebuilt, seal)
+    problems += check_result_bundle(judge10.verify_bundle(capsulectl, bundle, tmp))
     statement = page_statement(page)
     problems += check_denominators(statement)
-    problems += check_no_score(page, figures)
-    problems += check_no_paid_product(page, figures)
+    problems += check_no_score(page, report_json)
+    problems += check_no_paid_product(page, report_json)
     if page_out:
         shutil.copyfile(page, page_out)
     return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin
@@ -576,6 +594,7 @@ def main(argv=None):
     started = finding.now()
     out = a.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(out / "standin", ignore_errors=True)
     for p in ("finding.json", "report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"):
         (out / p).unlink(missing_ok=True)
     population_dir = a.population.resolve()
