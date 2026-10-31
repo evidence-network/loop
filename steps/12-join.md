@@ -83,9 +83,9 @@ answered and how each tool call ended, with the reply bytes beside it as `doctor
 main commit `nodes/revocations/` was read from). `judge_live(pop, out, started)` decides from those files alone:
 each verification line is computed again from its reply and must be the one kept, join's commitment is verified
 again under the listed key, and a kept binding is checked again by `cross_language`. So step 08 runs it on the cited
-copy and gets the same verdict. Step 08 holds the kept revocations commit to main outside the run (loop#281): to the
-step's publication on main, else its own clone's origin/main, and judges again with the lists there when
-`nodes/revocations/` differs, so the run's unsigned binding time never picks the list. Doctor's findings and the fetch replies stay console reads no key signs, which 08
+copy and gets the same verdict. Step 08 holds the kept revocations commit to its own clone's origin/main (loop#281),
+and judges again with the lists there when `nodes/revocations/` differs, so the run's unsigned binding time never
+picks the list. Doctor's findings and the fetch replies stay console reads no key signs, which 08
 names (evidence-network/loop#193).
 
 ## Rehearsal (probe backend `doctor`): proof step 08 reproduces from

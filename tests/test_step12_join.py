@@ -1316,7 +1316,7 @@ class PluginToolsRunTest(Tmp):
             os.environ.pop("LOOP_TOOLS") if real is None else os.environ.__setitem__("LOOP_TOOLS", real)
         self.assertIn("steps/01-seal.setup.sh", str(live.exception))
 
-    # Step 08 holds the revocations commit live 12 read to main outside the run (loop#281).
+    # Step 08 holds the revocations commit live 12 read to this clone's origin/main (loop#281).
     def revocations_main(self):
         """A scratch main live 12 reads nodes/revocations/ from, with one commit before the binding time, as if
         pushed. Returns a function that commits the folder's state on main at `date` and moves origin/main to it."""
@@ -1349,18 +1349,14 @@ class PluginToolsRunTest(Tmp):
         return r
 
     @needs_cross
-    def test_08_holds_the_revocations_to_this_clones_main_when_the_step_is_unpublished(self):
+    def test_08_holds_the_revocations_to_this_clones_main(self):
         commit = self.revocations_main()
         self.bound_run_for_08()
         commit("2026-11-03T00:00:00Z")  # main moves on, nodes/revocations/ the same
         f, e = self.verify08()
         self.assertEqual(e["status"], "reproduced", e["problems"])
-        tip = subprocess.run(["git", "-C", os.environ["LOOP_REVOCATIONS_GIT"], "rev-parse", "origin/main"],
-                             capture_output=True, text=True, check=True).stdout.strip()
-        # One entry says what the step was not held to at a publication, and where its revocations were read.
-        [gap] = [x for x in e["relies_on"] if "read at the pull request merge on main" in x["what"]]
-        self.assertIn("join commitments and revocation statements it is held to", gap["what"])
-        self.assertIn(f"origin/main as last fetched, {tip}, committed 2026-11-03T00:00:00", gap["why"])
+        # What this clone's main holds is T2 (steps/08-verify.md): no not_checked entry names where it was read.
+        self.assertFalse([x for x in e["relies_on"] if "origin/main" in x["why"]], e["relies_on"])
 
     @needs_cross
     def test_08_fails_a_live_12_whose_list_main_has_changed_for_its_binding(self):

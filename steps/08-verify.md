@@ -5,6 +5,44 @@ offline, from the run's bundle and the keys the repository lists. `loop.sh` runs
 steps it reproduces. It never writes into another step's directory and never changes a step's script: each
 step's judge is loaded read-only from `steps/` with `importlib`.
 
+## What 08 is, and where it stops
+
+**A self-check, not step 8.** 08 is the loop's own offline check of a run's findings. It is not step 8 of the loop,
+which needs a verifier that is not ours: an outside developer who reproduces every finding offline
+(evidence-network/evidencebook#41). Step 8 stays red until that verifier passes, whatever 08 reads (Steven's ruling,
+`buzz://message?channel=054513b2-0a66-4c1e-885e-2af75c56233c&id=343238d4df741c30171f3ba0453bd8f9a133c70abb3f0ca6d6753a0cb03ee008&thread=cb1918aa2f3df0e05c201e7a0b1f4225713ac5555247454e02e4c8f519edd654`).
+
+**What 08 catches.** Whoever publishes a run's bundle changing what a finding says after the run:
+
+- a finding whose cited bytes were altered, or do not support its verdict;
+- a verdict that rests on a key the repository does not list;
+- a step whose decision cannot be reproduced from the cited bytes with the pinned tools.
+
+It does not catch a listed node that lies consistently under its own key. Steps 09 and 10 and corroboration
+between nodes cover that.
+
+**What 08 trusts.** These are the trust roots. 08 does not re-derive them, and each is stated here once:
+
+- **T1.** What a listed node signs about itself: its ledger content, its ledger checkpoints, its capsule times.
+- **T2.** main's history and who can write to it, deploy keys included. This covers which `nodes/`, `lab/witness/`,
+  `lab/runs/` and `nodes/revocations/` the checkout holds: 08 reads them from the checkout it runs in, whatever that
+  checkout's `origin` is, so a fork or another clone of the same history re-derives a run the same way.
+- **T3.** The pinned verifiers (`versions.lock`).
+- **T4.** The run's own unsigned readings: `started`, 12's `bind_at`, 05's cutoff, which node was read, console
+  replies, 04's build mark, 02's `bound`, and that the commit 03's carrier names was current when 03 ran.
+
+Values withheld by design, such as 06's payment preimages, are not in the bundle, so 08 cannot check them.
+
+Where a step below still names one of these as a not_checked entry (02's `bound`, 05's cutoff, 06's preimage
+outcomes and others), the entry records that trust root for the run; it is not a check 08 could make. Moving those
+entries into their own list in `verified.json` is not decided, and this file does not change that shape. Every
+other not_checked entry is a step, or part of one, that 08 did not re-derive: a missing tool, an older proof shape,
+a broken step.
+
+**The stop rule.** A review finding becomes a new check in 08 only if the bundle's publisher could get a false
+result from 08 after the run without holding a listed key or write access to main. Any other finding goes to one
+issue for the next iteration and blocks nothing.
+
 ## Which steps the run holds
 
 The expected steps come from the run's own `run.json` `steps` list (loop.sh writes the step numbers it runs), never
@@ -29,8 +67,8 @@ witness in the population must carry `witnesses.json`.
    equal the recorded ones (`not_checked` compared entry for entry, in any order). For the files the status page
    reads a number from (04 `counts.json`, 06 `volume.json`, 07 `first-answered.json`), the re-derived bytes must
    equal the recorded ones. A mismatch is a FAIL naming the step.
-3. **Coverage.** A step whose result can't be re-derived here is never passed on trust. It gets a not_checked
-   entry `{what, why, issue}`.
+3. **Coverage.** A step whose result 08 does not re-derive here gets a not_checked entry `{what, why, issue}`. The
+   trust roots above are what 08 takes as given.
 
 08 is FAIL when any step fails 1 or 2, NOT_CHECKED when none fails but one or more is not reproduced, and PASS
 only when every step present was reproduced. `verified.json` is the manifest steps 10 and 11 read: per step, its
@@ -55,15 +93,15 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
-| 05 Deal | `judge_live` on the copied proof: `nodes.json` (the cutoff, the pins missing, which node was read), each node's copied `ledger/` files (held halves, provenance, inclusions, own chain), `controller-binding.json` and sharing report; the pinned driver and `cross_language` check each half again | nodes.json names the population's nodes; the senders' listed keys are the judge's own read of `nodes/`; the revocations commit nodes.json keeps must be on origin/main, and when `nodes/revocations/` differs between it and the step's publication on main (else this clone's origin/main, named as a gap with its commit and date) the judge runs again with the lists there and must give the recorded result and not_checked (#281); each copy is checked against the node's signed ledger checkpoint (below); nodes.json's read states and pins missing are 05's record unless every node was read, and a cutoff is always named (#193) | the step 05 driver and aac-go `cross_language` at the pin; loop-ledger-check for a run since loop#288 |
+| 05 Deal | `judge_live` on the copied proof: `nodes.json` (the cutoff, the pins missing, which node was read), each node's copied `ledger/` files (held halves, provenance, inclusions, own chain), `controller-binding.json` and sharing report; the pinned driver and `cross_language` check each half again | nodes.json names the population's nodes; the senders' listed keys are the judge's own read of `nodes/`; the revocations commit nodes.json keeps must be on this clone's origin/main, and when `nodes/revocations/` differs between it and origin/main the judge runs again with the lists there and must give the recorded result and not_checked (#281); each copy is checked against the node's signed ledger checkpoint (below); nodes.json's read states and pins missing are 05's record unless every node was read, and a cutoff is always named (#193) | the step 05 driver and aac-go `cross_language` at the pin; loop-ledger-check for a run since loop#288 |
 | 09 Dispute | `judge_live` on the copied proof: `nodes.json` (the run's nodes, which were read, each announced key, a key not read), each node's copied ledger files and `twin-fault.json` | each population node is one the run names with the same node_id; each listed node's announced key is its `nodes/` key; an unlisted node's (the twins node's) is 09's reading (evidence-network/loop#209); nodes.json is 09's record unless every node was read with no key error (#193); each copy is checked against the node's signed ledger checkpoint (below) | openssl 3+; loop-ledger-check for a run since loop#288 |
 | 01 Seal | `judge_live` on the copied proof: `nodes.json` (the pins the run found; per node unread, sealed or not sealed) and each node's `capsule.json` and `node-key.pub.pem`; the checks run again with the pinned `cross_language` | each kept `node-key.pub.pem` of a listed node is the key its `nodes/` listing publishes; an unlisted node's key is 01's word, and 01's signature check names that as not_checked; nodes.json's per-node state is 01's record (a not_checked entry on evidence-network/loop#193) unless no pin is missing and every node sealed its own capsule under its listed key in this run (the capsule's signed timestamp no earlier than 01's start) | aac-go `cross_language` at the pin (otherwise `not_reproduced`) |
 | 02 Book | `judge_live` on the copied proof: `nodes.json` (pins; per node read or why not), each node's `inputs.json` (the keys and book coordinates read, the witness exit codes, a failed stage) and its proof files; `capsulectl verify --bundle` runs again on each bundle | `witnesses.json` is the repository's lab witness listing (and must be cited when a receipt is judged: the judge reads that copy); each listed node's `node_pub` is its `nodes/` key, and an unlisted node's key, book and trusted keys are 02's reading; a listed node's book id and checkpoint key must be named by a join commitment the node signed under `lab/runs`, otherwise they are 02's reading; the keys the book's profile trusts (`bound`) are in nothing the node signs, so they are always named; nodes.json is 02's record unless every node was read with nothing missing, and each node's `node_keys` (what its receipt is held apart from) must include every listed key (each a not_checked entry on evidence-network/loop#193 when not borne out), and each receipt is verified offline from the bundle by 02's judge (the step 02 driver's `lab-check`, and openssl over the signed bytes rebuilt from the bundle's checkpoint, evidence-network/loop#219); a run before that check (no `receipt_check` in inputs.json) keeps a not_checked entry that its receipt's state is capsulectl's reading (evidence-network/loop#219) | capsulectl and capsulectl-book at the pin; the step 02 driver and openssl 3 when a receipt is judged offline |
-| 03 Advertise | `judge_live` on the copied proof: `carrier.json` (the carrier's HEAD commit; per node its listed `key_id` and which paths HEAD held) and each `<name>.commitment.json` and `<name>.policy.json` | each listed `key_id` is `nodes/<node_id>.json`'s in the listings 03 is held to (below; otherwise `not_reproduced` on evidence-network/loop#193); when `head` is a full commit id this checkout holds, 08 works out each node's paths from that commit (listing, commitment, the policy it names), whatever carrier.json lists: each must match byte for byte and the listed key must be that commit's, otherwise FAIL; a path carrier.json lists that 03 never reads FAILs. A `head` that is missing, not a full id or not in this checkout is a not_checked entry on #193. That the commit was current when 03 ran is held to the pull request merge that published 03 (below): each listing and commitment it holds must be what that merge holds; when they differ (commitments re-issued in the publishing merge) or 03 has no such merge, that is named on #193 | openssl 3+, git |
+| 03 Advertise | `judge_live` on the copied proof: `carrier.json` (the carrier's HEAD commit; per node its listed `key_id` and which paths HEAD held) and each `<name>.commitment.json` and `<name>.policy.json` | each listed `key_id` is `nodes/<node_id>.json`'s in this checkout (otherwise `not_reproduced` on evidence-network/loop#193); when `head` is a full commit id this checkout holds, 08 works out each node's paths from that commit (listing, commitment, the policy it names), whatever carrier.json lists: each must match byte for byte and the listed key must be that commit's, otherwise FAIL; a path carrier.json lists that 03 never reads FAILs. A `head` that is missing, not a full id or not in this checkout is a not_checked entry on #193. That the commit was current when 03 ran is the run's reading (T4) | openssl 3+, git |
 | 04 Admit | `judge_live` on the copied proof: `nodes.json` (each node read or not, its ledger's record count, the record numbers kept and its plugin build mark, which is 04's reading of the lab host) and each node's `decisions.jsonl` | each node's listed key, from the repository's `nodes/` (04 holds each decision record's signature to it, in the pinned aac-go, evidence-network/loop#135); `decisions.jsonl` and the record count are picked again from the node's checkpointed ledger copy (below), and nodes.json's read states are 04's record unless every node was read (#193) | aac-go `cross_language` at the pin (otherwise `not_reproduced`, even when no node kept a record); loop-ledger-check for a run since loop#288 |
 | 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker) |
 | 06 Settle (Lightning) | 06's `main_lightning` on the copied proof: each node's `recorded.json` (06's reading of its ledger), then the ruled checks (reference, finality, band, rail_fee, exchange_match) again on them, and `counterparty_count` from `counterparty.json`'s rows by 06's rule (each row's status against the signed bundle, its sha256 and disclosed count are 06's word; 08 decides again that the paired count is the books' pair count); `checks.json` is written again and must be the cited bytes, `counterparty.json` is validated as rows and carried | none: nothing in the proof is signed by a key. A `recorded.json` for a name outside the population is a FAIL, and so is a counterparty row that is no check of one population node against another | nothing outside the repository |
-| 12 Join (reporter backend) | `judge_live` on the copied proof: `nodes.json` (the self node, whether a second console was given, which own consoles were held, the binding time and the main commit `nodes/revocations/` was read from), each node's reporter attempt, its plugin calls (`wire.json` and the reply bytes `doctor-probe.json`, `join.json`, `doctor-after.json`) and kept `controller-binding.json`; each kept verification line is computed again from its reply, join's commitment is verified under the listed key and written again, and a kept binding is checked again by `cross_language` | each node's listed `key_id`, read by the judge itself (`nodes/<node_id>.json`); the revocations commit is held to main outside the run as live 05's (#281); doctor's findings and the fetch replies are console reads no key signs, and the replies' signatures are the pinned plugin's verification (both named on evidence-network/loop#193) | aac-go `cross_language` at the pin when a binding is kept (otherwise `not_reproduced`) |
+| 12 Join (reporter backend) | `judge_live` on the copied proof: `nodes.json` (the self node, whether a second console was given, which own consoles were held, the binding time and the main commit `nodes/revocations/` was read from), each node's reporter attempt, its plugin calls (`wire.json` and the reply bytes `doctor-probe.json`, `join.json`, `doctor-after.json`) and kept `controller-binding.json`; each kept verification line is computed again from its reply, join's commitment is verified under the listed key and written again, and a kept binding is checked again by `cross_language` | each node's listed `key_id`, read by the judge itself (`nodes/<node_id>.json`); the revocations commit is held to origin/main as live 05's (#281); doctor's findings and the fetch replies are console reads no key signs, and the replies' signatures are the pinned plugin's verification (both named on evidence-network/loop#193) | aac-go `cross_language` at the pin when a binding is kept (otherwise `not_reproduced`) |
 
 Live 06 is re-derived on the Lightning rail only (any other live rail is `not_reproduced`). A reproduced live 06 adds
 three not_checked entries to 08's finding: `recorded.json` is 06's reading of each ledger (capsules-plugin#175); the
@@ -89,7 +127,7 @@ Nor are the replies' signatures checked again: live 07 takes the pinned plugin's
 `verification` in each reply, as it did before. Which commitment applied is 07's `choice.json` too. So a
 reproduced live 07 still adds three not_checked entries to 08's finding (one on capsules-plugin#175, two on
 evidence-network/loop#193), and 08 never reads PASS over it. The listed
-keys and commitments are read where the step is held to them (below).
+keys and commitments are this checkout's (T2).
 Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `failed`.
 
 A live 04 or 07 finding whose proof lacks `nodes.json` or `ask.json` predates the shape 08 re-derives: it is
@@ -120,36 +158,20 @@ announced key is a not_checked entry on evidence-network/loop#209.
 
 ## Which repository inputs a live step is held to
 
-A live step that holds keys to the repository (01, 02, 03, 04, 05, 07, 09 and 12) is re-derived with the repository's
-`nodes/` listings and commitments, `lab/witness/witnesses.json` and the join commitments under `lab/runs/*/join/` as
-the pull request merge that published it held them (evidence-network/loop#280), not as this checkout holds them now.
-So a key retired after a run was published does not change what the run is held to, and a key retired before it
-was published is never held to it, whatever times the run's own keys signed.
-
-The anchor P of a step directory `findings/<run>/<NN>-<name>/` is the oldest merge commit (two parents) on
-`origin/main`'s first-parent line whose tree holds exactly the step's files, no more and no fewer, with the bytes they hold now
-(`git hash-object --no-filters`; a symlink is a mismatch). Each step has its own anchor, since runs gain steps across
-pull requests. Only merge commits are anchors: a squash, a rebase commit or a direct push is a single-parent commit
-no review saw as a state of main, and main's ruleset allows no rebase merges. A step published by squash is anchored
-at the next merge that holds its bytes. A commit listed in `anchor-exclusions.json` at `origin/main`'s tip (`{"commits": [{"commit": <sha>, "why": ...}]}`,
-the commits of a push `.github/direct_push.py` flagged) is never an anchor. 08 unpacks `nodes/`, `lab/witness/` and `lab/runs/` from P
-(one that P predates is empty) and runs the step with `LOOP_NODES_DIR`, `LOOP_WITNESS_LISTING` and `LOOP_LAB_RUNS`
-pointing at them.
-
-A step with no anchor is re-derived with this checkout's inputs, and a reproduced one adds a not_checked entry on
-evidence-network/loop#193 saying why: the step is not on main yet (a fresh run's own 08, or the lab pull request
-that adds it), is not under `findings/`, or this checkout cannot show its publication (its `origin` is not
-evidence-network/loop, it is a shallow clone, it has no `origin/main`, or `anchor-exclusions.json` is unreadable). A
-preset `LOOP_NODES_DIR` is honored and named the same way. The exclusions and the anchors are read at this checkout's `origin/main`, so fetch
-before running 08 on published runs: a stale `origin/main` misses an exclusion made since. Publish findings with a merge commit, so each step's
-anchor is its own pull request.
+A live step that holds keys to the repository (01, 02, 03, 04, 05, 07, 09 and 12) is re-derived with this checkout's
+`nodes/` listings and commitments, `lab/witness/witnesses.json` and the join commitments under `lab/runs/*/join/`
+(`LOOP_NODES_DIR` and `LOOP_LAB_RUNS` when set). Which of these main held, and when, is T2: 08 does not ask which
+pull request published a step, and its result does not depend on this checkout's `origin`. 03's carrier commit
+and 05's and 12's revocations commit are read from this checkout's history, so a clone that lacks them names that
+(a not_checked entry, or `not_reproduced`: fetch main's history). A key rotated since a run is read as the new one.
 
 Live 05 and 12 also read `nodes/revocations/` at the main commit their `nodes.json` keeps (`revocations_main`), which
-must be on `origin/main` (evidence-network/loop#281). That list is held to P, or with no anchor to this clone's
-`origin/main` as last fetched: when `nodes/revocations/` differs between the kept commit and that one, the judge runs
-again on a fresh copy reading it there and must give the recorded result and not_checked (by what and issue). With no
-anchor, the same not_checked entry names the revocation statements too, with that commit and its date. The run's own
-start or binding time, which no node signs, never picks the list.
+must be on this clone's `origin/main` (a commit it lacks is `not_reproduced`: fetch main's history). `nodes.json` is
+not signed, so that commit alone could be an older one, from before a statement was merged; 08 holds the list to
+this clone's `origin/main` instead (evidence-network/loop#281). When `nodes/revocations/` differs between the kept
+commit and `origin/main`, the judge runs again on a fresh copy reading it at `origin/main` and must give the
+recorded result and not_checked (by what and issue). What this clone's `origin/main` holds is T2, so fetch first to
+apply a statement merged since. The run's own start or binding time, which no node signs, never picks the list.
 
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
 dir or console while they decide, and their findings don't cite those bytes.

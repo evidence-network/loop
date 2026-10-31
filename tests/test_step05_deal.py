@@ -960,8 +960,8 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
 
     def test_08_takes_an_older_kept_revocations_commit_whose_list_main_still_holds(self):
-        # 08 holds the kept commit to main outside the run (loop#281), never to the run's own start: an older commit
-        # with the same nodes/revocations/ as this clone's origin/main is reproduced, and the list read is named.
+        # 08 holds the kept commit to this clone's origin/main (loop#281), never to the run's own start: an older
+        # commit with the same nodes/revocations/ there is reproduced, and adds no not_checked entry of its own.
         self.run_live()
         n = json.loads((self.out / "nodes.json").read_text())
         kept = n["revocations_main"]["commit"]
@@ -973,7 +973,8 @@ class Step05DealLiveTest(unittest.TestCase):
         self.rehash()
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
-        self.assertIn(f"step 05: {v.ANCHOR_REVOKED}", [x["what"] for x in entries["05-deal"]["relies_on"]])
+        self.assertFalse([x for x in entries["05-deal"]["relies_on"] if "origin/main" in x["why"]],
+                         entries["05-deal"]["relies_on"])
 
     def test_08_fails_a_kept_revocations_commit_that_is_no_commit_id(self):
         self.run_live()
