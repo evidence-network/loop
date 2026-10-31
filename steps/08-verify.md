@@ -55,6 +55,7 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
+| 03 Advertise | `judge_live` on the copied proof: `carrier.json` (the carrier's HEAD commit; per node its listed `key_id` and which paths HEAD held) and each `<name>.commitment.json` and `<name>.policy.json` | each listed `key_id` is `nodes/<node_id>.json`'s in this checkout (otherwise `not_reproduced` on evidence-network/loop#193); when the carrier commit is in this checkout, every held file is that commit's bytes (otherwise a not_checked entry on #193) | openssl 3+, git |
 | 04 Admit | `judge_live` on the copied proof: `nodes.json` (each node read or not, its ledger's record count and the record numbers kept) and each node's `decisions.jsonl` | none: 04 reads the ledger lines as written (their signatures are a gap 04 names, evidence-network/loop#135) | nothing outside the repository |
 | 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker) |
 

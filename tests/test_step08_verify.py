@@ -927,5 +927,89 @@ class Step08Live04Test(unittest.TestCase):
         self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
 
 
+@unittest.skipUnless(step.openssl_ed25519() and shutil.which("git"), "SKIPPED LOUDLY: live 03 verifies with OpenSSL 3+ "
+                                                                  "and reads this repository's HEAD with git")
+class Step08Live03Test(unittest.TestCase):
+    """08 re-derives live step 03 from its proof alone: step 03 run live on this repository's HEAD, which carries
+    the lab nodes' published commitments (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "2026-10-31-live"
+        r = subprocess.run([str(STEPS / "03-advertise"), "--population", str(LIVE_POPULATION),
+                            "--out", str(self.run / "03-advertise")], capture_output=True, text=True, cwd=ROOT,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        write_run_json(self.run, ["03", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def plant(self, edit):
+        edit(self.run / "03-advertise")
+        rehash(self.run / "03-advertise")
+        return self.verify()
+
+    def test_live_03_is_reproduced_from_its_proof(self):
+        recorded = load(self.run / "03-advertise" / "finding.json")
+        f, entries = self.verify()
+        e = entries["03-advertise"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], recorded["result"])
+        self.assertIn(load(self.run / "03-advertise" / "carrier.json")["head"],
+                      subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
+                                     text=True).stdout)
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_a_commitment_not_what_the_carrier_held_fails(self):
+        def forge(d):
+            f = next(d.glob("*.commitment.json"))
+            doc = load(f)
+            doc["answers_within"] = "PT9H"
+            dump(f, doc)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not what the carrier's commit", f["detail"])
+
+    def test_a_listed_key_the_repository_does_not_list_is_not_reproduced(self):
+        def forge(d):
+            doc = load(d / "carrier.json")
+            next(iter(doc["nodes"].values()))["key_id"] = "ab" * 32
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["03-advertise"]["status"], "not_reproduced")
+        self.assertEqual(entries["03-advertise"]["not_checked"]["issue"], step.TRUST_ISSUE)
+
+    def test_a_node_dropped_from_carrier_json_fails(self):
+        def drop(d):
+            doc = load(d / "carrier.json")
+            doc["nodes"].pop(next(iter(doc["nodes"])))
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_carrier_commit_not_in_this_checkout_is_named(self):
+        def other(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = "0" * 40
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(other)
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertIn("is not in the checkout 08 runs in", " ".join(x["why"] for x in f["not_checked"]))
+
+    def test_an_old_shape_live_03_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.run / "03-advertise")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-4" / "03-advertise", self.run / "03-advertise")
+        f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no carrier.json", entries["03-advertise"]["not_checked"]["why"])
+
+
 if __name__ == "__main__":
     unittest.main()

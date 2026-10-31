@@ -23,9 +23,10 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 04 and 07 are re-derived the same way: their
+  live          live steps 03, 04 and 07 are re-derived the same way: their
                 judges read only their proof (and, for 07, the repository's
-                nodes/ listings). The other live steps' judges read a lab node's
+                nodes/ listings; 03's listed keys and carrier bytes are held
+                to this checkout). The other live steps' judges read a lab node's
                 data dir or console, so they are not_checked
                 (evidence-network/loop#188; 09: #209).
 
@@ -154,6 +155,7 @@ class Ctx:
         self.bundle, self.work, self.tmp, self.pop, self.record = bundle, work, tmp, Path(pop_dir), record
         self.population = record["population"]
         self.started = record["started"]
+        self.relies = []  # what this step's re-derivation rests on beyond LIVE_RELIES_ON (its keys check adds them)
 
 
 # --- Keys: each key the proof relies on is the repository's ------------------------------
@@ -392,6 +394,49 @@ def old_shape(c, nn, name):
                              OLD_SHAPE_ISSUE)
 
 
+def rederive_03_live(m, c):
+    """Live 03: its own judge_live on the copied proof (carrier.json and each node's commitment and policy, as the
+    carrier's HEAD held them). It verifies each commitment with step 03's checker under the listed key."""
+    old_shape(c, "03", "carrier.json")
+    if not openssl_ed25519():
+        raise Unreproducible("step 03: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_03_live(c):
+    """Each listed key carrier.json records is the repository's listing of that node (nodes/<node_id>.json), and,
+    when carrier.json's commit is in this checkout, every file it says HEAD held is that commit's bytes."""
+    if "carrier.json" not in {p["path"] for p in c.record["proof"]}:
+        return []  # an older shape: rederive_03_live says so
+    doc, bad = load(c.work / "carrier.json"), []
+    for name, entry in sorted((doc.get("nodes") or {}).items()):
+        listing = ROOT / "nodes" / f"{entry.get('node_id')}.json"
+        listed = load(listing).get("key_id") if listing.is_file() else None
+        if entry.get("key_id") is not None and entry.get("key_id") != listed:
+            raise Unreproducible(f"step 03: {name}'s listed key at the carrier's HEAD",
+                                 "it is not the key nodes/ lists for the node in this checkout (a key rotated since "
+                                 "the run, or a key the repository never listed)", TRUST_ISSUE)
+    head = doc.get("head")
+    have = head and subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{head}^{{commit}}"],
+                                   capture_output=True).returncode == 0
+    if not have:
+        c.relies.append({"what": "step 03: the carrier's HEAD held the commitment and policy bytes cited",
+                         "why": f"carrier.json's commit {head} is not in the checkout 08 runs in, so the bytes are "
+                                "not compared with it", "issue": TRUST_ISSUE})
+        return bad
+    files = {"commitment": "{n}.commitment.json", "policy": "{n}.policy.json"}
+    for name, entry in sorted((doc.get("nodes") or {}).items()):
+        for path, held in sorted((entry.get("paths") or {}).items()):
+            r = subprocess.run(["git", "-C", str(ROOT), "show", f"{head}:{path}"], capture_output=True)
+            at_head = r.stdout if r.returncode == 0 else None
+            kind = "commitment" if path == f"nodes/commitments/{entry.get('node_id')}.json" else "policy"
+            mine = c.work / files[kind].format(n=name)
+            if bool(held) != (at_head is not None) or (held and (not mine.is_file() or mine.read_bytes() != at_head)):
+                bad.append(f"{name}: {path} is not what the carrier's commit {head[:12]} holds")
+    return bad
+
+
 def rederive_04_live(m, c):
     """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl). It reads the
     ledger lines as written and relies on no key (their signatures are a gap 04 names, loop#135)."""
@@ -437,7 +482,7 @@ STEPS = {
 
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
-LIVE_STEPS = {"04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+LIVE_STEPS = {"03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"07", "09"}
@@ -553,7 +598,7 @@ def verify_step(d, pop_dir, population, tmp):
 
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
     if population != "rehearsal":
-        entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
+        entry["relies_on"] = LIVE_RELIES_ON.get(nn, []) + c.relies
     entry["problems"] += mismatches(record, again)
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files

@@ -158,7 +158,18 @@ class LiveTest(unittest.TestCase):
         argv = ["--population", str(FIXTURES / "population" / population), "--out", str(out), "--carrier", str(carrier)]
         self.assertEqual(self.step.main(argv), 0)
         self.assertEqual(finding.check(out.parent), [])
-        return json.loads((out / "finding.json").read_text()), out
+        record = json.loads((out / "finding.json").read_text())
+        # judge_live on a copy of only the cited files gives the same finding: what step 08 checks (loop#188).
+        pop = json.loads((FIXTURES / "population" / population / "population.json").read_text())
+        work = self.tmp / "again" / "03-advertise"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in record["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / p["path"], work / p["path"])
+        again = self.step.judge_live(pop, work, record["started"])
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (record["result"], record["not_checked"], record["detail"]))
+        return record, out
 
     def published_carrier(self, key_id=None):
         """A repository where alice's test key, playing the node, published its commitment, listed under key_id."""
