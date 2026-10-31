@@ -1091,8 +1091,8 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap left is a revocation declaration the verifier does not count (loop#240; CB-1 itself closed in
-    AAC#495). The key's role (AAC#468) is checked from its report, and no gap is loop-wide any more: the signed
+    """The binding gap left is a revocation declaration the verifier does not count (loop#240; CB-1 narrowed by
+    AAC#495, which left a registered source and a signed declaration open). The key's role (AAC#468) is checked from its report, and no gap is loop-wide any more: the signed
     commitment (loop#161) is matched per node."""
 
     def test_the_binding_gap_is_a_declaration_that_does_not_count(self):
