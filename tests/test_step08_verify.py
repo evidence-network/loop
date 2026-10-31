@@ -1271,5 +1271,93 @@ class Step08Live01Test(unittest.TestCase):
         self.assertIn("its proof holds no nodes.json", entries["01-seal"]["not_checked"]["why"])
 
 
+STEP09_LIVE = ROOT / "tests" / "fixtures" / "step09" / "live"
+
+
+@unittest.skipUnless(step.openssl_ed25519(), "SKIPPED LOUDLY: live 09 verifies Results with OpenSSL 3+ (Ed25519)")
+class Step08Live09Test(unittest.TestCase):
+    """08 re-derives live step 09 from its proof alone, on step 09's live fixture (four lab nodes, as the twins run
+    has); three are listed in a scratch nodes/ under the keys their data dirs hold, the fourth is not (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.pop = t / "pop"
+        self.pop.mkdir()
+        pop = load(STEP09_LIVE / "population.json")
+        listed = [n for n in pop["nodes"] if n["name"] != "lab-4"]  # the repository's population: no twins node
+        dump(self.pop / "population.json", dict(pop, nodes=listed))
+        mod = step.step_module("09-dispute")
+        (t / "nodes").mkdir()
+        for n in listed:
+            key = mod.aac.key_id_of_pem(STEP09_LIVE / "nodes" / n["name"] / "data" / "keys" / "node-key.pub.pem")
+            dump(t / "nodes" / f"{n['node_id']}.json", {"node_id": n["node_id"], "key_id": key})
+        self.env = mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(t / "nodes"), "LAB_DIR": str(STEP09_LIVE)})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.run = t / "2026-10-31-live"
+        r = subprocess.run([str(STEPS / "09-dispute"), "--population", str(STEP09_LIVE), "--out",
+                            str(self.run / "09-dispute")], capture_output=True, text=True, timeout=300,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        write_run_json(self.run, ["09", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(self.pop), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def plant(self, edit):
+        edit(self.run / "09-dispute")
+        rehash(self.run / "09-dispute")
+        return self.verify()
+
+    def test_live_09_is_reproduced_and_names_the_unlisted_twins_node(self):
+        recorded = load(self.run / "09-dispute" / "finding.json")
+        self.assertEqual(recorded["result"], "PASS", recorded["detail"])
+        f, entries = self.verify()
+        self.assertEqual(entries["09-dispute"]["status"], "reproduced", entries["09-dispute"]["problems"])
+        self.assertIn(step.LIVE_RELIES_ON["09"][0], f["not_checked"])
+        self.assertIn("step 09: node lab-4's announced key", [x["what"] for x in f["not_checked"]])
+        self.assertEqual({x["issue"] for x in f["not_checked"] if "lab-4" in x["what"]}, {step.TWINS_ISSUE})
+
+    def test_a_held_result_altered_fails(self):
+        def forge(d):
+            p = next(d.glob("*/ledger/received-adjudications.jsonl"))
+            held = json.loads(p.read_text().splitlines()[0])
+            held["verdict_capsule"]["big"] = 2
+            p.write_text(json.dumps(held) + "\n")
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_an_announced_key_the_listing_does_not_publish_fails(self):
+        def forge(d):
+            n = load(d / "nodes.json")
+            first = sorted(k for k in n["announced"] if k != load(STEP09_LIVE / "population.json")["nodes"][3]["node_id"])[0]
+            n["announced"][first] = "ab" * 32
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_the_population_lists_dropped_from_nodes_json_fails(self):
+        def drop(d):
+            n = load(d / "nodes.json")
+            n["nodes"] = [x for x in n["nodes"] if x["name"] != "lab-1"]
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_an_old_shape_live_09_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.run / "09-dispute")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "09-dispute", self.run / "09-dispute")
+        f, entries = self.verify()
+        self.assertEqual(entries["09-dispute"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
+
+
 if __name__ == "__main__":
     unittest.main()

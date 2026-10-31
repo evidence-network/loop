@@ -295,7 +295,18 @@ class LiveTest(Tmp):
     def live(self, fixture, pop=None):
         with mock.patch.dict(os.environ, {"LAB_DIR": str(fixture)}):
             self.assertEqual(step.main(["--population", str(pop or fixture), "--out", str(self.out)]), 0)
-        return self.finding()
+        record = self.finding()
+        # judge_live on a copy of only the cited files gives the same finding, with no LAB_DIR: what 08 checks.
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "09-dispute"
+            for p in record["proof"]:
+                (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(self.out / p["path"], work / p["path"])
+            with mock.patch.dict(os.environ, {"LAB_DIR": ""}):
+                again = step.judge_live({"population": "live"}, work, record["started"])
+            self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                             (record["result"], record["not_checked"], record["detail"]))
+        return record
 
     def copy(self):
         dest = Path(self.tmp.name) / "live"
