@@ -137,6 +137,12 @@ does not edit or delete them. The leave mark says from when the node is no
 longer asked, so a reader of `reports/daily/` can tell a node that left from a
 node that stopped answering.
 
+## Twins-only lab nodes
+
+`nodes/twins/<node_id>.json` holds the key of a lab node that only the step 09 twins run adds (`LAB_TWINS=1 lab/lab.sh entries`
+writes it). It has the entry shape above and the check validates it, but it is not a listed node: the daily reporter does not
+ask it and the pages do not show it. Step 08 holds the key step 09 announced for that node to this file.
+
 ## The check
 
 `scripts/check_nodes.py` refuses an entry:

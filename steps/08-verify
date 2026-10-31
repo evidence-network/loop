@@ -724,8 +724,8 @@ def rederive_09_live(m, c):
 
 def keys_09_live(c, m):
     """Each node of the repository's population is one 09's run names, with the same node_id, and each announced
-    key nodes.json records for a listed node is the key its nodes/ listing publishes. A node the run names that has
-    no listing (the twins run's fourth node) is named: its key is 09's reading of its data_dir (loop#209)."""
+    key nodes.json records for a listed node is the key its nodes/ listing publishes (the twins run's fourth node: nodes/twins/<node_id>.json). A node the run names
+    that has neither is named: its key is 09's reading of its data_dir (loop#209)."""
     old_shape(c, "09", "nodes.json")
     kept, bad = load(c.work / "nodes.json"), []
     ran = {n.get("name"): n.get("node_id") for n in kept.get("nodes") or [] if isinstance(n, dict)}
@@ -741,6 +741,10 @@ def keys_09_live(c, m):
             for node_id in sorted(set(announced) - read_ids, key=str)]
     for name, node_id in sorted(ran.items(), key=lambda x: str(x[0])):
         listing = nodes_dir() / f"{node_id}.json"
+        twins_listing = nodes_dir() / "twins" / f"{node_id}.json"
+        if node_id and not listing.is_file() and twins_listing.is_file():
+            # The twins-only node's key is listed under nodes/twins/ (lab/pack.py entries), so it is held like the others.
+            listing = twins_listing
         if not (node_id and listing.is_file()):
             if node_id in announced:
                 twins = name not in listed_pop
@@ -751,7 +755,7 @@ def keys_09_live(c, m):
                                  "issue": TWINS_ISSUE if twins else TRUST_ISSUE})
             continue
         if node_id in announced and announced[node_id] != load(listing).get("key_id"):
-            bad.append(f"nodes.json's announced key of {name} is not the key nodes/{node_id}.json lists")
+            bad.append(f"nodes.json's announced key of {name} is not the key {"nodes/twins/" if listing == twins_listing else "nodes/"}{node_id}.json lists")
     if not (all(read.get(name) is True for name in {*listed_pop, *ran}) and not kept.get("key_errors")):
         state_relies(c, "09", "what nodes.json says of each node (read or not, a key not read)")
     return bad
