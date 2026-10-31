@@ -1427,6 +1427,54 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
 
+    def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_own_half(self):
+        leg = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {}}, "settlement": {}}
+        record = lambda **rh: {"model_attestation": {"compute_attestation": {"received_half": rh}}}  # noqa: E731
+        self.assertTrue(step.is_settlement_leg(leg, record(accepted_via="host_announced")))
+        self.assertFalse(step.is_settlement_leg({**leg, "settlement": None}, record()))
+        self.assertFalse(step.is_settlement_leg({**leg, "model_attestation": {"model_id": "lab-model"}}, record()))
+        self.assertFalse(step.is_settlement_leg({}, record()))
+        # a sender cannot mark a chat half as a leg: a nonce, or a record that names an own half, is tied; a binding
+        # the record names does not make a leg a half (its binding is judged either way)
+        nonce = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {
+            "x-mesh-poc-v1": {"client_nonce": "n", "role": "served"}}}, "settlement": {}}
+        self.assertFalse(step.is_settlement_leg(nonce, record()))
+        self.assertFalse(step.is_settlement_leg(leg, record(own_half_capsule_id="ab" * 32)))
+        self.assertTrue(step.is_settlement_leg(leg, record(controller_binding_digest="cd" * 32)))
+
+    def run_in_process(self):
+        with mock.patch.dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)):
+            code = step.main(["--population", str(self.lab), "--out", str(self.out)])
+        self.assertEqual(code, 0)
+        return json.loads((self.out / "finding.json").read_text())
+
+    def test_live_a_settlement_leg_is_counted_not_tied_and_not_an_unbound_sender(self):
+        # The fixture's held half is a chat half; the predicate is what separates a leg, so it is forced for the run.
+        self.reseal_citing(own_half_capsule_id=None)
+        with mock.patch.object(step, "is_settlement_leg", lambda capsule, record: True):
+            f = self.run_in_process()
+        self.assertNotIn(step.LIVE_NEVER_TIED, self.names(f))
+        self.assertNotIn(step.LIVE_UNBOUND_WHAT, self.names(f))
+        self.assertIn("0 halves, 0 tied to the node's own half, 0 held, never tied, 0 ambiguous", f["detail"])
+        self.assertIn("1 settlement legs besides", f["detail"])
+        self.assertNotIn("carries no client_nonce", f["detail"])
+        # only legs were held: no tie was read, and the step says so
+        self.assertIn(step.ACCEPTANCE_WHAT, self.names(f))
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(c["leg"])
+        self.assertNotIn("tied", c)
+        self.assertTrue(c["signature"]["ok"] and c["pushed_under_checkpoint"]["ok"] and c["accepted"]["ok"])
+
+    def test_live_a_settlement_leg_accepted_under_another_key_still_fails_its_acceptance(self):
+        self.reseal_citing(own_half_capsule_id=None, sender_key_id="ab" * 32)
+        with mock.patch.object(step, "is_settlement_leg", lambda capsule, record: True):
+            f = self.run_in_process()
+        self.assertEqual(f["result"], "FAIL")
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(c["leg"])
+        self.assertFalse(c["accepted"]["ok"], c["accepted"])
+        self.assertIn("held-1 accepted (", f["detail"])
+
     def test_live_a_tie_naming_an_own_half_the_chain_does_not_hold_fails(self):
         self.reseal_citing(own_half_capsule_id="ab" * 32)
         f = self.run_live()
@@ -1540,7 +1588,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(acc["what"], step.ACCEPTANCE_WHAT)
         self.assertIn("0 halves, 0 tied", f["detail"])
         self.assertIn("1 sealed earlier, not judged", f["detail"])
-        self.assertIn("no node holds a current-build half", acc["why"])
+        self.assertIn("no node holds a current-build exchange half", acc["why"])
         self.assertIn("sealed since 2099-01-01T00:00:00Z", f["detail"])
         self.assertEqual(json.loads((self.out / "lab-a" / "checks.json").read_text())["sealed_since"], "2099-01-01T00:00:00Z")
         # the same half is judged when the build started before it was sealed
