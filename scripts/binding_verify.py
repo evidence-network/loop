@@ -1,4 +1,4 @@
-"""The Go controller-binding verifier (`cross_language binding`, aac-go go/v0.16.0: Ed25519 and BIP-340 keys, AAC#458), as steps 05 and 12 call it.
+"""The Go controller-binding verifier (`cross_language binding`, aac-go go/v0.17.0: Ed25519 and BIP-340 keys, AAC#458), as steps 05 and 12 call it.
 
 Exit 0 means "the binding applies" (form, both signatures and window PASS, revocation not FAIL): not a trust
 verdict and not which role the key has in it (agent-action-capsule#468). The caller names the key and the times.
@@ -6,9 +6,16 @@ verdict and not which role the key has in it (agent-action-capsule#468). The cal
 Revocation statements (Controller Binding v0 §5) for a lab binding are published by pull request at
 `nodes/revocations/<binding_digest>.json` (loop#138): a JSON array of statements, each signed by one of the
 binding's two keys; the loop never signs one. CB §5 leaves delivery to the using profile; this folder is the
-loop profile's own delivery point, not a registry. A statement that applies at or before a time asked about makes the verifier report revocation FAIL. With
-none that applies it reports NOT_CHECKED, never PASS (CB-1).
+loop profile's own delivery point, not a registry. A statement that applies at or before a time asked about makes the verifier report revocation FAIL.
+
+CB-1 (option A, Controller Binding v0 §5.1, §9.4, agent-action-capsule#495): the loop run itself declares that
+folder complete for the binding as of the time it evaluates, and passes that declaration to the verifier with the
+list's exact octets. A binding the repository publishes nothing for is the empty list `[]`, declared complete. The
+verifier then reports revocation PASS when no statement in that snapshot applies at the times asked about: the
+loop run's statement, scoped to the snapshot (`list_digest`, `as_of`). A declaration that does not count (it is
+stale, or earlier than a time asked about) leaves revocation NOT_CHECKED, with the verifier's reason.
 """
+import hashlib
 import json
 import re
 import subprocess
@@ -20,6 +27,8 @@ REVOCATIONS = "revocations"  # the folder under nodes/
 REVOCATION_VERSION = "controller-binding-revocation/0"
 REVOCATION_MEMBERS = ("revocation_version", "binding", "key_id", "revoked_at", "sig")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
+PROFILE = "evidence-network/loop: nodes/revocations/<binding_digest>.json"  # the profile whose list is declared
+MAX_AGE = 3600  # seconds: the declaration is made at the step's evaluation time (as_of = evaluated_at)
 
 
 def _unique(pairs):
@@ -58,15 +67,44 @@ def revocations(nodes_dir, digest):
     return read_revocations(path) if HEX64.match(str(digest)) and path.exists() else []
 
 
-def verify(verifier, raw, key, times, revocations=()):
+def revocation_list(nodes_dir, digest, as_of, asserted_by):
+    """The `revocation_list` the loop run passes for binding `digest` (CB-1 option A): the exact octets of
+    `nodes_dir`/revocations/<digest>.json, or `[]` when the repository publishes none, and the run's declaration
+    that the list is complete as of `as_of` (the step's evaluation time, also `evaluated_at`). Raises ValueError,
+    as read_revocations does, for a published file that is not a revocations file."""
+    path = Path(nodes_dir) / REVOCATIONS / f"{digest}.json"
+    if HEX64.match(str(digest)) and path.exists():
+        read_revocations(path)
+        text = path.read_bytes().decode("utf-8")
+    else:
+        text = "[]"
+    declaration = {"profile": PROFILE, "asserted_by": asserted_by, "binding": digest,
+                   "list_digest": hashlib.sha256(text.encode("utf-8")).hexdigest(), "as_of": as_of,
+                   "max_age": MAX_AGE}
+    return {"declaration": declaration, "list": text, "evaluated_at": as_of}
+
+
+def revocation(report):
+    """(state, text) of the binding's revocation in a verifier report: PASS with the snapshot it is scoped to,
+    else the state (NOT_CHECKED, FAIL) with the verifier's reason the declaration did not count, if any."""
+    state = (report.get("properties") or {}).get("controller_binding_revocation")
+    rl = report.get("revocation_list") if isinstance(report.get("revocation_list"), dict) else {}
+    if state == "PASS" and rl.get("counts") is True:
+        return "PASS", (f"revocation PASS: no statement applies in the list {rl.get('asserted_by')} declared "
+                        f"complete as of {rl.get('as_of')} (list sha256 {rl.get('list_digest')})")
+    why = f": the declaration does not count ({rl.get('reason')})" if rl.get("counts") is False else ""
+    return state, f"revocation {state}{why}"
+
+
+def verify(verifier, raw, key, times, revocation_list=None):
     """(verdict, report, stderr, returncode) of `verifier binding` on the binding text `raw`, held to naming `key`
-    at every time in `times`, with these revocation statements (texts) received beside it. verdict is "ok", "bad"
+    at every time in `times`, with the run's `revocation_list` (above) beside it. verdict is "ok", "bad"
     or "unsupported" (a method or key type the verifier does not implement),
     None for any other exit (usage error, old verifier): the caller stops. report is the verifier's JSON, {} when
     it is not."""
     query = {"binding": raw, "at": times, "key": key}
-    if revocations:
-        query["revocations"] = list(revocations)
+    if revocation_list is not None:
+        query["revocation_list"] = revocation_list
     v = subprocess.run([str(verifier), "binding"], capture_output=True, timeout=120,
                        input=json.dumps(query).encode())
     try:

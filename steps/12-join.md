@@ -48,16 +48,21 @@ With no published file, the detail says nothing is compared.
 
 - The controller binding's revocation: the statements published for it at
   `nodes/revocations/<binding_digest>.json` go to the verifier, and one that
-  applies is a failure. With none that applies, revocation is NOT_CHECKED,
-  since Controller Binding v0 registers no source a verifier could hold to be
-  complete (CB-1, action-state-group/agent-action-capsule#482). The node key's role in its
+  applies is a failure. Under CB-1 option A (Controller Binding v0 §5.1,
+  action-state-group/agent-action-capsule#495), the run declares that list
+  complete (`[]` when no file is published for the binding) as of the time it
+  checks the binding, and the verifier reports revocation PASS when no
+  statement in that snapshot applies. That PASS is the loop run's statement,
+  scoped to the snapshot: a statement published later can still withdraw the
+  binding. A declaration that does not count leaves revocation NOT_CHECKED
+  (CB-1, action-state-group/agent-action-capsule#482). The node key's role in its
   binding is checked from the verifier's report (claim and `delegator`,
   action-state-group/agent-action-capsule#468): in a `delegated_by` binding
   the node key must be the delegate, and a node key that is the `delegator`
   is a failure; `same_controller_asserted` and
   `same_organization_credentialed` give a key no role. The
   record itself is checked in a second language: `cross_language binding`
-  (aac-go go/v0.16.0) runs on the record the node holds
+  (aac-go go/v0.17.0) runs on the record the node holds
   (`controller-binding.json` in its `data_dir`, or `binding.json` for a
   node `join.sh` joined), which must have the digest doctor reports, name
   the node key and apply now (form, both signatures and window). That is

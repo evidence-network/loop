@@ -1501,6 +1501,11 @@ class Step08Live01Test(unittest.TestCase):
     def test_an_old_shape_live_01_bundle_is_not_reproduced(self):
         shutil.rmtree(self.run / "01-seal")
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-5" / "01-seal", self.run / "01-seal")
+        # The old shape alone, at today's pins: a finding pinned to an older release fails its integrity check first.
+        record = load(self.run / "01-seal" / "finding.json")
+        record["pinned"] = {n: {"repository": finding.pins()[n][0], "ref": finding.pins()[n][1]}
+                            for n in record["pinned"]}
+        dump(self.run / "01-seal" / "finding.json", record)
         f, entries = self.verify()
         self.assertEqual(entries["01-seal"]["status"], "not_reproduced")
         self.assertIn("its proof holds no nodes.json", entries["01-seal"]["not_checked"]["why"])
