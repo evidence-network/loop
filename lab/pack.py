@@ -168,13 +168,13 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
         }
         path = root / "nodes" / f"{identity['node_id']}.json"
         # Opting in to public pair edges is the operator's choice in their entry (evidence-network/loop#77), never the
-        # lab's: an entries run keeps it.
+        # lab's: an entries run keeps it, for the same operator only, and check_entry still refuses a bad value.
         try:
-            kept = json.loads(path.read_text(encoding="utf-8"))["disclosure"].get("pair_edges")
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            kept = None
-        if kept is not None:
-            entry["disclosure"]["pair_edges"] = kept
+            old = json.loads(path.read_text(encoding="utf-8"))
+            if old["operator"] == operator and "pair_edges" in old["disclosure"]:
+                entry["disclosure"]["pair_edges"] = old["disclosure"]["pair_edges"]
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
         errs = check_nodes.check_entry(path, entry)
         if errs:
             return errs

@@ -905,6 +905,21 @@ class EntriesTest(LabFixture):
         self.assertEqual(self.entries(), [])
         self.assertEqual(json.loads(paths[0].read_text())["disclosure"].get("pair_edges"), "public")
         self.assertTrue(all("pair_edges" not in json.loads(p.read_text())["disclosure"] for p in paths[1:]))
+        # Another operator does not inherit it.
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pack.entries(self.root, self.lab, "someone-else", "lab-3"), [])
+        self.assertNotIn("pair_edges", json.loads(paths[0].read_text())["disclosure"])
+
+    def test_an_entries_run_reports_a_refused_pair_edges_value_and_writes_nothing(self):
+        self.assertEqual(self.entries(), [])
+        paths = sorted((self.root / "nodes").glob("*.json")) + [self.root / "population" / "live" / "population.json"]
+        doc = json.loads(paths[0].read_text())
+        doc["disclosure"]["pair_edges"] = "private"
+        paths[0].write_text(json.dumps(doc))
+        before = [p.read_bytes() for p in paths]
+        errs = self.entries()
+        self.assertTrue(any('disclosure.pair_edges must be "public"' in e for e in errs), errs)
+        self.assertEqual([p.read_bytes() for p in paths], before)
 
     def test_without_add_host_no_twins_population_is_written(self):
         self.assertEqual(self.entries(), [])
