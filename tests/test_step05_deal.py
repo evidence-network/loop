@@ -1019,6 +1019,43 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(c["binding"]["state"], "unread")
         self.assertEqual(finding.check(self.findings), [])
 
+    def test_live_an_unread_senders_binding_is_copied_cited_and_re_derived(self):
+        self.bind_sender(BINDINGS["valid-same-controller"]["binding"])
+        shutil.rmtree(self.lab / "nodes" / "lab-b" / "data" / "ledger")  # lab-b's ledger is not readable
+        f = self.run_live()  # run_live re-derives from the proof copy
+        self.assertIn(f"lab-b/{step.BINDING_FILE}", [p["path"] for p in f["proof"]])
+        self.assertFalse(json.loads((self.out / "nodes.json").read_text())["read"]["lab-b"])
+
+    def test_live_a_malformed_nodes_json_fails_the_judge(self):
+        self.run_live()
+        loader = importlib.machinery.SourceFileLoader("step05_bad", str(STEP))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step05_bad", loader))
+        loader.exec_module(mod)
+        pop = json.loads((self.lab / "population.json").read_text())
+        for doc in ({"sealed_since": "yesterday", "missing": [], "read": {}}, {"sealed_since": None, "missing": {}},
+                    []):
+            (self.out / "nodes.json").write_text(json.dumps(doc))
+            r = mod.judge_live(pop, self.out, "2026-10-31T00:00:00Z")
+            self.assertEqual(r["result"], "FAIL")
+            self.assertIn("nodes.json is not readable", r["detail"])
+
+    def test_live_a_node_name_that_is_not_one_path_component_stops_the_step(self):
+        pop = json.loads((self.lab / "population.json").read_text())
+        pop["nodes"][0]["name"] = "../x"
+        (self.lab / "population.json").write_text(json.dumps(pop))
+        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)))
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertFalse((self.out / "finding.json").exists())
+
+    def test_live_an_unreadable_ledger_file_stops_the_step_as_before(self):
+        p = self.ledger() / "capsules.jsonl"
+        p.chmod(0)
+        self.addCleanup(p.chmod, 0o644)
+        if os.access(p, os.R_OK):
+            self.skipTest("running as a user who can read a mode-0 file")
+        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)))
+        self.assertNotEqual(r.returncode, 0)
+
     def test_live_a_cited_binding_that_does_not_name_the_halfs_key_fails(self):
         self.bind_sender(BINDINGS["valid-same-controller"]["binding"])
         f = self.run_live()

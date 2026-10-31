@@ -765,11 +765,10 @@ def paired_exchanges(halves):
     return paired, notes
 
 
-def sealed_since(raw=...):
-    """The instant the lab's current build started sealing, from LOOP_SEALED_SINCE (RFC 3339; or `raw`, as a run
-    recorded it), or None: every held half is then judged. The citing record's timestamp, which its signature
-    covers, is compared to it."""
-    raw = os.environ.get("LOOP_SEALED_SINCE") if raw is ... else raw
+def sealed_since(raw):
+    """The instant the lab's current build started sealing, from `raw` (LOOP_SEALED_SINCE as the run read it, RFC
+    3339), or None: every held half is then judged. The citing record's timestamp, which its signature covers, is
+    compared to it."""
     if raw is None:
         return None
     since = parse_time(raw)
@@ -1001,8 +1000,6 @@ def sharing_report(name, data_dir, out):
         pass
     if not isinstance(doc, dict) or doc.get("share_record_at_completion") not in (POLICY_ON, DEFAULT_POLICY):
         return None, None
-    if path.resolve() != (out / SHARING_FILE).resolve():
-        shutil.copyfile(path, out / SHARING_FILE)
     raw = f" (raw value {doc['raw_value']!r} is not one the plugin knows)" if "raw_value" in doc else ""
     return (f"node {name} reports (node-reported, unsigned) share_record_at_completion "
             f"{doc['share_record_at_completion']} from {doc.get('source')} at {doc.get('written_at')}{raw}; the push "
@@ -1022,23 +1019,34 @@ def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     (out / NODES_FILE).unlink(missing_ok=True)
     missing = live_tools(driver())
+    bad = [e.get("name") for e in pop["nodes"]
+           if not isinstance(e.get("name"), str) or Path(e["name"]).name != e["name"] or e["name"] in ("", ".", "..")]
+    if bad:  # checked before anything is written, so a bad name leaves no partial proof
+        raise ValueError(f"node names {bad!r} are not single path components")
     read = {}
     for entry in pop["nodes"]:
         name = entry["name"]
-        if Path(name).name != name or name in ("", ".", ".."):
-            raise ValueError(f"node name {name!r} is not a single path component")
         shutil.rmtree(out / name, ignore_errors=True)
         data_dir = live.readable(entry, "data_dir", "ledger")
         read[name] = data_dir is not None
         src = data_dir or live.path(entry, "data_dir")
         if src is None:
             continue
-        for f in (BINDING_FILE, SHARING_FILE) if data_dir is None else (BINDING_FILE, SHARING_FILE, *LEDGER_COPY):
-            path = src / f if f in (BINDING_FILE, SHARING_FILE) else src / "ledger" / f
-            if path.is_file() and os.access(path, os.R_OK):
-                dest = out / name / path.relative_to(src)
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, dest)
+
+        def keep(path):
+            dest = out / name / path.relative_to(src)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, dest)  # an unreadable file raises, so the step stops, as it did reading it live
+        # A binding is copied for every node a peer's half may be held to; "unread" is already its judged meaning.
+        if (src / BINDING_FILE).is_file() and os.access(src / BINDING_FILE, os.R_OK):
+            keep(src / BINDING_FILE)
+        if data_dir is None:
+            continue
+        if (src / SHARING_FILE).is_file() and os.access(src / SHARING_FILE, os.R_OK):
+            keep(src / SHARING_FILE)
+        for f in LEDGER_COPY:
+            if (src / "ledger" / f).is_file():
+                keep(src / "ledger" / f)
     (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read},
                                              indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)
@@ -1046,7 +1054,8 @@ def main_live(pop, out, started):
 
 
 def judge_live(pop, out, started):
-    """The live finding from what main_live kept under out (nodes.json and each node's copies) only."""
+    """The live finding from what main_live kept under out (nodes.json and each node's copies) only: sharing
+    reports are read where main_live copied them."""
     out = Path(out)
     try:
         kept = json.loads((out / NODES_FILE).read_text(encoding="utf-8"))
@@ -1063,7 +1072,9 @@ def judge_live(pop, out, started):
     halves = {}
     total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
     vias, unbound, no_sharing = set(), {}, []
-    peers = {e["node_id"]: (e["name"], out / e["name"]) for e in pop["nodes"] if isinstance(e.get("node_id"), str)}
+    # As before: a node is a peer to find a binding at only when it names a data_dir.
+    peers = {e["node_id"]: (e["name"], out / e["name"]) for e in pop["nodes"]
+             if isinstance(e.get("node_id"), str) and live.path(e, "data_dir") is not None}
     members = {e["node_id"] for e in pop["nodes"] if isinstance(e.get("node_id"), str)}
     optional = 0
     binding, unread = {}, set()
@@ -1137,8 +1148,8 @@ def judge_live(pop, out, started):
             not_checked.append(nc)
     result = live.worst(results + ["NOT_CHECKED"])
     # Each copied controller binding another node's half may be held to is cited too.
-    proof += [f"{n}/{BINDING_FILE}" for n in sorted(read) if (out / n / BINDING_FILE).is_file()
-              and f"{n}/{BINDING_FILE}" not in proof]
+    proof += [f"{e['name']}/{BINDING_FILE}" for e in pop["nodes"] if (out / e["name"] / BINDING_FILE).is_file()
+              and f"{e['name']}/{BINDING_FILE}" not in proof]
     return finding.write(out, result=result, population=pop["population"], asserts=LIVE_ASSERTS, pinned=LIVE_PINNED,
                          proof=proof, detail="; ".join(details) + f". {NO_SPEND}", not_checked=not_checked,
                          started=started)

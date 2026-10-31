@@ -198,7 +198,7 @@ def keys_04(c):
             + [f"scenario {n} is in the finding's proof but not in the repository" for n in sorted(have - want)])
 
 
-def keys_05(c, m=None):
+def keys_05(c):
     """Each controller declaration is the repository's: its id, its controller key and the node keys it covers."""
     want = {}
     for ctl in load(c.pop / "step05" / "controllers.json")["controllers"]:
@@ -501,7 +501,7 @@ def rederive_05_live(m, c):
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
-def keys_05_live(c, m):
+def keys_05_live(c):
     """nodes.json names exactly the population's nodes. Every key live 05 holds a half to (the sender's listed
     evidence key, a binding's revocations) its judge reads from the repository's nodes/ itself, never the bundle."""
     old_shape(c, "05", "nodes.json")
@@ -679,7 +679,7 @@ LIVE_STEPS = {"05": (rederive_05_live, keys_05_live), "09": (rederive_09_live, k
               "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
-NEEDS_MODULE = {"01", "02", "05", "07", "09"}
+NEEDS_MODULE = {"01", "02", "07", "09"}
 
 
 def canon(items):
