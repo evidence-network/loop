@@ -625,8 +625,10 @@ def held_brackets(out, readable):
 def in_bracket(per_party, caps, bracket, announced):
     """(per_party with the Results of `bracket` and every Result that is not provably another run's, {bracket:
     count} of those set aside). A Result is set aside only when its signature held under a lab node's announced
-    key and it carries another non-empty twin_bracket_id: a ledger can still hold a Result an earlier twins run sealed under another build
-    (evidence-network/loop#122), but a line that does not verify, or names no bracket, is always judged."""
+    key and it carries another non-empty twin_bracket_id: a ledger can still hold a Result an earlier twins run
+    sealed under another build (evidence-network/loop#122), but a line that does not verify, or names no bracket,
+    is always judged. Any announced lab key counts, not only the referee's: the live proof carries no dispute.json
+    naming the referee, and only the referee seals Results."""
     kept, aside = {}, {}
     for name, rs in per_party.items():
         kept[name] = []
