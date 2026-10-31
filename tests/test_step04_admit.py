@@ -213,7 +213,8 @@ class Live(unittest.TestCase):
                  "numbers out of range": {"read": "ok", "records": 1, "kept": [1, 5]},
                  "numbers repeated": {"read": "ok", "records": 9, "kept": [2, 2]},
                  "a count that is not whole": {"read": "ok", "records": True, "kept": []},
-                 "kept emptied beside a decisions file": {"read": "ok", "records": 9, "kept": []}}
+                 "kept emptied beside a decisions file": {"read": "ok", "records": 9, "kept": []},
+                 "an entry that is not an object": 5}
         for why, node in cases.items():
             with self.subTest(why):
                 with tempfile.TemporaryDirectory() as tmp:

@@ -884,6 +884,17 @@ class Step08Live04Test(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("stevenmih-2/rows.json re-derived is not the recorded stevenmih-2/rows.json", f["detail"])
 
+    def test_a_rows_file_the_judge_does_not_write_again_fails(self):
+        def plant(d):  # stevenmih-1 has no decision, so no rows: a rows.json cited for it is not the judge's
+            (d / "stevenmih-1").mkdir(exist_ok=True)
+            dump(d / "stevenmih-1" / "rows.json", {"1": []})
+            rec = load(d / "finding.json")
+            rec["proof"].append({"path": "stevenmih-1/rows.json", "sha256": ""})
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(plant)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("stevenmih-1/rows.json re-derived is not the recorded", f["detail"])
+
     def test_an_unupgraded_live_bundle_is_not_reproduced_not_failed(self):
         # A live 04 or 07 finding from before its re-derivable proof shape (live-2's 04, live-5's 07, as found).
         run = Path(self.tmp.name) / "old"

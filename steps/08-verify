@@ -78,9 +78,11 @@ ASSERTS = ("an outsider reproduces every finding of the run offline from the run
 # A finding loop.sh wrote because the step broke: there is no judge to run again.
 BROKE = "the step runs to the end and writes its finding"
 # Files a status-page number is read from: the re-derived bytes must be the recorded ones.
-NUMBERS = {"04": ["counts.json", "*/rows.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
-# The file a live step's re-derivable proof always holds: a finding without it predates that shape (loop#188).
-LIVE_SHAPE = {"04": "nodes.json", "07": "ask.json"}
+NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
+# On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
+# written again and be the cited bytes (a copied file is never compared with itself).
+LIVE_AGAIN = {"04": ["*/rows.json"], "07": ["first-answered.json"]}
+# A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
 
@@ -348,6 +350,7 @@ def rederive_07_live(m, c):
     if m.backend(pop) != "reporter":
         raise Unreproducible("step 07: its live result re-derived from its proof bytes",
                              f"08 re-derives the live reporter backend only, not {m.backend(pop)!r}", LIVE_ISSUE)
+    old_shape(c, "07", "ask.json")
     return m.conclude(c.work, c.population, *m.judge_reporter(pop, c.work), c.started, "reporter")
 
 
@@ -380,9 +383,19 @@ LIVE_RELIES_ON = {"04": [
 ]}
 
 
+def old_shape(c, nn, name):
+    """Unreproducible when the live finding's proof lacks `name`, the file its re-derivable shape always holds: the
+    finding predates that shape, so it is not reproduced, never failed."""
+    if name not in {p["path"] for p in c.record["proof"]}:
+        raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
+                             f"its proof holds no {name}: the finding predates the proof shape 08 re-derives",
+                             OLD_SHAPE_ISSUE)
+
+
 def rederive_04_live(m, c):
     """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl). It reads the
     ledger lines as written and relies on no key (their signatures are a gap 04 names, loop#135)."""
+    old_shape(c, "04", "nodes.json")
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
@@ -503,10 +516,6 @@ def verify_step(d, pop_dir, population, tmp):
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                                  "its live judge reads a lab node's data dir or console while it decides, and the "
                                  "finding does not cite those bytes", LIVE_STEP_ISSUES.get(nn, LIVE_ISSUE))
-        if population != "rehearsal" and LIVE_SHAPE[nn] not in {p["path"] for p in record["proof"]}:
-            raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
-                                 f"its proof holds no {LIVE_SHAPE[nn]}: the finding predates the proof shape 08 "
-                                 "re-derives", OLD_SHAPE_ISSUE)
         steps = STEPS if population == "rehearsal" else LIVE_STEPS
         if nn not in steps:
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
@@ -523,6 +532,12 @@ def verify_step(d, pop_dir, population, tmp):
         if bad:
             entry["problems"] += bad
             return done("failed")
+        again_files = [p["path"] for p in record["proof"] if any(
+            fnmatch.fnmatchcase(p["path"], g) for g in NUMBERS.get(nn, []) + (
+                LIVE_AGAIN.get(nn, []) if population != "rehearsal" else []))]
+        if population != "rehearsal":
+            for n in again_files:
+                (work / n).unlink()
         again = rederive(m, c)
     except Unreproducible as e:
         what, why, issue = e.args
@@ -541,7 +556,6 @@ def verify_step(d, pop_dir, population, tmp):
         entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
     entry["problems"] += mismatches(record, again)
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
-    again_files = [p["path"] for p in record["proof"] if any(fnmatch.fnmatchcase(p["path"], g) for g in NUMBERS.get(nn, []))]
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files
                           if not (work / n).is_file() or (work / n).read_bytes() != (d / n).read_bytes()]
     return done("failed" if entry["problems"] else "reproduced")
