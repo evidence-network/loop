@@ -1200,6 +1200,7 @@ def build(data, findings, lock, out, rehearsal=None):
     if rehearsal is not None and Path(rehearsal).is_dir():
         slots = stats_model.load(rehearsal, stats_model.layout.Rehearsal)
     runs = {p: status_page.read_run(p, d) for p, d in status_page.latest_runs(findings).items()}
+    history = runs_of(findings)  # reads every run too, so a refused one raises before anything is written
     rs = status_page.rows(runs)
     out = Path(out)
     if out.exists():
@@ -1213,7 +1214,7 @@ def build(data, findings, lock, out, rehearsal=None):
     (site / DATA).mkdir(parents=True)
     for d in days:
         shutil.copyfile(Path(data) / d.file, site / DATA / d.file)
-    (site / "index.html").write_text(render(days, rs, runs, runs_of(findings), slots), encoding="utf-8")
+    (site / "index.html").write_text(render(days, rs, runs, history, slots), encoding="utf-8")
     if slots:
         (site / REHEARSAL_DATA).mkdir(parents=True)
         for d in slots:

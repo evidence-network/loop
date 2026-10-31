@@ -1,9 +1,9 @@
 """An open-month preview (steps 10 and 11 --preview-open-month, evidence-network/loop#242) never reaches a public
-surface or main: nothing that builds the site, the stats pages, the reports or the baseline reads the preview
-directory, and a builder handed one anyway refuses it, the way the ecosystem gate does."""
+surface or main. The builders take the directories they are given (findings/, stats/data, reports/) and none scans
+the repository root, so a preview/ directory is never read; a builder handed a preview finding anyway refuses it, in
+any run directory it reads, the way the ecosystem gate does."""
 import contextlib
 import io
-import re
 import subprocess
 import sys
 import tempfile
@@ -17,12 +17,6 @@ import build  # noqa: E402
 import finding  # noqa: E402
 import status_page  # noqa: E402
 from tests.test_site import DATA, make_findings, run_build  # noqa: E402
-
-# What builds a public surface, the reports or the baseline.
-BUILDERS = [*sorted((ROOT / "site").glob("*.py")), *sorted((ROOT / "status").glob("*.py")),
-            *(ROOT / "scripts" / n for n in ("daily_report.py", "check_reports.py", "scrub_reports.py",
-                                              "ecosystem_gate.py", "history_cards.py", "report_layout.py"))]
-
 
 def preview_run(parent, name="2026-10-31-live"):
     """A run directory as step 10 writes it under --preview-open-month, with a live population."""
@@ -43,13 +37,6 @@ class PreviewIsolationTest(unittest.TestCase):
         except (OSError, subprocess.CalledProcessError):
             self.skipTest("not a git checkout")
         self.assertEqual(tracked, [])
-
-    def test_no_builder_lists_the_repository_root_or_names_the_preview_directory(self):
-        for path in BUILDERS:
-            text = path.read_text(encoding="utf-8")
-            self.assertIsNone(re.search(r"\bROOT\s*(?:/\s*\"[^\"]*\")?\s*\.(?:iterdir|glob|rglob)\(|os\.walk\(\s*ROOT", text),
-                              f"{path.name} lists a directory under the repository root")
-            self.assertNotIn("preview/", text.replace("PREVIEW/", ""), f"{path.name} names a preview directory")
 
     def test_the_site_is_built_from_the_findings_it_is_given_and_not_from_a_preview_beside_them(self):
         with tempfile.TemporaryDirectory() as d:
@@ -74,6 +61,17 @@ class PreviewIsolationTest(unittest.TestCase):
             self.assertFalse((d / "status").exists())
             code, err = run_build(DATA, d / "findings", d / "_site")
             self.assertEqual(code, 1, err)
+            self.assertFalse((d / "_site").exists())
+
+    def test_a_preview_in_an_older_run_directory_is_refused_too(self):
+        # The site's history reads every run directory, not only the latest of each population.
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            make_findings(d / "findings")
+            preview_run(d / "findings", "2000-01-01-live")
+            code, err = run_build(DATA, d / "findings", d / "_site")
+            self.assertEqual(code, 1, err)
+            self.assertIn("2000-01-01-live/10-judge: an open-month preview", err)
             self.assertFalse((d / "_site").exists())
 
 

@@ -243,6 +243,11 @@ def read_run(population, path):
         if not isinstance(r, dict):
             run.findings[n] = (d, None, [f"{d.name}: finding.json is not an object"])
             continue
+        # An open-month preview (steps 10 and 11 --preview-open-month, loop#242) is never published: the status page
+        # copies each run's findings into the site and the site's history reads every run, so any run directory holding
+        # one is refused here, where all of them are read, not shown.
+        if finding.is_preview(r):
+            raise StatusError([f"{path.name}/{d.name}: an open-month preview, not a baseline result; it is never published"])
         try:
             problems = finding.check_record(d, r)
         except (AttributeError, KeyError, TypeError) as err:
@@ -703,12 +708,6 @@ def render(rs, runs, lock, eco="mesh"):
 def build(findings_dir, lock_path, out, eco="mesh"):
     lock = read_lock(lock_path)
     runs = {p: read_run(p, d) for p, d in latest_runs(findings_dir).items()}
-    # An open-month preview (steps 10 and 11 --preview-open-month, loop#242) is never published: this page copies
-    # each run's findings into the site, so a findings directory holding one is refused, not shown.
-    previews = [f"{d.name}: an open-month preview, not a baseline result; it is never published"
-                for run in runs.values() for d, r, _ in run.findings.values() if finding.is_preview(r)]
-    if previews:
-        raise StatusError(previews)
     rs = rows(runs)
     out = Path(out)
     if out.exists():
