@@ -742,6 +742,16 @@ class LiveFixtureTest(unittest.TestCase):
                          step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
         self.assertIn("report_page_seal", seal["disclosures"][seal["root"]]["agent_input"]["record_type"])
 
+    def test_the_book_profile_is_found_by_its_store_not_by_the_nodes_name(self):
+        # join.sh names the profile after its --name (lab-N), not after the population's node name.
+        self.assertEqual(step.join_profile(self.home, "stevenmih-1"), "lab-a")
+        self.assertEqual(step.join_profile(self.home / "nowhere", "stevenmih-1"), "stevenmih-1")
+        doc = load(self.population / "population.json")
+        doc["nodes"][0]["name"] = "renamed-node"
+        dump(self.population / "population.json", doc)
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
     def test_a_seal_under_another_key_fails(self):
         (self.lab / "lab-a" / "data" / "keys" / "node-key.pub.pem").write_bytes(
             (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())
