@@ -548,7 +548,6 @@ def capsule(n, block):
                        "model_attestation": {"compute_attestation": {"admission_decision": block}}})
 
 
-@unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
 class BuildMark(unittest.TestCase):
     """The plugin build boundary step 04 reads (loop#103)."""
 
@@ -575,6 +574,7 @@ class BuildMark(unittest.TestCase):
                 self.assertIsNone(step.build_mark(entry))  # no LAB_DIR
 
 
+@unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
 class Rows(unittest.TestCase):
     """Each row recomputed from what a decision in the #116 record shape sealed (tests/fixtures/step04/live/rows116.json)."""
     live_run, lab_with, assert_rederives = Live.live_run, Live.lab_with, Live.assert_rederives
