@@ -64,8 +64,9 @@ the listed key, and must be the one kept. `ask.json` must name every population 
 have exactly one attempt per question. The ledger extract is 07's reading of the asker's ledger, kept as bytes:
 08 checks every rule on it, but not that the ledger held nothing more (the ledger is the lab node's; the extract
 keeps its line count and sha256 at read time for an audit). Nor are the replies' signatures checked again: live
-07 takes the pinned plugin's `verification` in each reply, as it did before. So a reproduced live 07 still adds
-two not_checked entries to 08's finding, on evidence-network/loop#193, and 08 never reads PASS over it. The listed
+07 takes the pinned plugin's `verification` in each reply, as it did before. Which commitment applied is 07's
+`choice.json` too. So a reproduced live 07 still adds three not_checked entries to 08's finding, on
+evidence-network/loop#193, and 08 never reads PASS over it. The listed
 keys are read at 08's own checkout, so re-deriving an old run after a key rotation reads the new key (also #193).
 Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `failed`.
 

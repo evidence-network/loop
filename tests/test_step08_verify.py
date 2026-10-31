@@ -585,6 +585,8 @@ def live5_07(dst):
     return rec
 
 
+@unittest.skipUnless(step.openssl_ed25519(), "SKIPPED LOUDLY: live 07's kept commitments verify with OpenSSL 3+ "
+                                            "(Ed25519 pkeyutl -rawin), not installed here")
 class Step08Live07Test(unittest.TestCase):
     """08 re-derives live step 07 from its proof alone, on the live run's real bytes (no console, no data dir)."""
 
