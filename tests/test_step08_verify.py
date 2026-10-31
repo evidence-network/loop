@@ -284,12 +284,23 @@ class Step08Test(unittest.TestCase):
         sd.mkdir()
         finding.write(sd, result="NOT_CHECKED", population="rehearsal", asserts="a seal", pinned=[], proof=[],
                       detail="node alice: a pinned tool is missing or not the pin", started=finding.now(),
-                      not_checked=[{"what": "capsule-emit", "why": "not installed", "issue": "evidence-network/loop#188"}])
+                      not_checked=[{"what": "capsule-emit", "why": "not installed", "issue": "x/y#1"},
+                                   {"what": "aac-go", "why": "not the pin", "issue": "x/y#1"}])
         verdict, entries = verify(self.run)
         self.assertEqual(entries["01-seal"]["status"], "not_reproduced", entries["01-seal"]["problems"])
-        self.assertIn("cites no proof", entries["01-seal"]["not_checked"]["why"])
-        self.assertEqual(entries["01-seal"]["not_checked"]["issue"], "evidence-network/loop#188")
+        why = entries["01-seal"]["not_checked"]["why"]
+        self.assertIn("the step says: capsule-emit: not installed; aac-go: not the pin", why)
+        self.assertEqual(entries["01-seal"]["not_checked"]["issue"], step.EMPTY_ISSUE)
         self.assertEqual(verdict["result"], "NOT_CHECKED", verdict["detail"])
+
+    def test_another_step_emptied_to_a_not_checked_still_fails_its_key_check(self):
+        # 06 never writes an empty proof: emptying it and rewriting it NOT_CHECKED does not skip its trust anchor.
+        sd = self.run / "06-settle"
+        rec = load(sd / "finding.json")
+        rec.update(result="NOT_CHECKED", proof=[], not_checked=[{"what": "w", "why": "y", "issue": "x/y#1"}])
+        dump(sd / "finding.json", rec)
+        f, entries = verify(self.run)
+        self.assertFailsNaming("06-settle", entries, f)
 
     def test_step_12_without_capsulectl_is_not_checked_not_failed(self):
         class NoTools:

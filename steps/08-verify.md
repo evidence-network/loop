@@ -74,6 +74,7 @@ The other live steps are `not_reproduced` on evidence-network/loop#188: their li
 dir or console while they decide, and their findings don't cite those bytes.
 
 **Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a NOT_CHECKED finding
-that cites no proof at all (the step judged nothing, as step 01 with a pinned tool missing; under the step's own
-first not_checked issue), a step whose tool isn't installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
+of step 01 or 05 that cites no proof at all (those scripts write one when a pinned tool is missing or a node holds no
+pushed half; 08 quotes the step's reasons as its claim and skips the key checks, so the ceiling is NOT_CHECKED, as for
+a trimmed `run.json`; on a live run this reason comes before the live one), a step whose tool isn't installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
 than its stage names each step left out, owned by loop.sh's whole-stage run.
