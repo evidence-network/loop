@@ -167,6 +167,14 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
             "plugin_version": plugin_version,
         }
         path = root / "nodes" / f"{identity['node_id']}.json"
+        # Opting in to public pair edges is the operator's choice in their entry (evidence-network/loop#77), never the
+        # lab's: an entries run keeps it.
+        try:
+            kept = json.loads(path.read_text(encoding="utf-8"))["disclosure"].get("pair_edges")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            kept = None
+        if kept is not None:
+            entry["disclosure"]["pair_edges"] = kept
         errs = check_nodes.check_entry(path, entry)
         if errs:
             return errs

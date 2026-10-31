@@ -893,6 +893,19 @@ class EntriesTest(LabFixture):
         self.assertEqual(r.returncode, 2)
         self.assertIn("twins-only", r.stderr)
 
+    def test_an_entries_run_keeps_the_operators_pair_edges_opt_in(self):
+        # loop#77: public pair edges are the operator's choice in their entry; a later entries run never drops it.
+        self.assertEqual(self.entries(), [])
+        paths = sorted((self.root / "nodes").glob("*.json"))
+        self.assertTrue(paths)
+        doc = json.loads(paths[0].read_text())
+        self.assertNotIn("pair_edges", doc["disclosure"])
+        doc["disclosure"]["pair_edges"] = "public"
+        paths[0].write_text(json.dumps(doc))
+        self.assertEqual(self.entries(), [])
+        self.assertEqual(json.loads(paths[0].read_text())["disclosure"].get("pair_edges"), "public")
+        self.assertTrue(all("pair_edges" not in json.loads(p.read_text())["disclosure"] for p in paths[1:]))
+
     def test_without_add_host_no_twins_population_is_written(self):
         self.assertEqual(self.entries(), [])
         self.assertFalse((self.lab / "population-twins").exists())
