@@ -22,6 +22,7 @@ a file out of shape is a defect in the profile's own delivery, not an unreadable
 """
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -83,24 +84,47 @@ def checkout_list(nodes_dir, digest):
 
 
 def main_commit(root, at):
-    """The commit main held at `at` (YYYY-MM-DDTHH:MM:SSZ): the newest on the first-parent line of origin/main,
-    else main, no later than `at`, in the repository at `root`; None when there is none."""
-    for ref in ("origin/main", "main"):
-        r = subprocess.run(["git", "-C", str(root), "rev-list", "-1", "--first-parent", f"--before={at}", ref],
-                           capture_output=True, text=True)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    return None
+    """The commit main held at `at` (YYYY-MM-DDTHH:MM:SSZ): the newest on the first-parent line of origin/main no
+    later than `at`, in the repository at `root`; None when there is none. Only origin/main: a local main may carry
+    commits never merged."""
+    r = subprocess.run(["git", "-C", str(root), "rev-list", "-1", "--first-parent", f"--before={at}", "origin/main"],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
-def main_list(root, digest, at):
-    """(commit, text) of nodes/revocations/<digest>.json as main held it at `at` (main_commit): a key holder's
-    statement counts in the loop once it is merged, so a branch cannot drop one from its own head. The text is `[]`
-    when that commit holds no file for the binding. Raises LookupError when there is no such commit (no main in
-    this clone, or none that old), ValueError for a file that is not a revocations file."""
+def snapshot(root, at):
+    """The main commit a live run reads nodes/revocations/ from, as {"commit"} or {"commit": None, "why"}: origin/main
+    is fetched first (a clone that last fetched before a revocation was merged would otherwise declare an older list
+    complete as of `at`), then main_commit at `at`. A failed fetch is a reason, never a stale read. LOOP_REVOCATIONS_FETCH=0
+    skips the fetch (tests; a clone with no origin remote has nothing to fetch). The live step keeps it in its proof,
+    so step 08 reads the same commit from its own history without fetching."""
+    has_origin = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True).returncode == 0
+    if has_origin and os.environ.get("LOOP_REVOCATIONS_FETCH", "1") != "0":
+        try:
+            f = subprocess.run(["git", "-C", str(root), "fetch", "-q", "origin", "main"], capture_output=True,
+                               timeout=120, stdin=subprocess.DEVNULL)
+            failed = f.stderr.decode(errors="replace").strip() if f.returncode else None
+        except (OSError, subprocess.TimeoutExpired) as e:
+            failed = str(e)
+        if failed:
+            return {"commit": None, "why": f"origin/main could not be fetched to read nodes/{REVOCATIONS}/ from ({failed[:200]})"}
     commit = main_commit(root, at)
     if commit is None:
-        raise LookupError(f"this clone holds no main commit at or before {at} to read nodes/{REVOCATIONS}/ from")
+        return {"commit": None, "why": f"this clone holds no origin/main commit at or before {at} to read nodes/{REVOCATIONS}/ from"}
+    return {"commit": commit}
+
+
+def main_list(root, digest, snap):
+    """(commit, text) of nodes/revocations/<digest>.json at the snapshot's main commit (snapshot): a key holder's
+    statement counts in the loop once it is merged, so a branch cannot drop one from its own head. The text is `[]`
+    when that commit holds no file for the binding. Raises LookupError when the snapshot has no commit (with its
+    reason) or this clone does not hold it, ValueError for a file that is not a revocations file."""
+    commit = snap.get("commit") if isinstance(snap, dict) else None
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise LookupError((snap.get("why") if isinstance(snap, dict) else None)
+                          or "no main commit is recorded to read nodes/revocations/ from")
+    if subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True).returncode:
+        raise LookupError(f"this clone does not hold main commit {commit[:12]} to read nodes/{REVOCATIONS}/ from")
     if not HEX64.match(str(digest)):
         return commit, "[]"
     path = f"nodes/{REVOCATIONS}/{digest}.json"

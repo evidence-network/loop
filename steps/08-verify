@@ -602,6 +602,19 @@ def rederive_05_live(m, c):
     missing = m.live_tools(m.driver())
     if missing:
         raise Unreproducible("step 05: its judge, run again here", "; ".join(x["why"] for x in missing))
+    # The main commit 05 read nodes/revocations/ from must be the one origin/main held at its start, in this
+    # clone's own history (never fetched here): an older commit could hide a revocation merged since.
+    snap = load(c.work / "nodes.json").get(m.REVOCATIONS_KEY)
+    commit = snap.get("commit") if isinstance(snap, dict) else None
+    if commit is not None:
+        expected = m.bv.main_commit(m.revocations_root(), c.started)
+        if expected is None:
+            raise Unreproducible("step 05: its revocation reads, run again here",
+                                 f"this clone holds no origin/main history at {c.started} to read nodes/revocations/ "
+                                 "from (fetch main's history)")
+        if commit != expected:
+            raise Mismatch(f"05-deal: nodes.json reads nodes/revocations/ at {commit[:12]}, but origin/main held "
+                           f"{expected[:12]} at the step's start {c.started}")
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
