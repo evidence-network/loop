@@ -55,6 +55,7 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
+| 01 Seal | `judge_live` on the copied proof: `nodes.json` (the pins the run found; per node unread, sealed or not sealed) and each node's `capsule.json` and `node-key.pub.pem`; the checks run again with the pinned `cross_language` | each kept `node-key.pub.pem` of a listed node is the key its `nodes/` listing publishes; an unlisted node's key is 01's word, and 01's signature check names that as not_checked; nodes.json's per-node state is 01's record, a not_checked entry on evidence-network/loop#193 | aac-go `cross_language` at the pin (otherwise `not_reproduced`) |
 | 03 Advertise | `judge_live` on the copied proof: `carrier.json` (the carrier's HEAD commit; per node its listed `key_id` and which paths HEAD held) and each `<name>.commitment.json` and `<name>.policy.json` | each listed `key_id` is `nodes/<node_id>.json`'s in this checkout (otherwise `not_reproduced` on evidence-network/loop#193); when `head` is a full commit id this checkout holds, 08 works out each node's paths from that commit (listing, commitment, the policy it names), whatever carrier.json lists: each must match byte for byte and the listed key must be that commit's, otherwise FAIL; a path carrier.json lists that 03 never reads FAILs. A `head` that is missing, not a full id or not in this checkout is a not_checked entry on #193, and so is that the commit was HEAD when 03 ran | openssl 3+, git |
 | 04 Admit | `judge_live` on the copied proof: `nodes.json` (each node read or not, its ledger's record count and the record numbers kept) and each node's `decisions.jsonl` | none: 04 reads the ledger lines as written (their signatures are a gap 04 names, evidence-network/loop#135) | nothing outside the repository |
 | 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker) |
@@ -82,7 +83,7 @@ The other live steps are `not_reproduced` on evidence-network/loop#188: their li
 dir or console while they decide, and their findings don't cite those bytes.
 
 **Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a NOT_CHECKED finding
-of step 01 or 05 that cites no proof at all (those scripts write one when a pinned tool is missing or a node holds no
-pushed half; 08 quotes the step's reasons as its claim and skips the key checks, so the ceiling is NOT_CHECKED, as for
+of step 01 or 05 that cites no proof at all (rehearsal 01 writes one when a pinned tool is missing, and 05 when a node
+holds no pushed half; live 01 always cites its nodes.json and is re-derived; 08 quotes the step's reasons as its claim and skips the key checks, so the ceiling is NOT_CHECKED, as for
 a trimmed `run.json`; on a live run this reason comes before the live one), a step whose tool isn't installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
 than its stage names each step left out, owned by loop.sh's whole-stage run.

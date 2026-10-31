@@ -23,7 +23,7 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 03, 04 and 07 are re-derived the same way: their
+  live          live steps 01, 03, 04 and 07 are re-derived the same way: their
                 judges read only their proof (and, for 07, the repository's
                 nodes/ listings; 03's listed keys and carrier bytes are held
                 to this checkout). The other live steps' judges read a lab node's
@@ -70,7 +70,8 @@ RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
 STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
 BROKE_ISSUE = "evidence-network/loop: the step that broke (its loop-step.log in the run)"
 EMPTY_ISSUE = "evidence-network/loop: the step's own not_checked entries, as its finding states them"
-# Steps whose script writes a NOT_CHECKED finding citing no proof (01: a pinned tool missing; 05: no pushed half).
+# Steps whose script writes a NOT_CHECKED finding citing no proof (rehearsal 01: a pinned tool missing; 05: no
+# pushed half). Live 01 always cites its nodes.json and is re-derived.
 # Only these may reach 08 with nothing to judge; any other step with an empty proof still meets its key checks.
 EMPTY_PROOF_STEPS = {"01", "05"}
 ASSERTS = ("an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file "
@@ -82,7 +83,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"04": ["*/rows.json"], "07": ["first-answered.json"]}
+LIVE_AGAIN = {"01": ["*/checks.json", "*/verifier.json"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -159,7 +160,7 @@ class Ctx:
 
 
 # --- Keys: each key the proof relies on is the repository's ------------------------------
-def keys_01(c):
+def keys_01(c, m=None):
     node = load(c.work / "checks.json").get("node")
     pubs = node_pubs(c.pop)
     got = load(c.work / "capsule.json").get("key_id")
@@ -367,7 +368,12 @@ def openssl_ed25519():
 
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"03": [
+LIVE_RELIES_ON = {"01": [
+    {"what": "step 01: what nodes.json says of each node (data_dir unread, a pin missing, or sealed by the node "
+             "itself)",
+     "why": "08 judges each kept capsule again, but which node was read, the pins found and own_seal are 01's "
+            "record of its run", "issue": TRUST_ISSUE},
+], "03": [
     {"what": "step 03: carrier.json's commit was the carrier's HEAD when 03 ran",
      "why": "08 holds the cited bytes to that commit, but that it was HEAD at the run (and no later commit) is "
             "03's reading", "issue": TRUST_ISSUE},
@@ -396,6 +402,33 @@ def old_shape(c, nn, name):
         raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                              f"its proof holds no {name}: the finding predates the proof shape 08 re-derives",
                              OLD_SHAPE_ISSUE)
+
+
+def rederive_01_live(m, c):
+    """Live 01: its own judge_live on the copied proof (nodes.json, each node's capsule.json and node-key.pub.pem),
+    with the pinned cross_language verifier; nothing is sealed again."""
+    old_shape(c, "01", "nodes.json")
+    python, verifier = m.tools()
+    _, missing = m.installed_pins(python, verifier)
+    missing = [x for x in missing if x["what"] != "capsule-emit"]  # nothing is sealed again
+    if missing:
+        raise Unreproducible("step 01: its judge, run again here", "; ".join(x["why"] for x in missing))
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_01_live(c, m):
+    """Each node key 01 kept beside its capsule is the key its nodes/ listing publishes (01's own listing dir), so
+    the capsule is judged under the repository's key, never one the bundle supplies."""
+    bad = []
+    for p in sorted(c.work.glob("*/node-key.pub.pem")):
+        name = p.parent.name
+        node_id = next((n.get("node_id") for n in load(c.pop / "population.json")["nodes"] if n["name"] == name), None)
+        listed = m.listed_key(m.nodes_dir(), node_id) if node_id else None
+        if listed is None:
+            continue  # an unlisted node: 01's signature check names it (not_checked), and its key is the node's word
+        if m.raw_public_hex(p) != listed:
+            bad.append(f"{name}/node-key.pub.pem is not the key nodes/{node_id}.json lists")
+    return bad
 
 
 def rederive_03_live(m, c):
@@ -518,10 +551,10 @@ STEPS = {
 
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
-LIVE_STEPS = {"03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+LIVE_STEPS = {"01": (rederive_01_live, keys_01_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
-NEEDS_MODULE = {"07", "09"}
+NEEDS_MODULE = {"01", "07", "09"}
 
 
 def canon(items):
