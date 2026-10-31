@@ -525,8 +525,9 @@ def lightning_checks(found, ids, checks_dir):
         f"each of {len(hashes)} payments carries a wallet provider's fee (fee_msat > 0)" if hashes else "no payment")
     # 5. The two books agree: the payer's amount equals the payee's credit plus fee (loop#183's pairing rule).
     cross = crosscheck(found, every_node=False)
+    # One-sided, or a provider observation without the wallet's numbers (lightning-v0: not checked, not a FAIL).
     one_sided = {h: why for h, why in cross["unpaired"].items()
-                 if why.startswith("recorded by") or why.startswith("no payer observation")}
+                 if why.startswith("recorded by") or why.startswith("no payer observation") or "no integer amounts" in why}
     contradicted = {h: why for h, why in cross["unpaired"].items() if h not in one_sided}
     put("exchange_match", False if contradicted else None if one_sided or not cross["paired"] else True,
         "; ".join(f"{h}: {why}" for h, why in sorted(contradicted.items())) if contradicted else
@@ -550,7 +551,7 @@ def lightning_checks(found, ids, checks_dir):
             if len(parts) == 4 and parts[1] in by_id and parts[2] in by_id:
                 present.add((by_id[parts[1]], by_id[parts[2]]))
     for me, peer in sorted(wanted | present):
-        what = f"counterparty_count:{me}" + ("" if (me, peer) in wanted else f":{peer}")
+        what = f"counterparty_count:{me}:{peer}"  # one per ordered pair: a node may settle with several peers
         path = checks_dir / f"check.{ids.get(me)}.{ids.get(peer)}.json" if checks_dir else None
         try:
             doc = json.loads(path.read_text(encoding="utf-8")) if path else None

@@ -482,7 +482,7 @@ class Step06SettleTest(unittest.TestCase):
         checks = self.judged()
         self.assertEqual({k: v["ok"] for k, v in checks.items()}, {
             "reference": True, "finality": True, "band": True, "rail_fee": True, "exchange_match": True,
-            "counterparty_count:stevenmih-1": True, "counterparty_count:stevenmih-2": True, "public_ledger_count": None})
+            "counterparty_count:stevenmih-1:stevenmih-2": True, "counterparty_count:stevenmih-2:stevenmih-1": True, "public_ledger_count": None})
         self.assertIn("stevenmih-2 payer BTC decade -8", checks["band"]["detail"])  # 1,000 msat = 1 sat, per exchange
         rows = json.loads((self.out / "counterparty.json").read_text())
         self.assertEqual({(x["node"], x["peer"], x["status"], x["paired"]) for x in rows},
@@ -497,8 +497,8 @@ class Step06SettleTest(unittest.TestCase):
         r = self.lightning(self.paid())
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertEqual(sorted(n["what"] for n in r["not_checked"]),
-                         ["step 06 counterparty_count:stevenmih-1 on the Lightning rail",
-                          "step 06 counterparty_count:stevenmih-2 on the Lightning rail"])
+                         ["step 06 counterparty_count:stevenmih-1:stevenmih-2 on the Lightning rail",
+                          "step 06 counterparty_count:stevenmih-2:stevenmih-1 on the Lightning rail"])
         self.assertIn("run lab/lab.sh bundles", r["not_checked"][0]["why"])
 
     def test_lightning_fails_on_each_ruled_check(self):
@@ -509,7 +509,7 @@ class Step06SettleTest(unittest.TestCase):
         repeated[2].append(again)
         for rows, checks, failed in ((self.paid(payee_fee=0), "PASS", "rail_fee"),
                                      (self.paid(credited=990), "PASS", "exchange_match"),
-                                     (self.paid(), "FAIL", "counterparty_count:stevenmih-1"),
+                                     (self.paid(), "FAIL", "counterparty_count:stevenmih-1:stevenmih-2"),
                                      (repeated, "PASS", "reference")):
             with self.subTest(failed=failed):
                 r = self.lightning(rows, self.checks_dir(status=checks))
@@ -520,15 +520,15 @@ class Step06SettleTest(unittest.TestCase):
         # A third payment after lab.sh bundles: the check files still pair 2, so counterparty_count is not checked.
         r = self.lightning(self.paid(n=3), self.checks_dir(paired=2))
         self.assertEqual(r["result"], "NOT_CHECKED")
-        self.assertIsNone(self.judged()["counterparty_count:stevenmih-1"]["ok"])
-        self.assertIn("predates a payment", self.judged()["counterparty_count:stevenmih-1"]["detail"])
+        self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
+        self.assertIn("predates a payment", self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
 
     def test_lightning_does_not_pass_on_a_bundle_changed_since_its_check(self):
         d = self.checks_dir()
         (d / "stevenmih-2.for.stevenmih-1.json").write_text("{}")
         r = self.lightning(self.paid(), d)
         self.assertEqual(r["result"], "NOT_CHECKED")
-        self.assertIn("missing or changed", self.judged()["counterparty_count:stevenmih-1"]["detail"])
+        self.assertIn("missing or changed", self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
 
     def test_lightning_fails_on_any_counterparty_check_that_fails(self):
         # A failing check for a pair that has no payment in the books still counts.
@@ -547,6 +547,45 @@ class Step06SettleTest(unittest.TestCase):
             "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
             "report": {"counterparty_count": {"status": "FAIL", "paired": 0, "unpaired": [{"h": 1}]}}})
         return d
+
+    def two_payers(self):
+        """lab-2 and lab-3 each paid lab-1 twice, with distinct payments."""
+        a, b = self.paid(), self.paid(payer_ex="p3", payee_ex="s3")
+        for k in range(2):
+            pre = f"{k + 0x40:02x}" * 32
+            h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+            for o in (b[1][k], b[2][k]):
+                o["capsule_id"] += "-3"
+                o["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"].update(payment_hash=h, preimage=pre)
+        return {1: a[1] + b[1], 2: a[2], 3: b[2]}
+
+    def test_lightning_judges_each_peer_of_a_node_that_settled_with_two(self):
+        pairs = (("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1"),
+                 ("stevenmih-1", "stevenmih-3"), ("stevenmih-3", "stevenmih-1"))
+        r = self.lightning(self.two_payers(), self.checks_dir(pairs=pairs))
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        # lab-1's check against lab-2 failing is a FAIL although its check against lab-3 passes.
+        d = self.checks_dir(pairs=pairs)
+        ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
+        bad = d / f"check.{ids['stevenmih-1']}.{ids['stevenmih-2']}.json"
+        doc = json.loads(bad.read_text())
+        doc["report"]["counterparty_count"]["status"] = "FAIL"
+        dump(bad, doc)
+        r = self.lightning(self.two_payers(), d)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIs(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"], False)
+        self.assertIs(self.judged()["counterparty_count:stevenmih-1:stevenmih-3"]["ok"], True)
+        bad.unlink()  # missing instead: not checked
+        r = self.lightning(self.two_payers(), d)
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
+
+    def test_lightning_a_provider_without_the_wallets_numbers_is_not_checked(self):
+        rows = self.paid(n=1)
+        rows[1][0]["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"].pop("credited_msat")
+        r = self.lightning(rows, self.checks_dir(paired=1))
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIsNone(self.judged()["exchange_match"]["ok"])
 
     def test_lightning_fails_a_settlement_with_no_positive_amount(self):
         r = self.lightning(self.paid(amount=-1000, credited=-1005), self.checks_dir())
