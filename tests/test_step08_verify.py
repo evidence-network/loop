@@ -641,7 +641,11 @@ class Step08Live07Test(unittest.TestCase):
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE})
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE], step.LIVE_RELIES_ON["07"])
+        # This run.json pins no commit, so the listed keys are read at this checkout and 08 says so (loop#193).
+        pinned = [nc for nc in f["not_checked"] if nc["what"] == "the listed keys, read at the commit the run ran at"]
+        self.assertEqual([nc["issue"] for nc in pinned], [step.TRUST_ISSUE])
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in pinned],
+                         step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_live_10_and_11_then_read_not_checked_on_the_judge_key(self):
