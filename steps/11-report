@@ -54,7 +54,9 @@ never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
 accepts is a preview one judged from RUN's own 08 manifest (window.json names its sha256), and a run without
 --preview-open-month refuses a preview one. It is never a baseline result:
 it writes only --out (outside RUN and findings/), never runs step 10 itself, and every finding it writes has a detail
-that starts with finding.PREVIEW, which the ecosystem gate refuses.
+that starts with finding.PREVIEW, which the ecosystem gate refuses. A preview seals only in a throwaway scratch book
+under fresh keys made in a temporary directory, on live too: it never opens a node's book_dir, which is append-only
+and served to other nodes, and needs no node's data_dir or book_dir.
 
 The design is steps/11-report.md. Exit 0 once the finding is written.
 """
@@ -545,8 +547,26 @@ def run_inputs(run, out, population, population_dir, preview=False):
     return judged, (standin if is_standin else run), is_standin
 
 
-def reporting_book(population, pop, keys, tmp, capsulectl):
-    """(Reporter, its key) for this population, or raise NotChecked."""
+def fresh_keys(keys):
+    """Two new Ed25519 key pairs (reporter, checkpoint) as .pem/.pub.pem files in `keys`, for a preview's scratch book."""
+    keys.mkdir(parents=True, exist_ok=True)
+    for k in ("reporter", "checkpoint"):
+        for cmd in (["genpkey", "-algorithm", "ed25519", "-out", str(keys / f"{k}.pem")],
+                    ["pkey", "-in", str(keys / f"{k}.pem"), "-pubout", "-out", str(keys / f"{k}.pub.pem")]):
+            r = subprocess.run(["openssl", *cmd], capture_output=True, text=True, timeout=60)
+            if r.returncode != 0:
+                raise RuntimeError(f"openssl {cmd[0]}: {r.stderr.strip()[:200]}")
+    return keys
+
+
+def reporting_book(population, pop, keys, tmp, capsulectl, preview=False):
+    """(Reporter, its key) for this population, or raise NotChecked.
+
+    A preview seals only in a throwaway scratch book under `tmp`, under keys made there: it never opens a node's book
+    (the live join book is append-only and served to other nodes) and needs no node's data_dir or book_dir."""
+    if preview:
+        fresh = fresh_keys(Path(tmp) / "keys")
+        return Reporter.scratch(Path(tmp) / "book", capsulectl, fresh), judge10.pub_hex(fresh / "reporter.pub.pem")
     if population != "live":
         if not (keys / "reporter.pem").is_file():
             raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)",
@@ -594,7 +614,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     except judge10.NotChecked as e:
         raise NotChecked(*e.args)
     figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack))
-    book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl)
+    book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl, preview)
     digests = {}
     for ref, sha in sorted(cited.items()):
         step, path = ref.split("/", 1)
@@ -684,6 +704,7 @@ def main(argv=None):
     what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this run's "
             f"records" if is_standin else f"run {run.name}")
     detail = (finding.PREVIEW + ". " if preview else "") + f"{what}: "
+    detail += "A preview seals only in a throwaway scratch book, not a node's book. " if preview else ""
     detail += (" ".join(lines) + " " if lines else "no page rendered. " if result != "PASS" else "")
     detail += f"Did not hold: {'; '.join(problems)}. " if problems else ""
     if result == "PASS":

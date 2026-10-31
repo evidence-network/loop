@@ -713,6 +713,45 @@ class LiveFixtureTest(unittest.TestCase):
                          step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
         self.assertIn("report_page_seal", seal["disclosures"][seal["root"]]["agent_input"]["record_type"])
 
+    def preview(self):
+        """A live preview 10 then 11 over the run re-dated into October, in a preview directory outside the run."""
+        PreviewTest.october(self)
+        out = Path(self.tmp.name) / "preview"
+        step.judge10.main(["--population", str(self.population), "--preview-open-month", "--run", str(self.run),
+                           "--out", str(out / "10-judge")])
+        step.main(["--population", str(self.population), "--preview-open-month", "--run", str(self.run),
+                   "--out", str(out / "11-report")])
+        f = load(out / "11-report" / "finding.json")
+        self.assertEqual(finding.check_record(out / "11-report", f), [], f["detail"])
+        return f, out
+
+    def snapshot(self, root):
+        return {p.relative_to(root).as_posix(): finding.sha256(p) for p in sorted(Path(root).rglob("*")) if p.is_file()}
+
+    def test_a_live_preview_never_opens_or_writes_a_nodes_book(self):
+        before = self.snapshot(self.lab)
+        real = step.Reporter.__init__
+
+        def guarded(book, home, *a, **k):
+            if self.lab in Path(home).resolve().parents or Path(home).resolve() == self.lab:
+                raise AssertionError(f"a preview opened a node's book: {home}")
+            real(book, home, *a, **k)
+        with mock.patch.object(step.Reporter, "__init__", guarded):
+            f, out = self.preview()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
+        self.assertIn("throwaway scratch book, not a node's book", f["detail"])
+        self.assertEqual(self.snapshot(self.lab), before)
+        # Sealed under a key made for the preview, not the node's.
+        seal = load(out / "11-report" / "seal.bundle.json")
+        self.assertNotEqual(seal["extensions"]["producer-key/v1"]["public_key"],
+                            step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
+
+    def test_a_live_preview_needs_no_nodes_data_dir_or_book_dir(self):
+        shutil.rmtree(self.lab)
+        f, _ = self.preview()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
     def test_a_seal_under_another_key_fails(self):
         (self.lab / "lab-a" / "data" / "keys" / "node-key.pub.pem").write_bytes(
             (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())

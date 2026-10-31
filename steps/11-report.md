@@ -108,4 +108,7 @@ manifest and the records from `--run`. It accepts only a preview 10 (a 10 whose 
 whose `window.json` names `--run`'s 08 manifest by sha256, never runs 10 itself and never uses the stand-in; a run without the flag refuses a preview 10. Its `report.json`
 says `preview: "open-month"`, and every finding it writes starts its `detail` with
 `PREVIEW: open month, not a baseline result`, which `scripts/ecosystem_gate.py` refuses. `--out` may not lie inside
-`--run`, `findings/` or `baseline/`. The flag is the only change: the baseline report is as before (loop#242).
+`--run`, `findings/` or `baseline/`. A preview seals the page only in a throwaway scratch book under freshly
+generated keys in a temporary directory, on live too (its detail says "not a node's book"): it never opens a node's
+`book_dir`, which is append-only and served to other nodes, and needs no node's `data_dir` or `book_dir`, so
+nothing of a preview reaches a node's book or a public surface. The flag is the only change: the baseline report is as before (loop#242).
