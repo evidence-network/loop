@@ -7,6 +7,7 @@ plant goes through.
 """
 import importlib.machinery
 import importlib.util
+import datetime as dt
 import json
 import os
 import shutil
@@ -639,8 +640,8 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE})
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] == step.TRUST_ISSUE], step.LIVE_RELIES_ON["07"])
+        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE})
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE], step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_live_10_and_11_then_read_not_checked_on_the_window(self):
@@ -950,6 +951,9 @@ class Step08Live03Test(unittest.TestCase):
         write_run_json(self.run, ["03", "08"], "live", stage="1")
 
     def tearDown(self):
+        if getattr(self, "sealed", None):  # a subtest's planted bound ends with it
+            self.sealed.stop()
+            self.sealed = None
         self.tmp.cleanup()
 
     def verify(self):
@@ -1084,9 +1088,108 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
 
-    def test_a_replayed_commit_still_names_that_it_was_head(self):
-        f, entries = self.verify()
-        self.assertIn(step.LIVE_RELIES_ON["03"][0], f["not_checked"])
+    def scratch_main(self, replaced_at):
+        """A scratch repository whose main holds this checkout's nodes/ a day before 03 started ("then"), then the
+        first carried node's commitment changed at `replaced_at` (seconds from 03's start); carrier.json points at
+        "then". Returns the scratch repository."""
+        repo = Path(self.tmp.name) / "repo"
+        (repo / "nodes").mkdir(parents=True)
+        shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
+        for f in (ROOT / "nodes").glob("*.json"):
+            shutil.copyfile(f, repo / "nodes" / f.name)
+        node_id = next(iter(load(self.run / "03-advertise" / "carrier.json")["nodes"].values()))["node_id"]
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        started = self.started()
+
+        def commit(msg, at):
+            date = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+            env = dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date)
+            subprocess.run([*git, "add", "nodes"], check=True, env=env)
+            subprocess.run([*git, "commit", "-qm", msg], check=True, env=env)
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        commit("then", started - dt.timedelta(days=1))
+        then = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        commitment = repo / "nodes" / "commitments" / f"{node_id}.json"
+        commitment.write_bytes(commitment.read_bytes() + b"\n")
+        commit("now", started + dt.timedelta(seconds=replaced_at))
+        doc = load(self.run / "03-advertise" / "carrier.json")
+        doc["head"] = then
+        dump(self.run / "03-advertise" / "carrier.json", doc)
+        rehash(self.run / "03-advertise")
+        return repo
+
+    def started(self):
+        return step.utc_time(load(self.run / "03-advertise" / "finding.json")["started"])
+
+    def sealed_at(self, at):
+        """As if this 08 run had reproduced the run's live 01 as PASS, with a capsule signed at `at`."""
+        self.sealed = mock.patch.object(step, "sealed_times", return_value=[at])
+        self.sealed.start()
+
+    def head_relies(self, f):
+        return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03")]
+
+    def test_the_commit_main_held_when_03_started_is_borne_out(self):
+        repo = self.scratch_main(replaced_at=3600)  # main replaced the commitment an hour after 03 started
+        self.sealed_at(self.started() - dt.timedelta(minutes=1))
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertEqual(self.head_relies(f), [])
+
+    def test_a_replayed_older_commit_is_named(self):
+        repo = self.scratch_main(replaced_at=-3600)  # main had replaced a commitment by 03's start
+        self.sealed_at(self.started() - dt.timedelta(minutes=1))
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertEqual([nc["issue"] for nc in self.head_relies(f)], [step.TRUST_ISSUE], f["not_checked"])
+
+    def test_a_start_no_capsule_bounds_is_named(self):
+        for case in ("no capsule", "capsule after the start", "no main", "a 01 not reproduced"):
+            with self.subTest(case):
+                self.tearDown()
+                self.setUp()
+                repo = self.scratch_main(replaced_at=3600)
+                if case == "capsule after the start":  # 03's start set back before 01's signed seal
+                    self.sealed_at(self.started() + dt.timedelta(minutes=1))
+                elif case == "a 01 not reproduced":  # a capsule file alone, which no judge here verified
+                    d = self.run / "01-seal" / "n1"
+                    d.mkdir(parents=True)
+                    stamp = (self.started() - dt.timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    dump(d / "capsule.json", {"timestamp": stamp})
+                elif case == "no main":
+                    self.sealed_at(self.started() - dt.timedelta(minutes=1))
+                    subprocess.run(["git", "-C", str(repo), "branch", "-qm", "main", "other"], check=True)
+                with mock.patch.object(step, "ROOT", repo):
+                    f, entries = self.verify()
+                self.assertEqual(len(self.head_relies(f)), 1, f["not_checked"])
+
+    def test_a_side_branch_commit_before_the_start_is_not_main(self):
+        # main replaced the commitment 3 hours before 03 started. A side branch off the older commit, dated 2 hours
+        # before the start but merged after it, still holds the old commitment: it is not what main held then.
+        repo = self.scratch_main(replaced_at=-3 * 3600)
+        self.sealed_at(self.started() - dt.timedelta(minutes=1))
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        then = load(self.run / "03-advertise" / "carrier.json")["head"]
+        early = (self.started() - dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        late = (self.started() + dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        subprocess.run([*git, "checkout", "-qb", "side", then], check=True)
+        (repo / "nodes" / "unrelated.txt").write_text("side\n")
+        subprocess.run([*git, "add", "nodes"], check=True)
+        subprocess.run([*git, "commit", "-qm", "side"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE=early, GIT_AUTHOR_DATE=early))
+        side_head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        subprocess.run([*git, "checkout", "-q", "main"], check=True)
+        subprocess.run([*git, "merge", "-q", "--no-ff", "-m", "merge", "side"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE=late, GIT_AUTHOR_DATE=late))
+        doc = load(self.run / "03-advertise" / "carrier.json")
+        doc["head"] = side_head
+        dump(self.run / "03-advertise" / "carrier.json", doc)
+        rehash(self.run / "03-advertise")
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.verify()
+        self.assertEqual(len(self.head_relies(f)), 1, f["not_checked"])
 
     def test_carrier_json_unreadable_or_naming_another_node_fails(self):
         for change in ("unreadable", "outside"):
@@ -1113,6 +1216,120 @@ class Step08Live03Test(unittest.TestCase):
 
 
 ONE_SEAL = TOOLS_DIR / "01-seal"
+
+
+class Step08StateReliesTest(unittest.TestCase):
+    """A live step's record of its own run is named on #193 only when the proof does not bear it out (loop#193)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.pop, self.work, self.listings = t / "pop", t / "run" / "nn-step", t / "nodes"
+        for d in (self.pop, self.work, self.listings):
+            d.mkdir(parents=True)
+        dump(self.pop / "population.json", {"population": "live", "nodes": [
+            {"name": "n1", "node_id": "id1"}, {"name": "n2", "node_id": "id2"}]})
+        for n, key in (("id1", "aa" * 32), ("id2", "bb" * 32)):
+            dump(self.listings / f"{n}.json", {"node_id": n, "key_id": key})
+        env = mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(self.listings)})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def ctx(self, started="2026-10-31T05:00:00Z"):
+        record = {"population": "live", "started": started, "proof": [{"path": "nodes.json"}]}
+        return step.Ctx(self.work, self.work, Path(self.tmp.name), self.pop, record)
+
+    def named(self, c, nn):
+        return [x["what"] for x in c.relies if x["what"].startswith(f"step {nn}") and x["issue"] == step.TRUST_ISSUE]
+
+    def test_04_names_its_record_unless_every_node_was_read(self):
+        for states, want in ((("ok", "ok"), 0), (("ok", "unreadable"), 1)):
+            with self.subTest(states):
+                dump(self.work / "nodes.json", {"n1": {"read": states[0]}, "n2": {"read": states[1]}})
+                c = self.ctx()
+                step.keys_04_live(c)
+                self.assertEqual(len(self.named(c, "04")), want)
+
+    def test_05_names_its_record_unless_every_node_was_read_and_always_its_cutoff(self):
+        for read, missing, since, want in ((True, [], None, 0), (False, [], None, 1), (True, ["pin"], None, 1),
+                                           (True, [], "2026-10-30T00:00:00Z", 1)):
+            with self.subTest(read=read, missing=missing, since=since):
+                dump(self.work / "nodes.json", {"read": {"n1": True, "n2": read}, "missing": missing,
+                                                "sealed_since": since})
+                c = self.ctx()
+                self.assertEqual(step.keys_05_live(c), [])
+                self.assertEqual(len(self.named(c, "05")), want, c.relies)
+                if since:
+                    self.assertIn(since, self.named(c, "05")[0])
+
+    def test_09_names_its_record_unless_every_node_it_ran_was_read_with_no_key_error(self):
+        nodes = [{"name": "n1", "node_id": "id1"}, {"name": "n2", "node_id": "id2"}]
+        for extra, read, errors, want in ((False, True, [], 0), (False, False, [], 1), (False, True, ["e"], 1),
+                                          (True, True, [], 1)):
+            with self.subTest(extra=extra, read=read, errors=errors):
+                ran = nodes + ([{"name": "n4", "node_id": None}] if extra else [])  # the twins run's unread node
+                dump(self.work / "nodes.json", {"nodes": ran, "read": {"n1": True, "n2": read}, "announced": [],
+                                                "key_errors": errors})
+                c = self.ctx()
+                self.assertEqual(step.keys_09_live(c, None), [])
+                self.assertEqual(len(self.named(c, "09")), want, c.relies)
+
+    def test_02_holds_each_book_to_the_nodes_join_commitment_and_always_names_its_bound_keys(self):
+        m = step.step_module("02-book")
+        dump(self.work / "nodes.json", {"missing": [], "nodes": {"n1": {"read": "ok"}, "n2": {"read": "ok"}}})
+        both = ["aa" * 32, "bb" * 32]
+        for n, key in (("n1", "aa" * 32), ("n2", "bb" * 32)):
+            (self.work / n).mkdir(exist_ok=True)
+            dump(self.work / n / "inputs.json", {"node_pub": key, "book_id": f"{n}-book", "book_key": "cc" * 32,
+                                                 "checkpoint_pub": "cc" * 32, "node_keys": both, "bound": [key]})
+        books = {"aa" * 32: {("n1-book", "cc" * 32)}, "bb" * 32: {("n2-book", "cc" * 32)}}
+        with mock.patch.object(step, "join_commitment_books", return_value=books):
+            c = self.ctx()
+            self.assertEqual(step.keys_02_live(c, m), [])
+            self.assertEqual(self.named(c, "02"), [f"step 02: node {n}'s trusted keys (`bound`, read from the book's "
+                                                   "profile on the node)" for n in ("n1", "n2")])
+            # A book no join commitment of n2's names, and n1's receipt held apart from a trimmed key set.
+            doc = load(self.work / "n2" / "inputs.json")
+            doc["book_id"] = "other-book"
+            dump(self.work / "n2" / "inputs.json", doc)
+            doc = load(self.work / "n1" / "inputs.json")
+            doc["node_keys"] = ["aa" * 32]
+            dump(self.work / "n1" / "inputs.json", doc)
+            c = self.ctx()
+            step.keys_02_live(c, m)
+            got = " ".join(self.named(c, "02"))
+            self.assertIn("node n2's book id and checkpoint key", got)
+            self.assertIn("node n1's node keys a receipt is held apart from", got)
+            self.assertNotIn("node n1's book id", got)
+            # An unlisted node: its key, book and trusted keys named, and its trimmed node_keys too.
+            (self.listings / "id2.json").unlink()
+            c = self.ctx()
+            step.keys_02_live(c, m)
+            self.assertIn("step 02: node n2's key, book and trusted keys", [x["what"] for x in c.relies])
+            self.assertNotIn("node keys a receipt", " ".join(self.named(c, "02")))  # n1 holds the one listed key
+            doc = load(self.work / "n2" / "inputs.json")
+            doc["node_keys"] = []
+            dump(self.work / "n2" / "inputs.json", doc)
+            c = self.ctx()
+            step.keys_02_live(c, m)
+            self.assertIn("node n2's node keys a receipt is held apart from", " ".join(self.named(c, "02")))
+
+    def test_01_names_its_record_unless_every_node_sealed_under_its_key_in_this_run(self):
+        m = step.step_module("01-seal")
+        for n, key in (("n1", "aa" * 32), ("n2", "bb" * 32)):
+            (self.work / n).mkdir(exist_ok=True)
+            dump(self.work / n / "capsule.json", {"key_id": key, "timestamp": "2026-10-31T05:00:00.5Z"})
+        for case, want in (("fresh", 0), ("older", 1), ("given", 1), ("pin", 1)):
+            with self.subTest(case):
+                nodes = {n: {"read": "sealed", "own_seal": case != "given"} for n in ("n1", "n2")}
+                dump(self.work / "nodes.json", {"pins": {"seen": [], "missing": ["x"] if case == "pin" else []},
+                                                "nodes": nodes})
+                c = self.ctx(started="2026-10-31T06:00:00Z" if case == "older" else "2026-10-31T05:00:00Z")
+                self.assertEqual(step.keys_01_live(c, m), [])
+                self.assertEqual(len(self.named(c, "01")), want, c.relies)
 
 
 @unittest.skipUnless((ONE_SEAL / "bin" / "cross_language").is_file() and (ONE_SEAL / "venv" / "bin" / "python").is_file(),
@@ -1172,8 +1389,19 @@ class Step08Live01Test(unittest.TestCase):
         e = entries["01-seal"]
         self.assertEqual(e["status"], "reproduced", e["problems"])
         self.assertEqual(e["rederived"]["result"], "PASS")
-        self.assertIn(step.LIVE_RELIES_ON["01"][0], f["not_checked"])
+        # Every node sealed under its listed key: nodes.json's per-node state is borne out, so nothing is 01's word.
+        self.assertFalse([nc for nc in f["not_checked"] if nc["what"].startswith("step 01")], f["not_checked"])
         self.assertEqual(finding.check(self.run), [])
+        # The passing 01's node-signed capsule times bound a later 03's start; a re-verification whose 01 no longer
+        # passes keeps none of them.
+        times = [step.utc_time(load(p)["timestamp"]) for p in sorted((self.run / "01-seal").glob("*/capsule.json"))]
+        self.assertEqual(step.SEALED.get(self.run.resolve()), times)
+        self.assertTrue(times)
+        shutil.copyfile(POPULATION / "keys" / "bob" / "node-key.pub.pem", self.run / "01-seal" / "lab-1" / "node-key.pub.pem")
+        rehash(self.run / "01-seal")
+        f, entries = self.verify()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertNotIn(self.run.resolve(), step.SEALED)
 
     def test_a_node_key_the_listing_does_not_publish_fails(self):
         def swap(d):
