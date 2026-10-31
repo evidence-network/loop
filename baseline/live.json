@@ -1,21 +1,21 @@
 {
   "ecosystems": {
     "mesh": {
-      "findings": "findings/2026-10-31-live-9",
+      "findings": "findings/2026-10-31-live-10",
       "pins": {
         "aac-go": "action-state-group/agent-action-capsule go/v0.16.0",
         "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
         "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
         "capsulectl": "action-state-group/evidencebook v0.8.1",
         "capsulectl-book": "action-state-group/evidencebook v0.8.1",
-        "capsules": "Mesh-LLM/capsules-plugin d1f4edc09a9546d0c54a3bc8572251436ba47e59",
-        "capsules-evidence-request": "action-state-group/agent-action-capsule a8f7ac7f9d4b76d96796885e5eac795211c28180",
+        "capsules": "Mesh-LLM/capsules-plugin v0.1.6",
+        "capsules-evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.3.0",
         "checkpointed-local-log": "action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1",
         "demo-capsules": "Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc",
         "demo-mesh-llm": "ethanyzhang/mesh-llm 3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301",
         "evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.2.0",
         "evidencebook": "action-state-group/evidencebook v0.8.1",
-        "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.9",
+        "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.11",
         "inference-deals": "action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf",
         "mesh-llm": "Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123",
         "mesh-llm-pr-2620": "Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e",
@@ -24,47 +24,47 @@
       },
       "steps": {
         "01": {
-          "finding_sha256": "5428d0bf3b6b702693a29eaa01e372ce9bba2416f9aab2a6427c2af280d58941",
+          "finding_sha256": "4a8b6d2427795031acd36448db571cb484005c8445ba5699909d31500637c517",
           "result": "PASS"
         },
         "02": {
-          "finding_sha256": "9d3ea76bf5f77cd5add8b79f3b7611e26dc8d754c94ac7d2b0cb1d50b0f3ce56",
+          "finding_sha256": "0a68cfe8f25e0b4be2410358fa4e1718b591fd7745209b90fb41b0d7a5964097",
           "result": "PASS"
         },
         "03": {
-          "finding_sha256": "859ba5f0d21e75f07af62f7966458137715b0a3e83ea6732f751c7a36476980b",
+          "finding_sha256": "b846cf262c4e33e4f879cbf0ef2cf35549466a91678d49bd8cf005ea8d2a4934",
           "result": "PASS"
         },
         "04": {
-          "finding_sha256": "08a45b21141d9051dab5fc0324f028f6af31f580adfd6ddc43e1c8c32607423d",
+          "finding_sha256": "834e193783e770d2c54fd8780d89bfa0fe388557737045f000b0733b622c840a",
           "result": "PASS"
         },
         "05": {
-          "finding_sha256": "fc90fa2287465a2a6a18a42d42a5f1f2bb6252791ce35d85709a972028187c38",
+          "finding_sha256": "db880fd3fdece0535285d63a5817121f9a917a80c2582c9f25b6a57d0ab967b2",
           "result": "NOT_CHECKED"
         },
         "07": {
-          "finding_sha256": "354fe749085f57426987d18b76e458894d9edd6cb19fe82e07074ef2c4b07e41",
-          "result": "NOT_CHECKED"
+          "finding_sha256": "4f0e9a64af60f1179f832d59b3e0d1a943bbf7b3f6720b5ed2a9fe0f5a7654d1",
+          "result": "FAIL"
         },
         "08": {
-          "finding_sha256": "c735b06503c848199b415bb7456c0ce2bda66b03a55b646f080731882c1447d9",
+          "finding_sha256": "dcc668a3ce5a4cf80f85c2ea99116fc8b8ca8ba2d0ef4ccab639d7a7cbe775e2",
           "result": "NOT_CHECKED"
         },
         "09": {
-          "finding_sha256": "af4d9d5493ef10bd7100433d9ada43f0373b42b57af450e28c7e9ac1f880c9ca",
+          "finding_sha256": "110d09f59d4c7dfa160af9c3a1f6332cdeebf073727dfa464277de363f00a353",
           "result": "PASS"
         },
         "10": {
-          "finding_sha256": "07e106974766151e6ea58addc7c2a9cc05cc9eeea969333aa7a76885ffec1261",
+          "finding_sha256": "d9bb476ac7bf3b53fd1130b19e4777f321ae65e6b2c68bda3c07d6bb98155425",
           "result": "NOT_CHECKED"
         },
         "11": {
-          "finding_sha256": "6cc1230fb99dd310405c7cf8e591b84e8aee8d4979723d667c613d3b2232829b",
+          "finding_sha256": "63aeea2696f7221085305a8823640b044341f1688547363a69e3ac6e383caf2d",
           "result": "NOT_CHECKED"
         },
         "12": {
-          "finding_sha256": "b230a5f28fa0b3ed882f902696f6f2a44895c21803b74e77fc310e5a3b34f4e3",
+          "finding_sha256": "c7b283ecf4b55c191f8a93a5b0e93ca5a550b85c7e34646fc3d9b0501973a63b",
           "result": "NOT_CHECKED"
         }
       }
