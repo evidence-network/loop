@@ -1,0 +1,22 @@
+{
+  "build": {
+    "bundle_digest": "8b88a0f9a33a4398bb3e1e35bddc18ead054be697b9dc98d3b9710efe882e510",
+    "page_seal": {
+      "checkpoint": 604,
+      "record_id": "ec15ec01fbafbe1a6bbdf042922b6c462404493e73d89a2784bf53ead1bb507c",
+      "seq": 602
+    },
+    "root": "0d1a3c5f75588e81daa1af12182e8a38297ef2b9761419ef9de03cf23e95b9f0",
+    "verdict": "VALID"
+  },
+  "check": {
+    "bundle_digest": "8b88a0f9a33a4398bb3e1e35bddc18ead054be697b9dc98d3b9710efe882e510",
+    "page": "match",
+    "page_digest": "sha256:79a0833777a54ef5d89e58b3b59508d8ebb822e4c65031f0b3cc035f99461454",
+    "record_id": "ec15ec01fbafbe1a6bbdf042922b6c462404493e73d89a2784bf53ead1bb507c",
+    "spec_version": "capsule-cli-result/v1",
+    "verification": "VALID",
+    "voice": "silent"
+  },
+  "seal_verdict": "VALID"
+}

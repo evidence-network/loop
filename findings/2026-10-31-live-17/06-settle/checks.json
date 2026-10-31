@@ -1,0 +1,35 @@
+{
+  "band": {
+    "detail": "stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8",
+    "ok": true
+  },
+  "counterparty_count:stevenmih-1:stevenmih-2": {
+    "detail": "stevenmih-1's 5 settlements against stevenmih-2's signed bundle (sha256 52445d526046): PASS, 5 paired, 0 unpaired",
+    "ok": true
+  },
+  "counterparty_count:stevenmih-2:stevenmih-1": {
+    "detail": "stevenmih-2's 5 settlements against stevenmih-1's signed bundle (sha256 61901e2d40f1): PASS, 5 paired, 0 unpaired",
+    "ok": true
+  },
+  "exchange_match": {
+    "detail": "5 payments paired: the payer's amount equals the payee's credit plus fee",
+    "ok": true
+  },
+  "finality": {
+    "detail": "5 of 5 payment hashes final by the payer's preimage",
+    "ok": true
+  },
+  "public_ledger_count": {
+    "detail": "Lightning has no public ledger; the counterparty's signed book stands in (counterparty_count), and this gap stays named",
+    "gap": true,
+    "ok": null
+  },
+  "rail_fee": {
+    "detail": "each of 5 payments carries a wallet provider's fee (fee_msat > 0)",
+    "ok": true
+  },
+  "reference": {
+    "detail": "5 payments, each referenced by one payment_hash under one exchange in each book",
+    "ok": true
+  }
+}

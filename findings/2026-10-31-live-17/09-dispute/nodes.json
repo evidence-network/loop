@@ -1,0 +1,45 @@
+{
+  "announced": [
+    [
+      "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+      "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9"
+    ],
+    [
+      "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26"
+    ],
+    [
+      "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+      "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff"
+    ],
+    [
+      "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
+      "ec79b7685f15d1fb7baf364a4888d2c1ba18c7c7947ea947787a64c9ad39c3f0"
+    ]
+  ],
+  "key_errors": {},
+  "nodes": [
+    {
+      "name": "stevenmih-1",
+      "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"
+    },
+    {
+      "name": "stevenmih-2",
+      "node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9"
+    },
+    {
+      "name": "stevenmih-3",
+      "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac"
+    },
+    {
+      "name": "stevenmih-4",
+      "node_id": "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94"
+    }
+  ],
+  "read": {
+    "stevenmih-1": true,
+    "stevenmih-2": true,
+    "stevenmih-3": true,
+    "stevenmih-4": true
+  }
+}

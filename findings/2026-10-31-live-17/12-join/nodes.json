@@ -1,0 +1,13 @@
+{
+  "bind_at": "2026-10-31T19:30:58Z",
+  "node_consoles": [
+    "stevenmih-1",
+    "stevenmih-2",
+    "stevenmih-3"
+  ],
+  "revocations_main": {
+    "commit": "d110070745c9509a5ce2d7e14cd13e1c315ff67d"
+  },
+  "second_console": true,
+  "self_node": "stevenmih-3"
+}

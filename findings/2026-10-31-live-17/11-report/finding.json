@@ -1,0 +1,39 @@
+{
+  "asserts": "the report page renders only from step 08's manifest, step 10's Results and the deal and settlement records they cite, every number on it has a denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book",
+  "detail": "run 2026-10-31-live-17: Deals judged: 103 of 103 deal records step 08 lists, from 1 of 1 deal steps; 92 of 103 live halves pair into deals, one per exchange held on both nodes, each citing both halves (11 of 103 halves have no pair on another node). Settlements judged: 3 of 3 settlement records step 08 lists, from 1 of 1 settlement steps. Asks judged: 9 of 9 ask records step 08 lists, from 1 of 1 ask steps. Disputes counted as found: 1 of 1 dispute records step 08 lists, from 1 of 1 dispute steps. come_through.served_as_agreed (Served as agreed): met in 1 of 1, not met in 0 of 1, not evaluable in 0 of 1 deal Results. the pinned pack's own evaluator, over the nodes' own chains, answers this term for 5 of 10 deal sides: met 5 of 5. come_through.served_named_model (Served the model it named): met in 1 of 1, not met in 0 of 1, not evaluable in 0 of 1 deal Results. the pinned pack's own evaluator, over the nodes' own chains, answers this term for 5 of 10 deal sides: met 5 of 5 (provider_states). come_through.paid_as_agreed (Paid as agreed): met in 1 of 1, not met in 0 of 1, not evaluable in 0 of 1 settlement Results. ask-answered (an ask is answered or its absence recorded): met in 1 of 1, not met in 0 of 1, not evaluable in 0 of 1 ask Results. referee-result (the referee's sealed Result, cited and counted as found, never judged again): met in 1 of 1, not met in 0 of 1, not evaluable in 0 of 1 dispute Results. The roll-up cites 4 of 4 finer Results: met in 4 of 4, not met in 0 of 4, not evaluable in 0 of 4. The page is the pinned builder's, its digest sealed in the reporting book by book report build --seal and matched by book report check; the builder's viewer script is pinned code and was not scanned for score-like words. The records are operator-collected from the lab's own nodes; this proves the report, not how an operator gets bundles from peers. Outside this step's assertion: the pinned pack's own evaluator does not run for 06-settle, whose kind binding.json gives no evaluator inputs: step 10 applies the pack's terms there to the results 08 re-derived: evidence-network/loop#157. Outside this step's assertion: the page's text naming its two questions (did the evidence verify, is this the page the publisher issued): action-state-group/capsule-viewer#158. Outside this step's assertion: a check that both sides' deals agree: only the payer seals a deal for now: Mesh-LLM/capsules-plugin#134. On live, step 10's Results are under the live judge key: the judge key is held on the lab host by the lab operator account that also runs the nodes: same operator, not an independent judge.",
+  "finished": "2026-10-31T19:31:39Z",
+  "name": "report",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "report.json",
+      "sha256": "2c2e68129b9833325bbe481eb9f236d92cc1932b2431148b28418cc07378bc26"
+    },
+    {
+      "path": "result.bundle.json",
+      "sha256": "2a4164fb875672583b092723a7084a84de626cb5dcca7b927567330d691338bd"
+    },
+    {
+      "path": "seal.bundle.json",
+      "sha256": "e3f6f5ac048d96191056192ee058d101ce509041f9852e739e9df88f2ed073f9"
+    },
+    {
+      "path": "check.json",
+      "sha256": "4c7936700656f8c6153e6432c16b2e10f62ddaa6aafc371de3880f68cfd18260"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-31T19:31:15Z",
+  "step": "11"
+}

@@ -1,0 +1,2502 @@
+{
+  "population": "live",
+  "result": "NOT_CHECKED",
+  "run": "2026-10-31-live-17",
+  "run_json": {
+    "sha256": "15deba04acd0ac97df661164fe70d03cf1f80a6f8ba39e57c5abf748eae31b1d",
+    "steps": [
+      "01",
+      "02",
+      "03",
+      "12",
+      "08"
+    ]
+  },
+  "steps": [
+    {
+      "dir": "01-seal",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "f7a970522d6112ede16db68527c87b25934c1c9c674250f0041e8b768d02be5b"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "7dfdd640d44622060abf54b1d1ae6d9f8365cce51e447eb0ab03c0768cf38edc"
+        },
+        {
+          "path": "stevenmih-1/node-key.pub.pem",
+          "sha256": "834b2f83f94e31ebe823456173b03643597820ffd87010164e33d25109e90124"
+        },
+        {
+          "path": "stevenmih-1/capsule.json",
+          "sha256": "7ed8fa985d60e45e15f6ddaa4f91d0a256c3eaedfb1178e871130a028a2cb34b"
+        },
+        {
+          "path": "stevenmih-1/verifier.json",
+          "sha256": "7fc067cb5785070d15f7f3f18ce3025adfa5415e46b5e1a478ddb309ac6c3368"
+        },
+        {
+          "path": "stevenmih-1/checks.json",
+          "sha256": "483879fe112ba7b0c34183ea61f595fb6e0777012fb526e5f95f2e93e6f0e33e"
+        },
+        {
+          "path": "stevenmih-2/node-key.pub.pem",
+          "sha256": "46d039a673c558b826f731871c3b0afd43ef9c8a4385be100efcb82da5300aa1"
+        },
+        {
+          "path": "stevenmih-2/capsule.json",
+          "sha256": "9fb8538058d30e493e9d8e9134489f22295bc1d8efc93ca18d85cebc03d2cf5c"
+        },
+        {
+          "path": "stevenmih-2/verifier.json",
+          "sha256": "79f86844d14964d045539f9b26704a496e1f5c7bbde577707e4c92cf9f009474"
+        },
+        {
+          "path": "stevenmih-2/checks.json",
+          "sha256": "cc8314023c4cb251bdc160fd931252ef89d8ac18c07c22698809363516378ed3"
+        },
+        {
+          "path": "stevenmih-3/node-key.pub.pem",
+          "sha256": "61ce51d48e91ef24127d3bf13438e0ed5dd714229fdae18785e23f202cf21f3a"
+        },
+        {
+          "path": "stevenmih-3/capsule.json",
+          "sha256": "518ee40bcf3c175aa775cad7093cc3c42d58e94b7d27632c591af4f26e053304"
+        },
+        {
+          "path": "stevenmih-3/verifier.json",
+          "sha256": "8739019a8ec05146ba5c69b372061eac290413dd781eb3794006752db1f30bda"
+        },
+        {
+          "path": "stevenmih-3/checks.json",
+          "sha256": "a067d6f8508f62185907f8361631a2a0655ff12f0c9bf0d06dde3694482bbb96"
+        }
+      ],
+      "name": "seal",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [],
+      "status": "reproduced",
+      "step": "01"
+    },
+    {
+      "dir": "02-book",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "0c28c538c77c8410dd1f589abe3ffdbf445906b5d534887694797e31573c42d8"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "b52722dad5eeeea83e51b4d573a64b3bc421d9d1d9441b2e6437911dc0b9248b"
+        },
+        {
+          "path": "witnesses.json",
+          "sha256": "ec061f1d6d77ac73ce018632fc5ce420cda42ee17570d32b6fe4c2f69b780ad1"
+        },
+        {
+          "path": "stevenmih-1/capsule.json",
+          "sha256": "d0565bea56d6fc05b9a77fdf56daae8d54a60fb36c4ee138b7b6433d3dbea409"
+        },
+        {
+          "path": "stevenmih-1/append.json",
+          "sha256": "a96409e07b0628947e710db53cb6a5a99bc6cceae4bc386ee679d298190028b4"
+        },
+        {
+          "path": "stevenmih-1/checkpoint.json",
+          "sha256": "eb7b6deb07c56aa1ed7c3f750f35bcd3ce07443c33ed69aed0a73338750e635a"
+        },
+        {
+          "path": "stevenmih-1/bundle.json",
+          "sha256": "700e4111359bc59ec7d1e3bd449697a67f9dc7e7730a63d6ede1e1917a30f16a"
+        },
+        {
+          "path": "stevenmih-1/book-record.json",
+          "sha256": "93c82c01ef3f6db86f1177c2f25cced192c2e49420f1ba8c664217b0203fc305"
+        },
+        {
+          "path": "stevenmih-1/verify.json",
+          "sha256": "5e5e8be6c251b4bb9b7ff69570af55ca143263c1b4b9ad0b294e0df2453479cc"
+        },
+        {
+          "path": "stevenmih-1/inputs.json",
+          "sha256": "de104798a4b9aa5eb4246cd815e936c481d859b599ce3d860d1aff5fda1c9cd9"
+        },
+        {
+          "path": "stevenmih-1/checks.json",
+          "sha256": "faa55f1c1d49329805edfef518074b635938022a4ab008753fc9aa95cac690cd"
+        },
+        {
+          "path": "stevenmih-1/publish.json",
+          "sha256": "490a5fce8d6476fa24fc1bdc26715447788dc1bd0b31f017aeb03c369f5845e2"
+        },
+        {
+          "path": "stevenmih-1/witness-status.json",
+          "sha256": "490a5fce8d6476fa24fc1bdc26715447788dc1bd0b31f017aeb03c369f5845e2"
+        },
+        {
+          "path": "stevenmih-2/capsule.json",
+          "sha256": "2978de690186d4cde734559e958ea39c1216450c02e75bd31cc436bd97868632"
+        },
+        {
+          "path": "stevenmih-2/append.json",
+          "sha256": "8cabad3bf5f099554a508f1cfcfd84e1ae465a442d4cd08c0f88c8138c00234c"
+        },
+        {
+          "path": "stevenmih-2/checkpoint.json",
+          "sha256": "fb48f42a1979e876e2bcbae9d786813d65492aa5f07be77ff7d8568c15e67fe0"
+        },
+        {
+          "path": "stevenmih-2/bundle.json",
+          "sha256": "e776bb93b5900077a07e1ddb04ad663544a2dbac868822599242ba21f5e05511"
+        },
+        {
+          "path": "stevenmih-2/book-record.json",
+          "sha256": "790b1132f7f2df8bf1881a90bea533402299fb6653c44851284704388b1db9e7"
+        },
+        {
+          "path": "stevenmih-2/verify.json",
+          "sha256": "703f8ab7c5e9678ddc425ea701e0145d122646adb0aaec7f0e9b0b94562524b2"
+        },
+        {
+          "path": "stevenmih-2/inputs.json",
+          "sha256": "9a48b83c27b128c4638289971fc4cef032a921783f94bb2a0c5426de16de60f9"
+        },
+        {
+          "path": "stevenmih-2/checks.json",
+          "sha256": "36411c1316078f4ebac5e02d17738cbc7a8bd07d8b50bf4128743bd7162dd0d4"
+        },
+        {
+          "path": "stevenmih-2/publish.json",
+          "sha256": "fcbcfbc72ac7edaaa728434e47ce68409c3030758937be3dd913ebfc8f793023"
+        },
+        {
+          "path": "stevenmih-2/witness-status.json",
+          "sha256": "fcbcfbc72ac7edaaa728434e47ce68409c3030758937be3dd913ebfc8f793023"
+        },
+        {
+          "path": "stevenmih-3/capsule.json",
+          "sha256": "8d98667143f35f046e4880fa157f16f3a4aefce3e7e2d70d7dddab6a8b9b03a0"
+        },
+        {
+          "path": "stevenmih-3/append.json",
+          "sha256": "fe06470363fc7c6240892fe9734eb4bb5920293c87a7328369bc7d8c887e5197"
+        },
+        {
+          "path": "stevenmih-3/checkpoint.json",
+          "sha256": "911f4ca9e5880d15018f7f53a26a88efab2701fc28bc431072c62e28ca4f9a22"
+        },
+        {
+          "path": "stevenmih-3/bundle.json",
+          "sha256": "e580a8d8c71b0415a7b7039ee94bccd8b68a492391f500dcd21ba10588c22013"
+        },
+        {
+          "path": "stevenmih-3/book-record.json",
+          "sha256": "e1ebad671c997cc02f0d9f7eee735c331c9dc410e032c6439eadf3d66d44dd39"
+        },
+        {
+          "path": "stevenmih-3/verify.json",
+          "sha256": "de097a867a6a967bd9c79763bcca816ffbcc82864bfa01a08597cca8759bd190"
+        },
+        {
+          "path": "stevenmih-3/inputs.json",
+          "sha256": "cc990a6fc2aadcdc4051d7f4d8dc6592fc7278ce2d16b691f7ce98132704d312"
+        },
+        {
+          "path": "stevenmih-3/checks.json",
+          "sha256": "d242ef285933c7a137977a9b6171a8924a652f73a83a17c1add1e0ac4be89929"
+        },
+        {
+          "path": "stevenmih-3/publish.json",
+          "sha256": "93960e9803c79e64b18aeb8d08ff74b86ee37abb445bdc48310a5f86d0cde28e"
+        },
+        {
+          "path": "stevenmih-3/witness-status.json",
+          "sha256": "93960e9803c79e64b18aeb8d08ff74b86ee37abb445bdc48310a5f86d0cde28e"
+        }
+      ],
+      "name": "book",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 02: node stevenmih-1's trusted keys (`bound`, read from the book's profile on the node)",
+          "why": "the bundle does not bear it out, so it is 02's record of its run"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 02: node stevenmih-2's trusted keys (`bound`, read from the book's profile on the node)",
+          "why": "the bundle does not bear it out, so it is 02's record of its run"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 02: node stevenmih-3's trusted keys (`bound`, read from the book's profile on the node)",
+          "why": "the bundle does not bear it out, so it is 02's record of its run"
+        }
+      ],
+      "status": "reproduced",
+      "step": "02"
+    },
+    {
+      "dir": "03-advertise",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "4ad07c5b94c7ddc0a3c989268f5f15c3d1b941391bc13c514ed0e059a3d57747"
+        },
+        {
+          "path": "carrier.json",
+          "sha256": "feaa6891c5788bb5003be066d4ac431e84620f1b8ac898d33363a652ab875d75"
+        },
+        {
+          "path": "stevenmih-1.commitment.json",
+          "sha256": "5f800bfa3673ac21b067d73f5f2afd85041b57203d3cdc97d23a11f11017708f"
+        },
+        {
+          "path": "stevenmih-1.policy.json",
+          "sha256": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73"
+        },
+        {
+          "path": "stevenmih-2.commitment.json",
+          "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd"
+        },
+        {
+          "path": "stevenmih-2.policy.json",
+          "sha256": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165"
+        },
+        {
+          "path": "stevenmih-3.commitment.json",
+          "sha256": "720af79120734f07af7046ab9df758c92e8ea42e0ab733a7bc96be45a1cdc30f"
+        },
+        {
+          "path": "stevenmih-3.policy.json",
+          "sha256": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25"
+        },
+        {
+          "path": "verification.json",
+          "sha256": "1e14182230a4940f20b93d048bf3ff6694d5ea81670374d78ded587ef244386e"
+        }
+      ],
+      "name": "advertise",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 03: carrier.json's commit 5e6519322927 carried the nodes' current commitments when 03 ran (main at 03's start holds others, this checkout has no main to hold it to, or no capsule 01 kept bounds 03's start)",
+          "why": "the bundle does not bear it out, so it is 03's record of its run"
+        }
+      ],
+      "status": "reproduced",
+      "step": "03"
+    },
+    {
+      "dir": "04-admit",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "e1ea57690a98b6e9901d5ad98cef1f302e4b899dcdb87a090e4bf2bfead53a57"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "95abc2117f98df016a4e88688a1fac09e258b2a4782e41ea43ba9ae046e67fd2"
+        },
+        {
+          "path": "stevenmih-2/decisions.jsonl",
+          "sha256": "18535bedf7dc976d362c83dba6ef0b0105328912f017b0e6c6bc2c049d14879e"
+        },
+        {
+          "path": "stevenmih-2/rows.json",
+          "sha256": "799f37f972f9ee204884a8bc39e31ab845ecb2289e804faefd0d2cfae227df3a"
+        },
+        {
+          "path": "stevenmih-3/decisions.jsonl",
+          "sha256": "16e042226f1bd5b53c432f57f17c1479999d31fe6052837da888d848a35822fc"
+        },
+        {
+          "path": "stevenmih-3/rows.json",
+          "sha256": "3fc2437de303f660e1bad3b989cb86611a9b02eae74f56ffe0358d2aa9d62c7c"
+        }
+      ],
+      "name": "admit",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "Mesh-LLM/capsules-plugin#175",
+          "what": "step 04: each decisions.jsonl holds every admission decision its node's ledger held, and nodes.json's record count is the ledger's",
+          "why": "08 judges the decision lines 04 kept, but no checkpoint the node signs covers its ledger"
+        }
+      ],
+      "status": "reproduced",
+      "step": "04"
+    },
+    {
+      "dir": "05-deal",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "65a71ed18cf66412603fe7a2106363fe37c76ab8ade962e93c38097092b6dbda"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "fba835b7258a6982a1390dc9a048c6264f5da9ea3464adc98c61c9e44d507869"
+        },
+        {
+          "path": "stevenmih-1/held-1.json",
+          "sha256": "07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9"
+        },
+        {
+          "path": "stevenmih-1/held-1-inclusion.json",
+          "sha256": "f252e1720b5a51516ba7ec8e69cb9605628a493f61cc83296aa8a102a1c8b811"
+        },
+        {
+          "path": "stevenmih-1/held-1-citing.json",
+          "sha256": "314d54d90dc2d8e313acb0c57d5494b6b3574d8bf4eedbf8a7c56def64bccaa4"
+        },
+        {
+          "path": "stevenmih-1/held-2.json",
+          "sha256": "808746916d9de3b8c9ce6dae366bd6929bbde07b543750cb7078549fa29471ea"
+        },
+        {
+          "path": "stevenmih-1/held-2-inclusion.json",
+          "sha256": "fdb2db0c9b193a456400a68e8c94eb700fe9130caf213961789439b1ec2aef47"
+        },
+        {
+          "path": "stevenmih-1/held-2-citing.json",
+          "sha256": "d662a60e27261399ac2ad45fba10a7639020b44fdb9ba34c95ca591dbe46e1e4"
+        },
+        {
+          "path": "stevenmih-1/held-3.json",
+          "sha256": "96236ed799b3df78fffbf425b90cf39c3a2c65e955f5cc5ebb3fcc2aebc8b33e"
+        },
+        {
+          "path": "stevenmih-1/held-3-inclusion.json",
+          "sha256": "c168faca42fc99c3749f94b0cc65b4abeddcb6ac2b49e6ffdb2ceaf5b4bce320"
+        },
+        {
+          "path": "stevenmih-1/held-3-citing.json",
+          "sha256": "bcc124fca2da3d78af95551b551b9f3bb2f51bc1ea01fa5376a861ce1a846dda"
+        },
+        {
+          "path": "stevenmih-1/held-4.json",
+          "sha256": "abb403cd7e51b9055301445fe18663b306469b6fe99c9c1401f18678a5102630"
+        },
+        {
+          "path": "stevenmih-1/held-4-inclusion.json",
+          "sha256": "e09208b735cb71bb9ccf6327a42b873b81fda43aac221a5c88028441cb21d1d3"
+        },
+        {
+          "path": "stevenmih-1/held-4-citing.json",
+          "sha256": "8ab848b8a80233a489fdbdc277ef41338c04ffe3b39069de967f9031357194c2"
+        },
+        {
+          "path": "stevenmih-1/held-5.json",
+          "sha256": "062aca22a7cf4fc3a3c7595eb8cd7f66cf7d5bd9951dc18495d5299525f38fad"
+        },
+        {
+          "path": "stevenmih-1/held-5-inclusion.json",
+          "sha256": "8fc146873b25638d0732b57d74289ccb906c8eef8e324efeb9fac57c95b6b38b"
+        },
+        {
+          "path": "stevenmih-1/held-5-citing.json",
+          "sha256": "d905c7706e589afc817fc3be309e3192c8f668d883ccea5a6c5b50ad1d766678"
+        },
+        {
+          "path": "stevenmih-1/held-6.json",
+          "sha256": "8a92d8aa6940110924af7ae326ce82966af3f091624fee7116daeaf051857e6b"
+        },
+        {
+          "path": "stevenmih-1/held-6-inclusion.json",
+          "sha256": "f0ad58821dc3ff3ae8062856adb66a1a4a68eba5986d2294b60594c57ee96232"
+        },
+        {
+          "path": "stevenmih-1/held-6-citing.json",
+          "sha256": "64e3c92daf8908ee23b0dd3919bd9888886b8c35168b7831c65ec98133547dfa"
+        },
+        {
+          "path": "stevenmih-1/held-7.json",
+          "sha256": "337a78a4f1d5359f51c3c6da897ced45ccc7ba82fa934437377fe19705748e76"
+        },
+        {
+          "path": "stevenmih-1/held-7-inclusion.json",
+          "sha256": "2f318c4d35e11948d9549f9e1b656b694d2c65a1ee3972b01a700cbc7b0e8f94"
+        },
+        {
+          "path": "stevenmih-1/held-7-citing.json",
+          "sha256": "ae8c4810d66a54ae58e30e446e13551b13dd32db9d5e5fb08e1695cc6b81ab6b"
+        },
+        {
+          "path": "stevenmih-1/held-8.json",
+          "sha256": "60810a7711685353e634f3cbbf57869f230e021a5fd2917cbe2f9dcd4018846f"
+        },
+        {
+          "path": "stevenmih-1/held-8-inclusion.json",
+          "sha256": "1526357b138dc010ea0d79b04cda950a5fd285db647a0bdbb309971b3935c975"
+        },
+        {
+          "path": "stevenmih-1/held-8-citing.json",
+          "sha256": "c3331caae13a8bb6211c0fcc24013260d958ad360ef0a8829cdae25b16e98a71"
+        },
+        {
+          "path": "stevenmih-1/held-9.json",
+          "sha256": "8a23e3f17716b1cd0bf41253c7344f63bcd954ac35fdc55c90502d9c081bcfda"
+        },
+        {
+          "path": "stevenmih-1/held-9-inclusion.json",
+          "sha256": "907827ad928cc1dea29f166154524aced59cb07eb0b4df2997ba99dc820ee983"
+        },
+        {
+          "path": "stevenmih-1/held-9-citing.json",
+          "sha256": "cf881908222a522145b7b7c733a00ba2cbad16217767a8676dacbb36ee7bc9ce"
+        },
+        {
+          "path": "stevenmih-1/held-10.json",
+          "sha256": "c3a7a01cc7ae116e8e77e184e5989049d57151a3d0bd687cade6bda0c5b754d4"
+        },
+        {
+          "path": "stevenmih-1/held-10-inclusion.json",
+          "sha256": "edd323bbc7464c43bc7bd55f4601d00fd3e0f4fe1fb03e13aaa54eb290b5e388"
+        },
+        {
+          "path": "stevenmih-1/held-10-citing.json",
+          "sha256": "965286390d3b38629643fdafe4ca5cbfb69926e8d2d44bc0ba5314c8d07a334f"
+        },
+        {
+          "path": "stevenmih-1/held-11.json",
+          "sha256": "94b5b9fe9caef149ea942a3d4b82336ef5a13e87c45c808e9506e8035c7b6e98"
+        },
+        {
+          "path": "stevenmih-1/held-11-inclusion.json",
+          "sha256": "fd98693f3ffb22e6e1b28e1fbdcba8c8a30fb48fe9041a3f2ea165cd6446323e"
+        },
+        {
+          "path": "stevenmih-1/held-11-citing.json",
+          "sha256": "3370cb66a715b1a47f5c77d861262a32563ecf226dd4e60a1d27de5632374150"
+        },
+        {
+          "path": "stevenmih-1/held-12.json",
+          "sha256": "fe4bf4c6a809244557ddb423738f3e12ac8bb1183b88894d614f77a45dce5e05"
+        },
+        {
+          "path": "stevenmih-1/held-12-inclusion.json",
+          "sha256": "f55ed87c4d0ad465f0f04f62cc5e61e9a992ca6c320e54efb0ffaf2a0d596913"
+        },
+        {
+          "path": "stevenmih-1/held-12-citing.json",
+          "sha256": "a483e4a929b030e8667aa202cbf6690fa28dade1b1d62dc7a4e6b090fa95a349"
+        },
+        {
+          "path": "stevenmih-1/held-13.json",
+          "sha256": "b010b910584985850551ada84ce69b4116f5185469a2fb24ef9a0964abb93cf4"
+        },
+        {
+          "path": "stevenmih-1/held-13-inclusion.json",
+          "sha256": "d5a3f0af8e066e8929fb7d778e2e8b12b4ea71dc1369893b8d42acfe77e80f48"
+        },
+        {
+          "path": "stevenmih-1/held-13-citing.json",
+          "sha256": "05a76455bb7c43a79c36795c150b6fc7cf45b05d0579d121425b10ec351d85f4"
+        },
+        {
+          "path": "stevenmih-1/held-14.json",
+          "sha256": "b9c8660f3c2aff64425496275618e5bcba59c57ea51dbbf217daa14d5b9b311b"
+        },
+        {
+          "path": "stevenmih-1/held-14-inclusion.json",
+          "sha256": "a7c328cebe96b53f80246a81b07bf2f51598cae8f64826c921f112c7d6956a1e"
+        },
+        {
+          "path": "stevenmih-1/held-14-citing.json",
+          "sha256": "e40dadf686d07ced0924ddf8adcf858cf5b42622484120ce830433dffaa73f2d"
+        },
+        {
+          "path": "stevenmih-1/held-15.json",
+          "sha256": "d7248909d6ce5133a3bec5020a9e8f41a3e45846055b71f2a2d5fdbaf9fc871a"
+        },
+        {
+          "path": "stevenmih-1/held-15-inclusion.json",
+          "sha256": "9fdf793824211790a06dc9753e91eb846af85224c4ce74ba802f9861e6cef99f"
+        },
+        {
+          "path": "stevenmih-1/held-15-citing.json",
+          "sha256": "0b0628be3a4b005a5ab57d4ebf614e93f1ba16f4b78ae6534b74d51d886b4667"
+        },
+        {
+          "path": "stevenmih-1/held-16.json",
+          "sha256": "bc3a4b1bfe8b6e005b44aeefc42785509109c2838d9f7a0a4a0ad144b08356c7"
+        },
+        {
+          "path": "stevenmih-1/held-16-inclusion.json",
+          "sha256": "7dc490558604beb2d0e654819c623b67e06e23a56a9cb5bd9d545d70a047781b"
+        },
+        {
+          "path": "stevenmih-1/held-16-citing.json",
+          "sha256": "e3c93816d6b0a0145a06c6e9353faaeee65c3c8e9df876c68839aafa2169824c"
+        },
+        {
+          "path": "stevenmih-1/held-17.json",
+          "sha256": "becf35dbcdea92d8840f0c6a36e57c61c0e2d622712ccc17927f96f26e816274"
+        },
+        {
+          "path": "stevenmih-1/held-17-inclusion.json",
+          "sha256": "1a7e365aa25430671de4b5a8688745b34c075543f9170c75b52d181552a2af92"
+        },
+        {
+          "path": "stevenmih-1/held-17-citing.json",
+          "sha256": "c19ddda3f09e541edca46c835c35d4ffcd1f47a29f7cd32280ca65e81749b7de"
+        },
+        {
+          "path": "stevenmih-1/held-18.json",
+          "sha256": "f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603"
+        },
+        {
+          "path": "stevenmih-1/held-18-inclusion.json",
+          "sha256": "f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea"
+        },
+        {
+          "path": "stevenmih-1/held-18-citing.json",
+          "sha256": "fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639"
+        },
+        {
+          "path": "stevenmih-1/held-19.json",
+          "sha256": "13b6522b95b6d6697a56ad57eb4f231e8520f2f4411c196b5810f3f70a4e9228"
+        },
+        {
+          "path": "stevenmih-1/held-19-inclusion.json",
+          "sha256": "5f98c25d78ff4dcc3ff1766c729f2c09d3b78b43a13894a085144ec9bdf4817b"
+        },
+        {
+          "path": "stevenmih-1/held-19-citing.json",
+          "sha256": "4ad07f94c9cac0ae0236d8351ca4e7a85e9b9f7e9f5671e5f7316a9c378cbf71"
+        },
+        {
+          "path": "stevenmih-1/held-20.json",
+          "sha256": "9aa1a026a0e7d58de3b36d77182a3aed04d8496ddc1c44ba35218f3c1d7624eb"
+        },
+        {
+          "path": "stevenmih-1/held-20-inclusion.json",
+          "sha256": "df485aa0c0114736b0ba796dfbe85c93b4ea554d73ea9da291d5cf130f0bf2dd"
+        },
+        {
+          "path": "stevenmih-1/held-20-citing.json",
+          "sha256": "6ce1732434505b6a7efcc31c1b6b0d256a650ddb61ce88d18adf9cc110482375"
+        },
+        {
+          "path": "stevenmih-1/held-21.json",
+          "sha256": "0173e22fbd9c838d7a22caad51a1518e38d2ef230d719f6763c30beaa8f48084"
+        },
+        {
+          "path": "stevenmih-1/held-21-inclusion.json",
+          "sha256": "8f0283a2ce937db8540f435b1fd8ef0580111de936ce779389e19662ab2a57ae"
+        },
+        {
+          "path": "stevenmih-1/held-21-citing.json",
+          "sha256": "679b4deb660a16ebd45accb4d336165d5dfa1094859608b65ba88b66d666f53d"
+        },
+        {
+          "path": "stevenmih-1/held-22.json",
+          "sha256": "b9c68d92869073df7b0011caa0fb81161368611c1c95595abeee0c8654138788"
+        },
+        {
+          "path": "stevenmih-1/held-22-inclusion.json",
+          "sha256": "9bdde8c6c5dad0cf409982f5cb937e24d5a9bcf79c5d32a4646bc0053382cc3c"
+        },
+        {
+          "path": "stevenmih-1/held-22-citing.json",
+          "sha256": "33ba72a16695117ccc16281476cd5651418b58a4434880caaaf8d1d6f7392051"
+        },
+        {
+          "path": "stevenmih-1/held-23.json",
+          "sha256": "993892af0f098aee83f9eef37dafeb5667b82093c9d90c7698dd751e3e31f6fd"
+        },
+        {
+          "path": "stevenmih-1/held-23-inclusion.json",
+          "sha256": "0e8d89af22cf7e826caa6a2ba1ac01fa92b8a60006e6491b6dc0c1b3eecdf818"
+        },
+        {
+          "path": "stevenmih-1/held-23-citing.json",
+          "sha256": "01f0804dc7d1f941a1800e245f220f1d7c1ad2ed3fd75843995abdde9219817e"
+        },
+        {
+          "path": "stevenmih-1/held-24.json",
+          "sha256": "cd15132d0e5685232056c5b18447f765e5965eb1234d3128a2eeed7ececa2e67"
+        },
+        {
+          "path": "stevenmih-1/held-24-inclusion.json",
+          "sha256": "8a97a91b205d9aff1ebca0020934b08baa6b34f67bb64b049f7ff241afa7e797"
+        },
+        {
+          "path": "stevenmih-1/held-24-citing.json",
+          "sha256": "3df055d2daee9af241b3ab23243134a21d763134b67c71e6aff82f020924dc73"
+        },
+        {
+          "path": "stevenmih-1/held-25.json",
+          "sha256": "fe60430118565352049bcc6ff41e9a41f3679b641336e55a216ff24c3eee6f93"
+        },
+        {
+          "path": "stevenmih-1/held-25-inclusion.json",
+          "sha256": "ed734dc6ecf13be71857413271612f60f911bb6619dba7b3f01d23c838175f92"
+        },
+        {
+          "path": "stevenmih-1/held-25-citing.json",
+          "sha256": "3ae290a9c141410bc9206bd95fee1cb2a6ae298dc623a62fda55e482ce3a6095"
+        },
+        {
+          "path": "stevenmih-1/held-26.json",
+          "sha256": "dfa2b240acf6823f6035a094975afc498a28e340b8570b6a23596d2255b811dd"
+        },
+        {
+          "path": "stevenmih-1/held-26-inclusion.json",
+          "sha256": "8ec4e5ee4d6c12f87d79f766a2e5b36e2bc00138053d11296ae99ff051deae58"
+        },
+        {
+          "path": "stevenmih-1/held-26-citing.json",
+          "sha256": "6c5274eb1291ff4b03eaa087019a3cc0aa707efca6cfc9258cbc6dcd9e534fcc"
+        },
+        {
+          "path": "stevenmih-1/held-27.json",
+          "sha256": "e375790568eeef6a1241fa3738fdf8d119d19bbb1e2b81a1ddf2ca6a8d993354"
+        },
+        {
+          "path": "stevenmih-1/held-27-inclusion.json",
+          "sha256": "c153f1765e8e7639311ef35d0d2a4e0cf630643b5cde998a5f9833ef93819bd7"
+        },
+        {
+          "path": "stevenmih-1/held-27-citing.json",
+          "sha256": "db6c1c6398ff4e76b2350f283c32b21cf44f83d95cbbcdd80f7bf9fbaf81ad9d"
+        },
+        {
+          "path": "stevenmih-1/held-28.json",
+          "sha256": "fdf3d1f386899b7817ddb729cd7650cdd6e81b79efbff354f506c82eadb52ca6"
+        },
+        {
+          "path": "stevenmih-1/held-28-inclusion.json",
+          "sha256": "31c792718bea84eee50e754d100e20dfeb4e94889bf7119c2f704aa9d443e62e"
+        },
+        {
+          "path": "stevenmih-1/held-28-citing.json",
+          "sha256": "c16f714808684150de848ccb63d3c22a547b2b3366c425e71600e2a3042d3377"
+        },
+        {
+          "path": "stevenmih-1/held-29.json",
+          "sha256": "308784e410a9fbf4877b736c4e765437a25f93b115537992768a72b111ebe5a6"
+        },
+        {
+          "path": "stevenmih-1/held-29-inclusion.json",
+          "sha256": "dc7a3db90c0ccd396862ad8d072728afcd37c5bd688f1b77119c7682d674644d"
+        },
+        {
+          "path": "stevenmih-1/held-29-citing.json",
+          "sha256": "9918609567db53faf8173ce9d9f06cbd76318c875139ea8c3d37f14233b06d2f"
+        },
+        {
+          "path": "stevenmih-1/held-30.json",
+          "sha256": "864692d30d15edf8ed043c36e81429eba37ba1392e419f078792409322d77693"
+        },
+        {
+          "path": "stevenmih-1/held-30-inclusion.json",
+          "sha256": "9be7d28b84f3e4d8c9ec665a9e8ccb0eccd6191584227cab66c98bcece3aef75"
+        },
+        {
+          "path": "stevenmih-1/held-30-citing.json",
+          "sha256": "23227be29963d5ebf94a687091c0b8f7c91ddf309e8cfdfb443fddd65045f2d0"
+        },
+        {
+          "path": "stevenmih-1/held-31.json",
+          "sha256": "aea8dfa82df66066f0f384a3550ad0e06f121de828cc3c947eae0a14cd700ec4"
+        },
+        {
+          "path": "stevenmih-1/held-31-inclusion.json",
+          "sha256": "f51dc1309a5cc90e6328464486b9dc01f3f8f438755316cdfd9fa50214614dcf"
+        },
+        {
+          "path": "stevenmih-1/held-31-citing.json",
+          "sha256": "63eee360e67cf994a97176dc9cc19cdb08711da3890652c888ffd484f4bc5186"
+        },
+        {
+          "path": "stevenmih-1/held-32.json",
+          "sha256": "50bff1a94e7051cc760c562c186fe8fce24b88712fa4100fed54eda7857bef84"
+        },
+        {
+          "path": "stevenmih-1/held-32-inclusion.json",
+          "sha256": "982184f58ade760dd50dc35cad0bec4367e0c4468790dc92fc295fe1be352132"
+        },
+        {
+          "path": "stevenmih-1/held-32-citing.json",
+          "sha256": "d116aa86fcabb5df77d253aff786f2d3374b5f2aa0e9ec36e9f01055759ce952"
+        },
+        {
+          "path": "stevenmih-1/held-33.json",
+          "sha256": "bf383dfce8aa1c944d28a98f2c5f1c46a432609d37e3c6ce05cc1aebf6865dde"
+        },
+        {
+          "path": "stevenmih-1/held-33-inclusion.json",
+          "sha256": "3f1340562c529c54580b32f3846093954281fadb80185309e8e334b9fbaccc18"
+        },
+        {
+          "path": "stevenmih-1/held-33-citing.json",
+          "sha256": "e77847caef56eb494544a5df252899373c39ceb8a2e41bef770bdf171f975ecd"
+        },
+        {
+          "path": "stevenmih-1/held-34.json",
+          "sha256": "08e020f3f8718a2258a3729dd598debecffe4322fc2a919e5d5c50b604af05a9"
+        },
+        {
+          "path": "stevenmih-1/held-34-inclusion.json",
+          "sha256": "02cb7785483456223b38ef66a0057d6e010bcd648689f71f630b7e27eb84412f"
+        },
+        {
+          "path": "stevenmih-1/held-34-citing.json",
+          "sha256": "c1cc8bdd56e34e89550f9b3ec3c77b63066eeec261fe75f5a54053d0b69248f0"
+        },
+        {
+          "path": "stevenmih-1/held-35.json",
+          "sha256": "7f77ba5c5216b683cafd3dc9b4839b7e9c9edbd9f1e585d8baf2075412d231c8"
+        },
+        {
+          "path": "stevenmih-1/held-35-inclusion.json",
+          "sha256": "f37daf5cdb58fe0da051711b8698b0e50eb7b703630056096a908cbda1eed748"
+        },
+        {
+          "path": "stevenmih-1/held-35-citing.json",
+          "sha256": "851f4e3425bde3639747c6704ad50653e5f2a6eeaf9ce680dd633908bd2c2f4c"
+        },
+        {
+          "path": "stevenmih-1/held-36.json",
+          "sha256": "3f45e81ee0011bc352df15ee588dac0a98c3b7ebaec63bb5d7bc086e1e572e41"
+        },
+        {
+          "path": "stevenmih-1/held-36-inclusion.json",
+          "sha256": "ccd5bf817d5f1c15553c075da247c762f5eaac25467be1072dbbd6efdd94bb79"
+        },
+        {
+          "path": "stevenmih-1/held-36-citing.json",
+          "sha256": "688d1b48d3d64997f78d65a2bcca09faa964e5823ff40e6017fd88d932ee4bbb"
+        },
+        {
+          "path": "stevenmih-1/held-37.json",
+          "sha256": "e8f37cd6ab7b92c25b9e456a03736ff4fafbb27924e203d4e472c0920b7cf022"
+        },
+        {
+          "path": "stevenmih-1/held-37-inclusion.json",
+          "sha256": "b98db40f1e7e4326d9da56d961c9be04d66d4520debabffccf608dba05ea129f"
+        },
+        {
+          "path": "stevenmih-1/held-37-citing.json",
+          "sha256": "68fa496959344f65c0a492392d68541d767b18b95ac931cdcd43f1d326db0cc9"
+        },
+        {
+          "path": "stevenmih-1/held-38.json",
+          "sha256": "9fa9ab16539c4fbd5ff4281e22b9c2d53a4f424f7fa1cd315b45c29efc5fac1d"
+        },
+        {
+          "path": "stevenmih-1/held-38-inclusion.json",
+          "sha256": "7705b635fb0976ffdc712f16bb2aff28e7fa24559b552f4bc490c40c0c1e14e7"
+        },
+        {
+          "path": "stevenmih-1/held-38-citing.json",
+          "sha256": "66af698870aab06ec52fa24a8e810bde47d865433b2548d7ba39fdf9b5ef688d"
+        },
+        {
+          "path": "stevenmih-1/held-39.json",
+          "sha256": "5974db47cbe46e648be910bcb43c7b6a36a076a18625fe9be784210cef16cbf4"
+        },
+        {
+          "path": "stevenmih-1/held-39-inclusion.json",
+          "sha256": "a96ad1ae0954ee9a62768b5ded7e27630aa307db2c97b163af6deba59595edbb"
+        },
+        {
+          "path": "stevenmih-1/held-39-citing.json",
+          "sha256": "f4002e113c32b07d4b759d81b675390201eeedaf2f8660a3ae2b9f96ba80b00f"
+        },
+        {
+          "path": "stevenmih-1/held-40.json",
+          "sha256": "b924abe173842d2432cde5172487e77c91fa82ba4dd74fdfb1275a1968d9c75f"
+        },
+        {
+          "path": "stevenmih-1/held-40-inclusion.json",
+          "sha256": "e1ec044fd8028c80083202d3550f4cac8f4b0542aacac6f67219240ae0e77f93"
+        },
+        {
+          "path": "stevenmih-1/held-40-citing.json",
+          "sha256": "4aca5f308d4b2b831afa6466ed4b26bb5a4e43e161ae97979f75495e28fe829d"
+        },
+        {
+          "path": "stevenmih-1/held-41.json",
+          "sha256": "32e74c7978f079de3655d95e80560be2786c7d95ece9f4cf28c165f988a13d6c"
+        },
+        {
+          "path": "stevenmih-1/held-41-inclusion.json",
+          "sha256": "ea2ba3b8d49d9821a5d6f5e9faebdad75c4063f24ec579612a69804c5d41d1fc"
+        },
+        {
+          "path": "stevenmih-1/held-41-citing.json",
+          "sha256": "0819173db3b03fe03e477b637b64b1dd89a92adce6530b893135402041c6532d"
+        },
+        {
+          "path": "stevenmih-1/held-42.json",
+          "sha256": "40ed450ccbbe1f46e2e011506273c89e329e2c023bfe2c0b920e218039ec7db0"
+        },
+        {
+          "path": "stevenmih-1/held-42-inclusion.json",
+          "sha256": "4f6a3f1fc076ca6e11195db93d45c19d77dccf5db9d2d2aa5cb8981685878200"
+        },
+        {
+          "path": "stevenmih-1/held-42-citing.json",
+          "sha256": "10429b172e9f51028bf8eaabefca466befe7de9a36515c867b88982669406cc5"
+        },
+        {
+          "path": "stevenmih-1/held-43.json",
+          "sha256": "fb74fe1d8c4fdb5e6615c66e88449a67ecd9b47d692ef147f9ad5c861dba4db5"
+        },
+        {
+          "path": "stevenmih-1/held-43-inclusion.json",
+          "sha256": "b2529f6c0453efdff7df20b56a1e6ed230359b2d70145518314b55e80dcd839f"
+        },
+        {
+          "path": "stevenmih-1/held-43-citing.json",
+          "sha256": "d03bb8b1ee201dfc56e60697cb6cf34a94cb7c673000fe7595ed312b6bd3ec7a"
+        },
+        {
+          "path": "stevenmih-1/held-44.json",
+          "sha256": "7e2ad67460bb3d6f0d35baa160285752dcf33afca804110dbe7d41d1e83351ec"
+        },
+        {
+          "path": "stevenmih-1/held-44-inclusion.json",
+          "sha256": "9154e2592eb57ec5cf5ba7783459f242f80199378dadbe61f855f52bc8cdeced"
+        },
+        {
+          "path": "stevenmih-1/held-44-citing.json",
+          "sha256": "7bc0dfc82d23e46c21ae69ad3005403397c7d7c72b5a64bae147e438d3c54530"
+        },
+        {
+          "path": "stevenmih-1/held-45.json",
+          "sha256": "7335c186c72f93f506a0a5c91433027e29dae89f3538d1cd383a8fd0bb44d4cd"
+        },
+        {
+          "path": "stevenmih-1/held-45-inclusion.json",
+          "sha256": "223740f1201bf320fe7caef71eea21501e6b43e6d1105585eb195769e6d520c0"
+        },
+        {
+          "path": "stevenmih-1/held-45-citing.json",
+          "sha256": "0fc0d4a79f484ce214e018ed1783c0cce3ecfba53d5ad6e462f99577e5cc37d6"
+        },
+        {
+          "path": "stevenmih-1/held-46.json",
+          "sha256": "795393654ff9a48dae60fea49c7243c2ba634c3ccd2eac3fe2aad1ff3e65706f"
+        },
+        {
+          "path": "stevenmih-1/held-46-inclusion.json",
+          "sha256": "130bb1bab52f4dd6dec3f684e9c7edf9b789dad50275d1d933a6c19a857cc890"
+        },
+        {
+          "path": "stevenmih-1/held-46-citing.json",
+          "sha256": "0da358f3c9671da77a24f19edc3249c08e7a3b38ddf41c0dc0dddd3de0d4ad8b"
+        },
+        {
+          "path": "stevenmih-1/held-47.json",
+          "sha256": "076e66e93e3e48fb070dccc9e9366cf5f4e277de751b1db925787be9c88e1592"
+        },
+        {
+          "path": "stevenmih-1/held-47-inclusion.json",
+          "sha256": "fa8026fc26a443175172b9d92812b9bafff079e866f36e00fde427e9c311b8a5"
+        },
+        {
+          "path": "stevenmih-1/held-47-citing.json",
+          "sha256": "299ac69c42882a626b3c4393e952f502076d93d8f3e33690905bb210639a1b9c"
+        },
+        {
+          "path": "stevenmih-1/held-48.json",
+          "sha256": "5648d6eb48db5ff1c52008289aaf6f3eb10a85b0d330b5dcbcffbd7252b35721"
+        },
+        {
+          "path": "stevenmih-1/held-48-inclusion.json",
+          "sha256": "64b784816639575d4a99567375baeb79ebf2be18eb4e49969bd35f474109e6f9"
+        },
+        {
+          "path": "stevenmih-1/held-48-citing.json",
+          "sha256": "7e9b5489d3872409d3f164eecead001b3b4cdc83197188d8d6449baff2342309"
+        },
+        {
+          "path": "stevenmih-1/checks.json",
+          "sha256": "96877bdd58561530d81f06da0064fa765d12f14065df05ffae2043db4c5defc8"
+        },
+        {
+          "path": "stevenmih-1/ledger/received-capsules.jsonl",
+          "sha256": "0033f0e04462e71136559745c9602713c066f5bd3eb9021a069dfec808d7a2ad"
+        },
+        {
+          "path": "stevenmih-1/ledger/received-provenance.jsonl",
+          "sha256": "e5856cd4e9efb7eefab01ba0f29c7346ca7a40a043b095fdacb26190f4f20ff0"
+        },
+        {
+          "path": "stevenmih-1/ledger/received-inclusion.jsonl",
+          "sha256": "73883fccaf1b6f3fd0a227508a5d3c76e7155ceed8c9fbca4cdd2404620b5cd2"
+        },
+        {
+          "path": "stevenmih-1/ledger/capsules.jsonl",
+          "sha256": "abf8d278c8de2d7f45a681caef90eef39e6133ca789abc0760fa1f9288bdee49"
+        },
+        {
+          "path": "stevenmih-1/sharing-effective.json",
+          "sha256": "769152f8af9d23da0ba715f15fc44c923ededb15720763d9073c6c3bef3470b6"
+        },
+        {
+          "path": "stevenmih-2/held-1.json",
+          "sha256": "3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694"
+        },
+        {
+          "path": "stevenmih-2/held-1-inclusion.json",
+          "sha256": "07b6a1bec0545ea5be8dccffacb8999c7aad1479b650d3b48e699e9d0a42d451"
+        },
+        {
+          "path": "stevenmih-2/held-1-citing.json",
+          "sha256": "2fa153cfc0549864cbb9cb8420447cfcc3ea58dff9e5f99a21b23253aface154"
+        },
+        {
+          "path": "stevenmih-2/held-2.json",
+          "sha256": "eeffa1110ff9a40f7a9855f892cd3d9946776abaa015b47beea534011e2fd5cd"
+        },
+        {
+          "path": "stevenmih-2/held-2-inclusion.json",
+          "sha256": "d777248be259d86700653b8ad3afc89595a54e80bfce6273b7ec2b14a6291859"
+        },
+        {
+          "path": "stevenmih-2/held-2-citing.json",
+          "sha256": "93050becede077802d5cfbc94531c7026ba9a014fb7955ce05297a8235f92c96"
+        },
+        {
+          "path": "stevenmih-2/held-3.json",
+          "sha256": "2e4ba152c0ed528752dfe5b9b6ae2958680e996b24a7f904f603817b88b6ba75"
+        },
+        {
+          "path": "stevenmih-2/held-3-inclusion.json",
+          "sha256": "138fd322f2f99e397cd8086621a9d1397e1670b47aeaedc78c15def6148e7ab1"
+        },
+        {
+          "path": "stevenmih-2/held-3-citing.json",
+          "sha256": "76cbf47db646725b13578b1c382f534ed58b459de908dd8d4bf7dbf19507139b"
+        },
+        {
+          "path": "stevenmih-2/held-4.json",
+          "sha256": "2dad71ebbc7460896fd1b5c3614bc4cb49511314e1d136cec182d481be3b248f"
+        },
+        {
+          "path": "stevenmih-2/held-4-inclusion.json",
+          "sha256": "883e91a5799fb89a5b75c14af44f4eb0d2360854cb9527fcd2c3ac8f27c02824"
+        },
+        {
+          "path": "stevenmih-2/held-4-citing.json",
+          "sha256": "ec240780bb0f796db2186ba67bad5620012034d79fd7fb6e908a65eb33de74b3"
+        },
+        {
+          "path": "stevenmih-2/held-5.json",
+          "sha256": "f139bb3f133e8101a53567517d3e78585245620d59902788bd1df99df157640d"
+        },
+        {
+          "path": "stevenmih-2/held-5-inclusion.json",
+          "sha256": "587600b58aa27a1f8e65ca4c72dc74ff4e809d24140ee9672dc51ac632eead63"
+        },
+        {
+          "path": "stevenmih-2/held-5-citing.json",
+          "sha256": "6b766043ff73e0eec6532708585cd2f2d94e833f87a2c2e85fe39d8a163999c4"
+        },
+        {
+          "path": "stevenmih-2/held-6.json",
+          "sha256": "3f559e8a474e129357b34ee359a18231f3a48584e20c694f4d2b70d4d4861bcf"
+        },
+        {
+          "path": "stevenmih-2/held-6-inclusion.json",
+          "sha256": "bbb94ace43e734037b474418ae57223b28d82954455f49a8ae6da513e97a982a"
+        },
+        {
+          "path": "stevenmih-2/held-6-citing.json",
+          "sha256": "02a13ce64baa2c679b2eeb9915f5d5170ea875ab5f73d237775ba2ced29b7bfb"
+        },
+        {
+          "path": "stevenmih-2/held-7.json",
+          "sha256": "fe289cf939244472a99aae21df86189e2162df7699ec98f7028b803b286c3700"
+        },
+        {
+          "path": "stevenmih-2/held-7-inclusion.json",
+          "sha256": "d18bca98a3453104ca2ed77aad741f8ccf86a38f7112a80d8da96d47f238495f"
+        },
+        {
+          "path": "stevenmih-2/held-7-citing.json",
+          "sha256": "bf0182a34cb2625a647b27c19424b0cf46b11dc40c8b2eeff1a5feef0b0cf9ea"
+        },
+        {
+          "path": "stevenmih-2/held-8.json",
+          "sha256": "aa3a716dda38bd95899598d5395a10590e83a9c552eee9ade24855094aaa8443"
+        },
+        {
+          "path": "stevenmih-2/held-8-inclusion.json",
+          "sha256": "0372a221b4193f1fae8c9328c1a277df0ce8b1dc8caf7b4ed89de7ba58cd8eb3"
+        },
+        {
+          "path": "stevenmih-2/held-8-citing.json",
+          "sha256": "fcc1283cad74a3afa841e6dc744b12082a1e7c28cc5e03fc3015e1532b5f0cc4"
+        },
+        {
+          "path": "stevenmih-2/held-9.json",
+          "sha256": "c32a07399cfaf670f4c34601351fe23f5760880913d281c9876f26eac23c9d6c"
+        },
+        {
+          "path": "stevenmih-2/held-9-inclusion.json",
+          "sha256": "ae1b7debbe7d2c6fcc960007cd80b7a8bdbcaea9285ba81b7a947a2e0d769bd4"
+        },
+        {
+          "path": "stevenmih-2/held-9-citing.json",
+          "sha256": "607f22c6b899f97f94588246634e7586f9ec440284a23f761aa0a564e3564013"
+        },
+        {
+          "path": "stevenmih-2/held-10.json",
+          "sha256": "e13d4db176c3d5270f5a54d02ba15c6ab46d39d40d9e953e4d33f68963795aa5"
+        },
+        {
+          "path": "stevenmih-2/held-10-inclusion.json",
+          "sha256": "d60faced32111b7efbae190beb9bbb8c281ab7af766b6e472b6a0e83d1182d83"
+        },
+        {
+          "path": "stevenmih-2/held-10-citing.json",
+          "sha256": "e79055c93e650a26759a13211851ee66a8a9719962c88c0cc87d698ba549cd2e"
+        },
+        {
+          "path": "stevenmih-2/held-11.json",
+          "sha256": "54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683"
+        },
+        {
+          "path": "stevenmih-2/held-11-inclusion.json",
+          "sha256": "b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd"
+        },
+        {
+          "path": "stevenmih-2/held-11-citing.json",
+          "sha256": "8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b"
+        },
+        {
+          "path": "stevenmih-2/held-12.json",
+          "sha256": "1863bfedb3bd9116759e4766098089bf09979c7d657e2dd223e393a9d5988bf3"
+        },
+        {
+          "path": "stevenmih-2/held-12-inclusion.json",
+          "sha256": "fb54810708d6af0b9887be57dd8fddfc4ff37cf7fa4e452cb7788523ada3de9b"
+        },
+        {
+          "path": "stevenmih-2/held-12-citing.json",
+          "sha256": "45ab161317acfdc7191509d57d1bc13814b636b9cee57cd0789a4dde2b2cb76e"
+        },
+        {
+          "path": "stevenmih-2/held-13.json",
+          "sha256": "0213ea65ee07f1755bbc0d62f4e45ba68af3a0b829a896e811a59bc3e087e02a"
+        },
+        {
+          "path": "stevenmih-2/held-13-inclusion.json",
+          "sha256": "ed657e656e021a38a4839dbc7c51eb816b3800d66d2893ebcfc84a3f755470dd"
+        },
+        {
+          "path": "stevenmih-2/held-13-citing.json",
+          "sha256": "a4edabc5b1a5fe35b7b1d174412031c9d61f7e9d02a49904d2e81c013b5e0daa"
+        },
+        {
+          "path": "stevenmih-2/held-14.json",
+          "sha256": "531dbfb16c0c6a7e3bd1d5cadeb41815952d9bf5a806a57c903d510fadd72e6a"
+        },
+        {
+          "path": "stevenmih-2/held-14-inclusion.json",
+          "sha256": "0f3483aa96e9f6e230eaa6fb53ce44dc45b0d1a230edc1ce9e6c66735ddb78f1"
+        },
+        {
+          "path": "stevenmih-2/held-14-citing.json",
+          "sha256": "8c8a4a6d059592e4726dc18220a3cc3c32d3c04da4555d693fca7efcb7e9c4e9"
+        },
+        {
+          "path": "stevenmih-2/held-15.json",
+          "sha256": "6f15599412f239e67ac5f7dc52638970f154f9291d24e953a0dde7d5114b11b0"
+        },
+        {
+          "path": "stevenmih-2/held-15-inclusion.json",
+          "sha256": "05105b7c62a492eadc33588af19c157551ed539d81d14f366c0dcc135390f496"
+        },
+        {
+          "path": "stevenmih-2/held-15-citing.json",
+          "sha256": "5e7d16b8dd4698b882a0a349b68cb9f7997ca7e644dde12a170cbbd5f8b98f7b"
+        },
+        {
+          "path": "stevenmih-2/held-16.json",
+          "sha256": "c5b1be456d043988cc0d27648deedeb3381dc2334662a6649efbff5de9d4c285"
+        },
+        {
+          "path": "stevenmih-2/held-16-inclusion.json",
+          "sha256": "cdd2502e967ad083ae17e927d89928663f9f2468a430933b695594c40c706ab3"
+        },
+        {
+          "path": "stevenmih-2/held-16-citing.json",
+          "sha256": "3a47f81a42edf59e6f87caa03c16791e38f0dd4f0c101d3908f6809a3a273356"
+        },
+        {
+          "path": "stevenmih-2/held-17.json",
+          "sha256": "facf796e3a54873ba9912561b61f2d178134184d11b7ed5f6bfa472328f46c97"
+        },
+        {
+          "path": "stevenmih-2/held-17-inclusion.json",
+          "sha256": "dd2b199ca82ffae8c77f54dd932a8661ccaa610f033ad17c10f530f61526a1bc"
+        },
+        {
+          "path": "stevenmih-2/held-17-citing.json",
+          "sha256": "9e0a1afbc809a5e3ebd8a2aa1aef6aa69e1e1305dcc31278091abb8d8d36c6a1"
+        },
+        {
+          "path": "stevenmih-2/held-18.json",
+          "sha256": "cfa92d5c0b960904376b2287853d0c908534a7c340243d5c10e8a9151218b31e"
+        },
+        {
+          "path": "stevenmih-2/held-18-inclusion.json",
+          "sha256": "f7ff5893ed2515fab1e541b416372358410d2d5feac0c0e80cce4c2c10634f95"
+        },
+        {
+          "path": "stevenmih-2/held-18-citing.json",
+          "sha256": "9983136117586302172e7eb774b11cc7a576fd97fe9e544cc2d21a9b4541b3a8"
+        },
+        {
+          "path": "stevenmih-2/held-19.json",
+          "sha256": "e4e831d39e68d2ae4a5e961d606e370489f0b1b5bdec9b21f05cdc95604b100b"
+        },
+        {
+          "path": "stevenmih-2/held-19-inclusion.json",
+          "sha256": "deadd477d4d98f8c28bbe400e4e54762c7a0a86701321ec7089a4b35e2730d7c"
+        },
+        {
+          "path": "stevenmih-2/held-19-citing.json",
+          "sha256": "a33093d4ce749ca568b8060b2c068a110419c8048b61df029d16d2d88392b213"
+        },
+        {
+          "path": "stevenmih-2/held-20.json",
+          "sha256": "6c444ed6f7c9e1ff05b4d2cebedfdd08e65e7c63f5ffb37a6eefe97cc6e1a0d2"
+        },
+        {
+          "path": "stevenmih-2/held-20-inclusion.json",
+          "sha256": "03dd63afec98b2e18cc5ae5a3dce17e3078cb38c51e181d89114d88fa0bfea5f"
+        },
+        {
+          "path": "stevenmih-2/held-20-citing.json",
+          "sha256": "4b0c5428cd17e873e51cfec7c7b4b28a2bacea66b0ab77c082aa66d8d38d9e75"
+        },
+        {
+          "path": "stevenmih-2/held-21.json",
+          "sha256": "fc11545e884dc2486dc4b452f732fa3bc4d4340466d138c6b1343e1087fc1996"
+        },
+        {
+          "path": "stevenmih-2/held-21-inclusion.json",
+          "sha256": "17a6d5cb8f240afe0d0b1f0a9266c4b6dc4bfc4eb5c88059b3e7ebf0c4622efe"
+        },
+        {
+          "path": "stevenmih-2/held-21-citing.json",
+          "sha256": "cfaf36026fb048568a8b2c6f610dd0b4f93fb3f3a612696f6f9d8db519b47fcd"
+        },
+        {
+          "path": "stevenmih-2/held-22.json",
+          "sha256": "01ebffa21ec8a163fe1bf56dc1fcf9fc4da8198d7e16605866353b90810f8f54"
+        },
+        {
+          "path": "stevenmih-2/held-22-inclusion.json",
+          "sha256": "76e0d26a7b0fd2380cfe56af08b16032691ab0d6b6d10a985be3eef390d6d6a9"
+        },
+        {
+          "path": "stevenmih-2/held-22-citing.json",
+          "sha256": "4eaaeb9b20e9922276e17bd1e4e7fe96d55c7b6895f56d2310419ba7a1fe5841"
+        },
+        {
+          "path": "stevenmih-2/held-23.json",
+          "sha256": "098ce7cf63bc024d991fca3bfec10777092c709862f02c93d8a9c51c9a7c7fea"
+        },
+        {
+          "path": "stevenmih-2/held-23-inclusion.json",
+          "sha256": "2020793796f02dddd14013d25d6e50975ca7618057de2f8e491673056fca35dc"
+        },
+        {
+          "path": "stevenmih-2/held-23-citing.json",
+          "sha256": "3f0f42e02e2b3a768974afa1899155d674dd256da71aa6a9aae59169aaa4f02e"
+        },
+        {
+          "path": "stevenmih-2/held-24.json",
+          "sha256": "84971dbd1fce3dd5401fff457d86cb690cab8134f9bd853f4b5f1f1509d658d0"
+        },
+        {
+          "path": "stevenmih-2/held-24-inclusion.json",
+          "sha256": "09e5ba97cf2dbd7bc127fd6502f5ced7b5d566923fb6486116d3b78f206d935f"
+        },
+        {
+          "path": "stevenmih-2/held-24-citing.json",
+          "sha256": "cb07312fd514fe8a69d81f2ddccccd72286d282f0cfe911c6f8030560d2aae5d"
+        },
+        {
+          "path": "stevenmih-2/held-25.json",
+          "sha256": "6cb83392e459b3fa37e74e2d978099456831c04dc27faad1d818499427c63662"
+        },
+        {
+          "path": "stevenmih-2/held-25-inclusion.json",
+          "sha256": "b09004bfab9c0537359af1ce4b675d111b297a8300860a8ca75896880caf431c"
+        },
+        {
+          "path": "stevenmih-2/held-25-citing.json",
+          "sha256": "32ec070e6623fb4a7317821e16e52f8f3bb6b781b41bb8778e63ea1f1dc5e90b"
+        },
+        {
+          "path": "stevenmih-2/held-26.json",
+          "sha256": "7f20d7fd3fdb34ae2e4c1019f66b4372b033337d41ff180990677d42403c4d96"
+        },
+        {
+          "path": "stevenmih-2/held-26-inclusion.json",
+          "sha256": "53938036cbe62db8b673f3bd92fb2f77eae9c776f7fc029423c1eb678936e6e4"
+        },
+        {
+          "path": "stevenmih-2/held-26-citing.json",
+          "sha256": "ce61387c2ea3d007a6340c6a78a9860559e6d0049b65994fc751cc6983c78ae8"
+        },
+        {
+          "path": "stevenmih-2/held-27.json",
+          "sha256": "1b950af77953fee3729759fe10d3708da8b02bb8911d7489a65163b7288fdf14"
+        },
+        {
+          "path": "stevenmih-2/held-27-inclusion.json",
+          "sha256": "b0162ee02c74c46e736c745a2a483801b8d7cf34ac5de52ab28a8036c2d715e4"
+        },
+        {
+          "path": "stevenmih-2/held-27-citing.json",
+          "sha256": "8c7ebc8790089b2f5e3149783afb07a0a83f622a9c3ae9065158ffd381a3bf5e"
+        },
+        {
+          "path": "stevenmih-2/held-28.json",
+          "sha256": "ac3711364d4eea162be9951e6c4c2d63de6f0d7744416973804f52b55bb0b1da"
+        },
+        {
+          "path": "stevenmih-2/held-28-inclusion.json",
+          "sha256": "dac061e8cfc175a742434eb5bfd1f3d8b64d83dd52f69bf41e6f9da57174f54a"
+        },
+        {
+          "path": "stevenmih-2/held-28-citing.json",
+          "sha256": "89a3b9dbaea7ac35a0027878e82b8e1ce91d47bd5f45b6d1c071377af9b02bc6"
+        },
+        {
+          "path": "stevenmih-2/held-29.json",
+          "sha256": "c54ad866ba1b7dd5e5337fc7752678a9bb7e9fa00a220c059daa4f968e927ca4"
+        },
+        {
+          "path": "stevenmih-2/held-29-inclusion.json",
+          "sha256": "4700321e9194dcb9ccc98630468c628b11fc97a4fb61c0fe6165bed24cedcdc0"
+        },
+        {
+          "path": "stevenmih-2/held-29-citing.json",
+          "sha256": "cef543ba2b6819eb02e1048c02be627f6898e681a9befaea7d670d597da335ff"
+        },
+        {
+          "path": "stevenmih-2/held-30.json",
+          "sha256": "4a99da2b20e964989250de41ab2f717410b8e7b98c1c7369b60732ccf9ed7539"
+        },
+        {
+          "path": "stevenmih-2/held-30-inclusion.json",
+          "sha256": "f8697127004e249a6df2a567792a7592115a71241368500f003813fbd111e7d5"
+        },
+        {
+          "path": "stevenmih-2/held-30-citing.json",
+          "sha256": "74df7a7fa4e1a3facf73ade2de9c25ddf71aa841ef42916147987223bd00c088"
+        },
+        {
+          "path": "stevenmih-2/checks.json",
+          "sha256": "e5b16d77e6afceda90fe90f93f3fce8386ebe2106a29f266b66ea4d694fa82f2"
+        },
+        {
+          "path": "stevenmih-2/ledger/received-capsules.jsonl",
+          "sha256": "016556af506d67f2d4703980f5f1112ecf94a1d73940d09b7d66348086a6a8dd"
+        },
+        {
+          "path": "stevenmih-2/ledger/received-provenance.jsonl",
+          "sha256": "8dfa56daa561131aa2073c956f70effa02365a4fbe0e4e2c360264db9d4e5348"
+        },
+        {
+          "path": "stevenmih-2/ledger/received-inclusion.jsonl",
+          "sha256": "ae97caa7f38f21abdb0413e394be2c4c070b104b7450702ac7d821ff186785d0"
+        },
+        {
+          "path": "stevenmih-2/ledger/capsules.jsonl",
+          "sha256": "06d7a595731b4f25b8232e3bcb23f053beb0e65c0c4d34ad1a023f8cab762a60"
+        },
+        {
+          "path": "stevenmih-2/sharing-effective.json",
+          "sha256": "453878a45b027f8b45db877b691c925a8502bde26e7f15f33a6e8e0fceb6f90e"
+        },
+        {
+          "path": "stevenmih-3/held-1.json",
+          "sha256": "f59bb27d2939c729fda5379fd2e5dd2607b94d29722830a1dcfbf2b89d46df1f"
+        },
+        {
+          "path": "stevenmih-3/held-1-inclusion.json",
+          "sha256": "0cd9395d238f9b18ddc415121bb9749de416ac69da266b4ba584e90eb7bf236e"
+        },
+        {
+          "path": "stevenmih-3/held-1-citing.json",
+          "sha256": "22d5b139138d952a126017c2a6c0fef2ee7717493563bdc067b18896043059e5"
+        },
+        {
+          "path": "stevenmih-3/held-2.json",
+          "sha256": "ec77363e51ac6acd549987bd66f333ffe5682d607c51dadd68c987eb91a91157"
+        },
+        {
+          "path": "stevenmih-3/held-2-inclusion.json",
+          "sha256": "778097d96ef3fd7ce93b5f188c85ac2fc957dab53a12ef6cc9137fcca8f6108a"
+        },
+        {
+          "path": "stevenmih-3/held-2-citing.json",
+          "sha256": "dc89de00cd9a69d65b9dc11a44eb83af0a725dfc9968891ecf6385b490b816e3"
+        },
+        {
+          "path": "stevenmih-3/held-3.json",
+          "sha256": "267ea925e15c79a1598d91be25c0f61097089e58aabdec5910e1603ef882203d"
+        },
+        {
+          "path": "stevenmih-3/held-3-inclusion.json",
+          "sha256": "7633fb8d8e9b6b719a4ba1b0cf704cf40b185c27f1ebe13d437631af048bc84e"
+        },
+        {
+          "path": "stevenmih-3/held-3-citing.json",
+          "sha256": "1e6d0b1fd6ab06eea308fbe30d9ade06236389f2aa5bf01acaaf43f938c5185b"
+        },
+        {
+          "path": "stevenmih-3/held-4.json",
+          "sha256": "3e94dfda53b14610fe3d43e0c3c80cf64b321a6cee9224b27312c4c30a607549"
+        },
+        {
+          "path": "stevenmih-3/held-4-inclusion.json",
+          "sha256": "bc74ee9cac48b60280658cc941ca4585065e8b5f4daea0ba33bc54e4c7113da3"
+        },
+        {
+          "path": "stevenmih-3/held-4-citing.json",
+          "sha256": "7b9732118e4c7ee68fbc8226e8dbd381d18a748f684f89e83d1a35d123ff57e5"
+        },
+        {
+          "path": "stevenmih-3/held-6.json",
+          "sha256": "56bc8a5180f7d1bb0ad6e4268ad81a139af4666406699ee3ebd347d31df25693"
+        },
+        {
+          "path": "stevenmih-3/held-6-inclusion.json",
+          "sha256": "567670a4fa8904610986740fa7688e80f88c7c09330c5df0af4b97278b2df48a"
+        },
+        {
+          "path": "stevenmih-3/held-6-citing.json",
+          "sha256": "c7476b2342641e99584453c4224bba356308549c2ba3c81a573da0afc9701942"
+        },
+        {
+          "path": "stevenmih-3/held-7.json",
+          "sha256": "c7aa8feef735ec7f9f153d6b07aa41542d669b6b2daaced09c25ec1113e0e939"
+        },
+        {
+          "path": "stevenmih-3/held-7-inclusion.json",
+          "sha256": "891c0d1766a91ffaf5b4db223b93f1cf1992f562417ac7deaf1d7792016710c5"
+        },
+        {
+          "path": "stevenmih-3/held-7-citing.json",
+          "sha256": "75d235f86701e77d02764a56c2cb4b950bcef3f134bec4bde024e76b5094807d"
+        },
+        {
+          "path": "stevenmih-3/held-8.json",
+          "sha256": "d1d7041dfb3f5ca8672cf3f181349e4835f3e445df4f068040e16c9f837b55c7"
+        },
+        {
+          "path": "stevenmih-3/held-8-inclusion.json",
+          "sha256": "e01faafc24982406645a62654eee49bfcde17dafba1d71c1c8918fc450856bfb"
+        },
+        {
+          "path": "stevenmih-3/held-8-citing.json",
+          "sha256": "fd05dd8a28c285e961cc781bcdaf6f8815b3d0f0d3a04569be07ff003c427bb6"
+        },
+        {
+          "path": "stevenmih-3/held-9.json",
+          "sha256": "8b413cade39b3ac50bbe0fa47541a5a67f5a3a6442c75f1708b5e912b819d099"
+        },
+        {
+          "path": "stevenmih-3/held-9-inclusion.json",
+          "sha256": "d302690e87359c290cfe2fcdfcc70c7bac5e7a66a67774399293af71ebda4278"
+        },
+        {
+          "path": "stevenmih-3/held-9-citing.json",
+          "sha256": "7285071f5efc571d8630643380098efeba57248e184dd1a7d4dcb5f7c076f735"
+        },
+        {
+          "path": "stevenmih-3/held-11.json",
+          "sha256": "9fd14f442b22b286a8b5f71ea8feb0fbb1d7de8006fb735e6b7f704c9663b70b"
+        },
+        {
+          "path": "stevenmih-3/held-11-inclusion.json",
+          "sha256": "c57921472af421fb41b4c3e4a67d4be2094e21b5f47555e8c74e4396c1c6d8e3"
+        },
+        {
+          "path": "stevenmih-3/held-11-citing.json",
+          "sha256": "7d602832086631ac383c6c2b3a9cf34064cffe1a624ce54cdc2f689320a2ce80"
+        },
+        {
+          "path": "stevenmih-3/held-12.json",
+          "sha256": "1aba8b56410c2abf01b5259631df403590a70fd551a720e63a454d526ac51c1f"
+        },
+        {
+          "path": "stevenmih-3/held-12-inclusion.json",
+          "sha256": "e65ff8555e73bdebd9c01a475446f060fa04fc77653fe4794774585e59c10c26"
+        },
+        {
+          "path": "stevenmih-3/held-12-citing.json",
+          "sha256": "2dce5a93433363483337bd4e4315d232c1acb773e4a919771592f01f9d2fd3dd"
+        },
+        {
+          "path": "stevenmih-3/held-13.json",
+          "sha256": "d77d340fe6dd1021a5c39e20596d3780c34067443153ccc45d127067a001aae2"
+        },
+        {
+          "path": "stevenmih-3/held-13-inclusion.json",
+          "sha256": "e8e21bc7003f57b92628b389dc494f17d87510381a5329ecadf3d48e27140dc3"
+        },
+        {
+          "path": "stevenmih-3/held-13-citing.json",
+          "sha256": "27c29c9832b58ab1e4b192b48bc51305b3a224f0f638fe939b9fec96b0071837"
+        },
+        {
+          "path": "stevenmih-3/held-14.json",
+          "sha256": "05db2b4418ca074edee12294fb9f69f9176ed3cc933564c6b62dff605cb316aa"
+        },
+        {
+          "path": "stevenmih-3/held-14-inclusion.json",
+          "sha256": "fcccc02eb19b498021b38a2396d02171f95b727140a6bd70326aa88300569c6a"
+        },
+        {
+          "path": "stevenmih-3/held-14-citing.json",
+          "sha256": "bf7c388f9b256dc5c0c60a2eaa3ab49e82e7745720ba758f6149adf402a0770a"
+        },
+        {
+          "path": "stevenmih-3/held-15.json",
+          "sha256": "b12bada165ea574738dd2e207e79434c4f06a72c8380a9e9d0b3a560b266bf4e"
+        },
+        {
+          "path": "stevenmih-3/held-15-inclusion.json",
+          "sha256": "99e2d26b8223d3ca54af21eb7bc07f2acb7dc4245590c38b55b1287af13a0fd9"
+        },
+        {
+          "path": "stevenmih-3/held-15-citing.json",
+          "sha256": "4db4dabffeb5ecab687172aea867603a7e7f5de8de80a08ceed2e187d94a7048"
+        },
+        {
+          "path": "stevenmih-3/held-16.json",
+          "sha256": "d34243593aec77631d6122495bc5e21dd72e26fdad6106b394cd8d8500c4e229"
+        },
+        {
+          "path": "stevenmih-3/held-16-inclusion.json",
+          "sha256": "0ef446e8c9d2b5e3ebf4859722dfdac784b65d4669ade0bc2d7a7e370f10707a"
+        },
+        {
+          "path": "stevenmih-3/held-16-citing.json",
+          "sha256": "04ba535d92996fef3977b94eb44fde867e40c88bf88244e837229082bb6827ab"
+        },
+        {
+          "path": "stevenmih-3/held-17.json",
+          "sha256": "e9492c28a8720ed81e32de9be10e1e330f162c90508bffc7811ae188fdfc3042"
+        },
+        {
+          "path": "stevenmih-3/held-17-inclusion.json",
+          "sha256": "b08b760468f4cb1fe4d21fe1595a50300c7158f83934178eb3aa0a8309f6e74e"
+        },
+        {
+          "path": "stevenmih-3/held-17-citing.json",
+          "sha256": "0bfe83e0335e7f6debac76470ad1c0d772e163a4e238b3e87b2ef409a81656db"
+        },
+        {
+          "path": "stevenmih-3/held-18.json",
+          "sha256": "685df7a03efcb79efece9ab4f685b0136437127ac0494f89a8cd47fb5c5c6978"
+        },
+        {
+          "path": "stevenmih-3/held-18-inclusion.json",
+          "sha256": "6d440d20961305a5f8fd7649f8ec4cf3d15141f6a2a0c1b1aeec6d4ce5f15cb5"
+        },
+        {
+          "path": "stevenmih-3/held-18-citing.json",
+          "sha256": "a7ef8a4654fd314e25352ddd18ab388ad36858c5ea406933348c966a2e229037"
+        },
+        {
+          "path": "stevenmih-3/held-19.json",
+          "sha256": "ed34654a61eaea31eb27b5136d3e8c032897cc8700d39fc83638d8258b4a0ea1"
+        },
+        {
+          "path": "stevenmih-3/held-19-inclusion.json",
+          "sha256": "d75174f7b4f170a21a1b65b63d3a745ccee99c0bd733cb95bf4ff690786ec32c"
+        },
+        {
+          "path": "stevenmih-3/held-19-citing.json",
+          "sha256": "607a16af1d966c3d6ab4dc7bb74a1376203cb8880a98225c28b96629d870555a"
+        },
+        {
+          "path": "stevenmih-3/held-21.json",
+          "sha256": "e1172d7d082ba9c205f8f50c81c555abbdf4fc86fecf0996300b89a1d48099c8"
+        },
+        {
+          "path": "stevenmih-3/held-21-inclusion.json",
+          "sha256": "0c5e4e201b08fd8ef360557a9b6c0a39becb35e4fa25ebc337f46be53d2a2328"
+        },
+        {
+          "path": "stevenmih-3/held-21-citing.json",
+          "sha256": "ea726fb63626c36fcd5686fc3a4fb723015ad39f7ee0e118cf40c89374297150"
+        },
+        {
+          "path": "stevenmih-3/held-22.json",
+          "sha256": "789a3b714f08ac51e9cf3ab32dff5a653884dadb6ce57f90d6ae9c6c9717aa57"
+        },
+        {
+          "path": "stevenmih-3/held-22-inclusion.json",
+          "sha256": "ada967c601daa6f395ffe4cd32e6e3d9ee58fb5a2c160a2caec1dc0e54ca6445"
+        },
+        {
+          "path": "stevenmih-3/held-22-citing.json",
+          "sha256": "66aaf529b06fc69a25c6b0f6fee16d03a5a46a649658a7ad747f1893f251c1fd"
+        },
+        {
+          "path": "stevenmih-3/held-23.json",
+          "sha256": "e5b6b85cc33327ce3b96d0f7601f686fc2e0186ff6bec5bebb56f642d1a3c481"
+        },
+        {
+          "path": "stevenmih-3/held-23-inclusion.json",
+          "sha256": "e5c907de312aa1764ea59e7fe9156643b5d249cb49a3288db9d7c14ba62dcba8"
+        },
+        {
+          "path": "stevenmih-3/held-23-citing.json",
+          "sha256": "1747089a10460c5b56c06044c126e9dacfc543cbc73f9dd4f84633fd3b5ae2eb"
+        },
+        {
+          "path": "stevenmih-3/held-24.json",
+          "sha256": "8b798f8d6273cad2f8f39eab17aff00357658c598cb2a92c61b1fd1b9b920459"
+        },
+        {
+          "path": "stevenmih-3/held-24-inclusion.json",
+          "sha256": "7b5a4f52ced070b3ac4a9c795b85030804727cf32cefe5cd6817f36396705117"
+        },
+        {
+          "path": "stevenmih-3/held-24-citing.json",
+          "sha256": "38d4f471680e605641183d157d932b5a9146be81652e7abc426d743b82de5413"
+        },
+        {
+          "path": "stevenmih-3/held-25.json",
+          "sha256": "070da42acc5dd48f85c8976694fba168ab07476d4591476bb2bf9b109829b332"
+        },
+        {
+          "path": "stevenmih-3/held-25-inclusion.json",
+          "sha256": "ce5f8f618d6ce79494ce94a0c1940a4db4516ad10e86863c55702052ce2c5563"
+        },
+        {
+          "path": "stevenmih-3/held-25-citing.json",
+          "sha256": "f6671ff0a68db5998fddbc1056fd679cd459588f5f2e337476bf41e3af3df7f5"
+        },
+        {
+          "path": "stevenmih-3/held-26.json",
+          "sha256": "627ccbbd07117568a98d529d1d7aa83828c42635d0b29d3b148145a1db31b461"
+        },
+        {
+          "path": "stevenmih-3/held-26-inclusion.json",
+          "sha256": "6ed2bdf927efec40963ee7d17d540e849d30abf08f328507960cd06808c4c042"
+        },
+        {
+          "path": "stevenmih-3/held-26-citing.json",
+          "sha256": "4ac45e5f7585aefd7c2e06e2bca38b46102c2ecfa2a099e4ad60eae25846e3c4"
+        },
+        {
+          "path": "stevenmih-3/held-27.json",
+          "sha256": "a1f8f97e8b28cd277f6942c1ee7513e6b2bf91f1656a9a33e54c702f45188ee1"
+        },
+        {
+          "path": "stevenmih-3/held-27-inclusion.json",
+          "sha256": "3e8aa38e389df54610def8a8954eb97cd558ed89b5a5c6edafb9e8b29bd3e8c9"
+        },
+        {
+          "path": "stevenmih-3/held-27-citing.json",
+          "sha256": "2f36433e5065e7080e14413ebb60f31cf97e6a53aa317f51ce26e6de2023c5c0"
+        },
+        {
+          "path": "stevenmih-3/held-29.json",
+          "sha256": "ef722ad88b7e2b7386fea5a7f08fce8f867b422b8bc3e346e9a00caab19a1acc"
+        },
+        {
+          "path": "stevenmih-3/held-29-inclusion.json",
+          "sha256": "e1e6eae5e853fd9e917c76499fc02b8f41e9f3d3f16adb2f6ee9e8047e4fecc4"
+        },
+        {
+          "path": "stevenmih-3/held-29-citing.json",
+          "sha256": "48036446b7c5ab06f5b3a7e09a8edb705533a215f3aebf197e13df356c1c25f4"
+        },
+        {
+          "path": "stevenmih-3/held-30.json",
+          "sha256": "4f2540e37efe1b5c9dca1d1a348fc64654c2cf884b7d61186145c22d3b0a65bd"
+        },
+        {
+          "path": "stevenmih-3/held-30-inclusion.json",
+          "sha256": "5a241cbb9a08b3bd41ee2ac9ecaf23772772eb792273d36f8a2644b8cdcad013"
+        },
+        {
+          "path": "stevenmih-3/held-30-citing.json",
+          "sha256": "58dbe250f908888b8bece448bfc654b384ec0e1720c336305ddd912ee899b1ca"
+        },
+        {
+          "path": "stevenmih-3/held-31.json",
+          "sha256": "3b842a4beb19e512b9a5a0290b9ee02e5d33764482c05d0a8c9d8fcf209ec05f"
+        },
+        {
+          "path": "stevenmih-3/held-31-inclusion.json",
+          "sha256": "67762083e1bad584438aef10b20b88b3d0823080c698f1b179b93835d7a6dd7c"
+        },
+        {
+          "path": "stevenmih-3/held-31-citing.json",
+          "sha256": "cbda2ea4f006ef615bc84720fca53eabc547b325254da9afe451b2713c0f5174"
+        },
+        {
+          "path": "stevenmih-3/held-32.json",
+          "sha256": "2302883fe902703fb1cbf7df66c1fbb399dc146f152bf1ee7941741415c7f3a1"
+        },
+        {
+          "path": "stevenmih-3/held-32-inclusion.json",
+          "sha256": "b1629c528a67e0e8f807419c8524119df2cf4b98fb11a47e54ef721f48a8aa43"
+        },
+        {
+          "path": "stevenmih-3/held-32-citing.json",
+          "sha256": "f457850a26e0579f36faee39512299a65d07207851688155529724e5da03d9d7"
+        },
+        {
+          "path": "stevenmih-3/held-34.json",
+          "sha256": "6158ea3a214910244a4759a1316ad2dcfdfe2ff86449d70be41e5b343953265e"
+        },
+        {
+          "path": "stevenmih-3/held-34-inclusion.json",
+          "sha256": "f44e262bb1914f9c47f5f098ec03750584beac9e7adb0adb98671745bd696afb"
+        },
+        {
+          "path": "stevenmih-3/held-34-citing.json",
+          "sha256": "8f2e4ba519c1ce782d5477961af1f5094dd2e305fa04ce9b512afaa02041197e"
+        },
+        {
+          "path": "stevenmih-3/held-35.json",
+          "sha256": "ce0ab2bb0c20983d47de5e8aee2f71f15fb349fe9293806c56da6a7e349d45af"
+        },
+        {
+          "path": "stevenmih-3/held-35-inclusion.json",
+          "sha256": "c11cdd8d7e9ee20cd98f5206af468397d7866fa919bcafb2c42af1b5257680cb"
+        },
+        {
+          "path": "stevenmih-3/held-35-citing.json",
+          "sha256": "60ccb78c12a9deb8a6e40b24db27e4e5ce4987030673ffbc82122d0e3cc6d513"
+        },
+        {
+          "path": "stevenmih-3/checks.json",
+          "sha256": "4ee9d8a1ec4bf64365bc12bc0deac20661a610dc01eabb65c03ce3a2c9e1d199"
+        },
+        {
+          "path": "stevenmih-3/ledger/received-capsules.jsonl",
+          "sha256": "ba46b8b79396169fa18c916169737a5afd6bca4c2a67db70984e7659f8ab3c09"
+        },
+        {
+          "path": "stevenmih-3/ledger/received-provenance.jsonl",
+          "sha256": "0fdf95e13124584d57c592104e9d375fe841cad3202c1f125ef00782e494d513"
+        },
+        {
+          "path": "stevenmih-3/ledger/received-inclusion.jsonl",
+          "sha256": "9bc5de7bc12fa675c9c6f63c6a01ce07ac9e45bbbf96b0ec3dce42d5f56418c2"
+        },
+        {
+          "path": "stevenmih-3/ledger/capsules.jsonl",
+          "sha256": "37e07427c4d8ffee6ed4feef06f44b5877db5917f684a5b935b7908a93aa9f53"
+        },
+        {
+          "path": "stevenmih-3/sharing-effective.json",
+          "sha256": "05386f34c00e98ddf56857a7306076636f9d6847437667039cd8fca96cea7de6"
+        },
+        {
+          "path": "stevenmih-1/controller-binding.json",
+          "sha256": "e5fc74a8945b91636e037b60db53c960852b1f57166dc9ba18dd0bab79268621"
+        },
+        {
+          "path": "stevenmih-2/controller-binding.json",
+          "sha256": "0be7a9bca01e87c109aa5ce6508af811401ca2c98043ad471c6fdea0a01c4b36"
+        }
+      ],
+      "name": "deal",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "Mesh-LLM/capsules-plugin#175",
+          "what": "step 05: each node's copied ledger files are the node's whole files",
+          "why": "08 checks every held half again on the copies, but no checkpoint the node signs covers them"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 05: the cutoff LOOP_SEALED_SINCE 2026-10-31T18:24:32Z (when the lab's current build started sealing)",
+          "why": "the bundle does not bear it out, so it is 05's record of its run"
+        }
+      ],
+      "status": "reproduced",
+      "step": "05"
+    },
+    {
+      "dir": "06-settle",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "89f0bad4d6f09a08e02dff235964c7f8c5b3fd0d79825c94338854127b2469c5"
+        },
+        {
+          "path": "stevenmih-1/recorded.json",
+          "sha256": "f57ecde0a4e426159325a6ab9d029d2211e60c029780a0866895cc87dc558c0f"
+        },
+        {
+          "path": "stevenmih-2/recorded.json",
+          "sha256": "ed8760c1f6c93ea689531b39f8f101742abea8394bc3a9d1b6cf5bab589b9bd2"
+        },
+        {
+          "path": "stevenmih-3/recorded.json",
+          "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70"
+        },
+        {
+          "path": "checks.json",
+          "sha256": "efa1811d32a096df114c3ab4dd9d7e4a251d0313a67cc1e8a042503fb3bd907f"
+        },
+        {
+          "path": "counterparty.json",
+          "sha256": "94b5baebc0ef407e1b42850dc5d0f8750a1cff43ca7bfb2192eea224cc9bf907"
+        }
+      ],
+      "name": "settle",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "Mesh-LLM/capsules-plugin#175",
+          "what": "step 06: each node's recorded.json is all the settlements its ledger held",
+          "why": "08 runs 06's ruled checks again on the records 06 kept, but no checkpoint the node signs covers its ledger"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 06: the preimage checks behind finality",
+          "why": "recorded.json keeps each preimage check's outcome, never the preimage, so 08 takes that a payer's preimage hashed to its payment_hash from 06"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 06: each settlement bundle a counterparty_count was checked against",
+          "why": "the proof holds each check's status, counts and the bundle's sha256, not the signed bundle or the check file, so 08 takes the status against the bundle from 06 and decides again only that the paired count is the books' pair count"
+        }
+      ],
+      "status": "reproduced",
+      "step": "06"
+    },
+    {
+      "dir": "07-ask",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "1fe59ce19c621ae01f8d6e0b79e7ddbc7d6d04d507be7f0ab2af4b4b5baf648f"
+        },
+        {
+          "path": "first-answered.json",
+          "sha256": "268a13a418759f46515a84d07f7692fb7963037397300e2a2f1d8a2d8ad0e5ac"
+        },
+        {
+          "path": "ask.json",
+          "sha256": "48896a8b2537d38d848d16c00d5e7e1dcd95b34144eb35d0d3ea0eeb6c40129e"
+        },
+        {
+          "path": "stevenmih-1/commitment/choice.json",
+          "sha256": "6fa771c41e90867ec8634babe0fca1ca2187d8d1f270a10b378167dd9f7b3ecf"
+        },
+        {
+          "path": "stevenmih-1/commitment/commitment.json",
+          "sha256": "5f800bfa3673ac21b067d73f5f2afd85041b57203d3cdc97d23a11f11017708f"
+        },
+        {
+          "path": "stevenmih-1/commitment/policies/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json",
+          "sha256": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73"
+        },
+        {
+          "path": "stevenmih-1/exchange-subject.json",
+          "sha256": "fca47a6b2079f51347e9c27f329f0d350fe94d01a43ac7b0708642a8338fc0b1"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/ATTEMPT",
+          "sha256": "5714bfd69fc6dde0cac596c78692292ae7e99fb3711736c91cbecacc889037d7"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/checkpoints.ledger.json",
+          "sha256": "a17ed5091d946fb5f83b7980c3c779782e9cba88fd9c64b3bdeab8c40fe84955"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/checkpoints.response.json",
+          "sha256": "aaf4a3b50d04188874342a5b99a73fbd01cc367dba2a0dc0d205a8f87a528147"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/checkpoints.verification",
+          "sha256": "00bec0da71fddc37149a8c753cbccf4a85057862a1e74820a10adeac5185cd08"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/peer-key.json",
+          "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193049Z/timing.json",
+          "sha256": "a03f301440efe90a6674bc4d15e34d30561c3ba6982aa4cc64ea4f07cf2f1aa3"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/ATTEMPT",
+          "sha256": "73955f043043099ff6252ab4d0e673c4a4d57a8bdd3e5a76b8408a3e432ef387"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/history_card.ledger.json",
+          "sha256": "1722164406146874e13fd1c07bf28dde0264c7d1ca0b46af7723663bba3e3eda"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/history_card.response.json",
+          "sha256": "70453f1e7214d1836af76b948cd4e681adf2caed4878dff638eb92501b1cb327"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/history_card.verification",
+          "sha256": "00bec0da71fddc37149a8c753cbccf4a85057862a1e74820a10adeac5185cd08"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/peer-key.json",
+          "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193050Z/timing.json",
+          "sha256": "55a2e09044bd66ce246edd7b213899f00398b3374d0df332b775f4cd061e7eb8"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/ATTEMPT",
+          "sha256": "bd8133f239305475fc80305b15bed15bcb9cac0db38e4c104d97b879201da06b"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/exchange.ledger.json",
+          "sha256": "a24e9030fde118eb1a79ad0427b3cb96d40f3f9cce96ef13b82abcedfedb394c"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/exchange.request.json",
+          "sha256": "602bc7cbc786a5fd9501ebfb8a917dd1370645bc4fb3df55d55a857e0efd5c54"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/exchange.response.json",
+          "sha256": "864a40ce65c539f1b4766228d607e0a8ca6c74a62c6988d8bb0851727f9930b9"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/exchange.verification",
+          "sha256": "f856f6d9f12aab6b9382b62871d40388a4d3688994ae8bd395e26651b19f8d1c"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/peer-key.json",
+          "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193051Z/timing.json",
+          "sha256": "b82be80b76a04d333633701b0a98928ef49a06b2d8017e73d8285cb194aeaa8a"
+        },
+        {
+          "path": "stevenmih-2/commitment/choice.json",
+          "sha256": "da6cc1b8720cab84c8158ad8e50e1623ff0570289954c83620df73b2500f2f8c"
+        },
+        {
+          "path": "stevenmih-2/commitment/commitment.json",
+          "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd"
+        },
+        {
+          "path": "stevenmih-2/commitment/policies/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+          "sha256": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165"
+        },
+        {
+          "path": "stevenmih-2/exchange-subject.json",
+          "sha256": "5538fbb66d1a6d445d1e401c058515945cf91131c433ccdea91856368bee1c07"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/ATTEMPT",
+          "sha256": "bd8133f239305475fc80305b15bed15bcb9cac0db38e4c104d97b879201da06b"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/checkpoints.ledger.json",
+          "sha256": "3d71b7e2297902131d2228e54e0053f9a2f13ee7a66de87ce4334b7cbf6561a9"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/checkpoints.response.json",
+          "sha256": "98dfa926fce9500ee1af353aea7c6e63303febc0a4729231e74b2d9387b5d4d6"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/checkpoints.verification",
+          "sha256": "4e483fdaa04d582793d14d4fd1b87b51b978fcf1049739f98656e19c04513cbe"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/peer-key.json",
+          "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193051Z/timing.json",
+          "sha256": "b07c437bc52f266b0c4a90df09355dba1f846a0bb027537313a4a24b9b327d66"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/ATTEMPT",
+          "sha256": "a2f9260c9e4f6eb78b654d711ad96b53866731106b5687432bf17a3121610101"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/history_card.ledger.json",
+          "sha256": "b1237141ab05d326874a388a227927977015ce2dfd4a8d18012b6cd25a29534a"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/history_card.response.json",
+          "sha256": "7940fcc68a14bb79979df60ae1febd684e2882f53afe56a8bcbdf7d2cfba3c15"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/history_card.verification",
+          "sha256": "4e483fdaa04d582793d14d4fd1b87b51b978fcf1049739f98656e19c04513cbe"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/peer-key.json",
+          "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193052Z/timing.json",
+          "sha256": "0eb90b57d03ba36a1918e318342928e0af8fadd0ff7903b26077df73cde089d0"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/ATTEMPT",
+          "sha256": "4aae45f90b4c51e9f130b896d8cb68a93e82044c54fdde14fd4843731739e05c"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/exchange.ledger.json",
+          "sha256": "57b387c1b5f403a5fa30355154693dd39d121507d17fd8a8656d068aa4a9e719"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/exchange.request.json",
+          "sha256": "2acec38d0319cc521aa8ace972c739da8888f9afd370c46265b05819915e860a"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/exchange.response.json",
+          "sha256": "08e717407209482dd856625a84e72cc3618c29786d105a349bb2eb84dbad0844"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/exchange.verification",
+          "sha256": "2eecba1957a4cf12f86504251f8956699050da93249c832b3a963b4e79b9f2fc"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/peer-key.json",
+          "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193053Z/timing.json",
+          "sha256": "56a7d7aaa5cc01121c82de58e567e8b2d981a1246c029e5218d05d3a477a9226"
+        },
+        {
+          "path": "stevenmih-3/commitment/choice.json",
+          "sha256": "13758a3781ee035355ec373b1824191f8921e229975f0b000ef708d97f7f38d4"
+        },
+        {
+          "path": "stevenmih-3/commitment/commitment.json",
+          "sha256": "720af79120734f07af7046ab9df758c92e8ea42e0ab733a7bc96be45a1cdc30f"
+        },
+        {
+          "path": "stevenmih-3/commitment/policies/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
+          "sha256": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25"
+        },
+        {
+          "path": "stevenmih-3/exchange-subject.json",
+          "sha256": "aea44c20a0b619515d756c86fb5e36a5c3be5cd70e5425cf678a1fb6afcaa3cf"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/ATTEMPT",
+          "sha256": "4aae45f90b4c51e9f130b896d8cb68a93e82044c54fdde14fd4843731739e05c"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/checkpoints.ledger.json",
+          "sha256": "32233f27ffeba9ba37b029ab2f5a4b2c736eb43e33e0e34f6f4db2c404836297"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/checkpoints.response.json",
+          "sha256": "f584dff92a8ce0c53d689cf325087cbbc28c38eccc554b988113f3c1f2827b6c"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/checkpoints.verification",
+          "sha256": "da918c8b8acd01c4a31649020101ef6dc596440ecf248ba174af289270b78897"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/peer-key.json",
+          "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193053Z/timing.json",
+          "sha256": "a3c724cc6383a1b3005a38ba7befa52368d549ea73ea972aa72b7b7c09827178"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/ATTEMPT",
+          "sha256": "8e680572dfb59a638e3bc1db67f2d356d15c8bd7260a33024027c9655d873f74"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/history_card.ledger.json",
+          "sha256": "b5c6cb99767199f15292d6fee64f26a6664fde42a4f46b6700f0ce42b18f18c4"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/history_card.response.json",
+          "sha256": "ffc7f825f86f6e0fdd141f5861e4b7113ce4f38e1acfd1adb38138086a479e6b"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/history_card.verification",
+          "sha256": "da918c8b8acd01c4a31649020101ef6dc596440ecf248ba174af289270b78897"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/peer-key.json",
+          "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193054Z/timing.json",
+          "sha256": "c6094895289b6c01c5d2a260fd7f2714224d5e6ff44fcb3bb345d6ff2b052ca6"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/ATTEMPT",
+          "sha256": "2c045c120e1c92cb61e81e8cd48c175d1634b470366da5b6251a167b3bcbd995"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/exchange.ledger.json",
+          "sha256": "f615bc1b1a6016c8f7423ef7cc8461138026b47399aeb075f9135114d605fa53"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/exchange.request.json",
+          "sha256": "f409657eca1ab615d523a7dfed08820784eb5ac3d6d490031d876d8be7e652f2"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/exchange.response.json",
+          "sha256": "b66591ea74685c9075a31e83550e36da2bd1de0c8d444eae098fc44b575f0e89"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/exchange.verification",
+          "sha256": "a537aa58e65c228b6d63eace1fe203173ad3e0ceb3ef380ab5a00346bb08ff2d"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/peer-key.json",
+          "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193055Z/timing.json",
+          "sha256": "076fb9770c09cb683297f00e0f6a46b9036b55391d33c4c5f074ffbd580db023"
+        }
+      ],
+      "name": "ask",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "Mesh-LLM/capsules-plugin#175",
+          "what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
+          "why": "08 checks every rule on 07's extract (its line count and sha256 at read time are kept for an audit), but no checkpoint the asker signs covers its ledger"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 07: each reply's signatures, verified again offline",
+          "why": "live 07 reads the pinned plugin's verification in each reply; 08 does not verify the reply bytes under the listed key itself"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 07: each node's kept commitment is the one in force when it was asked",
+          "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then"
+        }
+      ],
+      "status": "reproduced",
+      "step": "07"
+    },
+    {
+      "dir": "09-dispute",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "4a578082c5f979b7a80d16161a8ad7da46952bb2606852bf53bc3718e1f1a0de"
+        },
+        {
+          "path": "checks.json",
+          "sha256": "07ac7187a3d6865ae263e0c9e51cb27952d63206a029d5d3a8c723b4e2375105"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "8989e2893747a466242329d44ba011926678ee96f4ff77670f9c172b906adac4"
+        },
+        {
+          "path": "outcome.json",
+          "sha256": "dc5504f0109223c65c7debd8a09da84bc7801461ea79db29e81992dc91f910b3"
+        },
+        {
+          "path": "stevenmih-1/ledger/capsules.jsonl",
+          "sha256": "ce466185246041bd225cc0225b59e157bc10dac23d6ac2dfc23686e7c022946f"
+        },
+        {
+          "path": "stevenmih-1/ledger/received-capsules.jsonl",
+          "sha256": "0033f0e04462e71136559745c9602713c066f5bd3eb9021a069dfec808d7a2ad"
+        },
+        {
+          "path": "stevenmih-2/ledger/capsules.jsonl",
+          "sha256": "06d7a595731b4f25b8232e3bcb23f053beb0e65c0c4d34ad1a023f8cab762a60"
+        },
+        {
+          "path": "stevenmih-2/ledger/issued-adjudications.jsonl",
+          "sha256": "78d8fba0b1ef0da092a831a2241c18050c7bb208aeca1126efafa3e50f55f793"
+        },
+        {
+          "path": "stevenmih-2/ledger/received-capsules.jsonl",
+          "sha256": "016556af506d67f2d4703980f5f1112ecf94a1d73940d09b7d66348086a6a8dd"
+        },
+        {
+          "path": "stevenmih-3/ledger/capsules.jsonl",
+          "sha256": "96c5cbb6185f75c684ebd84a0324667dc03ef60adc70048e6392948923e6e167"
+        },
+        {
+          "path": "stevenmih-3/ledger/received-adjudications.jsonl",
+          "sha256": "6fc4b995c6c51e1d0fa416aacd286e254a2dfe8bc54cd21b4ae6b9a8d34b3b0b"
+        },
+        {
+          "path": "stevenmih-3/ledger/received-capsules.jsonl",
+          "sha256": "ba46b8b79396169fa18c916169737a5afd6bca4c2a67db70984e7659f8ab3c09"
+        },
+        {
+          "path": "stevenmih-3/ledger/requested-adjudications.jsonl",
+          "sha256": "800f6c5252e21a866596ab6c589777ab72c58be57c64758f51446fabcb276142"
+        },
+        {
+          "path": "stevenmih-4/ledger/capsules.jsonl",
+          "sha256": "025840749f6079224d6c6713c627b7a434e5cc710c790981c9687ce03ff5770e"
+        },
+        {
+          "path": "stevenmih-4/ledger/received-capsules.jsonl",
+          "sha256": "b2e62bd708c881a0024f9adaf99b5a374d7de91c68422672303294d0f56bc644"
+        },
+        {
+          "path": "twin-fault.json",
+          "sha256": "ae163dd0765cc243316f7706f6fdd970b0eb17a1765006b9f49516c39abf46a6"
+        }
+      ],
+      "name": "dispute",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "Mesh-LLM/capsules-plugin#175",
+          "what": "step 09: each node's copied ledger files are the node's whole files",
+          "why": "08 checks each held Result again on the copies, but no checkpoint the node signs covers them"
+        },
+        {
+          "issue": "evidence-network/loop#209",
+          "what": "step 09: node stevenmih-4's announced key",
+          "why": "the node has no nodes/ listing (a node the twins run adds, which the repository's population does not list), so the key nodes.json records is 09's reading of its data_dir"
+        }
+      ],
+      "status": "reproduced",
+      "step": "09"
+    },
+    {
+      "dir": "12-join",
+      "files": [
+        {
+          "path": "finding.json",
+          "sha256": "6146975a4fba00d9c90af95877a1227d2e05cbcf5ecb98e304a1298322135d08"
+        },
+        {
+          "path": "nodes.json",
+          "sha256": "d27d036282bdb86d3a2935683e188b45c3990af6311d75347be5a5f0d631125e"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/ATTEMPT",
+          "sha256": "a16fe443d6d8bed906d79989a31a677489c3aa63a29f385089212fa73942b812"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/checkpoints.response.json",
+          "sha256": "0f16e5d6eba58713f2a925f7dea245f19d6ed9a4026550e8c4f4a33c1f4c75d7"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/checkpoints.verification",
+          "sha256": "00bec0da71fddc37149a8c753cbccf4a85057862a1e74820a10adeac5185cd08"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/history_card.response.json",
+          "sha256": "07e784aa60f7bfa43dd872c09a91aee922145879a9fe85bc3184a92d5c67fa94"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/history_card.verification",
+          "sha256": "00bec0da71fddc37149a8c753cbccf4a85057862a1e74820a10adeac5185cd08"
+        },
+        {
+          "path": "stevenmih-1/attempts/20261031T193058Z/peer-key.json",
+          "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+        },
+        {
+          "path": "stevenmih-1/controller-binding.json",
+          "sha256": "e5fc74a8945b91636e037b60db53c960852b1f57166dc9ba18dd0bab79268621"
+        },
+        {
+          "path": "stevenmih-1/doctor-probe.json",
+          "sha256": "caac6a32df457d1901da87e1635067741c98b3c9e886ccce4f8af12c155c51e0"
+        },
+        {
+          "path": "stevenmih-1/join.json",
+          "sha256": "b62063eee860c9ca91a45036ff0db74b506eb5d3cdf2d1e91e9241259b046bf5"
+        },
+        {
+          "path": "stevenmih-1/commitment.json",
+          "sha256": "07b22df69feb03338403f6ec3e41d15fdca0471db8185024bbc1a5fd40289270"
+        },
+        {
+          "path": "stevenmih-1/disclosure-policy.json",
+          "sha256": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73"
+        },
+        {
+          "path": "stevenmih-1/doctor-after.json",
+          "sha256": "8a535cc36a5b27041043c792bcca6222b7a6074d984091b8882f9e627b57fa7e"
+        },
+        {
+          "path": "stevenmih-1/wire.json",
+          "sha256": "9211e453a49de5f523f63e79bffcd2b83542212e58e121467292a4044e25e097"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/ATTEMPT",
+          "sha256": "a16fe443d6d8bed906d79989a31a677489c3aa63a29f385089212fa73942b812"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/checkpoints.response.json",
+          "sha256": "bd7dbb0cbf9022da7e5bd8989351b2626c0ddb8087cd24b426d8bc840eb63801"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/checkpoints.verification",
+          "sha256": "4e483fdaa04d582793d14d4fd1b87b51b978fcf1049739f98656e19c04513cbe"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/history_card.response.json",
+          "sha256": "3896ee3d2f63a0c9eab7e69825cc16ccc56832139925cd72d24b5ee56876d170"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/history_card.verification",
+          "sha256": "4e483fdaa04d582793d14d4fd1b87b51b978fcf1049739f98656e19c04513cbe"
+        },
+        {
+          "path": "stevenmih-2/attempts/20261031T193058Z/peer-key.json",
+          "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+        },
+        {
+          "path": "stevenmih-2/controller-binding.json",
+          "sha256": "0be7a9bca01e87c109aa5ce6508af811401ca2c98043ad471c6fdea0a01c4b36"
+        },
+        {
+          "path": "stevenmih-2/doctor-probe.json",
+          "sha256": "ec74fa43d87d6c3ab2ef0f553f919f36bf7b708eb84aff8c3c64b460e33f3188"
+        },
+        {
+          "path": "stevenmih-2/join.json",
+          "sha256": "5f2206a3378b180459367109122db4af60e7c3f1044911019658d5a5d42db6b4"
+        },
+        {
+          "path": "stevenmih-2/commitment.json",
+          "sha256": "cad43bd1d914a08229ab4d81cc831f8512c8e4dba0053136977efcb39dca138a"
+        },
+        {
+          "path": "stevenmih-2/disclosure-policy.json",
+          "sha256": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165"
+        },
+        {
+          "path": "stevenmih-2/doctor-after.json",
+          "sha256": "d2e6bd35d1fbd608c01859ad972fa79ff8fdb074e5c8c7aff9ec1b59a3920e92"
+        },
+        {
+          "path": "stevenmih-2/wire.json",
+          "sha256": "c321d01ef2358add1d604af53c616fcb7dae68d3080e1f113ba774914918b2b7"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/ATTEMPT",
+          "sha256": "a16fe443d6d8bed906d79989a31a677489c3aa63a29f385089212fa73942b812"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/checkpoints.request.json",
+          "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/checkpoints.response.json",
+          "sha256": "20e471f577b3b34e1d5c9730bb01ea64130ce977f2bd2d4d005d2ad785808a08"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/checkpoints.verification",
+          "sha256": "da918c8b8acd01c4a31649020101ef6dc596440ecf248ba174af289270b78897"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/history_card.request.json",
+          "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/history_card.response.json",
+          "sha256": "5d1ebd385ade0e3b90062d00817f49b0a159d0ffa8c23a92b649f9014074d025"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/history_card.verification",
+          "sha256": "da918c8b8acd01c4a31649020101ef6dc596440ecf248ba174af289270b78897"
+        },
+        {
+          "path": "stevenmih-3/attempts/20261031T193058Z/peer-key.json",
+          "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+        },
+        {
+          "path": "stevenmih-3/doctor-probe.json",
+          "sha256": "2d4bc7ab76a5176439f59007c9be0a14af86113c0321620537ee11feca43c558"
+        },
+        {
+          "path": "stevenmih-3/join.json",
+          "sha256": "67e66ca9cf8b5a6ed1c068823d9b5da9ac25bfc9573dc4366a14affa3db7798c"
+        },
+        {
+          "path": "stevenmih-3/commitment.json",
+          "sha256": "d5e7c5a345bdd22f0165b651223b7a5d65b0e4483571b01335fd2bbab0bd412e"
+        },
+        {
+          "path": "stevenmih-3/disclosure-policy.json",
+          "sha256": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25"
+        },
+        {
+          "path": "stevenmih-3/doctor-after.json",
+          "sha256": "79754e57b5753cd1f8615b8bf5eb76e27a3822a175084921f0ffaf7f4d081617"
+        },
+        {
+          "path": "stevenmih-3/wire.json",
+          "sha256": "c1b5a70ba69fe6059d637295d63dade85f86fd5c2b5192d98b6138499a665437"
+        }
+      ],
+      "name": "join",
+      "not_checked": null,
+      "problems": [],
+      "recorded": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "rederived": {
+        "not_checked": [],
+        "result": "PASS"
+      },
+      "relies_on": [
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 12: what each node's plugin answered to doctor, join and the commitment fetches",
+          "why": "08 judges the kept replies (wire.json and the reply bytes) again, and join's commitment is verified under the listed key, but doctor's findings and the fetch replies are console reads no key signs, and neither is each attempt's peer-key.json, the announced key the lines are matched with"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 12: each probe reply's signatures, verified again offline",
+          "why": "each kept verification line is computed again from its reply, but from the pinned plugin's verification in it; 08 does not verify the reply bytes under the listed key itself"
+        },
+        {
+          "issue": "evidence-network/loop#193",
+          "what": "step 12: the run's clock: nodes.json's bind_at 2026-10-31T19:30:58Z, which the binding window and the revocations main commit are read at (no node signs it)",
+          "why": "the bundle does not bear it out, so it is 12's record of its run"
+        }
+      ],
+      "status": "reproduced",
+      "step": "12"
+    }
+  ]
+}

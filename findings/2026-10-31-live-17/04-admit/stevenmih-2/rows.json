@@ -1,0 +1,890 @@
+{
+  "417": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "481": [
+    {
+      "row": "identity",
+      "sealed": "pass",
+      "want": [
+        "pass"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "key_age",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the card's first checkpoint time is not in the record, which cites the card by a salted commitment only"
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "545": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "609": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "673": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "737": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "865": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "929": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "993": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1057": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1095": [
+    {
+      "row": "identity",
+      "sealed": "pass",
+      "want": [
+        "pass"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "key_age",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the card's first checkpoint time is not in the record, which cites the card by a salted commitment only"
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1129": [
+    {
+      "row": "identity",
+      "sealed": "pass",
+      "want": [
+        "pass"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "key_age",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the card's first checkpoint time is not in the record, which cites the card by a salted commitment only"
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1185": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1313": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1347": [
+    {
+      "row": "identity",
+      "sealed": "pass",
+      "want": [
+        "pass"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "key_age",
+      "sealed": "fail",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the card's first checkpoint time is not in the record, which cites the card by a salted commitment only"
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1537": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ],
+  "1633": [
+    {
+      "row": "identity",
+      "sealed": "not_read",
+      "want": [
+        "fail",
+        "not_read"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered (not_read)"
+    },
+    {
+      "row": "key_age",
+      "sealed": "not_read",
+      "want": [
+        "not_read"
+      ],
+      "check": "PASS",
+      "why": ""
+    },
+    {
+      "row": "performed_and_settled",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "disputes",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "not_read",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    },
+    {
+      "row": "corroboration",
+      "sealed": "pass",
+      "want": [
+        "fail",
+        "pass"
+      ],
+      "check": "NOT_CHECKED",
+      "why": "the plugin reads it from its in-memory snapshot of the node's chain, keyed by the peer in clear; the record names the peer only by a commitment salted from the node's signing key"
+    }
+  ]
+}
