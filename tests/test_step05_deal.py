@@ -1050,10 +1050,13 @@ class Step05DealLiveTest(unittest.TestCase):
     def test_live_an_unreadable_ledger_file_stops_the_step_as_before(self):
         p = self.ledger() / "capsules.jsonl"
         p.chmod(0)
-        self.addCleanup(p.chmod, 0o644)
-        if os.access(p, os.R_OK):
-            self.skipTest("running as a user who can read a mode-0 file")
-        r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)))
+        try:
+            if os.access(p, os.R_OK):
+                self.skipTest("running as a user who can read a mode-0 file")
+            r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab),
+                                                      LOOP_NODES_DIR=str(self.nodes)))
+        finally:
+            p.chmod(0o644)  # before tearDown removes the lab
         self.assertNotEqual(r.returncode, 0)
 
     def test_live_a_cited_binding_that_does_not_name_the_halfs_key_fails(self):
