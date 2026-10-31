@@ -23,9 +23,10 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 04 and 07 are re-derived the same way: their
+  live          live steps 03, 04 and 07 are re-derived the same way: their
                 judges read only their proof (and, for 07, the repository's
-                nodes/ listings). The other live steps' judges read a lab node's
+                nodes/ listings; 03's listed keys and carrier bytes are held
+                to this checkout). The other live steps' judges read a lab node's
                 data dir or console, so they are not_checked
                 (evidence-network/loop#188; 09: #209).
 
@@ -154,6 +155,7 @@ class Ctx:
         self.bundle, self.work, self.tmp, self.pop, self.record = bundle, work, tmp, Path(pop_dir), record
         self.population = record["population"]
         self.started = record["started"]
+        self.relies = []  # what this step's re-derivation rests on beyond LIVE_RELIES_ON (its keys check adds them)
 
 
 # --- Keys: each key the proof relies on is the repository's ------------------------------
@@ -365,7 +367,11 @@ def openssl_ed25519():
 
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"04": [
+LIVE_RELIES_ON = {"03": [
+    {"what": "step 03: carrier.json's commit was the carrier's HEAD when 03 ran",
+     "why": "08 holds the cited bytes to that commit, but that it was HEAD at the run (and no later commit) is "
+            "03's reading", "issue": TRUST_ISSUE},
+], "04": [
     {"what": "step 04: what nodes.json says of each node (read or not, its record count) and each decisions.jsonl "
              "holding every admission decision its ledger held",
      "why": "08 judges the decision lines 04 kept and what nodes.json says, but the node's ledger is not in the "
@@ -390,6 +396,81 @@ def old_shape(c, nn, name):
         raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                              f"its proof holds no {name}: the finding predates the proof shape 08 re-derives",
                              OLD_SHAPE_ISSUE)
+
+
+def rederive_03_live(m, c):
+    """Live 03: its own judge_live on the copied proof (carrier.json and each node's commitment and policy, as the
+    carrier's HEAD held them). It verifies each commitment with step 03's checker under the listed key."""
+    old_shape(c, "03", "carrier.json")
+    if not openssl_ed25519():
+        raise Unreproducible("step 03: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_03_live(c):
+    """Live 03's keys and carrier bytes, held to this checkout.
+
+    Each node's listed key_id in carrier.json (None when HEAD listed none) must be what nodes/<node_id>.json lists
+    here; otherwise not_reproduced (a key rotated since, or one never listed, loop#193). When carrier.json's head
+    is a full commit id that this checkout holds, 08 works out each node's paths itself from that commit (its
+    listing, its commitment and the policy the commitment names) and every one must be what carrier.json says HEAD
+    held, byte for byte; a path carrier.json leaves out is checked too. Otherwise the bytes are not compared, and
+    that is a not_checked entry on loop#193."""
+    if "carrier.json" not in {p["path"] for p in c.record["proof"]}:
+        return []  # an older shape: rederive_03_live says so
+    doc = load(c.work / "carrier.json")
+    nodes = doc.get("nodes") if isinstance(doc.get("nodes"), dict) else {}
+    for name, entry in sorted(nodes.items()):
+        if not isinstance(entry, dict):
+            continue  # judge_live FAILs it
+        listing = ROOT / "nodes" / f"{entry.get('node_id')}.json"
+        listed = load(listing).get("key_id") if entry.get("node_id") and listing.is_file() else None
+        if entry.get("node_id") and entry.get("key_id") != listed:
+            raise Unreproducible(f"step 03: {name}'s listed key at the carrier's HEAD",
+                                 "it is not the key nodes/ lists for the node in this checkout (a key rotated since "
+                                 "the run, or a key the repository never listed)", TRUST_ISSUE)
+    head = doc.get("head")
+    full = isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head)
+    have = full and subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{head}^{{commit}}"],
+                                   capture_output=True).returncode == 0
+    if not have:
+        c.relies.append({"what": "step 03: the carrier's HEAD held the listing, commitment and policy bytes cited",
+                         "why": (f"carrier.json's commit {head} is not in the checkout 08 runs in" if full else
+                                 f"carrier.json names no full commit id ({head!r})") + ", so the bytes are not "
+                                "compared with it", "issue": TRUST_ISSUE})
+        return []
+
+    def at(path):
+        r = subprocess.run(["git", "-C", str(ROOT), "show", f"{head}:{path}"], capture_output=True)
+        return r.stdout if r.returncode == 0 else None
+
+    bad = []
+    for name, entry in sorted(nodes.items()):
+        if not isinstance(entry, dict) or not entry.get("node_id"):
+            continue
+        node_id, paths = entry["node_id"], entry.get("paths") if isinstance(entry.get("paths"), dict) else {}
+        listing = at(f"nodes/{node_id}.json")
+        try:
+            listed_then = json.loads(listing)["key_id"] if listing is not None else None
+        except (ValueError, KeyError, TypeError):
+            listed_then = None
+        if entry.get("key_id") != listed_then:
+            bad.append(f"{name}: the listed key carrier.json records is not what nodes/{node_id}.json held at {head[:12]}")
+        commitment = f"nodes/commitments/{node_id}.json"
+        expect = {commitment: (at(commitment), c.work / f"{name}.commitment.json")}
+        try:
+            uri = json.loads(expect[commitment][0])["lcap"]["policy_uri"] if expect[commitment][0] else None
+        except (ValueError, KeyError, TypeError):
+            uri = None
+        if isinstance(uri, str) and not ("://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]):
+            expect[f"nodes/commitments/{uri}"] = (at(f"nodes/commitments/{uri}"), c.work / f"{name}.policy.json")
+        for path, (then, mine) in sorted(expect.items()):
+            if bool(paths.get(path)) != (then is not None) or (then is not None and (
+                    not mine.is_file() or mine.read_bytes() != then)):
+                bad.append(f"{name}: {path} is not what the carrier's commit {head[:12]} holds")
+        bad += [f"{name}: carrier.json says HEAD held {p}, which 03 never reads" for p in sorted(set(paths) - set(expect))]
+    return bad
 
 
 def rederive_04_live(m, c):
@@ -437,7 +518,7 @@ STEPS = {
 
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
-LIVE_STEPS = {"04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+LIVE_STEPS = {"03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"07", "09"}
@@ -553,7 +634,7 @@ def verify_step(d, pop_dir, population, tmp):
 
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
     if population != "rehearsal":
-        entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
+        entry["relies_on"] = LIVE_RELIES_ON.get(nn, []) + c.relies
     entry["problems"] += mismatches(record, again)
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files

@@ -158,7 +158,18 @@ class LiveTest(unittest.TestCase):
         argv = ["--population", str(FIXTURES / "population" / population), "--out", str(out), "--carrier", str(carrier)]
         self.assertEqual(self.step.main(argv), 0)
         self.assertEqual(finding.check(out.parent), [])
-        return json.loads((out / "finding.json").read_text()), out
+        record = json.loads((out / "finding.json").read_text())
+        # judge_live on a copy of only the cited files gives the same finding: what step 08 checks (loop#188).
+        pop = json.loads((FIXTURES / "population" / population / "population.json").read_text())
+        work = self.tmp / "again" / "03-advertise"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in record["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / p["path"], work / p["path"])
+        again = self.step.judge_live(pop, work, record["started"])
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (record["result"], record["not_checked"], record["detail"]))
+        return record, out
 
     def published_carrier(self, key_id=None):
         """A repository where alice's test key, playing the node, published its commitment, listed under key_id."""
@@ -201,6 +212,46 @@ class LiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         node = json.loads((out / "verification.json").read_text())["nodes"][0]
         self.assertEqual(node["errors"], ["the commitment is not under this node's key"])
+
+
+    def commit_change(self, repo, path, edit):
+        doc = json.loads((repo / path).read_text())
+        edit(doc)
+        (repo / path).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+        subprocess.run(["git", "-C", str(repo), *self.step.GIT_ID, "commit", "-qam", "change"], check=True)
+
+    def test_a_commitment_the_checker_stops_on_still_cites_its_policy(self):
+        # A commitment missing a required field: the checker returns before it reads the policy, but the policy
+        # collect_live kept is cited, so step 08 re-derives the FAIL from the proof (run_live re-runs judge_live).
+        carrier = self.published_carrier()
+        self.commit_change(carrier, f"nodes/commitments/{alice_node_id()}.json", lambda d: d.pop("answers"))
+        f, out = self.run_live("live-published", carrier)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("lab-1.policy.json", [p["path"] for p in f["proof"]])
+
+    def test_collect_reads_every_path_at_the_one_commit_it_records(self):
+        carrier = self.published_carrier()
+        first = subprocess.run(["git", "-C", str(carrier), "rev-parse", "HEAD"], capture_output=True,
+                               text=True).stdout.strip()
+        real, moved = self.step.fetch, []
+
+        def fetch_then_move(repo, path, ref="HEAD"):
+            got = real(repo, path, ref)
+            if not moved:  # the carrier moves on after the first read
+                moved.append(1)
+                self.commit_change(carrier, f"nodes/commitments/{alice_node_id()}.json",
+                                   lambda d: d.update(answers_within="PT9H"))
+            return got
+        self.step.fetch = fetch_then_move
+        try:
+            f, out = self.run_live("live-published", carrier)
+        finally:
+            self.step.fetch = real
+        self.assertEqual(json.loads((out / "carrier.json").read_text())["head"], first)
+        at_first = subprocess.run(["git", "-C", str(carrier), "show", f"{first}:nodes/commitments/{alice_node_id()}.json"],
+                                  capture_output=True).stdout
+        self.assertEqual((out / "lab-1.commitment.json").read_bytes(), at_first)
+        self.assertEqual(f["result"], "PASS", f["detail"])
 
 
 @unittest.skipUnless(TOOLS, SKIP_WHY)

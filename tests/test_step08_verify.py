@@ -927,5 +927,183 @@ class Step08Live04Test(unittest.TestCase):
         self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
 
 
+@unittest.skipUnless(step.openssl_ed25519() and shutil.which("git"), "SKIPPED LOUDLY: live 03 verifies with OpenSSL 3+ "
+                                                                  "and reads this repository's HEAD with git")
+class Step08Live03Test(unittest.TestCase):
+    """08 re-derives live step 03 from its proof alone: step 03 run live on this repository's HEAD, which carries
+    the lab nodes' published commitments (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "2026-10-31-live"
+        r = subprocess.run([str(STEPS / "03-advertise"), "--population", str(LIVE_POPULATION),
+                            "--out", str(self.run / "03-advertise")], capture_output=True, text=True, cwd=ROOT,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        write_run_json(self.run, ["03", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def plant(self, edit):
+        edit(self.run / "03-advertise")
+        rehash(self.run / "03-advertise")
+        return self.verify()
+
+    def test_live_03_is_reproduced_from_its_proof(self):
+        recorded = load(self.run / "03-advertise" / "finding.json")
+        f, entries = self.verify()
+        e = entries["03-advertise"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], recorded["result"])
+        self.assertIn(load(self.run / "03-advertise" / "carrier.json")["head"],
+                      subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
+                                     text=True).stdout)
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_a_commitment_not_what_the_carrier_held_fails(self):
+        def forge(d):
+            f = next(d.glob("*.commitment.json"))
+            doc = load(f)
+            doc["answers_within"] = "PT9H"
+            dump(f, doc)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not what the carrier's commit", f["detail"])
+
+    def test_a_listed_key_the_repository_does_not_list_is_not_reproduced(self):
+        def forge(d):
+            doc = load(d / "carrier.json")
+            next(iter(doc["nodes"].values()))["key_id"] = "ab" * 32
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["03-advertise"]["status"], "not_reproduced")
+        self.assertEqual(entries["03-advertise"]["not_checked"]["issue"], step.TRUST_ISSUE)
+
+    def test_a_node_dropped_from_carrier_json_fails(self):
+        def drop(d):
+            doc = load(d / "carrier.json")
+            doc["nodes"].pop(next(iter(doc["nodes"])))
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_carrier_commit_not_in_this_checkout_is_named(self):
+        def other(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = "0" * 40
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(other)
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertIn("is not in the checkout 08 runs in", " ".join(x["why"] for x in f["not_checked"]))
+
+    def first(self, d):
+        doc = load(d / "carrier.json")
+        name = sorted(doc["nodes"])[0]
+        return doc, name, doc["nodes"][name]
+
+    def test_a_path_dropped_from_carrier_json_and_its_file_deleted_fails(self):
+        # 08 works out the paths from the commit itself, so a commitment the commit holds can't be hidden.
+        def drop(d):
+            doc, name, entry = self.first(d)
+            entry["paths"] = {p: v for p, v in entry["paths"].items() if not p.endswith(f"{entry['node_id']}.json")}
+            dump(d / "carrier.json", doc)
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if p["path"] != f"{name}.commitment.json"]
+            dump(d / "finding.json", rec)
+            (d / f"{name}.commitment.json").unlink()
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not what the carrier's commit", f["detail"])
+
+    def test_a_policy_not_what_the_carrier_held_fails(self):
+        def forge(d):
+            p = next(d.glob("*.policy.json"))
+            p.write_bytes(p.read_bytes() + b" ")
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_path_03_never_reads_fails(self):
+        def extra(d):
+            doc, name, entry = self.first(d)
+            entry["paths"]["nodes/other.json"] = False
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(extra)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("which 03 never reads", f["detail"])
+
+    def test_a_head_that_is_not_a_full_commit_id_is_named_not_compared(self):
+        def ref(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = "HEAD"
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(ref)
+        self.assertIn("names no full commit id", " ".join(x["why"] for x in f["not_checked"]))
+
+    def test_a_listed_key_the_carrier_commit_did_not_list_fails(self):
+        # The key matches this checkout's listing but not the listing at carrier.json's commit.
+        repo = Path(self.tmp.name) / "repo"
+        (repo / "nodes").mkdir(parents=True)
+        shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
+        for f in (ROOT / "nodes").glob("*.json"):
+            shutil.copyfile(f, repo / "nodes" / f.name)
+        doc = load(self.run / "03-advertise" / "carrier.json")
+        node_id = next(iter(doc["nodes"].values()))["node_id"]
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        listing = repo / "nodes" / f"{node_id}.json"
+        real = listing.read_bytes()
+        changed = load(listing)
+        changed["key_id"] = "ab" * 32
+        dump(listing, changed)
+        subprocess.run([*git, "init", "-q"], check=True)
+        subprocess.run([*git, "add", "nodes"], check=True)
+        subprocess.run([*git, "commit", "-qm", "then"], check=True)
+        then = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        listing.write_bytes(real)
+        subprocess.run([*git, "commit", "-qam", "now"], check=True)
+
+        def point(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = then
+            dump(d / "carrier.json", doc)
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.plant(point)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
+
+    def test_a_replayed_commit_still_names_that_it_was_head(self):
+        f, entries = self.verify()
+        self.assertIn(step.LIVE_RELIES_ON["03"][0], f["not_checked"])
+
+    def test_carrier_json_unreadable_or_naming_another_node_fails(self):
+        for change in ("unreadable", "outside"):
+            with self.subTest(change):
+                self.tearDown()
+                self.setUp()
+
+                def edit(d):
+                    if change == "unreadable":
+                        (d / "carrier.json").write_text("{")
+                    else:
+                        doc = load(d / "carrier.json")
+                        doc["nodes"]["stranger"] = {"node_id": None, "key_id": None, "paths": {}}
+                        dump(d / "carrier.json", doc)
+                f, entries = self.plant(edit)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_an_old_shape_live_03_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.run / "03-advertise")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-4" / "03-advertise", self.run / "03-advertise")
+        f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no carrier.json", entries["03-advertise"]["not_checked"]["why"])
+
+
 if __name__ == "__main__":
     unittest.main()
