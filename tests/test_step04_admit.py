@@ -60,7 +60,7 @@ TEST_KEY = POPULATION / "keys" / "alice"  # a rehearsal TEST key, standing in fo
 NODE_IDS = {"lab-a": "a" * 64, "lab-b": "b" * 64}
 
 
-def sealed(line):
+def sealed(line, timestamp=None):
     """The line as a lab node's plugin seals it: a line carrying an admission decision becomes a real capsule
     (the template's) with that block, its capsule_id recomputed and signed under TEST_KEY; others stay as written."""
     try:
@@ -71,7 +71,8 @@ def sealed(line):
         return line
     block = doc["model_attestation"]["compute_attestation"]["admission_decision"]
     r = subprocess.run([str(SEAL_PY), "-I", str(FIXTURES / "sign_decision.py"), str(CROSS),
-                        str(TEST_KEY / "node-key.pem")], input=json.dumps(block), capture_output=True, text=True)
+                        str(TEST_KEY / "node-key.pem"), *([timestamp] if timestamp else [])], input=json.dumps(block),
+                       capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     return r.stdout.strip()
 
@@ -351,6 +352,25 @@ class Live(unittest.TestCase):
         whats = [x["what"] for x in f["not_checked"]]
         self.assertIn(f"node lab-a: {step.RECORD_WHAT}", whats)
         self.assertFalse([w for w in whats if w.startswith("node lab-b")], whats)
+
+    def test_only_the_decisions_of_the_current_build_are_judged(self):
+        # loop#103: lab.sh start marks since when a node runs its plugin build; the records name no build.
+        bad = json.loads(self.good()[0])
+        bad["model_attestation"]["compute_attestation"]["admission_decision"]["verdict"] = "ASK"
+        lab = self.lab_with([])
+        led = lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        led.write_text("\n".join([sealed(json.dumps(bad), "2026-10-30T01:45:00Z"),
+                                  sealed(self.good()[0], "2026-10-30T02:10:00Z")]) + "\n")
+        _, f = self.live_run(lab)  # no build mark: every decision is judged, and the earlier build's bad one fails
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("the plugin build boundary is not known", f["detail"])
+        (lab / "run").mkdir()
+        (lab / "run" / "lab-a.build.json").write_text(json.dumps({"plugin_sha256": "e5" * 32,
+                                                                  "since": "2026-10-30T01:56:21Z"}))
+        _, f = self.live_run(lab)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("node lab-a: judged the decisions sealed since 2026-10-30T01:56:00Z, when it started on plugin "
+                      "build e5e5e5e5e5e5; 1 sealed before, by an earlier build, set aside", f["detail"])
 
     def test_a_node_with_no_listing_is_not_checked(self):
         _, f = self.live_run(self.lab_with(self.good(), listed=False))
