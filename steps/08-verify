@@ -386,9 +386,6 @@ LIVE_RELIES_ON = {
     "07": [{"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
             "why": "08 checks every rule on 07's extract (its line count and sha256 at read time are kept for an "
                    "audit), but no checkpoint the asker signs covers its ledger", "issue": LEDGER_ISSUE},
-           {"what": "step 07: each reply's signatures, verified again offline",
-            "why": "live 07 reads the pinned plugin's verification in each reply; 08 does not verify the reply bytes "
-                   "under the listed key itself", "issue": TRUST_ISSUE},
            {"what": "step 07: each node's kept commitment is the one in force when it was asked",
             "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records "
                    "skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then",
