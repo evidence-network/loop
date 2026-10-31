@@ -412,13 +412,24 @@ def load_evaluator():
                 sys.modules[name] = old
 
 
-def evaluate(ev, run, inputs, start, end):
+# The evaluator's bounds are step 10's, never the pack's: a reader of the Result must not take its verdicts for the
+# pack's own weekly ones (Sherlock2, Buzz b1effd94).
+CHAIN_START = dt.datetime.min.replace(tzinfo=dt.timezone.utc)  # no bound: the chain is read whole
+CHAIN_END = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
+EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished; each chain read whole, whatever its entries' "
+                    "own dates; not the pack's weekly period_policy")
+
+
+def evaluate(ev, run, inputs):
     """{term id: [(verdict, reading, grade)]} and the exchanges, of the pinned evaluator over each node's own chain
     (`inputs`, records of role input): its collect() and judge_deal() per deal, a shop_preauth deal not counted, as
-    the pack's own build_result does. Only the bounds differ from the pack's own run: they are step 10's window
-    [start, end), the window its records are in, so the chains and the halves are judged over one window (the pack's
-    weekly period_policy is not used). Each chain is read once and held to its sha256 first. Raises ValueError (the
-    evaluator's DealsError) when a chain cannot be read as the pack reads a book."""
+    the pack's own build_result does. Only the bounds differ from the pack's own run (Sherlock2 confirmed, Buzz
+    b1effd94): a chain is in step 10's window as its step is, by the step's finding `finished`, never by the dates
+    in its entries (a record's own clock is the operator's), so a chain is read whole, with no bound on either side,
+    exactly as the halves beside it are taken whole. The chain is the node's whole ledger, so a later run's chain holds
+    this run's deals again: each Result counts the deals in its own run's chains, never a sum across runs. The pack's weekly period_policy is not used. Each chain is read once and held to
+    its sha256 first. Raises ValueError (the evaluator's DealsError) when a chain cannot be read as the pack reads a
+    book."""
     verdicts, exchanges = {}, set()
     for r in inputs:
         data = (Path(run) / r["dir"] / r["path"]).read_bytes()
@@ -429,7 +440,7 @@ def evaluate(ev, run, inputs, start, end):
             if line.strip():
                 body = json.loads(line)
                 records.append((body.get("capsule_id"), body))
-        found, legs, own_keys = ev.collect(records, start, end)
+        found, legs, own_keys = ev.collect(records, CHAIN_START, CHAIN_END)
         for deal in found.values():
             if ev.counterparty_class(deal)[0] == "shop_preauth":
                 continue  # the pack's own run does not count it
@@ -521,7 +532,7 @@ def judge_records(records, run, pack, start, end, not_checked):
         evaluated = None
         if inputs:  # a live step whose own chains are cited: the pinned pack's own evaluator decides its terms
             try:
-                evaluated = evaluate(load_evaluator(), run, inputs, start, end)
+                evaluated = evaluate(load_evaluator(), run, inputs)
             except NotChecked as e:
                 what, why, issue = e.args
                 not_checked.append({"what": f"{d}: {what}", "why": why, "issue": issue})
@@ -543,7 +554,7 @@ def judge_records(records, run, pack, start, end, not_checked):
                 c = claim(cid, t["id"], worst, refs, cref,
                           f"the pinned pack's own evaluator, over {len(exchanges)} exchanges in {len(inputs)} nodes' "
                           f"own chains, answers this term for {len(answered)} deal sides: "
-                          f"{said or 'no deal in the window carried this term'}"
+                          f"{said or 'no deal in the chains carried this term'}"
                           + (f" ({', '.join(readings)})" if readings else ""))
                 # countersigned only when every answer is; the provider_states reading is the provider's word
                 if answered and all(g == "countersigned" for _, _, g in answered):
@@ -563,8 +574,8 @@ def judge_records(records, run, pack, start, end, not_checked):
             else:
                 claims.append(claim(cid, t["id"], verdict, refs, cref))
         docs[d] = result_doc(claims, pack, start, end,
-                             {"x-evaluator": {"inputs": len(inputs), "exchanges": len(evaluated[1])}} if evaluated
-                             else None)
+                             {"x-evaluator": {"inputs": len(inputs), "exchanges": len(evaluated[1]),
+                                              "bounds": EVALUATOR_BOUNDS}} if evaluated else None)
     return docs
 
 

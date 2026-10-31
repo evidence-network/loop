@@ -447,6 +447,21 @@ class JudgeTest(Base):
         self.assertIn("(provider_states)", claims["come_through.served_named_model"]["presentation"]["narrative"])
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_a_chain_is_in_the_window_as_its_step_is_not_by_its_entries_dates(self):
+        # Sherlock2 (Buzz b1effd94): the step is in the window by its finding's `finished`; its chain is then read whole,
+        # as its halves are, so a chain entry dated before the window's start is judged with them, never dropped.
+        m = self.with_chains()
+        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        not_checked = []
+        for start, end in ((dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc), dt.datetime(2027, 1, 1, tzinfo=dt.timezone.utc)),
+                           (dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc), dt.datetime(2026, 10, 29, tzinfo=dt.timezone.utc))):
+            # a window that starts after every entry, and one that ends inside the chain (entries stamped after its end)
+            docs = step.judge_records(records, self.run, step.load_pack(), start, end, not_checked)
+            self.assertEqual(docs["05-deal"]["x-evaluator"]["exchanges"], 6, (start, end, not_checked))
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_deal_the_evaluator_finds_not_met_is_not_met(self):
         m = self.with_chains()
         chain = self.run / "05-deal" / "lab-a" / "ledger" / "capsules.jsonl"
@@ -480,7 +495,7 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         _, claims, _ = self.october(m)
         self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_evaluable")
-        self.assertIn("no deal in the window carried this term", claims["come_through.served_named_model"]["presentation"]["narrative"])
+        self.assertIn("no deal in the chains carried this term", claims["come_through.served_named_model"]["presentation"]["narrative"])
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_chain_the_evaluator_cannot_read_is_not_checked(self):
@@ -513,7 +528,8 @@ class JudgeTest(Base):
                          "the pack's terms there to the results 08 re-derived")
         statement = load(self.run / "10-judge" / "bundles" / "05-deal.bundle.json")
         root = statement["disclosures"][statement["root"]]["agent_input"]["statement"]
-        self.assertEqual(root["x-evaluator"], {"inputs": 2, "exchanges": 6})
+        self.assertEqual(root["x-evaluator"], {"inputs": 2, "exchanges": 6, "bounds": step.EVALUATOR_BOUNDS})
+        self.assertIn("not the pack's weekly period_policy", root["x-evaluator"]["bounds"])
 
     def test_the_evaluator_not_held_to_its_pin_is_not_checked_not_a_crash(self):
         with mock.patch.dict(step.EVALUATOR, {"scripts/rollup.py": "0" * 40}):
