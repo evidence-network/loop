@@ -977,6 +977,7 @@ def verify_run(run, out, pop_dir, population):
     """[manifest entries] for every step dir in run except out's, and one failed entry for each step
     run.json lists that has no dir."""
     entries = []
+    SEALED.pop(Path(run).resolve(), None)  # only this verification's own 01 bounds its 03
     own = Path(out).resolve().name.split("-", 1)[0]
     for nn in expected_steps(run) or []:
         if nn != own and not any(finding.STEP_DIR.match(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):

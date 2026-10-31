@@ -951,6 +951,9 @@ class Step08Live03Test(unittest.TestCase):
         write_run_json(self.run, ["03", "08"], "live", stage="1")
 
     def tearDown(self):
+        if getattr(self, "sealed", None):  # a subtest's planted bound ends with it
+            self.sealed.stop()
+            self.sealed = None
         self.tmp.cleanup()
 
     def verify(self):
@@ -1120,9 +1123,8 @@ class Step08Live03Test(unittest.TestCase):
 
     def sealed_at(self, at):
         """As if this 08 run had reproduced the run's live 01 as PASS, with a capsule signed at `at`."""
-        sealed = mock.patch.dict(step.SEALED, {self.run.resolve(): [at]})
-        sealed.start()
-        self.addCleanup(sealed.stop)
+        self.sealed = mock.patch.object(step, "sealed_times", return_value=[at])
+        self.sealed.start()
 
     def head_relies(self, f):
         return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03")]
@@ -1390,6 +1392,16 @@ class Step08Live01Test(unittest.TestCase):
         # Every node sealed under its listed key: nodes.json's per-node state is borne out, so nothing is 01's word.
         self.assertFalse([nc for nc in f["not_checked"] if nc["what"].startswith("step 01")], f["not_checked"])
         self.assertEqual(finding.check(self.run), [])
+        # The passing 01's node-signed capsule times bound a later 03's start; a re-verification whose 01 no longer
+        # passes keeps none of them.
+        times = [step.utc_time(load(p)["timestamp"]) for p in sorted((self.run / "01-seal").glob("*/capsule.json"))]
+        self.assertEqual(step.SEALED.get(self.run.resolve()), times)
+        self.assertTrue(times)
+        shutil.copyfile(POPULATION / "keys" / "bob" / "node-key.pub.pem", self.run / "01-seal" / "lab-1" / "node-key.pub.pem")
+        rehash(self.run / "01-seal")
+        f, entries = self.verify()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertNotIn(self.run.resolve(), step.SEALED)
 
     def test_a_node_key_the_listing_does_not_publish_fails(self):
         def swap(d):
