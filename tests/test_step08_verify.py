@@ -1875,8 +1875,6 @@ class Step08Live06Test(unittest.TestCase):
         self.assertIn("its proof holds no checks.json", entries["06-settle"]["not_checked"]["why"])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class Step08RunCommitTest(unittest.TestCase):
@@ -1929,3 +1927,31 @@ class Step08RunCommitTest(unittest.TestCase):
         self.assertEqual(step.nodes_at_run_commit(self.run, "rehearsal", self.tmp.name), (None, []))
         os.environ["LOOP_NODES_DIR"] = "/x"
         self.assertEqual(step.nodes_at_run_commit(self.run, "live", self.tmp.name), (None, []))
+
+    def commit_at(self, when, key):
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": key})
+        self.git("add", "nodes")
+        env = dict(os.environ, GIT_COMMITTER_DATE=when, GIT_AUTHOR_DATE=when)
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", key],
+                       env=env, check=True)
+        return self.git("rev-parse", "HEAD")
+
+    def test_a_pinned_commit_is_trusted_only_if_it_holds_what_main_held_at_the_run_start(self):
+        self.git("checkout", "-q", "-B", "main")
+        old = self.commit_at("2026-10-30T10:00:00Z", "10" * 32)
+        new = self.commit_at("2026-10-30T12:00:00Z", "22" * 32)  # the key rotated
+        self.git("checkout", "-q", "-b", "side", old)
+        side = self.commit_at("2026-10-30T13:00:00Z", "33" * 32)
+        step.SEALED[self.run.resolve()] = [step.utc_time("2026-10-30T23:00:00Z")]
+        self.addCleanup(step.SEALED.pop, self.run.resolve(), None)
+        for commit, trusted in ((new, True), (old, False), (side, False)):
+            dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": commit})
+            self.assertIs(step.pin_is_current(self.run), trusted, commit)
+        step.SEALED.pop(self.run.resolve())  # no passing 01 bounds the start: nothing is trusted
+        dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": new})
+        self.assertIs(step.pin_is_current(self.run), False)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
