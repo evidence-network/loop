@@ -1,4 +1,5 @@
 """A payment preimage never reaches a published tree: steps/live.py copy_redacted and scripts/check_no_preimages.py."""
+import hashlib
 import json
 import subprocess
 import sys
@@ -49,11 +50,25 @@ class NoPreimagesTest(unittest.TestCase):
         (self.d / "b.json").write_text(json.dumps({"deep": OBS}))
         (self.d / "c.json").write_text(json.dumps({"preimage_check": "verified"}))
         found = check_no_preimages.scan([self.d])
-        self.assertEqual(found, [f"{self.d / 'a.jsonl'}:2", f"{self.d / 'b.json'}:1"])
+        self.assertEqual(found, [f"{self.d / 'a.jsonl'}:2: a preimage member", f"{self.d / 'b.json'}:1: a preimage member"])
         r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_no_preimages.py"), str(self.d)],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 1)
         self.assertNotIn("ab" * 32, r.stdout + r.stderr)
+
+    def test_a_preimage_beside_its_payment_hash_is_found_under_any_name_and_in_any_file(self):
+        pre = bytes(range(32))
+        ph = hashlib.sha256(pre).hexdigest()
+        (self.d / "ledger.jsonl").write_text(json.dumps({"payment_hash": ph}) + "\n")
+        (self.d / "notes.md").write_text("ok\nproof " + pre.hex().upper() + " end\n")
+        (self.d / "c.json").write_text(json.dumps({"secret": pre.hex()}))
+        found = check_no_preimages.scan([self.d])
+        self.assertEqual(sorted(found), sorted([f"{self.d / 'c.json'}:1: a value whose sha256 is in the trees",
+                                                f"{self.d / 'notes.md'}:2: a value whose sha256 is in the trees"]))
+        # A hash alone, or a 64-hex value whose sha256 is nowhere in the trees, is not a hit.
+        (self.d / "notes.md").unlink()
+        (self.d / "c.json").write_text(json.dumps({"key_id": "ef" * 32, "payment_hash": ph}))
+        self.assertEqual(check_no_preimages.scan([self.d]), [])
 
     def test_the_published_trees_hold_no_preimage(self):
         r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_no_preimages.py")],
