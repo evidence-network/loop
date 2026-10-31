@@ -191,12 +191,17 @@ def verify_sig(doc, spki_der):
         msg_bytes = signed_bytes(doc)
     except ValueError:
         return False
-    if len(raw) != 64:
+    return verify_raw(msg_bytes, raw, spki_der)
+
+
+def verify_raw(message, sig, spki_der):
+    """True when `sig` (64 raw bytes) is Ed25519 by spki_der over `message`, by the openssl on PATH."""
+    if len(sig) != 64:
         return False
     with tempfile.TemporaryDirectory() as tmp:
         msg, sigf, pub = Path(tmp) / "msg", Path(tmp) / "sig", Path(tmp) / "pub.pem"
-        msg.write_bytes(msg_bytes)
-        sigf.write_bytes(raw)
+        msg.write_bytes(message)
+        sigf.write_bytes(sig)
         pub.write_text("-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(spki_der).decode() + "\n-----END PUBLIC KEY-----\n")
         r = _openssl("pkeyutl", "-verify", "-pubin", "-inkey", str(pub), "-rawin", "-in", str(msg), "-sigfile", str(sigf))
         return r.returncode == 0

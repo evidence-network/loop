@@ -1310,6 +1310,56 @@ def attempt_stems(node_dir):
     return found
 
 
+ENVELOPE_SIGNED = ("profile", "request_digest", "subject", "derivation", "anchor", "artifact_digest", "verification",
+                   "responder", "issued_at")  # evidence-interop §6.2: the members an answer's signature covers
+REFUSAL_SIGNED = ("issued_at", "reason", "request_digest")  # §6.3
+
+
+def verify_reply_signature(reply_path, extract, listed_key):
+    """Errors for one reply, offline and in this process: its signed answer (the artifact envelope or the signed
+    refusal) verifies under the node's listed key, whatever the plugin's own `verification` says (loop#193). An
+    artifact's digest must be the SHA-256 of its bytes. When the asker's ledger extract holds one sealed request, the
+    answer's request_digest must also be that request's digest; without it the signature is still verified and the
+    binding is left to judge_sealed, which fails or names a missing sealed request."""
+    try:
+        reply = json.loads(Path(reply_path).read_text(encoding="utf-8"))
+        answer = reply["answer"]
+        if not isinstance(answer, dict):
+            raise TypeError("answer is not an object")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return [f"the reply carries no signed answer ({type(e).__name__}: {e})"]
+    errs = []
+    sealed = (extract or {}).get("requests") if isinstance(extract, dict) else None
+    if isinstance(sealed, list) and len(sealed) == 1:
+        try:
+            digest = request_digest(sealed[0]["header"]["statement"]["request"])
+        except (KeyError, TypeError):
+            digest = None
+        if digest is None or answer.get("request_digest") != digest:
+            errs.append("the signed answer is not for the request the asker's ledger sealed")
+    if "artifact" in answer:
+        key, members = answer.get("responder"), ENVELOPE_SIGNED
+        try:
+            if sha256(check_commitment.unb64url(answer["artifact"])) != answer.get("artifact_digest"):
+                errs.append("the artifact's bytes are not the artifact_digest the answer signs")
+        except (ValueError, TypeError):
+            errs.append("the artifact is not base64url bytes")
+    else:
+        key, members = answer.get("key_id"), REFUSAL_SIGNED
+    if key != listed_key:
+        errs.append(f"the answer is signed by {key}, not the listed key {listed_key}")
+    try:
+        body = check_commitment.canonical({k: answer[k] for k in members if k in answer})
+        sig = bytes.fromhex(answer.get("sig"))
+        assert len(sig) == 64 and isinstance(listed_key, str) and len(listed_key) == 64
+        spki = check_commitment.ED25519_SPKI + bytes.fromhex(listed_key)
+    except (ValueError, TypeError, AssertionError):
+        return errs + ["the answer's signature or its signed members are not in the forms §5.2 gives"]
+    if not check_commitment.verify_raw(body, sig, spki):
+        errs.append("the answer's signature does not verify under the listed key")
+    return errs
+
+
 def judge_reporter(pop, out):
     """(failures, not_checked, answered, proof, lines) of the reporter backend, from the files run_reporter kept
     under `out` and the repository (the nodes/ listings, nodes/commitments and lab/runs) only: no console and no
@@ -1406,6 +1456,9 @@ def judge_reporter(pop, out):
                 failures += [f"{name}: {qname}: {e}" for e in errs]
                 merge(not_checked, [{"what": f"{name}: {qname}: the sealed request and its outcome", "why": n,
                                      "issue": SEAL_ISSUE} for n in notes])
+                if saw in ("verified", "refusal", "no_checkpoint_yet") and (attempt / f"{stem}.response.json").is_file():
+                    failures += [f"{name}: {qname}: {e}" for e in
+                                 verify_reply_signature(attempt / f"{stem}.response.json", extract, entry["key_id"])]
                 fail, nc2 = (judge_exchange_line(line, entry, request_profile(request)) if stem == EXCHANGE
                              else judge_live_line(stem, line, entry, request_profile(request)))
                 cited_ok = True
