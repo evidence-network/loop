@@ -284,7 +284,8 @@ def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
             f"count:{k['kind']}", "adjudications",
             f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
             f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps"
-            + (f"; they make up {len(joined)} exchanges, each held on both nodes counted once" if joined else "") + ".",
+            + (f"; they are {len(joined)} deals, one per exchange, each held on both nodes and citing both halves"
+               if joined else "") + ".",
             "met", hit))
     for nn, k in pack["kinds"].items():
         dirs = sorted(d for d in finer if d[:2] == nn)

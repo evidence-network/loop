@@ -37,8 +37,8 @@ or `exchange_id`. The stand-in's deal names no exchange, so its page reads "1 of
 
 On a live run, 05's deal records are the host-served halves each node holds (loop#250; a settlement leg held beside
 them is no deal record). Each exchange is held on both nodes, the other's half on each, so the two halves are joined
-on the `client_nonce` 05 joins them on and count one exchange, never two: the adjudications line names how many
-exchanges its deal records make up. A live half names no top-level `deal_id`: it is a served exchange, not the
+on the `client_nonce` 05 joins them on and count one deal per exchange, never two, citing both halves: the
+adjudications line names how many deals its deal records make up. A live half names no top-level `deal_id`: it is a served exchange, not the
 payer's sealed deal, so it adds to the exchanges and never to the deals.
 
 For now only the payer seals a deal for a paid exchange, so each deal counts one paid exchange. A provider-side deal is

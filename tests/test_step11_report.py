@@ -370,7 +370,7 @@ class ReportTest(Base):
             figures = step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
         text = next(f["text"] for f in figures if f["id"] == "count:deal")
         self.assertIn("2 of 2 deal records step 08 lists", text)  # the settlement leg is no deal record
-        self.assertIn("they make up 1 exchanges, each held on both nodes counted once", text)
+        self.assertIn("they are 1 deals, one per exchange, each held on both nodes and citing both halves", text)
 
     def test_one_exchange_named_twice_counts_once(self):
         line = {"exchange_id": "fixture-ex-2"}
