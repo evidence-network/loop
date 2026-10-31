@@ -309,6 +309,11 @@ PR. Until that entry is in the clone the loop runs from, step 02 FAILs
 `witness_listed` on each node. This is one organization's test witness for its
 own lab, not a witness for the network.
 
+To rotate: move `witness-key.pem` aside, run `lab/lab.sh witness` (a new key,
+a new entry, the old entry kept), then restart the witness
+(`kill $(cat $LAB_DIR/run/witness.pid)`, then `lab/lab.sh witness`), and
+commit the listing.
+
 ### The entries
 
 ```sh
@@ -366,11 +371,6 @@ env LAB_DIR="$LAB_DIR" steps/11-report --population population/live --out findin
 
 The lab account that runs the nodes can read the key, and steps 10 and 11 say
 so in every live finding: same operator, not an independent judge.
-
-To rotate: move `witness-key.pem` aside, run `lab/lab.sh witness` (a new key,
-a new entry, the old entry kept), then restart the witness
-(`kill $(cat $LAB_DIR/run/witness.pid)`, then `lab/lab.sh witness`), and
-commit the listing.
 
 ### The commitments
 
