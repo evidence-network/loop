@@ -20,12 +20,12 @@ which lock that was: `git log --format=%H -- versions.lock`, then
 
 ## Bumping a pin
 
-Change that one line and open a pull request, for example when capsules 0.1.6
+Change that one line and open a pull request, for example when capsules 0.1.7
 is tagged:
 
 ```diff
--capsules Mesh-LLM/capsules-plugin v0.1.5
-+capsules Mesh-LLM/capsules-plugin v0.1.6
+-capsules Mesh-LLM/capsules-plugin v0.1.6
++capsules Mesh-LLM/capsules-plugin v0.1.7
 ```
 
 When mesh-llm #2620 merges, the lab host build becomes a single main commit:

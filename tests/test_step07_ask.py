@@ -245,6 +245,22 @@ class PolicyTest(unittest.TestCase):
         for reason in ("request_expired", "made_up", None):  # not in the spec: a breach
             self.assertEqual(step.refusal_verdict(reason), "fail")
 
+    def test_under_evidence_interop_1_a_policy_reason_is_policy(self):
+        v1 = "evidence-interop/1"
+        for reason in ("policy_declined", "not_authorized"):
+            self.assertEqual(step.refusal_verdict(reason, v1), "fail")
+            self.assertEqual(step.refusal_verdict(reason, "evidence-interop/0"), "not_checked")
+        self.assertEqual(step.refusal_verdict("capacity_exceeded", v1), "not_checked")
+        self.assertEqual(step.refusal_verdict("request_unauthenticated", v1), "ok")
+        # A sealed request with no profile asks for /0, which registers neither -02 token.
+        v0 = step.request_profile({"subject": {"checkpoints": None}})
+        self.assertEqual(v0, "evidence-interop/0")
+        for reason in ("capacity_exceeded", "request_unauthenticated"):
+            self.assertEqual(step.refusal_verdict(reason, v0), "fail")
+        self.assertEqual(step.request_profile({"profile": v1}), v1)
+        self.assertIn("a limit of the node's own",
+                      step.refusal_not_checked("x", "capacity_exceeded")["why"])
+
     def test_what_the_advertised_policy_answers(self):
         hc = {"subject": {"checkpoints": None}, "derivation": "history_card/1"}
         exchange = {"subject": {"exchange": "a" * 64}}
@@ -615,6 +631,19 @@ class ReporterBackendTest(Tmp):
         ok = line.replace("differs", "match")
         self.assertEqual(step.judge_live_line("history_card", ok, entry), (None, None))
 
+    def test_a_reporter_refusal_is_read_by_its_requests_profile(self):
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        line = "refusal reason=capacity_exceeded key=" + "3" * 64 + " listed_key=match"
+        # The reporter's stranger-safe questions ask under /0, where the -02 tokens are not registered.
+        fail, _ = step.judge_exchange_line(line, entry, "evidence-interop/0")
+        self.assertIn("is refused (capacity_exceeded)", fail)
+        fail, nc = step.judge_exchange_line(line, entry, "evidence-interop/1")
+        self.assertIsNone(fail)
+        self.assertIn("a limit of the node's own", nc["why"])
+        refused = line.replace("capacity_exceeded", "not_authorized")
+        fail, _ = step.judge_exchange_line(refused, entry, "evidence-interop/1")
+        self.assertIn("is refused (not_authorized)", fail)
+
     def test_the_deadline_runs_from_the_request_not_from_the_key_lookup(self):
         # A slow key lookup (GET) is not part of the answer time: only the POST's send time starts it.
         real = step.daily_report.http
@@ -937,14 +966,33 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("exchange answer is refused (no_such_subject)", r["detail"])
 
-    def test_a_policy_declined_refusal_of_the_exchange_ask_is_not_checked(self):
+    def test_a_policy_declined_refusal_of_the_exchange_ask_is_a_fail_under_v1(self):
+        # The exchange ask goes under evidence-interop/1, where policy_declined is policy: a half the node cites,
+        # asked by the asker it names, is one the policy answers (capsules-plugin#114).
         asker, extra = self.exchange_dirs()
         r = self.run_live({"checkpoints": "absence", "history_card": "absence", "exchange": "refusal"},
                           ledger=asker, node_extra=extra, sealed={"exchange": "refusal_not_checked"})
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn(step.REFUSAL_ISSUE, self.issues(r))
-        # an unjudged refusal is not an answer
-        self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("the exchange answer is refused (policy_declined)", r["detail"])
+        request = json.loads(next(self.out.glob("lab-1/attempts/*/exchange.request.json")).read_text())
+        self.assertEqual(request["profile"], "evidence-interop/1")
+
+    def test_an_earlier_v0_exchange_proof_is_judged_as_it_was_recorded(self):
+        # A proof from a run that asked under /0 keeps its reading: its policy_declined is not checked.
+        half = "a" * 64
+        v0 = step.exchange_question(half, "evidence-interop/0")
+        self.assertEqual(step.expected_question(step.EXCHANGE, half, v0), v0)
+        line = "refusal reason=policy_declined key=" + "3" * 64 + " listed_key=match"
+        fail, nc = step.judge_exchange_line(line, {}, step.request_profile(v0))
+        self.assertIsNone(fail)
+        self.assertEqual(nc["issue"], step.REFUSAL_ISSUE)
+        # Any other request is not the question this step asks.
+        other = dict(v0, profile="evidence-interop/9")
+        self.assertNotEqual(step.expected_question(step.EXCHANGE, half, other), other)
+        # A sealed request that is not a JSON object is not the question either, and does not raise.
+        for value in ([], "x", None, 1):
+            self.assertNotEqual(step.expected_question(step.EXCHANGE, half, value), value)
+            self.assertEqual(step.request_profile(value), "evidence-interop/0")
 
     def test_an_exchange_refusal_signed_under_another_key_is_a_fail(self):
         r = self.run_live({**VERIFIED, "exchange": "refusal"}, announced="3" * 64, **dict(
