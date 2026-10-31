@@ -1,0 +1,34 @@
+{
+  "asserts": "the report page renders only from step 08's manifest, step 10's Results and the deal and settlement records they cite, every number on it has a denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book",
+  "detail": "run 2026-10-31-live-9: no page rendered.  On live, step 10's Results are under the live judge key: the judge key is held on the lab host by the lab operator account that also runs the nodes: same operator, not an independent judge.",
+  "finished": "2026-10-31T05:09:11Z",
+  "name": "report",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#188",
+      "what": "the report over step 10's Results: step 05: its records, judged in the window",
+      "why": "step 10 is NOT_CHECKED, so there is no Result to report: step 08 shows it not_reproduced, so its records are not verified by 08 and this step does not read them"
+    },
+    {
+      "issue": "evidence-network/loop#209",
+      "what": "the report over step 10's Results: step 09: its records, judged in the window",
+      "why": "step 10 is NOT_CHECKED, so there is no Result to report: step 08 shows it not_reproduced, so its records are not verified by 08 and this step does not read them"
+    },
+    {
+      "issue": "evidence-network/loop#188",
+      "what": "the report over step 10's Results: step 12: its records, judged in the window",
+      "why": "step 10 is NOT_CHECKED, so there is no Result to report: step 08 shows it not_reproduced, so its records are not verified by 08 and this step does not read them"
+    },
+    {
+      "issue": "the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months by Steven's 2026-10-29 ruling: a record is judged once its month has closed",
+      "what": "the report over step 10's Results: the pack over the window",
+      "why": "step 10 is NOT_CHECKED, so there is no Result to report: no record of the run is in the window 2025-10-01T00:00:00Z to 2026-10-01T00:00:00Z: each reproduced step of the pack's kinds finished outside it, or none is in the run"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-31T05:09:11Z",
+  "step": "11"
+}
