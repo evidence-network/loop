@@ -1483,8 +1483,9 @@ def judge_reporter(pop, out):
         failures += [f"{name}: an attempt asks {s}, which this run does not ask" for s in sorted(found)
                      if s not in stems]
         proof += [str(f.relative_to(out)) for a in layout.attempts(node_dir) for f in sorted(a.iterdir()) if f.is_file()]
-        if how.get("asker"):
-            proof += [f"{ASKER_LEDGER}/{how['asker']}/{ledger_proof.CHAIN}"]
+        kept = f"{ASKER_LEDGER}/{how.get('asker')}/{ledger_proof.CHAIN}"
+        if how.get("asker") and (out / kept).is_file() and kept not in proof:  # none when its ledger was not read
+            proof.append(kept)
         said = []
         with exchange_registered(half):
             for stem in stems:

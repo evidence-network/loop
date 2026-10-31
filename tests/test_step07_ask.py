@@ -864,6 +864,12 @@ class ReporterBackendTest(Tmp):
         self.assertNotIn(ledger_proof.ISSUE, self.issues(r))
         self.assertIn("asker-ledger/lab-0/capsules.jsonl", [p["path"] for p in r["proof"]])
 
+    def test_a_named_asker_whose_ledger_was_not_read_leaves_no_copy_and_does_not_crash(self):
+        r = self.run_live(VERIFIED, flags=("--self-node", "lab-0"),
+                          extra_nodes=[{"name": "lab-0", "node_id": "0" * 64, "key_id": "k" * 64}])
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertFalse([p for p in r["proof"] if p["path"].startswith("asker-ledger/")])
+
     def test_the_self_node_is_asked_through_the_second_console_and_read_from_the_second_data_dir(self):
         ledger = self.ledger()
         other = Path(self.tmp.name) / "other"
