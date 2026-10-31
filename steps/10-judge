@@ -65,6 +65,7 @@ import base64
 import datetime as dt
 import fnmatch
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -190,7 +191,7 @@ def load_pack():
             else:
                 terms.append({"id": t["id"], "name": t["name"], "must_have": True, "own": True,
                               **({"counted": True} if t.get("counted") else {})})
-        kinds[nn] = {"kind": k["kind"], "records": k["records"], "terms": terms}
+        kinds[nn] = {"kind": k["kind"], "records": k["records"], "only": k.get("only", {}), "terms": terms}
     return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
             "own_contract_ref": binding["own_contract_ref"],
             "window": {"period": "month", "periods": compiled["window"]["months"]},
@@ -284,7 +285,14 @@ def select(run, manifest, start, end, pack):
         patterns = pack["kinds"][e["step"]]["records"]
         # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
         # disputes; the bundles and proof files beside them are 08's, not counted.
-        wanted = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
+        matched = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
+        wanted = {}
+        for p, s in matched.items():
+            if (d / p).is_file() and finding.sha256(d / p) == s and not is_record(pack["kinds"][e["step"]], p, d / p):
+                refused.append(f"{e['dir']}/{p}: not a {kind} record (binding.json `only`: "
+                               f"{next(c['why'] for g, c in pack['kinds'][e['step']]['only'].items() if fnmatch.fnmatchcase(p, g))})")
+                continue
+            wanted[p] = s
         if not wanted:
             refused.append(f"{e['dir']}: {len(files)} files, none is a {kind} record ({', '.join(patterns)})")
             problems.append(f"{e['dir']}: 08 lists no {kind} record ({', '.join(patterns)})")
@@ -300,6 +308,25 @@ def select(run, manifest, start, end, pack):
 
 def ref(r):
     return f"{r['dir']}/{r['path']}"
+
+
+def is_record(kind, path, file):
+    """Whether `path` (a file 08 lists, at `file`) is a record of `kind`: it matches one of the kind's `records`
+    patterns and, where binding.json's `only` names a condition for that pattern, the file meets it. A live 05 held
+    half is a deal record only when its action_id is a host-served capsule's, never a settlement leg (Sherlock2,
+    loop#250). `file` is read only for such a condition, after its bytes match 08's digest."""
+    if not any(fnmatch.fnmatchcase(path, g) for g in kind["records"]):
+        return False
+    for pattern, cond in kind.get("only", {}).items():
+        if fnmatch.fnmatchcase(path, pattern):
+            if cond.get("path") and not re.fullmatch(cond["path"], path):
+                return False  # the glob alone lets * cross a / and [0-9] check one character
+            try:
+                action = load(file).get("action_id")
+            except (OSError, ValueError, AttributeError):
+                return False
+            return isinstance(action, str) and action.startswith(cond["action_id_prefix"])
+    return True
 
 
 # --- The pack: deterministic, no model ----------------------------------------------------

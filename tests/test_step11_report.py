@@ -345,6 +345,33 @@ class ReportTest(Base):
         self.assertNotIn("deal-random-2", json.dumps(self.statement()))
         self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
 
+    def test_live_05_halves_of_one_exchange_count_once(self):
+        # Each node holds the other's half of one exchange: the two make one exchange, joined on client_nonce as 05
+        # joins them (Sherlock2, loop#250); a settlement leg (store_nonce only) names no exchange.
+        live = ROOT / "findings" / "2026-10-31-live-8" / "05-deal"
+        a, b = (json.loads((live / n / "held-1.json").read_text()) for n in ("stevenmih-1", "stevenmih-2"))
+        self.assertIsNotNone(step.exchange_of(a))
+        self.assertEqual(step.exchange_of(a), step.exchange_of(b))
+        leg = {"action_id": "mesh/settlement/terms", "model_attestation": {"compute_attestation": {"store_nonce": "x"}}}
+        self.assertIsNone(step.exchange_of(leg))
+        kind = {"kind": "deal", "records": ["deal.json", "*/held-*[0-9].json"], "terms": [],
+                "only": {"*/held-*[0-9].json": {"action_id_prefix": "mesh-poc/capsule-emit-mesh-host-served/",
+                                                "path": "[^/]+/held-[0-9]+\\.json", "why": "w"}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp)
+            for name, doc in (("lab-a/held-1.json", a), ("lab-b/held-1.json", b), ("lab-a/held-31.json", leg)):
+                (src / "05-deal" / name).parent.mkdir(parents=True, exist_ok=True)
+                (src / "05-deal" / name).write_text(json.dumps(doc))
+            manifest = {"steps": [{"dir": "05-deal", "step": "05", "status": "reproduced", "files": [
+                {"path": n} for n in ("lab-a/held-1.json", "lab-a/held-1-citing.json", "lab-b/held-1.json",
+                                      "lab-a/held-31.json")]}]}
+            cited = {"05-deal/lab-a/held-1.json": "s", "05-deal/lab-b/held-1.json": "s"}
+            found = {"deals": {}, "exchanges": {step.exchange_of(a): set(cited)}}
+            figures = step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
+        text = next(f["text"] for f in figures if f["id"] == "count:deal")
+        self.assertIn("2 of 2 deal records step 08 lists", text)  # the settlement leg is no deal record
+        self.assertIn("they make up 1 exchanges, each held on both nodes counted once", text)
+
     def test_one_exchange_named_twice_counts_once(self):
         line = {"exchange_id": "fixture-ex-2"}
         self.add_record("06-settle", "ledger.jsonl", line, line)
