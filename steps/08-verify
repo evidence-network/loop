@@ -487,8 +487,8 @@ ANCHOR_REF = "origin/main"
 EXCLUSIONS = "anchor-exclusions.json"
 # The repository inputs a live step is held to, as (path in the repository, variable the steps read it from).
 ANCHORED_INPUTS = (("nodes", "LOOP_NODES_DIR"), ("lab/witness", None), ("lab/runs", "LOOP_LAB_RUNS"))
-# Live steps whose checks read those inputs (04 and 06 hold nothing to a key).
-ANCHORED_STEPS = {"01", "02", "03", "05", "07", "09", "12"}
+# Live steps whose checks read those inputs (06 holds nothing to a key).
+ANCHORED_STEPS = {"01", "02", "03", "04", "05", "07", "09", "12"}
 ANCHOR_WHAT = ("the listed keys, witness listing and join commitments it is held to, read at the pull request merge "
                "on main that published it")
 

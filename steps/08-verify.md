@@ -106,7 +106,7 @@ announced key is a not_checked entry on evidence-network/loop#209.
 
 ## Which repository inputs a live step is held to
 
-A live step that holds keys to the repository (01, 02, 03, 05, 07, 09 and 12) is re-derived with the repository's
+A live step that holds keys to the repository (01, 02, 03, 04, 05, 07, 09 and 12) is re-derived with the repository's
 `nodes/` listings and commitments, `lab/witness/witnesses.json` and the join commitments under `lab/runs/*/join/` as
 the pull request merge that published it held them (evidence-network/loop#280), not as this checkout holds them now.
 So a key retired after a run was published does not change what the run is held to, and a key retired before it

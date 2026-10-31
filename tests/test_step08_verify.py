@@ -2057,7 +2057,7 @@ class Step08PublicationTest(unittest.TestCase):
         self.key("22")
         self.commit("rotate")
         self.sync()
-        (self.run / "04-admit").mkdir()
+        (self.run / "06-settle").mkdir()
         write_run_json(self.run, ["08"], "live")
         seen = {}
 
@@ -2072,7 +2072,7 @@ class Step08PublicationTest(unittest.TestCase):
             entries = step.verify_run(self.run, self.run / "08-verify", POPULATION, "live")
             self.assertNotIn("LOOP_NODES_DIR", os.environ)  # put back after each step
             self.assertEqual(seen["01-seal"], (merged, "11" * 32))
-            self.assertEqual(seen["04-admit"], (None, "22" * 32))  # 04 holds nothing to a key: no anchor, no gap
+            self.assertEqual(seen["06-settle"], (None, "22" * 32))  # 06 holds nothing to a key: no anchor, no gap
             self.assertEqual([e["relies_on"] for e in entries], [[], []])
             (self.step / "capsule.json").write_text("forged\n")
             entries = step.verify_run(self.run, self.run / "08-verify", POPULATION, "live")
