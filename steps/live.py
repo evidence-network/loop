@@ -24,38 +24,68 @@ ORDER = {"PASS": 0, "NOT_CHECKED": 1, "FAIL": 2}
 
 
 # A settlement record the plugin seals keeps the payment's preimage (capsules-plugin lightning-v0, "preimage"). It is
-# bearer proof of a payment and never leaves the lab host: a ledger copied into a proof keeps each such record only
-# as a stub at its own line, so line numbers (held-<n>) and every other record stay as the node holds them.
-REDACTED = "a record carrying a payment preimage, which never leaves the lab host"
+# bearer proof of a payment and never leaves the lab host. A ledger copied into a proof keeps every record, with only
+# the preimage's value replaced by REDACTED: the evaluator step 10 runs on 05's chain still sees each settlement
+# (phase, source, payment_hash, amounts), and line numbers (held-<n>) stay. Such a line no longer hashes to its
+# capsule_id; no step verifies an observation's bytes (05 checks citing records, own halves and inclusions).
+# A line that does not parse but names a preimage (a ledger copied while its node appends to it) is a stub instead.
+REDACTED = "redacted: a payment preimage never leaves the lab host"
+UNPARSED = "an unparsable ledger line that names a preimage, withheld"
+# Key names that carry a preimage's value; preimage_check (06's outcome) is the only other key that names one.
+NOT_A_PREIMAGE = ("preimage_check",)
+
+
+def preimage_key(key):
+    return isinstance(key, str) and "preimage" in key.lower() and key not in NOT_A_PREIMAGE
 
 
 def carries_preimage(value):
-    """Whether a parsed record holds a non-empty `preimage` member at any depth."""
+    """Whether a parsed record holds a non-empty preimage value under any key naming one (preimage, payment_preimage,
+    preImage...) at any depth, other than the REDACTED marker; a string that is itself JSON is looked into."""
     if isinstance(value, dict):
-        return any((k == "preimage" and v not in (None, "")) or carries_preimage(v) for k, v in value.items())
+        return any((preimage_key(k) and v not in (None, "", REDACTED)) or carries_preimage(v) for k, v in value.items())
     if isinstance(value, list):
         return any(carries_preimage(v) for v in value)
+    if isinstance(value, str) and value[:1] in "{[" and "preimage" in value.lower():
+        try:
+            return carries_preimage(json.loads(value))
+        except ValueError:
+            return True  # names a preimage and does not parse: treated as one
     return False
 
 
-def copy_redacted(src, dest):
-    """Copy the JSONL ledger file src to dest, each record that carries a preimage replaced by a stub naming its
-    capsule_id and the sha256 of its line. Returns how many were replaced. A line that does not parse is copied as is."""
-    out, n = [], 0
-    for raw in Path(src).read_bytes().splitlines(keepends=True):
+def redacted(value):
+    """value with every preimage value (as carries_preimage finds them) replaced by REDACTED."""
+    if isinstance(value, dict):
+        return {k: (REDACTED if preimage_key(k) and v not in (None, "") else redacted(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redacted(v) for v in value]
+    if isinstance(value, str) and value[:1] in "{[" and "preimage" in value.lower():
         try:
-            record = json.loads(raw)
+            return json.dumps(redacted(json.loads(value)), separators=(",", ":"), sort_keys=True)
         except ValueError:
-            out.append(raw)
-            continue
-        if carries_preimage(record):
+            return UNPARSED
+    return value
+
+
+def copy_redacted(src, dest):
+    """Copy the JSONL ledger file src to dest line for line, each preimage value replaced by REDACTED (the rest of a
+    record kept as it parsed, re-encoded only when it held one); an unparsable line that names a preimage becomes a
+    stub with the sha256 of its bytes. Returns how many lines changed."""
+    out, n = [], 0
+    for raw in Path(src).read_bytes().split(b"\n"):
+        try:
+            record = json.loads(raw) if raw.strip() else None
+        except ValueError:
+            record = None
+            if b"preimage" in raw.lower():
+                n += 1
+                raw = json.dumps({"redacted": UNPARSED, "line_sha256": hashlib.sha256(raw).hexdigest()}).encode()
+        if record is not None and carries_preimage(record):
             n += 1
-            cid = record.get("capsule_id") if isinstance(record, dict) else None
-            stub = {"redacted": REDACTED, "capsule_id": cid, "line_sha256": hashlib.sha256(raw.rstrip(b"\n")).hexdigest()}
-            out.append(json.dumps(stub, sort_keys=True).encode() + (b"\n" if raw.endswith(b"\n") else b""))
-        else:
-            out.append(raw)
-    Path(dest).write_bytes(b"".join(out))
+            raw = json.dumps(redacted(record), separators=(",", ":")).encode()
+        out.append(raw)
+    Path(dest).write_bytes(b"\n".join(out))
     return n
 
 
