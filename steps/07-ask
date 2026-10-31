@@ -48,7 +48,8 @@ it cites. The judge checks, on those bytes:
     the exchange ask goes under evidence-interop/1, and an earlier run's proof
     is judged under the profile its sealed request records;
     only coverage_unsatisfiable, deadline_unmet, request_malformed,
-    retention_expired and request_unauthenticated blame the request, and any
+    request_unauthenticated blame the request; retention_expired is NOT_CHECKED, as no node
+    publishes a retention commitment to judge it against (loop#60), and any
     other reason, or none, is a FAIL;
   - an absence's window opens at the request record and closes no earlier
     than the deadline, and the carrier delivered no reply by the deadline; a
@@ -269,7 +270,12 @@ def policy_answers(request, adv, requester_authenticated=True):
 # Anything else, a reason the spec does not name included, is a breach (vectors/aac-evidence-request in
 # capsules-plugin). no_such_subject and derivation_unsupported withhold; the reasons below blame the request.
 WITHHOLDING_REASONS = ("no_such_subject", "derivation_unsupported")
-REQUEST_REASONS = ("coverage_unsatisfiable", "deadline_unmet", "request_malformed", "retention_expired")
+REQUEST_REASONS = ("coverage_unsatisfiable", "deadline_unmet", "request_malformed")
+# retention_expired is right only once the node's retention commitment for the subject has lapsed; inside it the
+# refusal breaches the promise (ER §9, ERV A9). No node publishes a retention commitment the step can read, so
+# such a refusal cannot be judged and is never counted as answered (evidence-network/loop#60).
+RETENTION_REASONS = ("retention_expired",)
+RETENTION_ISSUE = "evidence-network/loop#60"
 AMBIGUOUS_REASONS = ("policy_declined", "not_authorized")
 REFUSAL_ISSUE = "Mesh-LLM/capsules-plugin#114"
 # Interop profile evidence-interop/1 (AAC spec/interop-profile-v1.md, Evidence Request -02): a node declines for a
@@ -297,6 +303,8 @@ def refusal_verdict(reason, profile=PROFILE_V0):
     breach, and policy_declined and not_authorized cannot be judged (IP v1 §6.3, §9.1)."""
     if reason in REQUEST_REASONS:
         return "ok"
+    if reason in RETENTION_REASONS:
+        return "not_checked"
     if reason in LIMIT_REASONS or reason in V1_REQUEST_REASONS:
         if profile != PROFILE_V1:
             return "fail"
@@ -307,6 +315,10 @@ def refusal_verdict(reason, profile=PROFILE_V0):
 
 
 def refusal_not_checked(what, reason):
+    if reason in RETENTION_REASONS:
+        return {"what": what, "issue": RETENTION_ISSUE,
+                "why": f"the refusal's reason {reason} is right only after the node's retention commitment for the "
+                       "subject lapses, and the node publishes none the step can read, so it cannot be judged"}
     if reason in LIMIT_REASONS:
         why = f"the refusal's reason {reason} is a limit of the node's own, which no policy promises past"
     else:
