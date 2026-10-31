@@ -98,7 +98,8 @@ HELD_NOTE = "Held: whether this row stays on the page is still to be settled."
 # per gap, in the form steps/finding.py checks; gaps() reads them back.
 
 # The five numbers. A measured one reads the newest run of its population:
-#   start = run.json `started`, which loop.sh writes before the run's first step;
+#   start = run.json `started`, which loop.sh writes before its first step: the earliest start of the day's
+#           directory, a step lab.sh ran there earlier included (evidence-network/loop#65);
 #   event = the `finished` of the marker step's finding, when that finding is a
 #           valid PASS; for step 07 (Ask), the `answered_at` of its first answered
 #           ask (first_answered()), as its valid PASS or NOT_CHECKED finding names it.
@@ -678,7 +679,8 @@ and {lock} only.</p>
 
 <h2 id="numbers">Five numbers</h2>
 <p>Each number is per population, from that population's newest run only. A minutes figure runs from the run's
-start (its <code>run.json</code>, written before the first step) to the end of the step that marks the event. A
+start (its <code>run.json</code>: the earliest start of the day's steps, written before loop.sh's first step) to the
+end of the step that marks the event. A
 number that cannot be measured yet says so, with the milestone it waits for; it is never shown as 0.</p>
 <div class="scroll"><table><thead><tr><th scope="col">Number</th><th scope="col">Unit</th>
 <th scope="col">Rehearsal</th><th scope="col">Live</th><th scope="col">From</th></tr></thead>

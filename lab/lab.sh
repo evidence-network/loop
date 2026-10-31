@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -40,6 +40,8 @@
 #             or is not under the key nodes/<node_id>.json lists. Order: join, bind, entries, commitments, pack
 #   loop      ./loop.sh --stage 1 --population live, asking from the reporter node's console
 #             (and the reporter node itself from a second node's console)
+#   admit     steps/04-admit on population/live, into the same findings/<date>-live/: it reads the admission
+#             decisions each node's ledger sealed after `exchange`. Starts no exchange and pays nothing
 #   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
 #             halves the nodes in LAB_SHARE_AT_COMPLETION pushed after `exchange`. Starts no exchange
 #             and pays nothing
@@ -857,6 +859,14 @@ cmd_loop() {
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+cmd_admit() {
+  # Step 04 is not in loop.sh's stage 1 (evidence-network/loop#127), so it runs on its own, like deal.
+  local out=$ROOT/findings/$TODAY-live
+  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/04-admit" --population "$ROOT/population/live" --out "$out/04-admit"
+  run python3 -B "$ROOT/steps/finding.py" check "$out"
+  [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
+}
+
 cmd_deal() {
   # Step 05 is not in loop.sh's stage 1, so it runs on its own, into the day's live findings
   # beside stage 1's, and the finding contract is checked over the whole directory.
@@ -972,7 +982,7 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

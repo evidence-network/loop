@@ -424,6 +424,15 @@ class DryRunTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("names lab-9, not a lab node", r.stderr)
 
+    def test_admit_runs_step_04_on_the_live_population_into_the_days_findings(self):
+        # Step 04 is not in stage 1, so lab.sh admit runs it (evidence-network/loop#127).
+        r = lab_sh("--dry-run", "admit", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/04-admit --population "
+                                   rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/04-admit\n")
+        self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
     def test_deal_runs_step_05_on_the_live_population_into_the_days_findings(self):
         r = lab_sh("--dry-run", "deal", env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
