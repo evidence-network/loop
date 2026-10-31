@@ -1,0 +1,112 @@
+{
+  "asserts": "an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, run again on the proof bytes it cites, gives the result and not_checked list the step recorded",
+  "detail": "run 2026-10-31-live-8, offline, from the bundle and the repository's keys only: 01-seal: reproduced PASS; 02-book: reproduced PASS; 03-advertise: reproduced PASS; 04-admit: reproduced PASS; 05-deal: recorded NOT_CHECKED, not reproduced; 07-ask: reproduced NOT_CHECKED; 09-dispute: reproduced PASS; 12-join: recorded NOT_CHECKED, not reproduced. The manifest, per step, is this step's proof file.",
+  "finished": "2026-10-31T05:07:08Z",
+  "name": "verify",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#188",
+      "what": "step 05: its live result re-derived from its proof bytes",
+      "why": "its live judge reads a lab node's data dir or console while it decides, and the finding does not cite those bytes"
+    },
+    {
+      "issue": "evidence-network/loop#188",
+      "what": "step 12: its live result re-derived from its proof bytes",
+      "why": "its live judge reads a lab node's data dir or console while it decides, and the finding does not cite those bytes"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 01: what nodes.json says of each node (data_dir unread, a pin missing, or sealed by the node itself)",
+      "why": "08 judges each kept capsule again, but which node was read, the pins found and own_seal are 01's record of its run"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 02: what nodes.json and each inputs.json record of the run (which node was read, the pins missing, the book's checkpoint key, the keys it was bound to, its book id and first checkpoint key, every node's key, whether a witness is set, and the witness exit codes and stated cause)",
+      "why": "08 verifies each bundle again and holds each listed node key to its listing, but the rest is 02's reading of the node's book and its run, which is not in the bundle"
+    },
+    {
+      "issue": "evidence-network/loop#219",
+      "what": "step 02: each witness receipt's verified state",
+      "why": "08 runs 02's witness checks again on witness-status.json, but the state is capsulectl's re-verification against the node's book on the lab, not a check 08 makes from the bundle"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 03: carrier.json's commit was the carrier's HEAD when 03 ran",
+      "why": "08 holds the cited bytes to that commit, but that it was HEAD at the run (and no later commit) is 03's reading"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 04: what nodes.json says of each node (read or not, its record count) and each decisions.jsonl holding every admission decision its ledger held",
+      "why": "08 judges the decision lines 04 kept and what nodes.json says, but the node's ledger is not in the bundle"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
+      "why": "08 checks every rule on 07's extract of the lab node's ledger (its line count and sha256 at read time are kept for an audit), but the ledger itself is not in the bundle"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 07: each reply's signatures, verified again offline",
+      "why": "live 07 reads the pinned plugin's verification in each reply; 08 does not verify the reply bytes under the listed key itself"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 07: each node's kept commitment is the one in force when it was asked",
+      "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 09: what nodes.json records of the run (which node was read, each announced key, a key not read)",
+      "why": "08 checks each held Result again on the copied ledgers, but which node was read and the ledger files copied whole are 09's reading of the nodes' data dirs"
+    },
+    {
+      "issue": "evidence-network/loop#209",
+      "what": "step 09: node stevenmih-4's announced key",
+      "why": "the node has no nodes/ listing (a node the twins run adds, which the repository's population does not list), so the key nodes.json records is 09's reading of its data_dir"
+    }
+  ],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.16.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsule-emit": {
+      "ref": "python/v0.13.0",
+      "repository": "action-state-group/capsule-emit"
+    },
+    "capsulectl": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsules": {
+      "ref": "d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "2809443345ea8134db62a8b433f5bb2bb5f1d123",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "reporter": {
+      "ref": "4d00c42c9856fc892f7309ee9b434dca1bb69202",
+      "repository": "evidence-network/loop"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "verified.json",
+      "sha256": "cbee68c3ef5a055c4946f2d3eb61f8acd95268d5d64fa6a686d75bc571ce798f"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-31T05:07:07Z",
+  "step": "08"
+}
