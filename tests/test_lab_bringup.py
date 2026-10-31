@@ -147,7 +147,7 @@ class DryRunTest(unittest.TestCase):
 
     def test_loop_from_the_reporter_console_and_pack_list(self):
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=stevenmih-3 "
-                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LAB_DIR=", self.out)
+                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9811 LOOP_SECOND_NODE=lab-1 LAB_DIR=", self.out)
         self.assertIn("LOOP_NODE_CONSOLES=stevenmih-1=http://127.0.0.1:9811\\,stevenmih-2=http://127.0.0.1:9812\\,"
                       "stevenmih-3=http://127.0.0.1:9813 ", self.out)
         self.assertIn("loop.sh --stage 1 --population live --out", self.out)
@@ -434,7 +434,7 @@ class DryRunTest(unittest.TestCase):
         r = lab_sh("--dry-run", "loop", env={**self.env, "LAB_REPORTER": "lab-1"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
-                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 ", r.stdout)
+                      "LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LOOP_SECOND_NODE=lab-2 ", r.stdout)
 
     def test_no_node_is_told_to_push_unless_named(self):
         # Unnamed nodes keep the plugin's own default (on at the pin), not a value lab.sh sets.
@@ -598,7 +598,7 @@ class DryRunTest(unittest.TestCase):
         r = lab_sh("--dry-run", "ask", env={**self.env, "LAB_REPORTER": "lab-1"})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertRegex(r.stdout, rf"env LOOP_CONSOLE=http://127.0.0.1:9811 LOOP_SELF_NODE=stevenmih-1 "
-                                   rf"LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LAB_DIR={re.escape(str(self.lab))} "
+                                   rf"LOOP_SECOND_CONSOLE=http://127.0.0.1:9812 LOOP_SECOND_NODE=lab-2 LAB_DIR={re.escape(str(self.lab))} "
                                    rf"LOOP_SECOND_DATA_DIR={re.escape(str(self.lab))}/nodes/lab-2/\S+ "
                                    rf"\S+/steps/07-ask --population \S+/population/live --out "
                                    rf"\S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/07-ask\n")

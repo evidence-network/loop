@@ -124,6 +124,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
+import ledger_proof  # noqa: E402
 import live  # noqa: E402
 import report_layout as layout  # noqa: E402
 
@@ -836,34 +837,42 @@ OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a 
 
 def ledger_lines(path, raw=None):
     """The JSON object lines of a ledger file (or of `raw`, its bytes as read); None when it cannot be read."""
+    pairs = ledger_numbered(path, raw)
+    return None if pairs is None else [rec for _, rec in pairs]
+
+
+def ledger_numbered(path, raw=None):
+    """(line number, record) of the JSON object lines of a ledger file (or of `raw`, its bytes as read), numbered
+    from 0 as the ledger counts lines (a leaf of its checkpoint); None when it cannot be read."""
     try:
         text = Path(path).read_text(encoding="utf-8") if raw is None else raw.decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     out = []
-    for line in text.splitlines():
+    for n, line in enumerate(text.split("\n")):
         try:
             rec = json.loads(line)
         except ValueError:
             continue
         if isinstance(rec, dict):
-            out.append(rec)
+            out.append((n, rec))
     return out
 
 
-def ask_records(ledger, raw=None):
-    """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
-    ledger cannot be read. `raw` is the ledger's bytes when the caller has read them."""
-    recs = ledger_lines(Path(ledger) / "capsules.jsonl", raw)
+def ask_records(ledger, raw=None, numbered=False):
+    """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header); with `numbered`,
+    as (capsule_id, header, line number). None when the ledger cannot be read. `raw` is the ledger's bytes when the
+    caller has read them."""
+    recs = ledger_numbered(Path(ledger) / "capsules.jsonl", raw)
     if recs is None:
         return None
     records = []
-    for rec in recs:
+    for n, rec in recs:
         att = rec.get("model_attestation")
         comp = att.get("compute_attestation") if isinstance(att, dict) else None
         header = comp.get(BOOK_BLOCK) if isinstance(comp, dict) else None
         if isinstance(header, dict) and isinstance(rec.get("capsule_id"), str):
-            records.append((rec["capsule_id"], header))
+            records.append((rec["capsule_id"], header, n) if numbered else (rec["capsule_id"], header))
     return records
 
 
@@ -916,6 +925,22 @@ def citing(records, rids):
                     for l in h.get("links") or [])]
 
 
+def select_ask(records, node_id, request, posted, back):
+    """(found, got) of one ask in a node's ask-book `records` (ask_records with numbered=True): every
+    evidence_request the plugin sealed for the ask, and every outcome record citing one, each as
+    (index in records, capsule_id, header, line number). The one selection both the live read (ledger_extract) and
+    the check against the kept copy (judge_ledger_proof) make."""
+    lo, hi = ask_bracket(posted, back)
+    found = [(i, rid, h, n) for i, (rid, h, n) in enumerate(records) if is_ask_request(h, node_id, request, lo, hi)]
+    rids = {rid for _, rid, _, _ in found}
+    got = [(i, orid, h, records[i][2]) for i, orid, h in citing([(r, h) for r, h, _ in records], rids)]
+    return found, got
+
+
+def extract_rows(items):
+    return [{"index": i, "record": rid, "header": h, "line": n} for i, rid, h, n in items]
+
+
 def ledger_extract(ledger, node_id, request, posted, back, saw, within):
     """What judge_sealed reads of the asker's ledger for one ask, kept as the ask's <stem>.ledger.json so the judge
     runs again on the proof alone (step 08): whether the ledger was read, when, every evidence_request the plugin
@@ -930,14 +955,12 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
             raw = (Path(ledger) / "capsules.jsonl").read_bytes()
         except OSError:
             return None, None
-        return ask_records(ledger, raw), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
+        return ask_records(ledger, raw, numbered=True), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
 
     records, held = read() if ledger else (None, None)
     if records is None:
         return {"ledger": None, "read_at": stamp(now())}
-    lo, hi = ask_bracket(posted, back)
-    found = [(i, rid, h) for i, (rid, h) in enumerate(records) if is_ask_request(h, node_id, request, lo, hi)]
-    got = citing(records, {rid for _, rid, _ in found})
+    found, got = select_ask(records, node_id, request, posted, back)
     if len(found) == 1 and saw not in ("verified", "refusal"):
         close = window_close(found[0][2], within)
         while not got and now() < close + dt.timedelta(seconds=5) and close - now() <= OPEN_WINDOW_WAIT:
@@ -945,14 +968,9 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
             again, again_held = read()
             if again is not None:
                 records, held = again, again_held
-                found = [(i, rid, h) for i, (rid, h) in enumerate(records)
-                         if is_ask_request(h, node_id, request, lo, hi)]
-                got = citing(records, {rid for _, rid, _ in found})
-
-    def rows(items):
-        return [{"index": i, "record": rid, "header": h} for i, rid, h in items]
-
-    return {"ledger": "read", "read_at": stamp(now()), "held": held, "requests": rows(found), "outcomes": rows(got)}
+                found, got = select_ask(records, node_id, request, posted, back)
+    return {"ledger": "read", "read_at": stamp(now()), "held": held, "requests": extract_rows(found),
+            "outcomes": extract_rows(got)}
 
 
 def judge_sealed(extract, node_id, request, posted, back, saw, within, policy_digest=None):
@@ -1161,11 +1179,14 @@ ASK_FILE = "ask.json"  # which node was asked through which console, or why it w
 SUBJECT_FILE = "exchange-subject.json"  # per node: the half the exchange ask is about, or why there is none
 COMMITMENT_DIR = "commitment"  # per node: the commitment the deadline came from, its policy, and choice.json
 OWN_NODE = "the reporter's own node and no second console"
+ASKER_LEDGER = "asker-ledger"  # per asker: the whole ledger/capsules.jsonl the checkpoint replies cover (loop#276)
+ASKER_UNNAMED = "console"  # the asker's directory when its node is not named, so no listed key checks its replies
+CHECKPOINT_SUFFIX = ".checkpoint.json"  # per ask: the asker's ledger-checkpoint reply, or the refusal text
 NO_LISTING = "no nodes/ entry"
 
 
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, console_data_dir=None,
-                 second_data_dir=None):
+                 second_data_dir=None, second_node=None):
     """Ask each live node through the reporter's console and keep, under `out`, everything judge_reporter reads:
     the attempts, each ask's timing and ledger extract, each node's exchange subject and ask.json. Returns
     judge_reporter's verdict on those files, so the finding is a function of its proof (step 08 runs it again)."""
@@ -1177,15 +1198,18 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
     out = Path(out)
     for n in pop["nodes"]:  # a rerun into the same --out starts clean
         shutil.rmtree(out / n["name"], ignore_errors=True)
+    shutil.rmtree(out / ASKER_LEDGER, ignore_errors=True)
     asked = {}
+    pending = []  # the asks whose extract is made again from the kept copy of the asker's ledger
+    askers = {}  # asker's directory name under ASKER_LEDGER -> its ledger dir
     for node in pop["nodes"]:
         name = node["name"]
-        asker, via, ledger = console, "the reporter's console", console_data_dir
+        asker, via, ledger, asker_node = console, "the reporter's console", console_data_dir, self_node
         if self_node and name == self_node:
             if not second_console:
                 asked[name] = {"asked": False, "why": OWN_NODE}
                 continue
-            asker, via, ledger = second_console, "a second node's console", second_data_dir
+            asker, via, ledger, asker_node = second_console, "a second node's console", second_data_dir, second_node
         try:
             entry = step12.listed_entry(node)
         except FileNotFoundError:
@@ -1197,7 +1221,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         keep_commitment(node_dir, adv, ncs)
         half, why = exchange_subject(node, ledger)
         write_json(node_dir / SUBJECT_FILE, {"half": half, "why": why})
-        asked[name] = {"asked": True, "via": via}
+        asked[name] = {"asked": True, "via": via, "asker": asker_node}
+        asker_dir = asker_node or ASKER_UNNAMED
+        if ledger:
+            askers[asker_dir] = Path(ledger) / "ledger"
         # One attempt per question, so each answer has its own send and receive times.
         last = None
         stems = [*daily_report.QUESTIONS, *([EXCHANGE] if half else [])]
@@ -1225,8 +1252,42 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                         Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
                         sent_at, back, saw if saw in ("verified", "refusal") else None,
                         adv["within"] if adv else None))
+                    if ledger:  # after the ask's outcome is sealed (the extract's last read): the asker's checkpoint
+                        write_json(attempt / f"{stem}{CHECKPOINT_SUFFIX}", {
+                            "asker": asker_node, **ledger_proof.fetch(asker, ledger_proof.CHAIN, timeout,
+                                                                      daily_report.http)})
+                        pending.append((attempt, stem, entry["node_id"], sent_at, back, asker_dir))
+    keep_askers(out, askers, pending)
     write_json(out / ASK_FILE, {"self_node": self_node, "second_console": bool(second_console), "nodes": asked})
     return judge_reporter(pop, out)
+
+
+def keep_askers(out, askers, pending):
+    """Keep each asker's whole ledger/capsules.jsonl (read once, after every checkpoint reply it gave: the chain only
+    grows, so each reply's first lines are a prefix of this copy), then make each checked ask's extract again from
+    the first lines its reply covers, so the extract is the selection judge_ledger_proof repeats over the same
+    bytes. A copy keeps every line, a payment preimage's value replaced (live.copy_redacted)."""
+    kept = {}
+    for name, ledger_dir in askers.items():
+        try:
+            ledger_proof.keep_copy(ledger_dir / ledger_proof.CHAIN, Path(out) / ASKER_LEDGER / name / ledger_proof.CHAIN)
+            kept[name] = (Path(out) / ASKER_LEDGER / name).joinpath(ledger_proof.CHAIN).read_bytes()
+        except OSError:
+            continue
+    for attempt, stem, node_id, sent_at, back, name in pending:
+        try:
+            ck, extract = load(attempt / f"{stem}{CHECKPOINT_SUFFIX}"), load(attempt / f"{stem}.ledger.json")
+            n = ledger_proof.covered(ck["reply"]) if ck.get("reply") else None
+            cut = ledger_proof.prefix(kept[name], n) if n and name in kept else None
+            if cut is None or extract.get("ledger") != "read":
+                continue
+            records = ask_records(Path(out) / ASKER_LEDGER / name, cut, numbered=True)
+            found, got = select_ask(records, node_id, load(attempt / f"{stem}.request.json"), sent_at, back)
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        extract.update({"held": {"sha256": sha256(cut), "lines": n}, "requests": extract_rows(found),
+                        "outcomes": extract_rows(got)})
+        write_json(attempt / f"{stem}.ledger.json", extract)
 
 
 def keep_commitment(node_dir, adv, ncs):
@@ -1422,6 +1483,9 @@ def judge_reporter(pop, out):
         failures += [f"{name}: an attempt asks {s}, which this run does not ask" for s in sorted(found)
                      if s not in stems]
         proof += [str(f.relative_to(out)) for a in layout.attempts(node_dir) for f in sorted(a.iterdir()) if f.is_file()]
+        kept = f"{ASKER_LEDGER}/{how.get('asker')}/{ledger_proof.CHAIN}"
+        if how.get("asker") and (out / kept).is_file() and kept not in proof:  # none when its ledger was not read
+            proof.append(kept)
         said = []
         with exchange_registered(half):
             for stem in stems:
@@ -1459,6 +1523,11 @@ def judge_reporter(pop, out):
                 if saw in ("verified", "refusal", "no_checkpoint_yet") and (attempt / f"{stem}.response.json").is_file():
                     failures += [f"{name}: {qname}: {e}" for e in
                                  verify_reply_signature(attempt / f"{stem}.response.json", extract, entry["key_id"])]
+                if isinstance(extract, dict) and extract.get("ledger") == "read":
+                    perrs, pnotes = judge_ledger_proof(out, pop, how, attempt, stem, extract, entry["node_id"],
+                                                       request, sent_at, back)
+                    failures += [f"{name}: {qname}: {e}" for e in perrs]
+                    merge(not_checked, pnotes)
                 fail, nc2 = (judge_exchange_line(line, entry, request_profile(request)) if stem == EXCHANGE
                              else judge_live_line(stem, line, entry, request_profile(request)))
                 cited_ok = True
@@ -1482,6 +1551,75 @@ def judge_reporter(pop, out):
         asked_via = f" (asked through {how.get('via')})" if ask.get("self_node") else ""
         lines.append(f"{name}{asked_via}: " + "; ".join(said))
     return failures, not_checked, answered, proof, lines
+
+
+LOOP_ISSUE = "evidence-network/loop#276"
+
+
+def predates_checkpoints(ask):
+    """Whether ask.json is from a run before loop#276, which named no asker for any node it asked."""
+    nodes = ask.get("nodes")
+    return not (isinstance(nodes, dict) and any(isinstance(v, dict) and "asker" in v for v in nodes.values()))
+
+
+def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, sent_at, back):
+    """(errors, not_checked entries) for one ask's ledger extract against the asker's signed ledger checkpoint
+    (loop#276): the kept reply verifies, under the key the asker's nodes/ listing gives, for the first lines of the
+    kept copy of the asker's ledger; the ask's requests and outcomes picked again from those lines are the extract's,
+    with the lines they sit at; and every record the extract holds is on a line the copy has (a shorter copy under an
+    older genuine reply cannot pass). A refusal, no reply and a missing checker are NOT_CHECKED, never a pass."""
+    asker = how.get("asker")
+    who = asker or "the asker"
+    what = f"{who}: the ledger extract is all its ledger held for the asks"
+    gap = lambda why, issue=ledger_proof.ISSUE: ([], [{"what": what, "why": why, "issue": issue}])  # noqa: E731
+    try:
+        ck = load(attempt / f"{stem}{CHECKPOINT_SUFFIX}")
+        reply, refusal = ck.get("reply"), ck.get("refusal")
+    except (OSError, ValueError, AttributeError):
+        if "asker" in how:  # a run that asked for checkpoints kept one for every ask
+            return [f"{stem}{CHECKPOINT_SUFFIX} is missing or not readable"], []
+        return [], []  # a run before loop#276: 08 names the gap it left (rederive_07_live)
+    if ck.get("asker") != asker:
+        return [f"{CHECKPOINT_SUFFIX} names asker {ck.get('asker')!r}, ask.json {asker!r}"], []
+    if reply is None:
+        return gap(f"the asker's node gave no checkpoint reply: {refusal}")
+    node = next((n for n in pop["nodes"] if n["name"] == asker), None)
+    if node is None:
+        return gap(f"the asker's node is not named ({ASKER_UNNAMED}), so no listed key checks its checkpoint",
+                   LOOP_ISSUE)
+    try:
+        key_id = step12.listed_entry(node)["key_id"]
+    except (FileNotFoundError, KeyError, ValueError):
+        return gap(f"{asker} has no nodes/ entry with a key", LOOP_ISSUE)
+    copy = Path(out) / ASKER_LEDGER / asker / ledger_proof.CHAIN
+    try:
+        raw = copy.read_bytes()
+    except OSError:
+        return [f"the kept copy of {asker}'s ledger ({ASKER_LEDGER}/{asker}/{ledger_proof.CHAIN}) is missing"], []
+    try:
+        info, why = ledger_proof.check(raw, reply, key_id, ledger_proof.CHAIN)
+    except FileNotFoundError:
+        return gap("loop-ledger-check is not installed (steps/ledger-check.setup.sh)", LOOP_ISSUE)
+    if why:
+        return [f"{asker}'s ledger checkpoint does not show the kept copy whole: {why}"], []
+    n = ledger_proof.covered(reply)
+    errs = []
+    try:  # the ask's own records were appended before the reply, so its cut is no earlier than the ask's minute
+        if utc(info["cut"]) < sent_at.replace(second=0, microsecond=0):
+            errs.append(f"the checkpoint was cut at {info['cut']}, before the ask was sent at {stamp(sent_at)}: an "
+                        "older reply does not cover the ask")
+    except (KeyError, ValueError, TypeError):
+        errs.append("the checker named no checkpoint time")
+    records = ask_records(copy.parent, ledger_proof.prefix(raw, n), numbered=True)
+    found, got = select_ask(records, node_id, request, sent_at, back)
+    for kind, picked in (("requests", found), ("outcomes", got)):
+        if extract.get(kind) != json.loads(json.dumps(extract_rows(picked))):
+            errs.append(f"picked again from the checkpointed copy, the ask's {kind} are not the extract's")
+    stale = [r for r in [*extract.get("requests", []), *extract.get("outcomes", [])]
+             if not isinstance(r, dict) or not isinstance(r.get("line"), int) or r["line"] >= n]
+    if stale:
+        errs.append(f"the extract holds a record at a line the checkpointed copy ({n} lines) does not reach")
+    return errs, []
 
 
 def backend(pop):
@@ -1534,6 +1672,9 @@ def main(argv=None):
                     help="the population node whose console --console is; it is asked through --second-console")
     ap.add_argument("--second-console", default=os.environ.get("LOOP_SECOND_CONSOLE") or None,
                     help="another node's console, to ask the self node through")
+    ap.add_argument("--second-node", default=os.environ.get("LOOP_SECOND_NODE") or None,
+                    help="the population node whose console --second-console is: the key its ledger checkpoints are "
+                         "checked under")
     a = ap.parse_args(argv)
     started = finding.now()
     pop = load(a.population / "population.json")
@@ -1550,7 +1691,8 @@ def main(argv=None):
         failures, not_checked, answered, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
                                                                      second_console=a.second_console,
                                                                      console_data_dir=a.console_data_dir,
-                                                                     second_data_dir=a.second_data_dir)
+                                                                     second_data_dir=a.second_data_dir,
+                                                                     second_node=a.second_node)
     else:
         print(f"07-ask: unknown ask backend {which!r}", file=sys.stderr)
         return 2

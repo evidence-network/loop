@@ -76,10 +76,16 @@ Live 07 decides from its proof alone: 07 collects first (it asks each node and r
 asked node's data dir) and writes what its judge reads, then judges those files, so 08 running the same judge on
 the cited files gets the same verdict, however the repository's commitments move later. A verification line is computed again from the reply, the announced key and
 the listed key, and must be the one kept. `ask.json` must name every population node, and each node asked must
-have exactly one attempt per question. The ledger extract is 07's reading of the asker's ledger, kept as bytes:
-08 checks every rule on it, but not that the ledger held nothing more (the ledger is the lab node's; the extract
-keeps its line count and sha256 at read time for an audit), which waits on node-signed ledger checkpoints
-(Mesh-LLM/capsules-plugin#175). Nor are the replies' signatures checked again: live 07 takes the pinned plugin's
+have exactly one attempt per question. The ledger extract is picked from the asker's ledger copy that 07 keeps beside the asker's signed ledger
+checkpoint reply (`<stem>.checkpoint.json`, `asker-ledger/<asker>/capsules.jsonl`; Mesh-LLM/capsules-plugin#175, loop#276):
+08 runs `loop-ledger-check` (steps/ledger-check.d, the checkpointed-local-log calls `capsules ledger-check` makes) on
+the copy's first lines the reply covers, under the key the asker's `nodes/` entry lists, never the reply's own;
+picks the ask's requests and outcomes again from those lines and must get the extract's, at the same line positions;
+and every record must sit below the covered line count (an older genuine reply over a shorter copy fails). A refusal
+or no reply, no named asker (`--second-node`) and a missing checker are NOT_CHECKED, never a pass. The copy has a
+withheld payment preimage's line marked `x-loop-redacted`, so a chain line is taken by the capsule_id it states and
+the records are read as written (loop#135). A run before loop#276 kept no checkpoint and still names the old gap.
+Nor are the replies' signatures checked again: live 07 takes the pinned plugin's
 `verification` in each reply, as it did before. Which commitment applied is 07's `choice.json` too. So a
 reproduced live 07 still adds three not_checked entries to 08's finding (one on capsules-plugin#175, two on
 evidence-network/loop#193), and 08 never reads PASS over it. The listed
