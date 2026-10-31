@@ -79,7 +79,7 @@ STEPS = (
                       "network call.", VERIFY, "M3"),
     Step(9, "Dispute", "One party disputes, a referee seals a Result, and the close reads AGREED, CONTESTED or "
                        "UNILATERAL.", NODE_SIDE, "M3"),
-    Step(10, "Judge", "A pack runs over a window of whole closed months of the records step 08 reproduced, and its "
+    Step(10, "Judge", "A pack runs over every record, up to the instant 08 ran, of the records step 08 reproduced, and its "
                       "sealed Results cite every record in the window, none missing and none extra.", JUDGE, "M3"),
     Step(11, "Report", "The report renders only from step 08's manifest, step 10's Results and the deal and settlement "
                        "records they cite, its page's digest is sealed in the reporting node's book, every number has a denominator, and nothing on it is a "
@@ -243,11 +243,6 @@ def read_run(population, path):
         if not isinstance(r, dict):
             run.findings[n] = (d, None, [f"{d.name}: finding.json is not an object"])
             continue
-        # An open-month preview (steps 10 and 11 --preview-open-month, loop#242) is never published: the status page
-        # copies each run's findings into the site and the site's history reads every run, so any run directory holding
-        # one is refused here, where all of them are read, not shown.
-        if finding.is_preview(r):
-            raise StatusError([f"{path.name}/{d.name}: an open-month preview, not a baseline result; it is never published"])
         try:
             problems = finding.check_record(d, r)
         except (AttributeError, KeyError, TypeError) as err:

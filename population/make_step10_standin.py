@@ -4,7 +4,7 @@
 Usage: make_step10_standin.py
 
 The stand-in is a real rehearsal run, not hand-written findings: steps 05, 06, 07 and 09 run on the rehearsal
-population, their findings are dated into a closed month (2026-09-14), and the real step 08 reproduces them. Its
+population, their findings are dated 2026-09-14, and the real step 08 reproduces them. Its
 manifest is therefore the one 08 gives, which tests/test_step10_judge.py checks by running 08 again. Needs the
 tools of steps 05 to 09 (their setup.sh). Run again only when a step's proof changes, then commit the result.
 """

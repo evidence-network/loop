@@ -4,7 +4,6 @@ settlement records they cite, every number on it has a denominator, nothing on i
 digest is sealed in the reporting node's book.
 
 Usage: 11-report --population DIR --out RUN/11-report
-       11-report --population DIR --preview-open-month --run RUN --out PREVIEW/11-report [--page FILE]
 
 RUN is the loop run (the parent of --out). The only record bytes this step reads
 are the deal and settlement records 10's Results cite, for the exchanges figure:
@@ -44,19 +43,8 @@ The reporting book is, on rehearsal, a scratch book under the repository's TEST
 reporter key (population/<p>/step11/keys). On live it is the first node's join
 book (book_dir, profile named for the node), under its key in data_dir.
 
-A rehearsal run with neither 08-verify/ nor 10-judge/ runs step 10 into
-OUT/standin/10-judge, which judges the committed stand-in run, and the detail
-says so. Live records are collected by the operator from the lab's own nodes,
-never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
-
---preview-open-month (evidence-network/loop#242) reports over step 10's open-month preview, PREVIEW/10-judge (written by
-`10-judge --preview-open-month --run RUN`), with 08's manifest and the records from RUN (--run). The only 10-judge it
-accepts is a preview one judged from RUN's own 08 manifest (window.json names its sha256), and a run without
---preview-open-month refuses a preview one. It is never a baseline result:
-it writes only --out (outside RUN and findings/), never runs step 10 itself, and every finding it writes has a detail
-that starts with finding.PREVIEW, which the ecosystem gate refuses. A preview seals only in a throwaway scratch book
-under fresh keys made in a temporary directory, on live too: it never opens a node's book_dir, which is append-only
-and served to other nodes, and needs no node's data_dir or book_dir.
+Live records are collected by the operator from the lab's own nodes, never through a peer; a run without 08's and
+10's outputs is NOT_CHECKED.
 
 The design is steps/11-report.md. Exit 0 once the finding is written.
 """
@@ -96,7 +84,6 @@ PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
 PINNED = ["capsulectl", "capsulectl-book"]
 ASSERTS = ("the report page renders only from step 08's manifest, step 10's Results and the deal and settlement "
            "records they cite, every number on it has a denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book")
-PREVIEW_ASSERTS = ASSERTS.replace("step 10's Results", "step 10's open-month preview Results")
 CONTRACT = "loop-report@v0"
 LIVE_LABEL = ("The records are operator-collected from the lab's own nodes; this proves the report, not how an operator "
               "gets bundles from peers.")
@@ -133,17 +120,12 @@ load, dump = judge10.load, judge10.dump
 
 
 # --- The inputs ---------------------------------------------------------------------------
-def read_judge(judged, preview=False):
-    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on.
-
-    A preview reports only a preview 10-judge, and a baseline report never one."""
+def read_judge(judged):
+    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on."""
     record = load(judged / "finding.json")
     errs = finding.check_record(judged, record) if isinstance(record, dict) else ["finding.json is not an object"]
     if errs:
         raise Refused(f"step 10's finding does not hold: {'; '.join(errs)}")
-    if finding.is_preview(record) != preview:
-        raise Refused("step 10's finding is an open-month preview, not a baseline result" if not preview else
-                      "step 10's finding is not an open-month preview; --preview-open-month reports only a preview")
     if record["result"] == "FAIL":
         raise Refused("step 10's finding is FAIL, so its Results are not reported")
     if record["result"] == "NOT_CHECKED":
@@ -151,18 +133,6 @@ def read_judge(judged, preview=False):
                           "why": f"step 10 is NOT_CHECKED, so there is no Result to report: {x['why']}",
                           "issue": x["issue"]} for x in record["not_checked"]])
     return record
-
-
-def check_preview_pairing(judged, source):
-    """A preview 10 is of the manifest in `source` (--run): a stale 10-judge beside --out is refused. Raises Refused."""
-    try:
-        w = load(judged / "window.json")
-    except (OSError, ValueError):
-        raise Refused("step 10's preview has no readable window.json, so it cannot be tied to --run's manifest")
-    manifest = source / "08-verify" / "verified.json"
-    if not (isinstance(w, dict) and w.get("preview") == "open-month" and manifest.is_file()
-            and w.get("manifest_sha256") == finding.sha256(manifest)):
-        raise Refused("step 10's preview was not judged from --run's 08 manifest (window.json names another or none)")
 
 
 def check_records(manifest, cited):
@@ -553,54 +523,18 @@ def check_no_paid_product(page, report):
 
 
 # --- The run ------------------------------------------------------------------------------
-def run_inputs(run, out, population, population_dir, preview=False):
-    """(10's dir, the dir holding 08's manifest, is it the stand-in), running 10 on the stand-in where it applies.
-
-    A preview reads 10's output beside `out` (PREVIEW/10-judge) and 08's manifest from `run`, and never a stand-in."""
-    if preview:
-        judged = out.parent / "10-judge"
-        if not (judged / "finding.json").is_file():
-            raise NotChecked("the preview report page, over step 08's manifest and step 10's open-month Results",
-                             f"{out.parent.name} holds no 10-judge/ preview output to render from; run 10-judge "
-                             "--preview-open-month --run first", RUN_ISSUE)
-        return judged, run, False
+def run_inputs(run):
+    """(10's dir, the dir holding 08's manifest): the run's own."""
     judged = run / "10-judge"
-    standin = population_dir / "step10" / "run"
     if not (judged / "finding.json").is_file():
-        if population == "rehearsal" and not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir():
-            shutil.rmtree(out / "standin", ignore_errors=True)
-            judge10.main(["--population", str(population_dir), "--out", str(out / "standin" / "10-judge")])
-            return out / "standin" / "10-judge", standin, True
         raise NotChecked("the report page, over step 08's manifest and step 10's Results",
-                         f"{run.name} holds no 10-judge/ output to render from" +
-                         (" and the live population has no stand-in; this step never fetches "
-                          "records through a peer" if population == "live" else ""), RUN_ISSUE)
-    if not (judged / "window.json").is_file():
-        return judged, run, False
-    is_standin = load(judged / "window.json").get("source") == "stand-in"
-    return judged, (standin if is_standin else run), is_standin
+                         f"{run.name} holds no 10-judge/ output to render from; this step never fetches "
+                         "records through a peer", RUN_ISSUE)
+    return judged, run
 
 
-def fresh_keys(keys):
-    """Two new Ed25519 key pairs (reporter, checkpoint) as .pem/.pub.pem files in `keys`, for a preview's scratch book."""
-    keys.mkdir(parents=True, exist_ok=True)
-    for k in ("reporter", "checkpoint"):
-        for cmd in (["genpkey", "-algorithm", "ed25519", "-out", str(keys / f"{k}.pem")],
-                    ["pkey", "-in", str(keys / f"{k}.pem"), "-pubout", "-out", str(keys / f"{k}.pub.pem")]):
-            r = subprocess.run(["openssl", *cmd], capture_output=True, text=True, timeout=60)
-            if r.returncode != 0:
-                raise RuntimeError(f"openssl {cmd[0]}: {r.stderr.strip()[:200]}")
-    return keys
-
-
-def reporting_book(population, pop, keys, tmp, capsulectl, preview=False):
-    """(Reporter, its key) for this population, or raise NotChecked.
-
-    A preview seals only in a throwaway scratch book under `tmp`, under keys made there: it never opens a node's book
-    (the live join book is append-only and served to other nodes) and needs no node's data_dir or book_dir."""
-    if preview:
-        fresh = fresh_keys(Path(tmp) / "keys")
-        return Reporter.scratch(Path(tmp) / "book", capsulectl, fresh), judge10.pub_hex(fresh / "reporter.pub.pem")
+def reporting_book(population, pop, keys, tmp, capsulectl):
+    """(Reporter, its key) for this population, or raise NotChecked."""
     if population != "live":
         if not (keys / "reporter.pem").is_file():
             raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)",
@@ -618,13 +552,11 @@ def reporting_book(population, pop, keys, tmp, capsulectl, preview=False):
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 
 
-def report(run, out, population, pop, population_dir, proof, tmp, page=None, preview=False):
-    """Render, seal and check the page. Returns (problems, lines, is_standin, the 10 Results whose pack terms step
+def report(run, out, population, pop, population_dir, proof, tmp, page=None):
+    """Render, seal and check the page. Returns (problems, lines, the 10 Results whose pack terms step
     10 applied from 08's results, not the pinned evaluator); raises NotChecked or Refused."""
-    judged, source, is_standin = run_inputs(run, out, population, population_dir, preview)
-    record = read_judge(judged, preview)
-    if preview:
-        check_preview_pairing(judged, source)
+    judged, source = run_inputs(run)
+    record = read_judge(judged)
     try:
         manifest, _ = judge10.read_manifest(source)
     except judge10.NotChecked as e:
@@ -649,7 +581,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     except judge10.NotChecked as e:
         raise NotChecked(*e.args)
     figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack), source)
-    book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl, preview)
+    book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl)
     digests = {}
     for ref, sha in sorted(cited.items()):
         step, path = ref.split("/", 1)
@@ -670,8 +602,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     rebuilt = [Path(tmp) / f"rebuild-{i}.html" for i in (1, 2)]
     for r in rebuilt:
         book.rebuild(bundle, r)
-    report_json = {"source": "stand-in" if is_standin else "run", **({"preview": "open-month"} if preview else {}),
-                   "figures": figures,
+    report_json = {"figures": figures,
                    "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
                    "built_by": tool_versions(capsulectl, plugin),
                    "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
@@ -680,8 +611,6 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     dump(out / "check.json", {"build": {k: built.get(k) for k in ("bundle_digest", "root", "page_seal", "verdict")},
                               "check": answer, "seal_verdict": verdict.get("verdict")})
     proof += ["report.json", "result.bundle.json", "seal.bundle.json", "check.json"]
-    if is_standin:
-        proof += [f"standin/10-judge/{p.relative_to(judged)}" for p in sorted(judged.rglob("*")) if p.is_file()]
     problems = check_seal(page, answer, seal, verdict, key) + check_rebuilds(rebuilt, seal)
     problems += check_result_bundle(judge10.verify_bundle(capsulectl, bundle, tmp))
     statement = page_statement(page)
@@ -692,7 +621,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
         shutil.copyfile(page, page_out)
     unevaluated = sorted(d for d, st in finer.items() if not st.get("x-evaluator")
                          and any(not t.get("own") for t in pack["kinds"].get(d[:2], {}).get("terms", [])))
-    return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin, unevaluated
+    return problems, [c["presentation"]["summary"] for c in statement["claims"]], unevaluated
 
 
 def main(argv=None):
@@ -701,32 +630,21 @@ def main(argv=None):
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--page", type=Path, help="also leave the rendered page here, a local copy to look at: the finding "
                     "commits report.json and the page's sha256, not the page")
-    ap.add_argument("--preview-open-month", action="store_true",
-                    help="report over step 10's open-month preview (PREVIEW/10-judge beside --out), a preview and not a "
-                    "baseline result; needs --run")
-    ap.add_argument("--run", type=Path, help="with --preview-open-month: the loop run holding 08-verify/ and the "
-                    "records (--out is then elsewhere, outside it)")
     a = ap.parse_args(argv)
-    preview = a.preview_open_month
-    if preview != (a.run is not None):
-        ap.error("--preview-open-month and --run go together")
     started = finding.now()
     out = a.out.resolve()
-    if preview and judge10.preview_out_problem(out, a.run.resolve()):
-        ap.error(judge10.preview_out_problem(out, a.run.resolve()))
-    run = a.run.resolve() if preview else out.parent
+    run = out.parent
     out.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(out / "standin", ignore_errors=True)
     for p in ("finding.json", "report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"):
         (out / p).unlink(missing_ok=True)
     population_dir = a.population.resolve()
     pop = load(population_dir / "population.json")
     population = pop["population"]
-    problems, not_checked, lines, proof, pinned, is_standin, unevaluated = [], [], [], [], [], False, []
+    problems, not_checked, lines, proof, pinned, unevaluated = [], [], [], [], [], []
     try:
         with tempfile.TemporaryDirectory(prefix="11-report-") as tmp:
-            problems, lines, is_standin, unevaluated = report(run, out, population, pop, population_dir, proof, tmp,
-                                                  a.page.resolve() if a.page else None, preview)
+            problems, lines, unevaluated = report(run, out, population, pop, population_dir, proof, tmp,
+                                                  a.page.resolve() if a.page else None)
         pinned = PINNED
     except NotChecked as e:
         what, why, issue = e.args
@@ -738,10 +656,7 @@ def main(argv=None):
     except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError, subprocess.SubprocessError) as e:
         problems = [f"the report did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
-    what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this run's "
-            f"records" if is_standin else f"run {run.name}")
-    detail = (finding.PREVIEW + ". " if preview else "") + f"{what}: "
-    detail += "A preview seals only in a throwaway scratch book, not a node's book. " if preview else ""
+    detail = f"run {run.name}: "
     detail += (" ".join(lines) + " " if lines else "no page rendered. " if result != "PASS" else "")
     detail += f"Did not hold: {'; '.join(problems)}. " if problems else ""
     if result == "PASS":
@@ -762,7 +677,7 @@ def main(argv=None):
     if population == "live":
         detail += f" On live, step 10's Results are under the live judge key: {judge10.LIVE_JUDGE}."
     proof = [p for p in proof if (out / p).is_file()]
-    finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
+    finding.write(out, result=result, population=population, asserts=ASSERTS,
                   pinned=pinned, proof=proof,
                   detail=detail.strip(), not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"11-report: {result}: {detail.strip()}", file=sys.stderr)

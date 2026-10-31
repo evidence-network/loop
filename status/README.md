@@ -31,16 +31,12 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   never in its PASS. Its `verified.json` is what steps 10 and 11 read.
 - Row 10 (Judge) is step 10's own finding, read like any other row. Step 10
   reads only 08's manifest and the records of the steps it shows reproduced,
-  in a window of 12 whole closed months before 08 ran. A run without 08's
-  manifest is judged on the committed stand-in run in
-  `population/rehearsal/step10/run`, and its detail says so. A real run whose
-  records are all in the open month reads `NOT_CHECKED`; a step 08 did not
-  reproduce is a `not_checked` entry on the row.
+  in a window of every record up to the instant 08 ran, with no month boundary. A run without 08's manifest reads
+  `NOT_CHECKED`; a step 08 did not reproduce is a `not_checked` entry on the row.
 - Row 11 (Report) is step 11's own finding, read like any other row. Step 11
   renders only from 08's manifest, 10's Results and the deal and settlement
   records they cite, with a denominator beside every number and no score
-  anywhere, and seals the page's digest in the reporting node's book. A run with neither 08's nor 10's output reports on the
-  committed stand-in, and its detail says so. A run whose 10 is `NOT_CHECKED`
+  anywhere, and seals the page's digest in the reporting node's book. A run whose 10 is `NOT_CHECKED`
   reads `NOT_CHECKED`; a live `PASS` says its records are operator-collected
   from the lab's own nodes.
 - Rows 4, 5, 6 and 9 are in `HELD_FOR_FLIP`: built and shown, marked held,

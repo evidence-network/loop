@@ -57,37 +57,31 @@ jobs:
           out="findings/$(date -u +%F)-rehearsal"
           echo "LOOP_OUT=$out" >> "$GITHUB_ENV"
           ./loop.sh --stage 1 --population rehearsal --strict --out "$out" | tee loop-summary.txt
-      # Steps 10 and 11 end to end (evidence-network/loop#206). On stage 1's run, which holds no record of the pack's
-      # kinds (05, 06, 07, 09), 10 has nothing in its window and reads NOT_CHECKED on the pack's window, and 11
-      # carries that over. On an empty run 10 judges the committed stand-in run (population/rehearsal/step10/run)
-      # and both PASS. A FAIL, a malformed finding or another result fails the job; a FAIL also goes into
-      # loop-summary.txt, so the nightly run opens its issue below.
+      # Steps 10 and 11 end to end (evidence-network/loop#206). Stage 1's run holds no record of the pack's kinds
+      # (05, 06, 07, 09), so 10 has nothing in its window and reads NOT_CHECKED, and 11 carries that over. A FAIL, a
+      # malformed finding or another result fails the job; a FAIL also goes into loop-summary.txt, so the nightly run
+      # opens its issue below. Judging real records is covered by tests.test_step10_judge and tests.test_step11_report.
       - name: Run steps 10 and 11 on the rehearsal population
         run: |
           set -euo pipefail
           run="$LOOP_OUT"
-          standin="$LOOP_OUT-standin"
-          for out in "$run" "$standin"; do
-            mkdir -p "$out"
-            steps/10-judge --population population/rehearsal --out "$out/10-judge"
-            steps/11-report --population population/rehearsal --out "$out/11-report"
-            python3 -B steps/finding.py check "$out"
-            python3 -B status/findings.py "$out"
-          done
-          python3 -B - "$run" "$standin" <<'PY'
+          steps/10-judge --population population/rehearsal --out "$run/10-judge"
+          steps/11-report --population population/rehearsal --out "$run/11-report"
+          python3 -B steps/finding.py check "$run"
+          python3 -B status/findings.py "$run"
+          python3 -B - "$run" <<'PY'
           import json, sys
           from pathlib import Path
-          run, standin = map(Path, sys.argv[1:])
-          want = {(run, "10-judge"): "NOT_CHECKED", (run, "11-report"): "NOT_CHECKED",
-                  (standin, "10-judge"): "PASS", (standin, "11-report"): "PASS"}
+          run = Path(sys.argv[1])
+          want = {"10-judge": "NOT_CHECKED", "11-report": "NOT_CHECKED"}
           bad, failed = [], {}
-          for (d, step), result in want.items():
-              f = json.loads((d / step / "finding.json").read_text())
-              print(f"{d.name} {step} {f['result']}")
+          for step, result in want.items():
+              f = json.loads((run / step / "finding.json").read_text())
+              print(f"{run.name} {step} {f['result']}")
               if f["result"] == "FAIL":
-                  failed.setdefault(step, d.name)  # one issue line per step, naming the first directory
+                  failed.setdefault(step, run.name)
               if f["result"] != result:
-                  bad.append(f"{d.name}/{step} is {f['result']}, expected {result}: {f['detail'][:400]}")
+                  bad.append(f"{run.name}/{step} is {f['result']}, expected {result}: {f['detail'][:400]}")
           with open("loop-summary.txt", "a") as summary:
               for step, where in failed.items():
                   summary.write(f"{step[:2]} {step[3:]} FAIL {where}\n")
