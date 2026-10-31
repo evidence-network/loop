@@ -583,16 +583,26 @@ NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
 Stage 1 does not include step 07 either. `lab/lab.sh ask` runs `steps/07-ask` on
 `population/live` into the same `findings/<date>-live/` as `07-ask/`, then checks the
 finding contract over the whole directory. It asks each node for `checkpoints`,
-`history_card/1` and an exchange request about a half step 05 left, through the reporter's
-console (the reporter's own node through a second node's console, as `loop` does). Each
-answer is judged under the node's listed key, by the deadline in its signed join
-commitment. The step also reads the sealed `evidence_request` and its outcome record from
-the asker's ledger, under each node's `data_dir`. It pays nothing. Run it after `join`,
-`entries` and `loop`. With no half from an earlier `exchange` to ask about, the exchange
-ask reads NOT_CHECKED (evidence-network/loop#94). A refusal of the exchange ask for
-`policy_declined` or `not_authorized` also reads NOT_CHECKED
-(Mesh-LLM/capsules-plugin#114). `pack` takes `07-ask/` with the rest of the day's
-findings.
+`history_card/1` and an exchange request, through the reporter's console (the reporter's
+own node through a second node's console, as `loop` does), and pays nothing. Run it after
+`join`, `entries`, `commitments` and `loop`.
+
+- Each answer is judged under the node's listed key, by the `answers_within` deadline of
+  its newest signed commitment for that key: the one `commitments` wrote to
+  `nodes/commitments/<node_id>.json`, or a join record under `lab/runs/` from an earlier
+  pack, whichever was issued later.
+- The step reads the sealed `evidence_request` and its outcome record from the asker's own
+  ledger (`<data_dir>/ledger/capsules.jsonl` of the reporter's node, or of the second node
+  when the reporter's node is asked).
+- The exchange request is about the newest half the asker pushed to the asked node after an
+  `exchange` (the halves `deal` reads) that the asked node's chain cites as a counterparty
+  half. With no such half, the exchange ask reads NOT_CHECKED (evidence-network/loop#94).
+- An exchange refusal for `policy_declined` or `not_authorized` reads NOT_CHECKED
+  (Mesh-LLM/capsules-plugin#114). One for `coverage_unsatisfiable` (the node has no
+  checkpoint covering the half yet) is checked for its key and left NOT_CHECKED
+  (evidence-network/loop#94).
+
+`pack` takes `07-ask/` with the rest of the day's findings.
 
 ## 6. Pack and bring back
 
