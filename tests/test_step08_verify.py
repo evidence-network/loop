@@ -1046,6 +1046,37 @@ class Step08Live03Test(unittest.TestCase):
         f, entries = self.plant(ref)
         self.assertIn("names no full commit id", " ".join(x["why"] for x in f["not_checked"]))
 
+    def test_a_listed_key_the_carrier_commit_did_not_list_fails(self):
+        # The key matches this checkout's listing but not the listing at carrier.json's commit.
+        repo = Path(self.tmp.name) / "repo"
+        (repo / "nodes").mkdir(parents=True)
+        shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
+        for f in (ROOT / "nodes").glob("*.json"):
+            shutil.copyfile(f, repo / "nodes" / f.name)
+        doc = load(self.run / "03-advertise" / "carrier.json")
+        node_id = next(iter(doc["nodes"].values()))["node_id"]
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        listing = repo / "nodes" / f"{node_id}.json"
+        real = listing.read_bytes()
+        changed = load(listing)
+        changed["key_id"] = "ab" * 32
+        dump(listing, changed)
+        subprocess.run([*git, "init", "-q"], check=True)
+        subprocess.run([*git, "add", "nodes"], check=True)
+        subprocess.run([*git, "commit", "-qm", "then"], check=True)
+        then = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        listing.write_bytes(real)
+        subprocess.run([*git, "commit", "-qam", "now"], check=True)
+
+        def point(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = then
+            dump(d / "carrier.json", doc)
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.plant(point)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
+
     def test_a_replayed_commit_still_names_that_it_was_head(self):
         f, entries = self.verify()
         self.assertIn(step.LIVE_RELIES_ON["03"][0], f["not_checked"])
