@@ -359,6 +359,30 @@ class DryRunTest(unittest.TestCase):
         r = lab_sh("--dry-run", "stop", env=self.env)
         self.assertIn("lab-4.pid", r.stdout)
 
+    def test_a_restart_under_the_same_fault_keeps_the_twins_bracket(self):
+        # start rewrites twin-fault.json when twin B starts; the bracket `twins` recorded must survive a plain restart,
+        # or step 09 stops labelling that bracket's Result as injected (live-15).
+        text = LAB.read_text()
+        start = text.index('python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << \'PY\'\n')
+        program = text[text.index("\n", start) + 1:text.index("\nPY\n", start)]
+        f = self.tmp / "twin-fault.json"
+        run = lambda prompt: subprocess.run([sys.executable, "-B", "-c", program, str(f), "lab-4", prompt], check=True)
+        run("PINEAPPLE")
+        self.assertEqual(sorted(json.loads(f.read_text())), ["injected_difference"])
+        doc = json.loads(f.read_text())
+        doc.update(twin_bracket_id="lab-twins-1", roles={"twin_b": "lab-4"}, supply_answer="ok")
+        f.write_text(json.dumps(doc))
+        run("PINEAPPLE")  # the same fault: kept
+        self.assertEqual(json.loads(f.read_text())["twin_bracket_id"], "lab-twins-1")
+        self.assertEqual(json.loads(f.read_text())["roles"], {"twin_b": "lab-4"})
+        run("MANGO")  # another fault: a fresh file, no bracket from the earlier one
+        doc = json.loads(f.read_text())
+        self.assertNotIn("twin_bracket_id", doc)
+        self.assertEqual(doc["injected_difference"]["value"], "MANGO")
+        f.write_text("not json")
+        run("MANGO")
+        self.assertEqual(json.loads(f.read_text())["injected_difference"]["value"], "MANGO")
+
     def test_lab_twins_refuses_a_fault_that_would_not_apply_or_not_parse(self):
         for env, text in (({"LAB_FAULT_SYSTEM_PROMPT": 'Answer "bleu".'}, "double quote"),
                           ({"LAB_MODEL_REF": "owner/repo\\file.gguf"}, "backslash")):
