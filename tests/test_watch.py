@@ -451,6 +451,20 @@ class WatchTest(unittest.TestCase):
         # The rehearsal is the loop's own TEST population and is not gated.
         self.assertEqual(data["views"]["rehearsal"], self.data["views"]["rehearsal"])
 
+    def test_a_charts_count_adds_the_withheld_edges(self):
+        # point(): deals add every withheld edge, settlements only the withheld ones that answered (loop#77).
+        d = {"nodes": [], "run": "settled", "measured": {
+            "deal": {"measured": True, "drawn": 2, "answered": 1, "not_drawn": 0, "withheld": 3, "withheld_answered": 1},
+            "settle": {"measured": True, "drawn": 1, "answered": 1, "not_drawn": 0, "withheld": 4,
+                       "withheld_answered": 2}}}
+        self.assertEqual(watch.point(d, "deals"), {"value": 5, "not_drawn": 0, "withheld": 3})
+        self.assertEqual(watch.point(d, "settlements"), {"value": 3, "not_drawn": 0, "withheld": 4})
+        for m in d["measured"].values():
+            for k in ("withheld", "withheld_answered"):
+                del m[k]
+        self.assertEqual(watch.point(d, "deals"), {"value": 2, "not_drawn": 0})
+        self.assertEqual(watch.point(d, "settlements"), {"value": 1, "not_drawn": 0})
+
     def test_no_reporter_node_in_the_export_or_the_markup(self):
         for v in self.data["views"].values():
             for d in v["days"]:
