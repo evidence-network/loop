@@ -641,7 +641,11 @@ class Step08Live07Test(unittest.TestCase):
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE})
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE], step.LIVE_RELIES_ON["07"])
+        # This run.json pins no commit, so the listed keys are read at this checkout and 08 says so (loop#193).
+        pinned = [nc for nc in f["not_checked"] if nc["what"] == "the listed keys, read at the commit the run ran at"]
+        self.assertEqual([nc["issue"] for nc in pinned], [step.TRUST_ISSUE])
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in pinned],
+                         step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_live_10_and_11_then_read_not_checked_on_the_judge_key(self):
@@ -1891,5 +1895,109 @@ class Step08Live06Test(unittest.TestCase):
         self.assertIn("its proof holds no checks.json", entries["06-settle"]["not_checked"]["why"])
 
 
+
+
+class Step08RunCommitTest(unittest.TestCase):
+    """loop#193: the listed keys are read at the commit run.json records, not at whatever this checkout holds now."""
+
+    def git(self, *a):
+        return subprocess.run(["git", "-C", str(self.repo), *a], capture_output=True, text=True, check=True).stdout.strip()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.repo, self.run = t / "repo", t / "run"
+        (self.repo / "nodes").mkdir(parents=True)
+        self.run.mkdir()
+        self.git("init", "-q")
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "11" * 32})
+        self.git("add", "nodes")
+        self.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "list")
+        self.commit = self.git("rev-parse", "HEAD")
+        patch = mock.patch.object(step, "ROOT", self.repo)
+        patch.start()
+        self.addCleanup(patch.stop)
+        env = mock.patch.dict(os.environ)
+        env.start()
+        os.environ.pop("LOOP_NODES_DIR", None)
+        self.addCleanup(env.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def at(self, **run):
+        dump(self.run / "run.json", dict({"population": "live", "stage": "1", "steps": []}, **run))
+        return step.nodes_at_run_commit(self.run, "live", self.tmp.name)
+
+    def test_the_listings_are_read_at_the_commit_even_after_a_rotation(self):
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "22" * 32})  # the checkout rotated the key
+        nodes, gaps = self.at(commit=self.commit, nodes_clean=True)
+        self.assertEqual(gaps, [])
+        self.assertEqual(load(nodes / ("a" * 64 + ".json"))["key_id"], "11" * 32)
+
+    def test_a_run_that_pins_no_commit_or_an_unknown_one_or_uncommitted_nodes_is_named(self):
+        for run, why in (({}, "pins no commit"), ({"commit": "b" * 40, "nodes_clean": True}, "not in this checkout"),
+                         ({"commit": self.commit, "nodes_clean": False}, "was not committed")):
+            nodes, gaps = self.at(**run)
+            self.assertIsNone(nodes)
+            self.assertEqual([g["issue"] for g in gaps], [step.TRUST_ISSUE])
+            self.assertIn(why, gaps[0]["why"])
+
+    def test_a_rehearsal_run_or_an_explicit_nodes_dir_is_left_alone(self):
+        self.assertEqual(step.nodes_at_run_commit(self.run, "rehearsal", self.tmp.name), (None, []))
+        os.environ["LOOP_NODES_DIR"] = "/x"
+        self.assertEqual(step.nodes_at_run_commit(self.run, "live", self.tmp.name), (None, []))
+
+    def commit_at(self, when, key):
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": key})
+        self.git("add", "nodes")
+        env = dict(os.environ, GIT_COMMITTER_DATE=when, GIT_AUTHOR_DATE=when)
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", key],
+                       env=env, check=True)
+        return self.git("rev-parse", "HEAD")
+
+    def test_a_pinned_commit_is_trusted_only_if_it_holds_what_main_held_at_the_run_start(self):
+        self.git("checkout", "-q", "-B", "main")
+        old = self.commit_at("2026-10-30T10:00:00Z", "10" * 32)
+        new = self.commit_at("2026-10-30T12:00:00Z", "22" * 32)  # the key rotated
+        self.git("checkout", "-q", "-b", "side", old)
+        side = self.commit_at("2026-10-30T13:00:00Z", "33" * 32)
+        step.SEALED[self.run.resolve()] = [step.utc_time("2026-10-30T23:00:00Z")]
+        self.addCleanup(step.SEALED.pop, self.run.resolve(), None)
+        for commit, trusted in ((new, True), (old, False), (side, False)):
+            dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": commit})
+            self.assertIs(step.pin_is_current(self.run), trusted, commit)
+        step.SEALED.pop(self.run.resolve())  # no passing 01 bounds the start: nothing is trusted
+        dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": new})
+        self.assertIs(step.pin_is_current(self.run), False)
+
+    def test_an_untrusted_pin_re_runs_08_on_this_checkouts_nodes_and_names_it(self):
+        live = Path(self.tmp.name) / "live"
+        (live / "01-x").mkdir(parents=True)
+        write_run_json(live, ["01", "08"], "live")
+        finding.write(live / "01-x", result="NOT_CHECKED", population="live", asserts="a", pinned=[], proof=[],
+                      detail="", started=finding.now(), not_checked=[{"what": "x", "why": "y", "issue": step.RUN_ISSUE}])
+        seen = []
+
+        def verify_run(run, out, pop, population):
+            seen.append(os.environ.get("LOOP_NODES_DIR"))
+            return [{"dir": "01-x", "status": "reproduced", "recorded": {"result": "PASS"}}]
+        gap = {"what": "the listed keys, read at the commit the run ran at", "why": "x", "issue": step.TRUST_ISSUE}
+        calls = []
+
+        def at_run(run, population, tmp, untrusted=False):
+            calls.append(untrusted)
+            return (Path("/pinned/nodes"), []) if not untrusted else (None, [gap])
+        with mock.patch.object(step, "nodes_at_run_commit", at_run), mock.patch.object(step, "pin_is_current", return_value=False), \
+                mock.patch.object(step, "verify_run", verify_run), mock.patch.dict(os.environ):
+            os.environ.pop("LOOP_NODES_DIR", None)
+            step.main(["--population", str(ROOT / "population" / "live"), "--out", str(live / "08-verify")])
+            self.assertNotIn("LOOP_NODES_DIR", os.environ)
+        self.assertEqual(calls, [False, True])
+        self.assertEqual(seen, ["/pinned/nodes", None])  # the second run reads this checkout, not the untrusted pin
+        self.assertIn(gap, load(live / "08-verify" / "finding.json")["not_checked"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
