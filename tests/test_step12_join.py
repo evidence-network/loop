@@ -1322,6 +1322,14 @@ class BindingRevocationTest(unittest.TestCase):
         self.assertEqual(state, "bad", detail)
         self.assertIn("controller_binding_revocation FAIL", detail)
 
+    def test_an_unreadable_revocations_file_is_a_fail_not_a_crash(self):
+        folder = Path(self.tmp.name) / step.bv.REVOCATIONS
+        folder.mkdir()
+        (folder / f"{self.digest}.json").write_text("[]")
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("the published revocation statements are unreadable", detail)
+
     def test_a_statement_dated_after_the_time_asked_leaves_it_applying(self):
         self.publish()
         state, detail = self.check("2026-10-11T00:00:00Z")

@@ -189,6 +189,9 @@ def binding_check(name, raw, digest, key, at):
     `at` makes it "bad"."""
     try:
         statements = bv.revocations(nodes_dir(), digest)
+    except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
+        return "bad", f"{name}'s binding {digest}: the published revocation statements are unreadable ({e})"
+    try:
         verdict, report, err, code = bv.verify(cross_language(), raw, key, [at], statements)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise SystemExit(f"12-join: cross_language binding did not run ({e}); run steps/01-seal.setup.sh")
