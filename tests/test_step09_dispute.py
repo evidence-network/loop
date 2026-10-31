@@ -313,6 +313,14 @@ class LiveTest(Tmp):
         shutil.copytree(FIX / "live", dest)
         return dest
 
+    def test_a_readable_node_with_no_node_id_yet_is_judged_not_a_crash(self):
+        d = self.copy()
+        pop = json.loads((d / "population.json").read_text())
+        pop["nodes"][0]["node_id"] = None
+        (d / "population.json").write_text(json.dumps(pop))
+        r = self.live(d)  # live() re-derives from the proof too
+        self.assertIn(r["result"], ("PASS", "NOT_CHECKED", "FAIL"))
+
     def test_held_results_are_checked_read_only(self):
         before = tree_digest(FIX / "live")
         r = self.live(FIX / "live")

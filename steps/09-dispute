@@ -648,7 +648,7 @@ def main_live(pop, out, started):
     read, the key each node's data_dir announces), then judge only those files (judge_live)."""
     clean(out)
     readable, kept = {}, {"nodes": [{"name": e["name"], "node_id": e.get("node_id")} for e in pop["nodes"]],
-                          "read": {}, "announced": {}, "key_errors": {}}
+                          "read": {}, "announced": [], "key_errors": {}}
     for entry in pop["nodes"]:
         d = live.readable(entry, "data_dir", "ledger")
         kept["read"][entry["name"]] = d is not None
@@ -656,7 +656,8 @@ def main_live(pop, out, started):
             readable[entry["name"]] = (entry.get("node_id"), d)
     for name, (node_id, d) in readable.items():
         try:
-            kept["announced"][node_id] = aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")
+            # [node_id, key] pairs: a node with no node_id yet keeps its null id, as the judge reads it.
+            kept["announced"].append([node_id, aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")])
         except (OSError, ValueError) as e:
             kept["key_errors"][name] = str(e)
     # The proof bytes: a copy of each readable node's adjudication files and chain.
@@ -683,10 +684,15 @@ def judge_live(pop, out, started):
     out = Path(out)
     try:
         kept = read_json(out / NODES_FILE)
-        nodes, read, announced, key_errors = kept["nodes"], kept["read"], kept["announced"], kept["key_errors"]
+        nodes, read, pairs, key_errors = kept["nodes"], kept["read"], kept["announced"], kept["key_errors"]
         if not (isinstance(nodes, list) and all(isinstance(n, dict) and isinstance(n.get("name"), str) for n in nodes)
-                and isinstance(read, dict) and isinstance(announced, dict) and isinstance(key_errors, dict)):
+                and isinstance(read, dict) and isinstance(pairs, list) and isinstance(key_errors, dict)
+                and all(isinstance(p, list) and len(p) == 2 for p in pairs)):
             raise TypeError("nodes.json has the wrong shape")
+        bad = [n["name"] for n in nodes if Path(n["name"]).name != n["name"] or n["name"] in ("", ".", "..")]
+        if bad:
+            raise ValueError(f"node names {bad} are not single path components")
+        announced = {node_id: key for node_id, key in pairs}
     except (OSError, ValueError, KeyError, TypeError) as e:
         return finding.write(out, result="FAIL", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
                              proof=proof_files(out), detail=f"{NODES_FILE} is not readable ({type(e).__name__}: {e})",

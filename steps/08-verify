@@ -506,15 +506,24 @@ def keys_09_live(c, m):
     listed_pop = {n["name"]: n.get("node_id") for n in load(c.pop / "population.json")["nodes"]}
     bad += [f"nodes.json names {name} as {ran.get(name)}, the population lists {node_id}"
             for name, node_id in sorted(listed_pop.items()) if ran.get(name) != node_id]
-    announced = kept.get("announced") if isinstance(kept.get("announced"), dict) else {}
+    pairs = kept.get("announced") if isinstance(kept.get("announced"), list) else []
+    announced = {p[0]: p[1] for p in pairs if isinstance(p, list) and len(p) == 2}
+    # main_live records a key only for a node it read: any other entry would let a Result name a made-up node.
+    read = kept.get("read") if isinstance(kept.get("read"), dict) else {}
+    read_ids = {node_id for name, node_id in ran.items() if read.get(name) is True}
+    bad += [f"nodes.json announces a key for {node_id}, which is no node the run read"
+            for node_id in sorted(set(announced) - read_ids, key=str)]
     nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
     for name, node_id in sorted(ran.items(), key=lambda x: str(x[0])):
         listing = nodes_dir / f"{node_id}.json"
         if not (node_id and listing.is_file()):
             if node_id in announced:
+                twins = name not in listed_pop
                 c.relies.append({"what": f"step 09: node {name}'s announced key",
-                                 "why": "the node has no nodes/ listing (the twins run's own node), so the key "
-                                        "nodes.json records is 09's reading of its data_dir", "issue": TWINS_ISSUE})
+                                 "why": "the node has no nodes/ listing" + (" (a node the twins run adds, which the "
+                                        "repository's population does not list)" if twins else "") + ", so the key "
+                                        "nodes.json records is 09's reading of its data_dir",
+                                 "issue": TWINS_ISSUE if twins else TRUST_ISSUE})
             continue
         if node_id in announced and announced[node_id] != load(listing).get("key_id"):
             bad.append(f"nodes.json's announced key of {name} is not the key nodes/{node_id}.json lists")

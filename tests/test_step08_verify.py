@@ -1337,11 +1337,41 @@ class Step08Live09Test(unittest.TestCase):
     def test_an_announced_key_the_listing_does_not_publish_fails(self):
         def forge(d):
             n = load(d / "nodes.json")
-            first = sorted(k for k in n["announced"] if k != load(STEP09_LIVE / "population.json")["nodes"][3]["node_id"])[0]
-            n["announced"][first] = "ab" * 32
+            twins = load(STEP09_LIVE / "population.json")["nodes"][3]["node_id"]
+            pair = sorted(p for p in n["announced"] if p[0] != twins)[0]
+            pair[1] = "ab" * 32
             dump(d / "nodes.json", n)
         f, entries = self.plant(forge)
         self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_key_announced_for_a_node_the_run_did_not_read_fails(self):
+        def forge(d):
+            n = load(d / "nodes.json")
+            n["announced"].append(["f" * 64, "ab" * 32])
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("which is no node the run read", f["detail"])
+
+    def test_a_node_name_outside_the_proof_fails(self):
+        def forge(d):
+            n = load(d / "nodes.json")
+            n["nodes"].append({"name": "/tmp", "node_id": "e" * 64})
+            n["read"]["/tmp"] = True
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_cut_ledger_stays_named_as_09s_reading(self):
+        # Cutting a party's received file is 09's word about what it copied: 08 can't see it, so the #193 entry
+        # that the ledgers are copied whole must stay in 08's not_checked.
+        def cut(d):  # a consistent forger: cut a party's received file, then judge the cut bundle again
+            next(d.glob("*/ledger/received-adjudications.jsonl")).unlink()
+            started = load(d / "finding.json")["started"]
+            with mock.patch.dict(os.environ, {"LAB_DIR": ""}):
+                step.step_module("09-dispute").judge_live({"population": "live"}, d, started)
+        f, entries = self.plant(cut)
+        self.assertIn(step.LIVE_RELIES_ON["09"][0], f["not_checked"])
 
     def test_a_node_the_population_lists_dropped_from_nodes_json_fails(self):
         def drop(d):
