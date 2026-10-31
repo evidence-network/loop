@@ -557,63 +557,146 @@ def same_policy_problems(found):
     return errs
 
 
-def node_decisions(data_dir):
-    """([(line, block)], [problem], total, {record: row checks}) over the node's ledger lines that carry an
-    admission decision; None when the ledger file cannot be read."""
-    found, problems, total, rows, shaped = [], [], 0, {}, []
+def ledger_decisions(data_dir):
+    """(total, [(record number, line)]) of the node's ledger: how many records it holds, and each line that carries
+    an admission decision, numbered as the ledger counts records; None when the ledger file cannot be read."""
     try:
         lines = (data_dir / "ledger" / "capsules.jsonl").read_text(encoding="utf-8").splitlines()
     except OSError:
         return None
+    kept, total = [], 0
     for ln in lines:
         if not ln.strip():
             continue
         total += 1
-        blk = decision_block(ln) if DECISION in ln else ABSENT
+        if DECISION in ln and decision_block(ln) is not ABSENT:
+            kept.append((total, ln))
+    return total, kept
+
+
+def judge_decisions(kept):
+    """([(line, block)], [problem], {record: row checks}) over the decision lines `kept` ([(record number, line)])."""
+    found, problems, rows, shaped = [], [], {}, []
+    for n, ln in kept:
+        blk = decision_block(ln)
         if blk is ABSENT:
+            problems.append(f"record {n}: carries no admission decision")
             continue
         found.append((ln, blk))
         bad = block_problems(blk)
-        problems += [f"record {total}: {e}" for e in bad]
+        problems += [f"record {n}: {e}" for e in bad]
         if bad:
             continue
-        shaped.append((total, blk))
-        problems += [f"record {total}: {e}" for e in verdict_problems(blk)]
+        shaped.append((n, blk))
+        problems += [f"record {n}: {e}" for e in verdict_problems(blk)]
         if "rows" in blk:
-            rows[total] = row_checks(blk)
-            problems += [f"record {total}: row {c['why']}" for c in rows[total] if c["check"] == "FAIL"]
+            rows[n] = row_checks(blk)
+            problems += [f"record {n}: row {c['why']}" for c in rows[n] if c["check"] == "FAIL"]
     problems += same_policy_problems(shaped)
+    return found, problems, rows
+
+
+def node_decisions(data_dir):
+    """([(line, block)], [problem], total, {record: row checks}) over the node's ledger lines that carry an
+    admission decision; None when the ledger file cannot be read."""
+    read = ledger_decisions(data_dir)
+    if read is None:
+        return None
+    total, kept = read
+    found, problems, rows = judge_decisions(kept)
     return found, problems, total, rows
 
 
+# What the live judge reads, kept in the proof so step 08 runs it again on the proof alone (loop#188).
+NODES_FILE = "nodes.json"  # per node: whether its data_dir and ledger were read, its record count, the numbers kept
+
+
 def main_live(pop, out, started):
+    """Read each lab node's ledger and keep, under out, the decision lines and nodes.json; then judge those files
+    (judge_live), so the finding is a function of its proof."""
     out.mkdir(parents=True, exist_ok=True)
     (out / "finding.json").unlink(missing_ok=True)
-    details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [], [], 0, False
-    tally = {"PASS": 0, "NOT_CHECKED": 0, "FAIL": 0}
+    for entry in pop["nodes"]:
+        if Path(entry["name"]).name != entry["name"] or entry["name"] in ("", ".", ".."):
+            raise SystemExit(f"04-admit: node name {entry['name']!r} is not a single path component")
+        shutil.rmtree(out / entry["name"], ignore_errors=True)
+    nodes = {}
     for entry in pop["nodes"]:
         name = entry["name"]
         data_dir = live.readable(entry, "data_dir", "ledger")
-        if data_dir is None:
-            not_checked.append(live.not_checked(name, "data_dir"))
-            details.append(f"node {name}: data_dir not set or unreadable")
+        read = ledger_decisions(data_dir) if data_dir is not None else None
+        if data_dir is None or read is None:
+            nodes[name] = {"read": "data_dir" if data_dir is None else "ledger"}
+            continue
+        total, kept = read
+        nodes[name] = {"read": "ok", "records": total, "kept": [n for n, _ in kept]}
+        if kept:
+            (out / name).mkdir(exist_ok=True)
+            (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for _, ln in kept), encoding="utf-8")
+    (out / NODES_FILE).write_text(json.dumps(nodes, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    judge_live(pop, out, started)
+    return 0
+
+
+def kept_numbers(node):
+    """(record count, [record numbers]) of a node nodes.json reads as "ok", or ValueError: the count a whole number,
+    the numbers whole, strictly increasing and within 1..count, as main_live writes them."""
+    if node.get("read") != "ok":
+        raise ValueError(f"read is {node.get('read')!r}, not ok, data_dir or ledger")
+    total, numbers = node.get("records"), node.get("kept")
+    whole = lambda x: isinstance(x, int) and not isinstance(x, bool)  # noqa: E731
+    if not whole(total) or total < 0:
+        raise ValueError(f"records is {total!r}, not a whole number")
+    if not isinstance(numbers, list) or not all(whole(n) and 1 <= n <= total for n in numbers) \
+            or any(a >= b for a, b in zip(numbers, numbers[1:])):
+        raise ValueError(f"kept is not a strictly increasing list of record numbers within 1..{total}")
+    return total, numbers
+
+
+def judge_live(pop, out, started):
+    """The live finding from what main_live kept under out (nodes.json and each node's decisions.jsonl) only."""
+    out = Path(out)
+    details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [], [], 0, False
+    tally = {"PASS": 0, "NOT_CHECKED": 0, "FAIL": 0}
+    nodes = None
+    try:
+        nodes = load(out / NODES_FILE)
+        proof.append(NODES_FILE)
+        if not isinstance(nodes, dict):
+            raise TypeError("not an object")
+    except (OSError, ValueError, TypeError) as e:
+        nodes, problems = None, [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"]
+    names = [e["name"] for e in pop["nodes"]]
+    if nodes is not None and sorted(nodes) != sorted(names):
+        problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
+    for name in names if nodes is not None else []:
+        if name not in nodes:
+            continue  # a node nodes.json does not name: the names check above says so
+        node = nodes[name]
+        if not isinstance(node, dict):
+            problems.append(f"node {name}: its {NODES_FILE} entry is not an object")
+            continue
+        if node.get("read") in ("data_dir", "ledger"):
+            not_checked.append(live.not_checked(name, node["read"]))
+            details.append(f"node {name}: {'data_dir not set or unreadable' if node['read'] == 'data_dir' else 'ledger not readable'}")
             unreadable = True
             continue
-        read = node_decisions(data_dir)
-        if read is None:
-            not_checked.append(live.not_checked(name, "ledger"))
-            details.append(f"node {name}: ledger not readable")
-            unreadable = True
+        kept_file = out / name / "decisions.jsonl"
+        try:
+            total, numbers = kept_numbers(node)
+            lines = kept_file.read_text(encoding="utf-8").splitlines() if kept_file.is_file() else []
+            if len(lines) != len(numbers):
+                raise ValueError(f"decisions.jsonl holds {len(lines)} lines, nodes.json numbers {len(numbers)}")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
-        found, bad, total, rows = read
+        found, bad, rows = judge_decisions(list(zip(numbers, lines)))
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
         details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
                        f"({by['GO']} GO, {by['NO']} NO), read-only")
         problems += [f"node {name} {b}" for b in bad]
         decided += len(found)
         if found:
-            (out / name).mkdir(exist_ok=True)
-            (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for ln, _ in found), encoding="utf-8")
             proof.append(f"{name}/decisions.jsonl")
         if rows:
             (out / name / "rows.json").write_text(json.dumps({str(n): c for n, c in rows.items()}, indent=2) + "\n",
@@ -628,10 +711,10 @@ def main_live(pop, out, started):
                     f"{tally['NOT_CHECKED']} are values the rules allow but the record does not fix (rows.json) "
                     f"and {tally['FAIL']} disagree")
     if problems:
-        finding.write(out, result="FAIL", proof=proof, not_checked=[],
+        return finding.write(out, result="FAIL", proof=proof, not_checked=[],
                       detail=f"{summary}. Did not hold: {'; '.join(problems)}. {NO_SPEND}", **base)
     elif decided and not unreadable:
-        finding.write(out, result="PASS", proof=proof, not_checked=[],
+        return finding.write(out, result="PASS", proof=proof, not_checked=[],
                       detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
                              f"read by digest (or is a NO sealed with no readable policy), carries no member beyond "
                              f"the plugin's own and names the peer by commitment only; its verdict follows from its "
@@ -643,11 +726,10 @@ def main_live(pop, out, started):
                "why": "no ledger record carries one: the host config grants the plugin no admission hook "
                   "(lab/lab.sh writes the grant), or no peer exchange has run since it did",
                "issue": "evidence-network/loop: the live lab run, which fills population/live"}
-        finding.write(out, result="NOT_CHECKED", proof=proof, not_checked=not_checked + ([] if decided else [gap]),
+        return finding.write(out, result="NOT_CHECKED", proof=proof, not_checked=not_checked + ([] if decided else [gap]),
                       detail=f"{summary}. Not checked: "
                              f"{'a node could not be read' if decided else 'no admission decision was found'}. "
                              f"{NO_SPEND}", **base)
-    return 0
 
 
 def main(argv):

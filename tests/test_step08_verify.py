@@ -799,5 +799,133 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("first-answered.json re-derived is not the recorded first-answered.json", f["detail"])
 
 
+LIVE2 = ROOT / "findings" / "2026-10-31-live-2"
+
+
+def live2_04(dst):
+    """Step 04 of the real live run 2026-10-31-live-2, in the proof shape step 04 now keeps.
+
+    That run predates nodes.json, so it is written here from what the finding itself says: each node was read,
+    with the ledger record count its detail gives. A decision with rows takes the record number its rows.json key
+    gives; one without takes the next free number before the following one (the numbers name records only in a
+    problem, and the run had none). The decision lines, rows.json and the result are the run's own."""
+    import re
+    src = LIVE2 / "04-admit"
+    rec = load(src / "finding.json")
+    for p in rec["proof"]:
+        (dst / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src / p["path"], dst / p["path"])
+    nodes = {}
+    for name, n, total in re.findall(r"node (\S+): (\d+) of (\d+) ledger records", rec["detail"]):
+        kept, d = [], dst / name
+        if int(n):
+            keys = iter(sorted(int(k) for k in load(d / "rows.json"))) if (d / "rows.json").is_file() else iter(())
+            for ln in (d / "decisions.jsonl").read_text().splitlines():
+                rows = "rows" in json.loads(ln)["model_attestation"]["compute_attestation"]["admission_decision"]
+                kept.append(next(keys) if rows else (kept[-1] + 1 if kept else 1))
+        nodes[name] = {"read": "ok", "records": int(total), "kept": kept}
+    dump(dst / "nodes.json", nodes)
+    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(rec["pinned"]),
+                  proof=["nodes.json"] + [p["path"] for p in rec["proof"]], detail=rec["detail"],
+                  not_checked=rec["not_checked"], started=rec["started"])
+    return rec
+
+
+class Step08Live04Test(unittest.TestCase):
+    """08 re-derives live step 04 from its proof alone, on the live run's real decision lines (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "2026-10-31-live-2"
+        self.recorded = live2_04(self.run / "04-admit")
+        write_run_json(self.run, ["04", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def test_live_04_is_reproduced_from_its_proof(self):
+        f, entries = self.verify()
+        e = entries["04-admit"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], "PASS")
+        self.assertIn(step.LIVE_RELIES_ON["04"][0], f["not_checked"])
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual(finding.check(self.run), [])
+
+    def plant(self, edit):
+        edit(self.run / "04-admit")
+        rehash(self.run / "04-admit")
+        return self.verify()
+
+    def test_a_decision_line_altered_fails(self):
+        def forge(d):
+            p = d / "stevenmih-2" / "decisions.jsonl"
+            lines = p.read_text().splitlines()
+            lines[0] = lines[0].replace('"verdict":"GO"', '"verdict":"MAYBE"').replace('"verdict": "GO"', '"verdict": "MAYBE"')
+            p.write_text("\n".join(lines) + "\n")
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("recorded PASS, re-derived FAIL", f["detail"])
+
+    def test_a_rows_file_its_decisions_do_not_give_fails(self):
+        def forge(d):
+            p = d / "stevenmih-2" / "rows.json"
+            rows = load(p)
+            first = next(iter(rows))
+            rows[first] = rows[first][:1]
+            dump(p, rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("stevenmih-2/rows.json re-derived is not the recorded stevenmih-2/rows.json", f["detail"])
+
+    def test_a_rows_file_the_judge_does_not_write_again_fails(self):
+        def plant(d):  # stevenmih-1 has no decision, so no rows: a rows.json cited for it is not the judge's
+            (d / "stevenmih-1").mkdir(exist_ok=True)
+            dump(d / "stevenmih-1" / "rows.json", {"1": []})
+            rec = load(d / "finding.json")
+            rec["proof"].append({"path": "stevenmih-1/rows.json", "sha256": ""})
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(plant)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("stevenmih-1/rows.json re-derived is not the recorded", f["detail"])
+
+    def test_an_unupgraded_live_bundle_is_not_reproduced_not_failed(self):
+        # A live 04 or 07 finding from before its re-derivable proof shape (live-2's 04, live-5's 07, as found).
+        run = Path(self.tmp.name) / "old"
+        shutil.copytree(LIVE2 / "04-admit", run / "04-admit")
+        shutil.copytree(LIVE5 / "07-ask", run / "07-ask")
+        write_run_json(run, ["04", "07", "08"], "live", stage="1")
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(run / "08-verify")])
+        entries = {e["dir"]: e for e in load(run / "08-verify" / "verified.json")["steps"]}
+        for d, shape in (("04-admit", "nodes.json"), ("07-ask", "ask.json")):
+            self.assertEqual(entries[d]["status"], "not_reproduced", entries[d]["problems"])
+            self.assertIn(f"its proof holds no {shape}", entries[d]["not_checked"]["why"])
+        self.assertEqual(load(run / "08-verify" / "finding.json")["result"], "NOT_CHECKED")
+
+    def test_a_node_dropped_from_nodes_json_fails(self):
+        def drop(d):
+            n = load(d / "nodes.json")
+            n.pop("stevenmih-1")
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("nodes.json names nodes", f["detail"])
+
+    def test_a_node_marked_unread_does_not_pass(self):
+        def unread(d):
+            n = load(d / "nodes.json")
+            n["stevenmih-1"] = {"read": "data_dir"}
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(unread)
+        self.assertEqual(f["result"], "FAIL", f["detail"])  # recorded PASS, re-derived NOT_CHECKED
+        self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()
