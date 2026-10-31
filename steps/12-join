@@ -120,6 +120,13 @@ population node whose console `--console` is; that node is asked through
 `--console`. A self node with no second console is NOT_CHECKED, never FAIL.
 
 A part that was checked and did not hold makes the finding FAIL.
+
+The reporter backend collects first, then judges only what it kept (loop#188): each node's attempt, its plugin
+calls (wire.json records what each JSON call answered and how each tool call ended; the reply bytes sit beside it
+as doctor-probe.json, join.json, doctor-after.json), its controller-binding.json, and nodes.json (the self node,
+whether a second console and which own consoles were given, the binding time and the main commit revocations are
+read from). judge_live decides from those files alone, with no console and no data dir, so step 08 runs it again
+on the cited proof and gets the same verdict.
 """
 import argparse
 import base64
@@ -599,7 +606,60 @@ def post_json(url, body, timeout):
         return None
 
 
-def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
+WIRE_FILE = "wire.json"  # per node: how each plugin call this run made ended, so judge_live replays it
+
+
+class Wire:
+    """A node's plugin calls (loop#188): live, each made over HTTP and kept under node_dir (wire.json records what a
+    JSON call answered, and how a tool call ended beside its reply bytes, <stem>.json); or replayed from those files
+    (judge_live), so the judge decides from the proof alone and step 08 gets the same verdict. A live Wire with no
+    node_dir keeps nothing (a direct call, as a test makes)."""
+
+    def __init__(self, node_dir=None, replay=False, timeout=30):
+        self.dir, self.replay, self.timeout = (Path(node_dir) if node_dir else None), replay, timeout
+        self.ended = load(self.dir / WIRE_FILE) if replay else {}
+        if not isinstance(self.ended, dict):
+            raise ValueError(f"{WIRE_FILE} is not an object")
+        self.used = []
+
+    def kept(self, stem):
+        if not isinstance(self.ended.get(stem), dict):
+            raise ValueError(f"{WIRE_FILE} records no {stem} call")
+        return self.ended[stem]
+
+    def keep(self, stem, record):
+        if self.dir is not None:
+            self.ended[stem] = record
+            (self.dir / WIRE_FILE).write_text(json.dumps(self.ended, indent=2, sort_keys=True) + "\n")
+
+    def post_json(self, stem, console, route, body):
+        """The JSON a plugin tool answered, or None (post_json), kept in wire.json."""
+        if self.replay:
+            return self.kept(stem).get("reply")
+        reply = post_json(console + route, body, self.timeout)
+        self.keep(stem, {"reply": reply})
+        return reply
+
+    def tool(self, stem, console, route, body):
+        """(reply object or None, the bytes, what went wrong or None), as tool(); the bytes are <stem>.json."""
+        if self.replay:
+            err = self.kept(stem).get("error")
+            raw = (self.dir / f"{stem}.json").read_bytes()
+        else:
+            reply, raw, err = tool(console, route, body, self.timeout)
+            if self.dir is not None:
+                (self.dir / f"{stem}.json").write_bytes(raw)
+            self.keep(stem, {"error": err})
+        if err:
+            return None, raw, err
+        try:
+            reply = json.loads(raw)
+        except ValueError:
+            return None, raw, "the reply is not JSON"
+        return (reply, raw, None) if isinstance(reply, dict) else (None, raw, "the reply is not a JSON object")
+
+
+def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30, wire=None):
     """(failure or None, not_checked or None, line, held digest or None, named) for the controller binding of one
     node. `named` is what the fetched commitment was read to name: its binding digest, "" for none, or None when it
     was not read (loop#201 reads the optional unbound case, and reports a commitment naming a binding once, by it).
@@ -614,22 +674,24 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     of the binding. A binding whose window closes between the two calls shows as one FAIL; that is rare, and
     a rerun settles it.
     """
+    wire = wire or Wire(timeout=timeout)
+
     def unreadable(why):
         return None, no_binding(name, why), f"{name}: binding not read", None, None
 
-    own = post_json(doctor_console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    own = wire.post_json("binding-own-commitment", doctor_console, OWN_COMMITMENT_ROUTE, {})
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != node_id:
         return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
-    doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
+    doctor = wire.post_json("binding-doctor", doctor_console, DOCTOR_ROUTE, {})
     state = binding_state(doctor)
     if state is None:
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
     held = state[1]
     if state[0] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
         return f"{name}: doctor reports the binding bound without a sha256 digest", None, "", None, None
-    fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
+    fetched = wire.post_json("binding-fetched-commitment", commitment_console, COMMITMENT_ROUTE, {"peer_id": node_id})
     if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
         return unreadable("its commitment could not be fetched and checked through the console that asks it"
                           + (f" ({'; '.join(map(str, fetched['problems']))})" if isinstance(fetched, dict)
@@ -657,20 +719,22 @@ def settled_binding(fail, named):
     return named if fail and named else None
 
 
-def live_binding_record(name, node, entry, held, at, node_dir, snap=None):
+def live_binding_record(name, node, entry, held, at, node_dir, snap=None, replay=False):
     """(failure or None, not_checked list, line or None, proof paths) of the Go verifier on the record the node
     holds in its data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports
-    `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them. A node that holds no
-    binding has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
+    `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them; `replay` reads that
+    kept copy instead (judge_live: none kept means the data_dir held none readable). A node that holds no binding
+    has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
     if not held:
         return None, [], None, []
-    data_dir = live.path(node, "data_dir")
+    src = Path(node_dir) if replay else live.path(node, "data_dir")
     try:
-        raw = (data_dir / BINDING_FILE).read_text(encoding="utf-8")
+        raw = (src / BINDING_FILE).read_text(encoding="utf-8")
     except (OSError, ValueError, TypeError):
         return None, [no_binding(name, f"it has no readable {BINDING_FILE} in its data_dir (the population's) to "
                                        "check the record by")], None, []
-    (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
+    if not replay:
+        (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
     kept = [f"{name}/{BINDING_FILE}"]
     state, detail = binding_check(name, raw, held, entry["key_id"], at,
                                   from_main=snap or {"commit": None, "why": "no main commit was read"})
@@ -822,7 +886,7 @@ def signed_terms(doc, policy):
     return terms if all(isinstance(v, list) and all(isinstance(x, str) for x in v) for v in terms.values()) else None
 
 
-def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
+def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, wire=None):
     """(failures, not_checked, proof names in node_dir, lines, signed) for the plugin's doctor --probe and join.
     `fetched` is what check_binding settled this run: "" when doctor and the fetched commitment agree there is no
     binding, the digest the fetched commitment names when check_binding already FAILed on it, None otherwise.
@@ -842,7 +906,8 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     def nc_(what, why, issue=live.ISSUE):
         return {"what": f"{name}: {what}", "why": why, "issue": issue}
 
-    own = post_json(console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    wire = wire or Wire(node_dir, timeout=timeout)
+    own = wire.post_json("tools-own-commitment", console, OWN_COMMITMENT_ROUTE, {})
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != entry["node_id"]:
@@ -852,8 +917,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     doc, holds = None, False
 
     def call(stem, route, body):
-        reply, raw, err = tool(console, route, body, timeout)
-        (node_dir / f"{stem}.json").write_bytes(raw)
+        reply, raw, err = wire.tool(stem, console, route, body)
         proof.append(f"{stem}.json")
         return reply, err
 
@@ -981,11 +1045,60 @@ def no_second_console(name):
             "issue": NO_SECOND_CONSOLE_ISSUE}
 
 
-def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, node_consoles=None):
+NODES_FILE = "nodes.json"  # the live run's own choices, kept so judge_live replays them (loop#188)
+
+
+def kept_lines(node_dir, entry):
+    """{stem: verification line} of the node's one attempt in the proof. Each line is computed again from the kept
+    reply, the announced key (peer-key.json) and the listed key, and must be the line kept; with no reply kept, the
+    line may not claim one (as step 07's reporter_line). Raises ValueError naming what does not hold."""
+    attempts = layout.attempts(node_dir)
+    if len(attempts) != 1:
+        raise ValueError(f"the proof holds {len(attempts)} attempts for it, not one")
+    attempt, lines = attempts[0], {}
+    try:
+        said_key = json.loads((attempt / "peer-key.json").read_text(encoding="utf-8"))
+        key = said_key.get("announced_key_id") if isinstance(said_key, dict) else None
+        announced = key if isinstance(key, str) and daily_report.HEX64.match(key) else None
+    except (OSError, ValueError):
+        announced = None
+    for stem in daily_report.QUESTIONS:
+        try:
+            kept = (attempt / f"{stem}.verification").read_text(encoding="utf-8").strip()
+        except OSError:
+            raise ValueError(f"the attempt holds no {stem}.verification")
+        reply = attempt / f"{stem}.response.json"
+        if reply.is_file():
+            again = daily_report.verification_line(200, reply.read_bytes(), None, announced, entry["key_id"])
+            if again != kept:
+                raise ValueError(f"the {stem} line kept ({kept}) is not the one its reply gives ({again})")
+        elif kept.split(" ", 1)[0] in layout.ANSWERED:
+            raise ValueError(f"the {stem} line claims a reply the attempt does not hold: {kept}")
+        lines[stem] = kept
+    return lines
+
+
+def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_console=None, node_consoles=None,
+                 replay=False):
+    """(failures, not_checked, proof, lines) of the reporter backend. Live, it asks each node and keeps, under
+    `out`, everything it decides from: each node's attempt, its plugin calls (Wire: wire.json and the reply bytes)
+    and binding record, and nodes.json (the self node, whether a second console and which own consoles were given,
+    the binding time and the main commit revocations are read from). `replay` decides again from those files alone,
+    with no console and no data dir (judge_live, step 08)."""
     failures, not_checked, proof, lines = [], [], [], []
-    at = daily_report.utc_now()
-    bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
-    snap = None  # origin/main at bind_at, fetched once, when a binding is first read
+    if replay:
+        kept = load(out / NODES_FILE)
+        self_node, second_console = kept["self_node"], kept["second_console"]
+        node_consoles = {n: n for n in kept["node_consoles"]}  # names only: the calls are replayed, none is made
+        bind_at, snap = kept["bind_at"], kept["revocations_main"]
+        if not (isinstance(node_consoles, dict) and isinstance(bind_at, str) and (snap is None or isinstance(snap, dict))):
+            raise TypeError(f"{NODES_FILE} has the wrong shape")
+        proof.append(NODES_FILE)
+    else:
+        at = daily_report.utc_now()
+        bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
+        snap = None  # origin/main at bind_at, fetched once, when a binding is first read
+    owns = []
     for node in pop["nodes"]:
         name = node["name"]
         asker, via = console, "the reporter's console"
@@ -1007,17 +1120,31 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             lines.append(f"{name}: not asked, no nodes/ entry")
             continue
         node_dir = out / name
-        if node_dir.exists():
-            shutil.rmtree(node_dir)
-        node_dir.mkdir(parents=True)
-        result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
-                                          timeout)
+        if replay:
+            try:
+                result = kept_lines(node_dir, entry)
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                failures.append(f"{name}: its reporter attempt does not hold ({type(e).__name__}: {e})")
+                continue
+        else:
+            if node_dir.exists():
+                shutil.rmtree(node_dir)
+            node_dir.mkdir(parents=True)
+            result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
+                                              timeout)
         attempt = layout.attempts(node_dir)[-1]
         proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
         bad, signed = [], None
-        own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
+        own = (node_consoles or {}).get(name) or (console if self_node and name == self_node and not replay else None)
         if own:
-            fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
+            owns.append(name)
+            try:
+                wire = Wire(node_dir, replay=replay, timeout=timeout)
+            except (OSError, ValueError) as e:
+                failures.append(f"{name}: its plugin calls are not readable ({type(e).__name__}: {e})")
+                continue
+            fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout,
+                                                        wire)
             settled = settled_binding(fail, named)  # before `fail` is reused for the binding record below
             if fail:
                 bad.append(fail)
@@ -1026,19 +1153,22 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             if line:
                 lines.append(line)
             if not fail and not nc:
-                if snap is None:
+                if snap is None and not replay:
                     snap = bv.snapshot(revocations_root(), bind_at)
-                fail, ncs, line, kept = live_binding_record(name, node, entry, held, bind_at, node_dir, snap)
-                proof += kept
+                fail, ncs, line, binding_kept = live_binding_record(name, node, entry, held, bind_at, node_dir, snap,
+                                                                    replay)
+                proof += binding_kept
                 if fail:
                     bad.append(fail)
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled)
+            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled,
+                                                                    wire)
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]
+            proof.append(f"{name}/{WIRE_FILE}")
             lines += said_tools
             if signed is False:
                 signed = None  # the failure is recorded; the answers are judged against the entry
@@ -1075,7 +1205,23 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
                      "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
-    return failures, not_checked, proof, lines
+    if not replay:
+        (out / NODES_FILE).write_text(json.dumps({"self_node": self_node, "second_console": bool(second_console),
+                                                  "node_consoles": owns, "bind_at": bind_at, "revocations_main": snap},
+                                                 indent=2, sort_keys=True) + "\n")
+        proof.insert(0, NODES_FILE)
+    return failures, not_checked, list(dict.fromkeys(proof)), lines
+
+
+def judge_live(pop, out, started):
+    """The live (reporter) finding decided from what run_reporter kept under `out` alone: no console is asked and
+    no data dir read, so step 08 gets the same verdict from the cited proof (loop#188)."""
+    out = Path(out)
+    try:
+        failures, not_checked, proof, lines = run_reporter(pop, out, replay=True)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        failures, not_checked, proof, lines = [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"], [], [], []
+    return conclude(out, pop["population"], failures, not_checked, proof, lines, started, "reporter")
 
 
 def backend(pop):
@@ -1123,8 +1269,12 @@ def main(argv=None):
             print(f"12-join: --node-console names {', '.join(unknown)}, not nodes in the population "
                   f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
             return 2
-        failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
-                                                           second_console=a.second_console, node_consoles=node_consoles)
+        # Collect first (ask each node, keep every reply), then judge only the kept files (loop#188).
+        run_reporter(pop, a.out, a.console, self_node=a.self_node, second_console=a.second_console,
+                     node_consoles=node_consoles)
+        r = judge_live(pop, a.out, started)
+        print(f"12-join: {r['result']}: {r['detail']}", file=sys.stderr)
+        return 0
     else:
         print(f"12-join: unknown probe backend {which!r}", file=sys.stderr)
         return 2
