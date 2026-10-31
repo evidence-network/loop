@@ -359,7 +359,8 @@ class Step05BindingCheckTest(unittest.TestCase):
         # CB-1 option A: with no file published, the run declares the empty list complete as of the step's start.
         self.assertIn("signatures and window PASS, revocation PASS: no statement applies in the list "
                       "evidence-network/loop step 05, run started 2026-10-31T00:00:00Z declared complete as of "
-                      f"2026-10-31T00:00:00Z (list sha256 {hashlib.sha256(b'[]').hexdigest()})", detail)
+                      f"2026-10-31T00:00:00Z under profile {step.bv.PROFILE} (list sha256 "
+                      f"{hashlib.sha256(b'[]').hexdigest()})", detail)
 
     def test_a_half_issued_after_the_steps_start_leaves_revocation_open(self):
         state, detail = self.check("valid-same-controller", started="2026-10-29T00:00:00Z")
@@ -396,8 +397,8 @@ class Step05BindingCheckTest(unittest.TestCase):
         digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
         listed = (self.dir / "nodes" / "revocations" / f"{digest}.json").read_bytes()
         self.assertIn(f"revocation PASS: no statement applies in the list evidence-network/loop step 05, run started "
-                      f"2026-10-31T00:00:00Z declared complete as of 2026-10-31T00:00:00Z (list sha256 "
-                      f"{hashlib.sha256(listed).hexdigest()})", detail)
+                      f"2026-10-31T00:00:00Z declared complete as of 2026-10-31T00:00:00Z under profile "
+                      f"{step.bv.PROFILE} (list sha256 {hashlib.sha256(listed).hexdigest()})", detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])
@@ -421,7 +422,7 @@ class Step05BindingCheckTest(unittest.TestCase):
                 step.bv.read_revocations(folder / name)
             self.assertIn(why, str(e.exception))
             (folder / name).unlink()
-        self.assertEqual(step.bv.revocations(self.dir / "nodes", digest), [])
+        self.assertEqual(step.bv.revocation_list(self.dir / "nodes", digest, "2026-10-31T00:00:00Z", "t")["list"], "[]")
         # a repeated member, at the top or nested in a bip340 sig, is refused rather than read as its last value
         text = json.dumps(good)
         for dup in (text.replace('"revoked_at":', '"revoked_at": "2026-01-01T00:00:00Z", "revoked_at":', 1),
@@ -432,7 +433,7 @@ class Step05BindingCheckTest(unittest.TestCase):
             self.assertIn("repeated member", str(e.exception))
         (folder / f"{digest}.json").write_text("not json")
         with self.assertRaises(ValueError):
-            step.bv.revocations(self.dir / "nodes", digest)
+            step.bv.revocation_list(self.dir / "nodes", digest, "2026-10-31T00:00:00Z", "t")
         import check_revocations
         self.assertEqual(len(check_revocations.check(folder)), 1)
         (folder / f"{digest}.json").write_text(json.dumps([good]))
