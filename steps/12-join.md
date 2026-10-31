@@ -50,11 +50,12 @@ With no published file, the detail says nothing is compared.
   `nodes/revocations/<binding_digest>.json` go to the verifier, and one that
   applies is a failure. Under CB-1 option A (Controller Binding v0 §5.1,
   action-state-group/agent-action-capsule#495), the run declares that list
-  complete (`[]` when no file is published for the binding) as of the time it
-  checks the binding, and the verifier reports revocation PASS when no
+  complete (`[]` when no file is published for the binding), as main held it
+  at the check time for a live run (its fixtures' checkout for a rehearsal),
+  as of the time it checks the binding, and the verifier reports revocation PASS when no
   statement in that snapshot applies. That PASS is the loop run's statement,
   scoped to the snapshot: a statement published later can still withdraw the
-  binding. A declaration that does not count leaves revocation NOT_CHECKED
+  binding. If the verifier rejects the declaration, revocation is NOT_CHECKED
   (evidence-network/loop#240); the detail names the snapshot either way. The node key's role in its
   binding is checked from the verifier's report (claim and `delegator`,
   action-state-group/agent-action-capsule#468): in a `delegated_by` binding

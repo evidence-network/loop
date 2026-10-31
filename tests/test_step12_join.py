@@ -15,6 +15,7 @@ import io
 import importlib.machinery
 import importlib.util
 import json
+import subprocess
 import os
 import shutil
 import sys
@@ -1091,7 +1092,7 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap left is a revocation declaration the verifier does not count (loop#240; CB-1 narrowed by
+    """The binding gap left is a revocation declaration the verifier rejects (loop#240; CB-1 narrowed by
     AAC#495, which left a registered source and a signed declaration open). The key's role (AAC#468) is checked from its report, and no gap is loop-wide any more: the signed
     commitment (loop#161) is matched per node."""
 
@@ -1388,15 +1389,37 @@ class BindingRevocationTest(unittest.TestCase):
     def test_with_none_published_revocation_passes_on_the_runs_declared_empty_list(self):
         state, detail = self.check("2026-10-13T00:00:00Z")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12, checking at "
-                      f"2026-10-13T00:00:00Z declared complete as of 2026-10-13T00:00:00Z under profile {step.bv.PROFILE} "
-                      f"(list sha256 {hashlib.sha256(b'[]').hexdigest()})", detail)
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12 (checking at "
+                      "2026-10-13T00:00:00Z), nodes/revocations/ in this checkout declared complete as of "
+                      f"2026-10-13T00:00:00Z under profile {step.bv.PROFILE} (list sha256 "
+                      f"{hashlib.sha256(b'[]').hexdigest()}); a statement made after 2026-10-13T00:00:00Z is not "
+                      "excluded", detail)
+
+    def test_a_live_check_reads_the_list_main_held_at_the_check_time(self):
+        repo = Path(self.tmp.name) / "repo"
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        (repo / "nodes" / step.bv.REVOCATIONS).mkdir(parents=True)
+        (repo / "nodes" / step.bv.REVOCATIONS / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        subprocess.run([*git, "add", "nodes"], check=True)
+        date = "2026-10-12T12:00:00Z"
+        subprocess.run([*git, "commit", "-qm", "publish"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+        with unittest.mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)}):
+            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
+                                               "2026-10-13T00:00:00Z", from_main=True)
+            self.assertEqual(state, "bad", detail)  # the checkout (LOOP_NODES_DIR) holds none: main does
+            self.assertEqual(self.check("2026-10-13T00:00:00Z")[0], "ok")  # a rehearsal reads its checkout
+            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
+                                               "2026-10-12T00:00:00Z", from_main=True)
+            self.assertEqual(state, "open", detail)  # main holds no commit that old
+            self.assertIn("no main commit at or before 2026-10-12T00:00:00Z", detail)
 
     def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
         with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration
             state, detail = self.check("2026-10-13T00:00:00Z")
         self.assertEqual(state, "open", detail)
-        self.assertIn("revocation NOT_CHECKED: the declaration does not count", detail)
+        self.assertIn("revocation NOT_CHECKED: the verifier rejected the declaration", detail)
         self.assertEqual(step.revocation_open(detail)["issue"], step.BINDING_REVOCATION_ISSUE)
 
     def test_a_published_statement_that_applies_makes_the_binding_not_apply(self):

@@ -48,8 +48,9 @@ failure). Under CB-1 option A (Controller Binding v0 §5.1,
 agent-action-capsule#495) the run declares that list complete (`[]` when the
 folder holds no file for the binding) as of the time it checks the binding,
 and the verifier reports revocation PASS when no statement in that snapshot
-applies: the loop run's statement, scoped to the snapshot. A declaration that
-does not count leaves revocation a not_checked entry (loop#240); here every
+applies: the loop run's statement, scoped to the snapshot. A live run reads
+the list as main held it at that time. If the verifier rejects the
+declaration, revocation is a not_checked entry (loop#240); here every
 time asked about is the declaration's own, so that is defensive only. For a Mesh
 node (`reporter`), the pinned plugin checks the record itself before its
 doctor reports it bound, and the loop checks the record the node holds in its
@@ -111,7 +112,7 @@ Go verifier against that digest: a record that does not name the node's listed k
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
 have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies with the node
 key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise has its revocation read as
-above, NOT_CHECKED only when the run's declaration does not count.
+above, NOT_CHECKED only when the verifier rejects the run's declaration or the clone holds no main to read from.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -167,7 +168,8 @@ STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
 BINDING_REVOCATION = {
     "what": "the controller binding's revocation",
-    "why": f"the run's declaration that nodes/{bv.REVOCATIONS}/ is complete did not count",
+    "why": f"the verifier rejected the run's declaration that nodes/{bv.REVOCATIONS}/ is complete, or the "
+           "clone holds no main to read it from",
     "issue": BINDING_REVOCATION_ISSUE,
 }
 DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
@@ -183,20 +185,35 @@ def cross_language():
 
 
 def nodes_dir():
-    """The node list whose revocation statements are read: this clone's nodes/ working tree (as step 05)."""
+    """The node list whose revocation statements a rehearsal reads: this clone's nodes/ working tree."""
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
-def binding_check(name, raw, digest, key, at):
+def revocations_root():
+    """The git repository whose main a live run reads revocation statements from (LOOP_REVOCATIONS_GIT, else this
+    clone), as step 05 does: main as it stood at the check time, never the checked-out branch."""
+    return Path(os.environ.get("LOOP_REVOCATIONS_GIT", ROOT))
+
+
+def binding_check(name, raw, digest, key, at, from_main=False):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, does not name the key, or names it as the
     delegator of a delegated_by binding); "unread" (it
     is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks); "open" (it applies,
-    but revocation is NOT_CHECKED: the run's declaration did not count). The revocation statements published for
+    but revocation is NOT_CHECKED: the verifier rejected the run's declaration). The revocation statements published for
     `digest` (nodes/revocations/) go to the verifier, declared complete as of `at` (CB-1 option A): one that applies
-    at `at` makes it "bad", and with none that applies it is "ok" (revocation PASS on that snapshot)."""
+    at `at` makes it "bad", and with none that applies it is "ok" (revocation PASS on that snapshot). A live run
+    (`from_main`) reads the file as main held it at `at` (bv.main_list), a rehearsal its own checkout's fixtures."""
+    no_list = None
     try:
-        listing = bv.revocation_list(nodes_dir(), digest, at, f"evidence-network/loop step 12, checking at {at}")
+        if from_main:
+            commit, text = bv.main_list(revocations_root(), digest, at)
+            where = f"nodes/{bv.REVOCATIONS}/ at main {commit}"
+        else:
+            text, where = bv.checkout_list(nodes_dir(), digest), f"nodes/{bv.REVOCATIONS}/ in this checkout"
+        listing = bv.revocation_list(digest, text, at, f"evidence-network/loop step 12 (checking at {at}), {where}")
+    except LookupError as e:  # no main to read the merged list from: no declaration, so revocation stays open
+        listing, no_list = None, str(e)
     except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
         return "bad", f"{name}'s binding {digest}: the published revocation statements are unreadable ({e})"
     try:
@@ -223,6 +240,8 @@ def binding_check(name, raw, digest, key, at):
                                f"{', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}")
     role = "as the delegate" if report.get("claim") == DELEGATED_BY else f"({report.get('claim')}: no role)"
     revoked, said = bv.revocation(report)
+    if no_list:
+        said += f": {no_list}"
     return "ok" if revoked == "PASS" else "open", (
         f"{name}'s binding {digest} names the node key {role} and applies at {at} (form, both signatures and "
         f"window PASS, {said})")
@@ -652,7 +671,7 @@ def live_binding_record(name, node, entry, held, at, node_dir):
                                        "check the record by")], None, []
     (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
     kept = [f"{name}/{BINDING_FILE}"]
-    state, detail = binding_check(name, raw, held, entry["key_id"], at)
+    state, detail = binding_check(name, raw, held, entry["key_id"], at, from_main=True)
     if state == "bad":
         return f"{name}: {detail}", [], None, kept
     unchecked = binding_unchecked(state, detail)
