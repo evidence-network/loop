@@ -73,6 +73,19 @@ With no published file, the detail says nothing is compared.
   For a node `join.sh` joined, a record that does not hold in any of those
   ways is a failure, and the record checked is kept in the finding's proof.
 
+## Live (probe backend `reporter`): proof step 08 reproduces from
+
+The live step collects first, then judges only what it kept (loop#188). Per node it keeps the reporter's attempt
+(the requests, replies, peer-key.json and verification lines), its plugin calls (`wire.json`: what each JSON call
+answered and how each tool call ended, with the reply bytes beside it as `doctor-probe.json`, `join.json` and
+`doctor-after.json`), join's commitment pair and the `controller-binding.json` it checked; and for the run,
+`nodes.json` (the self node, whether a second console and which own consoles were given, the binding time, and the
+main commit `nodes/revocations/` was read from). `judge_live(pop, out, started)` decides from those files alone:
+each verification line is computed again from its reply and must be the one kept, join's commitment is verified
+again under the listed key, and a kept binding is checked again by `cross_language`. So step 08 runs it on the cited
+copy and gets the same verdict. Doctor's findings and the fetch replies stay console reads no key signs, which 08
+names (evidence-network/loop#193).
+
 ## Rehearsal (probe backend `doctor`): proof step 08 reproduces from
 
 Each node's finding cites, by digest: `<node>.join.log` and `<node>.join.exit`

@@ -87,7 +87,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
+LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "12": ["*/commitment.json", "*/disclosure-policy.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -396,6 +396,14 @@ LIVE_RELIES_ON = {
     "09": [{"what": "step 09: each node's copied ledger files are the node's whole files",
             "why": "08 checks each held Result again on the copies, but no checkpoint the node signs covers them",
             "issue": LEDGER_ISSUE}],
+    "12": [{"what": "step 12: what each node's plugin answered to doctor, join and the commitment fetches",
+            "why": "08 judges the kept replies (wire.json and the reply bytes) again, and join's commitment is "
+                   "verified under the listed key, but doctor's findings and the fetch replies are console reads "
+                   "no key signs", "issue": TRUST_ISSUE},
+           {"what": "step 12: each probe reply's signatures, verified again offline",
+            "why": "each kept verification line is computed again from its reply, but from the pinned plugin's "
+                   "verification in it; 08 does not verify the reply bytes under the listed key itself",
+            "issue": TRUST_ISSUE}],
 }
 
 
@@ -634,6 +642,54 @@ def keys_05_live(c):
         [f"nodes.json names nodes {sorted(read) if isinstance(read, dict) else read!r}, the population {names}"]
 
 
+def rederive_12_live(m, c):
+    """Live 12 (reporter backend): its own judge_live on the copied proof (nodes.json, each node's reporter attempt,
+    plugin calls (wire.json and the reply bytes) and binding record). The kept verification lines are computed again
+    from their replies, join's commitment is verified under the listed key, and a kept binding is checked again by
+    cross_language with the revocations main commit nodes.json names."""
+    old_shape(c, "12", "nodes.json")
+    if any(p["path"].endswith("/" + m.BINDING_FILE) for p in c.record["proof"]) and not m.cross_language().is_file():
+        raise Unreproducible("step 12: its judge, run again here",
+                             f"aac-go cross_language is not installed where 08 runs ({m.cross_language()}); "
+                             "steps/01-seal.setup.sh installs it")
+    kept = load(c.work / "nodes.json")
+    snap = kept.get("revocations_main") if isinstance(kept, dict) else None
+    commit = snap.get("commit") if isinstance(snap, dict) else None
+    if commit is not None:
+        # As live 05: the main commit nodes/revocations/ was read from is origin/main's at the binding time, which
+        # lies inside the step's run, held in this clone's own history (never fetched here).
+        at = kept.get("bind_at")
+        if not (isinstance(at, str) and c.started <= at <= c.record["finished"]):
+            raise Mismatch(f"12-join: nodes.json's bind_at {at!r} is not inside the step's run "
+                           f"({c.started} to {c.record['finished']})")
+        expected = m.bv.main_commit(m.revocations_root(), at)
+        if expected is None or not m.bv.holds_on_main(m.revocations_root(), commit):
+            raise Unreproducible("step 12: its revocation reads, run again here",
+                                 f"this clone's origin/main does not hold the commit {commit[:12]} 12 read "
+                                 f"nodes/revocations/ from, or no history at {at} (fetch main's history)")
+        if commit != expected:
+            raise Mismatch(f"12-join: nodes.json reads nodes/revocations/ at {commit[:12]}, but origin/main held "
+                           f"{expected[:12]} at the binding time {at}")
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_12_live(c):
+    """nodes.json's self node and own consoles are population nodes. The keys live 12 holds each node to (its listed
+    key_id, for join's commitment and the answers) its judge reads from the repository's nodes/ itself."""
+    old_shape(c, "12", "nodes.json")
+    kept = load(c.work / "nodes.json")
+    names = {n["name"] for n in load(c.pop / "population.json")["nodes"]}
+    bad = []
+    if kept.get("self_node") is not None and kept.get("self_node") not in names:
+        bad.append(f"nodes.json names self node {kept.get('self_node')!r}, which is no population node")
+    owns = kept.get("node_consoles")
+    if not (isinstance(owns, list) and set(owns) <= names):
+        bad.append(f"nodes.json names own consoles {owns!r}, not population nodes")
+    # A node left out of node_consoles is judged NOT_CHECKED, and one added has no kept calls (a FAIL), so the list
+    # can't buy a better result: nothing is named for it.
+    return bad
+
+
 def rederive_09_live(m, c):
     """Live 09: its own judge_live on the copied proof (nodes.json, each node's copied ledger files and the
     twin-fault.json copy); each Result's signature is checked again under the keys nodes.json records."""
@@ -850,7 +906,8 @@ STEPS = {
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
 LIVE_STEPS = {"05": (rederive_05_live, keys_05_live), "09": (rederive_09_live, keys_09_live),
-              "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+              "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live),
+              "12": (rederive_12_live, keys_12_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"01", "02", "07", "09"}
