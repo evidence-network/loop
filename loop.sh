@@ -9,8 +9,7 @@
 # broke. Then `steps/finding.py check DIR` runs, status/findings.py writes DIR/index.md,
 # and one line per step is printed: `NN name RESULT`. Before the first step it writes
 # DIR/run.json: {"stage", "population", "started", "steps"} (UTC): started is the earliest of this run's start, an
-# existing run.json's and each finding's already in DIR (loop#65); stage and steps are this run's. A live run also
-# records "commit" (this repository's HEAD) and "nodes_clean" (nodes/ equal to it): step 08 holds the listed keys to it (loop#193).
+# existing run.json's and each finding's already in DIR (loop#65); stage and steps are this run's.
 #
 # Exit 0: every step has a valid finding (FAIL and NOT_CHECKED included: the result is in
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
@@ -135,10 +134,10 @@ PY
 # The run's start, before the first step: what the status page measures its minutes from. A directory that
 # already holds this day's steps (lab.sh admit, deal, settle, dispute or ask write into it before or after loop.sh) keeps the
 # earliest start: of a run.json already there and of each finding there (evidence-network/loop#65).
-python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" "$ROOT" $steps <<'PY' || die "cannot write $out/run.json"
-import datetime as dt, json, subprocess, sys
+python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
+import datetime as dt, json, sys
 from pathlib import Path
-path, stage, population, started, ecosystem, root, *steps = sys.argv[1:]
+path, stage, population, started, ecosystem, *steps = sys.argv[1:]
 FORM = "%Y-%m-%dT%H:%M:%SZ"  # zero-padded, so the strings order as the times do
 earlier = [Path(path)] + sorted(Path(path).parent.glob("*/finding.json"))
 for f in earlier:
@@ -154,17 +153,6 @@ for f in earlier:
 run = {"stage": stage, "population": population, "started": started, "steps": steps}
 if ecosystem != "mesh":
     run["ecosystem"] = ecosystem
-if population == "live":
-    # The repository commit whose nodes/ listings the run's keys are held to (evidence-network/loop#193): step 08 reads
-    # them at this commit, so a later key rotation doesn't change what an old run is held to. nodes_clean is false when
-    # nodes/ differed from the commit at the run's start (lab.sh entries writes it before it is committed).
-    def git(*a):
-        r = subprocess.run(["git", "-C", root, *a], capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else None
-    commit = git("rev-parse", "HEAD")
-    if commit and len(commit) == 40:
-        run["commit"] = commit
-        run["nodes_clean"] = git("status", "--porcelain", "--", "nodes") == ""
 with open(path, "w") as f:
     f.write(json.dumps(run, indent=2, sort_keys=True) + "\n")
 PY

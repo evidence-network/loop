@@ -277,18 +277,6 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertEqual(self.finding("01-seal", found / f"{day}-rehearsal")["population"], "rehearsal")
 
-    def test_a_live_run_records_the_repository_commit_and_whether_nodes_were_committed(self):
-        # loop#193: 08 reads the listed keys at this commit; a rehearsal run records neither.
-        self.all_steps()
-        r = self.loop("--population", "live", "--out", str(self.dir / "live"))
-        self.assertEqual(r.returncode, 0, r.stderr)
-        run = json.loads((self.dir / "live" / "run.json").read_text())
-        head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        self.assertEqual(run["commit"], head)
-        self.assertIsInstance(run["nodes_clean"], bool)
-        self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
-        self.assertNotIn("commit", json.loads((self.out / "run.json").read_text()))
-
     def test_steps_selects_within_the_stage_only(self):
         self.all_steps()
         r = self.loop("--out", str(self.out), "--steps", "01,12")

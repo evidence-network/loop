@@ -23,10 +23,11 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 01, 02, 03, 04, 05, 06 (Lightning rail), 07 and 09 are re-derived the
-                same way: their judges read only their proof (and, for 07, the
-                repository's nodes/ listings; listed keys and 03's carrier
-                bytes are held to this checkout). The other live steps' judges
+  live          live steps 01, 02, 03, 04, 05, 06 (Lightning rail), 07, 09 and 12 are re-derived the
+                same way: their judges read only their proof and the
+                repository's listings, witness listing and join commitments,
+                as the pull request merge that published the step held them
+                (publication, loop#280). The other live steps' judges
                 read a lab node's data dir or console, so they are not_checked
                 (evidence-network/loop#188).
 
@@ -156,8 +157,9 @@ def need(path, what, tool):
 class Ctx:
     """One step: its bundle dir, the scratch copy of its proof (named as the step's dir), its finding."""
 
-    def __init__(self, bundle, work, tmp, pop_dir, record):
+    def __init__(self, bundle, work, tmp, pop_dir, record, anchor=None):
         self.bundle, self.work, self.tmp, self.pop, self.record = bundle, work, tmp, Path(pop_dir), record
+        self.anchor = anchor  # the merge that published the step, when 08 holds it to one (publication)
         self.population = record["population"]
         self.started = record["started"]
         self.relies = []  # what this step's re-derivation rests on beyond LIVE_RELIES_ON (its keys check adds them)
@@ -436,7 +438,8 @@ def state_relies(c, nn, what):
 
 
 def nodes_dir():
-    """The nodes/ listings 08 holds keys to: LOOP_NODES_DIR, else this checkout's nodes/ (as 01, 02 and 05 read)."""
+    """The nodes/ listings 08 holds keys to: LOOP_NODES_DIR (verify_run sets it to the step's publication), else
+    this checkout's nodes/ (as 01, 02 and 05 read)."""
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
@@ -451,10 +454,12 @@ def listed(node_id):
 
 def join_commitment_books():
     """{key_id: {(book_id, checkpoint key)}}: the books the nodes' signed join commitments under lab/runs name, for
-    those that verify under the key they name. Each is the book join.sh made for its node, as the node signed it."""
+    those that verify under the key they name. Each is the book join.sh made for its node, as the node signed it.
+    lab/runs is LOOP_LAB_RUNS when 08 holds the step to the merge that published it (publication)."""
     books = {}
     step12 = step_module("12-join")
-    for path in sorted((ROOT / "lab" / "runs").glob("*/join/*/commitment.json")):
+    runs = Path(os.environ.get("LOOP_LAB_RUNS") or ROOT / "lab" / "runs")
+    for path in sorted(runs.glob("*/join/*/commitment.json")):
         try:
             doc = load(path)
             errs, notes = cc.verify(doc, cc.file_fetcher(path.parent))
@@ -472,26 +477,136 @@ def utc_time(s):
     return dt.datetime.fromisoformat(s[:-1] + "+00:00")
 
 
-# Per run dir, the signed timestamps of the capsules a live 01 this 08 run reproduced as PASS kept: each one's
-# signature its judge verified under the node's listed key. verify_run checks 01 before 03 (dirs in order).
-SEALED = {}
+# The anchor a published live step's repository inputs are read at (evidence-network/loop#280): the pull request merge
+# on evidence-network/loop's main that first held the step's files byte for byte. main's history cannot be rewritten
+# (the "main: history" ruleset), so bytes there before a key's retirement cannot be added after it, and no time the
+# run's own keys signed is trusted. Only merge commits are anchors: a squash, a rebase commit or a direct push is a
+# single-parent commit no review saw as a state of main.
+ANCHOR_REPO = "evidence-network/loop"
+ANCHOR_REF = "origin/main"
+# Commits that are never anchors (a flagged direct push, .github/direct_push.py), read only at ANCHOR_REF's tip.
+EXCLUSIONS = "anchor-exclusions.json"
+# The repository inputs a live step is held to, as (path in the repository, variable the steps read it from).
+ANCHORED_INPUTS = (("nodes", "LOOP_NODES_DIR"), ("lab/witness", None), ("lab/runs", "LOOP_LAB_RUNS"))
+# Live steps whose checks read those inputs (06 holds nothing to a key).
+ANCHORED_STEPS = {"01", "02", "03", "04", "05", "07", "09", "12"}
+ANCHOR_WHAT = ("the listed keys, witness listing and join commitments it is held to, read at the pull request merge "
+               "on main that published it")
 
 
-def sealed_times(c):
-    """The node-signed capsule timestamps of the run's 01 (SEALED), or [] when 08 did not reproduce it as PASS."""
-    return SEALED.get(c.bundle.parent.resolve(), [])
+def git(*args, root=None):
+    """stdout of git in the repository (root, else ROOT), or None when git fails."""
+    r = subprocess.run(["git", "-C", str(root or ROOT), *args], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
 
 
-def keep_sealed(d, work):
-    """Record the timestamps of the capsules a reproduced, passing live 01 cites (its work copy)."""
-    times = []
-    for p in sorted(work.glob("*/capsule.json")):
-        try:
-            times.append(utc_time(load(p)["timestamp"]))
-        except (OSError, ValueError, KeyError, TypeError):
-            return
-    if times:
-        SEALED[d.parent.resolve()] = times
+def anchor_ref(root=None):
+    """(ANCHOR_REF, None) when this checkout can show what evidence-network/loop's main published, else (None, why).
+    A local main or a fork's main may hold commits the protected branch never had, and a shallow clone's oldest
+    commit is not where its bytes first appeared."""
+    url = (git("remote", "get-url", "origin", root=root) or b"").decode().strip()
+    if not re.fullmatch(r"(https://github\.com/|git@github\.com:|ssh://git@github\.com/)" + re.escape(ANCHOR_REPO)
+                        + r"(\.git)?/?", url):
+        return None, f"this checkout's origin is not {ANCHOR_REPO} ({url or 'none'})"
+    if (git("rev-parse", "--is-shallow-repository", root=root) or b"").strip() != b"false":
+        return None, "this checkout is a shallow clone, so main's history is cut short"
+    if git("rev-parse", "--verify", "-q", f"{ANCHOR_REF}^{{commit}}", root=root) is None:
+        return None, f"this checkout has no {ANCHOR_REF}"
+    return ANCHOR_REF, None
+
+
+def excluded(ref, root=None):
+    """The commits EXCLUSIONS lists at ref's tip, or None when the file is there but unreadable. An entry that is
+    not a full commit id makes it unreadable: an exclusion that excluded nothing must not pass unseen."""
+    raw = git("show", f"{ref}:{EXCLUSIONS}", root=root)
+    if raw is None:
+        return set()  # not on main (yet): nothing is excluded
+    try:
+        commits = [x["commit"] for x in json.loads(raw)["commits"]]
+    except (ValueError, KeyError, TypeError):
+        return None
+    ok = all(isinstance(x, str) and re.fullmatch(r"[0-9a-f]{40}", x) for x in commits)
+    return set(commits) if ok else None
+
+
+def step_blobs(d, root=None):
+    """{repository path: blob id} of every file under step dir d, as git would store it (no filters), or None when
+    d is not a step of a run under findings/ or holds anything but regular files."""
+    root = Path(root or ROOT).resolve()
+    d = Path(d).resolve()
+    try:
+        rel = d.relative_to(root)
+    except ValueError:
+        return None
+    if len(rel.parts) != 3 or rel.parts[0] != "findings":
+        return None
+    blobs = {}
+    for p in sorted(d.rglob("*")):
+        if p.is_symlink() or not (p.is_file() or p.is_dir()):
+            return None
+        if p.is_file():
+            out = git("hash-object", "--no-filters", "--", str(p), root=root)
+            if out is None:
+                return None
+            blobs[str(p.relative_to(root))] = out.decode().strip()  # str paths, as holds decodes git's
+    return blobs or None
+
+
+def publication(d, root=None):
+    """(P, None) for the oldest merge commit on main's first-parent line whose tree holds exactly the files of step dir d
+    with the bytes d holds now, and is not excluded; else (None, why)."""
+    ref, why = anchor_ref(root)
+    if ref is None:
+        return None, why
+    skip = excluded(ref, root)
+    if skip is None:
+        return None, f"{EXCLUSIONS} on {ref} is not readable"
+    want = step_blobs(d, root)
+    if want is None:
+        return None, "the step is not a run's step under findings/, or holds a file git does not store as it is"
+    rel = str(Path(d).resolve().relative_to(Path(root or ROOT).resolve()))
+    line = (git("rev-list", "--first-parent", "--reverse", "--parents", ref, root=root) or b"").decode().split("\n")
+    order = [(c[0], len(c) > 2) for c in (x.split() for x in line) if c]
+    at = {sha: i for i, (sha, _) in enumerate(order)}
+    touching = [sha for sha in (git("rev-list", "--first-parent", "--reverse", ref, "--", rel, root=root)
+                                or b"").decode().split() if sha in at]
+
+    def holds(commit):
+        """The commit holds exactly d's files (no more, no fewer) with d's bytes."""
+        have = {}
+        for row in (git("ls-tree", "-rz", "--full-tree", commit, "--", rel, root=root) or b"").split(b"\0"):
+            if row:
+                meta, path = row.split(b"\t", 1)
+                mode, _, blob = meta.decode().split()
+                have[path.decode("utf-8", "surrogateescape")] = blob if mode in ("100644", "100755") else None
+        return have == want
+    # d's bytes change only at the commits that touch it, so each run between two of them holds or lacks them all.
+    for i, sha in enumerate(touching):
+        if not holds(sha):
+            continue
+        stop = at[touching[i + 1]] if i + 1 < len(touching) else len(order)
+        for commit, merge in order[at[sha]:stop]:
+            if merge and commit not in skip:
+                return commit, None
+    return None, f"no pull request merge on {ANCHOR_REPO}'s main holds this step's files as they are"
+
+
+def inputs_at(commit, dest, root=None):
+    """{variable: dir} of ANCHORED_INPUTS unpacked from commit into dest. A path the commit does not hold is an
+    empty input: a step published before it existed has nothing there to be held to."""
+    env = {}
+    for path, var in ANCHORED_INPUTS:
+        target = Path(dest) / path
+        target.mkdir(parents=True, exist_ok=True)
+        if git("cat-file", "-e", f"{commit}:{path}", root=root) is not None:
+            arc = git("archive", commit, path, root=root)
+            if arc is None or subprocess.run(["tar", "-x", "-C", str(dest)], input=arc,
+                                             capture_output=True).returncode != 0:
+                raise OSError(f"git cannot unpack {path} at {commit[:12]}")
+        if var:
+            env[var] = str(target)
+    env["LOOP_WITNESS_LISTING"] = str(Path(dest) / "lab" / "witness" / "witnesses.json")
+    return env
 
 
 def old_shape(c, nn, name):
@@ -860,15 +975,15 @@ def rederive_03_live(m, c):
 
 
 def keys_03_live(c):
-    """Live 03's keys and carrier bytes, held to this checkout.
+    """Live 03's keys and carrier bytes, held to the listings 03 is held to (its publication, else this checkout).
 
     Each node's listed key_id in carrier.json (None when HEAD listed none) must be what nodes/<node_id>.json lists
     here; otherwise not_reproduced (a key rotated since, or one never listed, loop#193). When carrier.json's head
     is a full commit id that this checkout holds, 08 works out each node's paths itself from that commit (its
     listing, its commitment and the policy the commitment names) and every one must be what carrier.json says HEAD
     held, byte for byte; a path carrier.json leaves out is checked too. Otherwise the bytes are not compared, and
-    that is a not_checked entry on loop#193. That the commit was current when 03 ran is held to main's history
-    (head_was_current), and named on loop#193 only when it is not borne out."""
+    that is a not_checked entry on loop#193. That the commit was current when 03 ran is held to the merge that
+    published 03 (head_was_current), and named on loop#193 only when it is not borne out."""
     if "carrier.json" not in {p["path"] for p in c.record["proof"]}:
         return []  # an older shape: rederive_03_live says so
     doc = load(c.work / "carrier.json")
@@ -880,7 +995,7 @@ def keys_03_live(c):
         listed = load(listing).get("key_id") if entry.get("node_id") and listing.is_file() else None
         if entry.get("node_id") and entry.get("key_id") != listed:
             raise Unreproducible(f"step 03: {name}'s listed key at the carrier's HEAD",
-                                 "it is not the key nodes/ lists for the node in this checkout (a key rotated since "
+                                 "it is not the key the nodes/ listings 03 is held to give the node (a key rotated since "
                                  "the run, or a key the repository never listed)", TRUST_ISSUE)
     head = doc.get("head")
     full = isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head)
@@ -924,44 +1039,22 @@ def keys_03_live(c):
         bad += [f"{name}: carrier.json says HEAD held {p}, which 03 never reads" for p in sorted(set(paths) - set(expect))]
     if not head_was_current(c, head, nodes, at):
         state_relies(c, "03", f"carrier.json's commit {head[:12]} carried the nodes' current commitments when 03 ran "
-                              "(main at 03's start holds others, this checkout has no main to hold it to, or no "
-                              "capsule 01 kept bounds 03's start)")
+                              "(the pull request merge that published 03 holds others, or no such merge on main "
+                              "holds 03 as it is)")
     return bad
 
 
 def head_was_current(c, head, nodes, at):
-    """Whether every listing and commitment carrier.json's commit holds is what main held when 03 started: the
-    newest commit on main's first-parent line no later than 03's `started`, as this checkout's main (origin/main,
-    else main) holds it. So a replayed older commit, whose commitments main had since replaced, is not taken for
-    the run's.
-
-    03's start is the run's clock, but it cannot be set back unseen: 01 runs first, so 03 starts no earlier than
-    every capsule 01 kept, each signed by its node with its time (only a 01 this 08 run reproduced as PASS, whose
-    judge verified each signature, counts: sealed_times). A run with no such 01 has no such bound."""
-    try:
-        started = utc_time(c.started)
-    except ValueError:
+    """Whether every listing and commitment carrier.json's commit holds is what the pull request merge that published
+    03 held (c.anchor, publication). So a replayed older commit, whose commitments main had replaced by the time the
+    run was published, is not taken for the run's. No anchor (an unpublished run) gives no such check."""
+    if not c.anchor:
         return False
-    signed = sealed_times(c)
-    if not signed or started < max(signed).replace(microsecond=0):
-        return False
-    for ref in ("origin/main", "main"):
-        r = subprocess.run(["git", "-C", str(ROOT), "rev-list", "-1", "--first-parent", f"--before={c.started}", ref],
-                           capture_output=True, text=True)
-        base = r.stdout.strip()
-        if r.returncode == 0 and base:
-            break
-    else:
-        return False
-
-    def at_base(path):
-        r = subprocess.run(["git", "-C", str(ROOT), "show", f"{base}:{path}"], capture_output=True)
-        return r.stdout if r.returncode == 0 else None
     for entry in nodes.values():
         if not isinstance(entry, dict) or not entry.get("node_id"):
             continue
         for path in (f"nodes/{entry['node_id']}.json", f"nodes/commitments/{entry['node_id']}.json"):
-            if at(path) != at_base(path):
+            if at(path) != git("show", f"{c.anchor}:{path}"):
                 return False
     return True
 
@@ -1047,7 +1140,7 @@ def mismatches(recorded, again):
     return out
 
 
-def verify_step(d, pop_dir, population, tmp):
+def verify_step(d, pop_dir, population, tmp, anchor=None):
     """One step's manifest entry: {step, name, status, recorded, rederived, problems, not_checked, files}."""
     nn, name = d.name.split("-", 1)
     entry = {"step": nn, "name": name, "dir": d.name, "recorded": None, "rederived": None, "problems": [],
@@ -1088,7 +1181,7 @@ def verify_step(d, pop_dir, population, tmp):
     for p in record["proof"]:
         (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(d / p["path"], work / p["path"])
-    c = Ctx(d, work, scratch, pop_dir, record)
+    c = Ctx(d, work, scratch, pop_dir, record, anchor)
 
     try:
         if record["asserts"] == BROKE and record["result"] == "FAIL":
@@ -1147,8 +1240,6 @@ def verify_step(d, pop_dir, population, tmp):
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files
                           if not (work / n).is_file() or (work / n).read_bytes() != (d / n).read_bytes()]
-    if not entry["problems"] and population != "rehearsal" and nn == "01" and again["result"] == "PASS":
-        keep_sealed(d, work)
     return done("failed" if entry["problems"] else "reproduced")
 
 
@@ -1164,90 +1255,52 @@ def expected_steps(run):
 
 def verify_run(run, out, pop_dir, population):
     """[manifest entries] for every step dir in run except out's, and one failed entry for each step
-    run.json lists that has no dir."""
+    run.json lists that has no dir. A live step that reads the repository's keys is re-derived with the inputs of
+    the merge that published it (publication), or this checkout's, named when it is reproduced."""
     entries = []
-    SEALED.pop(Path(run).resolve(), None)  # only this verification's own 01 bounds its 03
     own = Path(out).resolve().name.split("-", 1)[0]
     for nn in expected_steps(run) or []:
         if nn != own and not any(finding.STEP_DIR.match(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):
             entries.append({"step": nn, "name": None, "dir": f"{nn}-?", "recorded": None, "rederived": None,
                             "problems": [f"run.json lists step {nn} but the run holds no {nn}-*/finding.json"],
                             "not_checked": None, "files": [], "status": "failed"})
-    for d in sorted(p for p in Path(run).iterdir() if p.is_dir()):
-        if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.match(d.name):
-            continue
-        with tempfile.TemporaryDirectory(prefix="08-verify-") as tmp:
-            entries.append(verify_step(d, pop_dir, population, tmp))
+    with tempfile.TemporaryDirectory(prefix="08-inputs-") as inputs:
+        unpacked = {}
+        for d in sorted(p for p in Path(run).iterdir() if p.is_dir()):
+            if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.match(d.name):
+                continue
+            anchor, why, env = None, None, {}
+            if population != "rehearsal" and d.name.split("-", 1)[0] in ANCHORED_STEPS:
+                if os.environ.get("LOOP_NODES_DIR"):
+                    why = "LOOP_NODES_DIR gives the listings it is held to"
+                else:
+                    anchor, why = publication(d)
+                if anchor:
+                    try:
+                        if anchor not in unpacked:
+                            unpacked[anchor] = inputs_at(anchor, Path(inputs) / anchor)
+                        env = unpacked[anchor]
+                    except OSError as e:
+                        anchor, why = None, str(e)
+            saved = {k: os.environ.get(k) for k in env}
+            os.environ.update(env)  # the step modules read these at import, which verify_step does
+            try:
+                with tempfile.TemporaryDirectory(prefix="08-verify-") as tmp:
+                    entry = verify_step(d, pop_dir, population, tmp, anchor)
+            finally:
+                for k, v in saved.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+            if why and entry["status"] == "reproduced":
+                where = "where LOOP_NODES_DIR and this checkout hold them" if anchor is None and \
+                    os.environ.get("LOOP_NODES_DIR") else "at this checkout"
+                entry["relies_on"].append({"what": f"step {entry['step']}: {ANCHOR_WHAT}", "why": why + f", so "
+                                           f"08 read them {where}, where a key rotated since would be read as "
+                                           "the new one", "issue": TRUST_ISSUE})
+            entries.append(entry)
     return entries
-
-
-def nodes_at_run_commit(run, population, tmp, untrusted=False):
-    """(LOOP_NODES_DIR to read the listings from or None, [not_checked]) for a live run. run.json's commit is the
-    repository commit loop.sh ran at: the listings are read from it (git archive), so a later key rotation does not
-    change what the run is held to. A run.json with no commit, a nodes/ that differed from it at the run's start, or a
-    commit this checkout lacks leaves the checkout's own nodes/, and says so (loop#193)."""
-    if population != "live" or os.environ.get("LOOP_NODES_DIR"):
-        return None, []
-    what = "the listed keys, read at the commit the run ran at"
-
-    def named(why):
-        return None, [{"what": what, "why": why + ", so 08 reads the listings at this checkout, where a rotated key "
-                       "would be read as the new one", "issue": TRUST_ISSUE}]
-    if untrusted:
-        return named("run.json's commit does not hold the nodes/ that main held when the run started (or no passing "
-                     "01 bounds that start)")
-    try:
-        doc = load(Path(run) / "run.json")
-    except (OSError, ValueError):
-        return named("there is no readable run.json")
-    commit = doc.get("commit")
-    if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
-        return named("run.json pins no commit")
-    if doc.get("nodes_clean") is not True:
-        return named(f"nodes/ was not committed at {commit[:12]} when the run started")
-    have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True)
-    if have.returncode != 0:
-        return named(f"commit {commit[:12]} is not in this checkout")
-    arc = subprocess.run(["git", "-C", str(ROOT), "archive", commit, "nodes"], capture_output=True)
-    if arc.returncode != 0:
-        return named(f"git cannot read nodes/ at {commit[:12]}")
-    dest = Path(tmp) / "nodes-at-run"
-    dest.mkdir()
-    if subprocess.run(["tar", "-x", "-C", str(dest)], input=arc.stdout, capture_output=True).returncode != 0:
-        return named(f"nodes/ at {commit[:12]} cannot be unpacked")
-    return dest / "nodes", []
-
-
-def pin_is_current(run):
-    """Whether run.json's commit holds the nodes/ that main held when the run started, so an unsigned run.json cannot
-    pick an older commit from before a key rotation (as head_was_current holds step 03's commit). The start is run.json's
-    `started`, which a reproduced 01's node-signed capsule times bound from below (sealed_times); no such 01 gives no bound.
-    main is this checkout's origin/main, else main.
-
-    Residual, accepted for now (loop#280): the lower bound is circular. 01 is reproduced under the pinned nodes/ first,
-    so a holder of a key retired since the pin can sign capsules with old times and pass. Closing it takes a time anchor
-    outside the run's own keys, such as a witness receipt."""
-    try:
-        doc = load(Path(run) / "run.json")
-        started = utc_time(doc["started"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    signed = SEALED.get(Path(run).resolve(), [])
-    if not signed or started < max(signed).replace(microsecond=0):
-        return False
-    for ref in ("origin/main", "main"):
-        r = subprocess.run(["git", "-C", str(ROOT), "rev-list", "-1", "--first-parent", f"--before={doc['started']}", ref],
-                           capture_output=True, text=True)
-        base = r.stdout.strip()
-        if r.returncode == 0 and base:
-            break
-    else:
-        return False
-
-    def tree(rev):
-        r = subprocess.run(["git", "-C", str(ROOT), "rev-parse", f"{rev}:nodes"], capture_output=True, text=True)
-        return r.stdout.strip() if r.returncode == 0 else None
-    return tree(base) is not None and tree(base) == tree(doc["commit"])
 
 
 def main(argv=None):
@@ -1261,29 +1314,13 @@ def main(argv=None):
     for p in ("finding.json", "verified.json"):
         (out / p).unlink(missing_ok=True)
     population = load(a.population / "population.json")["population"]
-    with tempfile.TemporaryDirectory(prefix="08-nodes-") as nodes_tmp:
-        at_run, key_gaps = nodes_at_run_commit(out.parent, population, nodes_tmp)
-
-        def verify_with(nodes):
-            if nodes:
-                os.environ["LOOP_NODES_DIR"] = str(nodes)  # the steps 08 runs again read their listings from nodes_dir()
-            try:
-                return verify_run(out.parent, out, a.population.resolve(), population)
-            finally:
-                if nodes:
-                    del os.environ["LOOP_NODES_DIR"]
-        entries = verify_with(at_run)
-        if at_run and not pin_is_current(out.parent):
-            # The commit run.json names is not shown to hold what main held at the run's start: read this checkout.
-            at_run, key_gaps = None, nodes_at_run_commit(out.parent, population, nodes_tmp, untrusted=True)[1]
-            entries = verify_with(None)
+    entries = verify_run(out.parent, out, a.population.resolve(), population)
 
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
     # A reproduced live step still names what it rests on, so 08 never reads PASS over it.
     not_checked += [x for e in entries if e["status"] == "reproduced" for x in e.get("relies_on", [])]
-    not_checked += key_gaps if any(e["status"] == "reproduced" for e in entries) else []
     listed = expected_steps(out.parent)
     if listed is None:
         not_checked.append({"what": "which steps the run holds",

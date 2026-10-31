@@ -150,6 +150,38 @@ class DirectPushTest(unittest.TestCase):
         after = self.repo.commit("pr", {"nodes/x.json": "{}"})
         self.assertEqual(self.check(after, via_pr="true")[0], 0)
 
+    def test_an_intermediate_commit_outside_stats_data_fails_though_the_net_diff_is_inside(self):
+        # loop#280: one commit re-lists a key beside a run, the next restores both; the net diff is stats/data/ only.
+        self.repo.commit("list", {"nodes/x.json": '{"key_id": "new"}'})
+        before = self.repo.git("rev-parse", "HEAD")
+        self.repo.commit("forge", {"nodes/x.json": '{"key_id": "old"}', "findings/r/01-seal/capsule.json": "{}"})
+        self.repo.git("rm", "-q", "-r", "findings")
+        after = self.repo.commit("restore", {"nodes/x.json": '{"key_id": "new"}',
+                                             "stats/data/daily/2026-11-01.json": "{}"})
+        self.assertEqual(self.repo.git("diff", "--name-only", before, after), "stats/data/daily/2026-11-01.json")
+        code, out = self.check(after, before=before)
+        self.assertEqual(code, 1)
+        self.assertIn("nodes/x.json", out)
+        self.assertIn("findings/r/01-seal/capsule.json", out)
+
+    def test_a_merge_commit_in_a_direct_push_fails(self):
+        base = self.repo.git("rev-parse", "HEAD")
+        self.repo.git("checkout", "-q", "-b", "side")
+        self.repo.commit("side", {"stats/data/daily/2026-11-02.json": "{}"})
+        self.repo.git("checkout", "-q", "main")
+        self.repo.commit("main", {"stats/data/daily/2026-11-01.json": "{}"})
+        self.repo.git("merge", "-q", "--no-ff", "-m", "merge", "side")
+        code, out = self.check(self.repo.git("rev-parse", "HEAD"), before=base)
+        self.assertEqual(code, 1)
+        self.assertIn("merge commit", out)
+
+    def test_a_push_editing_the_anchor_exclusions_fails(self):
+        # step 08 reads anchor-exclusions.json at main's tip: only a reviewed pull request may change it.
+        after = self.repo.commit("unexclude", {"anchor-exclusions.json": '{"commits": []}'})
+        code, out = self.check(after)
+        self.assertEqual(code, 1)
+        self.assertIn("anchor-exclusions.json", out)
+
     def test_new_branch_push_checks_the_whole_tree(self):
         after = self.repo.git("rev-parse", "HEAD")
         self.assertEqual(self.check(after, before=direct_push.ZERO)[0], 1)
