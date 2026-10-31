@@ -528,6 +528,7 @@ start_node() { # NAME EXTRA_ARGS...
   done
   write_launcher "$@"
   run rm -f "$(pidfile "$name")"
+  mark_build "$name"  # before the launch: the mark's time is never later than the node's first decision
   # tmux runs the launcher through bash, never by its bare path, with bash's own stderr in the
   # node's log: a bare path dies before its first line where the file cannot be executed (a
   # noexec mount, a lost mode bit), and the window closes with an empty log and nothing said.
@@ -540,7 +541,6 @@ start_node() { # NAME EXTRA_ARGS...
   fi
   STARTED+=("$name")
   still_up "$name" || die "$name exited at once"
-  mark_build "$name"
   echo "started $name: api $(api_port "$name") console $(console_port "$name") quic $(bind_port "$name")"
 }
 
