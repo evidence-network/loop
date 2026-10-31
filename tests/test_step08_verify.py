@@ -273,7 +273,7 @@ class Step08Test(unittest.TestCase):
         self.assertIsNone(entries["11-report"]["rederived"])
         [nc] = verdict["not_checked"]
         self.assertEqual(sorted(nc), ["issue", "what", "why"])
-        self.assertEqual(nc["issue"], "evidence-network/loop#24")
+        self.assertEqual(nc["issue"], step.STAGE1_ISSUE)
         self.assertIn("no re-derivation", nc["why"])
         self.assertIn("11-report: recorded PASS, not reproduced", verdict["detail"])
         self.assertEqual(finding.check(self.run), [])
@@ -316,13 +316,14 @@ class Step08Test(unittest.TestCase):
         (sd / "recorded.json").write_text("{}\n")
         finding.write(sd, result="NOT_CHECKED", population="live", asserts="a settlement", pinned=[],
                       proof=["recorded.json"], detail="", started=finding.now(),
-                      not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#24"}])
+                      not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}])
         out = live / "08-verify"
         step.main(["--population", str(ROOT / "population" / "live"), "--out", str(out)])
         f = load(out / "finding.json")
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(f["population"], "live")
         self.assertIn("live result", f["not_checked"][0]["what"])
+        self.assertEqual(f["not_checked"][0]["issue"], step.LIVE_ISSUE)
 
     def test_a_listed_step_renamed_to_an_invalid_dir_fails_naming_it(self):
         (self.run / "06-settle").rename(self.run / "06-INVALID")
@@ -428,7 +429,7 @@ class Step08Test(unittest.TestCase):
             (sd / "recorded.json").write_text("{}\n")
             finding.write(sd, result="NOT_CHECKED", population="live", asserts="x", pinned=[],
                           proof=["recorded.json"], detail="", started=finding.now(),
-                          not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#24"}])
+                          not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}])
         write_run_json(live, ["06", "12", "08"], "live")
         shutil.rmtree(live / "12-join")
         out = live / "08-verify"
@@ -467,7 +468,7 @@ class Step08NotCheckedListTest(unittest.TestCase):
             verdict, entries = verify(run)
             self.assertEqual(entries["01-seal"]["status"], "reproduced", verdict["detail"])
             f = load(run / "01-seal" / "finding.json")
-            f["not_checked"] = [{"what": "x", "why": "y", "issue": "evidence-network/loop#24"}]
+            f["not_checked"] = [{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}]
             dump(run / "01-seal" / "finding.json", f)
             verdict, entries = verify(run)
             self.assertEqual(verdict["result"], "FAIL", verdict["detail"])
@@ -533,6 +534,217 @@ class Step08RehearsalTest(unittest.TestCase):
             f = load(out / "finding.json")
             self.assertEqual(f["result"], "FAIL", f["detail"])
             self.assertIn(f"scenario {gone} is in the repository but not in the finding's proof", f["detail"])
+
+
+LIVE5 = ROOT / "findings" / "2026-10-30-live-5"
+LIVE_POPULATION = ROOT / "population" / "live"
+
+
+def live5_07(dst):
+    """Step 07 of the real live run 2026-10-30-live-5, in the proof shape step 07 now keeps.
+
+    That run predates ask.json, exchange-subject.json and the ledger extract, so they are written here from
+    what the old proof itself holds: each node was asked (stevenmih-3 through a second console, as its detail
+    says), the exchange half is the one its exchange request names, and each old <stem>.ledger.json, which kept
+    the one sealed request and the outcome citing it, becomes an extract of those two, read at the ask's back_at.
+    The result, not_checked, first-answered.json and everything else are the live run's own."""
+    src = LIVE5 / "07-ask"
+    rec = load(src / "finding.json")
+    for p in rec["proof"]:
+        (dst / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src / p["path"], dst / p["path"])
+    nodes = {}
+    for node in load(LIVE_POPULATION / "population.json")["nodes"]:
+        nd = dst / node["name"]
+        nodes[node["name"]] = {"asked": True, "via": "a second node's console" if node["name"] == "stevenmih-3"
+                               else "the reporter's console"}
+        half = None
+        for a in sorted((nd / "attempts").iterdir()):
+            for led in a.glob("*.ledger.json"):
+                old, timing = load(led), load(a / "timing.json")
+                dump(led, {"ledger": "read", "read_at": timing["back_at"],
+                           "requests": [{"index": 0, "record": old["request_record"], "header": old["request"]}],
+                           "outcomes": [{"index": 1, "record": old["outcome"]["record"],
+                                         "header": old["outcome"]["header"]}]})
+            if (a / "exchange.request.json").is_file():
+                half = load(a / "exchange.request.json")["subject"]["exchange"]
+        dump(nd / "exchange-subject.json", {"half": half, "why": None})
+        # The commitment each ask's deadline came from (its timing.json names nodes/commitments/<node_id>.json):
+        # the bytes the same run's step 03 published, so a later re-sign in the repository changes nothing here.
+        cd = nd / "commitment"
+        (cd / "policies").mkdir(parents=True)
+        shutil.copyfile(LIVE5 / "03-advertise" / f"{node['name']}.commitment.json", cd / "commitment.json")
+        shutil.copyfile(LIVE5 / "03-advertise" / f"{node['name']}.policy.json",
+                        cd / "policies" / f"{node['node_id']}.json")
+        dump(cd / "choice.json", {"commitment": f"nodes/commitments/{node['node_id']}.json", "not_checked": []})
+    dump(dst / "ask.json", {"self_node": "stevenmih-3", "second_console": True, "nodes": nodes})
+    proof = ["first-answered.json", "ask.json"] + sorted(
+        str(f.relative_to(dst)) for f in dst.rglob("*") if f.is_file() and f.parent != dst)
+    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(rec["pinned"]),
+                  proof=proof, detail=rec["detail"], not_checked=rec["not_checked"], started=rec["started"])
+    return rec
+
+
+@unittest.skipUnless(step.openssl_ed25519(), "SKIPPED LOUDLY: live 07's kept commitments verify with OpenSSL 3+ "
+                                            "(Ed25519 pkeyutl -rawin), not installed here")
+class Step08Live07Test(unittest.TestCase):
+    """08 re-derives live step 07 from its proof alone, on the live run's real bytes (no console, no data dir)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "2026-10-30-live-5"
+        self.recorded = live5_07(self.run / "07-ask")
+        write_run_json(self.run, ["07", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def test_live_07_is_reproduced_from_its_proof(self):
+        f, entries = self.verify()
+        e = entries["07-ask"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], self.recorded["result"])
+        canon = lambda xs: sorted(json.dumps(x, sort_keys=True) for x in xs)  # noqa: E731
+        self.assertEqual(canon(e["rederived"]["not_checked"]), canon(self.recorded["not_checked"]))
+        self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
+        # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE})
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] == step.TRUST_ISSUE], step.LIVE_RELIES_ON["07"])
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_live_10_and_11_then_read_not_checked_on_the_window(self):
+        self.verify()
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        for base in ("10-judge", "11-report"):
+            r = subprocess.run([str(STEPS / base), "--population", str(LIVE_POPULATION), "--out", str(self.run / base)],
+                               capture_output=True, text=True, env=env, timeout=300, cwd=ROOT)
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        judge10 = step.step_module("10-judge")
+        f10, f11 = load(self.run / "10-judge" / "finding.json"), load(self.run / "11-report" / "finding.json")
+        for f in (f10, f11):
+            self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        window = load(self.run / "10-judge" / "window.json") if (self.run / "10-judge" / "window.json").is_file() else None
+        if window is None:  # the pinned pack is not fetched here: 10 stops before its window, on its setup
+            self.assertEqual({nc["issue"] for nc in f10["not_checked"]}, {judge10.SETUP_ISSUE})
+            return
+        # 07 is reproduced, so it is no refused step; its asks finished in the open month, outside the window.
+        self.assertTrue(any("07-ask" in x and "outside the window" in x for x in window["refused"]), window["refused"])
+        self.assertEqual({nc["issue"] for nc in f10["not_checked"]}, {judge10.WINDOW_ISSUE})
+        self.assertEqual({nc["issue"] for nc in f11["not_checked"]}, {judge10.WINDOW_ISSUE})
+        self.assertEqual(finding.check(self.run), [])
+
+    def plant(self, edit):
+        """Edit 07's proof as a forger would, rehash it, and run 08: the entry for 07."""
+        edit(self.run / "07-ask")
+        rehash(self.run / "07-ask")
+        return self.verify()
+
+    def test_a_verification_line_its_reply_does_not_give_fails(self):
+        def forge(d):
+            line = next(d.glob("stevenmih-1/attempts/*/exchange.verification"))
+            line.write_text(line.read_text().replace("refusal reason=not_authorized", "verified checkpoints=1"))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not the one its reply gives", f["detail"])
+
+    def test_a_recorded_pass_the_proof_does_not_give_fails(self):
+        def forge(d):
+            rec = load(d / "finding.json")
+            rec["result"], rec["not_checked"] = "PASS", []
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
+
+    def test_an_ask_cut_from_the_proof_fails(self):
+        def cut(d):
+            gone = next(d.glob("stevenmih-2/attempts/*/history_card.request.json")).parent
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if not (d / p["path"]).is_relative_to(gone)]
+            dump(d / "finding.json", rec)
+            shutil.rmtree(gone)
+        f, entries = self.plant(cut)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("stevenmih-2: history_card: 0 attempts in the proof, not one", f["detail"])
+
+    def test_a_node_marked_unasked_fails(self):
+        def skip(d):
+            ask = load(d / "ask.json")
+            ask["nodes"]["stevenmih-1"] = {"asked": False, "why": "no nodes/ entry"}
+            dump(d / "ask.json", ask)
+        f, entries = self.plant(skip)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("stevenmih-1: not asked", f["detail"])
+
+    def test_an_outcome_for_another_request_in_the_extract_fails(self):
+        def forge(d):
+            led = next(d.glob("stevenmih-1/attempts/*/checkpoints.ledger.json"))
+            x = load(led)
+            x["outcomes"][0]["header"]["statement"]["request_digest"] = "0" * 64
+            dump(led, x)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("names another request than the one sealed", f["detail"])
+
+    def test_an_exchange_subject_that_is_not_a_capsule_id_fails(self):
+        def blank(d):  # "" would ask nothing about the exchange and add no not_checked entry
+            dump(d / "stevenmih-1" / "exchange-subject.json", {"half": "", "why": None})
+        f, entries = self.plant(blank)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("neither null nor a capsule id", f["detail"])
+
+    def test_a_kept_commitment_altered_after_signing_fails(self):
+        def forge(d):
+            c = load(d / "stevenmih-1" / "commitment" / "commitment.json")
+            c["answers_within"] = "PT1H"
+            dump(d / "stevenmih-1" / "commitment" / "commitment.json", c)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("commitment does not verify", f["detail"])
+
+    def test_an_openssl_without_ed25519_leaves_live_07_not_reproduced_not_failed(self):
+        with mock.patch.object(step, "openssl_ed25519", return_value=False):
+            f, entries = self.verify()
+        self.assertEqual(entries["07-ask"]["status"], "not_reproduced")
+        self.assertIn("openssl 3.0 or later", entries["07-ask"]["not_checked"]["why"])
+        self.assertEqual(f["result"], "NOT_CHECKED")
+
+    def test_a_commitment_re_signed_later_in_the_repository_changes_nothing(self):
+        live07 = step.step_module("07-ask")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(live07, "PUBLISHED", Path(tmp)), mock.patch.object(live07, "LAB_RUNS", Path(tmp)), \
+                mock.patch.object(step, "step_module", lambda base: live07):
+            f, entries = self.verify()
+        self.assertEqual(entries["07-ask"]["status"], "reproduced", entries["07-ask"]["problems"])
+
+    def test_a_commitment_choice_with_no_commitment_and_no_reason_fails(self):
+        def drop(d):  # with no commitment there is no deadline: a choice that says nothing about why can't stand
+            shutil.rmtree(d / "stevenmih-1" / "commitment")
+            (d / "stevenmih-1" / "commitment").mkdir()
+            dump(d / "stevenmih-1" / "commitment" / "choice.json", {"commitment": None, "not_checked": []})
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if not p["path"].startswith("stevenmih-1/commitment/")
+                            or p["path"].endswith("choice.json")]
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("names no commitment and no reason why", f["detail"])
+
+    def test_first_answered_the_proof_does_not_give_fails(self):
+        def forge(d):
+            fa = load(d / "first-answered.json")
+            fa["answered_at"] = "2026-10-30T23:01:20.000000Z"
+            dump(d / "first-answered.json", fa)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("first-answered.json re-derived is not the recorded first-answered.json", f["detail"])
 
 
 if __name__ == "__main__":

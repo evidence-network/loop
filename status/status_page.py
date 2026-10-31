@@ -49,7 +49,8 @@ POPULATIONS = ("rehearsal", "live")
 RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)$")
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
-HARNESS = ("loop #24", "https://github.com/evidence-network/loop/issues/24")
+VERIFY = ("loop #188", "https://github.com/evidence-network/loop/issues/188")  # 08: the live steps it can't re-derive yet
+JUDGE = ("loop #189", "https://github.com/evidence-network/loop/issues/189")  # 10 and 11: a live judge key
 
 
 @dataclass(frozen=True)
@@ -75,14 +76,14 @@ STEPS = (
     Step(6, "Settle", "A settlement object for the exchange exists on the rail, with finality.", NODE_SIDE, "M2"),
     Step(7, "Ask", "A request gets a signed artifact or a signed refusal, or its absence is recorded.", NODE_SIDE, "M2"),
     Step(8, "Verify", "An outside party reproduces every finding offline from the bundle, with no account and no "
-                      "network call.", HARNESS, "M3"),
+                      "network call.", VERIFY, "M3"),
     Step(9, "Dispute", "One party disputes, a referee seals a Result, and the close reads AGREED, CONTESTED or "
                        "UNILATERAL.", NODE_SIDE, "M3"),
     Step(10, "Judge", "A pack runs over a window of whole closed months of the records step 08 reproduced, and its "
-                      "sealed Results cite every record in the window, none missing and none extra.", HARNESS, "M3"),
+                      "sealed Results cite every record in the window, none missing and none extra.", JUDGE, "M3"),
     Step(11, "Report", "The report renders only from step 08's manifest, step 10's Results and the deal and settlement "
                        "records they cite, its page's digest is sealed in the reporting node's book, every number has a denominator, and nothing on it is a "
-                       "score.", HARNESS, "M3"),
+                       "score.", JUDGE, "M3"),
     Step(12, "Join", "A new node joins with one command on the pinned release, and a probe asks its own responder "
                      "through the public path.", NODE_SIDE, "M1"),
 )

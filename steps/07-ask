@@ -81,6 +81,14 @@ which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED on
 ask is NOT_CHECKED on loop#94. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
+The reporter backend collects first, then judges only what it kept (judge_reporter), so step 08 gets the same
+verdict from the proof: per ask, its attempt files, timing.json and <stem>.ledger.json (whether the asker's
+ledger was read, when, every evidence_request sealed for the ask and every outcome record citing one, with their
+ledger positions); per node, exchange-subject.json (the half, or why there is none) and commitment/ (the
+commitment the deadline came from, its policy and choice.json, so a later re-sign does not change the verdict);
+and ask.json (which node was asked through which console, or why not). A verification line is computed again from the reply, the announced
+key and the listed key, and must be the line kept.
+
 first-answered.json names the first ask answered (a verified artifact or a
 refusal judged allowed, in time; a refusal that could only be NOT_CHECKED does not count), for the status page's minutes number.
 """
@@ -729,7 +737,8 @@ def live_commitment(entry):
 def note(path, errs):
     """The not_checked entry for a commitment record the live ask did not use."""
     return {"what": "the deadline (answers_within): a commitment record of the node",
-            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE}
+            "why": f"{path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {'; '.join(errs)}",
+            "issue": NO_COMMITMENT_ISSUE}
 
 
 def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
@@ -776,9 +785,10 @@ MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENC
 OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
 
 
-def ledger_lines(path):
+def ledger_lines(path, raw=None):
+    """The JSON object lines of a ledger file (or of `raw`, its bytes as read); None when it cannot be read."""
     try:
-        text = Path(path).read_text(encoding="utf-8")
+        text = Path(path).read_text(encoding="utf-8") if raw is None else raw.decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     out = []
@@ -792,10 +802,10 @@ def ledger_lines(path):
     return out
 
 
-def ask_records(ledger):
+def ask_records(ledger, raw=None):
     """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
-    ledger cannot be read."""
-    recs = ledger_lines(Path(ledger) / "capsules.jsonl")
+    ledger cannot be read. `raw` is the ledger's bytes when the caller has read them."""
+    recs = ledger_lines(Path(ledger) / "capsules.jsonl", raw)
     if recs is None:
         return None
     records = []
@@ -815,71 +825,130 @@ def request_digest(request):
         return None
 
 
-def judge_sealed(ledger, node_id, request, posted, back, saw, within, policy_digest=None):
-    """(errors, not_checked reasons, evidence) for one live ask, from the asker's own sealed records: its
-    evidence_request is in the book, and an evidence_response or a recorded_absence citing it agrees with what the
-    reporter saw. `posted` and `back` bracket the ask; `saw` is what the reporter saw: "verified", "refusal" or None
-    when it saw no signed answer; `within` is the commitment's answers_within as a timedelta, or None;
-    `policy_digest` is the digest of the policy the peer's commitment pins, or None. The wire
-    send is after the seal, so
-    the true deadline is no earlier than the seal plus `within`: an absence must close no earlier than that.
+def ask_bracket(posted, back):
+    """The times an ask's sealed evidence_request may carry: committed_at has whole seconds."""
+    return posted - dt.timedelta(seconds=1), back + dt.timedelta(seconds=1)
+
+
+def is_ask_request(h, node_id, request, lo, hi):
+    """Whether an ask-book header is the evidence_request the plugin sealed for this ask: to the node, of the
+    question, committed within [lo, hi]."""
+    st = (h.get("statement") or {}) if isinstance(h, dict) else {}
+    sent = (st.get("request") or {}) if isinstance(st, dict) else {}
+    if not isinstance(sent, dict):
+        return False
+    try:
+        at = utc(h.get("committed_at"))
+    except ValueError:
+        return False
+    return (h.get("record_type") == REQUEST_RECORD and lo <= at <= hi
+            and (st.get("responder_ref") == node_id or sent.get("audience") == node_id)
+            and all(sent.get(k) == v for k, v in request.items())  # the plugin only adds audience, nonce, auth
+            and sent.get("derivation") == request.get("derivation"))
+
+
+def window_close(req_h, within):
+    """The earliest an absence for this sealed request may close: the later of the minimum absence window, the
+    commitment's answers_within and the request's own deadline, each from the seal."""
+    sealed = utc(req_h["committed_at"])
+    close = sealed + MINIMUM_ABSENCE_WINDOW
+    if within is not None:
+        close = max(close, sealed + within)
+    if req_h["statement"]["request"].get("deadline"):
+        close = max(close, utc(req_h["statement"]["request"]["deadline"]))
+    return close
+
+
+def citing(records, rids):
+    """The outcome records (index, id, header) that cite one of `rids`."""
+    return [(i, orid, h) for i, (orid, h) in enumerate(records)
+            if h.get("record_type") in (RESPONSE_RECORD, ABSENCE_RECORD)
+            and any(isinstance(l, dict) and l.get("type") == "cites" and l.get("target") in rids
+                    for l in h.get("links") or [])]
+
+
+def ledger_extract(ledger, node_id, request, posted, back, saw, within):
+    """What judge_sealed reads of the asker's ledger for one ask, kept as the ask's <stem>.ledger.json so the judge
+    runs again on the proof alone (step 08): whether the ledger was read, when, every evidence_request the plugin
+    sealed for this ask and every outcome record citing one, each with its position in the ledger.
+
+    An outcome not sealed yet, for an ask the reporter saw unanswered, is waited for while its window closes
+    within OPEN_WINDOW_WAIT."""
+    def read():
+        """(records, held) from one read of the ledger: `held` is its sha256 and line count, so the extract can be
+        audited against the node later (loop#193)."""
+        try:
+            raw = (Path(ledger) / "capsules.jsonl").read_bytes()
+        except OSError:
+            return None, None
+        return ask_records(ledger, raw), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
+
+    records, held = read() if ledger else (None, None)
+    if records is None:
+        return {"ledger": None, "read_at": stamp(now())}
+    lo, hi = ask_bracket(posted, back)
+    found = [(i, rid, h) for i, (rid, h) in enumerate(records) if is_ask_request(h, node_id, request, lo, hi)]
+    got = citing(records, {rid for _, rid, _ in found})
+    if len(found) == 1 and saw not in ("verified", "refusal"):
+        close = window_close(found[0][2], within)
+        while not got and now() < close + dt.timedelta(seconds=5) and close - now() <= OPEN_WINDOW_WAIT:
+            time.sleep(max(1.0, min(5.0, (close - now()).total_seconds())))
+            again, again_held = read()
+            if again is not None:
+                records, held = again, again_held
+                found = [(i, rid, h) for i, (rid, h) in enumerate(records)
+                         if is_ask_request(h, node_id, request, lo, hi)]
+                got = citing(records, {rid for _, rid, _ in found})
+
+    def rows(items):
+        return [{"index": i, "record": rid, "header": h} for i, rid, h in items]
+
+    return {"ledger": "read", "read_at": stamp(now()), "held": held, "requests": rows(found), "outcomes": rows(got)}
+
+
+def judge_sealed(extract, node_id, request, posted, back, saw, within, policy_digest=None):
+    """(errors, not_checked reasons) for one live ask, from its ledger extract (ledger_extract): its
+    evidence_request is in the asker's book, and an evidence_response or a recorded_absence citing it agrees with
+    what the reporter saw. `posted` and `back` bracket the ask; `saw` is what the reporter saw: "verified",
+    "refusal" or None when it saw no signed answer; `within` is the commitment's answers_within as a timedelta, or
+    None; `policy_digest` is the digest of the policy the peer's commitment pins, or None. The wire send is after
+    the seal, so the true deadline is no earlier than the seal plus `within`: an absence must close no earlier
+    than that.
 
     The plugin seals a request before it writes it to the stream, and the response it seals cites that request's
     record and the digest of the bytes sent: the digest the sealed request hashes to, which is checked here."""
     errs, notes = [], []
     answered = saw in ("verified", "refusal")
-    records = ask_records(ledger) if ledger else None
-    if records is None:
-        return errs, [LEDGER_GAP], None
-    lo, hi = posted - dt.timedelta(seconds=1), back + dt.timedelta(seconds=1)  # committed_at has whole seconds
-
-    def mine(h):
-        st = h.get("statement") or {}
-        sent = st.get("request") or {}
-        try:
-            at = utc(h.get("committed_at"))
-        except ValueError:
-            return False
-        return (h.get("record_type") == REQUEST_RECORD and lo <= at <= hi
-                and (st.get("responder_ref") == node_id or sent.get("audience") == node_id)
-                and all(sent.get(k) == v for k, v in request.items())  # the plugin only adds audience, nonce, auth
-                and sent.get("derivation") == request.get("derivation"))
-
-    found = [(i, rid, h) for i, (rid, h) in enumerate(records) if mine(h)]
+    if not isinstance(extract, dict) or extract.get("ledger") != "read":
+        return errs, [LEDGER_GAP]
+    try:
+        read_at = utc(extract["read_at"])
+        found = [(r["index"], r["record"], r["header"]) for r in extract["requests"]]
+        got = [(r["index"], r["record"], r["header"]) for r in extract["outcomes"]]
+    except (KeyError, TypeError, ValueError) as e:
+        return [f"the ask's ledger extract is malformed ({type(e).__name__}: {e})"], []
+    lo, hi = ask_bracket(posted, back)
+    if not all(isinstance(h, dict) and is_ask_request(h, node_id, request, lo, hi) for _, _, h in found):
+        return ["the ask's ledger extract holds a request record that is not this ask's"], []
     if len(found) != 1:
         if not found and not answered:
             return errs, ["the ask did not reach the plugin's ask book (no evidence_request in the asker's ledger "
-                          "for it)"], None
-        return [f"the asker's ledger holds {len(found)} sealed evidence_request records for this ask, not one"], [], None
+                          "for it)"]
+        return [f"the asker's ledger holds {len(found)} sealed evidence_request records for this ask, not one"], []
     index, rid, req_h = found[0]
+    if any(not isinstance(h, dict) for _, _, h in got) or len(citing([(o, h) for _, o, h in got], {rid})) != len(got):
+        return ["the ask's ledger extract holds an outcome record that does not cite the request"], []
     sealed = utc(req_h["committed_at"])
     digest = request_digest(req_h["statement"]["request"])
-    close = sealed + MINIMUM_ABSENCE_WINDOW  # the later of this, the commitment's answers_within and the deadline
-    if within is not None:
-        close = max(close, sealed + within)
-    if req_h["statement"]["request"].get("deadline"):
-        close = max(close, utc(req_h["statement"]["request"]["deadline"]))
-
-    def outcomes(recs):
-        return [(i, orid, h) for i, (orid, h) in enumerate(recs)
-                if h.get("record_type") in (RESPONSE_RECORD, ABSENCE_RECORD)
-                and any(l.get("type") == "cites" and l.get("target") == rid for l in h.get("links") or [])]
-
-    got = outcomes(records)
-    while not got and not answered and now() < close + dt.timedelta(seconds=5) and close - now() <= OPEN_WINDOW_WAIT:
-        time.sleep(max(1.0, min(5.0, (close - now()).total_seconds())))
-        records = ask_records(ledger) or records
-        got = outcomes(records)
-    evidence = {"request_record": rid, "request": req_h, "window_closes": stamp(close), "outcome": None}
+    close = window_close(req_h, within)
     if len(got) > 1:
-        return [f"{len(got)} outcome records cite the request, not one"], [], evidence
+        return [f"{len(got)} outcome records cite the request, not one"], []
     if not got:
-        if now() < close:
-            return errs, [f"the ask's window closes at {stamp(close)}, after this read; its outcome is not sealed yet"], evidence
+        if read_at < close:
+            return errs, [f"the ask's window closes at {stamp(close)}, after this read; its outcome is not sealed yet"]
         return [f"no outcome sealed for the request: its window closed at {stamp(close)} with no evidence_response "
-                "or recorded_absence"], [], evidence
+                "or recorded_absence"], []
     oi, orid, out_h = got[0]
-    evidence["outcome"] = {"record": orid, "header": out_h}
     st = out_h.get("statement") or {}
     if oi <= index:
         errs.append("the outcome record precedes the request record in the ledger")
@@ -916,14 +985,14 @@ def judge_sealed(ledger, node_id, request, posted, back, saw, within, policy_dig
         try:
             opened, closed = utc(window.get("opened")), utc(window.get("closed"))
         except ValueError as e:
-            return errs + [f"the absence window is malformed ({e})"], notes, evidence
+            return errs + [f"the absence window is malformed ({e})"], notes
         if opened != sealed:
             errs.append(f"the absence window opens at {window.get('opened')}, not at the request record {req_h['committed_at']}")
         if closed < close:
             errs.append(f"the absence closes its window at {window.get('closed')}, before {stamp(close)}")
         if answered:
             errs.append("the plugin recorded an absence, but the reporter saw a signed answer")
-    return errs, notes, evidence
+    return errs, notes
 
 
 # --- The exchange ask: about a half the asked node holds from the asker (step 05's deal half) -------------------
@@ -1025,42 +1094,50 @@ def judge_exchange_line(line, entry):
     return None, None
 
 
+# What the reporter backend keeps beside the attempts, so its judge reads only the proof (judge_reporter).
+ASK_FILE = "ask.json"  # which node was asked through which console, or why it was not asked
+SUBJECT_FILE = "exchange-subject.json"  # per node: the half the exchange ask is about, or why there is none
+COMMITMENT_DIR = "commitment"  # per node: the commitment the deadline came from, its policy, and choice.json
+OWN_NODE = "the reporter's own node and no second console"
+NO_LISTING = "no nodes/ entry"
+
+
 def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, console_data_dir=None,
                  second_data_dir=None):
-    failures, not_checked, answered, proof, lines = [], [], [], [], []
+    """Ask each live node through the reporter's console and keep, under `out`, everything judge_reporter reads:
+    the attempts, each ask's timing and ledger extract, each node's exchange subject and ask.json. Returns
+    judge_reporter's verdict on those files, so the finding is a function of its proof (step 08 runs it again)."""
     console_data_dir, second_data_dir = (Path(os.path.expandvars(d)) if d else None
                                          for d in (console_data_dir, second_data_dir))
     if console_data_dir is None and self_node:  # the reporter's console is its own node's: the node's data_dir
         own = next((n for n in pop["nodes"] if n["name"] == self_node), {})
         console_data_dir = live.readable(own, "data_dir", "ledger/capsules.jsonl")
+    out = Path(out)
+    for n in pop["nodes"]:  # a rerun into the same --out starts clean
+        shutil.rmtree(out / n["name"], ignore_errors=True)
+    asked = {}
     for node in pop["nodes"]:
         name = node["name"]
         asker, via, ledger = console, "the reporter's console", console_data_dir
         if self_node and name == self_node:
             if not second_console:
-                merge(not_checked, [step12.no_second_console(name)])
-                lines.append(f"{name}: not asked, the reporter's own node and no second console")
+                asked[name] = {"asked": False, "why": OWN_NODE}
                 continue
             asker, via, ledger = second_console, "a second node's console", second_data_dir
         try:
             entry = step12.listed_entry(node)
         except FileNotFoundError:
-            merge(not_checked, [{"what": f"live node {name}", "why": "node_id not set, or no nodes/<node_id>.json",
-                                 "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
-            lines.append(f"{name}: not asked, no nodes/ entry")
+            asked[name] = {"asked": False, "why": NO_LISTING}
             continue
         adv, ncs = live_commitment(entry)
-        merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"} for nc in ncs])
         node_dir = out / name
-        if node_dir.exists():
-            shutil.rmtree(node_dir)
         node_dir.mkdir(parents=True)
-        # One attempt per question, so each answer has its own send and receive times.
-        said, last = [], None
+        keep_commitment(node_dir, adv, ncs)
         half, why = exchange_subject(node, ledger)
-        if half is None:
-            merge(not_checked, [{"what": f"{name}: a later exchange request on a Mesh node", "why": why,
-                                 "issue": EXCHANGE_ISSUE}])
+        write_json(node_dir / SUBJECT_FILE, {"half": half, "why": why})
+        asked[name] = {"asked": True, "via": via}
+        # One attempt per question, so each answer has its own send and receive times.
+        last = None
         stems = [*daily_report.QUESTIONS, *([EXCHANGE] if half else [])]
         with exchange_registered(half):
             for stem in stems:
@@ -1074,49 +1151,220 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 attempt = layout.attempts(node_dir)[-1]
                 sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
                 sent_at = sent if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc)
-                late = adv is not None and back > sent_at + adv["within"]
-                timing = {"asked_at": stamp(sent_at), "back_at": stamp(back),
-                          "answers_within": adv["answers_within"] if adv else None,
-                          "deadline": stamp(sent_at + adv["within"]) if adv else None,
-                          "commitment": adv["commitment"] if adv else None, "late": late}
-                write_json(attempt / "timing.json", timing)
+                write_json(attempt / "timing.json", {
+                    "asked_at": stamp(sent_at), "back_at": stamp(back),
+                    "answers_within": adv["answers_within"] if adv else None,
+                    "deadline": stamp(sent_at + adv["within"]) if adv else None,
+                    "commitment": adv["commitment"] if adv else None,
+                    "late": adv is not None and back > sent_at + adv["within"]})
                 for stem, line in result.items():
                     saw = line.split(" ", 1)[0]
-                    errs, notes, evidence = judge_sealed(
+                    write_json(attempt / f"{stem}.ledger.json", ledger_extract(
                         Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
-                        sent_at, back, saw if saw in ("verified", "refusal") else None, adv["within"] if adv else None,
-                        adv["policy_digest"] if adv else None)
-                    qn = daily_report.QUESTION_NAMES[stem]
-                    failures += [f"{name}: {qn}: {e}" for e in errs]
-                    merge(not_checked, [{"what": f"{name}: {qn}: the sealed request and its outcome", "why": n,
-                                         "issue": SEAL_ISSUE} for n in notes])
-                    if evidence is not None:
-                        write_json(attempt / f"{stem}.ledger.json", evidence)
-                proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
-                for stem, line in result.items():
-                    qname = daily_report.QUESTION_NAMES[stem]
-                    fail, nc2 = (judge_exchange_line(line, entry) if stem == EXCHANGE
-                                 else judge_live_line(stem, line, entry))
-                    cited_ok = True
-                    if stem == EXCHANGE and not fail and line.split(" ", 1)[0] == "verified":
-                        cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
-                        cited_ok = not cite_errs and not cite_notes
-                        failures += [f"{name}: exchange: {e}" for e in cite_errs]
-                        merge(not_checked, [{"what": f"{name}: exchange: the served records", "why": n,
-                                             "issue": EXCHANGE_ISSUE} for n in cite_notes])
-                    if fail:
-                        failures.append(f"{name}: {fail}")
-                    if nc2:
-                        merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
-                    state = line.split(" ", 1)[0]
-                    if not fail and not nc2 and cited_ok and state in ("verified", "refusal"):  # a refusal not judged allowed is not one
-                        if late:
-                            said.append(f"{qname} back after the deadline, counted absent")
-                            continue
-                        if adv is not None:
-                            answered.append((back, f"{name} {qname}"))
-                    said.append(f"{qname} {step12.said(line)}")
-        asked_via = f" (asked through {via})" if self_node else ""
+                        sent_at, back, saw if saw in ("verified", "refusal") else None,
+                        adv["within"] if adv else None))
+    write_json(out / ASK_FILE, {"self_node": self_node, "second_console": bool(second_console), "nodes": asked})
+    return judge_reporter(pop, out)
+
+
+def keep_commitment(node_dir, adv, ncs):
+    """Copy the commitment live_commitment chose, and the policy it pins, into <node>/commitment/, with choice.json
+    naming where it came from and the records it skipped. The judge reads this copy, so a commitment re-signed or a
+    lab pack made after the ask does not change the verdict on it."""
+    d = Path(node_dir) / COMMITMENT_DIR
+    d.mkdir(parents=True)
+    if adv is not None:
+        src = Path(adv["commitment"])
+        src = src if src.is_absolute() else ROOT / src
+        shutil.copyfile(src, d / "commitment.json")
+        (d / adv["policy_uri"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src.parent / adv["policy_uri"], d / adv["policy_uri"])
+    write_json(d / "choice.json", {"commitment": adv["commitment"] if adv else None, "not_checked": ncs})
+
+
+def kept_commitment(node_dir, entry):
+    """(advertised or None, [not_checked], [errors]) from the commitment keep_commitment copied: it is under the
+    node's listed key, has a UTC issued_at and verifies with step 03's checker against the policy copied beside it."""
+    d = Path(node_dir) / COMMITMENT_DIR
+    try:
+        choice = load(d / "choice.json")
+        chosen, ncs = choice["commitment"], choice["not_checked"]
+        if not isinstance(ncs, list) or not all(isinstance(n, dict) for n in ncs):
+            raise TypeError("not_checked is not a list of entries")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, [], [f"{COMMITMENT_DIR}/choice.json is not readable ({type(e).__name__}: {e})"]
+    if chosen is None:  # live_commitment always says why it chose none: a choice with no reason is not one
+        return None, ncs, [] if ncs else [f"{COMMITMENT_DIR}/choice.json names no commitment and no reason why"]
+    try:
+        doc = load(d / "commitment.json")
+        uri = Path(doc["lcap"]["policy_uri"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, ncs, [f"the kept commitment is not readable ({type(e).__name__}: {e})"]
+    if doc.get("key_id") != entry.get("key_id"):
+        return None, ncs, ["the kept commitment names a key other than the node's listed key"]
+    if uri.is_absolute() or ".." in uri.parts:
+        return None, ncs, [f"the kept commitment's policy_uri {str(uri)!r} is not a path beside it"]
+    if commitment_time(doc) is None:
+        return None, ncs, ["the kept commitment's issued_at is not a UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"]
+    adv, errs = advertisement(d, "commitment.json")
+    if errs:
+        return None, ncs, errs
+    adv["commitment"] = chosen
+    return adv, ncs, []
+
+
+def reporter_line(attempt, stem, listed):
+    """(line, error or None): the attempt's verification line for `stem`. When the attempt holds the reply, the
+    line is computed again from it, the announced key (peer-key.json) and the listed key, and must be the line
+    kept; with no reply, the kept line may not claim one."""
+    try:
+        kept = (attempt / f"{stem}.verification").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None, f"the attempt holds no {stem}.verification"
+    reply = attempt / f"{stem}.response.json"
+    if not reply.is_file():
+        if kept.split(" ", 1)[0] in ("verified", "refusal", "no_checkpoint_yet", "no_announced_key"):
+            return kept, f"the verification line claims a reply the attempt does not hold: {kept}"
+        return kept, None
+    announced = None
+    try:
+        said_key = json.loads((attempt / "peer-key.json").read_text(encoding="utf-8"))
+        key = said_key.get("announced_key_id") if isinstance(said_key, dict) else None
+        announced = key if isinstance(key, str) and daily_report.HEX64.match(key) else None
+    except (OSError, ValueError):
+        pass
+    again = daily_report.verification_line(200, reply.read_bytes(), None, announced, listed)
+    if again != kept:
+        return kept, f"the verification line kept ({kept}) is not the one its reply gives ({again})"
+    return kept, None
+
+
+def attempt_stems(node_dir):
+    """{stem: [attempt dirs]} of a node's attempts, by the <stem>.request.json each holds."""
+    found = {}
+    for a in layout.attempts(node_dir):
+        for r in sorted(a.glob("*.request.json")):
+            found.setdefault(r.name[:-len(".request.json")], []).append(a)
+    return found
+
+
+def judge_reporter(pop, out):
+    """(failures, not_checked, answered, proof, lines) of the reporter backend, from the files run_reporter kept
+    under `out` and the repository (the nodes/ listings, nodes/commitments and lab/runs) only: no console and no
+    data dir is read, so step 08 gets the same verdict from the cited proof."""
+    out = Path(out)
+    failures, not_checked, answered, proof, lines = [], [], [], [], []
+    try:
+        ask = load(out / ASK_FILE)
+        asked = ask["nodes"]
+        if not isinstance(asked, dict):
+            raise TypeError("nodes is not an object")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return [f"{ASK_FILE} is not readable ({type(e).__name__}: {e})"], [], [], [], []
+    proof.append(ASK_FILE)
+    names = [n["name"] for n in pop["nodes"]]
+    if sorted(asked) != sorted(names):
+        failures.append(f"{ASK_FILE} names nodes {sorted(asked)}, the population {sorted(names)}")
+    for node in pop["nodes"]:
+        name = node["name"]
+        how = asked.get(name) if isinstance(asked.get(name), dict) else {}
+        own = name == ask.get("self_node")
+        if own and not ask.get("second_console"):
+            merge(not_checked, [step12.no_second_console(name)])
+            lines.append(f"{name}: not asked, {OWN_NODE}")
+            if how.get("asked") is not False:
+                failures.append(f"{name}: {ASK_FILE} says it was asked, but it is the reporter's own node and no "
+                                "second console was given")
+            continue
+        try:
+            entry = step12.listed_entry(node)
+        except FileNotFoundError:
+            merge(not_checked, [{"what": f"live node {name}", "why": "node_id not set, or no nodes/<node_id>.json",
+                                 "issue": "evidence-network/loop: the live lab run, which fills population/live"}])
+            lines.append(f"{name}: not asked, {NO_LISTING}")
+            continue
+        if how.get("asked") is not True:
+            failures.append(f"{name}: not asked ({how.get('why')}), though it is listed and asked through a console")
+            continue
+        node_dir = out / name
+        adv, ncs, bad = kept_commitment(node_dir, entry)
+        failures += [f"{name}: {e}" for e in bad]
+        merge(not_checked, [{**nc, "what": f"{name}: {nc.get('what')}"} for nc in ncs])
+        proof += sorted(str(f.relative_to(out)) for f in (node_dir / COMMITMENT_DIR).rglob("*") if f.is_file())
+        try:
+            subject = load(node_dir / SUBJECT_FILE)
+            half, why = subject["half"], subject["why"]
+            if half is not None and not (isinstance(half, str) and daily_report.HEX64.match(half)):
+                raise ValueError(f"half {half!r} is neither null nor a capsule id")
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            failures.append(f"{name}: {SUBJECT_FILE} is not readable ({type(e).__name__}: {e})")
+            continue
+        proof.append(f"{name}/{SUBJECT_FILE}")
+        if half is None:
+            merge(not_checked, [{"what": f"{name}: a later exchange request on a Mesh node", "why": why,
+                                 "issue": EXCHANGE_ISSUE}])
+        stems = [*daily_report.QUESTIONS, *([EXCHANGE] if half else [])]
+        found = attempt_stems(node_dir)
+        failures += [f"{name}: {s}: {len(found.get(s, []))} attempts in the proof, not one" for s in stems
+                     if len(found.get(s, [])) != 1]
+        failures += [f"{name}: an attempt asks {s}, which this run does not ask" for s in sorted(found)
+                     if s not in stems]
+        proof += [str(f.relative_to(out)) for a in layout.attempts(node_dir) for f in sorted(a.iterdir()) if f.is_file()]
+        said = []
+        with exchange_registered(half):
+            for stem in stems:
+                if len(found.get(stem, [])) != 1:
+                    continue
+                attempt = found[stem][0]
+                qname = daily_report.QUESTION_NAMES[stem]
+                try:
+                    request = load(attempt / f"{stem}.request.json")
+                    timing = load(attempt / "timing.json")
+                    sent_at, back = utc(timing["asked_at"]), utc(timing["back_at"])
+                except (OSError, ValueError, KeyError, TypeError) as e:
+                    failures.append(f"{name}: {qname}: the attempt's request or timing is not readable "
+                                    f"({type(e).__name__}: {e})")
+                    continue
+                if request != daily_report.QUESTIONS[stem]:
+                    failures.append(f"{name}: {qname}: the attempt's request is not the question this step asks")
+                    continue
+                line, bad = reporter_line(attempt, stem, entry["key_id"])
+                if bad:
+                    failures.append(f"{name}: {qname}: {bad}")
+                    continue
+                late = adv is not None and back > sent_at + adv["within"]
+                try:
+                    extract = load(attempt / f"{stem}.ledger.json")
+                except (OSError, ValueError):
+                    extract = None
+                saw = line.split(" ", 1)[0]
+                errs, notes = judge_sealed(extract, entry["node_id"], request, sent_at, back,
+                                           saw if saw in ("verified", "refusal") else None,
+                                           adv["within"] if adv else None, adv["policy_digest"] if adv else None)
+                failures += [f"{name}: {qname}: {e}" for e in errs]
+                merge(not_checked, [{"what": f"{name}: {qname}: the sealed request and its outcome", "why": n,
+                                     "issue": SEAL_ISSUE} for n in notes])
+                fail, nc2 = (judge_exchange_line(line, entry) if stem == EXCHANGE
+                             else judge_live_line(stem, line, entry))
+                cited_ok = True
+                if stem == EXCHANGE and not fail and saw == "verified":
+                    cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
+                    cited_ok = not cite_errs and not cite_notes
+                    failures += [f"{name}: exchange: {e}" for e in cite_errs]
+                    merge(not_checked, [{"what": f"{name}: exchange: the served records", "why": n,
+                                         "issue": EXCHANGE_ISSUE} for n in cite_notes])
+                if fail:
+                    failures.append(f"{name}: {fail}")
+                if nc2:
+                    merge(not_checked, [{**nc2, "what": f"{name}: {nc2['what']}"}])
+                if not fail and not nc2 and cited_ok and saw in ("verified", "refusal"):  # a refusal not judged allowed is not one
+                    if late:
+                        said.append(f"{qname} back after the deadline, counted absent")
+                        continue
+                    if adv is not None:
+                        answered.append((back, f"{name} {qname}"))
+                said.append(f"{qname} {step12.said(line)}")
+        asked_via = f" (asked through {how.get('via')})" if ask.get("self_node") else ""
         lines.append(f"{name}{asked_via}: " + "; ".join(said))
     return failures, not_checked, answered, proof, lines
 
@@ -1126,9 +1374,15 @@ def backend(pop):
 
 
 def sealed_all(out):
-    """Every reporter ask in `out` has the sealed request read from the asker's ledger (<stem>.ledger.json)."""
+    """Every reporter ask in `out` has its one sealed request read from the asker's ledger (<stem>.ledger.json)."""
+    def one(request):
+        try:
+            return len(load(str(request)[:-len(".request.json")] + ".ledger.json").get("requests") or []) == 1
+        except (OSError, ValueError, AttributeError):
+            return False
+
     asks = list(Path(out).glob("*/attempts/*/*.request.json"))
-    return bool(asks) and all(Path(str(a)[:-len(".request.json")] + ".ledger.json").is_file() for a in asks)
+    return bool(asks) and all(one(a) for a in asks)
 
 
 def conclude(out, population, failures, not_checked, answered, proof, lines, started, which="book"):

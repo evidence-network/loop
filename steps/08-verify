@@ -23,6 +23,11 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
+  live          live step 07 is re-derived the same way: its judge reads only
+                its proof and the repository (the nodes/ listings and signed
+                commitments). The other live steps' judges read a lab node's
+                data dir or console, so they are not_checked
+                (evidence-network/loop#188).
 
 The finding is FAIL when any step fails integrity or reproduction, NOT_CHECKED
 when every step present held but one or more could not be reproduced, and PASS
@@ -41,6 +46,7 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -52,7 +58,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 
-ISSUE = "evidence-network/loop#24"
+# Who owns each kind of gap 08 leaves NOT_CHECKED.
+LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes its proof does not cite
+TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live 07 still takes on 07's word
+SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
+RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
+STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
+BROKE_ISSUE = "evidence-network/loop: the step that broke (its loop-step.log in the run)"
 ASSERTS = ("an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file "
            "matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, "
            "run again on the proof bytes it cites, gives the result and not_checked list the step recorded")
@@ -76,7 +88,10 @@ class Mismatch(Exception):
 
 
 class Unreproducible(Exception):
-    """The step's result cannot be re-derived here; args are (what, why)."""
+    """The step's result cannot be re-derived here; args are (what, why, issue)."""
+
+    def __init__(self, what, why, issue=SETUP_ISSUE):
+        super().__init__(what, why, issue)
 
 
 def load(path):
@@ -312,6 +327,51 @@ def rederive_07(m, c):
     return m.conclude(c.work, c.population, failures, not_checked, answered, proof, lines, c.started, "book")
 
 
+def rederive_07_live(m, c):
+    """Live 07 (the reporter backend): its own judge_reporter on the copied proof. It reads the attempts, each
+    ask's ledger extract, each node's exchange subject, the commitment it kept and ask.json, and from the
+    repository the nodes/ listings (the listed keys); no console and no data dir."""
+    if not openssl_ed25519():  # step 03's checker verifies each kept commitment with it
+        raise Unreproducible("step 07: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    pop = load(c.pop / "population.json")
+    if m.backend(pop) != "reporter":
+        raise Unreproducible("step 07: its live result re-derived from its proof bytes",
+                             f"08 re-derives the live reporter backend only, not {m.backend(pop)!r}", LIVE_ISSUE)
+    return m.conclude(c.work, c.population, *m.judge_reporter(pop, c.work), c.started, "reporter")
+
+
+def openssl_ed25519():
+    """Whether the openssl on PATH is OpenSSL 3.0 or later, which verifies Ed25519 with pkeyutl -rawin (LibreSSL,
+    whose version string also starts with 3, does not)."""
+    if shutil.which("openssl") is None:
+        return False
+    r = subprocess.run(["openssl", "version"], capture_output=True, text=True)
+    m = re.match(r"OpenSSL (\d+)\.", r.stdout)
+    return r.returncode == 0 and bool(m) and int(m.group(1)) >= 3
+
+
+# What a reproduced live 07 still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
+LIVE_RELIES_ON = {"07": [
+    {"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
+     "why": "08 checks every rule on 07's extract of the lab node's ledger (its line count and sha256 at read time "
+            "are kept for an audit), but the ledger itself is not in the bundle", "issue": TRUST_ISSUE},
+    {"what": "step 07: each reply's signatures, verified again offline",
+     "why": "live 07 reads the pinned plugin's verification in each reply; 08 does not verify the reply bytes under "
+            "the listed key itself", "issue": TRUST_ISSUE},
+    {"what": "step 07: each node's kept commitment is the one in force when it was asked",
+     "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records skipped) "
+            "is 07's choice.json, made from lab/runs and nodes/commitments as they were then", "issue": TRUST_ISSUE},
+]}
+
+
+def keys_07_live(c, m):
+    """Live 07 reads each node's listed key from the repository's nodes/ listing itself (step12.listed_entry),
+    never from the bundle, and compares the announced key the proof holds to it; ask.json and the attempts must
+    cover every population node, which judge_reporter checks. Nothing more to check here."""
+    return []
+
+
 def rederive_09(m, c):
     if shutil.which("openssl") is None:
         raise Unreproducible("step 09: its judge, run again here", "openssl is not installed where 08 runs")
@@ -336,6 +396,10 @@ STEPS = {
 }
 
 
+# Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
+# reads a lab node's data dir or console while it decides (LIVE_ISSUE).
+LIVE_STEPS = {"07": (rederive_07_live, keys_07_live)}
+
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"07", "09"}
 
@@ -348,7 +412,8 @@ def mismatches(recorded, again):
     """What differs between the recorded finding and the re-derived one: result, then not_checked."""
     out = []
     if again["result"] != recorded["result"]:
-        out.append(f"recorded {recorded['result']}, re-derived {again['result']}")
+        out.append(f"recorded {recorded['result']}, re-derived {again['result']}"
+                   + (f" ({str(again.get('detail', ''))[:600]})" if again["result"] == "FAIL" else ""))
     if canon(again["not_checked"]) != canon(recorded["not_checked"]):
         out.append(f"recorded not_checked {canon(recorded['not_checked'])}, re-derived {canon(again['not_checked'])}")
     return out
@@ -401,18 +466,19 @@ def verify_step(d, pop_dir, population, tmp):
         if record["asserts"] == BROKE and record["result"] == "FAIL":
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
                                  "loop.sh wrote this FAIL because the step broke before writing its own finding; "
-                                 "there is no judged result to run again")
-        if population != "rehearsal":
+                                 "there is no judged result to run again", BROKE_ISSUE)
+        if population != "rehearsal" and nn not in LIVE_STEPS:
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
-                                 "a live judge reads the lab node's data dir or console, which the bundle does not "
-                                 "carry, and the live node keys are not listed in the repository")
-        if nn not in STEPS:
+                                 "its live judge reads a lab node's data dir or console while it decides, and the "
+                                 "finding does not cite those bytes", LIVE_ISSUE)
+        steps = STEPS if population == "rehearsal" else LIVE_STEPS
+        if nn not in steps:
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
-                                 "08 has no re-derivation for this step yet")
-        rederive, keys = STEPS[nn]
+                                 "08 has no re-derivation for this step", STAGE1_ISSUE)
+        rederive, keys = steps[nn]
         if not (HERE / d.name).is_file():
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
-                                 f"there is no step script steps/{d.name} to take its judge from")
+                                 f"there is no step script steps/{d.name} to take its judge from", STAGE1_ISSUE)
         m = step_module(d.name)
         try:
             bad = keys(c, m) if nn in NEEDS_MODULE else keys(c)
@@ -423,8 +489,8 @@ def verify_step(d, pop_dir, population, tmp):
             return done("failed")
         again = rederive(m, c)
     except Unreproducible as e:
-        what, why = e.args
-        entry["not_checked"] = {"what": what, "why": why, "issue": ISSUE}
+        what, why, issue = e.args
+        entry["not_checked"] = {"what": what, "why": why, "issue": issue}
         return done("not_reproduced")
     except Mismatch as e:
         entry["problems"].append(str(e))
@@ -435,6 +501,8 @@ def verify_step(d, pop_dir, population, tmp):
         return done("failed")
 
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
+    if population != "rehearsal":
+        entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
     entry["problems"] += mismatches(record, again)
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in NUMBERS.get(nn, [])
                           if n in {p["path"] for p in record["proof"]} and (work / n).read_bytes() != (d / n).read_bytes()]
@@ -485,27 +553,29 @@ def main(argv=None):
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
+    # A reproduced live step still names what it rests on, so 08 never reads PASS over it.
+    not_checked += [x for e in entries if e["status"] == "reproduced" for x in e.get("relies_on", [])]
     listed = expected_steps(out.parent)
     if listed is None:
         not_checked.append({"what": "which steps the run holds",
                             "why": f"{out.parent.name}/run.json lists no steps, so 08 cannot tell a step left out "
                                    "from a step never run",
-                            "issue": ISSUE})
+                            "issue": RUN_ISSUE})
     else:
         # The stage's steps are loop.sh's list, so a run.json cut down to fewer steps can't read as the whole stage.
         stage = load(out.parent / "run.json").get("stage")
         full = STAGES.get(stage) if isinstance(stage, str) else None
         if full is None:
             not_checked.append({"what": "which steps the stage holds",
-                                "why": f"run.json names stage {stage!r}, which loop.sh does not list", "issue": ISSUE})
+                                "why": f"run.json names stage {stage!r}, which loop.sh does not list", "issue": RUN_ISSUE})
         else:
             own = out.name.split("-", 1)[0]
             not_checked += [{"what": f"step {nn}: its finding reproduced",
                              "why": f"this run did not run step {nn} of stage {stage} (run.json lists "
-                                    f"{', '.join(listed)})", "issue": ISSUE} for nn in full if nn not in listed and nn != own]
+                                    f"{', '.join(listed)})", "issue": RUN_ISSUE} for nn in full if nn not in listed and nn != own]
     if not entries:
         not_checked = [{"what": "the run's findings", "why": f"{out.parent.name} holds no other step's finding",
-                        "issue": ISSUE}]
+                        "issue": RUN_ISSUE}]
     result = "FAIL" if failed else ("NOT_CHECKED" if not_checked else "PASS")
     manifest = {"run": out.parent.name, "population": population, "result": result, "steps": entries,
                 "run_json": {"sha256": finding.sha256(out.parent / "run.json") if (out.parent / "run.json").is_file() else None,

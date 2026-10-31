@@ -67,7 +67,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 
-ISSUE = "evidence-network/loop#24"
+# Who owns each kind of gap 10 leaves NOT_CHECKED.
+SETUP_ISSUE = "evidence-network/loop: steps/10-judge.setup.sh, run where 10 runs"
+RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
+# A record enters the window once its month has closed: the window is the pinned pack's (Steven's 2026-10-29
+# ruling, 12 whole closed months), not a gap to fix.
+WINDOW_ISSUE = ("the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months "
+                "by Steven's 2026-10-29 ruling: a record is judged once its month has closed")
+JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # no judge key for the live population
+FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
 # The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
 GAP_ISSUE = "evidence-network/loop#157"
@@ -82,7 +90,10 @@ RESULT_TYPE = "evidence_result"
 
 
 class NotChecked(Exception):
-    """The judge cannot run here; args are (what, why)."""
+    """The judge cannot run here; args are (what, why, issue)."""
+
+    def __init__(self, what, why, issue=SETUP_ISSUE):
+        super().__init__(what, why, issue)
 
 
 def load(path):
@@ -139,11 +150,13 @@ def load_pack():
     bound = {t["requirement"] for k in binding["kinds"].values() for t in k["terms"] if "requirement" in t}
     if set(reqs) != bound:
         raise NotChecked("the pinned inference-deals pack's terms", f"binding.json binds {sorted(bound)}, the pinned pack "
-                                                                    f"has {sorted(reqs)}; bind each term before pinning it")
+                                                                    f"has {sorted(reqs)}; bind each term before pinning it",
+                         "evidence-network/loop: steps/10-judge.d/binding.json binds the pinned pack's terms")
     soft = sorted(r["id"] for r in reqs.values() if r["tier"] != "must_have")
     if soft:
         raise NotChecked("the pinned inference-deals pack's terms", f"{soft} are not must_have; this step judges "
-                                                                    "must_have terms only")
+                                                                    "must_have terms only",
+                         "evidence-network/loop: steps/10-judge.d/binding.json binds the pinned pack's terms")
     kinds = {}
     for nn, k in binding["kinds"].items():
         terms = []
@@ -181,7 +194,7 @@ def read_manifest(run):
     d = Path(run) / "08-verify"
     if not (d / "finding.json").is_file() or not (d / "verified.json").is_file():
         raise NotChecked("the run's records, by step 08's manifest",
-                         f"{Path(run).name} holds no 08-verify/verified.json for this step to read")
+                         f"{Path(run).name} holds no 08-verify/verified.json for this step to read", RUN_ISSUE)
     record = load(d / "finding.json")
     errs = finding.check_record(d, record) if isinstance(record, dict) else ["finding.json is not an object"]
     if errs:
@@ -204,9 +217,11 @@ def select(run, manifest, start, end, pack):
         files = {f["path"]: f["sha256"] for f in e.get("files", [])}
         if e["status"] != "reproduced":
             refused.append(f"{e['dir']}: {len(files)} files, {e['status']} by 08")
+            # The gap is 08's for that step: its issue is the one 08 names.
             not_checked.append({"what": f"step {e['step']}: its records, judged in the window",
                                 "why": f"step 08 shows it {e['status']}, so its records are not verified by 08 and "
-                                       "this step does not read them", "issue": ISSUE})
+                                       "this step does not read them",
+                                "issue": (e.get("not_checked") or {}).get("issue") or FAILED_ISSUE})
             continue
         if e["step"] not in pack["kinds"]:
             refused.append(f"{e['dir']}: {len(files)} files, not a record kind of this pack")
@@ -304,7 +319,7 @@ def judge_records(records, run, pack, start, end, not_checked):
                 if any(attested(Path(run) / d / r["path"]) for r in mine):
                     not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
                                         "why": "a record carries model_attestation and this pack has no "
-                                               "recomputation for it yet", "issue": ISSUE})
+                                               "recomputation for it yet", "issue": GAP_ISSUE})
                     claims.append(claim(cid, t["id"], "not_evaluable", refs, cref, "model_attestation is present; this "
                                         "pack does not recompute it yet, so the term is not judged"))
                 else:
@@ -559,10 +574,10 @@ def main(argv=None):
         if not records:
             raise NotChecked("the pack over the window",
                              f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
-                             "step of the pack's kinds finished outside it, or none is in the run")
+                             "step of the pack's kinds finished outside it, or none is in the run", WINDOW_ISSUE)
         if not (keys / "judge.pem").is_file():
             raise NotChecked("the pack's Results, sealed", f"the {population} population lists no judge key "
-                                                           "(step10/keys)")
+                                                           "(step10/keys)", JUDGE_KEY_ISSUE)
         capsulectl, book_plugin = tools()
         if not (capsulectl.is_file() and book_plugin.is_file()):
             raise NotChecked("the pack's Results, sealed and verified offline",
@@ -578,8 +593,8 @@ def main(argv=None):
         proof += [str(p.relative_to(out)) for p in sorted((out / "verify").glob("*.json"))]
         lines.append(f"roll-up {sealed['rollup'][:12]} over {len(sealed['finer'])} Results")
     except NotChecked as e:
-        what, why = e.args
-        not_checked.append({"what": what, "why": why, "issue": ISSUE})
+        what, why, issue = e.args
+        not_checked.append({"what": what, "why": why, "issue": issue})
     except RuntimeError as e:
         problems = problems or [str(e)]
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
