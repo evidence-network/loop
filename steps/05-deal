@@ -114,7 +114,7 @@ or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over t
 run copies each node's ledger files, controller binding and sharing report into the proof and keeps
 nodes.json (the cutoff, the pins missing, which node was read), then judges only the copies
 (judge_live), so step 08 checks each half again from the proof (loop#188). A ledger is copied
-with each record that carries a payment preimage kept only as a stub at its line (live.copy_redacted):
+with the payment preimage taken out of each record that carries one, at its own line (live.copy_redacted):
 the proof is published, a preimage never is.
 
 No spend: this step starts no exchange and pays nothing on either population.
@@ -1039,7 +1039,7 @@ def main_live(pop, out, started):
             dest = out / name / path.relative_to(src)
             dest.parent.mkdir(parents=True, exist_ok=True)
             # An unreadable file raises, so the step stops, as it did reading it live. A ledger is copied with each
-            # preimage-carrying record as a stub (live.copy_redacted): the proof is published, a preimage never is.
+            # preimage taken out of its record (live.copy_redacted): the proof is published, a preimage never is.
             if redact:
                 live.copy_redacted(path, dest)
             else:

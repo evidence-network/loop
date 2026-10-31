@@ -660,8 +660,8 @@ def main_live(pop, out, started):
             kept["announced"].append([node_id, aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")])
         except (OSError, ValueError) as e:
             kept["key_errors"][name] = str(e)
-    # The proof bytes: a copy of each readable node's adjudication files and chain, each record that carries a payment
-    # preimage kept only as a stub (live.copy_redacted): the proof is published, a preimage never is.
+    # The proof bytes: a copy of each readable node's adjudication files and chain, the payment preimage taken out
+    # of each record that carries one (live.copy_redacted): the proof is published, a preimage never is.
     for name, (_, d) in readable.items():
         for f in LEDGER_FILES:
             if (d / "ledger" / f).is_file():

@@ -707,7 +707,7 @@ class Step05DealLiveTest(unittest.TestCase):
         (self.out / "finding.json").write_text(json.dumps(rec))
 
     def test_live_a_preimage_in_a_node_chain_never_reaches_the_proof(self):
-        # A settlement record keeps the payment's preimage; the copied chain keeps it only as a stub at its line.
+        # A settlement record keeps the payment's preimage; the copied chain keeps the record at its line without it.
         led = self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
         obs = {"capsule_id": "obs-1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
             "preimage": "ab" * 32, "payment_hash": "cd" * 32, "observed_by": "payer"}}}}
@@ -716,8 +716,12 @@ class Step05DealLiveTest(unittest.TestCase):
         copied = self.out / "lab-a" / "ledger" / "capsules.jsonl"
         self.assertEqual(len(copied.read_text().splitlines()), len(led.read_text().splitlines()))
         self.assertNotIn("ab" * 32, copied.read_text())
-        stub = json.loads(copied.read_text().splitlines()[-1])
-        self.assertEqual((stub["capsule_id"], stub["redacted"]), ("obs-1", live.REDACTED))
+        kept = json.loads(copied.read_text().splitlines()[-1])
+        settlement = kept["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"]
+        self.assertEqual((kept["capsule_id"], settlement["preimage"]), ("obs-1", live.REDACTED))
+        self.assertEqual(settlement["payment_hash"], "cd" * 32)
+        self.assertEqual(kept[live.REDACTION]["line_sha256"],
+                         hashlib.sha256(led.read_bytes().splitlines()[-1]).hexdigest())
         self.assertEqual(check_no_preimages.scan([self.findings]), [])
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])

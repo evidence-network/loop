@@ -324,7 +324,7 @@ class LiveTest(Tmp):
         self.assertIn(r["result"], ("PASS", "NOT_CHECKED", "FAIL"))
 
     def test_a_preimage_in_a_node_chain_never_reaches_the_proof(self):
-        # A settlement record keeps the payment's preimage; the copied chain keeps it only as a stub at its line.
+        # A settlement record keeps the payment's preimage; the copied chain keeps the record at its line without it.
         d = self.copy()
         chain = d / "nodes" / "lab-1" / "data" / "ledger" / "capsules.jsonl"
         before = self.live(d)

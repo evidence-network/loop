@@ -31,6 +31,7 @@ ORDER = {"PASS": 0, "NOT_CHECKED": 1, "FAIL": 2}
 # A line that does not parse but names a preimage (a ledger copied while its node appends to it) is a stub instead.
 REDACTED = "redacted: a payment preimage never leaves the lab host"
 UNPARSED = "an unparsable ledger line that names a preimage, withheld"
+REDACTION = "x-loop-redacted"  # the member a redacted record gains: the sha256 of its line as the node holds it
 # Key names that carry a preimage's value; preimage_check (06's outcome) is the only other key that names one.
 NOT_A_PREIMAGE = ("preimage_check",)
 
@@ -70,7 +71,8 @@ def redacted(value):
 
 def copy_redacted(src, dest):
     """Copy the JSONL ledger file src to dest line for line, each preimage value replaced by REDACTED (the rest of a
-    record kept as it parsed, re-encoded only when it held one); an unparsable line that names a preimage becomes a
+    record kept as it parsed, re-encoded only when it held one, plus an x-loop-redacted member naming the sha256 of
+    the line as the node holds it); an unparsable line that names a preimage becomes a
     stub with the sha256 of its bytes. Returns how many lines changed."""
     out, n = [], 0
     for raw in Path(src).read_bytes().split(b"\n"):
@@ -83,7 +85,10 @@ def copy_redacted(src, dest):
                 raw = json.dumps({"redacted": UNPARSED, "line_sha256": hashlib.sha256(raw).hexdigest()}).encode()
         if record is not None and carries_preimage(record):
             n += 1
-            raw = json.dumps(redacted(record), separators=(",", ":")).encode()
+            kept = redacted(record)
+            if isinstance(kept, dict):  # the line as the node holds it, for whoever holds that line to confirm it
+                kept[REDACTION] = {"line_sha256": hashlib.sha256(raw).hexdigest()}
+            raw = json.dumps(kept, separators=(",", ":")).encode()
         out.append(raw)
     Path(dest).write_bytes(b"\n".join(out))
     return n

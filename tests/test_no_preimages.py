@@ -54,6 +54,7 @@ class NoPreimagesTest(unittest.TestCase):
                          {k: OBS["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"][k]
                           for k in ("phase", "source", "payment_hash", "amount_msat", "exchange_id")})
         self.assertEqual(json.loads(out[1])["capsule_id"], "obs-1")
+        self.assertEqual(json.loads(out[1])[live.REDACTION], {"line_sha256": hashlib.sha256(lines[1]).hexdigest()})
         self.assertEqual(json.loads(out[3])["redacted"], live.UNPARSED)
         self.assertNotIn(PRE.encode(), data)
         self.assertEqual(check_no_preimages.scan([self.d / "out.jsonl"]), [])
@@ -96,6 +97,20 @@ class NoPreimagesTest(unittest.TestCase):
         (self.d / "notes.md").unlink()
         (self.d / "c.json").write_text(json.dumps({"key_id": "ef" * 32, "payment_hash": ph}))
         self.assertEqual(check_no_preimages.scan([self.d]), [])
+
+    def test_a_signed_statement_naming_a_preimage_is_found(self):
+        (self.d / "x.cose").write_bytes(b"\xd2\x84\x43\xa1hpreimageX\x20" + bytes(32))
+        (self.d / "y.cose").write_bytes(b"\xd2\x84\x43\xa1payment")
+        self.assertEqual(check_no_preimages.scan([self.d]), [f"{self.d / 'x.cose'}:1"])
+
+    def test_fixtures_are_scanned_and_test_code_is_not(self):
+        (self.d / "tests" / "fixtures").mkdir(parents=True)
+        (self.d / "tests" / "fixtures" / "chain.jsonl").write_text(json.dumps(OBS) + "\n")
+        (self.d / "tests" / "test_x.py").write_text(f'OBS = {{"preimage": "{PRE}"}}\n')
+        self.assertEqual(check_no_preimages.scan([self.d]), [f"{self.d / 'tests' / 'fixtures' / 'chain.jsonl'}:1"])
+
+    def test_a_missing_path_fails_instead_of_passing_unscanned(self):
+        self.assertEqual(check_no_preimages.main([str(self.d / "no-such-tree")]), 2)
 
     def test_the_checkout_holds_no_preimage(self):
         r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "check_no_preimages.py")],
