@@ -85,6 +85,15 @@ is not a plugin sha256 and a whole minute before the run is a FAIL.
 With no mark, every decision is judged and the detail says the boundary is not
 known (evidence-network/loop#103).
 
+The decisions are all the node's ledger held at a checkpoint the node signed
+(loop#288): the step asks the node's console (LOOP_NODE_CONSOLES, lab/lab.sh)
+for its ledger-checkpoint first, then copies ledger/capsules.jsonl (a payment
+preimage withheld, live.copy_redacted) and keeps the lines the reply covers,
+the reply beside the copy, and picks the decisions from those lines. The judge
+checks the copy with loop-ledger-check under the listed key (steps/ledger_proof.py)
+and picks the decisions again from it: a copy that does not check, or decisions
+it does not hold, is a FAIL; a refusal, no console or no checker is NOT_CHECKED.
+
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
@@ -109,6 +118,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "04-admit.d"))
 import book_keys  # noqa: E402
 import finding  # noqa: E402
+import ledger_proof  # noqa: E402
 import live  # noqa: E402
 
 # Step 01's own checks of a capsule's bytes in a second language (aac-go `cross_language`): each ledger record
@@ -775,11 +785,18 @@ def node_decisions(data_dir):
 
 # What the live judge reads, kept in the proof so step 08 runs it again on the proof alone (loop#188).
 NODES_FILE = "nodes.json"  # per node: whether its data_dir and ledger were read, its record count, the numbers kept, its build mark
+# Beside it, each read node's ledger/capsules.jsonl copy with its checkpoint reply (ledger_proof.keep_checked): the
+# decisions are the ones those lines hold, so the judge shows them all the node's ledger held (loop#288).
 
 
 def main_live(pop, out, started):
-    """Read each lab node's ledger and keep, under out, the decision lines and nodes.json; then judge those files
-    (judge_live), so the finding is a function of its proof."""
+    """Keep each lab node's ledger (its checkpoint reply asked first, then the copy cut to the lines it covers), and
+    under out the decision lines those lines hold and nodes.json; then judge those files (judge_live), so the
+    finding is a function of its proof."""
+    try:
+        consoles = ledger_proof.consoles()
+    except ValueError as e:
+        raise SystemExit(f"04-admit: {e}")
     out.mkdir(parents=True, exist_ok=True)
     (out / "finding.json").unlink(missing_ok=True)
     for entry in pop["nodes"]:
@@ -790,12 +807,19 @@ def main_live(pop, out, started):
     for entry in pop["nodes"]:
         name = entry["name"]
         data_dir = live.readable(entry, "data_dir", "ledger")
-        read = ledger_decisions(data_dir) if data_dir is not None else None
+        read = None
+        if data_dir is not None:
+            try:
+                ledger_proof.keep_checked(consoles.get(name), data_dir / "ledger" / ledger_proof.CHAIN,
+                                          out / name / "ledger" / ledger_proof.CHAIN, ledger_proof.CHAIN)
+                read = ledger_decisions(out / name)
+            except OSError:
+                pass
         if data_dir is None or read is None:
             nodes[name] = {"read": "data_dir" if data_dir is None else "ledger"}
             continue
         total, kept = read
-        nodes[name] = {"read": "ok", "records": total, "kept": [n for n, _ in kept]}
+        nodes[name] = {"read": "ok", "records": total, "kept": [n for n, _ in kept], ledger_proof.SHAPE: 1}
         mark = build_mark(entry)
         if mark:
             nodes[name]["build"] = mark
@@ -905,6 +929,8 @@ def judge_live(pop, out, started):
     gaps = None  # tool_gaps(), read once, and only when a node holds a record to check
     unmarked = []  # nodes with no lab.sh build mark: every decision is judged (loop#103)
     set_aside = 0  # decisions an earlier plugin build sealed, never judged
+    whole = True  # every read node's ledger copy checked against its checkpoint (a run since loop#288)
+    incomplete = False  # a node's ledger copy not shown complete (a refusal, no console, no key or no checker)
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -928,6 +954,19 @@ def judge_live(pop, out, started):
         except (OSError, ValueError, KeyError, TypeError) as e:
             problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
+        listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
+        whole = whole and ledger_proof.SHAPE in node
+        if ledger_proof.SHAPE in node:  # a run since loop#288: the decisions are all the checkpointed ledger held
+            perrs, pnotes, pproof = ledger_proof.judge(out / name / "ledger", [ledger_proof.CHAIN], listed, name)
+            problems += [f"node {name}: {e}" for e in perrs]
+            unverified += pnotes
+            incomplete = incomplete or bool(pnotes)
+            proof += pproof
+            again = ledger_decisions(out / name)
+            if again is None or again[0] != total or again[1] != list(zip(numbers, lines)):
+                problems.append(f"node {name}: the decisions kept are not the ones its ledger copy holds "
+                                f"({NODES_FILE}'s count and numbers, and decisions.jsonl, picked again from the copy)")
+                continue
         # Only the decisions the node's current plugin build sealed (evidence-network/loop#103): the records name
         # no build, so lab.sh start marks since when the node runs it.
         build, since, earlier = node.get("build"), None, 0
@@ -955,7 +994,6 @@ def judge_live(pop, out, started):
             try:
                 if gaps:
                     raise RuntimeError("; ".join(x["why"] for x in gaps))
-                listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
                 sig_bad, sig_open = record_checks(numbers, lines, listed)
                 problems += [f"node {name} {b}" for b in sig_bad]
                 unverified += [dict(x, what=f"node {name}: {x['what']}") for x in sig_open]
@@ -993,7 +1031,10 @@ def judge_live(pop, out, started):
                              f"source alone, the same for one peer under one policy digest; each row it seals is one "
                              f"the base policy's rules give from what it read. Each decision record is Class 1 valid, "
                              f"its capsule_id recomputes and its producer signature verifies, in the AAC Go verifier, "
-                             f"under the key the node publishes. {NO_SPEND} {LIVE_GAPS}", **base)
+                             f"under the key the node publishes."
+                             + (" Each node's decisions are all its ledger held at the checkpoint it signed, its copy "
+                                "checked with loop-ledger-check under that key." if whole else "")
+                             + f" {NO_SPEND} {LIVE_GAPS}", **base)
     else:
         gap = {"what": "an admission decision on a lab node",
                "why": "no ledger record carries one: the host config grants the plugin no admission hook "
@@ -1005,7 +1046,7 @@ def judge_live(pop, out, started):
         return finding.write(out, result="NOT_CHECKED", proof=proof,
                              not_checked=not_checked + unverified + ([] if decided else [gap]),
                       detail=f"{summary}. Not checked: "
-                             f"{'a node could not be read' if unreadable else 'a decision record could not be verified' if decided else 'no admission decision was found'}. "
+                             f"{'a node could not be read' if unreadable else 'a ledger copy is not shown complete' if incomplete else 'a decision record could not be verified' if decided else 'no admission decision was found'}. "
                              f"{NO_SPEND}", **base)
 
 

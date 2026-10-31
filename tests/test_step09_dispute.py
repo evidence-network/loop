@@ -37,7 +37,9 @@ def load_step():
 step = load_step()
 finding, aac = step.finding, step.aac
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 import check_no_preimages  # noqa: E402
+import ledger_console  # noqa: E402
 
 
 def openssl_3():
@@ -294,8 +296,23 @@ class PlantedFailureTest(Tmp):
 
 
 class LiveTest(Tmp):
-    def live(self, fixture, pop=None):
-        with mock.patch.dict(os.environ, {"LAB_DIR": str(fixture)}):
+    def listed(self, fixture, pop=None):
+        """A nodes/ dir listing each node of the population under the key its data_dir holds, as nodes/<node_id>.json
+        lists a lab node's key (the checkpoints are checked under it, loop#288)."""
+        listing = Path(self.tmp.name) / "listed"
+        listing.mkdir(exist_ok=True)
+        for n in json.loads((Path(pop or fixture) / "population.json").read_text())["nodes"]:
+            pem = Path(fixture) / "nodes" / n["name"] / "data" / "keys" / "node-key.pub.pem"
+            if n.get("node_id") and pem.is_file():
+                (listing / f"{n['node_id']}.json").write_text(json.dumps({"node_id": n["node_id"],
+                                                                          "key_id": aac.key_id_of_pem(pem)}))
+        return listing
+
+    def live(self, fixture, pop=None, refuse=()):
+        listing = self.listed(fixture, pop)
+        env = {"LAB_DIR": str(fixture), "LOOP_NODES_DIR": str(listing),
+               **ledger_console.env(pop or fixture, fixture, listing, refuse)}
+        with mock.patch.dict(os.environ, env):
             self.assertEqual(step.main(["--population", str(pop or fixture), "--out", str(self.out)]), 0)
         record = self.finding()
         # judge_live on a copy of only the cited files gives the same finding, with no LAB_DIR: what 08 checks.
@@ -304,7 +321,8 @@ class LiveTest(Tmp):
             for p in record["proof"]:
                 (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(self.out / p["path"], work / p["path"])
-            with mock.patch.dict(os.environ, {"LAB_DIR": ""}):
+            with mock.patch.dict(os.environ, {"LAB_DIR": "", "LOOP_NODES_DIR": str(listing),
+                                              "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}):
                 again = step.judge_live({"population": "live"}, work, record["started"])
             self.assertEqual((again["result"], again["not_checked"], again["detail"]),
                              (record["result"], record["not_checked"], record["detail"]))
@@ -339,6 +357,47 @@ class LiveTest(Tmp):
         self.assertEqual(len(copied.read_text().splitlines()), len(chain.read_text().splitlines()))
         self.assertEqual(json.loads(copied.read_text().splitlines()[-1])["capsule_id"], "obs-1")
         self.assertNotIn("ab" * 32, "".join(f.read_text() for f in self.out.rglob("*") if f.is_file()))
+
+    def rejudged(self, change):
+        """judge_live, as step 08 runs it, on the proof after `change(out)`."""
+        change(self.out)
+        env = {"LAB_DIR": "", "LOOP_NODES_DIR": str(Path(self.tmp.name) / "listed"),
+               "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}
+        with mock.patch.dict(os.environ, env):
+            return step.judge_live({"population": "live"}, self.out, "2026-10-31T00:00:00Z")
+
+    def test_each_copy_is_checked_against_the_nodes_checkpoint(self):
+        # loop#288: every file a node holds is kept with its checkpoint reply and checked under the listed key.
+        r = self.live(FIX / "live")
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        proof = {p["path"] for p in r["proof"]}
+        self.assertIn("lab-1/ledger/received-adjudications.jsonl.checkpoint.json", proof)
+        held = (self.out / "lab-1" / "ledger" / step.RECEIVED).read_text().splitlines()
+        for why, kept, says in (("a Result dropped", held[1:], "fail: the copied lines are not the checkpointed leaves"),
+                                ("a line added", [*held, held[0]], "the copy holds lines past the")):
+            with self.subTest(why):
+                path = self.out / "lab-1" / "ledger" / step.RECEIVED
+                again = self.rejudged(lambda out: path.write_text("\n".join(kept) + "\n"))
+                path.write_text("\n".join(held) + "\n")
+                self.assertEqual(again["result"], "FAIL", again["detail"])
+                self.assertIn(f"node lab-1: {step.RECEIVED}: the node's ledger checkpoint does not show the copy "
+                              f"whole: {says}", again["detail"])
+
+    def test_a_copy_that_does_not_check_fails_even_with_no_result_held(self):
+        d = self.copy()
+        for f in d.rglob("*adjudications.jsonl"):
+            f.unlink()
+        self.live(d)
+        chain = self.out / "lab-1" / "ledger" / step.OWN
+        again = self.rejudged(lambda out: chain.write_text("".join(chain.read_text().splitlines(keepends=True)[1:])))
+        self.assertEqual(again["result"], "FAIL", again["detail"])
+        self.assertIn(f"node lab-1: {step.OWN}: the node's ledger checkpoint does not show the copy whole", again["detail"])
+
+    def test_a_refusing_console_leaves_the_copies_not_shown_complete(self):
+        r = self.live(FIX / "live", refuse=("lab-1",))
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        gaps = [n for n in r["not_checked"] if n["what"] == "lab-1: each copied ledger file is the node's whole file"]
+        self.assertEqual([g["issue"] for g in gaps], [step.ledger_proof.ISSUE])
 
     def test_held_results_are_checked_read_only(self):
         before = tree_digest(FIX / "live")

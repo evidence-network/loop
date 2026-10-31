@@ -31,7 +31,9 @@ LIVE = FIXTURES / "live"
 
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "status"))
+sys.path.insert(0, str(ROOT / "tests"))
 import finding  # noqa: E402
+import ledger_console  # noqa: E402
 import status_page  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step04_admit", str(STEP))
@@ -90,6 +92,10 @@ PLANTED = {
 
 
 def run_step(population, out, *extra, env=None):
+    """The step on `population`; a live one asks each node's checkpoints at the fake console (tests/ledger_console.py)
+    unless `env` names its own."""
+    if env is not None and load(Path(population) / "population.json")["population"] == "live":
+        env = {**ledger_console.env(population, env.get("LAB_DIR"), env.get("LOOP_NODES_DIR")), **env}
     return subprocess.run([sys.executable, "-B", str(STEP), "--population", str(population), "--out", str(out),
                            *extra], capture_output=True, text=True, env=env)
 
@@ -214,7 +220,8 @@ class Live(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         out = Path(tmp.name) / "f" / "04-admit"
-        env = {"LAB_DIR": str(lab), "LOOP_NODES_DIR": str(Path(lab) / "listed")}
+        env = {"LAB_DIR": str(lab), "LOOP_NODES_DIR": str(Path(lab) / "listed"),
+               "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}
         r = run_step(lab, out, env=dict(os.environ, **env))
         self.assertEqual(r.returncode, 0, r.stderr)
         record = load(out / "finding.json")
@@ -295,13 +302,98 @@ class Live(unittest.TestCase):
         out, f = self.live_run(self.lab_with((LIVE / 'nodes/lab-a/data/ledger/capsules.jsonl').read_text().splitlines()))
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn("node lab-a: 2 of 4 ledger records carry an admission decision (1 GO, 1 NO)", f["detail"])
-        self.assertEqual([p["path"] for p in f["proof"]], ["nodes.json", "lab-a/decisions.jsonl"])
+        self.assertEqual([p["path"] for p in f["proof"]],
+                         ["nodes.json", "lab-a/ledger/capsules.jsonl.checkpoint.json", "lab-a/ledger/capsules.jsonl",
+                          "lab-a/decisions.jsonl", "lab-b/ledger/capsules.jsonl.checkpoint.json",
+                          "lab-b/ledger/capsules.jsonl"])
         for issue in ("evidence-network/loop#81", "Mesh-LLM/mesh-llm#2061"):
             self.assertIn(issue, f["detail"])
         self.assertEqual(sorted(f["pinned"]), ["aac-go", "capsules", "mesh-llm"])
         self.assertIn("its producer signature verifies, in the AAC Go verifier", f["detail"])
+        self.assertIn("all its ledger held at the checkpoint it signed", f["detail"])
         self.assertNotIn("evidence-network/loop#135", f["detail"])
         self.assertEqual(finding.check(out.parent), [])
+
+    def rejudged(self, lab, out, f, change):
+        """judge_live on a copy of out after `change(work)`, as step 08 would run it on an altered proof."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "04-admit"
+            shutil.copytree(out, work)
+            change(work)
+            pop = {"population": "live", "nodes": [{"name": n, "node_id": NODE_IDS[n]} for n in NODE_IDS]}
+            with mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(lab / "listed"),
+                                              "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}):
+                return step.judge_live(pop, work, f["started"])
+
+    def test_a_ledger_copy_that_dropped_a_decision_fails_against_its_checkpoint(self):
+        # loop#288: a copy (and the decisions picked from it) missing a line the node checkpointed is a FAIL.
+        lab = self.lab_with(self.good())
+        out, f = self.live_run(lab)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+        def drop(work):
+            copy = work / "lab-a" / "ledger" / "capsules.jsonl"
+            copy.write_text("".join(copy.read_text().splitlines(keepends=True)[1:]))
+            nodes = load(work / "nodes.json")
+            again = step.ledger_decisions(work / "lab-a")
+            nodes["lab-a"].update(records=again[0], kept=[n for n, _ in again[1]])
+            (work / "nodes.json").write_text(json.dumps(nodes))
+            (work / "lab-a" / "decisions.jsonl").write_text("".join(ln + "\n" for _, ln in again[1]))
+        again = self.rejudged(lab, out, f, drop)
+        self.assertEqual(again["result"], "FAIL", again["detail"])
+        self.assertIn("node lab-a: capsules.jsonl: the node's ledger checkpoint does not show the copy whole",
+                      again["detail"])
+
+    def test_decisions_the_ledger_copy_does_not_hold_fail(self):
+        lab = self.lab_with(self.good())
+        out, f = self.live_run(lab)
+
+        def drop(work):
+            nodes = load(work / "nodes.json")
+            nodes["lab-a"]["kept"] = nodes["lab-a"]["kept"][1:]
+            (work / "nodes.json").write_text(json.dumps(nodes))
+            kept = work / "lab-a" / "decisions.jsonl"
+            kept.write_text("".join(kept.read_text().splitlines(keepends=True)[1:]))
+        again = self.rejudged(lab, out, f, drop)
+        self.assertEqual(again["result"], "FAIL", again["detail"])
+        self.assertIn("node lab-a: the decisions kept are not the ones its ledger copy holds", again["detail"])
+
+    def test_a_lost_checkpoint_reply_fails(self):
+        lab = self.lab_with(self.good())
+        out, f = self.live_run(lab)
+        again = self.rejudged(lab, out, f, lambda w: (w / "lab-a" / "ledger" / "capsules.jsonl.checkpoint.json").unlink())
+        self.assertEqual(again["result"], "FAIL", again["detail"])
+        self.assertIn("capsules.jsonl.checkpoint.json is missing", again["detail"])
+
+    def test_a_console_that_refuses_leaves_the_ledger_not_shown_complete(self):
+        lab = self.lab_with(self.good())
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        out = Path(tmp.name) / "f" / "04-admit"
+        env = dict(os.environ, LAB_DIR=str(lab), LOOP_NODES_DIR=str(lab / "listed"))
+        env.update(ledger_console.env(lab, lab, lab / "listed", refuse=("lab-a",)))
+        self.assertEqual(run_step(lab, out, env=env).returncode, 0)
+        f = load(out / "finding.json")
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        gap = next(x for x in f["not_checked"] if x["what"] == "lab-a: each copied ledger file is the node's whole file")
+        self.assertIn("HTTP 400", gap["why"])
+        self.assertEqual(gap["issue"], step.ledger_proof.ISSUE)
+        with mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(lab / "listed"),
+                                          "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}):
+            self.assert_rederives(f, load(lab / "population.json"), out)
+
+    def test_no_console_leaves_the_ledger_not_shown_complete(self):
+        lab = self.lab_with(self.good())
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        out = Path(tmp.name) / "f" / "04-admit"
+        env = dict(os.environ, LAB_DIR=str(lab), LOOP_NODES_DIR=str(lab / "listed"), LOOP_NODE_CONSOLES="")
+        self.assertEqual(run_step(lab, out, env=env).returncode, 0)
+        f = load(out / "finding.json")
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        issues = {x["what"]: x["issue"] for x in f["not_checked"]}
+        self.assertEqual(issues["lab-a: each copied ledger file is the node's whole file"],
+                         step.ledger_proof.CONSOLE_ISSUE)
 
     def test_a_record_changed_after_it_was_sealed_fails(self):
         # loop#135: each decision record is checked in the AAC Go verifier, as step 01 checks its seal.
@@ -405,7 +497,8 @@ class Live(unittest.TestCase):
                 nodes["lab-a"]["build"] = bad
                 (work / "nodes.json").write_text(json.dumps(nodes))
                 pop = {"population": "live", "nodes": [{"name": n, "node_id": NODE_IDS[n]} for n in NODE_IDS]}
-                with mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(out.parent / "listed")}):
+                with mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(out.parent / "listed"),
+                                                  "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)}):
                     again = step.judge_live(pop, work, f["started"])
                 self.assertEqual(again["result"], "FAIL", again["detail"])
                 self.assertIn("build mark", again["detail"])

@@ -28,8 +28,10 @@ LIVE = FIXTURES / "live"
 
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 import check_no_preimages  # noqa: E402
 import finding  # noqa: E402
+import ledger_console  # noqa: E402
 import live  # noqa: E402
 
 # A live step fetches origin/main before reading nodes/revocations/ (bv.snapshot); tests never touch the network.
@@ -55,6 +57,10 @@ for missing, why in ((BIN is None, NO_DRIVER), (not HAS_CROSS, NO_CROSS)):
 
 
 def run_step(population, out, env=None):
+    """The step on `population`; a live one asks each node's checkpoints at the fake console (tests/ledger_console.py)
+    unless `env` names its own."""
+    if env is not None and json.loads((Path(population) / "population.json").read_text())["population"] == "live":
+        env = {**ledger_console.env(population, env.get("LAB_DIR"), env.get("LOOP_NODES_DIR")), **env}
     r = subprocess.run([sys.executable, "-B", str(STEP), "--population", str(population), "--out", str(out)],
                        capture_output=True, text=True, env=env)
     return r
@@ -787,7 +793,7 @@ class Step05DealLiveTest(unittest.TestCase):
                 shutil.copyfile(self.out / p["path"], work / p["path"])
             saved = dict(os.environ)
             os.environ.pop("LOOP_SEALED_SINCE", None)
-            os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes))
+            os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes), LOOP_LEDGER_CHECK_BIN=str(ledger_console.STUB))
             try:
                 loader = importlib.machinery.SourceFileLoader("step05_again", str(STEP))
                 mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step05_again", loader))
@@ -805,7 +811,7 @@ class Step05DealLiveTest(unittest.TestCase):
                                                             "started": "2026-10-31T00:00:00Z", "steps": ["05", "08"]}))
         saved = dict(os.environ)
         os.environ.pop("LOOP_SEALED_SINCE", None)
-        os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes))
+        os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes), LOOP_LEDGER_CHECK_BIN=str(ledger_console.STUB))
         try:
             loader = importlib.machinery.SourceFileLoader("step08_for_05", str(ROOT / "steps" / "08-verify"))
             v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_05", loader))
@@ -845,11 +851,94 @@ class Step05DealLiveTest(unittest.TestCase):
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
 
+    def list_lab_a(self):
+        """Give lab-a a node_id and a nodes/ listing, so its checkpoints are checked under a listed key."""
+        pop_path = self.lab / "population.json"
+        pop = json.loads(pop_path.read_text())
+        pop["nodes"][0]["node_id"] = "a1" * 32
+        pop_path.write_text(json.dumps(pop))
+        (self.nodes / f"{'a1' * 32}.json").write_text(json.dumps({"node_id": "a1" * 32, "key_id": "a2" * 32}))
+
+    def ledger_gaps(self, record):
+        return [x for x in record["not_checked"] if x["what"].endswith("each copied ledger file is the node's whole file")]
+
+    def rejudged(self, change):
+        """judge_live, as step 08 runs it, on the proof after `change(out)`."""
+        change(self.out)
+        saved = dict(os.environ)
+        os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes), LOOP_LEDGER_CHECK_BIN=str(ledger_console.STUB))
+        try:
+            return step.judge_live(json.loads((self.lab / "population.json").read_text()), self.out,
+                                   finding.now())
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def test_live_each_copy_is_shown_the_nodes_whole_file(self):
+        # loop#288: every file lab-a holds is checked against its checkpoint; lab-b's empty ones have nothing to show.
+        self.list_lab_a()
+        r = self.run_live()
+        self.assertEqual(self.ledger_gaps(r), [], r["not_checked"])
+        proof = [p["path"] for p in r["proof"]]
+        for f in step.LEDGER_COPY:
+            self.assertIn(f"lab-a/ledger/{f}", proof)
+            self.assertIn(f"lab-a/ledger/{f}.checkpoint.json", proof)
+        self.assertTrue(json.loads((self.out / "nodes.json").read_text())[step.ledger_proof.SHAPE])
+
+    def test_live_a_copy_that_differs_from_the_checkpointed_file_fails(self):
+        self.list_lab_a()
+        self.run_live()
+
+        p = self.out / "lab-a" / "ledger" / "received-provenance.jsonl"
+        lines = p.read_text().splitlines()
+        sender = [json.dumps(dict(json.loads(lines[0]), received_from="00" * 32)), *lines[1:]]
+        for why, kept, says in (("a line restated", sender, "fail: the copied lines are not the checkpointed leaves"),
+                                ("a line added", [*lines, json.dumps({"extra": 1})], "the copy holds lines past the")):
+            with self.subTest(why):
+                saved = p.read_text()
+                r = self.rejudged(lambda out: p.write_text("\n".join(kept) + "\n"))
+                p.write_text(saved)
+                self.assertEqual(r["result"], "FAIL", r["detail"])
+                self.assertIn("received-provenance.jsonl: the node's ledger checkpoint does not show the copy whole: "
+                              + says, r["detail"])
+
+    def test_live_a_redaction_marker_on_a_line_with_no_preimage_fails(self):
+        # A copy may restate a line only where it withheld a settlement's preimage, never elsewhere.
+        self.list_lab_a()
+        self.run_live()
+
+        def forge(out):
+            p = out / "lab-a" / "ledger" / "received-provenance.jsonl"
+            line = p.read_bytes().split(b"\n")[0]
+            rec = json.loads(line)
+            rec["received_from"] = live.REDACTED
+            rec[live.REDACTION] = {"line_sha256": hashlib.sha256(line).hexdigest()}
+            p.write_bytes(json.dumps(rec).encode() + b"\n" + b"\n".join(p.read_bytes().split(b"\n")[1:]))
+        r = self.rejudged(forge)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("carry a redaction marker but did not hold a payment preimage", r["detail"])
+
+    def test_live_a_refusing_console_leaves_the_copies_not_shown_complete(self):
+        self.list_lab_a()
+        r = run_step(self.lab, self.out, env=dict(
+            os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes),
+            **ledger_console.env(self.lab, self.lab, self.nodes, refuse=("lab-a",))))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        record = json.loads((self.out / "finding.json").read_text())
+        self.assertEqual(record["result"], "NOT_CHECKED")
+        gaps = self.ledger_gaps(record)
+        self.assertEqual([(g["what"], g["issue"]) for g in gaps],
+                         [("lab-a: each copied ledger file is the node's whole file", step.ledger_proof.ISSUE)])
+        self.assert_rederives(record)
+
     def test_08_reproduces_live_05_from_its_proof(self):
         self.run_live()
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
-        self.assertIn(v.LIVE_RELIES_ON["05"][0], f["not_checked"])
+        whats = [x["what"] for x in f["not_checked"]]
+        self.assertNotIn(v.UNCHECKPOINTED["05"], f["not_checked"])  # each copy checked against its checkpoint
+        self.assertIn("step 05: each node's checkpoint reply was asked before its copy was read, and a file with no "
+                      "copy held no line", whats)
 
     def test_08_fails_a_held_half_altered_in_the_copy(self):
         self.run_live()

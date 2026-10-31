@@ -387,17 +387,10 @@ LEDGER_ISSUE = "Mesh-LLM/capsules-plugin#175"  # node-signed checkpoints and ran
 # held, until the plugin signs over its ledgers (LEDGER_ISSUE). What a run records of its own state is named only
 # when the bundle cannot bear it out (each step's keys check adds that to c.relies).
 LIVE_RELIES_ON = {
-    "04": [{"what": "step 04: each decisions.jsonl holds every admission decision its node's ledger held, and "
-                    "nodes.json's record count is the ledger's",
-            "why": "08 judges the decision lines 04 kept, but no checkpoint the node signs covers its ledger",
-            "issue": LEDGER_ISSUE},
-           {"what": "step 04: each node's plugin build mark in nodes.json, which decides the decisions judged",
+    "04": [{"what": "step 04: each node's plugin build mark in nodes.json, which decides the decisions judged",
             "why": "08 judges the decisions at or after the mark again, but since when the node ran its plugin "
                    "build ($LAB_DIR/run/<lab-N>.build.json) is 04's reading of the lab host",
             "issue": TRUST_ISSUE}],
-    "05": [{"what": "step 05: each node's copied ledger files are the node's whole files",
-            "why": "08 checks every held half again on the copies, but no checkpoint the node signs covers them",
-            "issue": LEDGER_ISSUE}],
     "07": [{"what": "step 07: each line of the asker's ledger copy is the record its capsule_id names",
             "why": "where an ask's checkpoint reply checks, 08 shows its extract complete (the copy's first lines are "
                    "the whole ledger at the asker's signed checkpoint, loop-ledger-check under the listed key). That "
@@ -419,9 +412,6 @@ LIVE_RELIES_ON = {
                    "check file, so 08 takes the status against the bundle from 06 and decides again only that the "
                    "paired count is the books' pair count",
             "issue": TRUST_ISSUE}],
-    "09": [{"what": "step 09: each node's copied ledger files are the node's whole files",
-            "why": "08 checks each held Result again on the copies, but no checkpoint the node signs covers them",
-            "issue": LEDGER_ISSUE}],
     "12": [{"what": "step 12: what each node's plugin answered to doctor, join and the commitment fetches",
             "why": "08 judges the kept replies (wire.json and the reply bytes) again, and join's commitment is "
                    "verified under the listed key, but doctor's findings and the fetch replies are console reads "
@@ -431,6 +421,57 @@ LIVE_RELIES_ON = {
                    "verification in it; 08 does not verify the reply bytes under the listed key itself",
             "issue": TRUST_ISSUE}],
 }
+
+
+# A live 04, 05 or 09 from before loop#288 kept no checkpoint reply beside its copies: what 08 names for it.
+UNCHECKPOINTED = {
+    "04": {"what": "step 04: each decisions.jsonl holds every admission decision its node's ledger held, and "
+                   "nodes.json's record count is the ledger's",
+           "why": "08 judges the decision lines 04 kept, but the run kept no checkpoint the node signs over its ledger",
+           "issue": LEDGER_ISSUE},
+    "05": {"what": "step 05: each node's copied ledger files are the node's whole files",
+           "why": "08 checks every held half again on the copies, but the run kept no checkpoint the node signs over "
+                  "them", "issue": LEDGER_ISSUE},
+    "09": {"what": "step 09: each node's copied ledger files are the node's whole files",
+           "why": "08 checks each held Result again on the copies, but the run kept no checkpoint the node signs over "
+                  "them", "issue": LEDGER_ISSUE},
+}
+
+
+def ledger_relies(c, m, nn, checkpointed):
+    """What a live 04, 05 or 09 rests on for its ledger copies. A run since loop#288 kept each node's checkpoint reply
+    beside each copy, and its judge (run here) shows each copy the node's whole file at that checkpoint
+    (loop-ledger-check under the listed key): it rests only on what that check does not cover. An older run rests
+    on the copies being whole."""
+    if not checkpointed:
+        c.relies.append(UNCHECKPOINTED[nn])
+        return
+    if m.ledger_proof.checker() is None:  # the verdict rests on that check, so a missing tool is not a result
+        raise Unreproducible(f"step {nn}: its ledger checkpoint checks, run again here",
+                             "loop-ledger-check is not installed where 08 runs (steps/ledger-check.setup.sh)", LIVE_ISSUE)
+    c.relies += [
+        {"what": f"step {nn}: each line of a node's copied capsules.jsonl is the record its capsule_id names",
+         "why": "the checkpoint check takes a chain line's capsule_id as the line states it; it does not recompute "
+                "a capsule_id from its record, so the records are read as written", "issue": "evidence-network/loop#135"},
+        {"what": f"step {nn}: each copied line whose payment preimage was withheld",
+         "why": "its leaf digest is the node's line digest its x-loop-redacted marker names (a marker counts only on a "
+                "settlement observation's withheld preimage), so the rest of the kept line is read as the step kept it",
+         "issue": TRUST_ISSUE},
+        {"what": f"step {nn}: each node's checkpoint reply was asked before its copy was read, and a file with no copy "
+                 "held no line",
+         "why": "a node's every genuine reply keeps checking a copy of its own size, and a checkpoint's time is no "
+                "freshness test (the plugin reuses its last cut while a file has not grown), so that the reply was "
+                "the node's answer at the step's ask is the step's word", "issue": TRUST_ISSUE}]
+
+
+def checkpointed(c, m, per_node=False):
+    """Whether the run's nodes.json says its copies were kept with their checkpoint replies (ledger_proof.SHAPE): at
+    its top level, or (04) on any node it read."""
+    try:
+        kept, shape = load(c.work / "nodes.json"), m.ledger_proof.SHAPE
+        return any(isinstance(v, dict) and shape in v for v in kept.values()) if per_node else shape in kept
+    except (OSError, ValueError, AttributeError):
+        return False
 
 
 def state_relies(c, nn, what):
@@ -822,6 +863,7 @@ def rederive_05_live(m, c):
     missing = m.live_tools(m.driver())
     if missing:
         raise Unreproducible("step 05: its judge, run again here", "; ".join(x["why"] for x in missing))
+    ledger_relies(c, m, "05", checkpointed(c, m))
     anchor = revocations_anchor(m, c, "05", load(c.work / "nodes.json").get(m.REVOCATIONS_KEY))
     again = m.judge_live(load(c.pop / "population.json"), c.work, c.started)
     if anchor is not None:
@@ -978,6 +1020,7 @@ def rederive_09_live(m, c):
     if not openssl_ed25519():
         raise Unreproducible("step 09: its judge, run again here",
                              "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    ledger_relies(c, m, "09", checkpointed(c, m))
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
@@ -1122,6 +1165,7 @@ def rederive_04_live(m, c):
     missing = m.tool_gaps()
     if missing:
         raise Unreproducible("step 04: its judge, run again here", "; ".join(x["why"] for x in missing))
+    ledger_relies(c, m, "04", checkpointed(c, m, per_node=True))
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
