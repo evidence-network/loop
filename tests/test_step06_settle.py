@@ -428,7 +428,7 @@ class Step06SettleTest(unittest.TestCase):
         r = self.live_with_preimage(pre, hashlib.sha256(bytes.fromhex(pre)).hexdigest())
         self.assertEqual(r["result"], "NOT_CHECKED")  # the rail's object by reference is still missing
         self.assertIn("1 with a preimage that hashes to its payment_hash", r["detail"])
-        self.assertIn("finality: 1 of 1 recorded payment hashes proven by a preimage", r["detail"])
+        self.assertIn("finality: 1 of 1 recorded payment hashes proven by a payer's preimage", r["detail"])
         self.assertFalse([n for n in r["not_checked"] if "no payer preimage proves" in n["what"]])
         rec = json.loads((self.out / "stevenmih-1" / "recorded.json").read_text())
         self.assertEqual(rec["settlement_observations"][0]["preimage_check"], "verified")

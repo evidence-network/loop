@@ -46,7 +46,7 @@ before it is paid. recorded.json
 keeps the check's outcome, never the preimage. A preimage that is malformed or
 does not hash to its payment hash is a FAIL, on either side: the node recorded a
 settlement whose own preimage does not match it. With every recorded hash proven by
-a preimage the finality gap closes, but the step stays NOT_CHECKED on the
+a payer's preimage the finality gap closes, but the step stays NOT_CHECKED on the
 rail's settlement object by reference. A node with nothing recorded, or no
 readable data_dir, is NOT_CHECKED too. The step never pays: it moves no money
 with or without LOOP_LIVE_SPEND, and says so in detail.
@@ -468,7 +468,7 @@ def main_live(pop, out, started):
     unproven = sorted(h for h, ok in proven.items() if not ok)
     if proven:
         details.append(f"finality: {len(proven) - len(unproven)} of {len(proven)} recorded payment hashes proven by "
-                       "a preimage (sha256(preimage) == payment_hash)")
+                       "a payer's preimage (sha256(preimage) == payment_hash)")
     if unproven:
         not_checked.append({"what": "the finality of the payments the nodes recorded that no payer preimage proves",
                             "why": f"{len(unproven)} recorded payment hashes are not proven by a payer's preimage, so "
