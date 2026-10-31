@@ -373,8 +373,8 @@ class DryRunTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             path = Path(t) / "twin-fault.json"
 
-            def start(prompt):
-                subprocess.run([sys.executable, "-B", "-", str(path), "lab-4", prompt], input=code, text=True, check=True)
+            def start(prompt, node="lab-4"):
+                subprocess.run([sys.executable, "-B", "-", str(path), node, prompt], input=code, text=True, check=True)
                 return json.loads(path.read_text())
 
             fresh = start("Reply PINEAPPLE.")
@@ -386,6 +386,8 @@ class DryRunTest(unittest.TestCase):
             changed = start("Reply BANANA.")  # a different fault: the old bracket describes another difference
             self.assertEqual(set(changed), {"injected_difference"})
             self.assertEqual(changed["injected_difference"]["value"], "Reply BANANA.")
+            path.write_text(json.dumps(dict(changed, twin_bracket_id="lab-twins-Y")))
+            self.assertEqual(set(start("Reply BANANA.", node="lab-3")), {"injected_difference"})  # another twin B node
             path.write_text("not json")
             self.assertEqual(set(start("Reply BANANA.")), {"injected_difference"})
 
