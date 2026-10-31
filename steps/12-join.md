@@ -28,7 +28,7 @@ is a write, so it is never sent to another node.
 | the nodes/ entry against that commitment (loop#161) | the entry's `stranger_safe` is the signed policy's, and the commitment advertises each question it covers (`checkpoints`; `full_history` with derivation `history_card/1`) | a difference: the listing misstates what the node signs | no verified commitment this run: the answers are matched against the entry alone |
 | the reporter's answers | verify under the listed key; a refusal only of a subject the **signed** policy does not list as stranger-safe | an answer under another key, one that does not verify, or a refusal of a subject the signed policy lists | no verifiable answer |
 | join's `joined` | `true` | | `false`: each `pending` line is the reason |
-| the binding | bound before the re-join and the same binding after | bound before the re-join, then unbound or bound by another binding after | unbound before and after (no controller binding recorded: `join {}` sends none), or the state can't be read before join (join is then **not called**) or after it |
+| the binding | bound before the re-join and the same binding after; or unbound before and after, when join's commitment holds and names no binding and the fetched commitment was read to name none (the binding is optional: Steven's ruling u137, loop#201) | bound before the re-join, then unbound or bound by another binding after; or unbound with join's commitment naming a binding (reported once when the fetched commitment names the same) | unbound before and after with no signed commitment read to name none, or the state can't be read before join (join is then **not called**) or after it |
 
 A node with no console given is NOT_CHECKED for all of these.
 
