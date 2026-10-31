@@ -1865,3 +1865,55 @@ class Step08Live06Test(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Step08RunCommitTest(unittest.TestCase):
+    """loop#193: the listed keys are read at the commit run.json records, not at whatever this checkout holds now."""
+
+    def git(self, *a):
+        return subprocess.run(["git", "-C", str(self.repo), *a], capture_output=True, text=True, check=True).stdout.strip()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.repo, self.run = t / "repo", t / "run"
+        (self.repo / "nodes").mkdir(parents=True)
+        self.run.mkdir()
+        self.git("init", "-q")
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "11" * 32})
+        self.git("add", "nodes")
+        self.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "list")
+        self.commit = self.git("rev-parse", "HEAD")
+        patch = mock.patch.object(step, "ROOT", self.repo)
+        patch.start()
+        self.addCleanup(patch.stop)
+        env = mock.patch.dict(os.environ)
+        env.start()
+        os.environ.pop("LOOP_NODES_DIR", None)
+        self.addCleanup(env.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def at(self, **run):
+        dump(self.run / "run.json", dict({"population": "live", "stage": "1", "steps": []}, **run))
+        return step.nodes_at_run_commit(self.run, "live", self.tmp.name)
+
+    def test_the_listings_are_read_at_the_commit_even_after_a_rotation(self):
+        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "22" * 32})  # the checkout rotated the key
+        nodes, gaps = self.at(commit=self.commit, nodes_clean=True)
+        self.assertEqual(gaps, [])
+        self.assertEqual(load(nodes / ("a" * 64 + ".json"))["key_id"], "11" * 32)
+
+    def test_a_run_that_pins_no_commit_or_an_unknown_one_or_uncommitted_nodes_is_named(self):
+        for run, why in (({}, "pins no commit"), ({"commit": "b" * 40, "nodes_clean": True}, "not in this checkout"),
+                         ({"commit": self.commit, "nodes_clean": False}, "was not committed")):
+            nodes, gaps = self.at(**run)
+            self.assertIsNone(nodes)
+            self.assertEqual([g["issue"] for g in gaps], [step.TRUST_ISSUE])
+            self.assertIn(why, gaps[0]["why"])
+
+    def test_a_rehearsal_run_or_an_explicit_nodes_dir_is_left_alone(self):
+        self.assertEqual(step.nodes_at_run_commit(self.run, "rehearsal", self.tmp.name), (None, []))
+        os.environ["LOOP_NODES_DIR"] = "/x"
+        self.assertEqual(step.nodes_at_run_commit(self.run, "live", self.tmp.name), (None, []))
