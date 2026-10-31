@@ -338,6 +338,61 @@ class Live(unittest.TestCase):
     def dec(cap):
         return cap["model_attestation"]["compute_attestation"]["admission_decision"]
 
+    def priced(self, outcome="allow", source=None, verdict=None):
+        """A decision as capsules 0.1.7+ seals it (capsules-plugin admission.rs, #165 and #179): rows carrying the
+        evaluator's effect and counts, the price member and the price and base terms_pack reads."""
+        cap = self.with_rows()
+        d = self.dec(cap)
+        d["rows"][2].update(effect="record", count=0, denominator=0)
+        d["rows"][3].update(effect="none", count=1, denominator=1)
+        d["price"] = {"state": "checked", "outcome": outcome, "input_msat_per_million": 1000,
+                      "output_msat_per_million": 2000, "checks": [{"check": "rate_cap", "result": "pass"}]}
+        d["reads"] += [{"kind": "terms_pack", "role": "price", "pack": "asg/inference",
+                        "definition_digest": {"alg": "SHA-256", "digest": "d" * 64},
+                        "profile": {"alg": "SHA-256", "commitment": "e" * 64}},
+                       {"kind": "terms_pack", "role": "base", "pack": "mesh-base",
+                        "definition_digest": {"alg": "SHA-256", "digest": "f" * 64}}]
+        if source:
+            d.update(source=source, verdict=verdict)
+        return cap
+
+    def test_a_decision_in_the_0_1_7_shape_passes(self):
+        for cap in (self.priced(), self.priced("deny", "price_rule", "NO")):
+            _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+            self.assertEqual(f["result"], "PASS", f["detail"])
+        cap = self.priced()
+        d = self.dec(cap)
+        d["price"] = {"state": "not_checked", "reason": "host_lacks_backend_pricing"}
+        d["reads"].pop(-2)  # no price pack when the rule did not check
+        _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_a_malformed_0_1_7_decision_fails(self):
+        for edit, why in ((lambda d: d["price"].update(state="maybe"), "price rule's record"),
+                          (lambda d: d["price"].pop("checks"), "price rule's record"),
+                          (lambda d: d["reads"].pop(-2), "terms_pack reads"),
+                          (lambda d: d["reads"][-1].update(definition_digest={}), "definition digest"),
+                          (lambda d: d["reads"][-2].update(profile="x"), "definition digest"),
+                          (lambda d: d["rows"][2].update(count=-1), "five base-policy rows"),
+                          (lambda d: d["rows"][2].update(effect=""), "five base-policy rows"),
+                          (lambda d: d.update(source="price_rule", verdict="GO"), "which gives NO"),
+                          (lambda d: (d.update(source="price_rule", verdict="NO"),
+                                      d.update(price={"state": "unavailable", "reason": "r"}), d["reads"].pop(-2)),
+                           "no checked price")):
+            cap = self.priced()
+            edit(self.dec(cap))
+            _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+            self.assertEqual(f["result"], "FAIL", why)
+            self.assertIn(why, f["detail"])
+        cap = self.priced()  # a base pack cited on a decision with no rows
+        d = self.dec(cap)
+        d.pop("rows")
+        d["reads"].pop(1)
+        d["reads"][0]["policy"] = "base/0"
+        _, f = self.live_run(self.lab_with([json.dumps(cap)]))
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("base only with rows", f["detail"])
+
     def test_a_malformed_decision_fails(self):
         good = self.good()
         for edit, why in ((lambda d: d.update(verdict="ASK"), "is not GO or NO"),
