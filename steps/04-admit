@@ -68,6 +68,14 @@ record that fails any of these is a FAIL naming it; a node with no listing, a
 record with no producer signature, or no verifier installed is NOT_CHECKED,
 never a PASS (evidence-network/loop#135).
 
+The records name no plugin build, so a ledger can hold decisions an earlier
+build sealed. lab/lab.sh start marks each node's build ($LAB_DIR/run/<lab-N>.build.json:
+the plugin binary's sha256 and since when the node runs it). The step judges only
+the decisions sealed since then (the minute, as the plugin stamps a decision's
+time), names how many earlier ones it set aside, and keeps the mark in nodes.json.
+With no mark, every decision is judged and the detail says the boundary is not
+known (evidence-network/loop#103).
+
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
@@ -644,6 +652,9 @@ def main_live(pop, out, started):
             continue
         total, kept = read
         nodes[name] = {"read": "ok", "records": total, "kept": [n for n, _ in kept]}
+        mark = build_mark(entry)
+        if mark:
+            nodes[name]["build"] = mark
         if kept:
             (out / name).mkdir(exist_ok=True)
             (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for _, ln in kept), encoding="utf-8")
@@ -685,6 +696,35 @@ def record_checks(numbers, lines, listed):
     why = [f"{unclaimed} carry no producer signature"] * bool(unclaimed) + [
         f"{unlisted} verify, but the node has no nodes/<node_id>.json listing to hold the key to"] * bool(unlisted)
     return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": UNVERIFIED_ISSUE}] if why else [])
+
+
+STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def build_mark(entry):
+    """{plugin_sha256, since} of the plugin build the lab node runs, from $LAB_DIR/run/<lab-N>.build.json (lab.sh start
+    writes it), with since floored to the minute as the plugin stamps a decision's time; None when there is none."""
+    lab = os.environ.get("LAB_DIR")
+    m = re.match(r"\$LAB_DIR/nodes/([^/]+)/", entry.get("data_dir") or "")
+    if not (lab and m):
+        return None
+    try:
+        doc = json.loads((Path(lab) / "run" / f"{m.group(1)}.build.json").read_text(encoding="utf-8"))
+        since = dt.datetime.strptime(doc["since"], STAMP)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    sha = doc.get("plugin_sha256")
+    return {"plugin_sha256": sha, "since": since.replace(second=0).strftime(STAMP)} if isinstance(sha, str) else None
+
+
+def sealed_before(line, since):
+    """Whether the record on `line` says it was sealed before `since` (both in STAMP form); a line whose time does not
+    read is never set aside, so it is judged."""
+    try:
+        t = json.loads(line).get("timestamp")
+        return dt.datetime.strptime(t, STAMP) < dt.datetime.strptime(since, STAMP)
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 def kept_numbers(node):
@@ -742,6 +782,26 @@ def judge_live(pop, out, started):
         except (OSError, ValueError, KeyError, TypeError) as e:
             problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
+        # Only the decisions the node's current plugin build sealed (evidence-network/loop#103): the records name
+        # no build, so lab.sh start marks since when the node runs it.
+        build = node.get("build")
+        since = build.get("since") if isinstance(build, dict) else None
+        try:
+            if since is not None:
+                dt.datetime.strptime(since, STAMP)
+        except (ValueError, TypeError):
+            problems.append(f"node {name}: its {NODES_FILE} build mark {build!r} is not a time")
+            continue
+        if since is not None:
+            judged = [(n, ln) for n, ln in zip(numbers, lines) if not sealed_before(ln, since)]
+            earlier = len(numbers) - len(judged)
+            numbers, lines = [n for n, _ in judged], [ln for _, ln in judged]
+            details.append(f"node {name}: judged the decisions sealed since {since}, when it started on plugin build "
+                           f"{str(build.get('plugin_sha256'))[:12]}" + (f"; {earlier} sealed before, by an earlier "
+                                                                         f"build, set aside" if earlier else ""))
+        else:
+            details.append(f"node {name}: the plugin build boundary is not known (no lab.sh build mark), so every "
+                           "decision in the ledger is judged")
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
         if numbers:
             gaps = tool_gaps() if gaps is None else gaps
