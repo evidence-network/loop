@@ -10,11 +10,13 @@ failure there was made by a misbehaving asker or responder during a real run.
 """
 import base64
 import datetime as dt
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -530,6 +532,10 @@ class LiveCommitmentTest(Tmp):
 class ReporterBackendTest(Tmp):
     def setUp(self):
         super().setUp()
+        # These fixtures' answers carry stand-in signatures; ReplySignatureTest checks the real ones.
+        patcher = mock.patch.object(step, "verify_reply_signature", return_value=[])
+        self.sig = patcher.start()
+        self.addCleanup(patcher.stop)
         # A lab run's join output: the node's signed commitment (answers_within PT1M) under lab/runs.
         runs = Path(self.tmp.name) / "lab" / "runs"
         shutil.copytree(FIX / "good" / "alice" / "advertised", runs / "2026-10-28" / "join" / "lab-1")
@@ -596,6 +602,13 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn("checkpoints back after the deadline, counted absent", r["detail"])
         self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
+
+    def test_a_reply_whose_signature_does_not_verify_offline_is_a_fail_whatever_the_plugin_says(self):
+        self.sig.return_value = ["the answer's signature does not verify under the listed key"]
+        r = self.run_live(VERIFIED)
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIn("signature does not verify", r["detail"])
+        self.assertTrue(all(c.args[2] == LISTED for c in self.sig.call_args_list), self.sig.call_args_list)
 
     def test_an_answer_verified_under_a_key_other_than_the_listed_one_is_a_fail(self):
         r = self.run_live(VERIFIED, announced="3" * 64)
@@ -1101,3 +1114,73 @@ class ReporterBackendTest(Tmp):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+check_commitment = step.check_commitment  # the checker 07 itself uses
+
+
+class ReplySignatureTest(unittest.TestCase):
+    """loop#193: a reply's signed answer verifies offline under the node's listed key, for the request the asker's
+    ledger sealed, whatever the plugin's own verification line says."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        t = Path(self.tmp.name)
+        subprocess.run(["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(t / "k.pem")], check=True,
+                       capture_output=True)
+        der = subprocess.run(["openssl", "pkey", "-in", str(t / "k.pem"), "-pubout", "-outform", "DER"], check=True,
+                             capture_output=True).stdout
+        self.key = der[len(check_commitment.ED25519_SPKI):].hex()
+        self.request = {"audience": "a" * 64, "nonce": "n", "profile": "evidence-interop/0",
+                        "subject": {"checkpoints": None}}
+        self.extract = {"ledger": "read", "requests": [{"header": {"statement": {"request": self.request}}}]}
+
+    def sign(self, answer, members):
+        msg = t = Path(self.tmp.name) / "msg"
+        msg.write_bytes(check_commitment.canonical({k: answer[k] for k in members if k in answer}))
+        subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(t.parent / "k.pem"), "-rawin", "-in", str(msg),
+                        "-out", str(t.parent / "sig")], check=True, capture_output=True)
+        return {**answer, "sig": (t.parent / "sig").read_bytes().hex()}
+
+    def envelope(self, **over):
+        artifact = b"artifact bytes"
+        env = {"profile": "evidence-interop/0", "request_digest": step.request_digest(self.request),
+               "subject": {"checkpoints": None}, "anchor": {"digest": "d" * 64, "freshness": 1},
+               "artifact": base64.urlsafe_b64encode(artifact).decode().rstrip("="),
+               "artifact_digest": hashlib.sha256(artifact).hexdigest(), "responder": self.key,
+               "issued_at": "2026-10-31T12:33:03Z", **over}
+        return self.sign(env, step.ENVELOPE_SIGNED)
+
+    def refusal(self, **over):
+        ref = {"issued_at": "2026-10-31T12:33:03Z", "reason": "policy_declined", "key_id": self.key,
+               "request_digest": step.request_digest(self.request), **over}
+        return self.sign(ref, step.REFUSAL_SIGNED)
+
+    def check(self, answer, key=None, extract=None):
+        path = Path(self.tmp.name) / "reply.json"
+        path.write_text(json.dumps({"answer": answer, "verification": {"state": "artifact"}}))
+        return step.verify_reply_signature(path, self.extract if extract is None else extract, key or self.key)
+
+    def test_a_signed_envelope_and_a_signed_refusal_verify(self):
+        self.assertEqual(self.check(self.envelope()), [])
+        self.assertEqual(self.check(self.refusal()), [])
+
+    def test_a_changed_member_a_changed_artifact_or_another_signer_fails(self):
+        env = self.envelope()
+        self.assertIn("does not verify", " ".join(self.check({**env, "issued_at": "2026-10-31T12:33:04Z"})))
+        other = base64.urlsafe_b64encode(b"other").decode().rstrip("=")
+        self.assertIn("artifact_digest", " ".join(self.check({**env, "artifact": other})))
+        self.assertIn("not the listed key", " ".join(self.check(env, key="b" * 64)))
+        self.assertIn("does not verify", " ".join(self.check({**self.refusal(), "reason": "not_authorized"})))
+
+    def test_an_answer_for_another_request_fails(self):
+        self.assertIn("not for the request", " ".join(self.check(self.envelope(request_digest="0" * 64))))
+        moved = {**self.extract, "requests": [{"header": {"statement": {"request": {**self.request, "nonce": "m"}}}}]}
+        self.assertIn("not for the request", " ".join(self.check(self.envelope(), extract=moved)))
+
+    def test_a_reply_with_no_answer_fails_and_with_no_single_sealed_request_is_left_to_the_ledger_check(self):
+        path = Path(self.tmp.name) / "reply.json"
+        path.write_text(json.dumps({"verification": {"state": "artifact"}}))
+        self.assertIn("no signed answer", " ".join(step.verify_reply_signature(path, self.extract, self.key)))
+        self.assertEqual(self.check(self.envelope(), extract={"ledger": None}), [])
