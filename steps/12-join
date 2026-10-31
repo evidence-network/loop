@@ -1091,7 +1091,7 @@ def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_cons
         self_node, second_console = kept["self_node"], kept["second_console"]
         node_consoles = {n: n for n in kept["node_consoles"]}  # names only: the calls are replayed, none is made
         bind_at, snap = kept["bind_at"], kept["revocations_main"]
-        if not (isinstance(node_consoles, dict) and isinstance(bind_at, str) and (snap is None or isinstance(snap, dict))):
+        if not (isinstance(bind_at, str) and (snap is None or isinstance(snap, dict))):
             raise TypeError(f"{NODES_FILE} has the wrong shape")
         proof.append(NODES_FILE)
     else:
@@ -1143,8 +1143,14 @@ def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_cons
             except (OSError, ValueError) as e:
                 failures.append(f"{name}: its plugin calls are not readable ({type(e).__name__}: {e})")
                 continue
-            fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout,
-                                                        wire)
+            try:
+                fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker,
+                                                            timeout, wire)
+            except (OSError, ValueError) as e:
+                if not replay:
+                    raise
+                failures.append(f"{name}: its plugin calls do not replay ({type(e).__name__}: {e})")
+                continue  # a kept file missing or unreadable is this node's failure, not the whole proof's
             settled = settled_binding(fail, named)  # before `fail` is reused for the binding record below
             if fail:
                 bad.append(fail)
@@ -1163,8 +1169,14 @@ def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_cons
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled,
-                                                                    wire)
+            try:
+                fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled,
+                                                                        wire)
+            except (OSError, ValueError) as e:
+                if not replay:
+                    raise
+                failures += bad + [f"{name}: its plugin calls do not replay ({type(e).__name__}: {e})"]
+                continue
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]

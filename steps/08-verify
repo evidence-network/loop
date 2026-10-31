@@ -746,13 +746,16 @@ def rederive_12_live(m, c):
     kept = load(c.work / "nodes.json")
     snap = kept.get("revocations_main") if isinstance(kept, dict) else None
     commit = snap.get("commit") if isinstance(snap, dict) else None
+    # The binding window is judged at bind_at, so it lies inside the step's run whatever revocations were read.
+    at = kept.get("bind_at") if isinstance(kept, dict) else None
+    if not (isinstance(at, str) and c.started <= at <= c.record["finished"]):
+        raise Mismatch(f"12-join: nodes.json's bind_at {at!r} is not inside the step's run "
+                       f"({c.started} to {c.record['finished']})")
     if commit is not None:
-        # As live 05: the main commit nodes/revocations/ was read from is origin/main's at the binding time, which
-        # lies inside the step's run, held in this clone's own history (never fetched here).
-        at = kept.get("bind_at")
-        if not (isinstance(at, str) and c.started <= at <= c.record["finished"]):
-            raise Mismatch(f"12-join: nodes.json's bind_at {at!r} is not inside the step's run "
-                           f"({c.started} to {c.record['finished']})")
+        # As live 05: the main commit nodes/revocations/ was read from is origin/main's at the binding time, held in
+        # this clone's own history (never fetched here).
+        if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+            raise Mismatch(f"12-join: nodes.json's revocations commit {commit!r} is not a commit id")
         expected = m.bv.main_commit(m.revocations_root(), at)
         if expected is None or not m.bv.holds_on_main(m.revocations_root(), commit):
             raise Unreproducible("step 12: its revocation reads, run again here",
@@ -776,8 +779,11 @@ def keys_12_live(c):
     owns = kept.get("node_consoles")
     if not (isinstance(owns, list) and set(owns) <= names):
         bad.append(f"nodes.json names own consoles {owns!r}, not population nodes")
-    # A node left out of node_consoles is judged NOT_CHECKED, and one added has no kept calls (a FAIL), so the list
-    # can't buy a better result: nothing is named for it.
+    # A node left out of node_consoles, or the self node without a second console, is judged NOT_CHECKED instead of
+    # asked: which consoles the run held is its own record, so 08 names it when the proof shows a node not asked.
+    if isinstance(owns, list) and (set(owns) != names or (kept.get("self_node") and not kept.get("second_console"))):
+        state_relies(c, "12", "which consoles the run held (a node's own console, a second node's console), kept in "
+                     "nodes.json")
     return bad
 
 
