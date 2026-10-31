@@ -97,24 +97,30 @@ them. `scripts/check_binding.py bindings` checks the verdicts.
 ### Revocation statements
 
 Either key of a binding can withdraw it with a revocation statement
-(Controller Binding v0 §5). The lab publishes them by pull request at
+(Controller Binding v0 §5). A key holder files them by pull request at
 `nodes/revocations/<binding_digest>.json`: a JSON array of statements for the
 binding the file name gives, each exactly
 `{"revocation_version": "controller-binding-revocation/0", "binding", "key_id", "revoked_at", "sig"}`
 and signed by one of the binding's two keys. The loop never signs one; the key
-holder does and opens the pull request. Step 05 passes the statements to the
+holder does and opens the pull request. For a binding the loop lists, a
+revocation counts in the loop only once it is merged here; one published
+anywhere else is not read. Step 05 passes the statements to the
 pinned verifier with the binding, so a binding revoked at or before the half's
 or the citing record's issue time does not apply; step 12 does the same at the
 time it checks the binding. This folder is the loop profile's own delivery
 point, not a registry. Under CB-1 option A (Controller Binding v0 §5.1,
-agent-action-capsule#495), the loop run declares this folder complete for the
-binding as of the time the step evaluates, and passes that declaration with
-the list's exact bytes (`[]` when the folder holds no file for the binding).
+action-state-group/agent-action-capsule#495), the loop run declares this
+folder complete for the binding, as main held it when the run started, as of
+the time the step evaluates, and passes that declaration with the list's exact
+bytes (`[]` when main holds no file for the binding). A branch cannot drop a
+statement from its own head: the run reads main's commit (the clone's
+`origin/main`, so fetch it first) and names that commit.
 Revocation PASS then means only that no statement in that snapshot applies:
 it is the loop run's statement, and a statement published after the snapshot
-can still withdraw the binding. A declaration that does not count (a time
-asked about after the snapshot) leaves revocation NOT_CHECKED
-(evidence-network/loop#240). The loop is stricter than CB v0 §9.4 about this
+can still withdraw the binding. If the verifier rejects the declaration (for
+example, a time asked about after it, or older than its max age), revocation
+is NOT_CHECKED (evidence-network/loop#240), and so it is when the clone holds
+no main to read from. The loop is stricter than CB v0 §9.4 about this
 folder: a file in it that is out of shape makes the binding not apply, rather
 than leaving revocation NOT_CHECKED, because every pull request checks the
 folder and a bad file is a defect in the loop's own delivery.
