@@ -354,6 +354,22 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         return m
 
+    def test_a_live_05_of_settlement_legs_only_has_no_deal_record_and_says_why(self):
+        m = self.live_05()
+        # A 05 whose held files are all settlement legs has no deal record, and says why.
+        for p in (self.run / "05-deal").rglob("held-1.json"):
+            dump(p, {**load(p), "action_id": "mesh/settlement/terms"})
+        for x in m["steps"]:
+            if x["dir"] == "05-deal":
+                for f in x["files"]:
+                    if f["path"].endswith("held-1.json"):
+                        f["sha256"] = finding.sha256(self.run / "05-deal" / f["path"])
+        self.reseal_manifest(m)
+        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertTrue(any("the 3 files matching those names are not deal records (binding.json `only`)" in x
+                            for x in problems), problems)
+
     def test_live_05s_host_served_halves_are_its_deal_records_and_settlement_legs_are_not(self):
         # Sherlock2 (loop#250): a held half is a deal record by what it is (a host-served capsule), never by its
         # file name; a settlement leg held beside it is not a deal.

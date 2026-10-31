@@ -296,14 +296,15 @@ def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
         counted = any(t.get("counted") for t in k["terms"])
         # A live 05's halves of one exchange (each node holds the other's) are one deal, never two (loop#250).
         live = [r for r in hit if k.get("only") and any(fnmatch.fnmatchcase(r.split("/", 1)[1], g) for g in k["only"])]
-        deals, unpaired = live_deals(source, live) if live and source is not None else (set(), [])
+        deals, _ = live_deals(source, live) if live and source is not None else (set(), [])
+        lone = len(live) - 2 * len(deals)  # the halves in no pair (paired_exchanges' notes are per nonce, not half)
         figures.append(figure(
             f"count:{k['kind']}", "adjudications",
             f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
             f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps"
             + (f"; the live halves are {len(deals)} deal{'' if len(deals) == 1 else 's'}, one per exchange held on "
-               f"both nodes, each citing both halves" + (f" ({len(unpaired)} halves pair with no other node's half)"
-                                                        if unpaired else "") if live else "") + ".",
+               f"both nodes, each citing both halves" + (f" ({lone} half{'' if lone == 1 else 'ves'} pair{'s' if lone == 1 else ''} "
+                                                        "with no other node's half)" if lone else "") if live else "") + ".",
             "met", hit))
     for nn, k in pack["kinds"].items():
         dirs = sorted(d for d in finer if d[:2] == nn)
