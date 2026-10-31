@@ -867,7 +867,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members):
         cid = capsule.get("capsule_id")
         prov = next((p for p in provenance if p.get("capsule_id") == cid), None)
         sender = (prov or {}).get("received_from")
-        if prov is not None and sender not in members:
+        # only a sender named by a well-formed node_id is out of scope; a missing or malformed one is judged (and fails)
+        if is_key(sender) and sender not in members:
             outside.append({"held": stem, "capsule_id": cid, "received_from": sender, "key_id": capsule.get("key_id")})
             key = capsule.get("key_id") if is_key(capsule.get("key_id")) else "unknown"
             summary["outside"][key] = summary["outside"].get(key, 0) + 1
@@ -929,12 +930,12 @@ def live_node(bin_, name, data_dir, out, work, peers, members):
         checks.append(c)
     beyond = (f"; {len(outside)} held halves from senders outside the population, not judged (evidence keys "
               + ", ".join(f"{k[:16]} ({n})" for k, n in sorted(summary["outside"].items())) + ")") if outside else ""
-    if not checks:
-        return "NOT_CHECKED", [], f"node {name}: holds no pushed half from a node of the population{beyond}", [], summary
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
                                                  "held": checks, "outside_population": outside},
                                                 indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
+    if not checks:
+        return "NOT_CHECKED", proof, f"node {name}: holds no pushed half from a node of the population{beyond}", [], summary
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
     current = [c for c in checks if "accepted" in c]
     for state in ("unclaimed", "unkeyed", "unlisted"):
@@ -1039,9 +1040,10 @@ def main_live(pop, out, started):
             for k, n in summary["unbound"].items():
                 unbound[k] = unbound.get(k, 0) + n
             optional += summary["optional"]
-            if not files:
-                not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
-                                    "from the lab run's exchanges", "issue": live.ISSUE})
+            if not any(f.startswith("held-") for f in files):
+                not_checked.append({"what": f"{name}: a pushed half held", "issue": live.ISSUE, "why": (
+                    "the node holds no pushed half from a node of the population, only halves from senders outside "
+                    "it" if summary["outside"] else "the node holds no pushed half from the lab run's exchanges")})
             report, file = sharing_report(name, data_dir, out / name)
             if file:
                 proof.append(file)

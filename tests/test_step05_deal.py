@@ -404,6 +404,14 @@ class Step05BindingCheckTest(unittest.TestCase):
             self.assertIn(why, str(e.exception))
             (folder / name).unlink()
         self.assertEqual(step.bv.revocations(self.dir / "nodes", digest), [])
+        # a repeated member, at the top or nested in a bip340 sig, is refused rather than read as its last value
+        text = json.dumps(good)
+        for dup in (text.replace('"revoked_at":', '"revoked_at": "2026-01-01T00:00:00Z", "revoked_at":', 1),
+                    json.dumps({**good, "sig": {"a": 1}}).replace('"a": 1', '"a": 1, "a": 2')):
+            (folder / f"{digest}.json").write_text("[" + dup + "]")
+            with self.assertRaises(ValueError) as e:
+                step.bv.read_revocations(folder / f"{digest}.json")
+            self.assertIn("repeated member", str(e.exception))
         (folder / f"{digest}.json").write_text("not json")
         with self.assertRaises(ValueError):
             step.bv.revocations(self.dir / "nodes", digest)
@@ -738,16 +746,32 @@ class Step05DealLiveTest(unittest.TestCase):
         prov.write_text(prov.read_text().replace("b1" * 32, "4d" * 32))
         f = self.run_live()
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
-        self.assertFalse((self.out / "lab-a" / "checks.json").exists())
+        doc = json.loads((self.out / "lab-a" / "checks.json").read_text())
+        self.assertEqual(doc["held"], [])
+        self.assertEqual([o["received_from"] for o in doc["outside_population"]], ["4d" * 32])
+        self.assertIn("lab-a/checks.json", [p["path"] for p in f["proof"]])
         self.assertIn("node lab-a: holds no pushed half from a node of the population; 1 held halves from senders "
                       "outside the population, not judged (evidence keys 9e4480104975505a (1))", f["detail"])
         whats = {n["what"] for n in f["not_checked"]}
         self.assertNotIn("the held half's producer signature, in a second language", whats)
         self.assertNotIn(step.LIVE_UNBOUND_WHAT, whats)
-        self.assertIn("lab-a: a pushed half held", whats)
+        self.assertIn("only halves from senders outside it", self.names(f)["lab-a: a pushed half held"]["why"])
         self.assertNotIn("nonce n", f["detail"])
         self.assertFalse((self.out / "lab-a" / "held-1.json").exists())
         self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_half_whose_provenance_names_no_well_formed_sender_is_still_judged(self):
+        prov = self.ledger() / "received-provenance.jsonl"
+        good = prov.read_text()
+        for sender in (None, "", ["x"], "lab-b"):
+            doc = json.loads(good)
+            doc["received_from"] = sender
+            prov.write_text(json.dumps(doc) + "\n")
+            f = self.run_live()
+            doc = json.loads((self.out / "lab-a" / "checks.json").read_text())
+            self.assertEqual([c["held"] for c in doc["held"]], ["held-1"], sender)
+            self.assertEqual(doc["outside_population"], [], sender)
+            self.assertNotIn("outside the population", f["detail"])
 
     def test_live_an_outside_half_is_listed_in_checks_beside_the_judged_ones(self):
         # a second held half, from outside the population, next to lab-b's

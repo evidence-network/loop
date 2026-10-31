@@ -102,8 +102,9 @@ binding the file name gives, each exactly
 `{"revocation_version": "controller-binding-revocation/0", "binding", "key_id", "revoked_at", "sig"}`
 and signed by one of the binding's two keys. The loop never signs one; the key
 holder does and opens the pull request. Step 05 passes the statements to the
-pinned verifier with the binding, so a binding revoked at or before a half's
-time does not apply. CB v0 registers no place to fetch statements (CB-1), so
+pinned verifier with the binding, so a binding revoked at or before the half's
+or the citing record's issue time does not apply (step 12 does not read them
+yet). CB v0 registers no place to fetch statements (CB-1), so
 the verifier knows only those it is given. This folder is the loop profile's
 own delivery point, not a registry: a statement published elsewhere is not
 excluded, so revocation stays NOT_CHECKED, never PASS, with none here that

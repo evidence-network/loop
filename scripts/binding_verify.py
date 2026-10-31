@@ -22,16 +22,24 @@ REVOCATION_MEMBERS = ("revocation_version", "binding", "key_id", "revoked_at", "
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _unique(pairs):
+    """An object hook that refuses a repeated member: a file showing two revoked_at must not read as one."""
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"a repeated member ({', '.join(sorted({k for k in keys if keys.count(k) > 1}))})")
+    return dict(pairs)
+
+
 def read_revocations(path):
     """The statements in one `nodes/revocations/<binding_digest>.json`, as JSON texts. Raises ValueError when the
-    file is not named by a digest, is not an array of objects with exactly the CB §5 members, or holds a statement
-    for another binding or of another version. Signatures and times are the verifier's to check."""
+    file is not named by a digest, is not an array of objects with exactly the CB §5 members (an object repeating a
+    member, at any depth, is refused), or holds a statement for another binding or of another version. Signatures and times are the verifier's to check."""
     path = Path(path)
     digest = path.name[:-len(".json")] if path.name.endswith(".json") else ""
     if not HEX64.match(digest):
         raise ValueError(f"{path.name}: not named <binding_digest>.json")
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique)
     except (OSError, ValueError) as e:
         raise ValueError(f"{path.name}: not readable JSON ({e})")
     if not isinstance(doc, list) or not doc:
