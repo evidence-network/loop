@@ -41,6 +41,7 @@ def load_step():
 
 step = load_step()
 finding = step.finding
+ledger_proof = step.ledger_proof
 CAPSULECTL = step.tools()
 NO_TOOL = f"capsulectl not installed at {CAPSULECTL}: run steps/07-ask.setup.sh (CI does)"
 BOB = (FIX / "bob.key_id").read_text().strip()
@@ -907,8 +908,8 @@ class ReporterBackendTest(Tmp):
 
     def test_the_exchange_ask_about_a_held_half_is_sealed_and_judged_like_the_others(self):
         r = self.run_exchange("exchange_verified")
-        self.assertEqual(r["result"], "PASS", r["detail"])  # nothing left unchecked once the exchange is driven
-        self.assertEqual(r["not_checked"], [])
+        # nothing left unchecked once the exchange is driven, but the asker's unnamed ledger checkpoint
+        self.assertEqual([i["issue"] for i in r["not_checked"]], [ledger_proof.ISSUE] * len(r["not_checked"]), r)
         self.assertIn("exchange answered under the listed key", r["detail"])
         sent = json.loads(next(self.out.glob("lab-1/attempts/*/exchange.request.json")).read_text())
         self.assertEqual(sent["subject"], {"exchange": self.HALF})
@@ -981,7 +982,7 @@ class ReporterBackendTest(Tmp):
                                      "--second-data-dir", str(asker)))
         finally:
             console.close()
-        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertEqual({i["issue"] for i in r["not_checked"]}, {ledger_proof.ISSUE}, r["not_checked"])  # no checkpoint served
         self.assertEqual(sorted(step.daily_report.QUESTIONS), ["checkpoints", "history_card"])
         self.assertNotIn("exchange", step.daily_report.QUESTION_NAMES)
 
@@ -1055,10 +1056,11 @@ class ReporterBackendTest(Tmp):
     def test_a_request_sealed_with_other_coverage_is_not_the_ask(self):
         def altered(records):
             return [(rid, {**h, "statement": {**h["statement"], "request": {
-                **h["statement"]["request"], "coverage": {"min_freshness": 99}}}}) if
-                    h.get("record_type") == "evidence_request" else (rid, h) for rid, h in records]
+                **h["statement"]["request"], "coverage": {"min_freshness": 99}}}}, *rest) if
+                    h.get("record_type") == "evidence_request" else (rid, h, *rest) for rid, h, *rest in records]
         ask = step.ask_records
-        with mock.patch.object(step, "ask_records", side_effect=lambda l, raw=None: altered(ask(l, raw))):
+        with mock.patch.object(step, "ask_records",
+                               side_effect=lambda l, raw=None, numbered=False: altered(ask(l, raw, numbered))):
             r = self.run_live(VERIFIED, ledger=self.ledger())
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("holds 0 sealed evidence_request records for this ask", r["detail"])
@@ -1191,6 +1193,122 @@ class ReplySignatureTest(unittest.TestCase):
         path.write_text(json.dumps({"verification": {"state": "artifact"}}))
         self.assertIn("no signed answer", " ".join(step.verify_reply_signature(path, self.extract, self.key)))
         self.assertEqual(self.check(self.envelope(), extract={"ledger": None}), [])
+
+
+class LedgerProofTest(unittest.TestCase):
+    """judge_ledger_proof (loop#276) with the checker stubbed: the cryptography is loop-ledger-check's own tests
+    (steps/ledger-check.d); this is what 07 and 08 make of its verdict."""
+
+    ASKER = {"name": "lab-0", "node_id": "0" * 64, "key_id": "k" * 64}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = Path(self.tmp.name)
+        self.attempt = self.out / "lab-1" / "attempts" / "a"
+        self.attempt.mkdir(parents=True)
+        self.at = dt.datetime(2026, 10, 31, 12, 0, 0, tzinfo=dt.timezone.utc)
+        self.request = {"profile": "p", "subject": {"checkpoints": None}}
+        sent = {**self.request, "audience": "n" * 64}
+        header = {"record_type": "evidence_request", "links": [], "committed_at": iso(self.at),
+                  "statement": {"request": sent, "responder_ref": "n" * 64}}
+        lines = [json.dumps({"capsule_id": "pad"}) + "\n", ask_record("r" * 64, header), json.dumps({"capsule_id": "pad2"}) + "\n"]
+        self.copy = self.out / step.ASKER_LEDGER / "lab-0" / "capsules.jsonl"
+        self.copy.parent.mkdir(parents=True)
+        self.copy.write_text("".join(lines))
+        self.pop = {"nodes": [self.ASKER]}
+        self.how = {"asker": "lab-0"}
+        self.records = step.ask_records(self.copy.parent, self.copy.read_bytes(), numbered=True)
+        self.found, self.got = step.select_ask(self.records, "n" * 64, self.request, self.at, self.at)
+        self.extract = {"ledger": "read", "requests": json.loads(json.dumps(step.extract_rows(self.found))),
+                        "outcomes": []}
+        self.reply = {"range_proof": {"from_index": 0, "to_index": 2}}
+        self.write_checkpoint({"asker": "lab-0", "reply": self.reply, "refusal": None})
+
+    def write_checkpoint(self, doc):
+        (self.attempt / f"checkpoints{step.CHECKPOINT_SUFFIX}").write_text(json.dumps(doc))
+
+    def judge(self, verdict=({"ok": True}, None)):
+        with mock.patch.object(ledger_proof, "check", return_value=verdict) as chk:
+            r = step.judge_ledger_proof(self.out, self.pop, self.how, self.attempt, "checkpoints", self.extract,
+                                        "n" * 64, self.request, self.at, self.at)
+        self.chk = chk
+        return r
+
+    def test_a_reply_that_checks_under_the_listed_key_leaves_nothing_unchecked(self):
+        self.assertEqual(self.judge(), ([], []))
+        self.assertEqual(self.chk.call_args.args[2:], ("k" * 64, "capsules.jsonl"))
+
+    def test_a_copy_the_checker_rejects_is_a_fail(self):
+        errs, notes = self.judge((None, "the copy holds 2 lines"))
+        self.assertEqual(notes, [])
+        self.assertIn("does not show the kept copy whole", errs[0])
+
+    def test_an_extract_that_dropped_a_matching_record_is_a_fail(self):
+        self.extract["requests"] = []
+        errs, _ = self.judge()
+        self.assertEqual(errs, ["picked again from the checkpointed copy, the ask's requests are not the extract's"])
+
+    def test_a_record_past_the_lines_the_checkpoint_covers_is_a_fail(self):
+        self.reply["range_proof"]["to_index"] = 0  # an older genuine reply: the copy's first line only
+        self.write_checkpoint({"asker": "lab-0", "reply": self.reply, "refusal": None})
+        errs, _ = self.judge()
+        self.assertTrue(any("does not reach" in e for e in errs), errs)
+
+    def test_a_refusal_is_not_checked_on_the_ledger_issue(self):
+        self.write_checkpoint({"asker": "lab-0", "reply": None, "refusal": "HTTP 400: invalid request"})
+        errs, notes = self.judge()
+        self.assertEqual(errs, [])
+        self.assertEqual([n["issue"] for n in notes], [ledger_proof.ISSUE])
+        self.assertIn("invalid request", notes[0]["why"])
+
+    def test_a_run_that_kept_no_reply_is_not_checked(self):
+        (self.attempt / f"checkpoints{step.CHECKPOINT_SUFFIX}").unlink()
+        self.assertEqual([n["issue"] for n in self.judge()[1]], [ledger_proof.ISSUE])
+
+    def test_an_asker_that_is_not_named_has_no_listed_key_to_check_under(self):
+        self.how = {"asker": None}
+        self.write_checkpoint({"asker": None, "reply": self.reply, "refusal": None})
+        errs, notes = self.judge()
+        self.assertEqual((errs, [n["issue"] for n in notes]), ([], [step.LOOP_ISSUE]))
+        self.chk.assert_not_called()
+
+    def test_a_checker_that_is_not_installed_is_not_checked(self):
+        with mock.patch.object(ledger_proof, "check", side_effect=FileNotFoundError("loop-ledger-check")):
+            errs, notes = step.judge_ledger_proof(self.out, self.pop, self.how, self.attempt, "checkpoints",
+                                                  self.extract, "n" * 64, self.request, self.at, self.at)
+        self.assertEqual((errs, [n["issue"] for n in notes]), ([], [step.LOOP_ISSUE]))
+
+    def test_prefix_cuts_whole_lines(self):
+        self.assertEqual(ledger_proof.prefix(b"a\nb\nc", 2), b"a\nb\n")
+        self.assertIsNone(ledger_proof.prefix(b"a\nb\nc", 3))
+
+
+@unittest.skipUnless(ledger_proof.checker(), "loop-ledger-check is not installed: run steps/ledger-check.setup.sh (CI does)")
+class LedgerCheckBinaryTest(unittest.TestCase):
+    """ledger_proof.check on a real signed checkpoint reply (tests/fixtures/ledger-check, made by the crate's
+    `fixture` test): the chain's 6th line was appended after the reply, its 2nd line is a preimage-redacted one."""
+
+    FIXTURE = ROOT / "tests" / "fixtures" / "ledger-check"
+
+    def setUp(self):
+        self.raw = (self.FIXTURE / "capsules.jsonl").read_bytes()
+        self.reply = json.loads((self.FIXTURE / "capsules.reply.json").read_text())
+        self.key = (self.FIXTURE / "key").read_text().strip()
+
+    def test_the_covered_prefix_of_a_longer_redacted_copy_checks(self):
+        info, why = ledger_proof.check(self.raw, self.reply, self.key, "capsules.jsonl")
+        self.assertIsNone(why)
+        self.assertEqual((info["lines"], info["redacted_lines"]), (5, [2]))
+
+    def test_a_dropped_line_a_wrong_key_and_a_short_copy_do_not(self):
+        lines = self.raw.splitlines(keepends=True)
+        _, why = ledger_proof.check(b"".join([lines[0], *lines[2:]]), self.reply, self.key, "capsules.jsonl")
+        self.assertIn("not leaves", why)
+        _, why = ledger_proof.check(self.raw, self.reply, "0" * 64, "capsules.jsonl")
+        self.assertIn("not by the given key", why)
+        _, why = ledger_proof.check(b"".join(lines[:3]), self.reply, self.key, "capsules.jsonl")
+        self.assertIn("fewer lines", why)
 
 
 if __name__ == "__main__":

@@ -358,6 +358,10 @@ def rederive_07_live(m, c):
         raise Unreproducible("step 07: its live result re-derived from its proof bytes",
                              f"08 re-derives the live reporter backend only, not {m.backend(pop)!r}", LIVE_ISSUE)
     old_shape(c, "07", "ask.json")
+    if not any(p["path"].endswith(m.CHECKPOINT_SUFFIX) for p in c.record["proof"]):  # a run before loop#276
+        c.relies.append({"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
+                         "why": "the run kept no signed ledger checkpoint over the asker's ledger, so 08 checks every "
+                                "rule on 07's extract but cannot show it complete", "issue": LEDGER_ISSUE})
     return m.conclude(c.work, c.population, *m.judge_reporter(pop, c.work), c.started, "reporter")
 
 
@@ -383,9 +387,12 @@ LIVE_RELIES_ON = {
     "05": [{"what": "step 05: each node's copied ledger files are the node's whole files",
             "why": "08 checks every held half again on the copies, but no checkpoint the node signs covers them",
             "issue": LEDGER_ISSUE}],
-    "07": [{"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
-            "why": "08 checks every rule on 07's extract (its line count and sha256 at read time are kept for an "
-                   "audit), but no checkpoint the asker signs covers its ledger", "issue": LEDGER_ISSUE},
+    "07": [{"what": "step 07: each line of the asker's ledger copy is the record its capsule_id names",
+            "why": "08 shows each ask's extract complete: the copy's first lines are the whole ledger at the asker's "
+                   "signed checkpoint (loop-ledger-check, under the listed key), and picking the ask's records from "
+                   "them gives the extract. That check takes a line's capsule_id as the line states it, and a line "
+                   "whose payment preimage was withheld as the loop kept it; it does not recompute a capsule_id from "
+                   "its record, so the records are read as written", "issue": "evidence-network/loop#135"},
            {"what": "step 07: each node's kept commitment is the one in force when it was asked",
             "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records "
                    "skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then",

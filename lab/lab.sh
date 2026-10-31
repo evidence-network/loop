@@ -898,7 +898,7 @@ print(",".join(out))' "$BASE" "$ROOT/population/live/population.json")
 cmd_loop() {
   local second self node_consoles
   ask_env
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" LOOP_SECOND_NODE="$second" \
     LAB_DIR="$LAB_DIR" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
     "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
@@ -1071,7 +1071,7 @@ cmd_ask() {
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
   local out=$ROOT/findings/$TODAY-live second self node_consoles
   ask_env
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" \
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" LOOP_SECOND_NODE="$second" \
     LAB_DIR="$LAB_DIR" LOOP_SECOND_DATA_DIR="$(data_of "$second")" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"

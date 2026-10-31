@@ -640,11 +640,13 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE})
         # This run.json pins no commit, so the listed keys are read at this checkout and 08 says so (loop#193).
+        self.assertEqual({nc["issue"] for nc in f["not_checked"]},
+                         {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE, "evidence-network/loop#135"})
         pinned = [nc for nc in f["not_checked"] if nc["what"] == "the listed keys, read at the commit the run ran at"]
         self.assertEqual([nc["issue"] for nc in pinned], [step.TRUST_ISSUE])
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in pinned],
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in pinned][
+                         :len(step.LIVE_RELIES_ON["07"])],
                          step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
