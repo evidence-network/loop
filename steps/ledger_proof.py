@@ -32,6 +32,7 @@ SHAPE = "ledger_checkpoints"  # the nodes.json member a step that keeps KEPT_SUF
 CONSOLES = "LOOP_NODE_CONSOLES"  # NAME=URL,...: each population node's own console (lab/lab.sh)
 CONSOLE_ISSUE = "evidence-network/loop: lab/lab.sh gives each node's console (LOOP_NODE_CONSOLES)"
 NOT_INSTALLED = f"{CHECKER} is not installed (steps/ledger-check.setup.sh)"
+TOOLS_ISSUE = f"evidence-network/loop: steps/ledger-check.setup.sh installs {CHECKER} where the step runs"
 
 
 def tools_dir():
@@ -103,7 +104,9 @@ def check(raw, reply, key_id, file):
     if bin_ is None:
         raise FileNotFoundError(CHECKER)
     n = covered(reply)
-    cut = prefix(raw, n) if n else None
+    if not n:
+        return None, "the reply is not a checkpoint over the whole file (range_proof from_index 0)"
+    cut = prefix(raw, n)
     if cut is None:
         return None, f"the kept copy holds fewer lines than the checkpoint covers ({n})"
     if reply.get("file") != file:
@@ -122,47 +125,43 @@ def check(raw, reply, key_id, file):
     except (ValueError, KeyError, TypeError):
         return None, f"{CHECKER} said ok and printed {r.stdout[:200]!r}"
     kept = cut.split(b"\n")
-    forged = [i for i in redacted if not 1 <= i <= n or not held_a_preimage(kept[i - 1])]
+    forged = [i for i in redacted if not 1 <= i <= n or not held_a_preimage(kept[i - 1], file)]
     if forged:
         return None, (f"line(s) {', '.join(map(str, forged))} carry a redaction marker but did not hold a payment "
-                      "preimage (only a settlement observation's preimage is withheld)")
+                      "preimage (only a settlement observation's preimage in the chain is withheld)")
     return info, None
 
 
-def held_a_preimage(line):
+# Where the plugin keeps a payment preimage: a settlement observation it seals into its own chain (capsules-plugin
+# v0.1.8 producer/capsule.rs, block SETTLEMENT_EXTENSION_KEY, member preimage). Every withheld preimage on the lab
+# (live-16, live-17 and the loop#288 proof) sits there and nowhere else.
+PREIMAGE_AT = ("model_attestation", "compute_attestation", "x-mesh-settlement-v1", "preimage")
+
+
+def held_a_preimage(line, file):
     """Whether a copied line whose leaf digest the checker took from its x-loop-redacted marker is one that really
-    held a preimage, as live.copy_redacted keeps such a line: a JSON object with the marker's line_sha256, every
-    REDACTED value sitting under a preimage-named key of an object that also names a payment_hash (a settlement
-    observation, the only record the plugin puts a preimage in: capsules-plugin producer/capsule.rs), at least one
-    such value, and REDACTED nowhere else. A marker anywhere else would let a copy restate any line's content."""
+    held a preimage, as live.copy_redacted keeps such a line: a line of the chain (no other file holds one), a JSON
+    object with the marker's 64-hex line_sha256, REDACTED exactly at PREIMAGE_AT beside a payment_hash, and REDACTED
+    nowhere else. Its leaf is then the marker's digest, so the rest of the line is read as kept; anywhere else a
+    marker would let a copy restate a line whose leaf is its own bytes."""
+    if file != CHAIN:
+        return False
     try:
         rec = json.loads(line)
         sha = rec.pop(live.REDACTION)["line_sha256"]
+        block = rec
+        for k in PREIMAGE_AT[:-1]:
+            block = block[k]
+        if block[PREIMAGE_AT[-1]] != live.REDACTED or not isinstance(block.get("payment_hash"), str):
+            return False
+        block = dict(block)
+        del block[PREIMAGE_AT[-1]]
+        rest = dict(rec, model_attestation=dict(rec["model_attestation"], compute_attestation=dict(
+            rec["model_attestation"]["compute_attestation"], **{PREIMAGE_AT[2]: block})))
     except (ValueError, KeyError, TypeError, AttributeError):
         return False
-    if not (isinstance(sha, str) and len(sha) == 64 and all(c in "0123456789abcdef" for c in sha)):
-        return False
-    held = []
-
-    def walk(value):
-        if isinstance(value, dict):
-            here = isinstance(value.get("payment_hash"), str)
-            for k, v in value.items():
-                if v == live.REDACTED and live.preimage_key(k) and here:
-                    held.append(k)
-                elif not walk(v):
-                    return False
-            return True
-        if isinstance(value, list):
-            return all(walk(v) for v in value)
-        if isinstance(value, str) and live.REDACTED in value:
-            try:  # live.redacted re-encodes a string that is itself JSON
-                return value[:1] in "{[" and walk(json.loads(value))
-            except ValueError:
-                return False
-        return True
-
-    return walk(rec) and bool(held)
+    hexed = isinstance(sha, str) and len(sha) == 64 and all(c in "0123456789abcdef" for c in sha)
+    return hexed and live.REDACTED not in json.dumps(rest)
 
 
 def listed_key(node_id):
@@ -242,24 +241,26 @@ def judge(ledger_dir, files, key_id, name):
             # A file the step found no complete line of (or no file) has nothing to show complete; the plugin
             # refuses an ask for it too. That such a file held none is the step's reading (step 08 names it).
             if copy.is_file() and b"\n" in copy.read_bytes():
-                open_.append(f"{f}: {refusal}")
+                open_.append((f"{f}: {refusal}", CONSOLE_ISSUE if "no console" in str(refusal) else ISSUE))
             continue
         if not copy.is_file():
             errs.append(f"{f}: the node signed a checkpoint over it, but no copy is kept")
             continue
         if key_id is None:
-            open_.append(f"{f}: the node has no nodes/ listing with a key to check its checkpoint under")
+            open_.append((f"{f}: the node has no nodes/ listing with a key to check its checkpoint under", live.ISSUE))
             continue
         raw = copy.read_bytes()
         try:
             info, why = check(raw, reply, key_id, f)
         except FileNotFoundError:
-            open_.append(f"{f}: {NOT_INSTALLED}")
+            open_.append((f"{f}: {NOT_INSTALLED}", TOOLS_ISSUE))
             continue
         if why is None and len(raw) != len(prefix(raw, covered(reply))):
             why = f"the copy holds lines past the {covered(reply)} its checkpoint covers"
         if why:
             errs.append(f"{f}: the node's ledger checkpoint does not show the copy whole: {why}")
-    nc = [{"what": f"{name}: each copied ledger file is the node's whole file", "why": "; ".join(open_),
-           "issue": CONSOLE_ISSUE if all("no console" in w for w in open_) else ISSUE}] if open_ else []
+    # One entry per owner of what is open, in the order first met.
+    nc = [{"what": f"{name}: each copied ledger file is the node's whole file",
+           "why": "; ".join(w for w, i in open_ if i == issue), "issue": issue}
+          for issue in dict.fromkeys(i for _, i in open_)]
     return errs, nc, proof

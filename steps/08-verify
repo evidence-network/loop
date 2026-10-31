@@ -452,11 +452,9 @@ def ledger_relies(c, m, nn, checkpointed):
     c.relies += [
         {"what": f"step {nn}: each line of a node's copied capsules.jsonl is the record its capsule_id names",
          "why": "the checkpoint check takes a chain line's capsule_id as the line states it; it does not recompute "
-                "a capsule_id from its record, so the records are read as written", "issue": "evidence-network/loop#135"},
-        {"what": f"step {nn}: each copied line whose payment preimage was withheld",
-         "why": "its leaf digest is the node's line digest its x-loop-redacted marker names (a marker counts only on a "
-                "settlement observation's withheld preimage), so the rest of the kept line is read as the step kept it",
-         "issue": TRUST_ISSUE},
+                "a capsule_id from its record, so the records are read as written, a settlement observation's line "
+                "whose preimage was withheld included (the only line a redaction marker counts on)",
+         "issue": "evidence-network/loop#135"},
         {"what": f"step {nn}: each node's checkpoint reply was asked before its copy was read, and a file with no copy "
                  "held no line",
          "why": "a node's every genuine reply keeps checking a copy of its own size, and a checkpoint's time is no "

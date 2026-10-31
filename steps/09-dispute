@@ -78,9 +78,10 @@ the copied ledgers and twin-fault.json, and judges only those files
 Each ledger file is asked for at the node's console (LOOP_NODE_CONSOLES) first
 and copied after, keeping the lines its checkpoint reply covers with the reply
 beside the copy; the judge checks each copy with loop-ledger-check under the key
-the node's nodes/ (or nodes/twins/) entry lists (steps/ledger_proof.py,
-loop#288): one that does not check is a FAIL, and a refusal, no console, no
-listed key or no checker a not_checked entry.
+the node's nodes/ (or nodes/twins/) entry lists, or for an unlisted node the key
+its data_dir announces, which step 08 names as 09's reading (steps/ledger_proof.py,
+loop#288): one that does not check is a FAIL, and a refusal, no console or no
+checker a not_checked entry.
 
 No spend: this step pays nothing on either population, with or without
 LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;

@@ -358,6 +358,48 @@ class Live(unittest.TestCase):
         self.assertEqual(again["result"], "FAIL", again["detail"])
         self.assertIn("node lab-a: the decisions kept are not the ones its ledger copy holds", again["detail"])
 
+    def test_a_node_whose_checkpoint_mark_is_dropped_fails(self):
+        # Dropping one node's mark would skip its check (and 08 would still read the run as checkpointed).
+        lab = self.lab_with(self.good())
+        out, f = self.live_run(lab)
+
+        def unmark(work):
+            nodes = load(work / "nodes.json")
+            del nodes["lab-a"][step.ledger_proof.SHAPE]
+            (work / "nodes.json").write_text(json.dumps(nodes))
+        again = self.rejudged(lab, out, f, unmark)
+        self.assertEqual(again["result"], "FAIL", again["detail"])
+        self.assertIn("node lab-a: nodes.json marks other nodes' ledgers as checkpointed", again["detail"])
+
+    def verify08(self, lab, out, **env):
+        """Step 08 on the run `out` (04 only) is in, with the lab's population: its 04-admit entry and finding."""
+        findings = out.parent
+        (findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                       "started": "2026-10-31T00:00:00Z", "steps": ["04", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_for_04", str(ROOT / "steps" / "08-verify"))
+        v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_04", loader))
+        loader.exec_module(v)
+        with mock.patch.dict(os.environ, {"LAB_DIR": "", "LOOP_NODES_DIR": str(lab / "listed"),
+                                          "LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB), **env}):
+            v.main(["--population", str(lab), "--out", str(findings / "08-verify")])
+        entries = {e["dir"]: e for e in load(findings / "08-verify" / "verified.json")["steps"]}
+        return entries["04-admit"], load(findings / "08-verify" / "finding.json"), v
+
+    def test_08_reproduces_a_checkpointed_live_04_and_names_only_what_the_check_leaves(self):
+        lab = self.lab_with(self.good())
+        out, f = self.live_run(lab)
+        entry, f08, v = self.verify08(lab, out)
+        self.assertEqual(entry["status"], "reproduced", entry["problems"])
+        whats = [x["what"] for x in f08["not_checked"]]
+        self.assertNotIn(v.UNCHECKPOINTED["04"], f08["not_checked"])
+        for what in ("step 04: each line of a node's copied capsules.jsonl is the record its capsule_id names",
+                     "step 04: each node's checkpoint reply was asked before its copy was read, and a file with no "
+                     "copy held no line"):
+            self.assertIn(what, whats)
+        entry, _, _ = self.verify08(lab, out, LOOP_LEDGER_CHECK_BIN=str(lab / "no-checker"))
+        self.assertEqual(entry["status"], "not_reproduced", entry)
+        self.assertIn("loop-ledger-check is not installed", entry["not_checked"]["why"])
+
     def test_a_lost_checkpoint_reply_fails(self):
         lab = self.lab_with(self.good())
         out, f = self.live_run(lab)

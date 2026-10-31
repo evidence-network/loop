@@ -1,3 +1,3 @@
 {"a":1}
-{"capsule_id":"c1","x-mesh-settlement-v1":{"payment_hash":"cd","preimage":"redacted: a payment preimage never leaves the lab host"},"x-loop-redacted":{"line_sha256":"cd10a03a3779a4c425e582a767405570f35eb06548ade671fa638ada8ccdb335"}}
+{"b":2}
 {"c":3}

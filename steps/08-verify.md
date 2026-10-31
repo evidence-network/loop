@@ -99,14 +99,16 @@ Live 04's `decisions.jsonl` is 04's selection of the node's decision lines.
 Live 04, 05 and 09 keep each copied ledger file with the node's signed checkpoint reply beside it
 (`<node>/ledger/<file>.checkpoint.json`, loop#288): the step asks the node's console (`LOOP_NODE_CONSOLES`) first,
 then copies the file and keeps the lines the reply covers. Their judges, run again here, check each copy with
-`loop-ledger-check` under the key the node's `nodes/` entry lists, and fail a copy that does not check, a reply with
-no copy, a copy longer than its checkpoint, and a redaction marker on any line but a settlement observation's
-withheld preimage; 04 also picks its decisions again from the copy. A refusal, no console, no listed key or no
-checker is NOT_CHECKED, never a pass, and 08 without the checker is `not_reproduced`. Such a step still rests on three
-things the check does not cover, each a not_checked entry: a chain line is taken by the capsule_id it states
-(loop#135); a line whose preimage was withheld is read as the step kept it beyond its marker; and that each reply was
-asked before its copy was read, and a file with no copy held no line, is the step's word, since every genuine reply
-keeps checking a copy of its own size (both evidence-network/loop#193). A run before loop#288 kept no checkpoint and
+`loop-ledger-check` under the key the node's `nodes/` entry lists (09's unlisted twins node: the key its data dir
+announces, named above as 09's reading), and fail a copy that does not check, a reply with no copy, a copy longer
+than its checkpoint, a lost reply, and a redaction marker anywhere but a chain settlement observation's withheld
+preimage (`model_attestation.compute_attestation.x-mesh-settlement-v1.preimage`); 04 also picks its decisions again
+from the copy, and fails a read node `nodes.json` does not mark when it marks others. A refusal, no console, no
+listed key or no checker is NOT_CHECKED, never a pass, and 08 without the checker is `not_reproduced`. Such a step still rests on two
+things the check does not cover, each a not_checked entry: a chain line, a withheld preimage's line included, is
+taken by the capsule_id it states (loop#135); and that each reply was asked before its copy was read, and a file with
+no copy held no line, is the step's word, since every genuine reply keeps checking a copy of its own size
+(evidence-network/loop#193). A run before loop#288 kept no checkpoint and
 names that its copies are whole on Mesh-LLM/capsules-plugin#175.
 
 A step's record of which node was read and which pins were missing is named on #193 only when the bundle does not

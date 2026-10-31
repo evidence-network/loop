@@ -931,6 +931,8 @@ def judge_live(pop, out, started):
     set_aside = 0  # decisions an earlier plugin build sealed, never judged
     whole = True  # every read node's ledger copy checked against its checkpoint (a run since loop#288)
     incomplete = False  # a node's ledger copy not shown complete (a refusal, no console, no key or no checker)
+    # A run since loop#288 marks every node it read: one read node without the mark would skip that node's check.
+    marked = nodes is not None and any(isinstance(v, dict) and ledger_proof.SHAPE in v for v in nodes.values())
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -956,6 +958,10 @@ def judge_live(pop, out, started):
             continue
         listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
         whole = whole and ledger_proof.SHAPE in node
+        if marked and ledger_proof.SHAPE not in node:
+            problems.append(f"node {name}: {NODES_FILE} marks other nodes' ledgers as checkpointed ({ledger_proof.SHAPE}), "
+                            "not this one's")
+            continue
         if ledger_proof.SHAPE in node:  # a run since loop#288: the decisions are all the checkpointed ledger held
             perrs, pnotes, pproof = ledger_proof.judge(out / name / "ledger", [ledger_proof.CHAIN], listed, name)
             problems += [f"node {name}: {e}" for e in perrs]

@@ -39,30 +39,37 @@ def kept_line(record):
 
 
 class HeldAPreimage(unittest.TestCase):
-    def test_a_settlement_observations_withheld_preimage_is_one(self):
-        self.assertTrue(ledger_proof.held_a_preimage(kept_line(settlement())))
-        # live.redacted re-encodes a string that is itself JSON, and the marker may sit inside it.
-        nested = {"capsule_id": "c2", "body": json.dumps(settlement()["model_attestation"])}
-        self.assertTrue(ledger_proof.held_a_preimage(kept_line(nested)))
+    CHAIN = ledger_proof.CHAIN
+
+    def test_a_settlement_observations_withheld_preimage_in_the_chain_is_one(self):
+        self.assertTrue(ledger_proof.held_a_preimage(kept_line(settlement()), self.CHAIN))
 
     def test_a_marker_anywhere_else_is_not(self):
         sha = hashlib.sha256(b"x").hexdigest()
+        decoy = {"capsule_id": "c", "received_from": "00" * 32,  # a restated line carrying a decoy settlement
+                 "decoy": {"payment_hash": "cd", "preimage": live.REDACTED}}
+        moved = settlement(live.REDACTED)
+        moved["model_attestation"]["compute_attestation"]["note"] = live.REDACTED
         cases = {
-            "no payment_hash beside it": {"capsule_id": "c", "preimage": live.REDACTED},
-            "the marker under another key": dict(settlement(), note=live.REDACTED),
-            "the marker inside a longer string": {"payment_hash": "cd", "preimage": live.REDACTED + " and more"},
-            "no withheld value at all": {"capsule_id": "c", "payment_hash": "cd"},
+            "a decoy settlement object off the plugin's path": decoy,
+            "no payment_hash beside it": {"model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
+                "preimage": live.REDACTED}}}},
+            "the marker also under another key": moved,
+            "the marker inside a longer string": settlement(live.REDACTED + " and more"),
+            "no withheld value at all": settlement(None),
         }
         for why, rec in cases.items():
             with self.subTest(why):
                 line = json.dumps(dict(rec, **{live.REDACTION: {"line_sha256": sha}})).encode()
-                self.assertFalse(ledger_proof.held_a_preimage(line))
+                self.assertFalse(ledger_proof.held_a_preimage(line, self.CHAIN))
+        with self.subTest("a genuine settlement line in a file that holds no preimage"):
+            self.assertFalse(ledger_proof.held_a_preimage(kept_line(settlement()), "received-capsules.jsonl"))
         with self.subTest("no marker digest"):
             rec = json.loads(kept_line(settlement()))
             rec[live.REDACTION]["line_sha256"] = "not a digest"
-            self.assertFalse(ledger_proof.held_a_preimage(json.dumps(rec).encode()))
+            self.assertFalse(ledger_proof.held_a_preimage(json.dumps(rec).encode(), self.CHAIN))
         with self.subTest("not JSON"):
-            self.assertFalse(ledger_proof.held_a_preimage(live.REDACTED.encode()))
+            self.assertFalse(ledger_proof.held_a_preimage(live.REDACTED.encode(), self.CHAIN))
 
 
 class KeepChecked(unittest.TestCase):
@@ -96,7 +103,7 @@ class KeepChecked(unittest.TestCase):
         self.assertEqual(self.asked, [f"http://node{ledger_proof.ROUTE}?file=received-capsules.jsonl"])
         kept = self.dest.read_bytes().split(b"\n")
         self.assertEqual(len(kept), 3)  # two lines, each newline-ended; the line appended after the ask is not kept
-        self.assertTrue(ledger_proof.held_a_preimage(kept[1]))
+        self.assertIn(live.REDACTION.encode(), kept[1])
         self.assertNotIn(b"ab" * 32, self.dest.read_bytes())
         self.assertEqual(self.beside()["reply"]["range_proof"]["to_index"], 1)
 
@@ -172,12 +179,14 @@ class JudgeOnTheSignedFixture(unittest.TestCase):
         good = path.read_bytes()
         lines = good.split(b"\n")
         plain = json.loads(lines[0])
-        forged = json.loads(lines[1])
-        forged["x-mesh-settlement-v1"].pop("payment_hash")  # the same marker, on a line that is no settlement
+        # A marker naming line 2's own digest, which the checker takes as its leaf, on any other content: in a file
+        # the plugin keeps no preimage in, that is a restated line.
+        forged = dict(settlement(live.REDACTED), **{live.REDACTION: {"line_sha256": hashlib.sha256(lines[1]).hexdigest()}})
         cases = {
             "a restated line": (b"\n".join([b'{"a":2}', *lines[1:]]), "not leaves"),
-            "a marker on no settlement": (b"\n".join([lines[0], json.dumps(forged, separators=(",", ":")).encode(),
-                                                      *lines[2:]]), "did not hold a payment preimage"),
+            "a marker in a file that holds no preimage": (
+                b"\n".join([lines[0], json.dumps(forged, separators=(",", ":")).encode(), *lines[2:]]),
+                "did not hold a payment preimage"),
             "a line past the checkpoint": (good + json.dumps(plain).encode() + b"\n", "holds lines past the 3"),
         }
         for why, (raw, says) in cases.items():
@@ -206,6 +215,7 @@ class JudgeOnTheSignedFixture(unittest.TestCase):
                          [("lab-a: each copied ledger file is the node's whole file", ledger_proof.ISSUE)])
         errs, notes, _ = ledger_proof.judge(self.ledger, self.files, None, "lab-a")
         self.assertIn("no nodes/ listing", notes[0]["why"])
+        self.assertEqual({n["issue"] for n in notes}, {live.ISSUE, ledger_proof.ISSUE})  # one entry per owner
         old = os.environ.get("LOOP_LEDGER_CHECK_BIN")
         os.environ["LOOP_LEDGER_CHECK_BIN"] = str(Path(self.tmp.name) / "none")
         try:
@@ -213,7 +223,7 @@ class JudgeOnTheSignedFixture(unittest.TestCase):
         finally:
             os.environ.pop("LOOP_LEDGER_CHECK_BIN") if old is None else os.environ.update(LOOP_LEDGER_CHECK_BIN=old)
         self.assertEqual(errs, [])
-        self.assertIn(ledger_proof.NOT_INSTALLED, notes[0]["why"])
+        self.assertIn(ledger_proof.NOT_INSTALLED, next(n["why"] for n in notes if n["issue"] == ledger_proof.TOOLS_ISSUE))
 
 
 if __name__ == "__main__":
