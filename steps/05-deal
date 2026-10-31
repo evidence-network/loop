@@ -339,8 +339,7 @@ BINDING_ROLE_ISSUE = "action-state-group/agent-action-capsule#468"
 # Controller Binding v0 registers no place to fetch revocation statements, so revocation is FAIL or NOT_CHECKED,
 # never PASS. The statements published in nodes/revocations/ are read (loop#138); reading that list as complete would
 # change CB-1, which is Steven's call (Sherlock2, Buzz f91277af).
-BINDING_REVOCATION_ISSUE = ("action-state-group/agent-action-capsule: Controller Binding v0 open point CB-1 (no "
-                            "registered revocation source)")
+BINDING_REVOCATION_ISSUE = "action-state-group/agent-action-capsule#482"  # CB-1
 
 
 def live_declarations(counts, unread):
