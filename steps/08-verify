@@ -23,7 +23,7 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 01, 02, 03, 04, 05, 06 (Lightning rail), 07 and 09 are re-derived the
+  live          live steps 01, 02, 03, 04, 05, 06 (Lightning rail), 07, 09 and 12 are re-derived the
                 same way: their judges read only their proof and the
                 repository's listings, witness listing and join commitments,
                 as the pull request merge that published the step held them
@@ -157,9 +157,9 @@ def need(path, what, tool):
 class Ctx:
     """One step: its bundle dir, the scratch copy of its proof (named as the step's dir), its finding."""
 
-    def __init__(self, bundle, work, tmp, pop_dir, record):
+    def __init__(self, bundle, work, tmp, pop_dir, record, anchor=None):
         self.bundle, self.work, self.tmp, self.pop, self.record = bundle, work, tmp, Path(pop_dir), record
-        self.anchor = None  # the merge that published the step, when 08 holds it to one (publication)
+        self.anchor = anchor  # the merge that published the step, when 08 holds it to one (publication)
         self.population = record["population"]
         self.started = record["started"]
         self.relies = []  # what this step's re-derivation rests on beyond LIVE_RELIES_ON (its keys check adds them)
@@ -438,7 +438,8 @@ def state_relies(c, nn, what):
 
 
 def nodes_dir():
-    """The nodes/ listings 08 holds keys to: LOOP_NODES_DIR, else this checkout's nodes/ (as 01, 02 and 05 read)."""
+    """The nodes/ listings 08 holds keys to: LOOP_NODES_DIR (verify_run sets it to the step's publication), else
+    this checkout's nodes/ (as 01, 02 and 05 read)."""
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
@@ -515,15 +516,17 @@ def anchor_ref(root=None):
 
 
 def excluded(ref, root=None):
-    """The commits EXCLUSIONS lists at ref's tip, or None when the file is there but unreadable."""
+    """The commits EXCLUSIONS lists at ref's tip, or None when the file is there but unreadable. An entry that is
+    not a full commit id makes it unreadable: an exclusion that excluded nothing must not pass unseen."""
     raw = git("show", f"{ref}:{EXCLUSIONS}", root=root)
     if raw is None:
         return set()  # not on main (yet): nothing is excluded
     try:
-        commits = json.loads(raw)["commits"]
-        return {x["commit"] for x in commits if re.fullmatch(r"[0-9a-f]{40}", x["commit"])}
+        commits = [x["commit"] for x in json.loads(raw)["commits"]]
     except (ValueError, KeyError, TypeError):
         return None
+    ok = all(isinstance(x, str) and re.fullmatch(r"[0-9a-f]{40}", x) for x in commits)
+    return set(commits) if ok else None
 
 
 def step_blobs(d, root=None):
@@ -545,12 +548,12 @@ def step_blobs(d, root=None):
             out = git("hash-object", "--no-filters", "--", str(p), root=root)
             if out is None:
                 return None
-            blobs[str(p.relative_to(root))] = out.decode().strip()
+            blobs[str(p.relative_to(root))] = out.decode().strip()  # str paths, as holds decodes git's
     return blobs or None
 
 
 def publication(d, root=None):
-    """(P, None) for the oldest merge commit on main's first-parent line whose tree holds every file of step dir d
+    """(P, None) for the oldest merge commit on main's first-parent line whose tree holds exactly the files of step dir d
     with the bytes d holds now, and is not excluded; else (None, why)."""
     ref, why = anchor_ref(root)
     if ref is None:
@@ -569,13 +572,14 @@ def publication(d, root=None):
                                 or b"").decode().split() if sha in at]
 
     def holds(commit):
-        listed = (git("ls-tree", "-r", "--full-tree", commit, "--", rel, root=root) or b"").decode()
+        """The commit holds exactly d's files (no more, no fewer) with d's bytes."""
         have = {}
-        for row in listed.splitlines():
-            meta, path = row.split("\t", 1)
-            mode, _, blob = meta.split()
-            have[path] = blob if mode in ("100644", "100755") else None
-        return all(have.get(path) == blob for path, blob in want.items())
+        for row in (git("ls-tree", "-rz", "--full-tree", commit, "--", rel, root=root) or b"").split(b"\0"):
+            if row:
+                meta, path = row.split(b"\t", 1)
+                mode, _, blob = meta.decode().split()
+                have[path.decode("utf-8", "surrogateescape")] = blob if mode in ("100644", "100755") else None
+        return have == want
     # d's bytes change only at the commits that touch it, so each run between two of them holds or lacks them all.
     for i, sha in enumerate(touching):
         if not holds(sha):
@@ -971,7 +975,7 @@ def rederive_03_live(m, c):
 
 
 def keys_03_live(c):
-    """Live 03's keys and carrier bytes, held to this checkout.
+    """Live 03's keys and carrier bytes, held to the listings 03 is held to (its publication, else this checkout).
 
     Each node's listed key_id in carrier.json (None when HEAD listed none) must be what nodes/<node_id>.json lists
     here; otherwise not_reproduced (a key rotated since, or one never listed, loop#193). When carrier.json's head
@@ -991,7 +995,7 @@ def keys_03_live(c):
         listed = load(listing).get("key_id") if entry.get("node_id") and listing.is_file() else None
         if entry.get("node_id") and entry.get("key_id") != listed:
             raise Unreproducible(f"step 03: {name}'s listed key at the carrier's HEAD",
-                                 "it is not the key nodes/ lists for the node in this checkout (a key rotated since "
+                                 "it is not the key the nodes/ listings 03 is held to give the node (a key rotated since "
                                  "the run, or a key the repository never listed)", TRUST_ISSUE)
     head = doc.get("head")
     full = isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head)
@@ -1177,8 +1181,7 @@ def verify_step(d, pop_dir, population, tmp, anchor=None):
     for p in record["proof"]:
         (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(d / p["path"], work / p["path"])
-    c = Ctx(d, work, scratch, pop_dir, record)
-    c.anchor = anchor
+    c = Ctx(d, work, scratch, pop_dir, record, anchor)
 
     try:
         if record["asserts"] == BROKE and record["result"] == "FAIL":
@@ -1291,8 +1294,10 @@ def verify_run(run, out, pop_dir, population):
                     else:
                         os.environ[k] = v
             if why and entry["status"] == "reproduced":
-                entry["relies_on"].append({"what": f"step {entry['step']}: {ANCHOR_WHAT}", "why": why + ", so "
-                                           "08 read them at this checkout, where a key rotated since would be read as "
+                where = "where LOOP_NODES_DIR and this checkout hold them" if anchor is None and \
+                    os.environ.get("LOOP_NODES_DIR") else "at this checkout"
+                entry["relies_on"].append({"what": f"step {entry['step']}: {ANCHOR_WHAT}", "why": why + f", so "
+                                           f"08 read them {where}, where a key rotated since would be read as "
                                            "the new one", "issue": TRUST_ISSUE})
             entries.append(entry)
     return entries

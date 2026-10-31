@@ -1100,11 +1100,12 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
 
-    def published(self, merge=True, reissue=False):
+    def published(self, merge=True, reissue=False, rotate=None):
         """A scratch repository holding this checkout's nodes/ ("then", carrier.json's head), whose main then takes
         the run under findings/ by a pull request merge (a single-parent commit when not merge), with the first
-        carried node's commitment re-issued in the same merge when reissue. origin is evidence-network/loop and
-        origin/main is main. Returns (repo, the run inside it)."""
+        carried node's commitment re-issued in the same merge when reissue. rotate ("before" or "after" the merge)
+        lists another key for that node on main. origin is evidence-network/loop and origin/main is main. Returns
+        (repo, the run inside it)."""
         repo = Path(self.tmp.name) / "repo"
         (repo / "nodes").mkdir(parents=True)
         shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
@@ -1112,6 +1113,11 @@ class Step08Live03Test(unittest.TestCase):
             shutil.copyfile(f, repo / "nodes" / f.name)
         node_id = next(iter(load(self.run / "03-advertise" / "carrier.json")["nodes"].values()))["node_id"]
         git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+
+        def rotated():
+            listing = repo / "nodes" / f"{node_id}.json"
+            dump(listing, dict(load(listing), key_id="ee" * 32))
+            subprocess.run([*git, "commit", "-qam", "rotate"], check=True)
         subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
         subprocess.run([*git, "add", "nodes"], check=True)
         subprocess.run([*git, "commit", "-qm", "then"], check=True)
@@ -1122,6 +1128,8 @@ class Step08Live03Test(unittest.TestCase):
         rehash(self.run / "03-advertise")
         run = repo / "findings" / self.run.name
         shutil.copytree(self.run, run)
+        if rotate == "before":
+            rotated()
         subprocess.run([*git, "checkout", "-qb", "pr"], check=True)
         if reissue:
             commitment = repo / "nodes" / "commitments" / f"{node_id}.json"
@@ -1131,6 +1139,8 @@ class Step08Live03Test(unittest.TestCase):
         subprocess.run([*git, "checkout", "-q", "main"], check=True)
         subprocess.run([*git, "merge", "-q", "--no-ff" if merge else "--ff-only", "-m", "Merge pull request", "pr"],
                        check=True)
+        if rotate == "after":
+            rotated()
         subprocess.run([*git, "remote", "add", "origin", "https://github.com/evidence-network/loop.git"], check=True)
         subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "main"], check=True)
         return repo, run
@@ -1153,6 +1163,20 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
         self.assertEqual(self.head_relies(f), [], f["not_checked"])
         self.assertEqual(self.unanchored(f), [], f["not_checked"])
+
+    def test_a_key_rotated_after_publication_still_holds_and_one_rotated_before_does_not(self):
+        # loop#280 end to end: the run is held to the listing of the merge that published it, never to a later
+        # one and never to an earlier one its own signed times might point at.
+        for rotate, status in (("after", "reproduced"), ("before", "not_reproduced")):
+            with self.subTest(rotate):
+                self.tearDown()
+                self.setUp()
+                repo, run = self.published(rotate=rotate)
+                f, entries = self.verify_in(repo, run)
+                e = entries["03-advertise"]
+                self.assertEqual(e["status"], status, e)
+                if status == "not_reproduced":
+                    self.assertIn("not the key the nodes/ listings 03 is held to give", e["not_checked"]["why"])
 
     def test_commitments_re_issued_in_the_publishing_merge_are_named(self):
         # The merge that published 03 holds another commitment than carrier.json's commit: 03 rests on its record.
@@ -2010,6 +2034,28 @@ class Step08PublicationTest(unittest.TestCase):
         self.pr("break", lambda: (self.repo / step.EXCLUSIONS).write_text("not json\n"))
         self.assertIsNone(self.anchor()[0])
 
+    def test_an_exclusion_that_is_not_a_full_commit_id_makes_the_file_unreadable(self):
+        merged = self.pr("findings", self.write_step)
+        self.pr("exclude", lambda: dump(self.repo / step.EXCLUSIONS, {"commits": [{"commit": merged},
+                                                                                  {"commit": merged[:12]}]}))
+        self.assertEqual(self.anchor(), (None, f"{step.EXCLUSIONS} on origin/main is not readable"))
+
+    def test_a_file_deleted_from_a_published_step_or_added_to_it_loses_the_anchor(self):
+        def two():
+            self.write_step()
+            (self.step / "more.json").write_text("{}\n")
+        merged = self.pr("findings", two)
+        (self.step / "more.json").unlink()
+        self.assertIsNone(self.anchor()[0])
+        (self.step / "more.json").write_text("{}\n")
+        self.assertEqual(self.anchor()[0], merged)
+        (self.step / "extra.json").write_text("{}\n")
+        self.assertIsNone(self.anchor()[0])
+
+    def test_a_file_name_git_would_quote_is_still_anchored(self):
+        merged = self.pr("findings", lambda: (self.write_step(), (self.step / "café \"x\".json").write_text("{}\n")))
+        self.assertEqual(self.anchor(), (merged, None))
+
     def test_a_foreign_origin_a_local_main_or_a_shallow_clone_gives_no_anchor(self):
         self.pr("findings", self.write_step)
         self.git("remote", "set-url", "origin", "https://github.com/someone/loop.git")
@@ -2053,8 +2099,14 @@ class Step08PublicationTest(unittest.TestCase):
             self.assertEqual(step.join_commitment_books(), {"k": {("book", "key")}})
 
     def test_verify_run_reads_each_steps_inputs_at_its_anchor_and_names_a_step_without_one(self):
-        merged = self.pr("findings", self.write_step)
+        def inputs(name):
+            (self.repo / "lab" / "witness").mkdir(parents=True, exist_ok=True)
+            (self.repo / "lab" / "witness" / "witnesses.json").write_text(name + "\n")
+            (self.repo / "lab" / "runs" / name).mkdir(parents=True, exist_ok=True)
+            (self.repo / "lab" / "runs" / name / "x").write_text("x\n")
+        merged = self.pr("findings", lambda: (self.write_step(), inputs("then")))
         self.key("22")
+        inputs("now")  # a witness listing and a join re-issued after publication
         self.commit("rotate")
         self.sync()
         (self.run / "06-settle").mkdir()
@@ -2064,6 +2116,9 @@ class Step08PublicationTest(unittest.TestCase):
         def verify_step(d, pop_dir, population, tmp, anchor=None):
             listing = Path(os.environ.get("LOOP_NODES_DIR", self.repo / "nodes")) / f"{self.NODE}.json"
             seen[d.name] = (anchor, load(listing)["key_id"])
+            if anchor:  # what the step modules read at import: 02's witness listing, 07's lab/runs
+                seen["witness"] = step.step_module("02-book").LISTING.read_text()
+                seen["runs"] = sorted(p.name for p in step.step_module("07-ask").LAB_RUNS.iterdir())
             return {"dir": d.name, "step": d.name[:2], "status": "reproduced", "relies_on": []}
         with mock.patch.object(step, "ROOT", self.repo), mock.patch.object(step, "verify_step", verify_step), \
                 mock.patch.dict(os.environ):
@@ -2072,6 +2127,7 @@ class Step08PublicationTest(unittest.TestCase):
             entries = step.verify_run(self.run, self.run / "08-verify", POPULATION, "live")
             self.assertNotIn("LOOP_NODES_DIR", os.environ)  # put back after each step
             self.assertEqual(seen["01-seal"], (merged, "11" * 32))
+            self.assertEqual((seen["witness"], seen["runs"]), ("then\n", ["then"]))
             self.assertEqual(seen["06-settle"], (None, "22" * 32))  # 06 holds nothing to a key: no anchor, no gap
             self.assertEqual([e["relies_on"] for e in entries], [[], []])
             (self.step / "capsule.json").write_text("forged\n")

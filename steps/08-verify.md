@@ -113,7 +113,7 @@ So a key retired after a run was published does not change what the run is held 
 was published is never held to it, whatever times the run's own keys signed.
 
 The anchor P of a step directory `findings/<run>/<NN>-<name>/` is the oldest merge commit (two parents) on
-`origin/main`'s first-parent line whose tree holds every file of the step with the bytes it holds now
+`origin/main`'s first-parent line whose tree holds exactly the step's files, no more and no fewer, with the bytes they hold now
 (`git hash-object --no-filters`; a symlink is a mismatch). Each step has its own anchor, since runs gain steps across
 pull requests. Only merge commits are anchors: a squash, a rebase commit or a direct push is a single-parent commit
 no review saw as a state of main, and main's ruleset allows no rebase merges. A step published by squash is anchored
@@ -126,7 +126,8 @@ A step with no anchor is re-derived with this checkout's inputs, and a reproduce
 evidence-network/loop#193 saying why: the step is not on main yet (a fresh run's own 08, or the lab pull request
 that adds it), is not under `findings/`, or this checkout cannot show its publication (its `origin` is not
 evidence-network/loop, it is a shallow clone, it has no `origin/main`, or `anchor-exclusions.json` is unreadable). A
-preset `LOOP_NODES_DIR` is honored and named the same way. Publish findings with a merge commit, so each step's
+preset `LOOP_NODES_DIR` is honored and named the same way. The exclusions and the anchors are read at this checkout's `origin/main`, so fetch
+before running 08 on published runs: a stale `origin/main` misses an exclusion made since. Publish findings with a merge commit, so each step's
 anchor is its own pull request.
 
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
