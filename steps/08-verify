@@ -1084,6 +1084,39 @@ def verify_run(run, out, pop_dir, population):
     return entries
 
 
+def nodes_at_run_commit(run, population, tmp):
+    """(LOOP_NODES_DIR to read the listings from or None, [not_checked]) for a live run. run.json's commit is the
+    repository commit loop.sh ran at: the listings are read from it (git archive), so a later key rotation does not
+    change what the run is held to. A run.json with no commit, a nodes/ that differed from it at the run's start, or a
+    commit this checkout lacks leaves the checkout's own nodes/, and says so (loop#193)."""
+    if population != "live" or os.environ.get("LOOP_NODES_DIR"):
+        return None, []
+    what = "the listed keys, read at the commit the run ran at"
+
+    def named(why):
+        return None, [{"what": what, "why": why + ", so 08 reads the listings at this checkout, where a rotated key "
+                       "would be read as the new one", "issue": TRUST_ISSUE}]
+    try:
+        doc = load(Path(run) / "run.json")
+    except (OSError, ValueError):
+        return named("there is no readable run.json")
+    commit = doc.get("commit")
+    if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+        return named("run.json pins no commit")
+    if doc.get("nodes_clean") is not True:
+        return named(f"nodes/ was not committed at {commit[:12]} when the run started")
+    have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True)
+    if have.returncode != 0:
+        return named(f"commit {commit[:12]} is not in this checkout")
+    arc = subprocess.run(["git", "-C", str(ROOT), "archive", commit, "nodes"], capture_output=True)
+    if arc.returncode != 0:
+        return named(f"git cannot read nodes/ at {commit[:12]}")
+    dest = Path(tmp) / "nodes-at-run"
+    dest.mkdir()
+    subprocess.run(["tar", "-x", "-C", str(dest)], input=arc.stdout, check=True)
+    return dest / "nodes", []
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True, type=Path)
@@ -1095,13 +1128,22 @@ def main(argv=None):
     for p in ("finding.json", "verified.json"):
         (out / p).unlink(missing_ok=True)
     population = load(a.population / "population.json")["population"]
-    entries = verify_run(out.parent, out, a.population.resolve(), population)
+    with tempfile.TemporaryDirectory(prefix="08-nodes-") as nodes_tmp:
+        at_run, key_gaps = nodes_at_run_commit(out.parent, population, nodes_tmp)
+        if at_run:
+            os.environ["LOOP_NODES_DIR"] = str(at_run)  # the steps 08 runs again read their listings from nodes_dir()
+        try:
+            entries = verify_run(out.parent, out, a.population.resolve(), population)
+        finally:
+            if at_run:
+                del os.environ["LOOP_NODES_DIR"]
 
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
     # A reproduced live step still names what it rests on, so 08 never reads PASS over it.
     not_checked += [x for e in entries if e["status"] == "reproduced" for x in e.get("relies_on", [])]
+    not_checked += key_gaps if any(e["status"] == "reproduced" for e in entries) else []
     listed = expected_steps(out.parent)
     if listed is None:
         not_checked.append({"what": "which steps the run holds",
