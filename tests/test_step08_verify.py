@@ -1837,6 +1837,20 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.plant(forge)
         self.assertEqual(entries["06-settle"]["status"], "failed")
 
+    def test_a_bundle_missing_note_carrying_a_pass_fails(self):
+        def forge(d):  # the carry-forward takes 06's word that a bundle is gone, never a pass
+            checks = load(d / "checks.json")
+            k = "counterparty_count:stevenmih-1:stevenmih-2"
+            checks[k] = {"ok": True, "detail": "stevenmih-1's check names a bundle that is missing or changed since x"}
+            dump(d / "checks.json", checks)
+            rows = load(d / "counterparty.json")
+            for r in rows:
+                if r["node"] == "stevenmih-1":
+                    r["paired"] = 5
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
     def test_an_old_shape_live_06_bundle_is_not_reproduced(self):
         def old(d):  # a live 06 from before checks.json and counterparty.json
             for n in ("checks.json", "counterparty.json"):

@@ -675,9 +675,11 @@ def rederive_06_live(m, c):
             if r["status"] == "FAIL":
                 checks[what] = {"ok": False, "detail": f"{me}'s book contradicts {peer}'s signed bundle: "
                                                        f"{r['unpaired']} unpaired"}
-            elif str((recorded_checks.get(what) or {}).get("detail")).startswith(
+            elif isinstance(recorded_checks.get(what), dict) and recorded_checks[what].get("ok") is None and str(
+                    recorded_checks[what].get("detail")).startswith(
                     f"{me}'s check names a bundle that is missing or changed since"):
-                checks[what] = recorded_checks[what]  # the bundle's bytes are not in the proof: 06's word
+                # The bundle's bytes are not in the proof: 06's word, and only ever an open check, never a pass.
+                checks[what] = {"ok": None, "detail": recorded_checks[what]["detail"]}
             elif r["status"] != "PASS" or r["paired"] != n:
                 checks[what] = {"ok": None, "detail": f"{me}'s check of {peer}'s signed bundle reads {r['status']} "
                                                       f"with {r['paired']} paired, while the books pair {n} payments "
