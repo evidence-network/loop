@@ -363,14 +363,14 @@ class Live(unittest.TestCase):
                                   sealed(self.good()[0], "2026-10-30T02:10:00Z")]) + "\n")
         _, f = self.live_run(lab)  # no build mark: every decision is judged, and the earlier build's bad one fails
         self.assertEqual(f["result"], "FAIL", f["detail"])
-        self.assertIn("the plugin build boundary is not known", f["detail"])
+        self.assertIn("no plugin build mark for lab-a, lab-b: every decision judged", f["detail"])
         (lab / "run").mkdir()
         (lab / "run" / "lab-a.build.json").write_text(json.dumps({"plugin_sha256": "e5" * 32,
                                                                   "since": "2026-10-30T01:56:21Z"}))
         _, f = self.live_run(lab)
         self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertIn("node lab-a: judged the decisions sealed since 2026-10-30T01:56:00Z, when it started on plugin "
-                      "build e5e5e5e5e5e5; 1 sealed before, by an earlier build, set aside", f["detail"])
+        self.assertIn("node lab-a: decisions since 2026-10-30T01:56:00Z (plugin build e5e5e5e5e5e5), 1 earlier set "
+                      "aside", f["detail"])
 
     def test_a_node_with_no_listing_is_not_checked(self):
         _, f = self.live_run(self.lab_with(self.good(), listed=False))
