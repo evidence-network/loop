@@ -69,7 +69,10 @@ signer) is not run. When no lab node holds a Result, the finding is
 NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
 but the live twin trigger on real traffic is Mesh-LLM/capsules-plugin#126 and the
 lab has not run one): this step never seals a record on a live node to make one.
-The run keeps nodes.json (its nodes, which were read, each announced key) beside
+When the run copied a twin-fault.json (lab.sh twins) naming a bracket a held
+Result carries, a Result whose signature holds and that names another bracket
+(an earlier twins run's, still in the ledgers) is named by bracket and set
+aside; every other Result is judged (evidence-network/loop#122). The run keeps nodes.json (its nodes, which were read, each announced key) beside
 the copied ledgers and twin-fault.json, and judges only those files
 (judge_live), so step 08 checks each Result again from the proof (loop#188).
 
@@ -619,24 +622,51 @@ def held_brackets(out, readable):
     return found
 
 
-def injected_difference(out, brackets):
-    """The lab-only fault `lab.sh twins` wrote, as copied into the proof (twin-fault.json), as a sentence that
-    labels it plainly; empty when the run copied none. The Result is then real (sealed by the plugin on lab nodes)
-    but its disagreement is injected, not organic twin traffic."""
+def in_bracket(per_party, caps, bracket):
+    """(per_party with the Results of `bracket` and every Result that is not provably another run's, {bracket:
+    count} of those set aside). A Result is set aside only when its signature check held and it carries another
+    non-empty twin_bracket_id: a ledger can still hold a Result an earlier twins run sealed under another build
+    (evidence-network/loop#122), but a line that does not verify, or names no bracket, is always judged."""
+    kept, aside = {}, {}
+    for name, rs in per_party.items():
+        kept[name] = []
+        for r in rs:
+            adj = attestation(caps.get((name, r["held"])) or {}).get("adjudication")
+            b = adj.get("twin_bracket_id") if isinstance(adj, dict) else None
+            signed = (r["checks"].get("result_signed") or {}).get("ok") is True
+            if signed and isinstance(b, str) and b and b != bracket:
+                aside[b] = aside.get(b, 0) + 1
+            else:
+                kept[name].append(r)
+    return kept, aside
+
+
+def fault_of(out, brackets):
+    """(label, bracket) of the lab-only fault `lab.sh twins` wrote, as copied into the proof (twin-fault.json): the
+    label says it plainly, and the bracket is the one whose Results this finding judges, when a held Result carries
+    it. ("", None) when the run copied none or it does not read; (a "not applied" label, None) when no held Result
+    carries its bracket."""
     src = Path(out) / "twin-fault.json"
     if not src.is_file():
-        return ""
+        return "", None
     try:
         doc = json.loads(src.read_text(encoding="utf-8"))
         inj = doc["injected_difference"]
-        if doc.get("twin_bracket_id") not in brackets:
-            return (f"twin-fault.json names bracket {doc.get('twin_bracket_id')!r}, which no Result a lab node holds "
-                    "carries: it is not applied to this finding")
+        bracket = doc.get("twin_bracket_id")
+        if bracket not in brackets:
+            return (f"twin-fault.json names bracket {bracket!r}, which no Result a lab node holds "
+                    "carries: it is not applied to this finding"), None
         return (f"INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): {inj['kind']} on "
                 f"{inj['node']} = {inj['value']!r}; the twins' model hash and weights digest are the same "
-                f"(roles {json.dumps(doc.get('roles'), sort_keys=True)}, bracket {doc.get('twin_bracket_id')})")
+                f"(roles {json.dumps(doc.get('roles'), sort_keys=True)}, bracket {bracket})"), bracket
     except (OSError, ValueError, KeyError, TypeError):
-        return ""
+        return "", None
+
+
+def injected_difference(out, brackets):
+    """The fault's label alone (fault_of): the Result is then real (sealed by the plugin on lab nodes) but its
+    disagreement is injected, not organic twin traffic."""
+    return fault_of(out, brackets)[0]
 
 
 # What the live judge reads beside the ledgers, so step 08 runs it again on the proof alone (loop#188).
@@ -707,7 +737,7 @@ def judge_live(pop, out, started):
             details.append(f"node {name}: data_dir not set or unreadable")
     for name in sorted(key_errors):
         details.append(f"node {name}: no readable node key ({key_errors[name]})")
-    fault = injected_difference(out, held_brackets(out, readable))
+    fault, bracket = fault_of(out, held_brackets(out, readable))
     if fault:
         details.append(fault)
     ledgers = {node_id: out / name / "ledger" for name, (node_id, _) in readable.items()}
@@ -717,6 +747,13 @@ def judge_live(pop, out, started):
                  for name, (node_id, _) in readable.items() if (out / name / "ledger" / RECEIVED).is_file()}
     for name in readable:
         details.append(f"node {name}: {held[name]} held Result line(s)")
+    if bracket is not None:
+        per_party, aside = in_bracket(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party}),
+                                      bracket)
+        details.append(f"judged the Results of bracket {bracket}, the one twin-fault.json names")
+        if aside:
+            details.append("set aside, not judged: " + ", ".join(
+                f"{c} Result(s) of bracket {b}" for b, c in sorted(aside.items(), key=lambda x: str(x[0]))))
     result = "NOT_CHECKED"
     (out / "checks.json").unlink(missing_ok=True)
     (out / "outcome.json").unlink(missing_ok=True)
@@ -736,7 +773,8 @@ def judge_live(pop, out, started):
                                                    "delivered to it"))
         if result != "FAIL" and not not_checked:
             result = "PASS"
-            details.append(f"for each Result a lab node holds, these held on the copied ledgers: {', '.join(CHECKS)}")
+            details.append(f"for each Result {'judged' if bracket is not None else 'a lab node holds'}, these held "
+                           f"on the copied ledgers: {', '.join(CHECKS)}")
         (out / "checks.json").write_text(json.dumps(per_party, indent=2, sort_keys=True) + "\n")
         (out / "outcome.json").write_text(json.dumps(
             outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party})),
