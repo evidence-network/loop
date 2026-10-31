@@ -1,4 +1,4 @@
-# The loop, stage 1, on the rehearsal population: nightly, on every pull request, and by hand.
+# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on every pull request, and by hand.
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -51,6 +51,39 @@ jobs:
         run: |
           set -o pipefail
           ./loop.sh --stage 1 --population rehearsal --strict --out "findings/$(date -u +%F)-rehearsal" | tee loop-summary.txt
+      # Steps 10 and 11 end to end (evidence-network/loop#206): on this run's 08 manifest, whose records are today's
+      # and so outside 10's window (12 whole closed months), and on an empty run, where 10 judges the committed
+      # stand-in run (population/rehearsal/step10/run). A FAIL, a malformed finding or an unexpected result fails
+      # the job.
+      - name: Run steps 10 and 11 on the rehearsal population
+        run: |
+          set -euo pipefail
+          run="findings/$(date -u +%F)-rehearsal"
+          standin="findings/$(date -u +%F)-rehearsal-standin"
+          for out in "$run" "$standin"; do
+            mkdir -p "$out"
+            steps/10-judge --population population/rehearsal --out "$out/10-judge"
+            steps/11-report --population population/rehearsal --out "$out/11-report"
+          done
+          python3 -B steps/finding.py check "$run"
+          python3 -B steps/finding.py check "$standin"
+          python3 -B - "$run" "$standin" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run, standin = map(Path, sys.argv[1:])
+          want = {(run, "10-judge"): "NOT_CHECKED", (run, "11-report"): "NOT_CHECKED",
+                  (standin, "10-judge"): "PASS", (standin, "11-report"): "PASS"}
+          bad = []
+          for (d, step), result in want.items():
+              f = json.loads((d / step / "finding.json").read_text())
+              print(f"{d.name} {step} {f['result']}")
+              if f["result"] != result:
+                  bad.append(f"{d.name}/{step} is {f['result']}, expected {result}: {f['detail'][:400]}")
+          window = json.loads((run / "10-judge" / "finding.json").read_text())["not_checked"]
+          if not any("window" in n["what"] or "window" in n["issue"] for n in window):
+              bad.append(f"{run.name}/10-judge is NOT_CHECKED, but not on the window: {window}")
+          sys.exit("\n".join(bad) or None)
+          PY
       - name: Upload the findings
         if: always()
         uses: actions/upload-artifact@v4
