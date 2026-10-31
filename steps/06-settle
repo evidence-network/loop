@@ -37,7 +37,15 @@ the rail's own settlement objects. The pinned Lightning adapter
 (capsules-plugin#82) reports on the node's own book only, with the wallet's
 terminal report as finality, and the lab has no rail. The step reads what each
 node recorded, lists it (recorded.json per
-node), and is NOT_CHECKED on that issue. A node with nothing recorded, or no
+node), and is NOT_CHECKED on that issue. Where a settlement observation carries
+the payment's preimage (the host passes it from mesh-llm#2744, the lexe-wallet
+build from lexe-wallet-plugin#7), the step checks finality itself: the preimage
+is 32 bytes of lowercase hex and sha256(preimage) == payment_hash. recorded.json
+keeps the check's outcome, never the preimage. A preimage that is malformed or
+does not hash to its payment hash is a FAIL: the node recorded a settlement as
+final that its own preimage does not prove. With every recorded hash proven by
+a preimage the finality gap closes, but the step stays NOT_CHECKED on the
+rail's settlement object by reference. A node with nothing recorded, or no
 readable data_dir, is NOT_CHECKED too. The step never pays: it moves no money
 with or without LOOP_LIVE_SPEND, and says so in detail.
 
@@ -46,6 +54,8 @@ step itself broke (unreadable population, no rail files).
 """
 import argparse
 import datetime as dt
+import hashlib
+import re
 import json
 import shutil
 import sys
@@ -260,12 +270,29 @@ def window_from(pop):
     return start
 
 
+HEX32 = re.compile(r"[0-9a-f]{64}")
+
+
+def preimage_check(preimage, payment_hash):
+    """The finality check on one observation (capsules-plugin adapters/lightning-v0.md, "preimage"): None when it
+    carries no preimage; "no_payment_hash" when it names no hash to check against; "malformed" when the preimage
+    is not 32 bytes of lowercase hex; "verified" when sha256(preimage) == payment_hash, else "mismatch"."""
+    if preimage is None:
+        return None
+    if not isinstance(payment_hash, str):
+        return "no_payment_hash"
+    if not isinstance(preimage, str) or not HEX32.fullmatch(preimage):
+        return "malformed"
+    return "verified" if hashlib.sha256(bytes.fromhex(preimage)).hexdigest() == payment_hash else "mismatch"
+
+
 def recorded(ledger, since=None):
     """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations.
 
     With `since`, only settlement records whose signed capsule timestamp is at or after it count; the earlier
     ones, and those with no readable timestamp, are counted in "outside_window" and "undated" and not listed.
-    Records that are neither a leg nor an observation (padding, for one) are never counted.
+    Records that are neither a leg nor an observation (padding, for one) are never counted. An observation's
+    preimage is checked (preimage_check) and only the outcome kept: the preimage itself is never listed.
     """
     legs, observed, outside, undated = [], [], 0, 0
     for line in ledger.read_text(encoding="utf-8").splitlines():
@@ -299,7 +326,8 @@ def recorded(ledger, since=None):
                              "phase": block.get("phase"), "source": block.get("source"),
                              "observed_by": block.get("observed_by"),
                              "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat"),
-                             "credited_msat": block.get("credited_msat"), "fee_msat": block.get("fee_msat")})
+                             "credited_msat": block.get("credited_msat"), "fee_msat": block.get("fee_msat"),
+                             "preimage_check": preimage_check(block.get("preimage"), block.get("payment_hash"))})
     out = {"settlement_legs": legs, "settlement_observations": observed}
     if since is not None:
         out.update(window_from=since.strftime("%Y-%m-%dT%H:%M:%SZ"), outside_window=outside, undated=undated)
@@ -367,6 +395,24 @@ def crosscheck(found):
     return {"nodes": sorted(found), "paired": paired, "unpaired": unpaired}
 
 
+def finality_of(found):
+    """({payment hash: True when a payer observation's preimage proves it}, [problems]) over all nodes' records:
+    a hash is proven when some observation of it has preimage_check "verified"; a "malformed" or "mismatch"
+    check is a problem whatever else holds."""
+    proven, problems = {}, []
+    for name, f in sorted(found.items()):
+        for o in f["settlement_observations"]:
+            check, h = o.get("preimage_check"), o.get("payment_hash")
+            if isinstance(h, str):
+                proven[h] = proven.get(h, False) or check == "verified"
+            if check in ("malformed", "mismatch"):
+                what = ("is not 32 bytes of lowercase hex" if check == "malformed"
+                        else "does not hash to its payment_hash")
+                problems.append(f"node {name}: the preimage of settlement observation {o.get('capsule_id')} "
+                                f"(payment_hash {h}) {what}")
+    return proven, problems
+
+
 def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     since = window_from(pop)
@@ -391,13 +437,14 @@ def main_live(pop, out, started):
             details.append(f"node {name}: window from {found['window_from']}: {found['outside_window']} settlement "
                            f"records before it and {found['undated']} without a timestamp left out")
         if n_legs or n_obs:
+            n_pre = sum(o["preimage_check"] == "verified" for o in found["settlement_observations"])
             details.append(f"node {name}: {n_legs} settlement legs and {n_obs} wallet-reported settlement "
-                           f"observations recorded; none is the rail's own object, so finality is not verified")
+                           f"observations recorded, {n_pre} with a preimage that hashes to its payment_hash; "
+                           "none is the rail's own object")
             not_checked.append({"what": f"settlements node {name} recorded, against the rail",
                                 "why": "the node records its wallet's report of a Lightning payment, not the rail's "
-                                       "settlement object; the pinned adapter (capsules-plugin#82) reports on the "
-                                       "node's own book with the wallet's terminal report as finality, and this "
-                                       "step does not call it yet",
+                                       "settlement object by reference; the pinned adapter (capsules-plugin#82) "
+                                       "reports on the node's own book, and this step checks only the preimages",
                                 "issue": ADAPTER_ISSUE})
         else:
             details.append(f"node {name}: no settlement recorded")
@@ -410,7 +457,21 @@ def main_live(pop, out, started):
                        "so no paid exchange has run on it and the adapter has nothing to report on")
             not_checked.append({"what": f"a settlement for an exchange of node {name}", "why": why,
                                 "issue": WALLET_ISSUE})
+    proven, problems = finality_of(hashes)
+    unproven = sorted(h for h, ok in proven.items() if not ok)
+    if proven:
+        details.append(f"finality: {len(proven) - len(unproven)} of {len(proven)} recorded payment hashes proven by "
+                       "a preimage (sha256(preimage) == payment_hash)")
+    if unproven:
+        not_checked.append({"what": "the finality of the payments the nodes recorded with no preimage",
+                            "why": f"{len(unproven)} recorded payment hashes carry no preimage, so their finality is "
+                                   "only the wallet's terminal report (the host passes the preimage from "
+                                   "mesh-llm#2744, with the lexe-wallet-plugin#7 build)",
+                            "issue": ADAPTER_ISSUE})
     if pop.get("crosscheck") == "payment_hash":
+        preimages = (f"{len(unproven)} of {len(proven)} recorded payment hashes carry no preimage" if unproven
+                     else "every recorded payment hash is proven by its preimage, but not against the rail's object"
+                     if proven else "no payment hash carries a preimage")
         if len(hashes) > 1:
             cross = crosscheck(hashes)
             (out / "crosscheck.json").write_text(json.dumps(cross, indent=2, sort_keys=True) + "\n")
@@ -422,11 +483,10 @@ def main_live(pop, out, started):
             why = ("the nodes' records " + ("pair every payment hash they recorded" if n_ok and not n_bad
                                             else "leave some payment hashes unpaired" if n_bad
                                             else "hold no payment hash to compare")
-                   + ", and either way they are records of wallet-reported payments; the pinned adapter has no "
-                     "preimage finality")
+                   + ", and either way they are records of wallet-reported payments; " + preimages)
         else:
             details.append("payment hash comparison requested but fewer than two nodes were read, so it was not run")
-            why = "fewer than two nodes' ledgers were readable, so no comparison ran; and the pinned adapter has no preimage finality"
+            why = "fewer than two nodes' ledgers were readable, so no comparison ran; and " + preimages
         not_checked.append({"what": "that the payment hashes the nodes recorded settled, with their preimages",
                             "why": why, "issue": ADAPTER_ISSUE})
     if pop.get("rail") is None:
@@ -437,8 +497,10 @@ def main_live(pop, out, started):
                                    "pinned Lightning adapter checks the node's own book, with no preimage and no "
                                    "settlement object by reference on a rail",
                             "issue": WALLET_ISSUE})
-    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=ASSERTS, pinned=pinned,
-                  proof=proof, detail="; ".join(details) + ". " + SPEND, not_checked=not_checked, started=started)
+    details += problems
+    finding.write(out, result="FAIL" if problems else "NOT_CHECKED", population=pop["population"], asserts=ASSERTS,
+                  pinned=pinned, proof=proof, detail="; ".join(details) + ". " + SPEND, not_checked=not_checked,
+                  started=started)
     return 0
 
 
