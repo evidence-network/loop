@@ -427,6 +427,7 @@ class WatchTest(unittest.TestCase):
             del e["disclosure"]["pair_edges"]
             f.write_text(json.dumps(e))
             data = run(Path(tmp) / "_site", nodes=nodes)
+            page = (Path(tmp) / "_site" / "watch" / "index.html").read_text(encoding="utf-8")
         before, after = on(self.data, "live", "2026-11-02"), on(data, "live", "2026-11-02")
         self.assertTrue(any(nid(4) in (x["from"], x["to"]) for x in before["edges"]))
         self.assertFalse(any(nid(4) in (x["from"], x["to"]) for x in after["edges"]))
@@ -435,10 +436,18 @@ class WatchTest(unittest.TestCase):
         deal = after["measured"]["deal"]
         self.assertEqual(deal["drawn"] + deal["withheld"], before["measured"]["deal"]["drawn"])
         self.assertIn("disclosure.pair_edges", deal["why_withheld"])
-        # The charts still count every deal; only the lines are withheld.
-        point = lambda d, key: next(p for m in d["metrics"] if m["key"] == key for p in m["points"]  # noqa: E731
-                                    if p["date"] == "2026-11-02")
-        self.assertEqual(point(data["views"]["live"], "deals"), point(self.data["views"]["live"], "deals"))
+        # The charts still count every deal and settlement, on every day; only the lines are withheld.
+        values = lambda v, key: [(p["date"], p.get("value")) for m in v["metrics"] if m["key"] == key  # noqa: E731
+                                 for p in m["points"]]
+        for key in ("deals", "settlements"):
+            self.assertEqual(values(data["views"]["live"], key), values(self.data["views"]["live"], key), key)
+        withheld = sum(d["measured"][k].get("withheld_answered", 0) for d in data["views"]["live"]["days"]
+                       for k in ("deal", "settle", "ask07") if d["measured"][k]["measured"])
+        answered = lambda v: sum(x["outcome"] == "answered" for d in v["days"] for x in d["edges"])  # noqa: E731
+        self.assertEqual(answered(data["views"]["live"]) + withheld, answered(self.data["views"]["live"]))
+        # The page says so: the no-script table and the script's notes name the withheld count.
+        self.assertIn(f"; {deal['withheld']} withheld</td>", page)
+        self.assertIn('m.withheld + " withheld"', self.js)
         # The rehearsal is the loop's own TEST population and is not gated.
         self.assertEqual(data["views"]["rehearsal"], self.data["views"]["rehearsal"])
 

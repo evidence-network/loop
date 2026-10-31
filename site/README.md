@@ -220,7 +220,7 @@ each on-demand run in time order among them:
 A view's `metrics`: one `{key, label, points}` per chart (`nodes`, `records`,
 `answered`, `refused`, `absent`, `deals`, `settlements`), each point
 `{date, set, label, value}`, with `says` when `value` is `null` and
-`not_drawn` for a step's count. `deals` and `settlements` count withheld edges too. They have no on-demand
+`not_drawn` for a step's count. `deals` and `settlements` count withheld edges too, with `withheld` on the point. They have no on-demand
 points: those steps run in the daily loop only.
 
 A step's edge, from its finding's own files: 05, a receiver holding the

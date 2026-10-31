@@ -255,8 +255,9 @@
       if (m.measured && k === "ask") {
         li.textContent = what + ": " + asks.length + " rings, from " + m.source;
       } else if (m.measured) {
-        li.textContent = what + ": " + m.drawn + " drawn, " + m.not_drawn + " not drawn, from " + m.finding +
-          " (" + m.result + ")" + (m.not_drawn ? "; not drawn: " + m.why_not_drawn : "");
+        li.textContent = what + ": " + m.drawn + " drawn, " + m.not_drawn + " not drawn" +
+          (m.withheld ? ", " + m.withheld + " withheld" : "") + ", from " + m.finding + " (" + m.result + ")" +
+          (m.not_drawn ? "; not drawn: " + m.why_not_drawn : "") + (m.withheld ? "; withheld: " + m.why_withheld : "");
       } else {
         li.textContent = what + ": " + m.says;
       }
@@ -409,7 +410,8 @@
     return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
   }
   function cellText(p) {
-    return p.value === null ? p.says : String(p.value) + (p.not_drawn ? " (" + p.not_drawn + " not drawn)" : "");
+    return p.value === null ? p.says : String(p.value) + (p.not_drawn ? " (" + p.not_drawn + " not drawn)" : "") +
+      (p.withheld ? " (" + p.withheld + " withheld)" : "");
   }
 
   function charts() {

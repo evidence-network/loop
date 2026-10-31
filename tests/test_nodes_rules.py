@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -48,6 +49,10 @@ class EntryRulesTest(unittest.TestCase):
         self.assertEqual(len(errs), 1, errs)
         self.assertIn("pair_edges", errs[0])
         self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
+        # The gate is a decision made with the consent text: only the constant opens it.
+        with mock.patch.object(check_nodes, "CONSENT_NAMES_PAIR_EDGES", True):
+            self.assertEqual(self.check(disclosure=dict(disc, pair_edges="public")), [])
+            self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
 
     def test_the_fixture_cases(self):
         self.assertEqual(errors(CASES / "good"), [])

@@ -29,6 +29,9 @@ CONSENT = (
     "not answer, is published at https://evidence-network.github.io/loop/stats/. "
     "To leave, remove this entry: the asks stop on the next run, and past reports stay."
 )
+# Whether CONSENT names the /watch/ page's public pair edges (who dealt with whom). It does not, so no entry may
+# set disclosure.pair_edges. Turning this on is a decision made with the consent text, never a string match.
+CONSENT_NAMES_PAIR_EDGES = False
 # A GitHub handle: alphanumerics and single inner hyphens, at most 39 characters.
 GITHUB_HANDLE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -92,7 +95,7 @@ def check_entry(path, entry):
                 errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)}")
             # Opting in to public pair edges on /watch/ (who dealt with whom, evidence-network/loop#77) needs a
             # consent that names them; the statement does not yet, so no entry can opt in (Sherlock2, Buzz d15c87ad).
-            if "pair_edges" in disc and (disc["pair_edges"] != "public" or "/watch/" not in CONSENT):
+            if "pair_edges" in disc and (disc["pair_edges"] != "public" or not CONSENT_NAMES_PAIR_EDGES):
                 errs.append(f"{path.name}: disclosure.pair_edges must be \"public\", and only once the consent "
                             "statement names the /watch/ page's pair edges; it does not yet")
     return errs

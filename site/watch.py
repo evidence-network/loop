@@ -613,9 +613,10 @@ def point(d, key):
         if not m["measured"]:
             return {"value": None, "says": m["says"]}
         # A settlement that did not hold is drawn (dashed or dotted) but is not counted as a settlement.
+        held = {"withheld": m["withheld"]} if m.get("withheld") else {}
         if key == "settlements":
-            return {"value": m["answered"] + m.get("withheld_answered", 0), "not_drawn": m["not_drawn"]}
-        return {"value": m["drawn"] + m.get("withheld", 0), "not_drawn": m["not_drawn"]}
+            return {"value": m["answered"] + m.get("withheld_answered", 0), "not_drawn": m["not_drawn"]} | held
+        return {"value": m["drawn"] + m.get("withheld", 0), "not_drawn": m["not_drawn"]} | held
     if d["run"] != "settled":
         return {"value": None, "says": "no file" if d["run"] == "no_file" else "the reporter missed it"}
     if key == "nodes":
@@ -699,7 +700,8 @@ def day_row(d):
         if m["measured"]:
             got = [x for x in d["edges"] if x["kind"] == kind]
             words = ", ".join(f"{sum(1 for x in got if x['outcome'] == o)} {o}" for o in OUTCOMES)
-            cells.append(f'<td data-k="{kind}">{words}; {m["not_drawn"]} not drawn</td>')
+            held = f'; {m["withheld"]} withheld' if m.get("withheld") else ""
+            cells.append(f'<td data-k="{kind}">{words}; {m["not_drawn"]} not drawn{held}</td>')
         else:
             cells.append(f'<td data-k="{kind}" class="unmeasured">{e(m["says"])}</td>')
     return f'<tr data-date="{e(d["date"])}" data-set="{e(d["set"])}">{"".join(cells)}</tr>'
@@ -725,7 +727,8 @@ def table(name, v, which):
 def metric_cell(p):
     if p["value"] is None:
         return f'<td data-v class="unmeasured">{e(p["says"])}</td>'
-    extra = f' ({p["not_drawn"]} not drawn)' if p.get("not_drawn") else ""
+    extra = (f' ({p["not_drawn"]} not drawn)' if p.get("not_drawn") else "") + (
+        f' ({p["withheld"]} withheld)' if p.get("withheld") else "")
     return f'<td data-v>{p["value"]}{extra}</td>'
 
 
