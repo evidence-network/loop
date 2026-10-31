@@ -75,6 +75,10 @@ _loader05 = importlib.machinery.SourceFileLoader("step05_deal_for_report", str(H
 step05 = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader05.name, _loader05))
 _loader05.exec_module(step05)
 
+_loader02 = importlib.machinery.SourceFileLoader("step02_book_for_report", str(HERE / "02-book"))
+step02 = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader02.name, _loader02))
+_loader02.exec_module(step02)
+
 SETUP_ISSUE = "evidence-network/loop: steps/11-report.setup.sh, run where 11 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs steps 08 and 10 before step 11"
 LIVE_KEY_ISSUE = judge10.JUDGE_KEY_ISSUE  # the live judge public key, population/live/step10/keys/judge.pub.pem
@@ -533,6 +537,21 @@ def run_inputs(run):
     return judged, run
 
 
+def join_profile(book_dir):
+    """The profile join.sh made for the book under `book_dir`: the one under its config whose store is book_dir/book.
+    join.sh names it after its --name (lab/lab.sh passes lab-N), not after the node's name in population.json, the
+    way step 02 finds it. None when no profile has that store."""
+    want = (book_dir / "book").resolve()
+    for p in sorted((book_dir / "config" / "capsule" / "profiles").glob("*.yaml")):
+        try:
+            f = step02.profile_fields(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if f.get("connection.database") and Path(f["connection.database"]).resolve() == want:
+            return p.stem
+    return None
+
+
 def reporting_book(population, pop, keys, tmp, capsulectl):
     """(Reporter, its key) for this population, or raise NotChecked."""
     if population != "live":
@@ -547,7 +566,11 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     book_dir = live.readable(node, "book_dir", "config")
     if book_dir is None:
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable", live.ISSUE)
-    book = Reporter(book_dir, capsulectl, node["name"])
+    profile = join_profile(book_dir)
+    if profile is None:
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
+                         "book_dir has no book profile whose store is its book/ (config/capsule/profiles)", live.ISSUE)
+    book = Reporter(book_dir, capsulectl, profile)
     book.work = Path(tmp)
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 

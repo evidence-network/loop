@@ -742,6 +742,23 @@ class LiveFixtureTest(unittest.TestCase):
                          step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
         self.assertIn("report_page_seal", seal["disclosures"][seal["root"]]["agent_input"]["record_type"])
 
+    def test_the_book_profile_is_found_by_its_store_not_by_the_nodes_name(self):
+        # join.sh names the profile after its --name (lab-N), not after the population's node name.
+        self.assertEqual(step.join_profile(self.home), "lab-a")
+        self.assertIsNone(step.join_profile(self.home / "nowhere"))
+        doc = load(self.population / "population.json")
+        doc["nodes"][0]["name"] = "renamed-node"
+        dump(self.population / "population.json", doc)
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_a_book_with_no_profile_for_its_store_is_not_checked(self):
+        for p in (self.home / "config" / "capsule" / "profiles").glob("*.yaml"):
+            p.write_text(p.read_text().replace(str(self.home / "book"), str(self.home / "other")))
+        f = self.report()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertIn("no book profile whose store is its book/", f["not_checked"][0]["why"])
+
     def test_a_seal_under_another_key_fails(self):
         (self.lab / "lab-a" / "data" / "keys" / "node-key.pub.pem").write_bytes(
             (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())
