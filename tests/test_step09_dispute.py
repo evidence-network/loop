@@ -403,6 +403,69 @@ class LiveTest(Tmp):
         self.assertIn("system_prompt on lab-4 = 'Answer in French.'", r["detail"])
         self.assertIn("twin-fault.json", {p["path"] for p in r["proof"]})
 
+    def old_result(self):
+        """A Result an earlier twins run left in the requester's ledger: act() again on a copy of the rehearsal
+        population under another exchange id, so it is validly signed by the referee but of another bracket."""
+        pop = Path(self.tmp.name) / "old-pop"
+        shutil.copytree(ROOT / "population" / "rehearsal", pop)
+        doc = json.loads((pop / "step09" / "dispute.json").read_text())
+        doc["exchange"]["exchange_id"] = "earlier-run"
+        (pop / "step09" / "dispute.json").write_text(json.dumps(doc))
+        acted = Path(self.tmp.name) / "old-acted"
+        acted.mkdir()
+        step.act(pop, acted, "2026-10-27T12:00:00Z")
+        return (acted / doc["requester"] / "ledger" / step.RECEIVED).read_text().splitlines()[0]
+
+    def with_fault(self, d):
+        """lab-1's RECEIVED path, its own line, and that line's bracket, named in a twin-fault.json written to d."""
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / step.RECEIVED
+        own = path.read_text().splitlines()[-1]
+        bracket = json.loads(own)["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"][
+            "twin_bracket_id"]
+        fault = {"injected_difference": {"node": "lab-4", "kind": "system_prompt", "value": "Answer in French."},
+                 "roles": {"requester": "lab-3", "twin_a": "lab-1", "twin_b": "lab-4", "referee": "lab-2"},
+                 "twin_bracket_id": bracket}
+        (d / "twin-fault.json").write_text(json.dumps(fault))
+        return path, own, bracket
+
+    def test_an_earlier_runs_result_is_set_aside_under_the_fault_bracket(self):
+        # loop#122: an earlier twins run's Result is still in the ledger. Judged, it fails (its halves are not in
+        # this run's books); with twin-fault.json naming this run's bracket it is named and set aside.
+        d = self.copy()
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / step.RECEIVED
+        path.write_text(self.old_result() + "\n" + path.read_text())
+        self.assertEqual(self.live(d)["result"], "FAIL")  # no twin-fault.json: every held Result is judged
+        _, _, bracket = self.with_fault(d)
+        r = self.live(d)
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertIn(f"judged the Results of bracket {bracket}", r["detail"])
+        self.assertIn("set aside, not judged: 1 Result(s) of bracket earlier-run/pair-1", r["detail"])
+        self.assertIn("for each Result judged, these held", r["detail"])
+
+    def test_a_result_sealed_under_an_unannounced_key_is_never_set_aside(self):
+        # A line sealed under a key no lab node announced verifies under the key it names, but it is not an earlier
+        # run's referee Result: with twin-fault.json it stays judged and the step FAILs, whatever bracket it names.
+        d = self.copy()
+        path, own, _ = self.with_fault(d)
+        old = self.old_result()
+        path.write_text(old + "\n" + own + "\n")
+        with mock.patch.object(step.aac, "verify", side_effect=lambda v: ("unannounced-key", "ok")):
+            r = self.live(d)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertNotIn("set aside", r["detail"])
+
+    def test_a_result_that_does_not_verify_is_judged_whatever_its_bracket(self):
+        d = self.copy()
+        path, own, _ = self.with_fault(d)
+        tampered = json.loads(own)
+        tampered["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"] = "zz"
+        for line in (json.dumps(tampered), '{"verdict_capsule": 5}', "not json"):
+            with self.subTest(line=line[:20]):
+                path.write_text(line + "\n" + own + "\n")
+                r = self.live(d)
+                self.assertEqual(r["result"], "FAIL", r["detail"])
+                self.assertNotIn("set aside", r["detail"])
+
     def test_no_injected_difference_is_claimed_without_the_lab_file(self):
         self.assertNotIn("INJECTED", self.live(self.copy())["detail"])
         with mock.patch.dict(os.environ, {"LAB_DIR": ""}):  # no LAB_DIR: never read a file from the working directory

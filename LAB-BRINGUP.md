@@ -789,7 +789,9 @@ answer differs from twin A's under the same model hash and weights digest. No
 temperature, seed or sampler override. `twin-fault.json` records it and step 09
 says "INJECTED DIFFERENCE" in the finding. `start` keeps the bracket that `twins` added
 to `twin-fault.json` while the fault is unchanged; a changed fault starts the file over, so run `twins`
-again. The requester gets the plugin's
+again. When the run copied this twin-fault.json and a held Result carries its bracket, step 09
+judges that bracket: a Result an earlier twins run left in a ledger, signed under a lab node's
+announced key, is named and set aside (evidence-network/loop#122); without it every held Result is judged. The requester gets the plugin's
 `adjudicate_differing_twins` switch (off by default: it sends the twins' request
 and both answers to the referee) and `CAPSULES_OPENAI_API_URL` for its own API.
 
