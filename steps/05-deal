@@ -341,6 +341,7 @@ def clean(out):
 LIVE_PINNED = ["capsules", "aac-go", "evidencebook", "checkpointed-local-log"]
 LIVE_SETUP = "none: steps/05-deal.setup.sh has not installed it"
 LIVE_NEVER_TIED = "held, never tied"
+LIVE_NEVER_TIED_ISSUE = "Mesh-LLM/mesh-llm#2747"
 LIVE_DEFAULT_ABSENT = {
     "what": "each side pushing its half at completion by default",
     "why": "the pinned plugin writes its effective share_record_at_completion to sharing-effective.json in the data "
@@ -413,7 +414,7 @@ def live_never_tied(n):
     """The not_checked entry for current-build halves held and cited with no own half named (capsules-plugin#138:
     the own half had not sealed 2 s after the push arrived, no own half binds the nonce, or the nonce was
     ambiguous at seal time)."""
-    return {"what": LIVE_NEVER_TIED, "issue": live.NO_ISSUE_YET,
+    return {"what": LIVE_NEVER_TIED, "issue": LIVE_NEVER_TIED_ISSUE,
             "why": f"{n} current-build halves are cited by a record with no own_half_capsule_id, so no record of the "
                    f"node names both halves of that exchange"}
 
