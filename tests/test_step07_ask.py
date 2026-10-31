@@ -1112,10 +1112,6 @@ class ReporterBackendTest(Tmp):
                                         "--self-node", "lab-9"]), 2)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 check_commitment = step.check_commitment  # the checker 07 itself uses
 
 
@@ -1179,8 +1175,23 @@ class ReplySignatureTest(unittest.TestCase):
         moved = {**self.extract, "requests": [{"header": {"statement": {"request": {**self.request, "nonce": "m"}}}}]}
         self.assertIn("not for the request", " ".join(self.check(self.envelope(), extract=moved)))
 
-    def test_a_reply_with_no_answer_fails_and_with_no_single_sealed_request_is_left_to_the_ledger_check(self):
+    def test_a_refusal_signed_by_another_key_or_with_a_malformed_signature_fails(self):
+        self.assertIn("not the listed key", " ".join(self.check(self.refusal(key_id="b" * 64))))
+        self.assertIn("forms", " ".join(self.check({**self.envelope(), "sig": "zz"})))
+        self.assertIn("forms", " ".join(self.check({**self.envelope(), "sig": "ab" * 10})))
+
+    def test_the_signature_is_verified_even_with_no_ledger_extract(self):
+        env = self.envelope()
+        self.assertEqual(self.check(env, extract={"ledger": None}), [])
+        forged = {**env, "issued_at": "2026-10-31T12:33:04Z"}
+        self.assertIn("does not verify", " ".join(self.check(forged, extract={"ledger": None})))
+
+    def test_a_reply_with_no_answer_fails(self):
         path = Path(self.tmp.name) / "reply.json"
         path.write_text(json.dumps({"verification": {"state": "artifact"}}))
         self.assertIn("no signed answer", " ".join(step.verify_reply_signature(path, self.extract, self.key)))
         self.assertEqual(self.check(self.envelope(), extract={"ledger": None}), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

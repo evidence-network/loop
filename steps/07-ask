@@ -1316,11 +1316,11 @@ REFUSAL_SIGNED = ("issued_at", "reason", "request_digest")  # §6.3
 
 
 def verify_reply_signature(reply_path, extract, listed_key):
-    """Errors for one reply, offline and in this process: its signed answer
-    (the artifact envelope or the signed refusal) verifies under the node's listed key for the request the asker's
-    ledger sealed, whatever the plugin's own `verification` says (loop#193). The envelope's request_digest must be the
-    digest of that sealed request; an artifact's digest must be the SHA-256 of its bytes. A reply with no single sealed
-    request to bind to is not checked here: judge_sealed already fails or names that."""
+    """Errors for one reply, offline and in this process: its signed answer (the artifact envelope or the signed
+    refusal) verifies under the node's listed key, whatever the plugin's own `verification` says (loop#193). An
+    artifact's digest must be the SHA-256 of its bytes. When the asker's ledger extract holds one sealed request, the
+    answer's request_digest must also be that request's digest; without it the signature is still verified and the
+    binding is left to judge_sealed, which fails or names a missing sealed request."""
     try:
         reply = json.loads(Path(reply_path).read_text(encoding="utf-8"))
         answer = reply["answer"]
@@ -1328,17 +1328,15 @@ def verify_reply_signature(reply_path, extract, listed_key):
             raise TypeError("answer is not an object")
     except (OSError, ValueError, KeyError, TypeError) as e:
         return [f"the reply carries no signed answer ({type(e).__name__}: {e})"]
-    sealed = (extract or {}).get("requests") if isinstance(extract, dict) else None
-    if not (isinstance(sealed, list) and len(sealed) == 1):
-        return []
-    try:
-        request = sealed[0]["header"]["statement"]["request"]
-    except (KeyError, TypeError):
-        return []
     errs = []
-    digest = request_digest(request)
-    if digest is None or answer.get("request_digest") != digest:
-        errs.append("the signed answer is not for the request the asker's ledger sealed")
+    sealed = (extract or {}).get("requests") if isinstance(extract, dict) else None
+    if isinstance(sealed, list) and len(sealed) == 1:
+        try:
+            digest = request_digest(sealed[0]["header"]["statement"]["request"])
+        except (KeyError, TypeError):
+            digest = None
+        if digest is None or answer.get("request_digest") != digest:
+            errs.append("the signed answer is not for the request the asker's ledger sealed")
     if "artifact" in answer:
         key, members = answer.get("responder"), ENVELOPE_SIGNED
         try:
@@ -1357,14 +1355,7 @@ def verify_reply_signature(reply_path, extract, listed_key):
         spki = check_commitment.ED25519_SPKI + bytes.fromhex(listed_key)
     except (ValueError, TypeError, AssertionError):
         return errs + ["the answer's signature or its signed members are not in the forms §5.2 gives"]
-    with tempfile.TemporaryDirectory() as tmp:
-        msg, sigf, pub = Path(tmp) / "msg", Path(tmp) / "sig", Path(tmp) / "pub.pem"
-        msg.write_bytes(body)
-        sigf.write_bytes(sig)
-        pub.write_text("-----BEGIN PUBLIC KEY-----\n" + base64.b64encode(spki).decode() + "\n-----END PUBLIC KEY-----\n")
-        r = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(pub), "-rawin", "-in", str(msg),
-                            "-sigfile", str(sigf)], capture_output=True)
-    if r.returncode != 0:
+    if not check_commitment.verify_raw(body, sig, spki):
         errs.append("the answer's signature does not verify under the listed key")
     return errs
 
