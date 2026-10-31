@@ -416,6 +416,32 @@ class WatchTest(unittest.TestCase):
         # The script draws a pair solid from the export's line, never on its own.
         self.assertIn('p.line === "solid"', self.js)
 
+    def test_a_pair_edge_is_drawn_only_when_both_ends_opt_in(self):
+        # loop#77: an edge says who dealt with whom, so a live node whose nodes/ entry does not opt in
+        # (disclosure.pair_edges "public") has none drawn: its pairs stay dotted, the edges are only counted.
+        with tempfile.TemporaryDirectory() as tmp:
+            nodes = Path(tmp) / "nodes"
+            shutil.copytree(FIX / "nodes", nodes)
+            f = nodes / f"{nid(4)}.json"
+            e = json.loads(f.read_text())
+            del e["disclosure"]["pair_edges"]
+            f.write_text(json.dumps(e))
+            data = run(Path(tmp) / "_site", nodes=nodes)
+        before, after = on(self.data, "live", "2026-11-02"), on(data, "live", "2026-11-02")
+        self.assertTrue(any(nid(4) in (x["from"], x["to"]) for x in before["edges"]))
+        self.assertFalse(any(nid(4) in (x["from"], x["to"]) for x in after["edges"]))
+        line = {(p["a"], p["b"]): p["line"] for p in after["pairs"]}
+        self.assertEqual(line[(nid(1), nid(4))], "dotted")
+        deal = after["measured"]["deal"]
+        self.assertEqual(deal["drawn"] + deal["withheld"], before["measured"]["deal"]["drawn"])
+        self.assertIn("disclosure.pair_edges", deal["why_withheld"])
+        # The charts still count every deal; only the lines are withheld.
+        point = lambda d, key: next(p for m in d["metrics"] if m["key"] == key for p in m["points"]  # noqa: E731
+                                    if p["date"] == "2026-11-02")
+        self.assertEqual(point(data["views"]["live"], "deals"), point(self.data["views"]["live"], "deals"))
+        # The rehearsal is the loop's own TEST population and is not gated.
+        self.assertEqual(data["views"]["rehearsal"], self.data["views"]["rehearsal"])
+
     def test_no_reporter_node_in_the_export_or_the_markup(self):
         for v in self.data["views"].values():
             for d in v["days"]:

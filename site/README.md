@@ -114,7 +114,12 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
   day, passing `steps/finding.py`'s check, holds an exchange between the two
   that brought something back (a reply or a signed refusal); the line is
   labelled with the steps. Otherwise that step says "not measured yet". The
-  reporter is not drawn: the card names the node it runs on.
+  reporter is not drawn: the card names the node it runs on. On the live
+  view a pair's exchanges are drawn only when both nodes' `nodes/` entries opt
+  in (`disclosure.pair_edges: "public"`): an edge says who dealt with whom. A
+  pair with an end that does not opt in stays dotted, and the charts still
+  count its exchanges (evidence-network/loop#77). The rehearsal is the loop's
+  own TEST population and is not gated.
 - A slider steps through the days (or the rehearsal's 10-minute slots). *Play*
   runs through them; *Replay* settles the day's asks one at a time in the
   order of their attempts, a ring spreading from the node, then sends a pulse
@@ -208,14 +213,14 @@ each on-demand run in time order among them:
 | `nodes` | each node in the file: `node_id`, `state` (both questions read together, as the stats page reads them), `questions` (`checkpoints`, `history_card/1` → its state), `asked` (each ask: `question`, `state`, `outcome`, `at` (the settling attempt), `attempts`), `asks` (`answered`, `refused`, `absent`, of 2), `records_at_checkpoint`, `days_listed` (the day files it is in, to this day), `first_day`, `node_line`, `left_on`, `left`; then each node that left and is not in the file: `node_id`, `left_on`, `left: true`, `days_listed` |
 | `edges` | the step edges: `kind`, `from`, `to`, `outcome` |
 | `pairs` | every pair of shown nodes, `a` < `b`: `line` (`solid` or `dotted`) and `kinds`, the steps whose edges between the two brought something back |
-| `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, answered, not_drawn}` with `why_not_drawn` when an end is not a node of the view |
+| `measured` | per kind: `ask` → `{measured, source}` or why not; `deal`, `settle`, `ask07` → `{measured: false, step, says: "not measured yet: ..."}`, or `{measured: true, step, finding, result, drawn, answered, not_drawn}` with `why_not_drawn` when an end is not a node of the view, and `withheld`, `withheld_answered` and `why_withheld` when an end does not opt in to public pair edges (live only) |
 | `drawn` | what the graph draws: each `{id, members, bound, left, rings}`, a node (`id` its node id) or a bound group's shown subjects (`id` the group's); `rings` one per community, `{community, history, streams, since}` |
 | `links` | the lines between what is drawn: `pairs` with each end mapped to its `drawn` id, a group's inner pairs left out, `solid` if any of its pairs is |
 
 A view's `metrics`: one `{key, label, points}` per chart (`nodes`, `records`,
 `answered`, `refused`, `absent`, `deals`, `settlements`), each point
 `{date, set, label, value}`, with `says` when `value` is `null` and
-`not_drawn` for a step's count. `deals` and `settlements` have no on-demand
+`not_drawn` for a step's count. `deals` and `settlements` count withheld edges too. They have no on-demand
 points: those steps run in the daily loop only.
 
 A step's edge, from its finding's own files: 05, a receiver holding the

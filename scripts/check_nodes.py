@@ -82,13 +82,19 @@ def check_entry(path, entry):
         errs.append(f"{path.name}: ask_route must be one of {', '.join(ASK_ROUTES)}")
     disc = entry.get("disclosure")
     if "disclosure" in entry:
-        if not isinstance(disc, dict) or set(disc) != {"policy", "stranger_safe"}:
-            errs.append(f"{path.name}: disclosure must have exactly policy and stranger_safe")
+        if not isinstance(disc, dict) or not {"policy", "stranger_safe"} <= set(disc) <= {
+                "policy", "stranger_safe", "pair_edges"}:
+            errs.append(f"{path.name}: disclosure must have policy and stranger_safe, and may have pair_edges")
         else:
             if disc["policy"] not in POLICIES:
                 errs.append(f"{path.name}: disclosure.policy must be one of {', '.join(POLICIES)}")
             if not isinstance(disc["stranger_safe"], list) or sorted(disc["stranger_safe"]) != sorted(STRANGER_SAFE):
                 errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)}")
+            # Opting in to public pair edges on /watch/ (who dealt with whom, evidence-network/loop#77) needs a
+            # consent that names them; the statement does not yet, so no entry can opt in (Sherlock2, Buzz d15c87ad).
+            if "pair_edges" in disc and (disc["pair_edges"] != "public" or "/watch/" not in CONSENT):
+                errs.append(f"{path.name}: disclosure.pair_edges must be \"public\", and only once the consent "
+                            "statement names the /watch/ page's pair edges; it does not yet")
     return errs
 
 
