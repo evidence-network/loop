@@ -23,5 +23,6 @@
       "book_dir": "$LAB_DIR/nodes/lab-3/join-book"
     }
   ],
-  "rail": null
+  "rail": "lightning",
+  "settlement_checks": "$LAB_DIR/bundles"
 }

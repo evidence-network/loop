@@ -88,6 +88,18 @@ ADAPTER_ISSUE = "Mesh-LLM/capsules-plugin#83"
 WALLET_ISSUE = ADAPTER_ISSUE
 # The exchange's sealed halves and the controller declarations are step 05's component work.
 DEAL_ISSUE = "Mesh-LLM/capsules-plugin#49"
+# The live Lightning population ("rail": "lightning"), as the loop#243 ruling restates the assertion for a rail that
+# signs nothing (the coordinator and Sherlock2 under Ethan's delegation, Buzz 077d4d5b; Sherlock2's 8e23469a).
+LIGHTNING_ASSERTS = ("each paid exchange's settlement is referenced by the payment_hash its payer sealed with the "
+                     "exchange id, no hash under two exchanges, and is final by preimage (sha256 of the payer's "
+                     "preimage equals the payment_hash); one value band per side per exchange, from the capsules "
+                     "adapter's band(); each payment carries a fee paid to a third party (fee_msat > 0); the payer's "
+                     "amount equals the payee's credit plus fee; and each node's settlements with a counterparty "
+                     "equal that counterparty's checkpoint-signed settlement bundle (counterparty_count)")
+LIGHTNING_ISSUE = "evidence-network/loop#243"
+# Lightning has no public ledger: the counterparty's signed book stands in, and the gap stays named (ruling clause 5).
+PUBLIC_LEDGER_ISSUE = "evidence-network/loop#247"
+BAND_CURRENCY, BAND_ASSET_SCALE = "BTC", 11  # capsules-plugin lightning-v0 band(): msat at assetScale 11
 SPEND = ("Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND "
          "(the live run's spend is recorded by the run that pays).")
 
@@ -420,12 +432,147 @@ def finality_of(found):
     return proven, problems
 
 
+def band(amount_msat):
+    """The capsules adapter's band (lightning-v0 "Band", settlement_adapter.rs band()): {currency, decade}, where
+    decade = floor(log10(msat / 10^11)), the digits of msat minus 12; zero has no decade."""
+    return {"currency": BAND_CURRENCY, "decade": len(str(amount_msat)) - 1 - BAND_ASSET_SCALE if amount_msat else None}
+
+
+def terminal(found):
+    """The node's terminal settlement observations (phase *_settlement_observed)."""
+    return [o for o in found["settlement_observations"] if str(o.get("phase", "")).endswith("_settlement_observed")]
+
+
+def lightning_checks(found, ids, checks_dir):
+    """The ruled checks over every node's records: ({name: {ok, detail}}, published counterparty rows).
+
+    found: {node name: recorded()}; ids: {node name: node_id}; checks_dir: where lab.sh bundles wrote
+    check.<node id>.<peer node id>.json, or None. ok is True, False (a FAIL) or None (not checked)."""
+    checks = {}
+    def put(name, ok, detail):
+        checks[name] = {"ok": ok, "detail": detail}
+    # 1. Reference: each book's terminal settlements name a payment_hash and an exchange_id, one exchange per hash.
+    missing, repeated = [], []
+    for name, f in sorted(found.items()):
+        by_hash = {}
+        for o in terminal(f):
+            if not (isinstance(o.get("payment_hash"), str) and isinstance(o.get("exchange_id"), str)):
+                missing.append(f"{name}: settlement {o.get('capsule_id')}")
+                continue
+            by_hash.setdefault(o["payment_hash"], set()).add(o["exchange_id"])
+        repeated += [f"{name}: payment_hash {h} under {len(x)} exchanges" for h, x in sorted(by_hash.items()) if len(x) > 1]
+    hashes = sorted({o["payment_hash"] for f in found.values() for o in terminal(f) if isinstance(o.get("payment_hash"), str)})
+    put("reference", False if repeated else None if missing or not hashes else True,
+        "; ".join(repeated) if repeated else
+        f"settlements without a payment_hash or exchange_id: {', '.join(missing)}" if missing else
+        "no paid exchange recorded" if not hashes else
+        f"{len(hashes)} payments, each referenced by one payment_hash under one exchange in each book")
+    # 2. Final by preimage, from the payer's copy.
+    proven, problems = finality_of(found)
+    unproven = [h for h, ok in proven.items() if not ok]
+    put("finality", False if problems else None if unproven or not proven else True,
+        "; ".join(problems) if problems else
+        f"{len(unproven)} of {len(proven)} payment hashes not proven by a payer's preimage" if unproven else
+        "no payment hash recorded" if not proven else
+        f"{len(proven)} of {len(proven)} payment hashes final by the payer's preimage")
+    # 3. One band per side per exchange: the side's distinct terminal settlements, summed.
+    bands, zero = [], []
+    for name, f in sorted(found.items()):
+        sides = {}
+        for o in terminal(f):
+            if isinstance(o.get("exchange_id"), str) and is_int(o.get("amount_msat")):
+                sides.setdefault((o["exchange_id"], o.get("observed_by")), {})[o.get("payment_hash")] = o["amount_msat"]
+        for (ex, side), amounts in sorted(sides.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            b = band(sum(amounts.values()))
+            bands.append({"node": name, "exchange_id": ex, "side": side, "band": b})
+            if b["decade"] is None:
+                zero.append(f"{name} {side} {ex}")
+    put("band", False if zero else True if bands else None,
+        f"sides that settled nothing: {', '.join(zero)}" if zero else
+        ", ".join(f"{b['node']} {b['side']} {b['band']['currency']} decade {b['band']['decade']}" for b in bands)
+        if bands else "no side settled")
+    # 4. A fee paid to a third party, per payment: some observation of the hash reports fee_msat > 0.
+    unpaid = [h for h in hashes if not any(o.get("payment_hash") == h and is_int(o.get("fee_msat")) and o["fee_msat"] > 0
+                                           for f in found.values() for o in terminal(f))]
+    put("rail_fee", False if unpaid else True if hashes else None,
+        f"payments with no fee paid to a third party: {', '.join(unpaid)}" if unpaid else
+        f"each of {len(hashes)} payments carries a wallet provider's fee (fee_msat > 0)" if hashes else "no payment")
+    # 5. The two books agree: the payer's amount equals the payee's credit plus fee (loop#183's pairing rule).
+    cross = crosscheck(found)
+    one_sided = {h: why for h, why in cross["unpaired"].items()
+                 if why.startswith("recorded by") or why.startswith("no payer observation")}
+    contradicted = {h: why for h, why in cross["unpaired"].items() if h not in one_sided}
+    put("exchange_match", False if contradicted else None if one_sided or not cross["paired"] else True,
+        "; ".join(f"{h}: {why}" for h, why in sorted(contradicted.items())) if contradicted else
+        "; ".join(f"{h}: {why}" for h, why in sorted(one_sided.items())) if one_sided else
+        "no payment to pair" if not cross["paired"] else
+        f"{len(cross['paired'])} payments paired: the payer's amount equals the payee's credit plus fee")
+    # 6. counterparty_count, from each counterparty's signed bundle, for every pair of nodes that settled together.
+    rows = []
+    pairs = sorted({tuple(sorted((p["payer"], p["payee"]))) for p in cross["paired"].values()}
+                   | {tuple(sorted(why.split(" only")[0].removeprefix("recorded by ").split(", ")))
+                      for why in one_sided.values() if why.startswith("recorded by") and "," in why})
+    for a, b in pairs:
+        for me, peer in ((a, b), (b, a)):
+            what = f"counterparty_count:{me}"
+            path = checks_dir / f"check.{ids.get(me)}.{ids.get(peer)}.json" if checks_dir else None
+            try:
+                doc = json.loads(path.read_text(encoding="utf-8")) if path else None
+                cc = doc["report"]["counterparty_count"] if doc else None
+            except (OSError, ValueError, KeyError, TypeError):
+                doc, cc = None, None
+            if not isinstance(cc, dict) or doc.get("node_id") != ids.get(me) or doc.get("peer_node_id") != ids.get(peer):
+                put(what, None, f"no check of {me}'s book against {peer}'s signed bundle (run lab/lab.sh bundles)")
+                continue
+            status = cc.get("status")
+            disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
+            unpaired = len(cc.get("unpaired") or [])
+            rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"),
+                         "paired": cc.get("paired"), "unpaired": unpaired, "disclosed_settlements": disclosed,
+                         "bundle_sha256": doc.get("bundle_sha256")})
+            put(what, True if status == "PASS" else False if status == "FAIL" else None,
+                f"{me}'s {disclosed} settlements against {peer}'s signed bundle (sha256 {str(doc.get('bundle_sha256'))[:12]}): "
+                f"{status}, {cc.get('paired')} paired, {unpaired} unpaired")
+    if not pairs:
+        put("counterparty_count", None, "no two nodes settled with each other")
+    checks["public_ledger_count"] = {"ok": None, "detail": "Lightning has no public ledger; the counterparty's signed "
+                                     "book stands in (counterparty_count), and this gap stays named", "gap": True}
+    return checks, rows
+
+
+def main_lightning(pop, out, started, found, proof, details, not_checked):
+    """The live Lightning PASS path (loop#243): the ruled checks, checks.json and counterparty.json (counts and
+    bundle digests only, never a bundle) as proof."""
+    ids = {n["name"]: n.get("node_id") for n in pop["nodes"]}
+    checks, rows = lightning_checks(found, ids, live.path(pop, "settlement_checks"))
+    (out / "checks.json").write_text(json.dumps(checks, indent=2, sort_keys=True) + "\n")
+    (out / "counterparty.json").write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
+    proof += ["checks.json", "counterparty.json"]
+    judged = {k: v for k, v in checks.items() if not v.get("gap")}
+    failed = sorted(k for k, v in judged.items() if v["ok"] is False)
+    open_ = sorted(k for k, v in judged.items() if v["ok"] is None)
+    details += [f"{k}: {v['detail']}" for k, v in sorted(judged.items())]
+    not_checked += [{"what": f"step 06 {k} on the Lightning rail", "why": judged[k]["detail"], "issue": LIGHTNING_ISSUE}
+                    for k in open_]
+    result = "FAIL" if failed else "NOT_CHECKED" if not_checked else "PASS"
+    detail = "; ".join(details) + ". " + SPEND
+    if result == "PASS":
+        detail += " " + finding.outside("a public ledger's count of each node's settlements (Lightning has none; the "
+                                        "counterparty's signed book stands in)", PUBLIC_LEDGER_ISSUE)
+    finding.write(out, result=result, population=pop["population"], asserts=LIGHTNING_ASSERTS,
+                  pinned=pop.get("pinned", LIVE_PINNED), proof=proof, detail=detail, not_checked=not_checked,
+                  started=started)
+    return 0
+
+
 def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     since = window_from(pop)
     pinned = pop.get("pinned", LIVE_PINNED)
     proof, details, not_checked, hashes = [], [], [], {}
-    (out / "crosscheck.json").unlink(missing_ok=True)  # a rerun must not keep an earlier run's comparison
+    lightning = pop.get("rail") == "lightning"  # the ruled Lightning checks decide (loop#243), not the rail gaps below
+    for stale in ("crosscheck.json", "checks.json", "counterparty.json"):  # a rerun must not keep an earlier run's
+        (out / stale).unlink(missing_ok=True)
     for entry in pop["nodes"]:
         name = entry["name"]
         shutil.rmtree(out / name, ignore_errors=True)  # a rerun must not keep an earlier run's file
@@ -446,8 +593,10 @@ def main_live(pop, out, started):
         if n_legs or n_obs:
             n_pre = sum(o["preimage_check"] == "verified" for o in found["settlement_observations"])
             details.append(f"node {name}: {n_legs} settlement legs and {n_obs} wallet-reported settlement "
-                           f"observations recorded, {n_pre} with a preimage that hashes to its payment_hash; "
-                           "none is the rail's own object")
+                           f"observations recorded, {n_pre} with a preimage that hashes to its payment_hash"
+                           + ("" if lightning else "; none is the rail's own object"))
+            if lightning:
+                continue
             not_checked.append({"what": f"settlements node {name} recorded, against the rail",
                                 "why": "the node records its wallet's report of a Lightning payment, not the rail's "
                                        "settlement object by reference; the pinned adapter (capsules-plugin lightning-v0) "
@@ -455,6 +604,8 @@ def main_live(pop, out, started):
                                 "issue": ADAPTER_ISSUE})
         else:
             details.append(f"node {name}: no settlement recorded")
+            if lightning:
+                continue
             if since is not None:
                 why = (f"the node recorded no settlement in the window from {found['window_from']} "
                        f"({found['outside_window']} settlement records before it, {found['undated']} without a timestamp), "
@@ -464,6 +615,8 @@ def main_live(pop, out, started):
                        "no exchange it paid or served), so the adapter has nothing to report on")
             not_checked.append({"what": f"a settlement for an exchange of node {name}", "why": why,
                                 "issue": WALLET_ISSUE})
+    if lightning:
+        return main_lightning(pop, out, started, hashes, proof, details, not_checked)
     proven, problems = finality_of(hashes)
     unproven = sorted(h for h, ok in proven.items() if not ok)
     if proven:
