@@ -21,6 +21,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -132,8 +133,8 @@ class DoctorBackendTest(Tmp):
         self.assertEqual(r["result"], "PASS", r["detail"])
         self.assertEqual(r["not_checked"], [])
         # The record is checked by the Go verifier, the node key's role included (AAC#468); what stays outside the
-        # assertion is revocation (loop#138).
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["evidence-network/loop#138"])
+        # assertion is revocation (CB-1, agent-action-capsule#482).
+        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#482"])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -1034,13 +1035,13 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap is what the verifier leaves unchecked: revocation (loop#138). The key's role (AAC#468) is
+    """The binding gap is what the verifier leaves unchecked: revocation (CB-1, AAC#482). The key's role (AAC#468) is
     checked from its report, and no gap is loop-wide any more: the signed commitment (loop#161) is matched per node."""
 
     def test_the_binding_gap_is_revocation(self):
-        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#138")
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "action-state-group/agent-action-capsule#482")
         self.assertEqual(step.BINDING_OUTSIDE, finding.outside(step.BINDING_REVOCATION["what"],
-                                                               "evidence-network/loop#138"))
+                                                               "action-state-group/agent-action-capsule#482"))
         self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 
@@ -1283,6 +1284,49 @@ class BindingRoleTest(unittest.TestCase):
         state, detail = self.check(self.CASE["delegator"])
         self.assertEqual(state, "bad", detail)
         self.assertIn("names the node key as the delegator", detail)
+
+@needs_cross
+class BindingRevocationTest(unittest.TestCase):
+    """The statements published at nodes/revocations/<digest>.json (loop#138) go to the verifier with the binding."""
+
+    BINDINGS = json.loads((ROOT / "tests/fixtures/step05/controller-bindings.json").read_text())
+    CASE = BINDINGS["cases"]["valid-same-controller"]
+    STATEMENT = BINDINGS["revocations"]["valid-same-controller"]  # revoked_at 2026-10-12
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patch = unittest.mock.patch.dict(os.environ, {"LOOP_NODES_DIR": self.tmp.name})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.key = self.CASE["keys"][0]
+        self.digest = step.bv.verify(step.cross_language(), self.CASE["binding"], self.key,
+                                     ["2026-10-11T00:00:00Z"])[1]["binding_digest"]
+
+    def check(self, at):
+        return step.binding_check("node", self.CASE["binding"], self.digest, self.key, at)
+
+    def publish(self):
+        folder = Path(self.tmp.name) / step.bv.REVOCATIONS
+        folder.mkdir()
+        (folder / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
+
+    def test_with_none_published_revocation_is_not_checked(self):
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("revocation NOT_CHECKED: no statement in nodes/revocations/ applies; 0 published", detail)
+
+    def test_a_published_statement_that_applies_makes_the_binding_not_apply(self):
+        self.publish()
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_revocation FAIL", detail)
+
+    def test_a_statement_dated_after_the_time_asked_leaves_it_applying(self):
+        self.publish()
+        state, detail = self.check("2026-10-11T00:00:00Z")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("1 published", detail)
 
 if __name__ == "__main__":
     unittest.main()

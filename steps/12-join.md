@@ -46,8 +46,11 @@ With no published file, the detail says nothing is compared.
 
 ## What stays open
 
-- The controller binding's revocation (evidence-network/loop#138: no
-  revocation statement is read from the lab). The node key's role in its
+- The controller binding's revocation: the statements published for it at
+  `nodes/revocations/<binding_digest>.json` go to the verifier, and one that
+  applies is a failure. With none that applies, revocation is NOT_CHECKED,
+  since Controller Binding v0 registers no source a verifier could hold to be
+  complete (CB-1, action-state-group/agent-action-capsule#482). The node key's role in its
   binding is checked from the verifier's report (claim and `delegator`,
   action-state-group/agent-action-capsule#468): in a `delegated_by` binding
   the node key must be the delegate, and a node key that is the `delegator`
