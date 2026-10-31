@@ -403,6 +403,26 @@ class LiveTest(Tmp):
         self.assertIn("system_prompt on lab-4 = 'Answer in French.'", r["detail"])
         self.assertIn("twin-fault.json", {p["path"] for p in r["proof"]})
 
+    def test_only_the_results_of_the_fault_bracket_are_judged(self):
+        # A ledger can still hold a Result an earlier twins run sealed (loop#122). Here lab-1 also holds one of
+        # another bracket whose bytes no longer verify: judged, it fails the step; set aside, it is only named.
+        d = self.copy()
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / "received-adjudications.jsonl"
+        held = json.loads(path.read_text())
+        bracket = held["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"]
+        old = json.loads(json.dumps(held))
+        old["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"] = "old-run"
+        path.write_text(json.dumps(old) + "\n" + json.dumps(held) + "\n")
+        self.assertEqual(self.live(d)["result"], "FAIL")  # no twin-fault.json: every held Result is judged
+        fault = {"injected_difference": {"node": "lab-4", "kind": "system_prompt", "value": "Answer in French."},
+                 "roles": {"requester": "lab-3", "twin_a": "lab-1", "twin_b": "lab-4", "referee": "lab-2"},
+                 "twin_bracket_id": bracket}
+        (d / "twin-fault.json").write_text(json.dumps(fault))
+        r = self.live(d)
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertIn(f"judged only the Results of bracket {bracket}", r["detail"])
+        self.assertIn("set aside, not judged: 1 Result(s) of bracket old-run", r["detail"])
+
     def test_no_injected_difference_is_claimed_without_the_lab_file(self):
         self.assertNotIn("INJECTED", self.live(self.copy())["detail"])
         with mock.patch.dict(os.environ, {"LAB_DIR": ""}):  # no LAB_DIR: never read a file from the working directory
