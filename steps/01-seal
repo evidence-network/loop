@@ -181,18 +181,20 @@ def signature_check(capsule_bytes, verifier, key_id, listed, listing_expected, o
     return {"ok": True, "state": "ok", "detail": f"authored under {key_id}" + (", the key the node publishes" if listed else "")}
 
 
-def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False, own_seal=False):
-    """Every check on the sealed bytes: {name: {ok, detail}} plus the verifier's raw outputs."""
-    checks, outputs = {}, {}
+def id_checks(capsule_bytes, verifier, outputs):
+    """Class 1 and the capsule_id recomputed by the AAC Go verifier: ({class1, capsule_id}, the capsule or None
+    when the bytes are not JSON). Step 04 runs the same checks on each ledger record it reads."""
+    checks = {}
     rc, out, err = run([str(verifier), "verify"], stdin=capsule_bytes)
     outputs["verify"] = {"command": "cross_language verify", "exit": rc, "stdout": out, "stderr": err}
     checks["class1"] = {"ok": rc == 0, "detail": "Class 1 ok" if rc == 0 else f"exit {rc}: {err.strip()}"}
     try:
         capsule = json.loads(capsule_bytes)
+        if not isinstance(capsule, dict):
+            raise ValueError("not an object")
     except ValueError as e:
-        for name in ("capsule_id", "effect_class", "model", "key", "signature"):
-            checks[name] = {"ok": False, "detail": f"the sealed bytes are not JSON ({e})"}
-        return checks, outputs
+        checks["capsule_id"] = {"ok": False, "detail": f"the sealed bytes are not a JSON object ({e})"}
+        return checks, None
     carried = capsule.get("capsule_id")
     # Recompute: drop the id and the envelope fields outside its preimage, then let Go seal it.
     stripped = {k: v for k, v in capsule.items() if k not in ("capsule_id", "signature", "key_id")}
@@ -207,6 +209,17 @@ def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False
     if ok and checks["class1"]["ok"]:
         ok = out_id(outputs["verify"]["stdout"]) == carried
     checks["capsule_id"] = {"ok": ok, "detail": f"carried {carried}, recomputed {recomputed}"}
+    return checks, capsule
+
+
+def check(capsule_bytes, verifier, node_pub, listed=None, listing_expected=False, own_seal=False):
+    """Every check on the sealed bytes: {name: {ok, detail}} plus the verifier's raw outputs."""
+    outputs = {}
+    checks, capsule = id_checks(capsule_bytes, verifier, outputs)
+    if capsule is None:
+        for name in ("capsule_id", "effect_class", "model", "key", "signature"):
+            checks[name] = {"ok": False, "detail": checks["capsule_id"]["detail"]}
+        return checks, outputs
 
     effect = capsule.get("effect")
     if not isinstance(effect, dict):
