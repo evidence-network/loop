@@ -1,0 +1,86 @@
+{
+  "settlement_legs": [
+    {
+      "capsule_id": "257455f25b14ecbe2efe13ca330dfefc1656ba3594a4a6a89eaa837d660513d0",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "44545318b5c55788345162cc48c1889a38f6e25da022d532b3cac9092f7c0f32"
+      }
+    },
+    {
+      "capsule_id": "e52fca9beb9d8f19495db85ccd75da95a6e99b1cee49cab4e771027f3ab3f66b",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "dc2473b5442b3c0f0046e45de8dd3e3b1c5bd6d1195f97ec3e1775b28ceee511"
+      }
+    },
+    {
+      "capsule_id": "2a749699b62487bdede5f633d18c339b7e41b709c7c7fe14dd546ac2ac5f51c0",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "cc822db855986085a052d6e1a4b9356dec5215e9f0075d5d07247dd4a91c9343"
+      }
+    },
+    {
+      "capsule_id": "0a08c69e41bcc2c7dada137abe9f6f6f1e80763e65c4db9d4930a84b390fdaa3",
+      "leg": "payee_observed",
+      "payment_ref": {
+        "type": "ln.payment_hash",
+        "value": "20a07feea5e37a084510da6a6184b5a5e080ecd7459a591a30ce27c16792c90b"
+      }
+    }
+  ],
+  "settlement_observations": [
+    {
+      "amount_msat": 1000,
+      "capsule_id": "31b7f1983637ba756f447aefb054a94bb8730950dee1f2d8c321edda44b84efd",
+      "credited_msat": 995,
+      "exchange_id": "644fdfe3-dbe2-4f04-b632-0ae1a362b075",
+      "fee_msat": 5,
+      "observed_by": "provider",
+      "payment_hash": "44545318b5c55788345162cc48c1889a38f6e25da022d532b3cac9092f7c0f32",
+      "phase": "input_settlement_observed",
+      "preimage_check": "verified",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1000,
+      "capsule_id": "b0a9efabe5119698af12a4030e93766e19b3bd2043d2fd27d0f8d3a420d58184",
+      "credited_msat": 995,
+      "exchange_id": "42adb4af-3e3d-449b-a6be-051737c1b309",
+      "fee_msat": 5,
+      "observed_by": "provider",
+      "payment_hash": "dc2473b5442b3c0f0046e45de8dd3e3b1c5bd6d1195f97ec3e1775b28ceee511",
+      "phase": "output_settlement_observed",
+      "preimage_check": "verified",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1000,
+      "capsule_id": "2b0717226c3bb08a3579e809a9ad79483266f1e54007e6b51811dde0d90fe14a",
+      "credited_msat": 995,
+      "exchange_id": "913e9b8e-f102-4301-9f12-43ea552220e2",
+      "fee_msat": 5,
+      "observed_by": "provider",
+      "payment_hash": "cc822db855986085a052d6e1a4b9356dec5215e9f0075d5d07247dd4a91c9343",
+      "phase": "output_settlement_observed",
+      "preimage_check": "verified",
+      "source": "wallet_reported"
+    },
+    {
+      "amount_msat": 1000,
+      "capsule_id": "7f085ff9e15e87d6140ce0b9b2eca56d0ac5b9f3e9de01e6c81babbe5d986f78",
+      "credited_msat": 995,
+      "exchange_id": "b570dfd4-b232-4ebb-a7b2-44e2b2236e25",
+      "fee_msat": 5,
+      "observed_by": "provider",
+      "payment_hash": "20a07feea5e37a084510da6a6184b5a5e080ecd7459a591a30ce27c16792c90b",
+      "phase": "input_settlement_observed",
+      "preimage_check": "verified",
+      "source": "wallet_reported"
+    }
+  ]
+}

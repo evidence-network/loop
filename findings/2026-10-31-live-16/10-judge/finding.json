@@ -1,0 +1,24 @@
+{
+  "asserts": "a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 reproduced; each Result it seals cites every record in the window by digest, none missing and none extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the pinned verifier, offline, under the repository's judge key",
+  "detail": "run 2026-10-31-live-16, window 2025-10-01T00:00:00Z to 2026-10-01T00:00:00Z (12 whole closed months), deterministic pack inference-deals@0.1.0 (action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf) (no model): 0 records in the window from 0 steps. Refused, not read: 01-seal: 14 files, not a record kind of this pack; 02-book: 33 files, not a record kind of this pack; 03-advertise: 9 files, not a record kind of this pack; 04-admit: 6 files, not a record kind of this pack; 05-deal: 325 files, finished 2026-10-31T12:33:01Z, outside the window; 06-settle: 6 files, finished 2026-10-31T12:33:03Z, outside the window; 07-ask: 78 files, finished 2026-10-31T12:33:09Z, outside the window; 09-dispute: 16 files, finished 2026-10-31T12:33:09Z, outside the window; 12-join: 46 files, not a record kind of this pack. Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each. On live, the judge key is held on the lab host by the lab operator account that also runs the nodes: same operator, not an independent judge.",
+  "finished": "2026-10-31T12:33:18Z",
+  "name": "judge",
+  "not_checked": [
+    {
+      "issue": "the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months by Steven's 2026-10-29 ruling: a record is judged once its month has closed",
+      "what": "the pack over the window",
+      "why": "no record of the run is in the window 2025-10-01T00:00:00Z to 2026-10-01T00:00:00Z: each reproduced step of the pack's kinds finished outside it, or none is in the run"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [
+    {
+      "path": "window.json",
+      "sha256": "88655bb3fd789c7a4ba2ca5af4ae2ad0e2800c319f44df435b5966da30a53a1e"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-31T12:33:18Z",
+  "step": "10"
+}
