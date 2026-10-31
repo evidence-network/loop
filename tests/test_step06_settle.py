@@ -334,20 +334,26 @@ class Step06SettleTest(unittest.TestCase):
         self.assert_only_failed(["band"])
 
     # The live population: read what the nodes recorded, never pay, never PASS.
-    def live_population(self, lab):
+    def live_population(self, lab, rail=None, checks=None):
+        """The live population with each data_dir under $STEP06_LAB. `rail` None takes the generic live path (no
+        rail named); "lightning" the ruled Lightning checks (loop#243), with `checks` as settlement_checks."""
         pop = Path(self.tmp.name) / "live"
         pop.mkdir()
         doc = json.loads((ROOT / "population" / "live" / "population.json").read_text())
         for i, n in enumerate(doc["nodes"], 1):
             n["data_dir"] = f"$STEP06_LAB/lab-{i}"
+        doc["rail"] = rail
+        doc["settlement_checks"] = checks
         dump(pop / "population.json", doc)
         return pop
 
     def test_live_without_node_data_is_not_checked_and_pays_nothing(self):
+        # The committed live population names the Lightning rail (loop#243); with no LAB_DIR it reads nothing.
         r = self.run_step(ROOT / "population" / "live", env={k: v for k, v in os.environ.items() if k != "LAB_DIR"})
         self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertEqual(r["asserts"], step.LIGHTNING_ASSERTS)
         self.assertIn("Spend: none", r["detail"])
-        self.assertIn(step.WALLET_ISSUE, [n["issue"] for n in r["not_checked"]])
+        self.assertIn(step.LIGHTNING_ISSUE, [n["issue"] for n in r["not_checked"]])
         self.assertEqual(len([n for n in r["not_checked"] if n["what"].startswith("live node")]), 3)
         self.assert_clean()
 
@@ -419,6 +425,103 @@ class Step06SettleTest(unittest.TestCase):
 
     def live_with_preimage(self, preimage, payment_hash, role="payer"):
         return self.live_ledgers({1: [self.observation(preimage, payment_hash, role)]})
+
+    # The live Lightning population (loop#243): the ruled checks decide, and a full set is a PASS.
+    def paid(self, n=2, payer_fee=0, payee_fee=5, amount=1000, credited=995, payer_ex="pay-ex", payee_ex="srv-ex"):
+        """{lab index: ledger objects}: n payments lab-2 -> lab-1, each with the payer's preimage."""
+        rows = {1: [], 2: []}
+        for k in range(n):
+            pre = f"{k + 1:02x}" * 32
+            h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+            rows[2].append(self.observation(pre, h, cid=f"p{k}", exchange_id=f"{payer_ex}-{k}", fee_msat=payer_fee,
+                                            amount_msat=amount))
+            rows[1].append(self.observation(pre, h, role="provider", cid=f"s{k}", exchange_id=f"{payee_ex}-{k}",
+                                            amount_msat=amount, credited_msat=credited, fee_msat=payee_fee))
+        return rows
+
+    def checks_dir(self, status="PASS", pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1"))):
+        d = Path(self.tmp.name) / "bundles"
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir()
+        ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
+        for me, peer in pairs:
+            dump(d / f"check.{ids[me]}.{ids[peer]}.json", {
+                "node_id": ids[me], "peer_node_id": ids[peer], "bundle_sha256": "b" * 64,
+                "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": 2, "unpaired": []},
+                           "disclosed_count": {"settlements": 2},
+                           "settlements": [{"preimage": "SECRET-IN-BUNDLE-REPORT"}]}})
+        return d
+
+    def lightning(self, rows, checks=None):
+        lab = Path(self.tmp.name) / "lab"
+        shutil.rmtree(lab, ignore_errors=True)
+        shutil.rmtree(Path(self.tmp.name) / "live", ignore_errors=True)
+        for i in (1, 2, 3):
+            (lab / f"lab-{i}" / "ledger").mkdir(parents=True)
+            (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows.get(i, [])))
+        pop = self.live_population(lab, rail="lightning", checks=str(checks) if checks else None)
+        return self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+
+    def judged(self):
+        return json.loads((self.out / "checks.json").read_text())
+
+    def test_lightning_passes_on_the_ruled_checks_and_names_the_public_ledger_gap(self):
+        r = self.lightning(self.paid(), self.checks_dir())
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertEqual(r["asserts"], step.LIGHTNING_ASSERTS)
+        self.assertEqual(r["not_checked"], [])
+        self.assertEqual(finding.gaps(r["detail"]), [(
+            "a public ledger's count of each node's settlements (Lightning has none; the counterparty's signed book "
+            "stands in)", step.PUBLIC_LEDGER_ISSUE)])
+        checks = self.judged()
+        self.assertEqual({k: v["ok"] for k, v in checks.items()}, {
+            "reference": True, "finality": True, "band": True, "rail_fee": True, "exchange_match": True,
+            "counterparty_count:stevenmih-1": True, "counterparty_count:stevenmih-2": True, "public_ledger_count": None})
+        self.assertIn("stevenmih-2 payer BTC decade -8", checks["band"]["detail"])  # 1,000 msat = 1 sat, per exchange
+        rows = json.loads((self.out / "counterparty.json").read_text())
+        self.assertEqual({(x["node"], x["peer"], x["status"], x["bundle_sha256"]) for x in rows},
+                         {("stevenmih-1", "stevenmih-2", "PASS", "b" * 64), ("stevenmih-2", "stevenmih-1", "PASS", "b" * 64)})
+        out = "".join(f.read_text() for f in self.out.rglob("*") if f.is_file())
+        self.assertNotIn("SECRET-IN-BUNDLE-REPORT", out)  # only counts and the digest leave the check file
+        self.assertNotIn("01" * 32, out)  # nor any preimage
+        self.assert_clean()
+
+    def test_lightning_without_the_counterparty_checks_is_not_checked(self):
+        r = self.lightning(self.paid())
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertEqual(sorted(n["what"] for n in r["not_checked"]),
+                         ["step 06 counterparty_count:stevenmih-1 on the Lightning rail",
+                          "step 06 counterparty_count:stevenmih-2 on the Lightning rail"])
+        self.assertIn("run lab/lab.sh bundles", r["not_checked"][0]["why"])
+
+    def test_lightning_fails_on_each_ruled_check(self):
+        repeated = self.paid()
+        again = json.loads(json.dumps(repeated[2][0]))  # the same payment sealed again under another exchange
+        again["capsule_id"] = "p-again"
+        again["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"]["exchange_id"] = "other-ex"
+        repeated[2].append(again)
+        for rows, checks, failed in ((self.paid(payee_fee=0), "PASS", "rail_fee"),
+                                     (self.paid(credited=990), "PASS", "exchange_match"),
+                                     (self.paid(), "FAIL", "counterparty_count:stevenmih-1"),
+                                     (repeated, "PASS", "reference")):
+            with self.subTest(failed=failed):
+                r = self.lightning(rows, self.checks_dir(status=checks))
+                self.assertEqual(r["result"], "FAIL", r["detail"])
+                self.assertIs(self.judged()[failed]["ok"], False, self.judged()[failed])
+
+    def test_lightning_finality_comes_from_the_payers_preimage(self):
+        rows = self.paid(n=1)
+        rows[2][0]["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"].pop("preimage")
+        r = self.lightning(rows, self.checks_dir())
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIsNone(self.judged()["finality"]["ok"])
+
+    def test_the_band_is_the_adapters(self):
+        self.assertEqual(step.band(1), {"currency": "BTC", "decade": -11})
+        self.assertEqual(step.band(1000), {"currency": "BTC", "decade": -8})
+        self.assertEqual(step.band(250_000), {"currency": "BTC", "decade": -6})
+        self.assertEqual(step.band(100_000_000_000), {"currency": "BTC", "decade": 0})
+        self.assertEqual(step.band(0), {"currency": "BTC", "decade": None})
 
     def files_out(self):
         return "".join(f.read_text() for f in self.out.rglob("*") if f.is_file())

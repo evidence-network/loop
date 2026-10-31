@@ -52,6 +52,25 @@ object by reference. A node with nothing recorded, or no readable data_dir, is
 NOT_CHECKED too. The step never pays: it moves no money with or without
 LOOP_LIVE_SPEND, and says so in detail.
 
+On the live Lightning population (`"rail": "lightning"`) the step judges the
+assertion as the loop#243 ruling restates it for a rail that signs nothing
+(LIGHTNING_ASSERTS), over every node's terminal settlement observations:
+- reference: each names a payment_hash and an exchange_id, and no book holds
+  one hash under two exchanges (a FAIL);
+- finality: every payment hash is proven by the payer's preimage;
+- band: one band per side per exchange, from the capsules adapter's band();
+- rail_fee: each payment carries a fee paid to a third party (fee_msat > 0);
+- exchange_match: the payer's amount equals the payee's credit plus fee, for
+  every hash two nodes hold (loop#183's pairing rule);
+- counterparty_count:<node>: for each pair of nodes that settled together, the
+  node's settlement_check of its book against the other's checkpoint-signed
+  settlement bundle, read from the population's settlement_checks dir
+  (check.<node id>.<peer node id>.json, written by lab/lab.sh bundles).
+checks.json and counterparty.json (the counts, the status and each bundle's
+sha256; never a bundle, a record or a preimage) are the proof. A failed check is
+a FAIL, an open one NOT_CHECKED, and all of them a PASS whose detail names the
+gap outside it: Lightning has no public ledger (loop#247).
+
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (unreadable population, no rail files).
 """
@@ -362,8 +381,10 @@ def is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def crosscheck(found):
-    """Compare the payment hashes the nodes recorded. found: {node: recorded()}.
+def crosscheck(found, every_node=True):
+    """Compare the payment hashes the nodes recorded. found: {node: recorded()}. With every_node a hash every node
+    did not record is unpaired (the demo's two nodes share every payment); without it, two nodes holding it suffice
+    (a live population where each payment is between two of its nodes).
 
     A hash is paired when all its payer observations are on one node with one amount_msat, all its provider
     observations are on another node with one credited_msat + fee_msat, and the two amounts are equal (repeated
@@ -389,7 +410,7 @@ def crosscheck(found):
                     malformed.append(name)  # no role, or a role without integer amounts
         payer_nodes, payee_nodes = sorted({n for n, _ in payers}), sorted({n for n, _ in payees})
         payer_amts, payee_amts = sorted({a for _, a in payers}), sorted({a for _, a in payees})
-        if len(names) < len(found):
+        if len(names) < (len(found) if every_node else 2):
             unpaired[h] = f"recorded by {', '.join(sorted(names))} only"
         elif malformed:
             unpaired[h] = (f"an observation on {', '.join(sorted(set(malformed)))} has no payer or provider role "
@@ -498,7 +519,7 @@ def lightning_checks(found, ids, checks_dir):
         f"payments with no fee paid to a third party: {', '.join(unpaid)}" if unpaid else
         f"each of {len(hashes)} payments carries a wallet provider's fee (fee_msat > 0)" if hashes else "no payment")
     # 5. The two books agree: the payer's amount equals the payee's credit plus fee (loop#183's pairing rule).
-    cross = crosscheck(found)
+    cross = crosscheck(found, every_node=False)
     one_sided = {h: why for h, why in cross["unpaired"].items()
                  if why.startswith("recorded by") or why.startswith("no payer observation")}
     contradicted = {h: why for h, why in cross["unpaired"].items() if h not in one_sided}

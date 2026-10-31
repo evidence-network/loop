@@ -590,8 +590,13 @@ Stage 1 does not include step 06 either. `lab/lab.sh settle` runs `steps/06-sett
 on `population/live` into the same `findings/<date>-live/` as `06-settle/`, then
 checks the finding contract over the whole directory. It reads each node's
 capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) and
-pays nothing. The live population names no rail, so the finding reads
-NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
+pays nothing. The live population names the Lightning rail, so 06 judges the
+loop#243 checks: each payment's reference, its finality by the payer's preimage,
+one band per side per exchange, a fee paid to a third party, the two books'
+amounts, and each node's `counterparty_count` from `lab/lab.sh bundles` (run it
+first, after the paid exchanges). All of them pass for a PASS, whose detail
+names the one gap outside it (no public ledger, loop#247). `pack` takes
+`06-settle/` with the rest of the day's findings.
 
 A node pays only when its host has a wallet, in two parts, each run as
 intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
