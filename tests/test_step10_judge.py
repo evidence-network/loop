@@ -855,6 +855,7 @@ class PreviewTest(Base):
         self.assertIn("window 2026-10-01T00:00:00Z to 2026-11-01T00:00:00Z (the open month)", f["detail"])
         out = self.preview / "10-judge"
         w = load(out / "window.json")
+        self.assertEqual(w["manifest_sha256"], finding.sha256(self.run / "08-verify" / "verified.json"))
         self.assertEqual((w["preview"], w["start"], w["end"], w["periods"]),
                          ("open-month", "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z", 1))
         self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
@@ -881,6 +882,7 @@ class PreviewTest(Base):
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertTrue(f["detail"].startswith(finding.PREVIEW))
         self.assertEqual(load(self.preview / "10-judge" / "window.json")["records"], [])
+        self.assertEqual(f["not_checked"][0]["issue"], step.PREVIEW_ISSUE)  # not the closed-month window's gap
 
 
 if __name__ == "__main__":

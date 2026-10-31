@@ -48,9 +48,11 @@ A rehearsal run with neither 08-verify/ nor 10-judge/ runs step 10 into
 OUT/standin/10-judge, which judges the committed stand-in run, and the detail
 says so. Live records are collected by the operator from the lab's own nodes,
 never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
+
 --preview-open-month (evidence-network/loop#242) reports over step 10's open-month preview, PREVIEW/10-judge (written by
 `10-judge --preview-open-month --run RUN`), with 08's manifest and the records from RUN (--run). The only 10-judge it
-accepts is a preview one, and a run without --preview-open-month refuses a preview one. It is never a baseline result:
+accepts is a preview one judged from RUN's own 08 manifest (window.json names its sha256), and a run without
+--preview-open-month refuses a preview one. It is never a baseline result:
 it writes only --out (outside RUN and findings/), never runs step 10 itself, and every finding it writes has a detail
 that starts with finding.PREVIEW, which the ecosystem gate refuses.
 
@@ -143,6 +145,18 @@ def read_judge(judged, preview=False):
                           "why": f"step 10 is NOT_CHECKED, so there is no Result to report: {x['why']}",
                           "issue": x["issue"]} for x in record["not_checked"]])
     return record
+
+
+def check_preview_pairing(judged, source):
+    """A preview 10 is of the manifest in `source` (--run): a stale 10-judge beside --out is refused. Raises Refused."""
+    try:
+        w = load(judged / "window.json")
+    except (OSError, ValueError):
+        raise Refused("step 10's preview has no readable window.json, so it cannot be tied to --run's manifest")
+    manifest = source / "08-verify" / "verified.json"
+    if not (isinstance(w, dict) and w.get("preview") == "open-month" and manifest.is_file()
+            and w.get("manifest_sha256") == finding.sha256(manifest)):
+        raise Refused("step 10's preview was not judged from --run's 08 manifest (window.json names another or none)")
 
 
 def check_records(manifest, cited):
@@ -554,6 +568,8 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
     judged, source, is_standin = run_inputs(run, out, population, population_dir, preview)
     record = read_judge(judged, preview)
+    if preview:
+        check_preview_pairing(judged, source)
     try:
         manifest, _ = judge10.read_manifest(source)
     except judge10.NotChecked as e:

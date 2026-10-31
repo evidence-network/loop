@@ -131,5 +131,15 @@ class FindingTest(unittest.TestCase):
             self.write(proof=[str(self.step / "capsule.json")])
 
 
+class PreviewMarkerTest(unittest.TestCase):
+    def test_the_marker_is_read_from_the_start_of_detail_only(self):
+        self.assertTrue(finding.is_preview({"detail": finding.PREVIEW + ". run r"}))
+        self.assertFalse(finding.is_preview({"detail": "run r. " + finding.PREVIEW}))
+        self.assertFalse(finding.is_preview({"detail": "PREVIEW: open month"}))
+        self.assertFalse(finding.is_preview({}))
+        self.assertFalse(finding.is_preview("not a record"))
+        self.assertFalse(finding.is_preview({"detail": None}))
+
+
 if __name__ == "__main__":
     unittest.main()

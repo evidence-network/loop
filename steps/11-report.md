@@ -104,8 +104,8 @@ steps/11-report --population population/live --preview-open-month --run findings
 
 Run it after `10-judge --preview-open-month` (see steps/10-judge.md) with the same `--run`, and `--out` in the same
 preview directory: 11 reads 10's open-month Results from `preview/<date>-live/10-judge` beside `--out`, and 08's
-manifest and the records from `--run`. It accepts only a preview 10 (a 10 whose detail starts with `finding.PREVIEW`),
-never runs 10 itself and never uses the stand-in; a run without the flag refuses a preview 10. Its `report.json`
+manifest and the records from `--run`. It accepts only a preview 10 (a 10 whose detail starts with `finding.PREVIEW`)
+whose `window.json` names `--run`'s 08 manifest by sha256, never runs 10 itself and never uses the stand-in; a run without the flag refuses a preview 10. Its `report.json`
 says `preview: "open-month"`, and every finding it writes starts its `detail` with
 `PREVIEW: open month, not a baseline result`, which `scripts/ecosystem_gate.py` refuses. `--out` may not lie inside
 `--run`, `findings/` or `baseline/`. The flag is the only change: the baseline report is as before (loop#242).

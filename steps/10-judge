@@ -52,7 +52,8 @@ its detail says the records are that stand-in, not this run's:
 as-of instant, e.g. 2026-10-01 to 2026-11-01, with the same pinned pack and the same judge key. It is a look at records
 before their month closes, never a baseline result: the baseline window stays 12 whole closed months. It reads RUN
 (--run, which holds 08-verify/, never the stand-in) and writes only --out, which may not lie inside RUN or findings/;
-every finding it writes has a detail that starts with finding.PREVIEW, which the ecosystem gate refuses.
+every finding it writes has a detail that starts with finding.PREVIEW, which the ecosystem gate refuses. Its
+window.json names the sha256 of the manifest it judged, so step 11 can refuse a preview of another run.
 
 PASS when every check held and every step 08 lists was reproduced; FAIL when a
 check did not hold; NOT_CHECKED when the window holds no record, a step is not
@@ -91,6 +92,7 @@ JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh 
 # under Steven's delegation, Buzz 8a67299d (the lab account that runs the nodes has passwordless sudo on the lab host).
 LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
               "operator, not an independent judge")
+PREVIEW_ISSUE = "evidence-network/loop#242"  # the open-month preview; its empty month is not the closed-month window's gap
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
 # The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
@@ -224,7 +226,9 @@ def preview_out_problem(out, run):
     findings = Path(os.environ.get("LOOP_FINDINGS") or ROOT / "findings")
     for base, name in ((run, "the run it reads"), (findings, "the findings directory"), (ROOT / "baseline", "baseline/")):
         base = Path(base).resolve()
-        if out == base or base in out.parents:
+        # samefile, not path equality: a case-insensitive file system spells one directory several ways.
+        if out == base or base in out.parents or \
+                any(p.exists() and base.exists() and os.path.samefile(p, base) for p in (out, *out.parents)):
             return f"a preview is written outside {name} ({base}), not into it"
     return None
 
@@ -626,8 +630,9 @@ def main(argv=None):
         ap.error("--preview-open-month and --run go together")
     started = finding.now()
     out = a.out.resolve()
-    if preview and preview_out_problem(out, a.run.resolve()):
-        ap.error(preview_out_problem(out, a.run.resolve()))
+    problem = preview_out_problem(out, a.run.resolve()) if preview else None
+    if problem:
+        ap.error(problem)
     out.mkdir(parents=True, exist_ok=True)
     for p in ("finding.json", "window.json"):
         (out / p).unlink(missing_ok=True)
@@ -664,7 +669,8 @@ def main(argv=None):
         records, refused, not_checked, problems = select(source, manifest, start, end, pack)
         dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
                                    "period": pack["window"]["period"], "periods": pack["window"]["periods"],
-                                   **({"preview": "open-month"} if preview else {}),
+                                   **({"preview": "open-month", "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json")}
+                                      if preview else {}),
                                    "records": records, "refused": refused})
         proof.append("window.json")
         if problems:
@@ -672,7 +678,8 @@ def main(argv=None):
         if not records:
             raise NotChecked("the pack over the window",
                              f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
-                             "step of the pack's kinds finished outside it, or none is in the run", WINDOW_ISSUE)
+                             "step of the pack's kinds finished outside it, or none is in the run",
+                             PREVIEW_ISSUE if preview else WINDOW_ISSUE)
         signer = judge_keys(population, keys)
         problems = node_key_problems(pop, pub_hex(signer["judge"][1]))
         if problems:

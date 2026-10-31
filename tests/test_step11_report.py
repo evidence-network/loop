@@ -28,6 +28,8 @@ FIXTURES = ROOT / "tests" / "fixtures" / "step11"
 
 sys.path.insert(0, str(STEPS))
 sys.path.insert(0, str(ROOT / "status"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import ecosystem_gate as gate  # noqa: E402
 import finding  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step11_report", str(STEPS / "11-report"))
@@ -762,9 +764,11 @@ class PreviewTest(Base):
         record["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
         dump(v / "finding.json", record)
 
-    def plant_10(self, detail):
+    def plant_10(self, detail, window=None):
         d = self.preview / "10-judge"
         d.mkdir(parents=True)
+        if window is not None:
+            dump(d / "window.json", window)
         (d / "p.txt").write_text("p\n")
         dump(d / "finding.json", {"step": "10", "name": "judge", "result": "PASS", "population": "rehearsal",
                                   "asserts": "a planted step 10", "pinned": {}, "detail": detail,
@@ -789,6 +793,27 @@ class PreviewTest(Base):
         self.assertIn("step 10's finding is not an open-month preview", f["detail"])
         self.assertFalse(self.page.exists())
 
+    def test_a_preview_refuses_a_10_judged_from_another_manifest(self):
+        for window in (None, {"preview": "open-month", "manifest_sha256": "0" * 64}, {"manifest_sha256": finding.sha256(
+                self.run / "08-verify" / "verified.json")}):
+            shutil.rmtree(self.preview, ignore_errors=True)
+            self.plant_10(finding.PREVIEW + ". a preview", window)
+            f = self.preview_report()
+            self.assertEqual(f["result"], "FAIL", window)
+            self.assertIn("step 10's preview", f["detail"])
+            self.assertTrue(f["detail"].startswith(finding.PREVIEW))
+
+    def test_a_preview_names_its_own_assertion(self):
+        self.assertNotEqual(step.PREVIEW_ASSERTS, step.ASSERTS)
+
+    def test_the_gate_refuses_what_a_preview_report_writes(self):
+        f = self.preview_report()  # NOT_CHECKED: no preview 10; the marker is on whatever 11 writes
+        out = self.preview / "11-report"
+        f["population"] = "live"
+        dump(out / "finding.json", f)
+        steps, errs = gate.read_findings(self.preview)
+        self.assertTrue(any("an open-month preview, not a baseline result" in e for e in errs), errs)
+
     def test_a_baseline_report_refuses_a_preview_10(self):
         # A preview 10-judge copied or left in the run is not a baseline's input.
         self.plant_10(finding.PREVIEW + ". a preview")
@@ -799,6 +824,16 @@ class PreviewTest(Base):
         self.assertIn("step 10's finding is an open-month preview, not a baseline result", f["detail"])
         self.assertFalse(self.page.exists())
 
+    def test_a_preview_is_not_written_into_findings_or_baseline(self):
+        findings = Path(self.tmp.name) / "findings"
+        for out in (findings / "2026-10-31-live" / "11-report", ROOT / "baseline" / "x"):
+            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"), \
+                    mock.patch.dict(os.environ, {"LOOP_FINDINGS": str(findings)}):
+                step.main(["--population", str(POPULATION), "--preview-open-month", "--run", str(self.run),
+                           "--out", str(out)])
+            self.assertEqual(e.exception.code, 2, out)
+        self.assertFalse(findings.exists())
+
     def test_a_preview_needs_a_run_and_is_not_written_into_it(self):
         for argv in (["--preview-open-month"], ["--run", str(self.run)],
                      ["--preview-open-month", "--run", str(self.run)]):
@@ -807,6 +842,20 @@ class PreviewTest(Base):
                 step.main(["--population", str(POPULATION), "--out", str(out), *argv])
             self.assertEqual(e.exception.code, 2)
         self.assertFalse((self.run / "11-report").exists())
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_preview_10_of_a_manifest_that_changed_since_is_refused(self):
+        self.october()
+        self.preview_10()
+        v = self.run / "08-verify"
+        (v / "verified.json").write_text((v / "verified.json").read_text() + "\n")
+        record = load(v / "finding.json")
+        record["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", record)
+        f = self.preview_report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("was not judged from --run's 08 manifest", f["detail"])
+        self.assertFalse(self.page.exists())
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
     def test_a_preview_reports_the_open_month_and_leaves_the_run_alone(self):

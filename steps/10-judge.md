@@ -128,11 +128,13 @@ steps/10-judge --population population/live --preview-open-month --run findings/
 It judges the open month, the calendar month containing 08's as-of instant (for 08 finished in October 2026,
 `[2026-10-01, 2026-11-01)`), with the same pinned pack and, on live, the same judge key. `--run` is the loop run
 that holds `08-verify/`; the step reads it and never judges the stand-in or writes into it. Its Results carry
-`x-window.preview` and `periods` 1, and `window.json` carries `preview: "open-month"`. The 12-closed-month window
+`x-window.preview` and `periods` 1, and `window.json` carries `preview: "open-month"` and the sha256 of the 08
+manifest it judged (step 11 refuses a preview of another run). The 12-closed-month window
 above is unchanged and is still the only one a run without the flag uses (Steven's 2026-10-29 ruling).
 
 A preview is never a baseline result. Every finding it writes, whatever its result, has a `detail` that starts with
 `PREVIEW: open month, not a baseline result` (`finding.PREVIEW`), and `scripts/ecosystem_gate.py` refuses a findings
 directory holding one. `--out` may not lie inside `--run`, `findings/` (or `LOOP_FINDINGS`) or `baseline/`: write it
-to the git-ignored top-level `preview/`, or under `$LAB_DIR/preview/`. Neither `loop.sh` nor the gate lists
-`preview/`. Step 11 reports over it with the same flag.
+to the git-ignored top-level `preview/`, or under `$LAB_DIR/preview/`. Neither `loop.sh`, the gate nor any builder of the site, the stats pages or `reports/` lists
+`preview/`; it is never committed, and the status page and the site refuse a findings directory holding a
+preview finding (`tests/test_preview_isolation.py`). Step 11 reports over it with the same flag.
