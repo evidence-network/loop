@@ -13,7 +13,9 @@
 # so it never opens that directory.
 # But once payments/payments.sqlite3 exists, the running lab-N opens the ledger to advertise prices and holds
 # payments/service.lock (mesh-llm host node_ext.rs advertised_prices_source), so this script works only before lab-N
-# has done that; on a second run, use lab-N's own console once lab.sh start has given it [payments].
+# has done that; on a second run, use lab-N's own console once lab.sh start has given it [payments], or stop
+# lab-N (lab/lab.sh stop) and run this again. The check is a probe: if lab-N takes the lock just after it,
+# the wallet commands fail instead and cleanup still runs.
 #
 # Steps: install the staged lexe-wallet build (lexe-wallet-plugin#7) into the throwaway HOME, start
 # the temporary instance, open the wallet (the plugin creates the seed and signs up a Lexe account
@@ -26,6 +28,7 @@
 #   MESH_LLM_BIN  lab build (/home/intangible/lab-1031/target/release/mesh-llm, e877a45df)
 #   LEXE_PLUGIN   staged plugin (/home/intangible/lexe-9f830c1/lexe-wallet); LEXE_SHA256 its sha256
 #   DAILY_SATS    daily budget (20)
+#   LAB_PORT_BASE lab.sh's port base (9800): lab-N's console is BASE + 10 + N
 set -euo pipefail
 
 usage() { echo "usage: $0 N [SATS]   (N = 1, 2 or 3; SATS 0 prints no invoice; default 1000)" >&2; exit 2; }
@@ -63,7 +66,7 @@ port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 [ ! -e "$TMP_CONFIG" ] || die "$TMP_CONFIG exists: another run is active or crashed; check for a 'client --config $TMP_CONFIG' process, then remove it"
 port_free "$API_PORT" && port_free "$CONSOLE_PORT" || die "port $API_PORT or $CONSOLE_PORT is in use"
 if [ -e "$NODE_DIR/payments/service.lock" ]; then
-  flock -n "$NODE_DIR/payments/service.lock" true || die "$NODE_DIR/payments/service.lock is held: the running $NODE opened its ledger after the first run, so a temporary instance cannot. Use $NODE's console :$((${LAB_PORT_BASE:-9800} + 10 + N)) once lab.sh start has given it [payments] (LAB_PAYMENTS)"
+  flock -n "$NODE_DIR/payments/service.lock" true || die "$NODE_DIR/payments/service.lock is held: the running $NODE opened its ledger after the first run, so a temporary instance cannot. Use $NODE's console :$((${LAB_PORT_BASE:-9800} + 10 + N)) once lab.sh start has given it [payments] (LAB_PAYMENTS), or stop $NODE (lab/lab.sh stop) and run this again"
 fi
 if [ -e "$WALLET_DIR/wallet.lock" ]; then
   flock -n "$WALLET_DIR/wallet.lock" true || die "$WALLET_DIR/wallet.lock is held by another process"
