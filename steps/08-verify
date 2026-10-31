@@ -631,14 +631,19 @@ def keys_03_live(c):
 
 
 def rederive_04_live(m, c):
-    """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl). It reads the
-    ledger lines as written and relies on no key (their signatures are a gap 04 names, loop#135)."""
+    """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl), with the pinned
+    cross_language verifier for each decision record's signature and capsule_id (loop#135); nothing is sealed."""
     old_shape(c, "04", "nodes.json")
+    missing = m.tool_gaps()
+    if missing:
+        raise Unreproducible("step 04: its judge, run again here", "; ".join(x["why"] for x in missing))
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
 def keys_04_live(c):
-    """Live 04 relies on no key: nodes.json must name the population's nodes, which judge_live checks."""
+    """Live 04 reads each node's listed key from the repository's nodes/ listing itself (04's seal01.listed_key),
+    never from the bundle, and holds each decision record's signature to it; nodes.json must name the population's
+    nodes, which judge_live checks. Nothing more to check here."""
     return []
 
 
