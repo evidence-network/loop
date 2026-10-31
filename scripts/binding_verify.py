@@ -96,7 +96,8 @@ def revocation(report):
         return "PASS", (f"revocation PASS: no statement applies in the list {rl.get('asserted_by')} declared "
                         f"complete as of {rl.get('as_of')} under profile {rl.get('profile')} (list sha256 "
                         f"{rl.get('list_digest')})")
-    why = f": the declaration does not count ({rl.get('reason')})" if rl.get("counts") is False else ""
+    why = (f": the declaration does not count ({rl.get('reason')}), for the list {rl.get('asserted_by')} declared "
+           f"complete as of {rl.get('as_of')} under profile {rl.get('profile')}" if rl.get("counts") is False else "")
     return state, f"revocation {state}{why}"
 
 
