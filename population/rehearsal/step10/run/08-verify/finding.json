@@ -5,22 +5,22 @@
   "name": "verify",
   "not_checked": [
     {
-      "issue": "evidence-network/loop#24",
+      "issue": "evidence-network/loop: loop.sh runs the whole stage (no --steps)",
       "what": "step 01: its finding reproduced",
       "why": "this run did not run step 01 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
     },
     {
-      "issue": "evidence-network/loop#24",
+      "issue": "evidence-network/loop: loop.sh runs the whole stage (no --steps)",
       "what": "step 02: its finding reproduced",
       "why": "this run did not run step 02 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
     },
     {
-      "issue": "evidence-network/loop#24",
+      "issue": "evidence-network/loop: loop.sh runs the whole stage (no --steps)",
       "what": "step 03: its finding reproduced",
       "why": "this run did not run step 03 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
     },
     {
-      "issue": "evidence-network/loop#24",
+      "issue": "evidence-network/loop: loop.sh runs the whole stage (no --steps)",
       "what": "step 12: its finding reproduced",
       "why": "this run did not run step 12 of stage 1 (run.json lists 05, 06, 07, 09, 08)"
     }

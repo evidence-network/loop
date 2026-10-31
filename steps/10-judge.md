@@ -95,8 +95,10 @@ stand-in, not this run's, and `window.json` names its `source` as `stand-in`. So
 population/rehearsal --out DIR/10-judge` on a run without 08 is PASS.
 
 Given a real run with 08's manifest, the step judges that run. While its records are all in the open month, it
-is NOT_CHECKED with that reason, and a step 08 did not reproduce (today, 12) adds its own entry.
+is NOT_CHECKED with that reason, cited as the pinned pack's window (12 whole closed months,
+Steven's 2026-10-29 ruling), and a step 08 did not reproduce adds its own entry under the issue
+08 names for it.
 
-**Live** is NOT_CHECKED: 08 reproduces no live finding, and the live population lists no judge key.
-
-Owner: evidence-network/loop#24.
+**Live:** 08 reproduces live step 07 (its asks, `*/attempts/*/*.request.json`), and not yet the other live
+steps (evidence-network/loop#188). A same-day live run is NOT_CHECKED on the window: its asks are judged once
+their month has closed. Past that, the live population lists no judge key (evidence-network/loop#189).

@@ -72,7 +72,9 @@ _spec = importlib.util.spec_from_loader(_loader.name, _loader)
 judge10 = importlib.util.module_from_spec(_spec)
 _loader.exec_module(judge10)
 
-ISSUE = "evidence-network/loop#24"
+SETUP_ISSUE = "evidence-network/loop: steps/11-report.setup.sh, run where 11 runs"
+RUN_ISSUE = "evidence-network/loop: loop.sh runs steps 08 and 10 before step 11"
+LIVE_KEY_ISSUE = judge10.JUDGE_KEY_ISSUE  # the live population lists no judge key, so no live Result to read
 PACK_ISSUE = judge10.GAP_ISSUE  # the pinned pack's own evaluator does not run: step 10 applies its terms itself
 VIEWER_ISSUE = "action-state-group/capsule-viewer#158"
 PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
@@ -97,7 +99,14 @@ SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
 
 
 class NotChecked(Exception):
-    """The report cannot run here; args are (what, why)."""
+    """The report cannot run here; args are (what, why, issue)."""
+
+    def __init__(self, what, why, issue=SETUP_ISSUE):
+        super().__init__(what, why, issue)
+
+
+class Inherited(Exception):
+    """Step 10 is NOT_CHECKED: its not_checked entries, carried over with the issues 10 names."""
 
 
 class Refused(Exception):
@@ -117,8 +126,9 @@ def read_judge(judged):
     if record["result"] == "FAIL":
         raise Refused("step 10's finding is FAIL, so its Results are not reported")
     if record["result"] == "NOT_CHECKED":
-        why = "; ".join(x["why"] for x in record["not_checked"])
-        raise NotChecked("the report over step 10's Results", f"step 10 is NOT_CHECKED, so there is no Result to report: {why}")
+        raise Inherited([{"what": f"the report over step 10's Results: {x['what']}",
+                          "why": f"step 10 is NOT_CHECKED, so there is no Result to report: {x['why']}",
+                          "issue": x["issue"]} for x in record["not_checked"]])
     return record
 
 
@@ -492,7 +502,7 @@ def run_inputs(run, out, population, population_dir):
         raise NotChecked("the report page, over step 08's manifest and step 10's Results",
                          f"{run.name} holds no 10-judge/ output to render from" +
                          (" and the live population lists no judge key and no stand-in; this step never fetches "
-                          "records through a peer" if population == "live" else ""))
+                          "records through a peer" if population == "live" else ""), RUN_ISSUE)
     if not (judged / "window.json").is_file():
         return judged, run, False
     is_standin = load(judged / "window.json").get("source") == "stand-in"
@@ -503,15 +513,16 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     """(Reporter, its key) for this population, or raise NotChecked."""
     if population != "live":
         if not (keys / "reporter.pem").is_file():
-            raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)")
+            raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)",
+                             f"evidence-network/loop: population/{population}/step11/keys")
         return Reporter.scratch(Path(tmp) / "book", capsulectl, keys), judge10.pub_hex(keys / "reporter.pub.pem")
     node = pop["nodes"][0]
     data_dir = live.readable(node, "data_dir", "keys/node-key.pub.pem")
     if data_dir is None:
-        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "data_dir not set or unreadable")
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "data_dir not set or unreadable", live.ISSUE)
     book_dir = live.readable(node, "book_dir", "config")
     if book_dir is None:
-        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable")
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable", live.ISSUE)
     book = Reporter(book_dir, capsulectl, node["name"])
     book.work = Path(tmp)
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
@@ -531,7 +542,8 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
         raise Refused(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
     judge_pub = population_dir / "step10" / "keys" / "judge.pub.pem"
     if not judge_pub.is_file():
-        raise NotChecked("step 10's Results, under the judge key", f"the {population} population lists no judge key")
+        raise NotChecked("step 10's Results, under the judge key", f"the {population} population lists no judge key",
+                         LIVE_KEY_ISSUE)
     capsulectl, plugin = judge10.tools()
     if not (capsulectl.is_file() and plugin.is_file()):
         raise NotChecked("the report page, built and sealed", f"capsulectl and capsulectl-book are not installed "
@@ -610,8 +622,10 @@ def main(argv=None):
                                                   a.page.resolve() if a.page else None)
         pinned = PINNED
     except NotChecked as e:
-        what, why = e.args
-        not_checked.append({"what": what, "why": why, "issue": ISSUE})
+        what, why, issue = e.args
+        not_checked.append({"what": what, "why": why, "issue": issue})
+    except Inherited as e:
+        not_checked += e.args[0]
     except Refused as e:
         problems = [f"refused, nothing rendered: {e}"]
     except (RuntimeError, OSError, ValueError, KeyError, TypeError, IndexError, subprocess.SubprocessError) as e:

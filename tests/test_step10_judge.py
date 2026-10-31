@@ -315,7 +315,7 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual([x["issue"] for x in f["not_checked"]], [step.ISSUE])
+        self.assertEqual([x["issue"] for x in f["not_checked"]], [step.GAP_ISSUE])
         self.assertIn("come_through.served_named_model", f["not_checked"][0]["what"])
 
     def test_a_reproduced_step_with_no_record_file_fails(self):
@@ -348,12 +348,13 @@ class JudgeTest(Base):
         m["steps"].append({"step": "12", "name": "join", "dir": "12-join", "status": "not_reproduced",
                            "files": [{"path": "finding.json", "sha256": finding.sha256(d / "finding.json")}],
                            "recorded": {"result": "PASS", "not_checked": []}, "rederived": None, "problems": [],
-                           "not_checked": {"what": "step 12", "why": "not reproduced", "issue": step.ISSUE}})
+                           "not_checked": {"what": "step 12", "why": "not reproduced", "issue": "evidence-network/loop#188"}})
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(len(f["not_checked"]), 1)
         self.assertIn("step 12", f["not_checked"][0]["what"])
+        self.assertEqual(f["not_checked"][0]["issue"], "evidence-network/loop#188")  # 08's issue for the step
         self.assertIn("12-join: 1 files, not_reproduced by 08", f["detail"])
         # The records that are in the window are still sealed, cited and VALID.
         self.assertEqual(self.cited(), {k: v for k, v in self.window_records().items()

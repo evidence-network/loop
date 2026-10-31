@@ -37,7 +37,8 @@
     "07": {
       "kind": "ask",
       "records": [
-        "*/asks/*/*/request.json"
+        "*/asks/*/*/request.json",
+        "*/attempts/*/*.request.json"
       ],
       "terms": [
         {

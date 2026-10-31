@@ -532,7 +532,25 @@ class ReporterBackendTest(Tmp):
         finally:
             console.close()
         self.assertEqual(finding.check(self.out.parent), [])
-        return json.loads((self.out / "finding.json").read_text())
+        record = json.loads((self.out / "finding.json").read_text())
+        self.assert_rederives(record, json.loads((pop_dir / "population.json").read_text()))
+        return record
+
+    def assert_rederives(self, record, pop):
+        """judge_reporter on a copy of only the files the finding cites gives the recorded result and not_checked,
+        and the same first-answered.json: what step 08 checks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "07-ask"
+            for p in record["proof"]:
+                (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(self.out / p["path"], work / p["path"])
+            (work / "first-answered.json").unlink()
+            again = step.conclude(work, "live", *step.judge_reporter(pop, work), record["started"], "reporter")
+            self.assertEqual(again["result"], record["result"])
+            canon = lambda items: sorted(json.dumps(i, sort_keys=True) for i in items)  # noqa: E731
+            self.assertEqual(canon(again["not_checked"]), canon(record["not_checked"]))
+            self.assertEqual((work / "first-answered.json").read_bytes(),
+                             (self.out / "first-answered.json").read_bytes())
 
     def issues(self, r):
         return sorted({i["issue"] for i in r["not_checked"]})
@@ -712,7 +730,8 @@ class ReporterBackendTest(Tmp):
         self.only_exchange_left(r)
         self.assertTrue(json.loads((self.out / "first-answered.json").read_text())["sealed"])
         kept = json.loads(next(self.out.glob("lab-1/attempts/*/checkpoints.ledger.json")).read_text())
-        self.assertEqual(kept["outcome"]["header"]["record_type"], "evidence_response")
+        self.assertEqual([r["header"]["record_type"] for r in kept["requests"]], ["evidence_request"])
+        self.assertEqual([r["header"]["record_type"] for r in kept["outcomes"]], ["evidence_response"])
 
     def test_a_response_for_another_request_digest_is_a_fail(self):
         r = self.run_live(VERIFIED, ledger=self.ledger(), sealed={"checkpoints": "wrong_digest"})
@@ -979,8 +998,8 @@ class ReporterBackendTest(Tmp):
         with mock.patch.object(step, "OPEN_WINDOW_WAIT", dt.timedelta(0)):
             late = at + dt.timedelta(seconds=100)  # past sealed + 60s, inside sealed + answers_within
             with mock.patch.object(step, "now", side_effect=lambda: late):
-                errs, notes, _ = step.judge_sealed(ledger / "ledger", "peer-1", asked, at, at, None,
-                                                   dt.timedelta(minutes=5))
+                extract = step.ledger_extract(ledger / "ledger", "peer-1", asked, at, at, None, dt.timedelta(minutes=5))
+                errs, notes = step.judge_sealed(extract, "peer-1", asked, at, at, None, dt.timedelta(minutes=5))
         self.assertEqual(errs, [])
         self.assertTrue(any("not sealed yet" in n for n in notes), notes)
 

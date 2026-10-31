@@ -51,8 +51,22 @@ not hold, and the sha256 of every file 08 read.
 | 09 Dispute | `decide` | each announced key (alice, bob, the step09 referee and requester) | openssl |
 | 12 Join | `decide` on the cited proof (join.sh's kept exit code, the stranger's book) | each commitment's `key_id` | capsulectl |
 
-**Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a step whose tool isn't
-installed where 08 runs, a step 08 has no re-derivation for, and every live finding. A live judge reads a lab
-node's data dir or console, which the bundle doesn't carry, and the repository doesn't list the live node keys.
+## The steps (live)
 
-Owner: evidence-network/loop#24.
+| Step | Judge re-run | Keys from the repository | Needs |
+|---|---|---|---|
+| 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the signed commitments under `nodes/commitments` and `lab/runs` | nothing outside the repository |
+
+Live 07 decides from its proof alone: 07 collects first (it asks each node and reads the asker's ledger and the
+asked node's data dir) and writes what its judge reads, then judges those files, so 08 running the same judge on
+the cited files gets the same verdict. A verification line is computed again from the reply, the announced key and
+the listed key, and must be the one kept. `ask.json` must name every population node, and each node asked must
+have exactly one attempt per question. The ledger extract is 07's reading of the asker's ledger, kept as bytes:
+08 checks every rule on it, but not that the ledger held nothing more (the ledger is the lab node's).
+
+The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
+dir or console while they decide, and their findings don't cite those bytes.
+
+**Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a step whose tool isn't
+installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
+than its stage names each step left out, owned by loop.sh's whole-stage run.
