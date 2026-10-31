@@ -38,12 +38,19 @@ never a PASS. The pack's own evaluator reads a node's real Mesh book records. On
 node's own chain (`<node>/ledger/capsules.jsonl`, binding.json `inputs`), and step 10 runs the pinned evaluator
 (`scripts/evaluators/inference_deals.py` and the three modules it imports, at the `inference-deals` pin, each held to
 its git blob id; `10-judge.setup.sh` fetches them beside the pack, none is kept here) over those chains in the window:
-its `collect` and `judge_deal`, per deal, as the pack's own run does (loop#157). Each 05 term's claim then carries
-the evaluator's worst verdict over the deals that carry the term (`out_of_scope` ones left out; `not_evaluable` when
-none does), cites the chains beside the halves, and the gap below is gone. The chains are cited but are not records:
+its `collect` and `judge_deal`, per deal, with a `shop_preauth` deal not counted, as the pack's own run does
+(loop#157). Only the bounds differ: the evaluator runs over step 10's window, the calendar months its records are in,
+not the pack's weekly `period_policy`, so the chains and the halves are judged over one window. The bytes run are
+the bytes held to their blobs, compiled from them (never a cached `.pyc`); pinned code that does not load here is a
+not_checked entry, never a crash. Each chain is read once and held to 08's digest. Each 05 term's claim then carries
+the evaluator's worst verdict over the deal sides that answer the term (`out_of_scope` ones left out;
+`not_evaluable` when none does), the readings it used (`provider_states`, or `adjudicated` for a referee's sealed
+verdict) and how many exchanges it saw; its grade is `countersigned` only when every answer is. It cites the chains
+beside the halves, and the Result says the evaluator ran (`x-evaluator`). The chains are cited but are not records:
 step 11 counts no deal from them. The rehearsal stand-ins are no Mesh book records, so there the step applies the
-pack's terms to the results 08 re-derived, and a PASS names that as a gap on evidence-network/loop#157; so does a
-live 05 with no chain in its proof, or an evaluator not fetched or not at its blobs (a not_checked entry).
+pack's terms to the results 08 re-derived, and a PASS names that as a gap on evidence-network/loop#157; on live, a
+PASS names only the steps judged that way (06, and a 05 with no chain in its proof), and step 11 says the same. An
+evaluator not fetched or not at its blobs is a not_checked entry.
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
 

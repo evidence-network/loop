@@ -438,11 +438,13 @@ class JudgeTest(Base):
         self.assertEqual(not_checked, [])
         for term in ("come_through.served_as_agreed", "come_through.served_named_model"):
             self.assertEqual(claims[term]["verdict"], "met", claims[term])
-            self.assertIn("the pinned pack's own evaluator over 6 deals in 2 nodes' own chains: met 3",
-                          claims[term]["presentation"]["narrative"])
+            self.assertIn("the pinned pack's own evaluator, over 6 exchanges in 2 nodes' own chains, answers this term "
+                          "for 3 deal sides: met 3", claims[term]["presentation"]["narrative"])
+            self.assertEqual(claims[term]["presentation"]["status"], "SATISFIED")
             # every record of the step is cited, the chains beside the halves
             self.assertEqual(sorted(claims[term]["evidence"]), sorted(f"05-deal/{r['path']}" for r in records
                                                                      if r["dir"] == "05-deal"))
+        self.assertIn("(provider_states)", claims["come_through.served_named_model"]["presentation"]["narrative"])
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_deal_the_evaluator_finds_not_met_is_not_met(self):
@@ -461,6 +463,52 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         _, claims, _ = self.october(m)
         self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_met")
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_a_shop_preauth_deal_is_not_counted_as_the_packs_own_run_does_not(self):
+        m = self.with_chains()
+        chain = self.run / "05-deal" / "lab-a" / "ledger" / "capsules.jsonl"
+        lines = [json.loads(x) for x in chain.read_text().splitlines()]
+        for doc in lines:  # every record of the provider's deals: a shop pre-authorisation, with another model
+            doc["counterparty_class"] = "shop_preauth"
+            inv = ((doc.get("model_attestation") or {}).get("compute_attestation") or {}).get("invocation")
+            if isinstance(inv, dict) and inv.get("resolved_model_id"):
+                inv["resolved_model_id"] = "another-model"
+        chain.write_text("".join(json.dumps(x) + "\n" for x in lines))
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        next(x for x in e05["files"] if x["path"] == "lab-a/ledger/capsules.jsonl")["sha256"] = finding.sha256(chain)
+        self.reseal_manifest(m)
+        _, claims, _ = self.october(m)
+        self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_evaluable")
+        self.assertIn("no deal in the window carried this term", claims["come_through.served_named_model"]["presentation"]["narrative"])
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_a_chain_the_evaluator_cannot_read_is_not_checked(self):
+        m = self.with_chains()
+        chain = self.run / "05-deal" / "lab-a" / "ledger" / "capsules.jsonl"
+        lines = [json.loads(x) for x in chain.read_text().splitlines()]
+        lines[0]["timestamp"] = "not a time"
+        chain.write_text("".join(json.dumps(x) + "\n" for x in lines))
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        next(x for x in e05["files"] if x["path"] == "lab-a/ledger/capsules.jsonl")["sha256"] = finding.sha256(chain)
+        self.reseal_manifest(m)
+        _, claims, not_checked = self.october(m)
+        self.assertTrue(any("did not run to the end" in x["why"] for x in not_checked), not_checked)
+
+    @unittest.skipUnless(HAS_EVALUATOR and HAS_TOOLS, NO_EVALUATOR)
+    def test_a_live_pass_names_only_the_steps_the_evaluator_did_not_judge(self):
+        self.with_chains()
+        with mock.patch.object(step, "window_of", lambda as_of, periods=12: (
+                dt.datetime(2025, 11, 1, tzinfo=dt.timezone.utc), dt.datetime(2026, 11, 1, tzinfo=dt.timezone.utc))):
+            f = self.judge()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("does not run on the rehearsal stand-ins", f["detail"])  # the rehearsal population's wording
+        self.assertEqual(step.evaluator_gap(["06-settle"], "live"),
+                         "the pinned pack's own evaluator does not run for 06-settle, whose proof keeps no node's own "
+                         "chain: this step applies the pack's terms there to the results 08 re-derived")
+        statement = load(self.run / "10-judge" / "bundles" / "05-deal.bundle.json")
+        root = statement["disclosures"][statement["root"]]["agent_input"]["statement"]
+        self.assertEqual(root["x-evaluator"], {"inputs": 2, "exchanges": 6})
 
     def test_the_evaluator_not_held_to_its_pin_is_not_checked_not_a_crash(self):
         with mock.patch.dict(step.EVALUATOR, {"scripts/rollup.py": "0" * 40}):

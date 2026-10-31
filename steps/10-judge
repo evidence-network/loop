@@ -26,7 +26,8 @@ its detail says the records are that stand-in, not this run's:
              citing every record of the step; the verdict is recomputed from
              the result 08 re-derived (PASS met, FAIL not_met, NOT_CHECKED
              not_evaluable). The served_named_model term reads "provider states" where no record
-             carries model_attestation. 09's referee Result is cited and
+             carries model_attestation. On live, a 05 whose proof keeps the nodes' own chains is
+             decided instead by the pinned pack's own evaluator over them (loop#157). 09's referee Result is cited and
              counted as found, never judged again. The pack is the one versions.lock
              pins (`inference-deals`), fetched by 10-judge.setup.sh; not fetched is NOT_CHECKED.
   seal       a fresh book under the population's judge key: on rehearsal the
@@ -73,6 +74,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -336,6 +338,20 @@ def is_input(kind, path):
     return any(fnmatch.fnmatchcase(path, g) and re.fullmatch(c["path"], path) for g, c in kind.get("inputs", {}).items())
 
 
+REHEARSAL_GAP = ("the pinned pack's own evaluator does not run on the rehearsal stand-ins: this step applies the "
+                 "pack's terms to the results 08 re-derived")
+
+
+def evaluator_gap(dirs, population, rehearsal=REHEARSAL_GAP):
+    """What a PASS leaves outside its assertion when the pack terms of `dirs` are applied from the results 08
+    re-derived, the pinned pack's own evaluator not having run for them: on rehearsal `rehearsal` (its stand-ins are
+    no Mesh book records), on live those steps named (their proof keeps no node's own chain)."""
+    if population != "live":
+        return rehearsal
+    return (f"the pinned pack's own evaluator does not run for {', '.join(dirs)}, whose proof keeps no node's own "
+            "chain: this step applies the pack's terms there to the results 08 re-derived")
+
+
 def git_blob(data):
     """The git blob id of `data`: how a file of the pinned commit is named in its tree."""
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
@@ -349,6 +365,7 @@ def load_evaluator():
     if ref != EVALUATOR_REF:
         raise NotChecked("the pinned pack's own evaluator", f"inference-deals is pinned at {ref}, but this step holds "
                          f"its evaluator's files to {EVALUATOR_REF}", GAP_ISSUE)
+    source = {}
     for f, blob in EVALUATOR.items():
         try:
             data = (where / f).read_bytes()
@@ -358,35 +375,63 @@ def load_evaluator():
         if git_blob(data) != blob:
             raise NotChecked("the pinned pack's own evaluator", f"{where / f} is not blob {blob} of {repo} {ref}",
                              GAP_ISSUE)
-    saved = list(sys.path)
-    sys.path.insert(0, str(where / "scripts"))
+        source[f] = data
+    # The bytes just checked are the bytes run: each module is compiled from them, never imported from disk (no
+    # .pyc), and its helpers are the pinned ones only while the evaluator loads (it imports them by name).
+    helpers = {Path(f).stem: f for f in EVALUATOR if not f.startswith("scripts/evaluators/")}
+    saved = {name: sys.modules.get(name) for name in helpers}
+
+    def module(name, f):
+        mod = types.ModuleType(name)
+        mod.__file__ = str(where / f)
+        sys.modules[name] = mod
+        exec(compile(source[f], str(where / f), "exec"), mod.__dict__)
+        return mod
     try:
-        spec = importlib.util.spec_from_file_location("inference_deals_pinned", where / "scripts/evaluators/inference_deals.py")
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        module("rollup", helpers["rollup"])  # result_v0 imports rollup
+        for name in ("result_v0", "capsulectl_calls"):
+            module(name, helpers[name])
+        return module("inference_deals_pinned", "scripts/evaluators/inference_deals.py")
+    except Exception as e:  # pinned code that does not load here (an older Python, say) is not checked, never a crash
+        raise NotChecked("the pinned pack's own evaluator", f"it does not load here ({type(e).__name__}: "
+                         f"{str(e)[:200]})", GAP_ISSUE)
     finally:
-        sys.path[:] = saved
-    return mod
+        sys.modules.pop("inference_deals_pinned", None)
+        for name, old in saved.items():
+            if old is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = old
 
 
 def evaluate(ev, run, inputs, start, end):
-    """{term id: [verdicts]} and the deal count of the pinned evaluator over each node's own chain (`inputs`, records
-    of role input), in [start, end): collect() then judge_deal() per deal, as the pack's own run does. Raises ValueError
-    (the evaluator's DealsError) when a chain cannot be read as the pack reads a book."""
-    verdicts, deals = {}, 0
+    """{term id: [(verdict, reading, grade)]} and the exchanges, of the pinned evaluator over each node's own chain
+    (`inputs`, records of role input): its collect() and judge_deal() per deal, a shop_preauth deal not counted, as
+    the pack's own build_result does. Only the bounds differ from the pack's own run: they are step 10's window
+    [start, end), the window its records are in, so the chains and the halves are judged over one window (the pack's
+    weekly period_policy is not used). Each chain is read once and held to its sha256 first. Raises ValueError (the
+    evaluator's DealsError) when a chain cannot be read as the pack reads a book."""
+    verdicts, exchanges = {}, set()
     for r in inputs:
+        data = (Path(run) / r["dir"] / r["path"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != r["sha256"]:
+            raise ValueError(f"{r['dir']}/{r['path']} does not match the sha256 08's manifest gives it")
         records = []
-        for line in (Path(run) / r["dir"] / r["path"]).read_text(encoding="utf-8").splitlines():
+        for line in data.decode("utf-8").splitlines():
             if line.strip():
                 body = json.loads(line)
                 records.append((body.get("capsule_id"), body))
         found, legs, own_keys = ev.collect(records, start, end)
         for deal in found.values():
-            deals += 1
-            got, _, _, _, _ = ev.judge_deal(deal, legs, own_keys)
+            if ev.counterparty_class(deal)[0] == "shop_preauth":
+                continue  # the pack's own run does not count it
+            got, extras, _, _, _ = ev.judge_deal(deal, legs, own_keys)
+            if any(v != "out_of_scope" for v in got.values()):
+                exchanges.add(deal.exchange_id)
             for term, v in got.items():
-                verdicts.setdefault(term, []).append(v)
-    return verdicts, deals
+                x = extras.get(term) or {}
+                verdicts.setdefault(term, []).append((v, x.get("x-reading"), x.get("grade")))
+    return verdicts, exchanges
 
 
 def is_record(kind, path, file):
@@ -434,7 +479,8 @@ def claim(cid, requirement, verdict, refs, contract_ref, narrative=None):
          "grade": "self-attested", "sufficiency": sufficiency, "verdict": verdict, "evidence": list(refs),
          "proofs": []}
     if narrative:
-        c["presentation"] = {"kind": "story", "status": "INSUFFICIENT", "narrative": narrative}
+        c["presentation"] = {"kind": "story", "status": {"met": "SATISFIED", "not_met": "CONTRADICTED"}.get(
+            verdict, "INSUFFICIENT"), "narrative": narrative}
     else:
         c["presentation"] = {"kind": "disclosure", "status": "SATISFIED" if verdict == "met" else
                              ("CONTRADICTED" if verdict == "not_met" else "INSUFFICIENT"), "evidence": None}
@@ -480,13 +526,21 @@ def judge_records(records, run, pack, start, end, not_checked):
             cid = f"{d}:{t['id']}"
             cref = pack["own_contract_ref"] if t.get("own") else pack["contract_ref"]
             if evaluated is not None and not t.get("own"):
-                got, deals = evaluated
-                answered = [v for v in got.get(t["id"], []) if v != "out_of_scope"]
-                worst = next((v for v in ("not_met", "not_evaluable", "met") if v in answered), "not_evaluable")
-                said = ", ".join(f"{v} {answered.count(v)}" for v in ("met", "not_met", "not_evaluable") if v in answered)
-                claims.append(claim(cid, t["id"], worst, refs, cref,
-                                    f"the pinned pack's own evaluator over {deals} deals in {len(inputs)} nodes' own "
-                                    f"chains: {said or 'no deal in the window carried this term'}"))
+                got, exchanges = evaluated
+                answered = [a for a in got.get(t["id"], []) if a[0] != "out_of_scope"]
+                verdicts = [v for v, _, _ in answered]
+                worst = next((v for v in ("not_met", "not_evaluable", "met") if v in verdicts), "not_evaluable")
+                said = ", ".join(f"{v} {verdicts.count(v)}" for v in ("met", "not_met", "not_evaluable") if v in verdicts)
+                readings = sorted({r for _, r, _ in answered if r})
+                c = claim(cid, t["id"], worst, refs, cref,
+                          f"the pinned pack's own evaluator, over {len(exchanges)} exchanges in {len(inputs)} nodes' "
+                          f"own chains, answers this term for {len(answered)} deal sides: "
+                          f"{said or 'no deal in the window carried this term'}"
+                          + (f" ({', '.join(readings)})" if readings else ""))
+                # countersigned only when every answer is; the provider_states reading is the provider's word
+                if answered and all(g == "countersigned" for _, _, g in answered):
+                    c["grade"] = "countersigned"
+                claims.append(c)
             elif t.get("model_attestation"):
                 if any(attested(Path(run) / d / r["path"]) for r in mine):
                     not_checked.append({"what": f"{d}: {t['id']} ({t['name']}), recomputed from model_attestation",
@@ -501,7 +555,8 @@ def judge_records(records, run, pack, start, end, not_checked):
             else:
                 claims.append(claim(cid, t["id"], verdict, refs, cref))
         docs[d] = result_doc(claims, pack, start, end,
-                             {"x-evaluator": {"inputs": len(inputs), "deals": evaluated[1]}} if evaluated else None)
+                             {"x-evaluator": {"inputs": len(inputs), "exchanges": len(evaluated[1])}} if evaluated
+                             else None)
     return docs
 
 
@@ -776,7 +831,7 @@ def main(argv=None):
     source = standin or run
 
     problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
-    unevaluated = True  # a deal step judged without the pinned pack's own evaluator (loop#157)
+    unevaluated = []  # the steps whose pack terms are applied from 08's results, not the pinned evaluator (loop#157)
     start = end = None
     pinned = []
     pack = None
@@ -820,8 +875,8 @@ def main(argv=None):
         pinned = PINNED + ["inference-deals"]
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
             docs = judge_records(records, source, pack, start, end, not_checked)
-            unevaluated = any(not doc.get("x-evaluator") for d, doc in docs.items()
-                              if any(not t.get("own") for t in pack["kinds"][d[:2]]["terms"]))
+            unevaluated = sorted(d for d, doc in docs.items() if not doc.get("x-evaluator")
+                                 and any(not t.get("own") for t in pack["kinds"][d[:2]]["terms"]))
             book = Book(Path(tmp) / "book", capsulectl, signer)
             sealed = seal(book, records, docs, pack, start, end, out)
             problems, lines = judge(out, records, capsulectl, pub_hex(signer["judge"][1]), tmp)
@@ -852,8 +907,7 @@ def main(argv=None):
               + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each."
               + (f" On live, {LIVE_JUDGE}." if population == "live" else ""))
     if result == "PASS" and unevaluated:
-        detail += " " + finding.outside("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
-                                        "this step applies the pack's terms to the results 08 re-derived", GAP_ISSUE)
+        detail += " " + finding.outside(evaluator_gap(unevaluated, population), GAP_ISSUE)
     finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
                   pinned=pinned, proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)
