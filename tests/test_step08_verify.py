@@ -646,7 +646,8 @@ class Step08Live07Test(unittest.TestCase):
 
     def test_live_10_and_11_then_read_not_checked_on_the_judge_key(self):
         self.verify()
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        env = {k: v for k, v in os.environ.items() if k not in ("LOOP_JUDGE_KEY", "LAB_DIR")}  # no lab key: 10 stops on it
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
         for base in ("10-judge", "11-report"):
             r = subprocess.run([str(STEPS / base), "--population", str(LIVE_POPULATION), "--out", str(self.run / base)],
                                capture_output=True, text=True, env=env, timeout=300, cwd=ROOT)

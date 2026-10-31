@@ -28,7 +28,6 @@ FIXTURES = ROOT / "tests" / "fixtures" / "step11"
 sys.path.insert(0, str(STEPS))
 sys.path.insert(0, str(ROOT / "status"))
 sys.path.insert(0, str(ROOT / "scripts"))
-import ecosystem_gate as gate  # noqa: E402
 import finding  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step11_report", str(STEPS / "11-report"))

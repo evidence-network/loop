@@ -121,8 +121,7 @@ load, dump = judge10.load, judge10.dump
 
 # --- The inputs ---------------------------------------------------------------------------
 def read_judge(judged):
-    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on.
-"""
+    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on."""
     record = load(judged / "finding.json")
     errs = finding.check_record(judged, record) if isinstance(record, dict) else ["finding.json is not an object"]
     if errs:
@@ -535,8 +534,7 @@ def run_inputs(run):
 
 
 def reporting_book(population, pop, keys, tmp, capsulectl):
-    """(Reporter, its key) for this population, or raise NotChecked.
-    """
+    """(Reporter, its key) for this population, or raise NotChecked."""
     if population != "live":
         if not (keys / "reporter.pem").is_file():
             raise NotChecked("the page's digest, sealed", f"the {population} population lists no reporter key (step11/keys)",
@@ -604,7 +602,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     rebuilt = [Path(tmp) / f"rebuild-{i}.html" for i in (1, 2)]
     for r in rebuilt:
         book.rebuild(bundle, r)
-    report_json = {"source": "run", "figures": figures,
+    report_json = {"figures": figures,
                    "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
                    "built_by": tool_versions(capsulectl, plugin),
                    "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),

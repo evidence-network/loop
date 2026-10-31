@@ -76,7 +76,7 @@ import finding  # noqa: E402
 SETUP_ISSUE = "evidence-network/loop: steps/10-judge.setup.sh, run where 10 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
 # The window is every record of the run up to the as-of instant (Ethan, 2026-10-31).
-WINDOW_ISSUE = "evidence-network/loop: a run whose reproduced steps of the pack's kinds are all after 08's as-of instant"
+WINDOW_ISSUE = "evidence-network/loop: a run that holds no record of the pack's kinds (05, 06, 07, 09) up to 08's as-of instant"
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
 # Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.
 # Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" was ruled by Sherlock2
@@ -811,7 +811,7 @@ def main(argv=None):
             raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
         pack = load_pack()
         records, refused, not_checked, problems = select(source, manifest, as_of, pack)
-        dump(out / "window.json", {"source": "run", "as_of": stamp(as_of), "records": records, "refused": refused})
+        dump(out / "window.json", {"as_of": stamp(as_of), "records": records, "refused": refused})
         proof.append("window.json")
         if problems:
             raise RuntimeError("; ".join(problems))

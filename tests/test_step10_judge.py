@@ -1,6 +1,6 @@
 """steps/10-judge: a deterministic pack over a window of every record up to the as-of instant, its Results sealed and verified offline.
 
-The base run is population/rehearsal/step10/run, the committed stand-in run: four stand-in step findings (05, 06,
+The base run is population/rehearsal/step10/run, the committed base run: four rehearsal step findings (05, 06,
 07, 09) dated in September 2026 and step 08's manifest showing each reproduced, with 08 finished in October 2026.
 Most tests copy it in as a run of their own (it has 08's manifest, so 10 judges it as that run). Sealing and verifying need
 the pinned capsulectl and capsulectl-book (steps/10-judge.setup.sh); without them those tests SKIP, saying so,
@@ -29,7 +29,6 @@ BASE = POPULATION / "step10" / "run"
 
 sys.path.insert(0, str(STEPS))
 sys.path.insert(0, str(ROOT / "scripts"))
-import ecosystem_gate as gate  # noqa: E402
 import finding  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step10_judge", str(STEPS / "10-judge"))
@@ -303,6 +302,9 @@ class JudgeTest(Base):
         cites = {e["digest"] for c in rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["claims"]
                  for e in c["evidence"]}
         self.assertEqual(cites, {load(out / "bundles" / f"{b}.bundle.json")["root"] for b in WINDOW_STEPS})
+        statement = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]
+        # The Result names its bound: the as-of instant, no month boundary.
+        self.assertEqual(statement["x-window"], {"through": "2026-10-02T09:01:00Z", "pack": step.load_pack()["pack"]})
         self.assertEqual(finding.gaps(f["detail"])[0][1], step.GAP_ISSUE)
 
     def test_term_3_reads_provider_states_without_model_attestation(self):
@@ -480,7 +482,7 @@ class JudgeTest(Base):
         return m
 
     def october(self, m):
-        """select over the stand-in's window, then the Results over October 2026, the month the chains hold."""
+        """select up to the base run's as-of, then the Results over October 2026, the month the chains hold."""
         records, _, _, problems = step.select(self.run, m, utc(load(
             self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])

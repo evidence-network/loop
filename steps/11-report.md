@@ -16,7 +16,7 @@ happened over the window and that decisions cited them. It never writes into ano
    can't tell paid from free. Each record's bytes must match 08's digest. A file no Result cites is not read.
 
 An input that does not hold is a FAIL, and nothing is rendered. When 10 is NOT_CHECKED, or an input is absent, 11 is
-NOT_CHECKED with the reason. `10-judge/window.json` is read only for its `source`, and the pinned pack (`judge10.load_pack()`, as step 10 reads it) only
+NOT_CHECKED with the reason. The pinned pack (`judge10.load_pack()`, as step 10 reads it) only
 for the terms' names.
 
 ## The page
