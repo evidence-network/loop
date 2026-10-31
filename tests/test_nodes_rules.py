@@ -41,18 +41,27 @@ class EntryRulesTest(unittest.TestCase):
         (self.nodes / f"{'a' * 64}.json").write_text(json.dumps(e))
         return errors(self.nodes)
 
-    def test_no_entry_opts_in_to_pair_edges_while_the_consent_does_not_name_them(self):
-        # loop#77: public pair edges on /watch/ need a consent that names them; the statement does not yet.
+    def test_an_entry_opts_in_to_pair_edges_only_while_the_consent_names_them(self):
+        # loop#77: public pair edges on /watch/ need a consent that names them; the statement does since Steven's ruling.
+        self.assertTrue(check_nodes.CONSENT_NAMES_PAIR_EDGES)
+        self.assertIn("/watch/", check_nodes.CONSENT)
+        self.assertIn('disclosure.pair_edges to "public"', check_nodes.CONSENT)
         disc = {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}
         self.assertEqual(self.check(disclosure=disc), [])
-        errs = self.check(disclosure=dict(disc, pair_edges="public"))
-        self.assertEqual(len(errs), 1, errs)
-        self.assertIn("pair_edges", errs[0])
+        self.assertEqual(self.check(disclosure=dict(disc, pair_edges="public")), [])
         self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
-        # The gate is a decision made with the consent text: only the constant opens it.
-        with mock.patch.object(check_nodes, "CONSENT_NAMES_PAIR_EDGES", True):
-            self.assertEqual(self.check(disclosure=dict(disc, pair_edges="public")), [])
-            self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
+        # The gate is a decision made with the consent text: only the constant closes it.
+        with mock.patch.object(check_nodes, "CONSENT_NAMES_PAIR_EDGES", False):
+            errs = self.check(disclosure=dict(disc, pair_edges="public"))
+            self.assertEqual(len(errs), 1, errs)
+            self.assertIn("pair_edges", errs[0])
+
+    def test_the_lab_nodes_opt_in_to_pair_edges(self):
+        # Steven's ruling on loop#77: his three lab node entries set pair_edges "public".
+        entries = [json.loads(p.read_text()) for p in sorted((ROOT / "nodes").glob("*.json"))]
+        self.assertEqual(len(entries), 3)
+        self.assertEqual({e["operator"] for e in entries}, {"StevenMih"})
+        self.assertEqual([e["disclosure"].get("pair_edges") for e in entries], ["public"] * 3)
 
     def test_the_fixture_cases(self):
         self.assertEqual(errors(CASES / "good"), [])

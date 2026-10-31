@@ -27,11 +27,16 @@ CONSENT = (
     "The network may ask it for its history summary, usually daily, and never for the "
     "content of any request, answer or payment. A summary of its answers, or that it did "
     "not answer, is published at https://evidence-network.github.io/loop/stats/. "
+    "The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding "
+    "shows it dealt with another listed node it draws a line between the two, but only when both entries set "
+    "disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, "
+    "so with few nodes listed they can show who dealt with whom. "
     "To leave, remove this entry: the asks stop on the next run, and past reports stay."
 )
-# Whether CONSENT names the /watch/ page's public pair edges (who dealt with whom). It does not, so no entry may
-# set disclosure.pair_edges. Turning this on is a decision made with the consent text, never a string match.
-CONSENT_NAMES_PAIR_EDGES = False
+# Whether CONSENT names the /watch/ page's public pair edges (who dealt with whom). It does since Steven's ruling on
+# evidence-network/loop#77, so an entry may set disclosure.pair_edges to "public". This is a decision made with the
+# consent text, never a string match: a revision that drops the pair edges turns it off again.
+CONSENT_NAMES_PAIR_EDGES = True
 # A GitHub handle: alphanumerics and single inner hyphens, at most 39 characters.
 GITHUB_HANDLE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -94,10 +99,10 @@ def check_entry(path, entry):
             if not isinstance(disc["stranger_safe"], list) or sorted(disc["stranger_safe"]) != sorted(STRANGER_SAFE):
                 errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)}")
             # Opting in to public pair edges on /watch/ (who dealt with whom, evidence-network/loop#77) needs a
-            # consent that names them; the statement does not yet, so no entry can opt in (Sherlock2, Buzz d15c87ad).
+            # consent that names them (Sherlock2, Buzz d15c87ad); CONSENT does, since Steven's ruling.
             if "pair_edges" in disc and (disc["pair_edges"] != "public" or not CONSENT_NAMES_PAIR_EDGES):
-                errs.append(f"{path.name}: disclosure.pair_edges must be \"public\", and only once the consent "
-                            "statement names the /watch/ page's pair edges; it does not yet")
+                errs.append(f"{path.name}: disclosure.pair_edges must be \"public\", and only while the consent "
+                            "statement names the /watch/ page's pair edges")
     return errs
 
 

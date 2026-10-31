@@ -29,17 +29,17 @@ Open a pull request adding `nodes/<node_id>.json`:
   an email address or a phone number; the list holds no personal data.
 - `consent` is the operator statement. By adding it, the operator agrees to it:
 
-  > I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay.
+  > I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to "public". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.
 
   The value goes in the entry exactly as this JSON string:
 
   ```
-  "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay."
+  "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay."
   ```
 
 - `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`.
 - `disclosure.policy: counterparties` means records are answered only to the counterparty of that exchange; `checkpoints` and `history_card/1` are answered to anyone.
-- `disclosure.pair_edges` (optional): `public` would let the /watch/ page draw this node's pair edges, which say who it dealt with. With it absent, the page draws none for the node and only counts them. No entry can set it yet: `scripts/check_nodes.py` refuses it until the consent statement above names the /watch/ page's pair edges (evidence-network/loop#77).
+- `disclosure.pair_edges` (optional): `public` lets the /watch/ page draw this node's pair edges, which say who it dealt with, where the other node's entry opts in too. With it absent, the page draws none for the node and only counts them. The only value is `public`; the consent statement above names these edges (evidence-network/loop#77).
 
 The pull request is opened by the operator named in `operator`, or that
 operator approves it, so the statement is theirs.
