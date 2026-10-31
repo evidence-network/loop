@@ -31,7 +31,10 @@ the same way (the planted-failure tests use it).
 On the live population every node seals with its own key, keys/ under its
 data_dir (steps/live.py), each into out/<name>/. A node whose data_dir is not set
 or not readable is NOT_CHECKED. The one finding is the worst over the nodes, and
-its detail lists each node.
+its detail lists each node. The run keeps nodes.json (the pins it found, and per
+node unread, sealed or not sealed) and each node's public key beside its capsule,
+and judges only those files (judge_live), so step 08 checks the capsule again
+from the proof (loop#188).
 
 Tools come from steps/01-seal.setup.sh, installed under $LOOP_TOOLS/01-seal
 (default ~/.cache/evidence-network-loop/01-seal, as loop.sh exports it). Standard library only.
@@ -251,6 +254,15 @@ def signature_gap(node, detail):
 def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None, live_node=False):
     """Seal with key_dir's key (or take `sealed`), check it, write the proof into out:
     (result, proof, detail, not_checked). A live node must have a nodes/ listing, so one without a node_id is unlisted."""
+    failed = seal(out, node, key_dir, python, pop_name, sealed)
+    if failed:
+        return failed
+    return judge_capsule(out, node, verifier, seen, key_dir / "node-key.pub.pem", node_id, live_node, not sealed)
+
+
+def seal(out, node, key_dir, python, pop_name, sealed=None):
+    """Seal with key_dir's key into out/capsule.json (or copy `sealed` there); None, or the FAIL when it could not
+    seal: (result, proof, detail, not_checked)."""
     capsule_path = out / "capsule.json"
     if sealed:
         shutil.copyfile(sealed, capsule_path)
@@ -264,14 +276,24 @@ def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=
                               str(capsule_path), json.dumps(MODEL), pop_name], env=env)
         if rc != 0:
             (out / "seal.stderr.txt").write_text(err)
-            return "FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})", []
+            return seal_failed(node, rc)
+    return None
 
+
+def seal_failed(node, rc):
+    return "FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})", []
+
+
+def judge_capsule(out, node, verifier, seen, pub_pem, node_id=None, live_node=False, own_seal=True):
+    """Check out/capsule.json under the node's key (pub_pem) and its nodes/ listing, and write verifier.json and
+    checks.json: (result, proof, detail, not_checked)."""
+    capsule_path = out / "capsule.json"
     listed = listed_key(nodes_dir(), node_id) if node_id else None
-    checks, outputs = check(capsule_path.read_bytes(), verifier, raw_public_hex(key_dir / "node-key.pub.pem"),
-                            listed, listing_expected=live_node, own_seal=not sealed)
+    checks, outputs = check(capsule_path.read_bytes(), verifier, raw_public_hex(pub_pem),
+                            listed, listing_expected=live_node, own_seal=own_seal)
     (out / "verifier.json").write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n")
     (out / "checks.json").write_text(json.dumps(
-        {"node": node, "sealed_by": "given capsule" if sealed else "capsule-emit, in this process",
+        {"node": node, "sealed_by": "capsule-emit, in this process" if own_seal else "given capsule",
          "installed": seen, "checks": checks}, indent=2, sort_keys=True) + "\n")
     sig = checks["signature"]
     failed = [n for n, c in checks.items() if not c["ok"]]
@@ -284,37 +306,95 @@ def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=
     return result, ["capsule.json", "verifier.json", "checks.json"], detail, gaps
 
 
+# What the live judge reads, kept in the proof so step 08 runs it again on the proof alone (loop#188).
+NODES_FILE = "nodes.json"  # the pins the run found, and per node how far it got: unread, sealed, or not sealed
+
+
 def main_live(population, out, started, sealed=None):
-    """Each live node seals with its own key, from its data_dir; one finding, the worst over the nodes."""
+    """Each live node seals with its own key, from its data_dir, and its public key is kept beside the capsule;
+    then judge_live checks those files, so the finding is a function of its proof. One finding, the worst."""
     pop_name = population["population"]
     python, verifier = tools()
     seen, missing = installed_pins(python, verifier)
     if sealed:
         missing = [n for n in missing if n["what"] != "capsule-emit"]
-    results, proof, details, not_checked = [], [], [], list(missing)
+    nodes = {}
     for entry in population["nodes"]:
         name = entry["name"]
+        if Path(name).name != name or name in ("", ".", ".."):
+            raise SystemExit(f"01-seal: node name {name!r} is not a single path component")
+        shutil.rmtree(out / name, ignore_errors=True)
         data_dir = live.readable(entry, "data_dir", "keys/node-key.pem", "keys/node-key.pub.pem")
         if data_dir is None:
-            results.append("NOT_CHECKED")
-            not_checked.append(live.not_checked(name))
-            details.append(f"node {name}: not checked, data_dir not set or unreadable")
+            nodes[name] = {"read": "data_dir"}
         elif missing:
-            results.append("NOT_CHECKED")
-            details.append(f"node {name}: not checked, a pinned tool is missing or not the pin")
+            nodes[name] = {"read": "pins"}
         else:
             node_out = out / name
             node_out.mkdir(parents=True, exist_ok=True)
-            result, files, detail, gaps = seal_and_check(node_out, name, data_dir / "keys", python, verifier, seen,
-                                                         pop_name, sealed, entry.get("node_id"), live_node=True)
+            shutil.copyfile(data_dir / "keys" / "node-key.pub.pem", node_out / "node-key.pub.pem")
+            failed = seal(node_out, name, data_dir / "keys", python, pop_name, sealed)
+            nodes[name] = ({"read": "seal_failed", "exit": int(failed[2].rsplit("exit ", 1)[1].rstrip(")"))}
+                           if failed else {"read": "sealed", "own_seal": not sealed})
+    (out / NODES_FILE).write_text(json.dumps({"pins": {"seen": seen, "missing": missing}, "nodes": nodes},
+                                             indent=2, sort_keys=True) + "\n")
+    judge_live(population, out, started)
+    return 0
+
+
+def judge_live(population, out, started):
+    """The live finding from what main_live kept under out (nodes.json, each node's capsule.json and
+    node-key.pub.pem) only: the checks run again with the pinned verifier."""
+    out = Path(out)
+    pop_name = population["population"]
+    _, verifier = tools()
+    results, proof, details, not_checked = [], [], [], []
+    try:
+        kept = json.loads((out / NODES_FILE).read_text(encoding="utf-8"))
+        seen, missing, nodes = kept["pins"]["seen"], kept["pins"]["missing"], kept["nodes"]
+        if not (isinstance(seen, dict) and isinstance(missing, list) and isinstance(nodes, dict)):
+            raise TypeError("pins or nodes has the wrong type")
+        proof.append(NODES_FILE)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return finding.write(out, result="FAIL", population=pop_name, asserts=ASSERTS, pinned=PINNED, proof=[],
+                             detail=f"{NODES_FILE} is not readable ({type(e).__name__}: {e})", started=started)
+    not_checked += missing
+    names = [e["name"] for e in population["nodes"]]
+    if sorted(nodes) != sorted(names):
+        results.append("FAIL")
+        details.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
+    for entry in population["nodes"]:
+        name = entry["name"]
+        if name not in nodes:
+            continue
+        node = nodes[name] if isinstance(nodes[name], dict) else {}
+        state, node_out = node.get("read"), out / name
+        if state == "data_dir":
+            results.append("NOT_CHECKED")
+            not_checked.append(live.not_checked(name))
+            details.append(f"node {name}: not checked, data_dir not set or unreadable")
+        elif state == "pins" and missing:
+            results.append("NOT_CHECKED")
+            details.append(f"node {name}: not checked, a pinned tool is missing or not the pin")
+        elif state == "seal_failed" and isinstance(node.get("exit"), int) and (node_out / "seal.stderr.txt").is_file():
+            result, files, detail, gaps = seal_failed(name, node["exit"])
             results.append(result)
-            not_checked += gaps
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
+        elif state == "sealed" and not missing and isinstance(node.get("own_seal"), bool) and \
+                (node_out / "capsule.json").is_file() and (node_out / "node-key.pub.pem").is_file():
+            result, files, detail, gaps = judge_capsule(node_out, name, verifier, seen, node_out / "node-key.pub.pem",
+                                                        entry.get("node_id"), True, node["own_seal"])
+            results.append(result)
+            not_checked += gaps
+            proof += [f"{name}/{f}" for f in ["node-key.pub.pem", *files]]
+            details.append(detail)
+        else:
+            results.append("FAIL")
+            details.append(f"node {name}: {NODES_FILE} records {node!r}, which its kept files do not bear out")
     result, detail = live.worst(results), "; ".join(details)
-    finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
-                  proof=proof, detail=detail, not_checked=not_checked, started=started)
-    return 0
+    return finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
+                         proof=proof, detail=detail, not_checked=not_checked, started=started)
 
 
 def main(argv=None):

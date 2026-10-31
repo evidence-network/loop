@@ -1105,5 +1105,101 @@ class Step08Live03Test(unittest.TestCase):
         self.assertIn("its proof holds no carrier.json", entries["03-advertise"]["not_checked"]["why"])
 
 
+ONE_SEAL = TOOLS_DIR / "01-seal"
+
+
+@unittest.skipUnless((ONE_SEAL / "bin" / "cross_language").is_file() and (ONE_SEAL / "venv" / "bin" / "python").is_file(),
+                     "SKIPPED LOUDLY: step 01's sealer and Go verifier are not installed; run steps/01-seal.setup.sh")
+class Step08Live01Test(unittest.TestCase):
+    """08 re-derives live step 01 from its proof alone: a live node (rehearsal alice's TEST key in a data dir,
+    listed in a scratch nodes/ under that key) seals, and 08 checks its capsule again (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        (t / "lab" / "keys").mkdir(parents=True)
+        for f in ("node-key.pem", "node-key.pub.pem"):
+            shutil.copyfile(POPULATION / "keys" / "alice" / f, t / "lab" / "keys" / f)
+        mod = step.step_module("01-seal")
+        key = mod.raw_public_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem")
+        (t / "nodes").mkdir()
+        dump(t / "nodes" / "n1.json", {"node_id": "n1", "key_id": key})
+        self.pop = t / "pop"
+        self.pop.mkdir()
+        dump(self.pop / "population.json", {"population": "live", "rail": None, "nodes": [
+            {"name": "lab-1", "node_id": "n1", "data_dir": str(t / "lab"), "book_dir": None}]})
+        self.env = mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(t / "nodes")})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.run = t / "2026-10-31-live"
+        r = subprocess.run([str(STEPS / "01-seal"), "--population", str(self.pop), "--out", str(self.run / "01-seal")],
+                           capture_output=True, text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        write_run_json(self.run, ["01", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(self.pop), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def plant(self, edit):
+        edit(self.run / "01-seal")
+        rehash(self.run / "01-seal")
+        return self.verify()
+
+    def test_live_01_is_reproduced_from_its_proof(self):
+        recorded = load(self.run / "01-seal" / "finding.json")
+        self.assertEqual(recorded["result"], "PASS", recorded["detail"])
+        f, entries = self.verify()
+        e = entries["01-seal"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], "PASS")
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_a_node_key_the_listing_does_not_publish_fails(self):
+        def swap(d):
+            shutil.copyfile(POPULATION / "keys" / "bob" / "node-key.pub.pem", d / "lab-1" / "node-key.pub.pem")
+        f, entries = self.plant(swap)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not the key nodes/n1.json lists", f["detail"])
+
+    def test_a_capsule_altered_after_sealing_fails(self):
+        def forge(d):
+            c = load(d / "lab-1" / "capsule.json")
+            c["effect"]["effect_attestation"] = "witnessed"
+            dump(d / "lab-1" / "capsule.json", c)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("recorded PASS, re-derived FAIL", f["detail"])
+
+    def test_a_checks_file_the_capsule_does_not_give_fails(self):
+        def forge(d):
+            ch = load(d / "lab-1" / "checks.json")
+            ch["checks"]["model"]["detail"] = "x"
+            dump(d / "lab-1" / "checks.json", ch)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("lab-1/checks.json re-derived is not the recorded", f["detail"])
+
+    def test_a_node_marked_unread_does_not_pass(self):
+        def unread(d):
+            n = load(d / "nodes.json")
+            n["nodes"]["lab-1"] = {"read": "data_dir"}
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(unread)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_an_old_shape_live_01_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.run / "01-seal")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-5" / "01-seal", self.run / "01-seal")
+        f, entries = self.verify()
+        self.assertEqual(entries["01-seal"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no nodes.json", entries["01-seal"]["not_checked"]["why"])
+
+
 if __name__ == "__main__":
     unittest.main()
