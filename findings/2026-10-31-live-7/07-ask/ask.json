@@ -1,0 +1,18 @@
+{
+  "nodes": {
+    "stevenmih-1": {
+      "asked": true,
+      "via": "the reporter's console"
+    },
+    "stevenmih-2": {
+      "asked": true,
+      "via": "the reporter's console"
+    },
+    "stevenmih-3": {
+      "asked": true,
+      "via": "a second node's console"
+    }
+  },
+  "second_console": true,
+  "self_node": "stevenmih-3"
+}
