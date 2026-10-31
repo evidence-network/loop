@@ -33,23 +33,24 @@ and payee are declared under different controllers.
 On the live population no rail is verified: the lab nodes record their
 wallets' reports of Lightning payments (capsules plugin settlement legs and
 payment.lifecycle.v1 observations in <data_dir>/ledger/capsules.jsonl), not
-the rail's own settlement objects. The pinned Lightning adapter
-(capsules-plugin#82) reports on the node's own book only, with the wallet's
-terminal report as finality, and the lab has no rail. The step reads what each
-node recorded, lists it (recorded.json per
-node), and is NOT_CHECKED on that issue. Where a settlement observation carries
-the payment's preimage (a host passes it with mesh-llm#2744, open, which the
-lab build carries, and the lexe-wallet-plugin#7 wallet build), the step checks finality itself: the preimage
-is 32 bytes of lowercase hex and sha256(preimage) == payment_hash. Only a payer
-observation's preimage proves a payment; the provider holds its preimage
-before it is paid. recorded.json
-keeps the check's outcome, never the preimage. A preimage that is malformed or
-does not hash to its payment hash is a FAIL, on either side: the node recorded a
-settlement whose own preimage does not match it. With every recorded hash proven by
-a payer's preimage the finality gap closes, but the step stays NOT_CHECKED on the
-rail's settlement object by reference. A node with nothing recorded, or no
-readable data_dir, is NOT_CHECKED too. The step never pays: it moves no money
-with or without LOOP_LIVE_SPEND, and says so in detail.
+the rail's own settlement objects, and the lab has no rail. The pinned
+Lightning adapter (capsules-plugin lightning-v0) reports on the node's own book
+only. The step reads what each node recorded, lists it (recorded.json per
+node), and is NOT_CHECKED on that gap (evidence-network/loop#243).
+
+Where a settlement observation carries the payment's preimage, the step checks
+finality itself. The host passes the preimage with mesh-llm#2744 (open; the lab
+build carries it) and the lexe-wallet-plugin#7 wallet build. The preimage must
+be 32 bytes of lowercase hex with sha256(preimage) == payment_hash. Only a
+payer observation's preimage proves a payment; the provider holds its preimage
+before it is paid. recorded.json keeps the check's outcome, never the
+preimage. A preimage that is malformed or does not hash to its payment hash is
+a FAIL, on either side: the node recorded a settlement whose own preimage does
+not match it. With every recorded hash proven by a payer's preimage the
+finality gap closes, but the step stays NOT_CHECKED on the rail's settlement
+object by reference. A node with nothing recorded, or no readable data_dir, is
+NOT_CHECKED too. The step never pays: it moves no money with or without
+LOOP_LIVE_SPEND, and says so in detail.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (unreadable population, no rail files).
@@ -79,8 +80,8 @@ INPUTS = ["exchange.json", "controllers.json"]
 RAIL_FILES = ["rail.json", "ledger.jsonl"]
 EXCHANGE_KEYS = ["amount_atomic", "currency", "decimals", "exchange_id", "payee", "payer", "settlement_ref"]
 MATCHED = ("exchange_id", "payer", "payee", "currency", "amount_atomic", "decimals")
-# The open issue for what the Lightning adapter (capsules-plugin#82, pinned) still lacks: preimage finality and
-# a settlement object by reference on a rail.
+# The open issue for what the Lightning adapter (capsules-plugin lightning-v0, pinned) still lacks: a settlement
+# object by reference on a rail, and settlement records that survive mesh-llm#2654.
 ADAPTER_ISSUE = "Mesh-LLM/capsules-plugin#83"
 # A node with no settlement cites the adapter's gap: the lab-wallet issue (loop#56) is closed, and a paid exchange on
 # it would still be NOT_CHECKED on that gap.
@@ -449,7 +450,7 @@ def main_live(pop, out, started):
                            "none is the rail's own object")
             not_checked.append({"what": f"settlements node {name} recorded, against the rail",
                                 "why": "the node records its wallet's report of a Lightning payment, not the rail's "
-                                       "settlement object by reference; the pinned adapter (capsules-plugin#82) "
+                                       "settlement object by reference; the pinned adapter (capsules-plugin lightning-v0) "
                                        "reports on the node's own book, and this step checks only the preimages",
                                 "issue": ADAPTER_ISSUE})
         else:
