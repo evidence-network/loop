@@ -369,8 +369,8 @@ class ReportTest(Base):
             figures = step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
             text = next(f["text"] for f in figures if f["id"] == "count:deal")
             self.assertIn("3 of 3 deal records step 08 lists", text)  # the settlement leg is no deal record
-            self.assertIn("the live halves are 1 deal, one per exchange held on both nodes, each citing both halves "
-                          "(1 half pairs with no other node's half)", text)
+            self.assertIn("2 of 3 live halves pair into deals, one per exchange held on both nodes, each citing both halves "
+                          "(1 of 3 halves pair with no other node's half)", text)
             self.assertEqual(found, {"deals": {}, "exchanges": {}})  # nonce pairing never mixes with 06's exchange ids
             (src / "05-deal" / "lab-a" / "held-2.json").unlink()
             with self.assertRaises(step.Refused):

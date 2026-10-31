@@ -203,7 +203,8 @@ def load_pack():
             else:
                 terms.append({"id": t["id"], "name": t["name"], "must_have": True, "own": True,
                               **({"counted": True} if t.get("counted") else {})})
-        kinds[nn] = {"kind": k["kind"], "records": k["records"], "only": k.get("only", {}),
+        kinds[nn] = {"kind": k["kind"], "records": k["records"], "records_if_none": k.get("records_if_none", []),
+                     "only": k.get("only", {}),
                      "inputs": k.get("inputs", {}), "terms": terms}
     return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
             "own_contract_ref": binding["own_contract_ref"],
@@ -295,13 +296,14 @@ def select(run, manifest, start, end, pack):
                           and str(p.relative_to(d)) not in files and p.name != "loop-step.log")
         refused += [f"{e['dir']}/{p}: not in 08's manifest" for p in unlisted]
         kind = pack["kinds"][e["step"]]["kind"]
-        patterns = pack["kinds"][e["step"]]["records"]
+        stepkind = record_kind(pack["kinds"][e["step"]], files, manifest.get("population"))
+        patterns = stepkind["records"]
         # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
         # disputes; the bundles and proof files beside them are 08's, not counted.
         matched = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
         wanted = {}
         for p, s in matched.items():
-            if (d / p).is_file() and finding.sha256(d / p) == s and not is_record(pack["kinds"][e["step"]], p, d / p):
+            if (d / p).is_file() and finding.sha256(d / p) == s and not is_record(stepkind, p, d / p):
                 refused.append(f"{e['dir']}/{p}: not a {kind} record (binding.json `only`: "
                                f"{next(c['why'] for g, c in pack['kinds'][e['step']]['only'].items() if fnmatch.fnmatchcase(p, g))})")
                 continue
@@ -453,6 +455,17 @@ def evaluate(ev, run, inputs):
     return verdicts, exchanges
 
 
+def record_kind(kind, paths, population):
+    """`kind` with the `records` patterns that apply to the files 08 lists for a step: the kind's own, or, when none of
+    the files matches, its `records_if_none`, on a live run only (a rehearsal 09 without its dispute.json is a FAIL).
+    Live 09 keeps no dispute.json (Mesh disputes are adjudications only); its record is the referee's sealed Result,
+    outcome.json."""
+    if population == "live" and kind.get("records_if_none") and not any(
+            fnmatch.fnmatchcase(p, g) for p in paths for g in kind["records"]):
+        return dict(kind, records=kind["records_if_none"])
+    return kind
+
+
 def is_record(kind, path, file):
     """Whether `path` (a file 08 lists, at `file`) is a record of `kind`: it matches one of the kind's `records`
     patterns and, where binding.json's `only` names a condition for that pattern, the file meets it. A live 05 held
@@ -549,11 +562,11 @@ def judge_records(records, run, pack, start, end, not_checked):
                 answered = [a for a in got.get(t["id"], []) if a[0] != "out_of_scope"]
                 verdicts = [v for v, _, _ in answered]
                 worst = next((v for v in ("not_met", "not_evaluable", "met") if v in verdicts), "not_evaluable")
-                said = ", ".join(f"{v} {verdicts.count(v)}" for v in ("met", "not_met", "not_evaluable") if v in verdicts)
+                said = ", ".join(f"{v} {verdicts.count(v)} of {len(answered)}" for v in ("met", "not_met", "not_evaluable") if v in verdicts)
                 readings = sorted({r for _, r, _ in answered if r})
                 c = claim(cid, t["id"], worst, refs, cref,
-                          f"the pinned pack's own evaluator, over {len(exchanges)} exchanges in {len(inputs)} nodes' "
-                          f"own chains, answers this term for {len(answered)} deal sides: "
+                          f"the pinned pack's own evaluator, over the nodes' own chains (x-evaluator counts them), answers "
+                          f"this term for {len(answered)} of {len(got.get(t['id'], []))} deal sides: "
                           f"{said or 'no deal in the chains carried this term'}"
                           + (f" ({', '.join(readings)})" if readings else ""))
                 # countersigned only when every answer is; the provider_states reading is the provider's word

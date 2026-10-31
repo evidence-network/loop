@@ -342,6 +342,26 @@ class JudgeTest(Base):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("05-deal: 08 lists no deal record (deal.json, */held-*[0-9].json)", f["detail"])
 
+    def test_a_live_09_with_no_dispute_json_is_recorded_by_its_referee_outcome(self):
+        # Mesh disputes are adjudications only: a live 09 keeps outcome.json, no dispute.json.
+        m = self.manifest()
+        m["population"] = "live"
+        e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
+        e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
+        self.reseal_manifest(m)
+        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        self.assertEqual([r["path"] for r in records if r["dir"] == "09-dispute"], ["outcome.json"])
+
+    def test_a_rehearsal_09_with_no_dispute_json_still_fails(self):
+        m = self.manifest()
+        e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
+        e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
+        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, ["09-dispute: 08 lists no dispute record (dispute.json)"])
+
     def live_05(self, settlement_leg=True):
         """The base run's 05 as live 05 keeps it (loop#225): two nodes' held halves of one exchange (copied from
         findings/2026-10-31-live-8), their citing and inclusion files, and, with `settlement_leg`, a settlement leg
@@ -480,8 +500,8 @@ class JudgeTest(Base):
         self.assertEqual(not_checked, [])
         for term in ("come_through.served_as_agreed", "come_through.served_named_model"):
             self.assertEqual(claims[term]["verdict"], "met", claims[term])
-            self.assertIn("the pinned pack's own evaluator, over 6 exchanges in 2 nodes' own chains, answers this term "
-                          "for 3 deal sides: met 3", claims[term]["presentation"]["narrative"])
+            self.assertIn("the pinned pack's own evaluator, over the nodes' own chains (x-evaluator counts them), answers "
+                          "this term for 3 of 6 deal sides: met 3 of 3", claims[term]["presentation"]["narrative"])
             self.assertEqual(claims[term]["presentation"]["status"], "SATISFIED")
             # every record of the step is cited, the chains beside the halves
             self.assertEqual(sorted(claims[term]["evidence"]), sorted(f"05-deal/{r['path']}" for r in records
