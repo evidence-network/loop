@@ -39,8 +39,10 @@ node's own chain (`<node>/ledger/capsules.jsonl`, binding.json `inputs`), and st
 (`scripts/evaluators/inference_deals.py` and the three modules it imports, at the `inference-deals` pin, each held to
 its git blob id; `10-judge.setup.sh` fetches them beside the pack, none is kept here) over those chains in the window:
 its `collect` and `judge_deal`, per deal, with a `shop_preauth` deal not counted, as the pack's own run does
-(loop#157). Only the bounds differ: the evaluator runs over step 10's window, the calendar months its records are in,
-not the pack's weekly `period_policy`, so the chains and the halves are judged over one window. The bytes run are
+(loop#157). Only the bounds differ (Sherlock2 confirmed, Buzz b1effd94): a chain is in the window as its step is, by
+the step's finding `finished` (item 3 above), never by the dates in its entries, so each chain is read whole up to the
+window's end, as the halves beside it are; the pack's weekly `period_policy` is not used, and the Result says so
+(`x-evaluator.bounds`). The bytes run are
 the bytes held to their blobs, compiled from them (never a cached `.pyc`); pinned code that does not load here is a
 not_checked entry, never a crash. Each chain is read once and held to 08's digest. Each 05 term's claim then carries
 the evaluator's worst verdict over the deal sides that answer the term (`out_of_scope` ones left out;
