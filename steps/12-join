@@ -195,7 +195,7 @@ def revocations_root():
     return Path(os.environ.get("LOOP_REVOCATIONS_GIT", ROOT))
 
 
-def binding_check(name, raw, digest, key, at, from_main=False):
+def binding_check(name, raw, digest, key, at, from_main=None):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, does not name the key, or names it as the
     delegator of a delegated_by binding); "unread" (it
@@ -203,11 +203,12 @@ def binding_check(name, raw, digest, key, at, from_main=False):
     but revocation is NOT_CHECKED: the verifier rejected the run's declaration). The revocation statements published for
     `digest` (nodes/revocations/) go to the verifier, declared complete as of `at` (CB-1 option A): one that applies
     at `at` makes it "bad", and with none that applies it is "ok" (revocation PASS on that snapshot). A live run
-    (`from_main`) reads the file as main held it at `at` (bv.main_list), a rehearsal its own checkout's fixtures."""
+    passes `from_main`, the bv.snapshot of origin/main at `at`, and reads the file at that commit; a rehearsal reads
+    its own checkout's fixtures."""
     no_list = None
     try:
-        if from_main:
-            commit, text = bv.main_list(revocations_root(), digest, at)
+        if from_main is not None:
+            commit, text = bv.main_list(revocations_root(), digest, from_main)
             where = f"nodes/{bv.REVOCATIONS}/ at main {commit}"
         else:
             text, where = bv.checkout_list(nodes_dir(), digest), f"nodes/{bv.REVOCATIONS}/ in this checkout"
@@ -656,7 +657,7 @@ def settled_binding(fail, named):
     return named if fail and named else None
 
 
-def live_binding_record(name, node, entry, held, at, node_dir):
+def live_binding_record(name, node, entry, held, at, node_dir, snap=None):
     """(failure or None, not_checked list, line or None, proof paths) of the Go verifier on the record the node
     holds in its data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports
     `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them. A node that holds no
@@ -671,7 +672,8 @@ def live_binding_record(name, node, entry, held, at, node_dir):
                                        "check the record by")], None, []
     (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
     kept = [f"{name}/{BINDING_FILE}"]
-    state, detail = binding_check(name, raw, held, entry["key_id"], at, from_main=True)
+    state, detail = binding_check(name, raw, held, entry["key_id"], at,
+                                  from_main=snap or {"commit": None, "why": "no main commit was read"})
     if state == "bad":
         return f"{name}: {detail}", [], None, kept
     unchecked = binding_unchecked(state, detail)
@@ -983,6 +985,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
     failures, not_checked, proof, lines = [], [], [], []
     at = daily_report.utc_now()
     bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
+    snap = None  # origin/main at bind_at, fetched once, when a binding is first read
     for node in pop["nodes"]:
         name = node["name"]
         asker, via = console, "the reporter's console"
@@ -1023,7 +1026,9 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             if line:
                 lines.append(line)
             if not fail and not nc:
-                fail, ncs, line, kept = live_binding_record(name, node, entry, held, bind_at, node_dir)
+                if snap is None:
+                    snap = bv.snapshot(revocations_root(), bind_at)
+                fail, ncs, line, kept = live_binding_record(name, node, entry, held, bind_at, node_dir, snap)
                 proof += kept
                 if fail:
                     bad.append(fail)

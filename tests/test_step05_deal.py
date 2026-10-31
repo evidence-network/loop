@@ -32,6 +32,9 @@ import check_no_preimages  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
+# A live step fetches origin/main before reading nodes/revocations/ (bv.snapshot); tests never touch the network.
+os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
+
 _loader = importlib.machinery.SourceFileLoader("step05_deal", str(STEP))
 _spec = importlib.util.spec_from_loader("step05_deal", _loader)
 step = importlib.util.module_from_spec(_spec)
@@ -341,6 +344,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         # Revocation statements are read from main as it stood at the step's start: a scratch repository's main.
         os.environ["LOOP_REVOCATIONS_GIT"] = str(self.dir)
         self.addCleanup(os.environ.pop, "LOOP_REVOCATIONS_GIT")
+        self.snap = None  # bv.snapshot of the scratch origin/main at the step's start, unless a test sets one
         self.git("init", "-q", "-b", "main")
         self.commit("2026-10-01T00:00:00Z", "start", "--allow-empty")
 
@@ -353,6 +357,10 @@ class Step05BindingCheckTest(unittest.TestCase):
         if (self.dir / "nodes" / "revocations").is_dir():
             self.git("add", "nodes/revocations")
         self.git("commit", "-qm", msg, *extra, date=date)
+        branch = subprocess.run(["git", "-C", str(self.dir), "branch", "--show-current"], capture_output=True,
+                                text=True).stdout.strip()
+        if branch == "main":  # as if pushed: the run reads origin/main, never a local branch
+            self.git("update-ref", "refs/remotes/origin/main", "HEAD")
 
     def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",),
               started="2026-10-31T00:00:00Z"):
@@ -365,8 +373,9 @@ class Step05BindingCheckTest(unittest.TestCase):
             (self.data / step.BINDING_FILE).write_text(text)
         half = {"key_id": key, "timestamp": times[0]}
         citing = {"timestamp": times[-1]}
+        snap = self.snap if self.snap is not None else step.bv.snapshot(self.dir, started)
         return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)},
-                                  started)
+                                  started, snap)
 
     def test_a_binding_that_names_the_key_and_applies_is_ok(self):
         state, detail = self.check("valid-same-controller")
@@ -401,11 +410,43 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.commit("2026-11-02T00:00:00Z", "dropped on main after the start")
         self.assertEqual(self.check("valid-same-controller")[0], "bad")  # main at the start held it
 
-    def test_with_no_main_to_read_from_revocation_is_open(self):
-        self.git("branch", "-qm", "main", "not-main")
+    def test_with_no_origin_main_to_read_from_revocation_is_open(self):
+        self.git("update-ref", "-d", "refs/remotes/origin/main")  # a local main alone is never read
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "open", detail)
-        self.assertIn("no main commit at or before 2026-10-31T00:00:00Z", detail)
+        self.assertIn("no origin/main commit at or before 2026-10-31T00:00:00Z", detail)
+
+    def test_a_kept_commit_this_clone_lacks_or_a_failed_fetch_leaves_revocation_open(self):
+        self.snap = {"commit": "ab" * 20}
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("this clone does not hold main commit abababababab", detail)
+        self.snap = {"commit": None, "why": "origin/main could not be fetched (offline)"}
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("origin/main could not be fetched (offline)", detail)
+
+    def test_the_snapshot_fetches_origin_main_first(self):
+        # A clone that fetched before a revocation was merged reads it once the run fetches (reviewers, loop#239).
+        side = tempfile.TemporaryDirectory()
+        self.addCleanup(side.cleanup)
+        remote = Path(side.name) / "remote"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dir), str(remote)], check=True)
+        self.git("remote", "add", "origin", str(remote))
+        self.git("fetch", "-q", "origin")
+        before = step.bv.main_commit(self.dir, "2026-10-31T00:00:00Z")
+        other = Path(side.name) / "other"
+        subprocess.run(["git", "clone", "-q", str(remote), str(other)], check=True)
+        env = dict(os.environ, GIT_COMMITTER_DATE="2026-10-20T00:00:00Z", GIT_AUTHOR_DATE="2026-10-20T00:00:00Z")
+        subprocess.run(["git", "-C", str(other), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c",
+                        "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "merged later"], check=True,
+                       env=env)
+        subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "HEAD:main"], check=True)
+        with mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_FETCH": "1"}):
+            snap = step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z")
+        self.assertNotEqual(snap["commit"], before)
+        self.assertEqual(snap["commit"], subprocess.run(["git", "-C", str(other), "rev-parse", "HEAD"],
+                                                        capture_output=True, text=True).stdout.strip())
 
     def test_a_half_issued_after_the_steps_start_leaves_revocation_open(self):
         state, detail = self.check("valid-same-controller", started="2026-10-29T00:00:00Z")
@@ -596,13 +637,14 @@ class Step05BindingCheckTest(unittest.TestCase):
         (self.data / step.BINDING_FILE).write_text("not json")
         state, _ = step.binding_check("cd" * 32, {"key_id": "ab" * 32, "timestamp": "2026-10-30T00:00:00Z"},
                                       {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)},
-                                      "2026-10-31T00:00:00Z")
+                                      "2026-10-31T00:00:00Z", step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z"))
         self.assertEqual(state, "unread")
 
     def test_a_half_with_no_evidence_key_is_bad_not_a_crash(self):
         for key in (None, "zz", 5):
             state, detail = step.binding_check("cd" * 32, {"key_id": key, "timestamp": "2026-10-30T00:00:00Z"},
-                                               {"timestamp": "2026-10-30T00:00:00Z"}, {}, "2026-10-31T00:00:00Z")
+                                               {"timestamp": "2026-10-30T00:00:00Z"}, {}, "2026-10-31T00:00:00Z",
+                                               step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z"))
             self.assertEqual(state, "bad", detail)
         self.assertIsNone(step.listed_node_id(None))
 
@@ -813,6 +855,22 @@ class Step05DealLiveTest(unittest.TestCase):
         self.rehash()
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+
+    def test_08_holds_the_kept_revocations_commit_to_main_at_the_steps_start(self):
+        # nodes.json keeps the origin/main commit 05 read nodes/revocations/ from; 08 recomputes it from its own
+        # history. An older commit (which could hide a revocation merged since) FAILs.
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        kept = n["revocations_main"]["commit"]
+        self.assertIsNotNone(kept, n["revocations_main"])
+        older = subprocess.run(["git", "-C", str(ROOT), "rev-parse", f"{kept}^"], capture_output=True,
+                               text=True).stdout.strip()
+        n["revocations_main"] = {"commit": older}
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+        self.assertIn("but origin/main held", f["detail"])
 
     def test_08_does_not_reproduce_an_old_shape_live_05(self):
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-8" / "05-deal", self.out)
