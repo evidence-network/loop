@@ -1,0 +1,23 @@
+{
+  "nodes": {
+    "stevenmih-1": {
+      "own_seal": true,
+      "read": "sealed"
+    },
+    "stevenmih-2": {
+      "own_seal": true,
+      "read": "sealed"
+    },
+    "stevenmih-3": {
+      "own_seal": true,
+      "read": "sealed"
+    }
+  },
+  "pins": {
+    "missing": [],
+    "seen": {
+      "aac-go": "0.16.0",
+      "capsule-emit": "0.13.0"
+    }
+  }
+}
