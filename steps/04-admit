@@ -901,6 +901,7 @@ def judge_live(pop, out, started):
     node_ids = {e["name"]: e.get("node_id") for e in pop["nodes"]}
     unverified = []  # records whose signature could not be checked or held to a key: never a PASS
     gaps = None  # tool_gaps(), read once, and only when a node holds a record to check
+    unmarked = []  # nodes with no lab.sh build mark: every decision is judged (loop#103)
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -938,12 +939,10 @@ def judge_live(pop, out, started):
             judged = [(n, ln) for n, ln in zip(numbers, lines) if not sealed_before(ln, since)]
             earlier = len(numbers) - len(judged)
             numbers, lines = [n for n, _ in judged], [ln for _, ln in judged]
-            details.append(f"node {name}: judged the decisions sealed since {since}, when it started on plugin build "
-                           f"{str(build.get('plugin_sha256'))[:12]}" + (f"; {earlier} sealed before, by an earlier "
-                                                                         f"build, set aside" if earlier else ""))
+            details.append(f"node {name}: decisions since {since} (plugin build {str(build.get('plugin_sha256'))[:12]})"
+                           + (f", {earlier} earlier set aside" if earlier else ""))
         else:
-            details.append(f"node {name}: the plugin build boundary is not known (no lab.sh build mark), so every "
-                           "decision in the ledger is judged")
+            unmarked.append(name)
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
         if numbers:
             gaps = tool_gaps() if gaps is None else gaps
@@ -969,6 +968,8 @@ def judge_live(pop, out, started):
             proof.append(f"{name}/rows.json")
             for c in (c for cs in rows.values() for c in cs):
                 tally[c["check"]] += 1
+    if unmarked:
+        details.append(f"no plugin build mark for {', '.join(unmarked)}: every decision judged")
     base = dict(population=pop["population"], asserts=ASSERTS_LIVE, pinned=LIVE_PINNED, started=started)
     summary = "; ".join(details)
     if any(tally.values()):
