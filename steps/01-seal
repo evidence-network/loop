@@ -254,15 +254,15 @@ def signature_gap(node, detail):
 def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None, live_node=False):
     """Seal with key_dir's key (or take `sealed`), check it, write the proof into out:
     (result, proof, detail, not_checked). A live node must have a nodes/ listing, so one without a node_id is unlisted."""
-    failed = seal(out, node, key_dir, python, pop_name, sealed)
-    if failed:
-        return failed
+    rc = seal(out, node, key_dir, python, pop_name, sealed)
+    if rc is not None:
+        return seal_failed(node, rc)
     return judge_capsule(out, node, verifier, seen, key_dir / "node-key.pub.pem", node_id, live_node, not sealed)
 
 
 def seal(out, node, key_dir, python, pop_name, sealed=None):
-    """Seal with key_dir's key into out/capsule.json (or copy `sealed` there); None, or the FAIL when it could not
-    seal: (result, proof, detail, not_checked)."""
+    """Seal with key_dir's key into out/capsule.json (or copy `sealed` there); None, or capsule-emit's exit code
+    when it could not seal (its stderr kept as seal.stderr.txt)."""
     capsule_path = out / "capsule.json"
     if sealed:
         shutil.copyfile(sealed, capsule_path)
@@ -276,7 +276,7 @@ def seal(out, node, key_dir, python, pop_name, sealed=None):
                               str(capsule_path), json.dumps(MODEL), pop_name], env=env)
         if rc != 0:
             (out / "seal.stderr.txt").write_text(err)
-            return seal_failed(node, rc)
+            return rc
     return None
 
 
@@ -333,9 +333,9 @@ def main_live(population, out, started, sealed=None):
             node_out = out / name
             node_out.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(data_dir / "keys" / "node-key.pub.pem", node_out / "node-key.pub.pem")
-            failed = seal(node_out, name, data_dir / "keys", python, pop_name, sealed)
-            nodes[name] = ({"read": "seal_failed", "exit": int(failed[2].rsplit("exit ", 1)[1].rstrip(")"))}
-                           if failed else {"read": "sealed", "own_seal": not sealed})
+            rc = seal(node_out, name, data_dir / "keys", python, pop_name, sealed)
+            nodes[name] = ({"read": "seal_failed", "exit": rc} if rc is not None
+                           else {"read": "sealed", "own_seal": not sealed})
     (out / NODES_FILE).write_text(json.dumps({"pins": {"seen": seen, "missing": missing}, "nodes": nodes},
                                              indent=2, sort_keys=True) + "\n")
     judge_live(population, out, started)

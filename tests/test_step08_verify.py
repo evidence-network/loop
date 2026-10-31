@@ -1131,11 +1131,18 @@ class Step08Live01Test(unittest.TestCase):
         self.env = mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(t / "nodes")})
         self.env.start()
         self.addCleanup(self.env.stop)
+        self.t = t
         self.run = t / "2026-10-31-live"
+        self.seal_live()
+
+    def seal_live(self, **env):
+        shutil.rmtree(self.run, ignore_errors=True)
         r = subprocess.run([str(STEPS / "01-seal"), "--population", str(self.pop), "--out", str(self.run / "01-seal")],
-                           capture_output=True, text=True, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"), timeout=300)
+                           capture_output=True, text=True, timeout=300,
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1", **env))
         self.assertEqual(r.returncode, 0, r.stderr)
         write_run_json(self.run, ["01", "08"], "live", stage="1")
+        return load(self.run / "01-seal" / "finding.json")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -1192,6 +1199,68 @@ class Step08Live01Test(unittest.TestCase):
             dump(d / "nodes.json", n)
         f, entries = self.plant(unread)
         self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_that_could_not_seal_reproduces_its_fail(self):
+        (self.t / "lab" / "keys" / "node-key.pem").write_text("not a key")
+        recorded = self.seal_live()
+        self.assertEqual(recorded["result"], "FAIL")
+        self.assertIn("capsule-emit could not seal", recorded["detail"])
+        self.assertEqual(load(self.run / "01-seal" / "nodes.json")["nodes"]["lab-1"]["read"], "seal_failed")
+        f, entries = self.verify()
+        self.assertEqual(entries["01-seal"]["status"], "reproduced", entries["01-seal"]["problems"])
+
+    def test_pins_missing_at_the_run_reproduce_its_not_checked(self):
+        recorded = self.seal_live(LOOP_TOOLS=str(self.t / "no-tools"))
+        self.assertEqual(recorded["result"], "NOT_CHECKED")
+        f, entries = self.verify()  # 08 runs where the pins are installed, and judges what the run recorded
+        self.assertEqual(entries["01-seal"]["status"], "reproduced", entries["01-seal"]["problems"])
+
+    def test_a_pins_state_with_no_missing_pin_fails(self):
+        def forge(d):
+            n = load(d / "nodes.json")
+            n["nodes"]["lab-1"] = {"read": "pins"}
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_dropped_or_a_capsule_cut_fails(self):
+        for cut in ("node", "capsule"):
+            with self.subTest(cut):
+                self.seal_live()
+
+                def edit(d):
+                    if cut == "node":
+                        n = load(d / "nodes.json")
+                        n["nodes"].pop("lab-1")
+                        dump(d / "nodes.json", n)
+                    else:
+                        rec = load(d / "finding.json")
+                        rec["proof"] = [p for p in rec["proof"] if p["path"] != "lab-1/capsule.json"]
+                        dump(d / "finding.json", rec)
+                        (d / "lab-1" / "capsule.json").unlink()
+                f, entries = self.plant(edit)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_an_unlisted_node_reproduces_its_not_checked(self):
+        (self.t / "nodes" / "n1.json").unlink()
+        recorded = self.seal_live()
+        self.assertEqual(recorded["result"], "NOT_CHECKED", recorded["detail"])
+        f, entries = self.verify()
+        self.assertEqual(entries["01-seal"]["status"], "reproduced", entries["01-seal"]["problems"])
+
+    def test_a_verifier_not_at_the_pin_is_not_reproduced(self):
+        real_module = step.step_module
+        mod = real_module("01-seal")
+        real = mod.installed_pins
+        mod.installed_pins = lambda python, verifier: ({}, [{"what": "aac-go", "why": "aac-go is 0.0.1, not the pin",
+                                                              "issue": "x/y#1"}])
+        try:
+            with mock.patch.object(step, "step_module", lambda base: mod if base == "01-seal" else real_module(base)):
+                f, entries = self.verify()
+        finally:
+            mod.installed_pins = real
+        self.assertEqual(entries["01-seal"]["status"], "not_reproduced")
+        self.assertIn("not the pin", entries["01-seal"]["not_checked"]["why"])
 
     def test_an_old_shape_live_01_bundle_is_not_reproduced(self):
         shutil.rmtree(self.run / "01-seal")

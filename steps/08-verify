@@ -70,7 +70,8 @@ RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
 STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
 BROKE_ISSUE = "evidence-network/loop: the step that broke (its loop-step.log in the run)"
 EMPTY_ISSUE = "evidence-network/loop: the step's own not_checked entries, as its finding states them"
-# Steps whose script writes a NOT_CHECKED finding citing no proof (01: a pinned tool missing; 05: no pushed half).
+# Steps whose script writes a NOT_CHECKED finding citing no proof (rehearsal 01: a pinned tool missing; 05: no
+# pushed half). Live 01 always cites its nodes.json and is re-derived.
 # Only these may reach 08 with nothing to judge; any other step with an empty proof still meets its key checks.
 EMPTY_PROOF_STEPS = {"01", "05"}
 ASSERTS = ("an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file "
@@ -402,8 +403,11 @@ def rederive_01_live(m, c):
     """Live 01: its own judge_live on the copied proof (nodes.json, each node's capsule.json and node-key.pub.pem),
     with the pinned cross_language verifier; nothing is sealed again."""
     old_shape(c, "01", "nodes.json")
-    _, verifier = m.tools()
-    need(verifier, "step 01", "the pinned aac-go cross_language verifier")
+    python, verifier = m.tools()
+    _, missing = m.installed_pins(python, verifier)
+    missing = [x for x in missing if x["what"] != "capsule-emit"]  # nothing is sealed again
+    if missing:
+        raise Unreproducible("step 01: its judge, run again here", "; ".join(x["why"] for x in missing))
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
