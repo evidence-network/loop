@@ -102,6 +102,10 @@ Only halves sealed under the current build are judged for acceptance and the tie
 timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
+A settlement leg a paid exchange leaves (`n/a-settlement-leg`, step 06's records) is no half of the exchange: it carries
+no client_nonce, so it is counted apart in the detail and not tied (loop#263); its bytes, provenance, inclusion,
+citation, acceptance and signature are checked as any held half's, and a controller binding its citing record names
+is judged as any half's. One whose record names none is not an unbound sender (the plugin's leg push has carried none).
 Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
 a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
 not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
@@ -840,6 +844,20 @@ def inclusion_cited(own_lines, cid, inc, verified_digest):
     return {"ok": False, "detail": f"no counterparty_inclusion record of the node cites {cid} with checkpoint {verified_digest}"}
 
 
+def is_settlement_leg(capsule, record):
+    """Whether the held capsule is a settlement leg (a record of a paid exchange's payment, step 06's), not a half of
+    the exchange: the shape (`n/a-settlement-leg` with a `settlement` member), no client_nonce, and a citing
+    `record` that names no own half. The sender signs the shape, so the node's own record decides: one that names an
+    own half is tied as any half (loop#263). A leg is not tied; its bytes, provenance, inclusion, citation,
+    acceptance and signature are checked as any held half's, and a controller binding its record names is judged as
+    any half's. One naming none is not an unbound sender: there is nothing to compare."""
+    ma = capsule.get("model_attestation")
+    rh = (((record.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half") or {})
+    return (isinstance(ma, dict) and ma.get("model_id") == "n/a-settlement-leg"
+            and isinstance(capsule.get("settlement"), dict) and exchange_key(capsule)[0] is None
+            and isinstance(rh, dict) and rh.get("own_half_capsule_id") is None)
+
+
 def is_citing(capsule):
     """Whether the capsule is one of the node's citing records, not a half of an exchange it took part in."""
     ca = (capsule.get("model_attestation") or {}).get("compute_attestation")
@@ -878,7 +896,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     """Check every half the node holds from a node of the population (`members`, its node_ids): (result, proof,
     detail, pairs, summary).
 
-    summary: {"unclaimed", "unkeyed", "unlisted", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias",
+    summary: {"unclaimed", "unkeyed", "unlisted", "judged", "legs", "earlier", "tied", "never_tied", "ambiguous", "vias",
     "unbound", "optional", "outside"}. Acceptance and the tie are judged on the halves sealed under the current
     build (LOOP_SEALED_SINCE); an earlier half still has its bytes, provenance, inclusion and citation checked. A
     half whose provenance names a sender outside the population (lab-4, the twins-only node, loop#174) is out of
@@ -891,7 +909,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
-    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set()}
+    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set(), "legs": 0}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
     since = sealed_since(since_raw)
@@ -949,8 +967,11 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
                     state, detail = binding_check(rh_digest, capsule, record, peers, started, snap)
                     c["binding"] = state_check(state, detail)
                 nonce, role, _ = exchange_key(capsule)
-                state, detail = tie(record, nonce, role, own_lines, held)
-                c["tied"] = state_check(state, detail, passed="tied")
+                if is_settlement_leg(capsule, record):
+                    c["leg"] = True
+                else:
+                    state, detail = tie(record, nonce, role, own_lines, held)
+                    c["tied"] = state_check(state, detail, passed="tied")
                 if inc is not None:
                     c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
         # The producer signature is checked on every held half, cited or not; the key it must be authored under is
@@ -975,7 +996,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     current = [c for c in checks if "accepted" in c]
     for state in ("unclaimed", "unkeyed", "unlisted"):
         summary[state] = sum(1 for c in checks if c.get("signature", {}).get("state") == state)
-    summary["judged"] = len(current)
+    summary["legs"] = sum(1 for c in current if c.get("leg"))
+    summary["judged"] = len(current) - summary["legs"]
     summary["earlier"] = sum(1 for c in checks if c.get("current_build") is False)
     for c in current:
         if "binding" in c:
@@ -983,7 +1005,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
             summary["binding"][b["state"]] = summary["binding"].get(b["state"], 0) + 1
             if b["state"] == "unread":
                 summary["unread"].add(b["detail"])
-        if c["tied"]["state"] != "bad":
+        if "tied" in c and c["tied"]["state"] != "bad":
             summary[c["tied"]["state"]] += 1
         # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
         # controller declaration, however the plugin first accepted it. A sender whose published commitment
@@ -995,6 +1017,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         elif a["via"] in VIA_KEY:
             if a.get("optional"):
                 summary["optional"] += 1
+            elif c.get("leg") and "binding" not in c:
+                pass  # a leg whose record names no binding: nothing to compare with the sender's commitment
             else:
                 key = c.get("key_id") or "unknown"
                 summary["unbound"][key] = summary["unbound"].get(key, 0) + 1
@@ -1002,7 +1026,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         else:
             summary["vias"].add(a["via"])
     kept = {c["held"] for c in checks}
-    pairs = [exchange_key(parsed(raw) or {}) for n, raw in enumerate(held, 1) if f"held-{n}" in kept]
+    legs = {c["held"] for c in checks if c.get("leg")}
+    pairs = [exchange_key(parsed(raw) or {}) for n, raw in enumerate(held, 1) if f"held-{n}" in kept - legs]
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, summary
     recorded = sorted({c["accepted"]["via"] for c in current})
@@ -1011,7 +1036,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         f"the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as "
         f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
         + (f" (accepted the half's key via {', '.join(recorded)}; {summary['tied']} tied to the node's own half, "
-           f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if current else "")
+           f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if summary["judged"] else "")
+        + (f"; {summary['legs']} settlement legs besides, step 06's records, not tied" if summary["legs"] else "")
         + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")
         + beyond), pairs, summary
 
@@ -1105,7 +1131,7 @@ def judge_live(pop, out, started):
     bin_ = driver()
     results, proof, details, not_checked = [], [NODES_FILE], [], list(missing)
     halves = {}
-    total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
+    total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "legs": 0}
     vias, unbound, no_sharing = set(), {}, []
     # As before: a node is a peer to find a binding at only when it names a data_dir.
     peers = {e["node_id"]: (e["name"], out / e["name"]) for e in pop["nodes"]
@@ -1156,7 +1182,8 @@ def judge_live(pop, out, started):
     since = since_raw
     details.append(f"judged under the current build{f' (sealed since {since})' if since else ' (LOOP_SEALED_SINCE unset: every held half)'}: "
                    f"{total['judged']} halves, {total['tied']} tied to the node's own half, {total['never_tied']} "
-                   f"{LIVE_NEVER_TIED}, {total['ambiguous']} ambiguous; {total['earlier']} sealed earlier, not judged")
+                   f"{LIVE_NEVER_TIED}, {total['ambiguous']} ambiguous; {total['earlier']} sealed earlier, not judged"
+                   + (f"; {total['legs']} settlement legs besides (step 06's records, not tied)" if total["legs"] else ""))
     if optional:
         details.append(f"{optional} current-build halves accepted on the evidence key their sender lists in nodes/, "
                        f"from senders whose published commitment carries no controller binding (the binding is "
@@ -1174,8 +1201,8 @@ def judge_live(pop, out, started):
                                        "before the pinned one"})
     if not total["judged"]:
         acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": live.ISSUE,
-                                "why": "no node holds a current-build half its own record cites, so there is no "
-                                       "acceptance or tie to read"})
+                                "why": "no node holds a current-build exchange half its own record cites, so there is "
+                                       "no acceptance or tie to read"})
     untied = ([live_never_tied(total["never_tied"])] if total["never_tied"] else []) + \
              ([live_ambiguous(total["ambiguous"])] if total["ambiguous"] else [])
     default = [dict(LIVE_DEFAULT_ABSENT, why=LIVE_DEFAULT_ABSENT["why"].format(nodes=", ".join(no_sharing)))] \
