@@ -420,7 +420,7 @@ EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished; each cha
                     "own dates; not the pack's weekly period_policy")
 
 
-def evaluate(ev, run, inputs, start, end):
+def evaluate(ev, run, inputs):
     """{term id: [(verdict, reading, grade)]} and the exchanges, of the pinned evaluator over each node's own chain
     (`inputs`, records of role input): its collect() and judge_deal() per deal, a shop_preauth deal not counted, as
     the pack's own build_result does. Only the bounds differ from the pack's own run (Sherlock2 confirmed, Buzz
@@ -532,7 +532,7 @@ def judge_records(records, run, pack, start, end, not_checked):
         evaluated = None
         if inputs:  # a live step whose own chains are cited: the pinned pack's own evaluator decides its terms
             try:
-                evaluated = evaluate(load_evaluator(), run, inputs, start, end)
+                evaluated = evaluate(load_evaluator(), run, inputs)
             except NotChecked as e:
                 what, why, issue = e.args
                 not_checked.append({"what": f"{d}: {what}", "why": why, "issue": issue})
