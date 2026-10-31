@@ -856,9 +856,9 @@ class Step05DealLiveTest(unittest.TestCase):
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
 
-    def test_08_holds_the_kept_revocations_commit_to_main_at_the_steps_start(self):
-        # nodes.json keeps the origin/main commit 05 read nodes/revocations/ from; 08 recomputes it from its own
-        # history. An older commit (which could hide a revocation merged since) FAILs.
+    def test_08_takes_an_older_kept_revocations_commit_whose_list_main_still_holds(self):
+        # 08 holds the kept commit to main outside the run (loop#281), never to the run's own start: an older commit
+        # with the same nodes/revocations/ as this clone's origin/main is reproduced, and the list read is named.
         self.run_live()
         n = json.loads((self.out / "nodes.json").read_text())
         kept = n["revocations_main"]["commit"]
@@ -869,8 +869,39 @@ class Step05DealLiveTest(unittest.TestCase):
         (self.out / "nodes.json").write_text(json.dumps(n))
         self.rehash()
         f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
+        self.assertIn(f"step 05: {v.ANCHOR_REVOKED}", [x["what"] for x in entries["05-deal"]["relies_on"]])
+
+    def test_08_fails_a_kept_revocations_commit_that_is_no_commit_id(self):
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        n["revocations_main"] = {"commit": "--output=x"}
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
-        self.assertIn("but origin/main held", f["detail"])
+        self.assertIn("is not a commit id", f["detail"])
+
+    def test_08_judges_again_at_main_when_its_revocations_changed_since_the_run(self):
+        # The list changed on main since the commit the run read (here another binding's), so 08 runs the judge again
+        # with main's lists: the same verdict, so reproduced, and the cited bytes are still the run's.
+        repo = Path(self.tmp.name) / "revocations"
+        (repo / "nodes" / "revocations").mkdir(parents=True)
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+
+        def commit(date):
+            subprocess.run([*git, "add", "-A"], check=True)
+            subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", date], check=True,
+                           env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+            subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+        commit("2026-10-01T00:00:00Z")
+        with mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)}):
+            self.run_live()
+            (repo / "nodes" / "revocations" / f"{'e' * 64}.json").write_text("not json")
+            commit("2099-01-01T00:00:00Z")
+            f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
 
     def test_08_does_not_reproduce_a_kept_commit_its_own_main_does_not_hold(self):
         # 08's clone may be behind the run's fetch: not reproduced (fetch main's history), never a FAIL.

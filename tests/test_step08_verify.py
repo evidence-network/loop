@@ -2137,6 +2137,142 @@ class Step08PublicationTest(unittest.TestCase):
         self.assertEqual([(g["what"], g["issue"]) for g in gap], [(f"step 01: {step.ANCHOR_WHAT}", step.TRUST_ISSUE)])
 
 
+class Step08RevocationsAnchorTest(unittest.TestCase):
+    """loop#281: the revocations a live 05 or 12 read are held to main outside the run, never to its own start."""
+
+    def git(self, *a, date=None):
+        env = dict(os.environ, **({"GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date} if date else {}))
+        return subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c",
+                               "commit.gpgsign=false", *a], capture_output=True, text=True, check=True,
+                              env=env).stdout.strip()
+
+    def commit(self, date, files=None):
+        """Commit the revocations folder with `files` ({name: text, or None to remove}) on main, as if pushed."""
+        folder = self.repo / "nodes" / "revocations"
+        for name, text in (files or {}).items():
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / name).unlink() if text is None else (folder / name).write_text(text)
+        self.git("add", "-A")
+        self.git("commit", "-q", "--allow-empty", "-m", date, date=date)
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        return self.git("rev-parse", "HEAD")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        t = Path(self.tmp.name)
+        self.repo = t / "repo"
+        self.repo.mkdir()
+        self.git("init", "-q", "-b", "main")
+        self.c = self.commit("2026-10-01T00:00:00Z")
+        # The step: a nodes.json proof file naming C, and a judge whose verdict is the list it reads.
+        self.bundle = t / "run" / "05-deal"
+        self.bundle.mkdir(parents=True)
+        dump(self.bundle / "nodes.json", {"revocations_main": {"commit": self.c}})
+        (self.bundle / "lab-a").mkdir()
+        dump(self.bundle / "lab-a" / "checks.json", {"written": "by the judge"})
+        self.work = t / "work" / "05-deal"
+        shutil.copytree(self.bundle, self.work)
+        self.pop = t / "pop"
+        self.pop.mkdir()
+        dump(self.pop / "population.json", {"population": "live", "nodes": []})
+        self.read = []  # (out dir, commit) each judge run read
+        self.verdicts = {}  # commit -> result; PASS otherwise
+
+        def judge_live(pop, out, started):
+            commit = load(Path(out) / "nodes.json")["revocations_main"]["commit"]
+            self.read.append((Path(out), commit))
+            self.assertFalse((Path(out) / "lab-a" / "checks.json").exists())  # re-written files are left out of the copy
+            return {"result": self.verdicts.get(commit, "PASS"),
+                    "not_checked": [{"what": "w", "why": f"read at {commit}", "issue": "i"}]}
+        import binding_verify
+        self.m = type("M", (), {"revocations_root": staticmethod(lambda: self.repo), "bv": binding_verify,
+                                "REVOCATIONS_KEY": "revocations_main", "judge_live": staticmethod(judge_live)})
+        record = {"population": "live", "started": "2026-10-31T00:00:00Z", "result": "PASS",
+                  "not_checked": [{"what": "w", "why": f"read at {self.c}", "issue": "i"}],
+                  "proof": [{"path": "nodes.json"}, {"path": "lab-a/checks.json"}]}
+        self.ctx = step.Ctx(self.bundle, self.work, t / "scratch", self.pop, record)
+        (t / "scratch").mkdir()
+
+    def anchor(self, snap="kept"):
+        return step.revocations_anchor(self.m, self.ctx, "05", {"commit": self.c} if snap == "kept" else snap)
+
+    def test_no_kept_commit_has_nothing_to_compare(self):
+        for snap in (None, {"commit": None, "why": "origin/main could not be fetched"}):
+            self.assertIsNone(self.anchor(snap))
+        self.assertEqual(self.ctx.relies, [])
+
+    def test_a_kept_commit_that_is_no_commit_id_is_a_mismatch(self):
+        for bad in ("--output=x", "ab" * 19, 7):
+            with self.assertRaises(step.Mismatch):
+                self.anchor({"commit": bad})
+
+    def test_a_kept_commit_this_clones_main_does_not_hold_is_not_reproduced(self):
+        with self.assertRaises(step.Unreproducible) as e:
+            self.anchor({"commit": "ab" * 20})
+        self.assertIn("fetch main's history", e.exception.args[1])
+
+    def test_the_same_list_at_this_clones_main_needs_no_second_run_and_names_the_read(self):
+        tip = self.commit("2026-11-03T00:00:00Z")  # main moved on, no folder at either commit
+        self.assertIsNone(self.anchor())
+        [gap] = self.ctx.relies
+        self.assertEqual(gap["what"], f"step 05: {step.ANCHOR_REVOKED}")  # verify_run folds it into ANCHOR_WHAT's
+        self.assertIn(f"origin/main as last fetched, {tip}, committed 2026-11-03T00:00:00", gap["why"])
+        self.assertEqual(gap["issue"], step.REVOCATIONS_ISSUE)
+        self.c = self.commit("2026-11-04T00:00:00Z", {"x.json": "[]"})
+        self.commit("2026-11-05T00:00:00Z")  # the folder present and unchanged at both
+        self.assertIsNone(self.anchor())
+
+    def test_a_list_main_changed_since_the_kept_commit_is_judged_again_there(self):
+        tip = self.commit("2026-11-03T00:00:00Z", {"x.json": "[]"})  # absent at C, present at main: the first one
+        self.assertEqual(self.anchor(), tip)
+        self.commit("2026-11-04T00:00:00Z", {"x.json": None})  # removed again: the same tree as C
+        self.assertIsNone(self.anchor())
+
+    def test_a_kept_commit_newer_or_older_than_the_runs_start_is_not_itself_a_mismatch(self):
+        # Only the list decides: an older C with the same tree as main is reproduced at C.
+        self.c = self.commit("2026-12-01T00:00:00Z")
+        self.ctx.record["started"] = "2026-10-15T00:00:00Z"
+        self.assertIsNone(self.anchor())
+
+    def test_the_second_run_reads_the_anchor_on_its_own_copy(self):
+        tip = self.commit("2026-11-03T00:00:00Z", {"x.json": "[]"})
+        step.judge_at_anchor(self.m, self.ctx, "05", tip)  # same result; the why naming the commit may differ
+        [(out, read)] = self.read
+        self.assertEqual(read, tip)
+        self.assertNotEqual(out, self.work)
+        self.assertEqual(load(self.work / "nodes.json")["revocations_main"]["commit"], self.c)  # untouched
+        self.assertEqual(load(self.work / "lab-a" / "checks.json"), {"written": "by the judge"})
+
+    def test_a_different_result_at_the_anchor_is_a_mismatch_either_way(self):
+        tip = self.commit("2026-11-03T00:00:00Z", {"x.json": "[]"})
+        self.verdicts[tip] = "FAIL"  # a statement merged since applies
+        with self.assertRaises(step.Mismatch) as e:
+            step.judge_at_anchor(self.m, self.ctx, "05", tip)
+        self.assertIn(f"as main held it at {tip[:12]}", str(e.exception))
+        self.assertIn(": FAIL, not_checked ", str(e.exception))
+        self.assertIn(f"; recorded PASS, not_checked ", str(e.exception))
+        self.verdicts[tip], self.ctx.record["result"] = "PASS", "FAIL"  # one C's run applied was removed since
+        with self.assertRaises(step.Mismatch):
+            step.judge_at_anchor(self.m, self.ctx, "05", tip)
+
+    def test_a_different_gap_at_the_anchor_is_a_mismatch(self):
+        tip = self.commit("2026-11-03T00:00:00Z", {"x.json": "[]"})
+        self.ctx.record["not_checked"] = []
+        with self.assertRaises(step.Mismatch):
+            step.judge_at_anchor(self.m, self.ctx, "05", tip)
+
+    def test_a_publication_is_the_anchor_and_needs_no_gap(self):
+        pub = self.commit("2026-11-03T00:00:00Z", {"x.json": "[]"})
+        self.commit("2026-11-04T00:00:00Z", {"x.json": None})  # main's tip has C's tree again; the publication not
+        self.ctx.anchor = pub
+        self.assertEqual(self.anchor(), pub)
+        self.assertEqual(self.ctx.relies, [])
+        self.ctx.anchor = "cd" * 20  # a publication the revocations repository does not hold
+        with self.assertRaises(step.Unreproducible):
+            self.anchor()
+
+
 if __name__ == "__main__":
     unittest.main()
 
