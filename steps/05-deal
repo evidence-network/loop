@@ -174,7 +174,7 @@ LIVE_ASSERTS = ("each node seals records naming both halves and citing the other
                 "sender that publishes no controller binding, on the evidence key it lists; halves from senders "
                 "outside the population are not judged; the tie and the acceptance are judged for the halves sealed since the "
                 "run's cutoff (LOOP_SEALED_SINCE), an earlier half only for its bytes, provenance, inclusion and "
-                "citation")
+                "citation; all judged on the ledger files copied from each node")
 PINNED = ["evidencebook", "checkpointed-local-log"]
 POLICY_ON = "counterparty"
 DEFAULT_POLICY = "off"
