@@ -452,6 +452,7 @@ def rederive_02_live(m, c):
 def keys_02_live(c, m):
     """The witness listing 02 cites is the repository's (lab/witness/witnesses.json), and each listed node's key
     02 kept in inputs.json is the key its nodes/ listing publishes."""
+    old_shape(c, "02", "nodes.json")  # an older shape is not_reproduced before anything is held to the repository
     bad = []
     receipts = list(c.work.glob("*/witness-status.json"))
     kept_listing = c.work / "witnesses.json"

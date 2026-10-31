@@ -489,6 +489,46 @@ class Step02LiveVerifyTest(JoinedLab):
         f, entries = self.verify()
         self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
 
+    def test_an_old_shape_bundle_is_not_reproduced_even_after_the_listing_changes(self):
+        shutil.rmtree(self.findings / "02-book")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "02-book", self.findings / "02-book")
+        other = self.tmp / "other-witnesses.json"
+        other.write_text('{"witnesses": []}\n')
+        saved = os.environ.get("LOOP_WITNESS_LISTING")
+        os.environ["LOOP_WITNESS_LISTING"] = str(other)
+        try:
+            f, entries = self.verify()
+        finally:
+            os.environ.pop("LOOP_WITNESS_LISTING") if saved is None else os.environ.__setitem__("LOOP_WITNESS_LISTING", saved)
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced", entries["02-book"]["problems"])
+
+    def test_a_malformed_append_fails_its_node_not_the_step(self):
+        loader = importlib.machinery.SourceFileLoader("step02_append", str(ROOT / "steps" / "02-book"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_append", loader))
+        loader.exec_module(mod)
+        real = mod.subprocess.run
+
+        def run(cmd, *a, **k):
+            r = real(cmd, *a, **k)
+            if "append" in cmd[1:3]:
+                r = subprocess.CompletedProcess(r.args, 0, "[]\n", r.stderr)
+            return r
+        out = self.tmp / "m" / "02-book"
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            mod.subprocess = type("S", (), {"run": staticmethod(run), "CompletedProcess": subprocess.CompletedProcess})
+            pop = json.loads((self.pop / "population.json").read_text())
+            self.assertEqual(mod.main_live(pop, out, "2026-10-31T00:00:00Z"), 0)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        f = json.loads((out / "finding.json").read_text())
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("the node's key or book could not be read", f["detail"])
+        again = mod.judge_live(pop, out, f["started"])
+        self.assertEqual(again["detail"], f["detail"])
+
     def test_an_old_shape_live_02_bundle_is_not_reproduced(self):
         shutil.rmtree(self.findings / "02-book")
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "02-book", self.findings / "02-book")
@@ -578,6 +618,31 @@ class Step02LiveWitnessTest(JoinedLab):
         entries = {e["dir"]: e for e in json.loads((self.findings / "08-verify" / "verified.json").read_text())["steps"]}
         self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
         self.assertIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+
+    def test_a_receipt_proof_with_its_listing_cut_fails_in_08(self):
+        pem, kid = self.key("w2")
+        self.list_keys((kid, "2026-01-01T00:00:00Z"))
+        self.witnessed(pem, kid)
+        d = self.findings / "02-book"
+        rec = json.loads((d / "finding.json").read_text())
+        rec["proof"] = [p for p in rec["proof"] if p["path"] != "witnesses.json"]
+        (d / "finding.json").write_text(json.dumps(rec))
+        (d / "witnesses.json").unlink()
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            loader = importlib.machinery.SourceFileLoader("step08_cut", str(ROOT / "steps" / "08-verify"))
+            v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_cut", loader))
+            loader.exec_module(v)
+            v.main(["--population", str(self.pop), "--out", str(self.findings / "08-verify")])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        f = json.loads((self.findings / "08-verify" / "finding.json").read_text())
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("cites no witnesses.json", f["detail"])
 
     def test_a_listed_witness_receipt_passes(self):
         pem, kid = self.key("witness")
