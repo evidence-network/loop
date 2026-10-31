@@ -1,4 +1,4 @@
-# The loop, stage 1, on the rehearsal population: nightly, on every pull request, and by hand.
+# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on every pull request, and by hand.
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -50,7 +50,50 @@ jobs:
       - name: Run stage 1 on the rehearsal population
         run: |
           set -o pipefail
-          ./loop.sh --stage 1 --population rehearsal --strict --out "findings/$(date -u +%F)-rehearsal" | tee loop-summary.txt
+          # One date for the whole job: a run that crosses midnight UTC keeps one directory.
+          out="findings/$(date -u +%F)-rehearsal"
+          echo "LOOP_OUT=$out" >> "$GITHUB_ENV"
+          ./loop.sh --stage 1 --population rehearsal --strict --out "$out" | tee loop-summary.txt
+      # Steps 10 and 11 end to end (evidence-network/loop#206). On stage 1's run, which holds no record of the pack's
+      # kinds (05, 06, 07, 09), 10 has nothing in its window and reads NOT_CHECKED on the pack's window, and 11
+      # carries that over. On an empty run 10 judges the committed stand-in run (population/rehearsal/step10/run)
+      # and both PASS. A FAIL, a malformed finding or another result fails the job; a FAIL also goes into
+      # loop-summary.txt, so the nightly run opens its issue below.
+      - name: Run steps 10 and 11 on the rehearsal population
+        run: |
+          set -euo pipefail
+          run="$LOOP_OUT"
+          standin="$LOOP_OUT-standin"
+          for out in "$run" "$standin"; do
+            mkdir -p "$out"
+            steps/10-judge --population population/rehearsal --out "$out/10-judge"
+            steps/11-report --population population/rehearsal --out "$out/11-report"
+            python3 -B steps/finding.py check "$out"
+            python3 -B status/findings.py "$out"
+          done
+          python3 -B - "$run" "$standin" <<'PY'
+          import json, sys
+          from pathlib import Path
+          run, standin = map(Path, sys.argv[1:])
+          want = {(run, "10-judge"): "NOT_CHECKED", (run, "11-report"): "NOT_CHECKED",
+                  (standin, "10-judge"): "PASS", (standin, "11-report"): "PASS"}
+          bad, failed = [], {}
+          for (d, step), result in want.items():
+              f = json.loads((d / step / "finding.json").read_text())
+              print(f"{d.name} {step} {f['result']}")
+              if f["result"] == "FAIL":
+                  failed.setdefault(step, d.name)  # one issue line per step, naming the first directory
+              if f["result"] != result:
+                  bad.append(f"{d.name}/{step} is {f['result']}, expected {result}: {f['detail'][:400]}")
+          with open("loop-summary.txt", "a") as summary:
+              for step, where in failed.items():
+                  summary.write(f"{step[:2]} {step[3:]} FAIL {where}\n")
+          # The NOT_CHECKED must be the one stage 1 gives (no record in the window), not a missing pack or manifest.
+          nc = json.loads((run / "10-judge" / "finding.json").read_text())["not_checked"]
+          if [n["what"] for n in nc] != ["the pack over the window"]:
+              bad.append(f"{run.name}/10-judge is NOT_CHECKED for another reason: {nc}")
+          sys.exit("\n".join(bad) or None)
+          PY
       - name: Upload the findings
         if: always()
         uses: actions/upload-artifact@v4
@@ -74,19 +117,21 @@ jobs:
             [rehearsal:02]=action-state-group/evidencebook
             [rehearsal:03]=evidence-network/loop
             [rehearsal:12]=action-state-group/evidencebook
+            [rehearsal:10]=evidence-network/loop
+            [rehearsal:11]=evidence-network/loop
             [live:01]=action-state-group/agent-action-capsule
             [live:02]=action-state-group/evidencebook
             [live:03]=Mesh-LLM/capsules-plugin
             [live:12]=Mesh-LLM/capsules-plugin
           )
           [ -f loop-summary.txt ] || exit 0
-          while read -r nn name result <&3; do
+          while read -r nn name result where <&3; do
             [ "$result" = FAIL ] || continue
             label=loop-step-$nn
             owner=${OWNER[$POPULATION:$nn]:-unknown}
             gh label create "$label" --color B60205 --description "loop step $nn failed" --force
             body="Step $nn ($name) is FAIL on the nightly $POPULATION run: $RUN_URL
-          The finding is in the run's findings artifact, under $nn-$name/finding.json.
+          The finding is in the run's findings artifact, under ${where:+$where/}$nn-$name/finding.json.
           Owning component repository: $owner."
             n=$(gh issue list --label "$label" --state open --json number --jq '.[0].number')
             if [ -n "$n" ]; then
