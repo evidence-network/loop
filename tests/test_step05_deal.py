@@ -1565,7 +1565,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(acc["what"], step.ACCEPTANCE_WHAT)
         self.assertIn("0 halves, 0 tied", f["detail"])
         self.assertIn("1 sealed earlier, not judged", f["detail"])
-        self.assertIn("no node holds a current-build half", acc["why"])
+        self.assertIn("no node holds a current-build exchange half", acc["why"])
         self.assertIn("sealed since 2099-01-01T00:00:00Z", f["detail"])
         self.assertEqual(json.loads((self.out / "lab-a" / "checks.json").read_text())["sealed_since"], "2099-01-01T00:00:00Z")
         # the same half is judged when the build started before it was sealed

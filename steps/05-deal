@@ -1194,8 +1194,8 @@ def judge_live(pop, out, started):
                                        "before the pinned one"})
     if not total["judged"]:
         acceptance_gaps.append({"what": ACCEPTANCE_WHAT, "issue": live.ISSUE,
-                                "why": "no node holds a current-build half its own record cites, so there is no "
-                                       "acceptance or tie to read"})
+                                "why": "no node holds a current-build exchange half its own record cites, so there is "
+                                       "no acceptance or tie to read"})
     untied = ([live_never_tied(total["never_tied"])] if total["never_tied"] else []) + \
              ([live_ambiguous(total["ambiguous"])] if total["ambiguous"] else [])
     default = [dict(LIVE_DEFAULT_ABSENT, why=LIVE_DEFAULT_ABSENT["why"].format(nodes=", ".join(no_sharing)))] \
