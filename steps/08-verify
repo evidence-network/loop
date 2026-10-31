@@ -379,7 +379,11 @@ LIVE_RELIES_ON = {
     "04": [{"what": "step 04: each decisions.jsonl holds every admission decision its node's ledger held, and "
                     "nodes.json's record count is the ledger's",
             "why": "08 judges the decision lines 04 kept, but no checkpoint the node signs covers its ledger",
-            "issue": LEDGER_ISSUE}],
+            "issue": LEDGER_ISSUE},
+           {"what": "step 04: each node's plugin build mark in nodes.json, which decides the decisions judged",
+            "why": "08 judges the decisions at or after the mark again, but since when the node ran its plugin "
+                   "build ($LAB_DIR/run/<lab-N>.build.json) is 04's reading of the lab host",
+            "issue": TRUST_ISSUE}],
     "05": [{"what": "step 05: each node's copied ledger files are the node's whole files",
             "why": "08 checks every held half again on the copies, but no checkpoint the node signs covers them",
             "issue": LEDGER_ISSUE}],

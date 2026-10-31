@@ -549,19 +549,7 @@ start_node() { # NAME EXTRA_ARGS...
 # new binary resets it. Step 04 judges only the admission decisions sealed since then: the records name no build.
 mark_build() { # NAME
   [ "$DRY" = 1 ] && { echo "  > $LAB_DIR/run/$1.build.json (the plugin binary's sha256 and since when it runs)"; return 0; }
-  python3 -B - "$LAB_DIR/run/$1.build.json" "$CAPSULES_BIN" << 'PY'
-import datetime as dt, hashlib, json, sys
-from pathlib import Path
-path, binary = Path(sys.argv[1]), Path(sys.argv[2])
-sha = hashlib.sha256(binary.read_bytes()).hexdigest()
-try:
-    old = json.loads(path.read_text())
-except (OSError, ValueError):
-    old = {}
-if not isinstance(old, dict) or old.get("plugin_sha256") != sha:
-    now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    path.write_text(json.dumps({"plugin_sha256": sha, "since": now}, indent=2, sort_keys=True) + "\n")
-PY
+  python3 -B "$ROOT/lab/pack.py" build-mark --file "$LAB_DIR/run/$1.build.json" --binary "$CAPSULES_BIN"
 }
 
 # A node that exits within a few seconds of its launch is reported then, with its log tail, not

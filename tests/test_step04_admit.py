@@ -372,6 +372,44 @@ class Live(unittest.TestCase):
         self.assertIn("node lab-a: decisions since 2026-10-30T01:56:00Z (plugin build e5e5e5e5e5e5), 1 earlier set "
                       "aside", f["detail"])
 
+    def marked_lab(self, since, *stamps):
+        """A lab whose lab-a ledger holds good decisions sealed at `stamps`, and lab-a's build mark since `since`."""
+        lab = self.lab_with([])
+        led = lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        led.write_text("\n".join(sealed(self.good()[0], t) for t in stamps) + "\n")
+        (lab / "run").mkdir()
+        (lab / "run" / "lab-a.build.json").write_text(json.dumps({"plugin_sha256": "e5" * 32, "since": since}))
+        return lab
+
+    def test_a_decision_in_the_marks_own_minute_is_judged(self):
+        _, f = self.live_run(self.marked_lab("2026-10-30T01:56:21Z", "2026-10-30T01:56:00Z", "2026-10-30T01:55:00Z"))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("node lab-a: 2 of 2 ledger records carry an admission decision, 1 judged", f["detail"])
+
+    def test_every_decision_before_the_mark_is_not_checked_with_that_reason(self):
+        _, f = self.live_run(self.marked_lab("2026-10-30T02:30:00Z", "2026-10-30T01:45:00Z", "2026-10-30T02:10:00Z"))
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        why = {x["what"]: x["why"] for x in f["not_checked"]}["an admission decision on a lab node"]
+        self.assertIn("every admission decision (2) predates its node's current plugin build mark", why)
+
+    def test_a_mark_in_nodes_json_that_is_not_a_minute_before_the_run_fails(self):
+        out, f = self.live_run(self.marked_lab("2026-10-30T01:56:00Z", "2026-10-30T02:10:00Z"))
+        for bad in ({"since": "not a time", "plugin_sha256": "e5" * 32}, {"plugin_sha256": "e5" * 32}, "x",
+                    {"since": "2026-10-30T01:56:21Z", "plugin_sha256": "e5" * 32},
+                    {"since": "2099-01-01T00:00:00Z", "plugin_sha256": "e5" * 32},
+                    {"since": "2026-10-30T01:56:00Z", "plugin_sha256": 5}):
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as tmp:
+                work = Path(tmp) / "04-admit"
+                shutil.copytree(out, work)
+                nodes = load(work / "nodes.json")
+                nodes["lab-a"]["build"] = bad
+                (work / "nodes.json").write_text(json.dumps(nodes))
+                pop = {"population": "live", "nodes": [{"name": n, "node_id": NODE_IDS[n]} for n in NODE_IDS]}
+                with mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(out.parent / "listed")}):
+                    again = step.judge_live(pop, work, f["started"])
+                self.assertEqual(again["result"], "FAIL", again["detail"])
+                self.assertIn("build mark", again["detail"])
+
     def test_a_node_with_no_listing_is_not_checked(self):
         _, f = self.live_run(self.lab_with(self.good(), listed=False))
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
@@ -511,6 +549,32 @@ def capsule(n, block):
 
 
 @unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
+class BuildMark(unittest.TestCase):
+    """The plugin build boundary step 04 reads (loop#103)."""
+
+    def test_a_record_whose_time_does_not_read_is_never_set_aside(self):
+        for line in ("not json", "[]", json.dumps({"timestamp": 5}), json.dumps({"timestamp": "2026-10-30 01:00"})):
+            self.assertFalse(step.sealed_before(line, "2026-10-30T02:00:00Z"), line)
+        self.assertTrue(step.sealed_before(json.dumps({"timestamp": "2026-10-30T01:59:00Z"}), "2026-10-30T02:00:00Z"))
+
+    def test_build_mark_reads_only_a_good_mark_under_lab_dir(self):
+        with tempfile.TemporaryDirectory() as lab:
+            run = Path(lab) / "run"
+            run.mkdir()
+            entry = {"data_dir": "$LAB_DIR/nodes/lab-1/.local/share/capsules"}
+            with mock.patch.dict(os.environ, {"LAB_DIR": lab}):
+                self.assertIsNone(step.build_mark(entry))  # no file
+                for bad in ("{", json.dumps({"since": "x", "plugin_sha256": "a"}), json.dumps({"since": "2026-10-30T01:56:21Z"}),
+                            json.dumps({"since": "2026-10-30T01:56:21Z", "plugin_sha256": 5})):
+                    (run / "lab-1.build.json").write_text(bad)
+                    self.assertIsNone(step.build_mark(entry), bad)
+                (run / "lab-1.build.json").write_text(json.dumps({"since": "2026-10-30T01:56:21Z", "plugin_sha256": "a"}))
+                self.assertEqual(step.build_mark(entry), {"plugin_sha256": "a", "since": "2026-10-30T01:56:00Z"})
+                self.assertIsNone(step.build_mark({"data_dir": "/elsewhere/data"}))
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertIsNone(step.build_mark(entry))  # no LAB_DIR
+
+
 class Rows(unittest.TestCase):
     """Each row recomputed from what a decision in the #116 record shape sealed (tests/fixtures/step04/live/rows116.json)."""
     live_run, lab_with, assert_rederives = Live.live_run, Live.lab_with, Live.assert_rederives
