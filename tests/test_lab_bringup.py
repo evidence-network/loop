@@ -431,6 +431,7 @@ class DryRunTest(unittest.TestCase):
         self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/04-admit --population "
                                    rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/04-admit\n")
         self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
 
     def test_deal_runs_step_05_on_the_live_population_into_the_days_findings(self):
         r = lab_sh("--dry-run", "deal", env=self.env)

@@ -110,12 +110,14 @@ class LoopTest(unittest.TestCase):
     def test_a_start_that_is_not_a_time_is_skipped(self):
         self.all_steps()
         self.out.mkdir(parents=True)
-        (self.out / "run.json").write_text(json.dumps({"population": "rehearsal", "stage": "1", "steps": ["01"],
-                                                        "started": "0000-00-00T00:00:00Z"}))
-        r = self.loop("--out", str(self.out))
-        self.assertEqual(r.returncode, 0, r.stderr)
-        started = json.loads((self.out / "run.json").read_text())["started"]
-        self.assertEqual(started[:4], str(dt.datetime.now(dt.timezone.utc).year))
+        for bad in ("0000-00-00T00:00:00Z", "2026-1-5T1:2:3Z"):
+            with self.subTest(bad):
+                (self.out / "run.json").write_text(json.dumps({"population": "rehearsal", "stage": "1",
+                                                                "steps": ["01"], "started": bad}))
+                r = self.loop("--out", str(self.out))
+                self.assertEqual(r.returncode, 0, r.stderr)
+                started = json.loads((self.out / "run.json").read_text())["started"]
+                self.assertRegex(started, rf"^{dt.datetime.now(dt.timezone.utc):%Y}-\d\d-\d\dT")
 
     def test_muse_and_cross_run_nothing_and_say_not_checked_until_their_steps_exist(self):
         for eco in ("muse", "cross"):

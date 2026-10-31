@@ -132,18 +132,20 @@ PY
 }
 
 # The run's start, before the first step: what the status page measures its minutes from. A directory that
-# already holds this day's steps (lab.sh deal, settle or ask write into it before or after loop.sh) keeps the
+# already holds this day's steps (lab.sh admit, deal, settle, dispute or ask write into it before or after loop.sh) keeps the
 # earliest start: of a run.json already there and of each finding there (evidence-network/loop#65).
 python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
 import datetime as dt, json, sys
 from pathlib import Path
 path, stage, population, started, ecosystem, *steps = sys.argv[1:]
+FORM = "%Y-%m-%dT%H:%M:%SZ"  # zero-padded, so the strings order as the times do
 earlier = [Path(path)] + sorted(Path(path).parent.glob("*/finding.json"))
 for f in earlier:
     try:
         doc = json.loads(f.read_text())
         t = doc["started"]
-        dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ")  # a real UTC time in loop.sh's own form, or skipped
+        if dt.datetime.strptime(t, FORM).strftime(FORM) != t:  # a real UTC time in exactly loop.sh's form
+            continue
     except (OSError, ValueError, KeyError, TypeError):
         continue
     if doc.get("population") == population:  # the guard above already refuses another population's finding
