@@ -104,6 +104,13 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("git -C /src/capsules rev-parse HEAD", self.out)
         self.assertIn("sha256sum /opt/mesh-llm /opt/capsules", self.out)
 
+    def test_each_node_gets_its_build_mark_before_its_launch(self):
+        # loop#103: the mark's time must not be later than the node's first decision.
+        for name in ("lab-1", "lab-2", "lab-3"):
+            mark, launch = f"{self.lab}/run/{name}.build.json", f"tmux new-window -d -t loop-lab -n {name}"
+            self.assertIn(mark, self.out)
+            self.assertLess(self.out.index(mark), self.out.index(launch))
+
     def test_three_nodes_own_home_and_ports_no_relay(self):
         for i, name in enumerate(("lab-1", "lab-2", "lab-3"), 1):
             self.assertIn(f"HOME={self.lab}/nodes/{name} ", self.out)

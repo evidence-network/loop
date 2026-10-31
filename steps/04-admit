@@ -774,7 +774,7 @@ def node_decisions(data_dir):
 
 
 # What the live judge reads, kept in the proof so step 08 runs it again on the proof alone (loop#188).
-NODES_FILE = "nodes.json"  # per node: whether its data_dir and ledger were read, its record count, the numbers kept
+NODES_FILE = "nodes.json"  # per node: whether its data_dir and ledger were read, its record count, the numbers kept, its build mark
 
 
 def main_live(pop, out, started):
