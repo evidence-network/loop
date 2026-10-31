@@ -490,6 +490,13 @@ class Rows(unittest.TestCase):
         _, f = self.run_blocks(self.current("allow"), self.current("deny"))
         self.assertEqual(f["result"], "PASS", f["detail"])
 
+    def test_an_unavailable_price_is_a_price_rule_no(self):
+        for reason in ("host_lacks_backend_pricing", "no_price_without_model", "guard_error"):
+            b = self.current(None, verdict="NO", source="price_rule")
+            b["price"] = {"state": "unavailable", "reason": reason}
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "PASS", (reason, f["detail"]))
+
     def test_what_the_engine_decides_is_not_judged(self):
         # A refusal can come from a check the engine did not evaluate, which the plugin keeps out of `checks`.
         for outcome, checks in (("deny", [{"check": "rate_cap", "result": "pass"}]), ("escalate", []),
@@ -512,8 +519,10 @@ class Rows(unittest.TestCase):
             (lambda b: b["price"].update(outcome="maybe"), "price outcome", "allow"),
             (lambda b: b["price"].update(input_msat_per_million=-1), "neither a rate nor null", "allow"),
             (lambda b: b["price"].update(checks=[{"check": "rate_cap"}]), "price checks", "allow"),
-            (lambda b: b["price"].update(reason="guard_error") or b["price"].update(state="not_checked"),
-             "price not_checked", "allow"),
+            (lambda b: b.update(price={"state": "not_checked", "reason": "guard_error"}),
+             "price not_checked", "not_checked"),
+            (lambda b: b.update(price={"state": "unavailable", "reason": "because"}), "price unavailable",
+             "not_checked"),
             (lambda b: b["reads"].reverse(), "operator policy", "allow"),
             (lambda b: b["reads"].insert(2, b["reads"].pop()), "price pack, if it ran", "allow"),
             (lambda b: b.update(price={"state": "checked"}), "does not have the plugin's members", "allow"),
