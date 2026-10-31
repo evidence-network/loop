@@ -537,19 +537,19 @@ def run_inputs(run):
     return judged, run
 
 
-def join_profile(book_dir, default):
+def join_profile(book_dir):
     """The profile join.sh made for the book under `book_dir`: the one under its config whose store is book_dir/book.
     join.sh names it after its --name (lab/lab.sh passes lab-N), not after the node's name in population.json, the
-    way step 02 finds it. `default` when no profile has that store."""
+    way step 02 finds it. None when no profile has that store."""
     want = (book_dir / "book").resolve()
     for p in sorted((book_dir / "config" / "capsule" / "profiles").glob("*.yaml")):
         try:
             f = step02.profile_fields(p.read_text())
-        except OSError:
+        except (OSError, ValueError):
             continue
         if f.get("connection.database") and Path(f["connection.database"]).resolve() == want:
             return p.stem
-    return default
+    return None
 
 
 def reporting_book(population, pop, keys, tmp, capsulectl):
@@ -566,7 +566,11 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     book_dir = live.readable(node, "book_dir", "config")
     if book_dir is None:
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable", live.ISSUE)
-    book = Reporter(book_dir, capsulectl, join_profile(book_dir, node["name"]))
+    profile = join_profile(book_dir)
+    if profile is None:
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
+                         "book_dir has no book profile whose store is its book/ (config/capsule/profiles)", live.ISSUE)
+    book = Reporter(book_dir, capsulectl, profile)
     book.work = Path(tmp)
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 
