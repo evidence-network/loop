@@ -639,8 +639,8 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE})
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] == step.TRUST_ISSUE], step.LIVE_RELIES_ON["07"])
+        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE})
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE], step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_live_10_and_11_then_read_not_checked_on_the_window(self):
@@ -1084,9 +1084,56 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
 
-    def test_a_replayed_commit_still_names_that_it_was_head(self):
-        f, entries = self.verify()
-        self.assertIn(step.LIVE_RELIES_ON["03"][0], f["not_checked"])
+    def scratch_main(self):
+        """A scratch repository whose main holds this checkout's nodes/ at 2026-10-29 ("then") and the first carried
+        node's commitment changed at 2026-10-31 ("now"); carrier.json points at "then". (repo, then)."""
+        repo = Path(self.tmp.name) / "repo"
+        (repo / "nodes").mkdir(parents=True)
+        shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
+        for f in (ROOT / "nodes").glob("*.json"):
+            shutil.copyfile(f, repo / "nodes" / f.name)
+        node_id = next(iter(load(self.run / "03-advertise" / "carrier.json")["nodes"].values()))["node_id"]
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+
+        def commit(msg, date):
+            env = dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date)
+            subprocess.run([*git, "add", "nodes"], check=True, env=env)
+            subprocess.run([*git, "commit", "-qm", msg], check=True, env=env)
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        commit("then", "2026-10-29T00:00:00Z")
+        then = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        commitment = repo / "nodes" / "commitments" / f"{node_id}.json"
+        commitment.write_bytes(commitment.read_bytes() + b"\n")
+        commit("now", "2026-10-31T00:00:00Z")
+
+        def point(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = then
+            dump(d / "carrier.json", doc)
+        point(self.run / "03-advertise")
+        rehash(self.run / "03-advertise")
+        return repo
+
+    def head_relies(self, f):
+        return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03")]
+
+    def test_the_commit_main_held_at_the_start_is_borne_out(self):
+        repo = self.scratch_main()  # run.json started 2026-10-30: main then held "then"
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertEqual(self.head_relies(f), [])
+
+    def test_a_replayed_older_commit_is_named(self):
+        repo = self.scratch_main()
+        doc = load(self.run / "run.json")
+        doc["started"] = "2026-10-31T12:00:00Z"  # main had replaced a commitment by the run's start
+        dump(self.run / "run.json", doc)
+        with mock.patch.object(step, "ROOT", repo):
+            f, entries = self.verify()
+        self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
+        self.assertEqual(len(self.head_relies(f)), 1, f["not_checked"])
+        self.assertEqual(self.head_relies(f)[0]["issue"], step.TRUST_ISSUE)
 
     def test_carrier_json_unreadable_or_naming_another_node_fails(self):
         for change in ("unreadable", "outside"):
@@ -1172,7 +1219,8 @@ class Step08Live01Test(unittest.TestCase):
         e = entries["01-seal"]
         self.assertEqual(e["status"], "reproduced", e["problems"])
         self.assertEqual(e["rederived"]["result"], "PASS")
-        self.assertIn(step.LIVE_RELIES_ON["01"][0], f["not_checked"])
+        # Every node sealed under its listed key: nodes.json's per-node state is borne out, so nothing is 01's word.
+        self.assertFalse([nc for nc in f["not_checked"] if nc["what"].startswith("step 01")], f["not_checked"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_a_node_key_the_listing_does_not_publish_fails(self):
