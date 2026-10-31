@@ -417,7 +417,7 @@ class Step02LiveVerifyTest(JoinedLab):
         # Every node read, nothing missing: nodes.json is borne out. The scratch nodes have no nodes/ listing, so
         # each one's key and book are 02's reading, and only that is named.
         named = [nc["what"] for nc in f["not_checked"] if nc["what"].startswith("step 02")]
-        self.assertEqual(named, ["step 02: node lab-1's key and book", "step 02: node lab-2's key and book"])
+        self.assertEqual(named, ["step 02: node lab-1's key, book and trusted keys", "step 02: node lab-2's key, book and trusted keys"])
 
     def test_a_bundle_altered_after_the_run_fails(self):
         def forge(d):

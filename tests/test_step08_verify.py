@@ -1119,10 +1119,10 @@ class Step08Live03Test(unittest.TestCase):
         return step.utc_time(load(self.run / "03-advertise" / "finding.json")["started"])
 
     def sealed_at(self, at):
-        """A capsule 01 kept, signed at `at` (only its timestamp is read for 03's start)."""
-        d = self.run / "01-seal" / "n1"
-        d.mkdir(parents=True, exist_ok=True)
-        dump(d / "capsule.json", {"timestamp": at.strftime("%Y-%m-%dT%H:%M:%S.%fZ")})
+        """As if this 08 run had reproduced the run's live 01 as PASS, with a capsule signed at `at`."""
+        sealed = mock.patch.dict(step.SEALED, {self.run.resolve(): [at]})
+        sealed.start()
+        self.addCleanup(sealed.stop)
 
     def head_relies(self, f):
         return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03")]
@@ -1144,13 +1144,18 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual([nc["issue"] for nc in self.head_relies(f)], [step.TRUST_ISSUE], f["not_checked"])
 
     def test_a_start_no_capsule_bounds_is_named(self):
-        for case in ("no capsule", "capsule after the start", "no main"):
+        for case in ("no capsule", "capsule after the start", "no main", "a 01 not reproduced"):
             with self.subTest(case):
                 self.tearDown()
                 self.setUp()
                 repo = self.scratch_main(replaced_at=3600)
                 if case == "capsule after the start":  # 03's start set back before 01's signed seal
                     self.sealed_at(self.started() + dt.timedelta(minutes=1))
+                elif case == "a 01 not reproduced":  # a capsule file alone, which no judge here verified
+                    d = self.run / "01-seal" / "n1"
+                    d.mkdir(parents=True)
+                    stamp = (self.started() - dt.timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    dump(d / "capsule.json", {"timestamp": stamp})
                 elif case == "no main":
                     self.sealed_at(self.started() - dt.timedelta(minutes=1))
                     subprocess.run(["git", "-C", str(repo), "branch", "-qm", "main", "other"], check=True)
@@ -1297,6 +1302,18 @@ class Step08StateReliesTest(unittest.TestCase):
             self.assertIn("node n2's book id and checkpoint key", got)
             self.assertIn("node n1's node keys a receipt is held apart from", got)
             self.assertNotIn("node n1's book id", got)
+            # An unlisted node: its key, book and trusted keys named, and its trimmed node_keys too.
+            (self.listings / "id2.json").unlink()
+            c = self.ctx()
+            step.keys_02_live(c, m)
+            self.assertIn("step 02: node n2's key, book and trusted keys", [x["what"] for x in c.relies])
+            self.assertNotIn("node keys a receipt", " ".join(self.named(c, "02")))  # n1 holds the one listed key
+            doc = load(self.work / "n2" / "inputs.json")
+            doc["node_keys"] = []
+            dump(self.work / "n2" / "inputs.json", doc)
+            c = self.ctx()
+            step.keys_02_live(c, m)
+            self.assertIn("node n2's node keys a receipt is held apart from", " ".join(self.named(c, "02")))
 
     def test_01_names_its_record_unless_every_node_sealed_under_its_key_in_this_run(self):
         m = step.step_module("01-seal")

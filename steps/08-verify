@@ -442,15 +442,26 @@ def utc_time(s):
     return dt.datetime.fromisoformat(s[:-1] + "+00:00")
 
 
+# Per run dir, the signed timestamps of the capsules a live 01 this 08 run reproduced as PASS kept: each one's
+# signature its judge verified under the node's listed key. verify_run checks 01 before 03 (dirs in order).
+SEALED = {}
+
+
 def sealed_times(c):
-    """The signed timestamps of the capsules the run's 01 kept (01 runs before every other live step), or []."""
+    """The node-signed capsule timestamps of the run's 01 (SEALED), or [] when 08 did not reproduce it as PASS."""
+    return SEALED.get(c.bundle.parent.resolve(), [])
+
+
+def keep_sealed(d, work):
+    """Record the timestamps of the capsules a reproduced, passing live 01 cites (its work copy)."""
     times = []
-    for p in sorted((c.bundle.parent / "01-seal").glob("*/capsule.json")):
+    for p in sorted(work.glob("*/capsule.json")):
         try:
             times.append(utc_time(load(p)["timestamp"]))
         except (OSError, ValueError, KeyError, TypeError):
-            continue
-    return times
+            return
+    if times:
+        SEALED[d.parent.resolve()] = times
 
 
 def old_shape(c, nn, name):
@@ -539,10 +550,15 @@ def keys_02_live(c, m):
         listing = nodes_dir() / f"{node_id}.json"
         if kept.get("node_pub") is None:
             continue  # a failed stage before the key was read: judge_live FAILs it
+        # Each node's receipt is held apart from that node's own node_keys: each must hold every listed key.
+        if not listed_keys <= set(kept.get("node_keys") or []):
+            state_relies(c, "02", f"node {name}'s node keys a receipt is held apart from (not every listed node "
+                                  "key is among them)")
         if not (node_id and listing.is_file()):
-            c.relies.append({"what": f"step 02: node {name}'s key and book", "why": "the node has no nodes/ listing, "
-                             "so the key, book id and checkpoint key inputs.json records are 02's reading of its "
-                             "data_dir", "issue": TRUST_ISSUE})
+            c.relies.append({"what": f"step 02: node {name}'s key, book and trusted keys", "why": "the node has no "
+                             "nodes/ listing, so the key, book id, checkpoint key and the keys the book's profile "
+                             "trusts (`bound`) inputs.json records are 02's reading of its data_dir",
+                             "issue": TRUST_ISSUE})
             continue
         if kept["node_pub"] != load(listing).get("key_id"):
             bad.append(f"{name}/inputs.json node_pub is not the key nodes/{node_id}.json lists")
@@ -554,10 +570,6 @@ def keys_02_live(c, m):
         state_relies(c, "02", f"node {name}'s " + ("" if joined else "book id and checkpoint key (no join "
                               "commitment the node signed under lab/runs names them), and its book's ") +
                      "trusted keys (`bound`, read from the book's profile on the node)")
-        # Each node's receipt is held apart from that node's own node_keys: each must hold every listed key.
-        if not listed_keys <= set(kept.get("node_keys") or []):
-            state_relies(c, "02", f"node {name}'s node keys a receipt is held apart from (not every listed node "
-                                  "key is among them)")
     try:
         kept_nodes = load(c.work / "nodes.json")
         read_all = not kept_nodes["missing"] and all(
@@ -741,7 +753,8 @@ def head_was_current(c, head, nodes, at):
     the run's.
 
     03's start is the run's clock, but it cannot be set back unseen: 01 runs first, so 03 starts no earlier than
-    every capsule 01 kept, each signed by its node with its time. A run with no 01 capsule has no such bound."""
+    every capsule 01 kept, each signed by its node with its time (only a 01 this 08 run reproduced as PASS, whose
+    judge verified each signature, counts: sealed_times). A run with no such 01 has no such bound."""
     try:
         started = utc_time(c.started)
     except ValueError:
@@ -945,6 +958,8 @@ def verify_step(d, pop_dir, population, tmp):
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files
                           if not (work / n).is_file() or (work / n).read_bytes() != (d / n).read_bytes()]
+    if not entry["problems"] and population != "rehearsal" and nn == "01" and again["result"] == "PASS":
+        keep_sealed(d, work)
     return done("failed" if entry["problems"] else "reproduced")
 
 
