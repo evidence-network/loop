@@ -433,6 +433,8 @@ class JudgeTest(Base):
             f = self.judge()
             self.assertNotEqual(f["result"], "FAIL", f["detail"])
             self.assertNotIn("08 lists no settlement record", f["detail"])
+            self.assertEqual({k for k in self.cited() if k.startswith("06-settle/")},
+                             {"06-settle/lab-a/recorded.json", "06-settle/lab-b/recorded.json"})
 
     def test_a_live_06_with_no_recorded_json_still_fails(self):
         m = self.live_06()
