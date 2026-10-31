@@ -614,12 +614,15 @@ that `LAB_PAYMENTS` does not name.
 
 `lab/lab.sh bundles` asks each node for its own terminal settlement records for
 exchanges with each other node, from the capsules plugin's owner-only
-`settlement-bundle?peer=<node id>` route: a signed Evidence Bundle that the
-counterparty checks its settlement count against (evidence-network/loop#243).
-They go into `$LAB_DIR/bundles/<node>.for.<peer>.json` (dir 0700, files 0600). The records
-carry each payment's preimage, so the bundles stay on the host: never in
-findings, a pack or a message. A refusal (no settlement with that peer) is kept
-as the node's answer.
+`settlement-bundle?peer=<node id>` route. The answer is a signed Evidence
+Bundle; a refusal (no settlement with that peer) is kept as the node's answer.
+Then each node's `settlement_check` checks its own book against each
+counterparty's bundle (`counterparty_count`, evidence-network/loop#243), into
+`check.<node id>.<peer node id>.json` with the bundle's sha256. Everything
+goes into `$LAB_DIR/bundles/` (dir 0700, files 0600), and a run replaces the
+last one whole. The records carry each payment's preimage, so the files stay
+on the host: never in findings, a pack or a message. Step 06 reads the check
+files and publishes only the counts and each bundle's sha256.
 
 ### Step 07, the later ask
 

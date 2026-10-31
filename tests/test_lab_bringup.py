@@ -454,14 +454,87 @@ class DryRunTest(unittest.TestCase):
         # Step 06 (loop#243): the counterparty's signed settlement bundle, kept on the host (it carries preimages).
         r = lab_sh("--dry-run", "bundles", env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
-        asks = re.findall(r"curl -fsS http://127\.0\.0\.1:(\d+)/api/plugins/capsules/http/settlement-bundle"
+        asks = re.findall(r"curl -fsS --max-time 120 http://127\.0\.0\.1:(\d+)/api/plugins/capsules/http/settlement-bundle"
                           r"\\\?peer=\\<(lab-\d)\\ node_id\\>", r.stdout)  # as `say` quotes it (%q)
         self.assertEqual(sorted(asks), sorted((str(9810 + i), f"lab-{j}") for i in (1, 2, 3) for j in (1, 2, 3)
                                               if i != j))
         self.assertIn(f"chmod 700 {self.lab}/bundles", r.stdout)
-        self.assertIn(f"  > {self.lab}/bundles/lab-2.for.lab-1.json (0600)", r.stdout)
+        self.assertIn(f"  > {self.lab}/bundles/lab-2.for.lab-1.json.tmp (0600), then mv to "
+                      f"{self.lab}/bundles/lab-2.for.lab-1.json", r.stdout)
+        self.assertEqual(r.stdout.count("tools/settlement_check"), 6)  # each node against each counterparty's bundle
         self.assertNotIn("findings", r.stdout)
         self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
+    def run_bundles(self, fail=None):
+        """cmd_bundles for real against a local stand-in for the three consoles: lab-1 and lab-2 hold a bundle for
+        each other, whose one record carries a marker preimage; the rest refuse. `fail` names a (node, peer) whose
+        bundle route answers 500."""
+        import http.server
+        import threading
+        bundle = {"state": "bundle", "bundle": {"records": [{"preimage": "MARKER-PREIMAGE"}]}}
+        refused = {"state": "refused", "why": "no settlement with that peer"}
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, code, doc):
+                body = json.dumps(doc).encode()
+                self.send_response(code)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                node, rest = self.path.lstrip("/").split("/", 1)
+                peer = rest.split("peer=id-")[1]
+                if fail == (node, peer):
+                    return self.reply(500, {"error": "down"})
+                self.reply(200, bundle if {node, peer} == {"lab-1", "lab-2"} else refused)
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["content-length"]))
+                self.reply(200, {"counterparty_count": {"status": "PASS", "paired": 1, "unpaired": []}})
+
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        script = ('eval "$(sed -n "/^say()/p;/^run()/p;/^die()/p;/^cmd_bundles()/,/^}/p" "$LAB")"; set -euo pipefail; '
+                  'DRY=0; NODES=(lab-1 lab-2 lab-3); console() { echo "http://127.0.0.1:$PORT/$1"; }; '
+                  'node_id() { echo "id-$1"; }; cmd_bundles')
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                              env={**os.environ, "LAB": str(LAB), "LAB_DIR": str(self.lab),
+                                   "PORT": str(srv.server_address[1])})
+
+    def test_bundles_writes_private_files_checks_each_book_and_prints_no_record(self):
+        d = self.lab / "bundles"
+        d.mkdir(parents=True)
+        (d / "lab-3.for.lab-1.json").write_text("{}")  # an earlier run's file: replaced, never kept beside new ones
+        r = self.run_bundles()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("MARKER-PREIMAGE", r.stdout + r.stderr)
+        self.assertIn("lab-2 for lab-1: bundle, 1 records", r.stdout)
+        self.assertIn("lab-1 against lab-2's bundle: counterparty_count PASS, 1 paired, 0 unpaired", r.stdout)
+        self.assertEqual(oct(d.stat().st_mode & 0o777), "0o700")
+        names = sorted(p.name for p in d.iterdir())
+        self.assertEqual(names, sorted([f"{a}.for.{b}.json" for a in ("lab-1", "lab-2", "lab-3")
+                                        for b in ("lab-1", "lab-2", "lab-3") if a != b]
+                                       + ["check.id-lab-1.id-lab-2.json", "check.id-lab-2.id-lab-1.json"]))
+        self.assertEqual({oct(p.stat().st_mode & 0o777) for p in d.iterdir()}, {"0o600"})
+        self.assertEqual(json.loads((d / "lab-3.for.lab-1.json").read_text())["state"], "refused")
+        check = json.loads((d / "check.id-lab-1.id-lab-2.json").read_text())
+        self.assertEqual(check["bundle_sha256"], hashlib.sha256((d / "lab-2.for.lab-1.json").read_bytes()).hexdigest())
+        self.assertEqual((check["node_id"], check["peer_node_id"]), ("id-lab-1", "id-lab-2"))
+        # The pack never takes the bundles.
+        self.assertFalse([a for a, _ in pack.plan(ROOT, self.lab, "2026-10-31")[0] if "bundles" in a])
+
+    def test_bundles_stops_on_a_node_that_gives_no_answer_and_leaves_no_partial_file(self):
+        r = self.run_bundles(fail=("lab-1", "lab-3"))
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("lab-1 gave no settlement bundle for lab-3", r.stderr)
+        self.assertEqual([p.name for p in (self.lab / "bundles").iterdir() if p.name.endswith(".tmp")], [])
 
     def test_admit_runs_step_04_on_the_live_population_into_the_days_findings(self):
         # Step 04 is not in stage 1, so lab.sh admit runs it (evidence-network/loop#127).
