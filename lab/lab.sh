@@ -499,7 +499,16 @@ start_node() { # NAME EXTRA_ARGS...
   fi
   STARTED+=("$name")
   still_up "$name" || die "$name exited at once"
+  mark_build "$name"
   echo "started $name: api $(api_port "$name") console $(console_port "$name") quic $(bind_port "$name")"
+}
+
+# The plugin build a node runs and since when (evidence-network/loop#103): $LAB_DIR/run/<name>.build.json holds the
+# plugin binary's sha256 and the time the node first started on it. A restart on the same binary keeps the time; a
+# new binary resets it. Step 04 judges only the admission decisions sealed since then: the records name no build.
+mark_build() { # NAME
+  [ "$DRY" = 1 ] && { echo "  > $LAB_DIR/run/$1.build.json (the plugin binary's sha256 and since when it runs)"; return 0; }
+  python3 -B "$ROOT/lab/pack.py" build-mark --file "$LAB_DIR/run/$1.build.json" --binary "$CAPSULES_BIN"
 }
 
 # A node that exits within a few seconds of its launch is reported then, with its log tail, not

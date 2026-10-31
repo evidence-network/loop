@@ -710,6 +710,24 @@ class JudgeKeyTest(unittest.TestCase):
         self.assertIn("is a node's key", r.stderr)
 
 
+class BuildMarkTest(unittest.TestCase):
+    """lab/pack.py build-mark, which lab.sh start runs for each node (loop#103)."""
+
+    def test_a_restart_keeps_the_mark_and_a_new_binary_resets_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary, mark = Path(tmp) / "capsules", Path(tmp) / "lab-1.build.json"
+            binary.write_bytes(b"build one")
+            first = pack.build_mark(mark, binary, now="2026-10-31T06:00:00Z")
+            self.assertEqual(first["since"], "2026-10-31T06:00:00Z")
+            self.assertEqual(first["plugin_sha256"], hashlib.sha256(b"build one").hexdigest())
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T07:00:00Z"), first)  # same binary
+            binary.write_bytes(b"build two")
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T08:00:00Z")["since"], "2026-10-31T08:00:00Z")
+            mark.write_text("{")  # unreadable: written again
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T09:00:00Z")["since"], "2026-10-31T09:00:00Z")
+            self.assertEqual(json.loads(mark.read_text())["since"], "2026-10-31T09:00:00Z")
+
+
 class RunbookTest(unittest.TestCase):
     """LAB-BRINGUP.md section 5 matches loop.sh's step files and the live steps' inputs."""
 

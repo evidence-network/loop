@@ -371,7 +371,13 @@ def openssl_ed25519():
 
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"05": [
+LIVE_RELIES_ON = {"04": [
+    {"what": "step 04: what nodes.json records of each node (read or not, its record count, the record numbers kept "
+             "and its plugin build mark, which decides the decisions judged)",
+     "why": "08 judges the decision lines 04 kept again, but which lines the node's ledger held and since when the "
+            "node ran its plugin build ($LAB_DIR/run/<lab-N>.build.json) are 04's reading of the lab host",
+     "issue": TRUST_ISSUE},
+], "05": [
     {"what": "step 05: what nodes.json records of the run (which node was read, the cutoff, the pins missing) and "
              "each node's copied ledger files, controller binding and sharing report being the node's whole files",
      "why": "08 checks every held half again on the copies, but that they are the nodes' files as they were is "

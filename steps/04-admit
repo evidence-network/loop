@@ -68,6 +68,16 @@ record that fails any of these is a FAIL naming it; a node with no listing, a
 record with no producer signature, or no verifier installed is NOT_CHECKED,
 never a PASS (evidence-network/loop#135).
 
+The records name no plugin build, so a ledger can hold decisions an earlier
+build sealed. lab/lab.sh start marks each node's build ($LAB_DIR/run/<lab-N>.build.json:
+the plugin binary's sha256 and since when the node runs it). The step judges only
+the decisions sealed since then (the minute, as the plugin stamps a decision's
+time, so a decision an earlier build sealed in that same minute is judged too), names
+how many earlier ones it set aside, and keeps the mark in nodes.json; a mark that
+is not a plugin sha256 and a whole minute before the run is a FAIL.
+With no mark, every decision is judged and the detail says the boundary is not
+known (evidence-network/loop#103).
+
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
@@ -644,6 +654,9 @@ def main_live(pop, out, started):
             continue
         total, kept = read
         nodes[name] = {"read": "ok", "records": total, "kept": [n for n, _ in kept]}
+        mark = build_mark(entry)
+        if mark:
+            nodes[name]["build"] = mark
         if kept:
             (out / name).mkdir(exist_ok=True)
             (out / name / "decisions.jsonl").write_text("".join(ln + "\n" for _, ln in kept), encoding="utf-8")
@@ -687,6 +700,35 @@ def record_checks(numbers, lines, listed):
     return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": UNVERIFIED_ISSUE}] if why else [])
 
 
+STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def build_mark(entry):
+    """{plugin_sha256, since} of the plugin build the lab node runs, from $LAB_DIR/run/<lab-N>.build.json (lab.sh start
+    writes it), with since floored to the minute as the plugin stamps a decision's time; None when there is none."""
+    lab = os.environ.get("LAB_DIR")
+    m = re.match(r"\$LAB_DIR/nodes/([^/]+)/", entry.get("data_dir") or "")
+    if not (lab and m):
+        return None
+    try:
+        doc = json.loads((Path(lab) / "run" / f"{m.group(1)}.build.json").read_text(encoding="utf-8"))
+        since = dt.datetime.strptime(doc["since"], STAMP)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    sha = doc.get("plugin_sha256")
+    return {"plugin_sha256": sha, "since": since.replace(second=0).strftime(STAMP)} if isinstance(sha, str) else None
+
+
+def sealed_before(line, since):
+    """Whether the record on `line` says it was sealed before `since` (both in STAMP form); a line whose time does not
+    read is never set aside, so it is judged."""
+    try:
+        t = json.loads(line).get("timestamp")
+        return dt.datetime.strptime(t, STAMP) < dt.datetime.strptime(since, STAMP)
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def kept_numbers(node):
     """(record count, [record numbers]) of a node nodes.json reads as "ok", or ValueError: the count a whole number,
     the numbers whole, strictly increasing and within 1..count, as main_live writes them."""
@@ -719,6 +761,8 @@ def judge_live(pop, out, started):
     node_ids = {e["name"]: e.get("node_id") for e in pop["nodes"]}
     unverified = []  # records whose signature could not be checked or held to a key: never a PASS
     gaps = None  # tool_gaps(), read once, and only when a node holds a record to check
+    unmarked = []  # nodes with no lab.sh build mark: every decision is judged (loop#103)
+    set_aside = 0  # decisions an earlier plugin build sealed, never judged
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -742,6 +786,27 @@ def judge_live(pop, out, started):
         except (OSError, ValueError, KeyError, TypeError) as e:
             problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
+        # Only the decisions the node's current plugin build sealed (evidence-network/loop#103): the records name
+        # no build, so lab.sh start marks since when the node runs it.
+        build, since, earlier = node.get("build"), None, 0
+        if "build" in node:
+            try:  # a mark is {plugin_sha256, since}, since a whole minute no later than this run's start
+                since = build["since"]
+                t = dt.datetime.strptime(since, STAMP)
+                if not isinstance(build["plugin_sha256"], str) or t.second or since > started:
+                    raise ValueError(since)
+            except (ValueError, TypeError, KeyError):
+                problems.append(f"node {name}: its {NODES_FILE} build mark {build!r} is not a plugin sha256 and a "
+                                f"whole minute before this run")
+                continue
+            judged = [(n, ln) for n, ln in zip(numbers, lines) if not sealed_before(ln, since)]
+            earlier = len(numbers) - len(judged)
+            numbers, lines = [n for n, _ in judged], [ln for _, ln in judged]
+            details.append(f"node {name}: decisions since {since} (plugin build {build['plugin_sha256'][:12]})"
+                           + (f", {earlier} earlier set aside" if earlier else ""))
+            set_aside += earlier
+        else:
+            unmarked.append(name)
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
         if numbers:
             gaps = tool_gaps() if gaps is None else gaps
@@ -755,11 +820,11 @@ def judge_live(pop, out, started):
             except RuntimeError as e:  # the verifier is missing, off its pin, or does not run as pinned
                 unverified.append({"what": f"node {name}: {RECORD_WHAT}", "why": str(e), "issue": TOOLS_ISSUE})
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
-        details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
-                       f"({by['GO']} GO, {by['NO']} NO), read-only")
+        details.append(f"node {name}: {len(found) + earlier} of {total} ledger records carry an admission decision"
+                       + (f", {len(found)} judged" if earlier else "") + f" ({by['GO']} GO, {by['NO']} NO), read-only")
         problems += [f"node {name} {b}" for b in bad]
         decided += len(found)
-        if found:
+        if found or earlier:  # set-aside lines are proof too: 08 reads them again to set them aside
             proof.append(f"{name}/decisions.jsonl")
         if rows:
             (out / name / "rows.json").write_text(json.dumps({str(n): c for n, c in rows.items()}, indent=2) + "\n",
@@ -767,6 +832,8 @@ def judge_live(pop, out, started):
             proof.append(f"{name}/rows.json")
             for c in (c for cs in rows.values() for c in cs):
                 tally[c["check"]] += 1
+    if unmarked:
+        details.append(f"no plugin build mark for {', '.join(unmarked)}: every decision judged")
     base = dict(population=pop["population"], asserts=ASSERTS_LIVE, pinned=LIVE_PINNED, started=started)
     summary = "; ".join(details)
     if any(tally.values()):
@@ -790,6 +857,9 @@ def judge_live(pop, out, started):
                "why": "no ledger record carries one: the host config grants the plugin no admission hook "
                   "(lab/lab.sh writes the grant), or no peer exchange has run since it did",
                "issue": "evidence-network/loop: the live lab run, which fills population/live"}
+        if not decided and set_aside:
+            gap = dict(gap, why=f"every admission decision ({set_aside}) predates its node's current plugin build mark: "
+                                "no peer exchange has run on that build yet")
         return finding.write(out, result="NOT_CHECKED", proof=proof,
                              not_checked=not_checked + unverified + ([] if decided else [gap]),
                       detail=f"{summary}. Not checked: "
