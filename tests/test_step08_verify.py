@@ -1951,6 +1951,32 @@ class Step08RunCommitTest(unittest.TestCase):
         dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": new})
         self.assertIs(step.pin_is_current(self.run), False)
 
+    def test_an_untrusted_pin_re_runs_08_on_this_checkouts_nodes_and_names_it(self):
+        live = Path(self.tmp.name) / "live"
+        (live / "01-x").mkdir(parents=True)
+        write_run_json(live, ["01", "08"], "live")
+        finding.write(live / "01-x", result="NOT_CHECKED", population="live", asserts="a", pinned=[], proof=[],
+                      detail="", started=finding.now(), not_checked=[{"what": "x", "why": "y", "issue": step.RUN_ISSUE}])
+        seen = []
+
+        def verify_run(run, out, pop, population):
+            seen.append(os.environ.get("LOOP_NODES_DIR"))
+            return [{"dir": "01-x", "status": "reproduced", "recorded": {"result": "PASS"}}]
+        gap = {"what": "the listed keys, read at the commit the run ran at", "why": "x", "issue": step.TRUST_ISSUE}
+        calls = []
+
+        def at_run(run, population, tmp, untrusted=False):
+            calls.append(untrusted)
+            return (Path("/pinned/nodes"), []) if not untrusted else (None, [gap])
+        with mock.patch.object(step, "nodes_at_run_commit", at_run), mock.patch.object(step, "pin_is_current", return_value=False), \
+                mock.patch.object(step, "verify_run", verify_run), mock.patch.dict(os.environ):
+            os.environ.pop("LOOP_NODES_DIR", None)
+            step.main(["--population", str(ROOT / "population" / "live"), "--out", str(live / "08-verify")])
+            self.assertNotIn("LOOP_NODES_DIR", os.environ)
+        self.assertEqual(calls, [False, True])
+        self.assertEqual(seen, ["/pinned/nodes", None])  # the second run reads this checkout, not the untrusted pin
+        self.assertIn(gap, load(live / "08-verify" / "finding.json")["not_checked"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1203,7 +1203,11 @@ def pin_is_current(run):
     """Whether run.json's commit holds the nodes/ that main held when the run started, so an unsigned run.json cannot
     pick an older commit from before a key rotation (as head_was_current holds step 03's commit). The start is run.json's
     `started`, which a reproduced 01's node-signed capsule times bound from below (sealed_times); no such 01 gives no bound.
-    main is this checkout's origin/main, else main."""
+    main is this checkout's origin/main, else main.
+
+    Residual, accepted for now (loop#193): the lower bound is circular. 01 is reproduced under the pinned nodes/ first,
+    so a holder of a key retired since the pin can sign capsules with old times and pass. Closing it takes a time anchor
+    outside the run's own keys, such as a witness receipt."""
     try:
         doc = load(Path(run) / "run.json")
         started = utc_time(doc["started"])
