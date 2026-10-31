@@ -593,11 +593,15 @@ capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) a
 pays nothing. The live population names no rail, so the finding reads
 NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
 
-A node pays only when its host has a wallet. Ethan creates the wallets himself;
-`lab/bin/lab-wallet-setup.sh N`, run as intangible while the lab is quiet,
-installs the pinned lexe-wallet plugin for lab-N, adds `[payments] wallet =
-"lexe-wallet"` to its config.toml and restarts it. It never prints or copies a
-wallet secret. From then on every `lab/lab.sh start` must name that node in
+A node pays only when its host has a wallet, in two parts, each run as
+intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
+[SATS]` creates lab-N's Lexe wallet in its payments directory through a
+temporary instance, sets a small automatic policy and prints one funding
+invoice (none for SATS 0); lab-N is not touched. Part B, while the lab is
+quiet: `lab/bin/lab-wallet-setup.sh N` installs the same lexe-wallet build for
+lab-N, adds `[payments] wallet = "lexe-wallet"` to its config.toml, restarts it
+by its launcher (rolling back if it does not come up) and opens A's wallet.
+Neither reads, prints or copies the seed. From then on every `lab/lab.sh start` must name that node in
 `LAB_PAYMENTS` (for example `LAB_PAYMENTS="lab-1 lab-2 lab-3"`), which writes the
 same section; `start` refuses, before any node starts, a config with a wallet
 that `LAB_PAYMENTS` does not name.
