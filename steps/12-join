@@ -97,7 +97,9 @@ never a value read back from the commitment. A node with no console given is NOT
 A bound node's record is then read from the `data_dir` the population gives and checked by the
 Go verifier against that digest: a record that does not name the node's listed key or does not
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
-have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies leaves two NOT_CHECKED entries: revocation and role.
+have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies with the node
+key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise leaves one NOT_CHECKED entry:
+revocation.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -168,7 +170,8 @@ def cross_language():
 
 def binding_check(name, raw, digest, key, at):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
-    at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, or does not name the key); "unread" (it
+    at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, does not name the key, or names it as the
+    delegator of a delegated_by binding); "unread" (it
     is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks)."""
     try:
         verdict, report, err, code = bv.verify(cross_language(), raw, key, [at])
@@ -671,12 +674,13 @@ def judge_doctor(reply):
 
 
 def judge_join(reply, entry, node_dir):
-    """(failures, not_checked, the commitment join returns or None, its policy bytes or None) for the plugin's join
-    report.
+    """(failures, not_checked, the commitment join returns or None, its policy bytes or None, whether that
+    commitment holds) for the plugin's join report. It holds when it verifies with its policy bytes, under the listed
+    key, for the listed node; join's probe findings are failures of their own and do not decide it.
 
     Writes the commitment pair it returns as commitment.json and disclosure-policy.json in node_dir.
     """
-    fails, nc, doc, policy = [], [], None, None
+    fails, nc, doc, policy, holds = [], [], None, None, False
     pair = reply.get("commitment")
     if pair is None:
         nc.append({"what": "the commitment join returns", "why": "join returns none (the node serves no "
@@ -693,11 +697,13 @@ def judge_join(reply, entry, node_dir):
             (node_dir / "commitment.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
             (node_dir / "disclosure-policy.json").write_bytes(policy)
             errs, notes = check_commitment_.verify(doc, lambda uri: policy)
-            fails += [f"join's commitment does not verify: {e}" for e in errs + notes]
+            held = [f"join's commitment does not verify: {e}" for e in errs + notes]
             if doc.get("key_id") != entry.get("key_id"):
-                fails.append(f"join's commitment is under key {doc.get('key_id')}, not the listed key")
+                held.append(f"join's commitment is under key {doc.get('key_id')}, not the listed key")
             if doc.get("node_id") != entry.get("node_id"):
-                fails.append(f"join's commitment is for node {doc.get('node_id')}, not this node")
+                held.append(f"join's commitment is for node {doc.get('node_id')}, not this node")
+            fails += held
+            holds = not held
     # join runs the probes itself and files a mismatch under pending as well (doctor.rs), so judge its findings.
     fails += [f"join: {x}" for x in judge_doctor(reply)[0]]
     if reply.get("joined") is not True:
@@ -705,7 +711,7 @@ def judge_join(reply, entry, node_dir):
         nc.append({"what": "the plugin's join", "why": "join reports pending: " +
                    "; ".join(map(str, pending if isinstance(pending, list) and pending else ["(no pending list)"])),
                    "issue": live.ISSUE})
-    return fails, nc, doc, policy
+    return fails, nc, doc, policy, holds
 
 
 def compare_published(name, node_id, doc, published=None):
@@ -739,9 +745,9 @@ def signed_terms(doc, policy):
 
 
 def check_node_tools(name, entry, console, node_dir, timeout=30):
-    """(failures, not_checked, proof names in node_dir, lines, signed terms or None) for the plugin's doctor --probe
-    and join. The signed terms (signed_terms) are those of join's commitment, when it verifies under the listed key
-    for the listed node with its policy bytes.
+    """(failures, not_checked, proof names in node_dir, lines, signed) for the plugin's doctor --probe and join.
+    `signed` is the signed terms (signed_terms) of join's commitment when it holds (judge_join); False when it holds
+    but its terms can't be read (a failure, already recorded); None when no commitment from join holds this run.
 
     The binding state is read from doctor before join; join is called only when it was, and a node that was
     bound must come back bound to the same binding in doctor after join. The console must answer as this
@@ -780,14 +786,15 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
     if err:
         nc.append(nc_("the plugin's join", err))
     else:
-        f, n, doc, policy = judge_join(joined, entry, node_dir)
+        f, n, doc, policy, holds = judge_join(joined, entry, node_dir)
         fails += [f"{name}: {x}" for x in f]
         nc += [{**x, "what": f"{name}: {x['what']}"} for x in n]
         proof += [p for p in ("commitment.json", "disclosure-policy.json") if doc is not None]
-        if doc is not None and not f:
+        if holds:
             lines.append(compare_published(name, entry["node_id"], doc))
             signed = signed_terms(doc, policy)
             if signed is None:
+                signed = False
                 fails.append(f"{name}: join's commitment and policy do not carry answers.subjects and stranger_safe "
                              "as lists of names")
     after_reply, err = call("doctor-after", DOCTOR_ROUTE, {})
@@ -810,12 +817,6 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
     return fails, nc, proof, lines, signed
 
 
-def asked(stem):
-    """(subjects, derivation or None) of the reporter's question `stem`."""
-    q = daily_report.QUESTIONS[stem]
-    return list(q["subject"]), q.get("derivation")
-
-
 def check_listing(name, entry, signed):
     """The failures of a nodes/ entry against the node's signed commitment and policy (loop#161): the entry lists
     the signed policy's stranger_safe subjects, and each question they cover is advertised by the commitment."""
@@ -825,7 +826,8 @@ def check_listing(name, entry, signed):
         fails.append(f"{name}: nodes/ lists {sorted(listed)} as stranger-safe, but the node's signed policy lists "
                      f"{sorted(signed['stranger_safe'])}")
     for stem, question in daily_report.QUESTION_NAMES.items():
-        subjects, derivation = asked(stem)
+        q = daily_report.QUESTIONS[stem]
+        subjects, derivation = list(q["subject"]), q.get("derivation")
         if question in listed and not (all(s in signed["subjects"] for s in subjects)
                                        and (derivation is None or derivation in signed["derivations"])):
             fails.append(f"{name}: nodes/ lists {question} as stranger-safe, but the node's signed commitment does "
@@ -935,7 +937,9 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]
             lines += said_tools
-            if signed is None:
+            if signed is False:
+                signed = None  # the failure is recorded; the answers are judged against the entry
+            elif signed is None:
                 merge(not_checked, [{"what": f"{name}: {SIGNED_WHAT}",
                                      "why": "this run verified no commitment from join under the listed key with its "
                                             "policy, so the answers are matched against the nodes/ entry",

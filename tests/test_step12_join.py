@@ -1183,6 +1183,40 @@ class PluginToolsRunTest(Tmp):
         self.assertIn("alice: nodes/ lists ['checkpoints', 'history_card/1'] as stranger-safe, but the node's signed "
                       "policy lists ['checkpoints']", r["detail"])
 
+    def test_a_healthy_node_says_its_answers_are_matched_against_the_signed_commitment(self):
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        self.assertIn("alice: the answers are matched against its signed commitment and policy, and its nodes/ entry "
+                      "lists the same stranger-safe subjects", r["detail"])
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_a_probe_mismatch_join_reports_does_not_unverify_the_commitment(self):
+        def mismatch(reply):
+            for f in reply["findings"]:
+                if f["check"] == "probe_checkpoints":
+                    f["state"] = "mismatch"
+            return reply
+        r = self.run_one(join=mismatch)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: join: doctor --probe probe_checkpoints: mismatch", r["detail"])
+        # The commitment held, so the answers were matched against it: no claim that none was verified.
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_signed_terms_that_cannot_be_read_are_a_fail_not_a_missing_commitment(self):
+        def no_stranger_safe(reply):
+            doc, _ = plugin_pair()
+            cc = step.check_commitment_
+            policy = cc.sign({"key_id": ALICE_DOC["key_id"], "profile": "disclosure-policy/0",
+                              "policy": {k: v for k, v in PLUGIN_POLICY.items() if k != "stranger_safe"}}, ALICE_KEY)
+            raw = cc.canonical(policy)
+            doc = cc.sign({**copy.deepcopy(doc), "lcap": {**doc["lcap"], "policy_digest": hashlib.sha256(raw).hexdigest()}},
+                          ALICE_KEY)
+            return {**reply, "commitment": {"commitment": doc, "policy": base64.b64encode(raw).decode()}}
+        r = self.run_one(join=no_stranger_safe)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: join's commitment and policy do not carry answers.subjects and stranger_safe as lists "
+                      "of names", r["detail"])
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
     def test_join_returning_no_commitment_leaves_the_match_not_checked(self):
         r = self.run_one(join=lambda reply: {**reply, "commitment": None})
         self.assertIn({"what": f"alice: {step.SIGNED_WHAT}",
