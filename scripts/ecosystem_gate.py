@@ -10,7 +10,8 @@ baseline/live.json holds, for each ecosystem, the last accepted live result of e
 findings directory it was taken from, and the pins it ran under. It moves only
 through `update`, which refuses a findings directory steps/finding.py refuses (that includes a
 finding whose pinned entries differ from versions.lock), a rehearsal finding, a repeated step
-number, a run.json of another ecosystem (none means mesh), and a regression against the baseline already committed. `verify` re-reads the committed
+number, an open-month preview finding (its detail starts with finding.PREVIEW; steps 10 and 11 write those
+only under --preview-open-month, outside findings/), a run.json of another ecosystem (none means mesh), and a regression against the baseline already committed. `verify` re-reads the committed
 findings with steps/finding.py (records, proof and pins against the current versions.lock), refuses
 a hand-edited baseline or a non-canonical findings path, and requires the baseline's pins
 to hold under the current versions.lock: every pin it records is still there at the same ref (a pin
@@ -68,6 +69,9 @@ def read_findings(findings_dir):
             continue
         if population != "live":
             errs.append(f"{d.name}: population is {population}; the baseline holds live results")
+        if finding.is_preview(r):
+            errs.append(f"{d.name}: an open-month preview, not a baseline result (loop#242); the baseline holds "
+                        "results over whole closed months only")
         if m.group(1) in steps:
             errs.append(f"{d.name}: step {m.group(1)} has more than one directory")
         steps[m.group(1)] = (result, finding.sha256(f))

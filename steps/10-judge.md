@@ -115,3 +115,24 @@ Steven's 2026-10-29 ruling), and a step 08 did not reproduce adds its own entry 
 steps (evidence-network/loop#188). A same-day live run is NOT_CHECKED on the window: its asks are judged once
 their month has closed. Past that, live 10 seals under the lab's judge key (see Sealing), and it is
 NOT_CHECKED where that key is not on the host it runs on.
+
+## Open-month preview (`--preview-open-month`)
+
+To see 10 run on records whose month has not closed, without moving the baseline (loop#242):
+
+```
+steps/10-judge --population population/live --preview-open-month --run findings/<date>-live \
+               --out preview/<date>-live/10-judge
+```
+
+It judges the open month, the calendar month containing 08's as-of instant (for 08 finished in October 2026,
+`[2026-10-01, 2026-11-01)`), with the same pinned pack and, on live, the same judge key. `--run` is the loop run
+that holds `08-verify/`; the step reads it and never judges the stand-in or writes into it. Its Results carry
+`x-window.preview` and `periods` 1, and `window.json` carries `preview: "open-month"`. The 12-closed-month window
+above is unchanged and is still the only one a run without the flag uses (Steven's 2026-10-29 ruling).
+
+A preview is never a baseline result. Every finding it writes, whatever its result, has a `detail` that starts with
+`PREVIEW: open month, not a baseline result` (`finding.PREVIEW`), and `scripts/ecosystem_gate.py` refuses a findings
+directory holding one. `--out` may not lie inside `--run`, `findings/` (or `LOOP_FINDINGS`) or `baseline/`: write it
+to the git-ignored top-level `preview/`, or under `$LAB_DIR/preview/`. Neither `loop.sh` nor the gate lists
+`preview/`. Step 11 reports over it with the same flag.

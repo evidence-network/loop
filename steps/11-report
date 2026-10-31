@@ -4,6 +4,7 @@ settlement records they cite, every number on it has a denominator, nothing on i
 digest is sealed in the reporting node's book.
 
 Usage: 11-report --population DIR --out RUN/11-report
+       11-report --population DIR --preview-open-month --run RUN --out PREVIEW/11-report [--page FILE]
 
 RUN is the loop run (the parent of --out). The only record bytes this step reads
 are the deal and settlement records 10's Results cite, for the exchanges figure:
@@ -47,6 +48,12 @@ A rehearsal run with neither 08-verify/ nor 10-judge/ runs step 10 into
 OUT/standin/10-judge, which judges the committed stand-in run, and the detail
 says so. Live records are collected by the operator from the lab's own nodes,
 never through a peer; a live run without 08's and 10's outputs is NOT_CHECKED.
+--preview-open-month (evidence-network/loop#242) reports over step 10's open-month preview, PREVIEW/10-judge (written by
+`10-judge --preview-open-month --run RUN`), with 08's manifest and the records from RUN (--run). The only 10-judge it
+accepts is a preview one, and a run without --preview-open-month refuses a preview one. It is never a baseline result:
+it writes only --out (outside RUN and findings/), never runs step 10 itself, and every finding it writes has a detail
+that starts with finding.PREVIEW, which the ecosystem gate refuses.
+
 The design is steps/11-report.md. Exit 0 once the finding is written.
 """
 import argparse
@@ -81,6 +88,7 @@ PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
 PINNED = ["capsulectl", "capsulectl-book"]
 ASSERTS = ("the report page renders only from step 08's manifest, step 10's Results and the deal and settlement "
            "records they cite, every number on it has a denominator, none of its data is a score, and its byte digest is sealed in the reporting node's book")
+PREVIEW_ASSERTS = ASSERTS.replace("step 10's Results", "step 10's open-month preview Results")
 CONTRACT = "loop-report@v0"
 LIVE_LABEL = ("The records are operator-collected from the lab's own nodes; this proves the report, not how an operator "
               "gets bundles from peers.")
@@ -117,12 +125,17 @@ load, dump = judge10.load, judge10.dump
 
 
 # --- The inputs ---------------------------------------------------------------------------
-def read_judge(judged):
-    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on."""
+def read_judge(judged, preview=False):
+    """10's finding, once it holds; raises Refused, or NotChecked when 10 has no PASS to report on.
+
+    A preview reports only a preview 10-judge, and a baseline report never one."""
     record = load(judged / "finding.json")
     errs = finding.check_record(judged, record) if isinstance(record, dict) else ["finding.json is not an object"]
     if errs:
         raise Refused(f"step 10's finding does not hold: {'; '.join(errs)}")
+    if finding.is_preview(record) != preview:
+        raise Refused("step 10's finding is an open-month preview, not a baseline result" if not preview else
+                      "step 10's finding is not an open-month preview; --preview-open-month reports only a preview")
     if record["result"] == "FAIL":
         raise Refused("step 10's finding is FAIL, so its Results are not reported")
     if record["result"] == "NOT_CHECKED":
@@ -490,8 +503,17 @@ def check_no_paid_product(page, report):
 
 
 # --- The run ------------------------------------------------------------------------------
-def run_inputs(run, out, population, population_dir):
-    """(10's dir, the dir holding 08's manifest, is it the stand-in), running 10 on the stand-in where it applies."""
+def run_inputs(run, out, population, population_dir, preview=False):
+    """(10's dir, the dir holding 08's manifest, is it the stand-in), running 10 on the stand-in where it applies.
+
+    A preview reads 10's output beside `out` (PREVIEW/10-judge) and 08's manifest from `run`, and never a stand-in."""
+    if preview:
+        judged = out.parent / "10-judge"
+        if not (judged / "finding.json").is_file():
+            raise NotChecked("the preview report page, over step 08's manifest and step 10's open-month Results",
+                             f"{out.parent.name} holds no 10-judge/ preview output to render from; run 10-judge "
+                             "--preview-open-month --run first", RUN_ISSUE)
+        return judged, run, False
     judged = run / "10-judge"
     standin = population_dir / "step10" / "run"
     if not (judged / "finding.json").is_file():
@@ -528,10 +550,10 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 
 
-def report(run, out, population, pop, population_dir, proof, tmp, page=None):
+def report(run, out, population, pop, population_dir, proof, tmp, page=None, preview=False):
     """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
-    judged, source, is_standin = run_inputs(run, out, population, population_dir)
-    record = read_judge(judged)
+    judged, source, is_standin = run_inputs(run, out, population, population_dir, preview)
+    record = read_judge(judged, preview)
     try:
         manifest, _ = judge10.read_manifest(source)
     except judge10.NotChecked as e:
@@ -577,7 +599,8 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
     rebuilt = [Path(tmp) / f"rebuild-{i}.html" for i in (1, 2)]
     for r in rebuilt:
         book.rebuild(bundle, r)
-    report_json = {"source": "stand-in" if is_standin else "run", "figures": figures,
+    report_json = {"source": "stand-in" if is_standin else "run", **({"preview": "open-month"} if preview else {}),
+                   "figures": figures,
                    "report_html_sha256": finding.sha256(page), "report_html_bytes": page.stat().st_size,
                    "built_by": tool_versions(capsulectl, plugin),
                    "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json"),
@@ -605,9 +628,20 @@ def main(argv=None):
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--page", type=Path, help="also leave the rendered page here, a local copy to look at: the finding "
                     "commits report.json and the page's sha256, not the page")
+    ap.add_argument("--preview-open-month", action="store_true",
+                    help="report over step 10's open-month preview (PREVIEW/10-judge beside --out), a preview and not a "
+                    "baseline result; needs --run")
+    ap.add_argument("--run", type=Path, help="with --preview-open-month: the loop run holding 08-verify/ and the "
+                    "records (--out is then elsewhere, outside it)")
     a = ap.parse_args(argv)
+    preview = a.preview_open_month
+    if preview != (a.run is not None):
+        ap.error("--preview-open-month and --run go together")
     started = finding.now()
     out = a.out.resolve()
+    if preview and judge10.preview_out_problem(out, a.run.resolve()):
+        ap.error(judge10.preview_out_problem(out, a.run.resolve()))
+    run = a.run.resolve() if preview else out.parent
     out.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(out / "standin", ignore_errors=True)
     for p in ("finding.json", "report.html", "report.json", "result.bundle.json", "seal.bundle.json", "check.json"):
@@ -618,8 +652,8 @@ def main(argv=None):
     problems, not_checked, lines, proof, pinned, is_standin = [], [], [], [], [], False
     try:
         with tempfile.TemporaryDirectory(prefix="11-report-") as tmp:
-            problems, lines, is_standin = report(out.parent, out, population, pop, population_dir, proof, tmp,
-                                                  a.page.resolve() if a.page else None)
+            problems, lines, is_standin = report(run, out, population, pop, population_dir, proof, tmp,
+                                                  a.page.resolve() if a.page else None, preview)
         pinned = PINNED
     except NotChecked as e:
         what, why, issue = e.args
@@ -632,8 +666,8 @@ def main(argv=None):
         problems = [f"the report did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
     what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this run's "
-            f"records" if is_standin else f"run {out.parent.name}")
-    detail = f"{what}: "
+            f"records" if is_standin else f"run {run.name}")
+    detail = (finding.PREVIEW + ". " if preview else "") + f"{what}: "
     detail += (" ".join(lines) + " " if lines else "no page rendered. " if result != "PASS" else "")
     detail += f"Did not hold: {'; '.join(problems)}. " if problems else ""
     if result == "PASS":
@@ -650,7 +684,8 @@ def main(argv=None):
     if population == "live":
         detail += f" On live, step 10's Results are under the live judge key: {judge10.LIVE_JUDGE}."
     proof = [p for p in proof if (out / p).is_file()]
-    finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
+    finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
+                  pinned=pinned, proof=proof,
                   detail=detail.strip(), not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"11-report: {result}: {detail.strip()}", file=sys.stderr)
     return 0

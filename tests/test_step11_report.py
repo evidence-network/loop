@@ -727,5 +727,101 @@ class LiveFixtureTest(unittest.TestCase):
         self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
 
 
+class PreviewTest(Base):
+    """--preview-open-month (evidence-network/loop#242): 11 reports over 10's open-month preview, never a baseline
+    result. It reads 08's manifest and the records from --run and 10's output beside --out, and writes only --out."""
+
+    def setUp(self):
+        super().setUp()
+        self.preview = Path(self.tmp.name) / "preview"
+
+    def preview_10(self, *extra):
+        step.judge10.main(["--population", str(POPULATION), "--preview-open-month", "--run", str(self.run),
+                           "--out", str(self.preview / "10-judge"), *extra])
+
+    def preview_report(self):
+        out = self.preview / "11-report"
+        step.main(["--population", str(POPULATION), "--preview-open-month", "--run", str(self.run),
+                   "--out", str(out), "--page", str(self.page)])
+        f = load(out / "finding.json")
+        self.assertEqual(finding.check_record(out, f), [], f["detail"])
+        return f
+
+    def october(self):
+        """The base run's four steps finished in October 2026, the month 08 ran in; 08's manifest given the new digests."""
+        v = self.run / "08-verify"
+        m = load(v / "verified.json")
+        for i, base in enumerate(("05-deal", "06-settle", "07-ask", "09-dispute")):
+            f = load(self.run / base / "finding.json")
+            f["finished"] = f"2026-10-0{i + 1}T10:00:30Z"
+            dump(self.run / base / "finding.json", f)
+            e = next(e for e in m["steps"] if e["dir"] == base)
+            next(x for x in e["files"] if x["path"] == "finding.json")["sha256"] = finding.sha256(self.run / base / "finding.json")
+        dump(v / "verified.json", m)
+        record = load(v / "finding.json")
+        record["proof"] = [{"path": "verified.json", "sha256": finding.sha256(v / "verified.json")}]
+        dump(v / "finding.json", record)
+
+    def plant_10(self, detail):
+        d = self.preview / "10-judge"
+        d.mkdir(parents=True)
+        (d / "p.txt").write_text("p\n")
+        dump(d / "finding.json", {"step": "10", "name": "judge", "result": "PASS", "population": "rehearsal",
+                                  "asserts": "a planted step 10", "pinned": {}, "detail": detail,
+                                  "proof": [{"path": "p.txt", "sha256": finding.sha256(d / "p.txt")}],
+                                  "not_checked": [], "started": "2026-10-02T09:00:00Z",
+                                  "finished": "2026-10-02T09:01:00Z"})
+
+    def test_a_preview_with_no_preview_10_is_not_checked_and_never_runs_10(self):
+        with mock.patch.object(step.judge10, "main") as ran_10:
+            f = self.preview_report()
+        ran_10.assert_not_called()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
+        self.assertIn("holds no 10-judge/ preview output", f["not_checked"][0]["why"])
+        self.assertFalse(self.page.exists())
+
+    def test_a_preview_refuses_a_10_that_is_not_a_preview(self):
+        self.plant_10("a baseline step 10")
+        f = self.preview_report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW))
+        self.assertIn("step 10's finding is not an open-month preview", f["detail"])
+        self.assertFalse(self.page.exists())
+
+    def test_a_baseline_report_refuses_a_preview_10(self):
+        # A preview 10-judge copied or left in the run is not a baseline's input.
+        self.plant_10(finding.PREVIEW + ". a preview")
+        shutil.copytree(self.preview / "10-judge", self.run / "10-judge")
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertFalse(f["detail"].startswith("PREVIEW"))
+        self.assertIn("step 10's finding is an open-month preview, not a baseline result", f["detail"])
+        self.assertFalse(self.page.exists())
+
+    def test_a_preview_needs_a_run_and_is_not_written_into_it(self):
+        for argv in (["--preview-open-month"], ["--run", str(self.run)],
+                     ["--preview-open-month", "--run", str(self.run)]):
+            out = self.run / "11-report" if len(argv) == 3 else self.preview / "11-report"
+            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"):
+                step.main(["--population", str(POPULATION), "--out", str(out), *argv])
+            self.assertEqual(e.exception.code, 2)
+        self.assertFalse((self.run / "11-report").exists())
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_preview_reports_the_open_month_and_leaves_the_run_alone(self):
+        self.october()
+        before = sorted(p.relative_to(self.run).as_posix() for p in self.run.rglob("*"))
+        self.preview_10()
+        self.assertEqual(load(self.preview / "10-judge" / "finding.json")["result"], "PASS")
+        f = self.preview_report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
+        self.assertIn("open-month preview Results", f["asserts"])
+        self.assertEqual(load(self.preview / "11-report" / "report.json")["preview"], "open-month")
+        self.assertTrue(self.page.is_file())
+        self.assertEqual(sorted(p.relative_to(self.run).as_posix() for p in self.run.rglob("*")), before)
+
+
 if __name__ == "__main__":
     unittest.main()
