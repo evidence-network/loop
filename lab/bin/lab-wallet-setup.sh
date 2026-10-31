@@ -5,7 +5,7 @@
 #   1. checks that A's wallet exists (its seed file and the payments/wallet-provider.json pin) and
 #      that its wallet.lock is free, so A is not still running;
 #   2. installs the same lexe-wallet build A used (lexe-wallet-plugin#7) into lab-N's HOME, or
-#      enables it if a rollback disabled it.
+#      enables it if it was disabled.
 # It neither writes config.toml nor restarts a node: lab.sh does both, for all nodes at once, so
 # lab-1's new invite token reaches lab-2 and lab-3 and lab.sh stays the one writer of [payments].
 # Once every node that pays is ready, while the lab is quiet:

@@ -9,7 +9,8 @@
 # lab-N's directory, so its payment directory is exactly lab-N's:
 #   $LAB_DIR/nodes/lab-N/payments/          ledger, policy and wallet-provider.json pin
 #   $LAB_DIR/nodes/lab-N/payments/wallets/lexe-wallet/   seedphrase.txt, wallet.lock, wallet data
-# The running lab-N has no [payments] and no wallet plugin, so it never opens that directory.
+# Until lab.sh start writes [payments] for it (LAB_PAYMENTS), the running lab-N does not load a wallet plugin,
+# so it never opens that directory.
 #
 # Steps: install the staged lexe-wallet build (lexe-wallet-plugin#7) into the throwaway HOME, start
 # the temporary instance, open the wallet (the plugin creates the seed and signs up a Lexe account
@@ -53,7 +54,8 @@ port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 [ -d "$NODE_DIR" ] || die "$NODE_DIR not found"
 [ -x "$MESH_LLM_BIN" ] || die "$MESH_LLM_BIN not found"
 [ "$(sha "$LEXE_PLUGIN")" = "$LEXE_SHA256" ] || die "$LEXE_PLUGIN sha256 is not $LEXE_SHA256"
-# Once part B has run, lab-N itself owns the wallet; fund it through lab-N's console instead.
+# Once lab.sh start has written [payments] for lab-N (LAB_PAYMENTS), lab-N itself owns the wallet; fund it
+# through lab-N's console instead.
 ! grep -q '^\[payments\]' "$NODE_DIR/config.toml" || die "$NODE_DIR/config.toml already has [payments]: lab-N owns the wallet now; use its console :$((${LAB_PORT_BASE:-9800} + 10 + N))"
 [ ! -e "$TMP_CONFIG" ] || die "$TMP_CONFIG exists: another run is active or crashed; check for a 'client --config $TMP_CONFIG' process, then remove it"
 port_free "$API_PORT" && port_free "$CONSOLE_PORT" || die "port $API_PORT or $CONSOLE_PORT is in use"

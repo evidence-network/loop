@@ -65,7 +65,8 @@
 # Environment (LAB-BRINGUP.md, "Prerequisites"):
 #   LAB_DIR             where the nodes live: one HOME per node under $LAB_DIR/nodes (required)
 #   LAB_PAYMENTS        nodes whose config.toml gets [payments] wallet = "lexe-wallet" (step 06): space separated;
-#             off when unset. The wallet plugin and its files are installed by lab/bin/lab-wallet-setup.sh, and
+#             off when unset. The wallet comes from lab/bin/lab-wallet-create.sh and the plugin from
+#             lab/bin/lab-wallet-setup.sh, and
 #             once a node has a wallet every later start must name it here (start refuses otherwise)
 #   MESH_LLM_BIN        the lab host build's mesh-llm binary
 #   MESH_LLM_SRC        the mesh-llm source tree that binary was built from (check)
