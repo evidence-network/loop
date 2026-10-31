@@ -343,11 +343,12 @@ def utc_seconds(text):
     return int(datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp())
 
 
-def witness_checks(status_rc, status, profile_key, node_keys):
-    """The checks on the receipt the book stored for its checkpoint: {name: {ok, detail}}."""
+def witness_checks(status_rc, status, profile_key, node_keys, entries=None):
+    """The checks on the receipt the book stored for its checkpoint: {name: {ok, detail}}. `entries` is the witness
+    listing's entries (the repository's, listing(), unless given)."""
     receipt = base64.b64decode(((status or {}).get("receipt") or {}).get("Bytes") or "")
     kid, iat = receipt_header(receipt)
-    entries = listing()
+    entries = listing() if entries is None else entries
     entry = next((e for e in entries if e.get("key_id") == kid), None)
     when = datetime.fromtimestamp(iat, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if iat is not None else None
     checks = {"witness_listed": {"ok": entry is not None,
@@ -370,11 +371,8 @@ def witness_checks(status_rc, status, profile_key, node_keys):
 
 
 def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time):
-    """Append one record to the node's book, then deliver its checkpoint to the book's witness; keep what the judge
-    reads (inputs.json beside the proof files) and judge those files (judge_book): (result, proof, detail, gap).
-
-    gap is the node's witness not_checked entry when the witness part could not be checked, else None.
-    """
+    """Append one record to the node's book, then deliver its checkpoint to the book's witness, and keep what the
+    judge reads (inputs.json beside the proof files); judge_book judges those files."""
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(mode=0o700, parents=True)
     env = dict(os.environ, XDG_CONFIG_HOME=str(work / "config"),
@@ -398,7 +396,6 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
     def keep(**more):
         inputs.update(more, done=done)
         (out / INPUTS_FILE).write_text(json.dumps(inputs, indent=2, sort_keys=True) + "\n")
-        return judge_book(cap, out)
 
     try:
         # The node key's seed, for this run only: capsulectl reads a key from a 0600 file.
@@ -430,7 +427,10 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         cap_run("seal", "seal", "--profile", name, "--request", request, "--output", out / "capsule.json")
         done.append("capsule.json")
         capsule_id = json.loads((out / "capsule.json").read_text())["capsule_id"]
-        cap_run("append", "cll", "append", "--profile", name, "--capsule", out / "capsule.json", save="append.json")
+        appended = json.loads(cap_run("append", "cll", "append", "--profile", name, "--capsule",
+                                      out / "capsule.json", save="append.json").stdout)
+        if not isinstance(appended, dict):
+            raise ValueError("capsulectl cll append printed no JSON object")
         done.append("append.json")
         size = json.loads(cap_run("checkpoint", "cll", "checkpoint", "create", "--profile", name,
                                   save="checkpoint.json").stdout)["checkpoint"]
@@ -488,6 +488,8 @@ def judge_book(cap, out):
     book_id, book_key, capsule_id = inputs["book_id"], inputs["book_key"], inputs["capsule_id"]
     size, witness = inputs["checkpoint"], inputs["witness"]
     appended = json.loads((out / "append.json").read_text())
+    if not isinstance(appended, dict):
+        raise ValueError("append.json is not a JSON object")
     with tempfile.TemporaryDirectory(prefix="02-verify-") as tmp:
         env = dict(os.environ, XDG_CONFIG_HOME=str(Path(tmp) / "config"),
                    CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
@@ -527,11 +529,21 @@ def judge_book(cap, out):
                 status = json.loads((out / "witness-status.json").read_text())
             except ValueError:
                 status = state
+            # The listing the run cites (witnesses.json beside the nodes), which 08 holds to the repository's.
             try:
-                checks.update(witness_checks(status_rc, status, witness["public_key"],
-                                             set(inputs["node_keys"]) | {node_pub, cp_pub, *bound}))
-            except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
-                checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
+                entries = [e for e in json.loads((out.parent / "witnesses.json").read_text()).get("witnesses", [])
+                           if isinstance(e, dict)]
+            except (OSError, ValueError, AttributeError):
+                entries = None
+            if entries is None:
+                checks["witness_receipt"] = {"ok": False, "detail": "the run cites no readable witness listing "
+                                                                   "(witnesses.json) to hold the receipt to"}
+            else:
+                try:
+                    checks.update(witness_checks(status_rc, status, witness["public_key"],
+                                                 set(inputs["node_keys"]) | {node_pub, cp_pub, *bound}, entries))
+                except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
+                    checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
     (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
@@ -668,7 +680,7 @@ def judge_live(pop, out, started):
             continue
         try:
             result, files, detail, gap = judge_book(cap, out / name)
-        except (OSError, ValueError, KeyError, TypeError) as e:
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
             result, files, detail, gap = ("FAIL", [], f"node {name}: its kept inputs are not readable "
                                                       f"({type(e).__name__}: {e})", None)
         results.append(result)

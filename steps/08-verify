@@ -46,6 +46,7 @@ import fnmatch
 import importlib.machinery
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -84,7 +85,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
+LIVE_AGAIN = {"01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -370,10 +371,11 @@ def openssl_ed25519():
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
 LIVE_RELIES_ON = {"02": [
-    {"what": "step 02: the book's keys and coordinates each node's inputs.json records (its checkpoint key, the keys "
-             "the book was bound to, its book id and first checkpoint key)",
-     "why": "08 verifies each bundle again and holds the node key to its listing, but the rest is 02's reading of "
-            "the node's book, which is not in the bundle", "issue": TRUST_ISSUE},
+    {"what": "step 02: what nodes.json and each inputs.json record of the run (which node was read, the pins "
+             "missing, the book's checkpoint key, the keys it was bound to, its book id and first checkpoint key, "
+             "every node's key, whether a witness is set, and the witness exit codes and stated cause)",
+     "why": "08 verifies each bundle again and holds each listed node key to its listing, but the rest is 02's "
+            "reading of the node's book and its run, which is not in the bundle", "issue": TRUST_ISSUE},
 ], "01": [
     {"what": "step 01: what nodes.json says of each node (data_dir unread, a pin missing, or sealed by the node "
              "itself)",
@@ -451,17 +453,26 @@ def keys_02_live(c, m):
     """The witness listing 02 cites is the repository's (lab/witness/witnesses.json), and each listed node's key
     02 kept in inputs.json is the key its nodes/ listing publishes."""
     bad = []
-    if (c.work / "witnesses.json").is_file() and (not m.LISTING.is_file() or
-                                                   m.LISTING.read_bytes() != (c.work / "witnesses.json").read_bytes()):
+    receipts = list(c.work.glob("*/witness-status.json"))
+    kept_listing = c.work / "witnesses.json"
+    if receipts and not kept_listing.is_file():
+        bad.append("a receipt is judged, but the proof cites no witnesses.json to hold it to")
+    if kept_listing.is_file() and (not m.LISTING.is_file() or m.LISTING.read_bytes() != kept_listing.read_bytes()):
         bad.append("witnesses.json is not the repository's lab witness listing")
     ids = {n["name"]: n.get("node_id") for n in load(c.pop / "population.json")["nodes"]}
+    nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))  # as 01 and 05 read the listings
     for p in sorted(c.work.glob("*/inputs.json")):
-        kept, node_id = load(p), ids.get(p.parent.name)
-        listing = ROOT / "nodes" / f"{node_id}.json"
-        if node_id and listing.is_file() and kept.get("node_pub") is not None and \
-                kept["node_pub"] != load(listing).get("key_id"):
-            bad.append(f"{p.parent.name}/inputs.json node_pub is not the key nodes/{node_id}.json lists")
-    if list(c.work.glob("*/witness-status.json")):
+        kept, name = load(p), p.parent.name
+        node_id = ids.get(name)
+        listing = nodes_dir / f"{node_id}.json"
+        if kept.get("node_pub") is None:
+            continue  # a failed stage before the key was read: judge_live FAILs it
+        if not (node_id and listing.is_file()):
+            c.relies.append({"what": f"step 02: node {name}'s key", "why": "the node has no nodes/ listing, so the "
+                             "key inputs.json records is 02's reading of its data_dir", "issue": TRUST_ISSUE})
+        elif kept["node_pub"] != load(listing).get("key_id"):
+            bad.append(f"{name}/inputs.json node_pub is not the key nodes/{node_id}.json lists")
+    if receipts:
         c.relies.append({"what": "step 02: each witness receipt's verified state",
                          "why": "08 runs 02's witness checks again on witness-status.json, but the state is "
                                 "capsulectl's re-verification against the node's book on the lab, not a check 08 "
