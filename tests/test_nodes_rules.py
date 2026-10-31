@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -39,6 +40,19 @@ class EntryRulesTest(unittest.TestCase):
         e = {k: v for k, v in e.items() if v is not None}
         (self.nodes / f"{'a' * 64}.json").write_text(json.dumps(e))
         return errors(self.nodes)
+
+    def test_no_entry_opts_in_to_pair_edges_while_the_consent_does_not_name_them(self):
+        # loop#77: public pair edges on /watch/ need a consent that names them; the statement does not yet.
+        disc = {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}
+        self.assertEqual(self.check(disclosure=disc), [])
+        errs = self.check(disclosure=dict(disc, pair_edges="public"))
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("pair_edges", errs[0])
+        self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
+        # The gate is a decision made with the consent text: only the constant opens it.
+        with mock.patch.object(check_nodes, "CONSENT_NAMES_PAIR_EDGES", True):
+            self.assertEqual(self.check(disclosure=dict(disc, pair_edges="public")), [])
+            self.assertIn("pair_edges", self.check(disclosure=dict(disc, pair_edges="yes"))[0])
 
     def test_the_fixture_cases(self):
         self.assertEqual(errors(CASES / "good"), [])

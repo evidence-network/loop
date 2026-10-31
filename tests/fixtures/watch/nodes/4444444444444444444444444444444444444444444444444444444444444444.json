@@ -2,6 +2,7 @@
   "ask_route": "mesh",
   "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
   "disclosure": {
+    "pair_edges": "public",
     "policy": "counterparties",
     "stranger_safe": [
       "checkpoints",

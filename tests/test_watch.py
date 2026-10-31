@@ -416,6 +416,55 @@ class WatchTest(unittest.TestCase):
         # The script draws a pair solid from the export's line, never on its own.
         self.assertIn('p.line === "solid"', self.js)
 
+    def test_a_pair_edge_is_drawn_only_when_both_ends_opt_in(self):
+        # loop#77: an edge says who dealt with whom, so a live node whose nodes/ entry does not opt in
+        # (disclosure.pair_edges "public") has none drawn: its pairs stay dotted, the edges are only counted.
+        with tempfile.TemporaryDirectory() as tmp:
+            nodes = Path(tmp) / "nodes"
+            shutil.copytree(FIX / "nodes", nodes)
+            f = nodes / f"{nid(4)}.json"
+            e = json.loads(f.read_text())
+            del e["disclosure"]["pair_edges"]
+            f.write_text(json.dumps(e))
+            data = run(Path(tmp) / "_site", nodes=nodes)
+            page = (Path(tmp) / "_site" / "watch" / "index.html").read_text(encoding="utf-8")
+        before, after = on(self.data, "live", "2026-11-02"), on(data, "live", "2026-11-02")
+        self.assertTrue(any(nid(4) in (x["from"], x["to"]) for x in before["edges"]))
+        self.assertFalse(any(nid(4) in (x["from"], x["to"]) for x in after["edges"]))
+        line = {(p["a"], p["b"]): p["line"] for p in after["pairs"]}
+        self.assertEqual(line[(nid(1), nid(4))], "dotted")
+        deal = after["measured"]["deal"]
+        self.assertEqual(deal["drawn"] + deal["withheld"], before["measured"]["deal"]["drawn"])
+        self.assertIn("disclosure.pair_edges", deal["why_withheld"])
+        # The charts still count every deal and settlement, on every day; only the lines are withheld.
+        values = lambda v, key: [(p["date"], p.get("value")) for m in v["metrics"] if m["key"] == key  # noqa: E731
+                                 for p in m["points"]]
+        for key in ("deals", "settlements"):
+            self.assertEqual(values(data["views"]["live"], key), values(self.data["views"]["live"], key), key)
+        withheld = sum(d["measured"][k].get("withheld_answered", 0) for d in data["views"]["live"]["days"]
+                       for k in ("deal", "settle", "ask07") if d["measured"][k]["measured"])
+        answered = lambda v: sum(x["outcome"] == "answered" for d in v["days"] for x in d["edges"])  # noqa: E731
+        self.assertEqual(answered(data["views"]["live"]) + withheld, answered(self.data["views"]["live"]))
+        # The page says so: the no-script table and the script's notes name the withheld count.
+        self.assertIn(f"; {deal['withheld']} withheld</td>", page)
+        self.assertIn('m.withheld + " withheld"', self.js)
+        # The rehearsal is the loop's own TEST population and is not gated.
+        self.assertEqual(data["views"]["rehearsal"], self.data["views"]["rehearsal"])
+
+    def test_a_charts_count_adds_the_withheld_edges(self):
+        # point(): deals add every withheld edge, settlements only the withheld ones that answered (loop#77).
+        d = {"nodes": [], "run": "settled", "measured": {
+            "deal": {"measured": True, "drawn": 2, "answered": 1, "not_drawn": 0, "withheld": 3, "withheld_answered": 1},
+            "settle": {"measured": True, "drawn": 1, "answered": 1, "not_drawn": 0, "withheld": 4,
+                       "withheld_answered": 2}}}
+        self.assertEqual(watch.point(d, "deals"), {"value": 5, "not_drawn": 0, "withheld": 3})
+        self.assertEqual(watch.point(d, "settlements"), {"value": 3, "not_drawn": 0, "withheld": 4})
+        for m in d["measured"].values():
+            for k in ("withheld", "withheld_answered"):
+                del m[k]
+        self.assertEqual(watch.point(d, "deals"), {"value": 2, "not_drawn": 0})
+        self.assertEqual(watch.point(d, "settlements"), {"value": 1, "not_drawn": 0})
+
     def test_no_reporter_node_in_the_export_or_the_markup(self):
         for v in self.data["views"].values():
             for d in v["days"]:

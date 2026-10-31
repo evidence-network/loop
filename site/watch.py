@@ -98,6 +98,14 @@ def read_json(path):
     return v
 
 
+def opted_in(by_id):
+    """The node ids whose nodes/ entry opts in to public pair edges (disclosure.pair_edges "public"). A pair edge
+    says who dealt with whom, so the live view draws one only when both ends opt in (evidence-network/loop#77;
+    Sherlock2's ruling, Buzz d15c87ad: no node is drawn differently by who owns it)."""
+    return {nid for nid, e in by_id.items() if isinstance(e.get("disclosure"), dict)
+            and e["disclosure"].get("pair_edges") == "public"}
+
+
 def listing(nodes_dir):
     """node id -> nodes/<node_id>.json, for each listed node; key id -> node id."""
     by_id, by_key = {}, {}
@@ -375,8 +383,9 @@ def slot_of(rec):
         return None
 
 
-def measured(kind, run, population, ids, by_key, shown, host, rel, date):
-    """The edges one step's finding holds for a day (or the rehearsal slot its run started in), or why none."""
+def measured(kind, run, population, ids, by_key, shown, host, rel, date, opted=None):
+    """The edges one step's finding holds for a day (or the rehearsal slot its run started in), or why none.
+    With `opted` (the live view), an edge with an end not in it is withheld: counted, never drawn."""
     step, dirname, _ = STEPS[kind]
     d = run / dirname if run else None
     rec = read_json(d / "finding.json") if d else None
@@ -388,16 +397,24 @@ def measured(kind, run, population, ids, by_key, shown, host, rel, date):
     if finding.check_record(d, rec) or rec.get("population") != population:
         return {"measured": False, "step": step, "finding": rel(d / "finding.json"),
                 "says": f"not measured yet: the step {step} finding does not pass the format check"}, []
-    drawn, skipped = [], 0
+    drawn, withheld, skipped = [], [], 0
     declared = {p["path"] for p in rec["proof"]}  # only bytes the finding hashes may draw a line
     for a, b, got in EDGES[kind](d, by_key, lambda f: f.relative_to(d).as_posix() in declared):
         a, b = (host if x == REPORTER else ids.get(x, x) for x in (a, b))
         if a in shown and b in shown and a != b:
-            drawn.append({"kind": kind, "from": a, "to": b, "outcome": got})
+            if opted is None or (a in opted and b in opted):
+                drawn.append({"kind": kind, "from": a, "to": b, "outcome": got})
+            else:
+                withheld.append(got)
         else:
             skipped += 1
     note = {"measured": True, "step": step, "finding": rel(d / "finding.json"), "result": rec["result"],
             "drawn": len(drawn), "answered": sum(x["outcome"] == "answered" for x in drawn), "not_drawn": skipped}
+    if withheld:
+        note["withheld"] = len(withheld)
+        note["withheld_answered"] = sum(x == "answered" for x in withheld)
+        note["why_withheld"] = ("an end's nodes/ entry does not opt in to public pair edges "
+                                "(disclosure.pair_edges): counted here, not drawn")
     if skipped:
         note["why_not_drawn"] = ("an end is not a node of this view on this " + ("slot" if population == "rehearsal" else "day")
                                  + ": not listed then, or a node of the loop's own TEST population")
@@ -523,7 +540,7 @@ def entry_nodes(day, on, seen, first, left, date):
     return out
 
 
-def view(name, label, period, data_dir, findings, by_key, population_dir, rel, ondemand=()):
+def view(name, label, period, data_dir, findings, by_key, population_dir, rel, ondemand=(), opted=None):
     days = stats_model.load(data_dir, period) if data_dir and Path(data_dir).is_dir() else []
     cal = (stats_model.calendar if period is layout.Daily else stats_model.slots)(days)
     left = stats_model.left_on(days)
@@ -555,7 +572,7 @@ def view(name, label, period, data_dir, findings, by_key, population_dir, rel, o
             entry["measured"]["ask"] = {"measured": True, "source": entry["file"]}
         run = runs.get((on, name))
         for kind in STEPS:
-            note, edges = measured(kind, run, name, ids, by_key, shown, host, rel, date)
+            note, edges = measured(kind, run, name, ids, by_key, shown, host, rel, date, opted)
             entry["measured"][kind] = note
             entry["edges"] += edges
         entry["pairs"] = pairs(shown, entry["edges"])
@@ -596,7 +613,10 @@ def point(d, key):
         if not m["measured"]:
             return {"value": None, "says": m["says"]}
         # A settlement that did not hold is drawn (dashed or dotted) but is not counted as a settlement.
-        return {"value": m["answered"] if key == "settlements" else m["drawn"], "not_drawn": m["not_drawn"]}
+        held = {"withheld": m["withheld"]} if m.get("withheld") else {}
+        if key == "settlements":
+            return {"value": m["answered"] + m.get("withheld_answered", 0), "not_drawn": m["not_drawn"]} | held
+        return {"value": m["drawn"] + m.get("withheld", 0), "not_drawn": m["not_drawn"]} | held
     if d["run"] != "settled":
         return {"value": None, "says": "no file" if d["run"] == "no_file" else "the reporter missed it"}
     if key == "nodes":
@@ -631,8 +651,10 @@ def export(daily, rehearsal, findings, nodes_dir, population_dir, commitments_di
     runs = load_ondemand(ondemand)
     views = {}
     for name, label, period in VIEWS:
+        # The rehearsal is the loop's own TEST population: no operator's node, so no gate.
         views[name] = view(name, label, period, daily if name == "live" else rehearsal, findings, by_key,
-                           population_dir, rel, runs if name == "live" else ())
+                           population_dir, rel, runs if name == "live" else (),
+                           opted_in(by_id) if name == "live" else None)
     used = sorted({n["node_id"] for v in views.values() for d in v["days"] for n in d["nodes"]})
     held = commitments(commitments_dir, nodes_dir, by_id, by_key, rel)
     nodes = {}
@@ -678,7 +700,8 @@ def day_row(d):
         if m["measured"]:
             got = [x for x in d["edges"] if x["kind"] == kind]
             words = ", ".join(f"{sum(1 for x in got if x['outcome'] == o)} {o}" for o in OUTCOMES)
-            cells.append(f'<td data-k="{kind}">{words}; {m["not_drawn"]} not drawn</td>')
+            held = f'; {m["withheld"]} withheld' if m.get("withheld") else ""
+            cells.append(f'<td data-k="{kind}">{words}; {m["not_drawn"]} not drawn{held}</td>')
         else:
             cells.append(f'<td data-k="{kind}" class="unmeasured">{e(m["says"])}</td>')
     return f'<tr data-date="{e(d["date"])}" data-set="{e(d["set"])}">{"".join(cells)}</tr>'
@@ -704,7 +727,8 @@ def table(name, v, which):
 def metric_cell(p):
     if p["value"] is None:
         return f'<td data-v class="unmeasured">{e(p["says"])}</td>'
-    extra = f' ({p["not_drawn"]} not drawn)' if p.get("not_drawn") else ""
+    extra = (f' ({p["not_drawn"]} not drawn)' if p.get("not_drawn") else "") + (
+        f' ({p["withheld"]} withheld)' if p.get("withheld") else "")
     return f'<td data-v>{p["value"]}{extra}</td>'
 
 

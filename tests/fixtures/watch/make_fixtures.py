@@ -74,7 +74,9 @@ def nodes():
         dump(HERE / "nodes" / f"{nid(n)}.json", {
             "node_id": nid(n), "key_id": kid(n), "operator": f"operator-{NAMES[n].split('-')[1]}",
             "consent": CONSENT, "mesh": "lab", "ask_route": "mesh",
-            "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]},
+            # The fixture's nodes opt in to public pair edges, so the live view draws them (loop#77).
+            "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"],
+                           "pair_edges": "public"},
             "host_build": f"mesh-llm build {n}", "plugin_version": f"capsules v0.1.{n}"})
     dump(HERE / "nodes" / "left" / f"{nid(3)}.json", {"node_id": nid(3), "left": "2026-11-01"})
 

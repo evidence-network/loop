@@ -39,6 +39,7 @@ Open a pull request adding `nodes/<node_id>.json`:
 
 - `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`.
 - `disclosure.policy: counterparties` means records are answered only to the counterparty of that exchange; `checkpoints` and `history_card/1` are answered to anyone.
+- `disclosure.pair_edges` (optional): `public` would let the /watch/ page draw this node's pair edges, which say who it dealt with. With it absent, the page draws none for the node and only counts them. No entry can set it yet: `scripts/check_nodes.py` refuses it until the consent statement above names the /watch/ page's pair edges (evidence-network/loop#77).
 
 The pull request is opened by the operator named in `operator`, or that
 operator approves it, so the statement is theirs.
