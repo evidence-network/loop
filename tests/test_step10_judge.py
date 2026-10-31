@@ -327,7 +327,35 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "FAIL", f["detail"])
-        self.assertIn("05-deal: 08 lists no deal record (deal.json)", f["detail"])
+        self.assertIn("05-deal: 08 lists no deal record (deal.json, */held-*[0-9].json)", f["detail"])
+
+    def test_live_05s_held_halves_are_its_deal_records(self):
+        # Live 05 keeps each node's held halves, not a deal.json (loop#225); each is a deal record (loop#250), and
+        # the citing and inclusion files beside it stay 08's proof.
+        m = self.manifest()
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        d = self.run / "05-deal"
+        deal = load(d / "deal.json")
+        (d / "deal.json").unlink()
+        e05["files"] = [x for x in e05["files"] if x["path"] != "deal.json"]
+        for name in ("lab-a/held-3.json", "lab-a/held-3-citing.json", "lab-a/held-3-inclusion.json",
+                     "lab-b/held-12.json"):
+            (d / name).parent.mkdir(parents=True, exist_ok=True)
+            dump(d / name, {**deal, "file": name})
+            e05["files"].append({"path": name, "sha256": finding.sha256(d / name)})
+        self.reseal_manifest(m)
+        records, refused, not_checked, problems = step.select(self.run, load(self.run / "08-verify" / "verified.json"),
+                                                             *step.window_of(utc(load(self.run / "08-verify" / "finding.json")["finished"])),
+                                                             step.load_pack())
+        self.assertEqual(problems, [])
+        self.assertEqual(sorted(r["path"] for r in records if r["dir"] == "05-deal"),
+                         ["lab-a/held-3.json", "lab-b/held-12.json"])
+        self.assertEqual({r["kind"] for r in records if r["dir"] == "05-deal"}, {"deal"})
+        if HAS_TOOLS:  # sealed and verified: each held half cited by digest, the proof beside it not
+            f = self.judge()
+            self.assertEqual(f["result"], "PASS", f["detail"])
+            cited = {k for k in self.cited() if k.startswith("05-deal/")}
+            self.assertEqual(cited, {"05-deal/lab-a/held-3.json", "05-deal/lab-b/held-12.json"})
 
     def test_a_verdict_comes_from_the_result_08_rederived(self):
         m = self.manifest()

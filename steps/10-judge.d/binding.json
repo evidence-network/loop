@@ -1,5 +1,5 @@
 {
-  "binds": "the pinned inference-deals pack (versions.lock `inference-deals`) onto the loop's rehearsal stand-ins; the pack's terms, tiers and window come from the pinned pack, not from this file",
+  "binds": "the pinned inference-deals pack (versions.lock `inference-deals`) onto the loop's record files: the rehearsal stand-ins' deal.json and live 05's held halves (<node>/held-<n>.json, loop#250); the pack's terms, tiers and window come from the pinned pack, not from this file",
   "pack": "inference-deals",
   "own_contract_ref": "loop-inference-deals-rehearsal@v0",
   "verdicts": {
@@ -11,7 +11,8 @@
     "05": {
       "kind": "deal",
       "records": [
-        "deal.json"
+        "deal.json",
+        "*/held-*[0-9].json"
       ],
       "terms": [
         {
