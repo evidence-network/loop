@@ -384,25 +384,56 @@ class LiveTest(Tmp):
         self.assertIn("system_prompt on lab-4 = 'Answer in French.'", r["detail"])
         self.assertIn("twin-fault.json", {p["path"] for p in r["proof"]})
 
-    def test_only_the_results_of_the_fault_bracket_are_judged(self):
-        # A ledger can still hold a Result an earlier twins run sealed (loop#122). Here lab-1 also holds one of
-        # another bracket whose bytes no longer verify: judged, it fails the step; set aside, it is only named.
-        d = self.copy()
-        path = d / "nodes" / "lab-1" / "data" / "ledger" / "received-adjudications.jsonl"
-        held = json.loads(path.read_text())
-        bracket = held["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"]
-        old = json.loads(json.dumps(held))
-        old["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"] = "old-run"
-        path.write_text(json.dumps(old) + "\n" + json.dumps(held) + "\n")
-        self.assertEqual(self.live(d)["result"], "FAIL")  # no twin-fault.json: every held Result is judged
+    def old_result(self):
+        """A Result an earlier twins run left in the requester's ledger: act() again on a copy of the rehearsal
+        population under another exchange id, so it is validly signed by the referee but of another bracket."""
+        pop = Path(self.tmp.name) / "old-pop"
+        shutil.copytree(ROOT / "population" / "rehearsal", pop)
+        doc = json.loads((pop / "step09" / "dispute.json").read_text())
+        doc["exchange"]["exchange_id"] = "earlier-run"
+        (pop / "step09" / "dispute.json").write_text(json.dumps(doc))
+        acted = Path(self.tmp.name) / "old-acted"
+        acted.mkdir()
+        step.act(pop, acted, "2026-10-27T12:00:00Z")
+        return (acted / doc["requester"] / "ledger" / step.RECEIVED).read_text().splitlines()[0]
+
+    def with_fault(self, d):
+        """lab-1's RECEIVED path, its own line, and that line's bracket, named in a twin-fault.json written to d."""
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / step.RECEIVED
+        own = path.read_text().splitlines()[-1]
+        bracket = json.loads(own)["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"][
+            "twin_bracket_id"]
         fault = {"injected_difference": {"node": "lab-4", "kind": "system_prompt", "value": "Answer in French."},
                  "roles": {"requester": "lab-3", "twin_a": "lab-1", "twin_b": "lab-4", "referee": "lab-2"},
                  "twin_bracket_id": bracket}
         (d / "twin-fault.json").write_text(json.dumps(fault))
+        return path, own, bracket
+
+    def test_an_earlier_runs_result_is_set_aside_under_the_fault_bracket(self):
+        # loop#122: an earlier twins run's Result is still in the ledger. Judged, it fails (its halves are not in
+        # this run's books); with twin-fault.json naming this run's bracket it is named and set aside.
+        d = self.copy()
+        path = d / "nodes" / "lab-1" / "data" / "ledger" / step.RECEIVED
+        path.write_text(self.old_result() + "\n" + path.read_text())
+        self.assertEqual(self.live(d)["result"], "FAIL")  # no twin-fault.json: every held Result is judged
+        _, _, bracket = self.with_fault(d)
         r = self.live(d)
         self.assertEqual(r["result"], "PASS", r["detail"])
-        self.assertIn(f"judged only the Results of bracket {bracket}", r["detail"])
-        self.assertIn("set aside, not judged: 1 Result(s) of bracket old-run", r["detail"])
+        self.assertIn(f"judged the Results of bracket {bracket}", r["detail"])
+        self.assertIn("set aside, not judged: 1 Result(s) of bracket earlier-run/pair-1", r["detail"])
+        self.assertIn("for each Result judged, these held", r["detail"])
+
+    def test_a_result_that_does_not_verify_is_judged_whatever_its_bracket(self):
+        d = self.copy()
+        path, own, _ = self.with_fault(d)
+        tampered = json.loads(own)
+        tampered["verdict_capsule"]["model_attestation"]["compute_attestation"]["adjudication"]["twin_bracket_id"] = "zz"
+        for line in (json.dumps(tampered), '{"verdict_capsule": 5}', "not json"):
+            with self.subTest(line=line[:20]):
+                path.write_text(line + "\n" + own + "\n")
+                r = self.live(d)
+                self.assertEqual(r["result"], "FAIL", r["detail"])
+                self.assertNotIn("set aside", r["detail"])
 
     def test_no_injected_difference_is_claimed_without_the_lab_file(self):
         self.assertNotIn("INJECTED", self.live(self.copy())["detail"])
