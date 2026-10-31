@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -87,6 +88,23 @@ class LoopTest(unittest.TestCase):
         r = self.loop()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue((self.dir / "findings" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal" / "run.json").is_file())
+
+    def test_a_step_written_before_loop_sh_keeps_the_runs_start(self):
+        # lab.sh deal writes 05-deal into the day's directory before loop.sh runs (evidence-network/loop#65).
+        self.all_steps()
+        sys.path.insert(0, str(ROOT / "steps"))
+        import finding
+        early = "2026-10-29T22:16:32Z"
+        (self.out / "05-deal").mkdir(parents=True)
+        finding.write(self.out / "05-deal", result="NOT_CHECKED", population="rehearsal", asserts="a deal",
+                      pinned=[], proof=[], detail="written by lab.sh deal", started=early,
+                      not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#65"}])
+        r = self.loop("--out", str(self.out))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads((self.out / "run.json").read_text())["started"], early)
+        # A second loop.sh run into the same directory keeps it too.
+        self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
+        self.assertEqual(json.loads((self.out / "run.json").read_text())["started"], early)
 
     def test_muse_and_cross_run_nothing_and_say_not_checked_until_their_steps_exist(self):
         for eco in ("muse", "cross"):

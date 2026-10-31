@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -527,6 +527,21 @@ over the three nodes, and its `detail` lists each node:
 
 A FAIL is reported with the tarball as it is; do not work around it on the
 host.
+
+### Step 04, the admission decisions
+
+Stage 1 does not include step 04 (evidence-network/loop#127). `lab/lab.sh admit`
+runs `steps/04-admit` on `population/live` into the same `findings/<date>-live/`
+as `04-admit/`, then checks the finding contract over the whole directory. It
+reads the admission decisions each node's ledger sealed for its exchanges,
+and pays nothing. Run it after `exchange` and `loop`:
+
+```sh
+lab/lab.sh --dry-run admit
+lab/lab.sh admit
+```
+
+`pack` takes `04-admit/` with the rest of the day's findings.
 
 ### Step 05, both halves of a deal
 

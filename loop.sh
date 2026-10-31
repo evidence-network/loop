@@ -130,10 +130,21 @@ finding.write(step_dir, result="FAIL", population=population,
 PY
 }
 
-# The run's start, before the first step: what the status page measures its minutes from.
+# The run's start, before the first step: what the status page measures its minutes from. A directory that
+# already holds this day's steps (lab.sh deal, settle or ask write into it before or after loop.sh) keeps the
+# earliest start: of a run.json already there and of each finding there (evidence-network/loop#65).
 python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
-import json, sys
+import json, re, sys
+from pathlib import Path
 path, stage, population, started, ecosystem, *steps = sys.argv[1:]
+earlier = [Path(path)] + sorted(Path(path).parent.glob("*/finding.json"))
+for f in earlier:
+    try:
+        t = json.loads(f.read_text()).get("started")
+    except (OSError, ValueError, AttributeError):
+        continue
+    if isinstance(t, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", t):
+        started = min(started, t)
 run = {"stage": stage, "population": population, "started": started, "steps": steps}
 if ecosystem != "mesh":
     run["ecosystem"] = ecosystem
