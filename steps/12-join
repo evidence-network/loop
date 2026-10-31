@@ -49,8 +49,8 @@ agent-action-capsule#495) the run declares that list complete (`[]` when the
 folder holds no file for the binding) as of the time it checks the binding,
 and the verifier reports revocation PASS when no statement in that snapshot
 applies: the loop run's statement, scoped to the snapshot. A declaration that
-does not count leaves revocation a not_checked entry on CB-1
-(agent-action-capsule#482). For a Mesh
+does not count leaves revocation a not_checked entry (loop#240); here every
+time asked about is the declaration's own, so that is defensive only. For a Mesh
 node (`reporter`), the pinned plugin checks the record itself before its
 doctor reports it bound, and the loop checks the record the node holds in its
 `data_dir` (controller-binding.json) the same way.
@@ -163,11 +163,11 @@ STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 # The revocation statements published in nodes/revocations/ go to the verifier with the run's declaration that the
 # list is complete as of the binding's check time (CB-1 option A, agent-action-capsule#495, scripts/binding_verify.py):
 # revocation is PASS on that snapshot, FAIL when a statement in it applies, NOT_CHECKED when the declaration does not
-# count.
-BINDING_REVOCATION_ISSUE = "action-state-group/agent-action-capsule#482"  # CB-1
+# count, which with as_of the one time asked about (and E) only a declaration the verifier refuses can give.
+BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
 BINDING_REVOCATION = {
     "what": "the controller binding's revocation",
-    "why": f"the run's declaration that nodes/{bv.REVOCATIONS}/ is complete did not count (CB-1)",
+    "why": f"the run's declaration that nodes/{bv.REVOCATIONS}/ is complete did not count",
     "issue": BINDING_REVOCATION_ISSUE,
 }
 DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
@@ -234,7 +234,8 @@ def revocation_open(detail):
 
 
 def binding_unchecked(state, detail):
-    """The not_checked entry for a binding_check state that is neither ok nor bad, None for those two."""
+    """The not_checked entry for a binding_check state that is unread or unsupported, None for the others (ok,
+    open and bad: revocation_open names open)."""
     why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method or key type"}.get(state)
     issue = live.ISSUE if state == "unread" else bv.UNSUPPORTED_METHOD_ISSUE
     return {"what": "the controller binding record, checked by a second verifier", "why": f"{why}: {detail}",
@@ -336,7 +337,7 @@ def check_doctor(node_dir, adv):
     return errs
 
 
-def check_binding_record(node_dir, at, not_checked=None):
+def check_binding_record(node_dir, at, not_checked=None, lines=None):
     """What the Go verifier found wrong with binding.json, the record join.sh wrote: it has the digest
     controller.json names, names the node key and applies at `at`. A method or key type the verifier lacks cannot
     be told from a bad record here, and join.sh writes none of them, so it counts as not holding. A binding that
@@ -350,6 +351,8 @@ def check_binding_record(node_dir, at, not_checked=None):
         return [f"binding.json and controller.json are not the controller binding join.sh writes ({e})"]
     if state == "open" and not_checked is not None:
         not_checked.append(revocation_open(detail))
+    if state in ("ok", "open") and lines is not None:
+        lines.append(detail)  # what the revocation PASS is scoped to, or why it is not checked
     return [] if state in ("ok", "open") else [f"the controller binding does not hold: {state}: {detail}"]
 
 
@@ -437,9 +440,10 @@ def verify_answers(node_dir, adv, capsulectl, work):
     return errs
 
 
-def judge(node_dir, capsulectl, work, at=None):
+def judge(node_dir, capsulectl, work, at=None, said=None):
     """(failures, not_checked, proof paths relative to node_dir) for one joined node. `at` is the time the
-    binding must apply at, now by default."""
+    binding must apply at, now by default. The binding's line (what its revocation PASS is scoped to) is added to
+    `said` when given."""
     node_dir = Path(node_dir)
     errs = check_commitment(node_dir)
     try:
@@ -448,7 +452,7 @@ def judge(node_dir, capsulectl, work, at=None):
         return errs + [f"the commitment does not advertise the node's keys and policy ({e})"], [], list(PROOF)
     errs += check_doctor(node_dir, adv)
     not_checked = []
-    errs += check_binding_record(node_dir, at or utc_now(), not_checked)
+    errs += check_binding_record(node_dir, at or utc_now(), not_checked, said)
     errs += check_policy_match(node_dir, adv)
     errs += check_staple(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
@@ -527,10 +531,11 @@ def decide_nodes(out, names, capsulectl, tmp):
             continue
         node_out = out / name
         try:
-            errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify")
+            said = []
+            errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify", said=said)
         except (OSError, ValueError, KeyError, TypeError) as e:  # a proof file altered or missing
             failures.append(f"{name}: the proof could not be judged ({type(e).__name__}: {str(e)[:200]})")
-            errs, nc = [], []
+            errs, nc, said = [], [], []
             p = list(PROOF) + [str(f.relative_to(node_out)) for f in sorted(node_out.rglob("*")) if f.is_file()]
         failures += [f"{name}: {e}" for e in errs]
         merge(not_checked, nc)
@@ -538,6 +543,7 @@ def decide_nodes(out, names, capsulectl, tmp):
         lines.append(f"{name}: joined; the commitment verifies, doctor --probe finds both answers verify and match "
                      "the policy, and the kept answers verify under the advertised keys and match the advertised "
                      "policy" if not errs else f"{name}: {len(errs)} check(s) did not hold")
+        lines += [f"{name}: {x}" for x in said]
     return failures, not_checked, proof, lines
 
 
@@ -652,7 +658,10 @@ def live_binding_record(name, node, entry, held, at, node_dir):
     unchecked = binding_unchecked(state, detail)
     if unchecked:
         return None, [{**unchecked, "what": f"{name}: {unchecked['what']}"}], None, kept
-    return None, [revocation_open(detail)] if state == "open" else [], f"{name}: {detail}", kept
+    if state == "open":
+        nc = revocation_open(detail)
+        return None, [{**nc, "what": f"{name}: {nc['what']}"}], f"{name}: {detail}", kept
+    return None, [], f"{name}: {detail}", kept
 
 
 def no_binding(name, why):

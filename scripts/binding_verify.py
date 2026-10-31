@@ -14,6 +14,11 @@ list's exact octets. A binding the repository publishes nothing for is the empty
 verifier then reports revocation PASS when no statement in that snapshot applies at the times asked about: the
 loop run's statement, scoped to the snapshot (`list_digest`, `as_of`). A declaration that does not count (it is
 stale, or earlier than a time asked about) leaves revocation NOT_CHECKED, with the verifier's reason.
+
+The loop profile is stricter than CB §9.4 about its own folder: a published file that is not a revocations file
+(malformed, an empty array, a statement for another binding) makes the binding not apply, a FAIL (loop#194), rather
+than NOT_CHECKED. The folder is the repository's, checked on every pull request (`scripts/check_revocations.py`), so
+a file out of shape is a defect in the profile's own delivery, not an unreadable third-party list.
 """
 import hashlib
 import json
@@ -39,16 +44,17 @@ def _unique(pairs):
     return dict(pairs)
 
 
-def read_revocations(path):
-    """The statements in one `nodes/revocations/<binding_digest>.json`, as JSON texts. Raises ValueError when the
-    file is not named by a digest, is not an array of objects with exactly the CB §5 members (an object repeating a
-    member, at any depth, is refused), or holds a statement for another binding or of another version. Signatures and times are the verifier's to check."""
+def read_revocations(path, text=None):
+    """The statements in one `nodes/revocations/<binding_digest>.json` (its text, read here unless given), as JSON
+    texts. Raises ValueError when the file is not named by a digest, is not an array of objects with exactly the
+    CB §5 members (an object repeating a member, at any depth, is refused), or holds a statement for another
+    binding or of another version. Signatures and times are the verifier's to check."""
     path = Path(path)
     digest = path.name[:-len(".json")] if path.name.endswith(".json") else ""
     if not HEX64.match(digest):
         raise ValueError(f"{path.name}: not named <binding_digest>.json")
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique)
+        doc = json.loads(path.read_text(encoding="utf-8") if text is None else text, object_pairs_hook=_unique)
     except (OSError, ValueError) as e:
         raise ValueError(f"{path.name}: not readable JSON ({e})")
     if not isinstance(doc, list) or not doc:
@@ -61,12 +67,6 @@ def read_revocations(path):
     return [json.dumps(s, separators=(",", ":"), sort_keys=True) for s in doc]
 
 
-def revocations(nodes_dir, digest):
-    """The statements published for binding `digest` under `nodes_dir`/revocations/, [] when none is."""
-    path = Path(nodes_dir) / REVOCATIONS / f"{digest}.json"
-    return read_revocations(path) if HEX64.match(str(digest)) and path.exists() else []
-
-
 def revocation_list(nodes_dir, digest, as_of, asserted_by):
     """The `revocation_list` the loop run passes for binding `digest` (CB-1 option A): the exact octets of
     `nodes_dir`/revocations/<digest>.json, or `[]` when the repository publishes none, and the run's declaration
@@ -74,8 +74,11 @@ def revocation_list(nodes_dir, digest, as_of, asserted_by):
     as read_revocations does, for a published file that is not a revocations file."""
     path = Path(nodes_dir) / REVOCATIONS / f"{digest}.json"
     if HEX64.match(str(digest)) and path.exists():
-        read_revocations(path)
-        text = path.read_bytes().decode("utf-8")
+        try:  # read once: the octets checked are the octets hashed and sent
+            text = path.read_bytes().decode("utf-8")
+        except (OSError, ValueError) as e:
+            raise ValueError(f"{path.name}: not readable ({e})")
+        read_revocations(path, text)
     else:
         text = "[]"
     declaration = {"profile": PROFILE, "asserted_by": asserted_by, "binding": digest,
@@ -91,7 +94,8 @@ def revocation(report):
     rl = report.get("revocation_list") if isinstance(report.get("revocation_list"), dict) else {}
     if state == "PASS" and rl.get("counts") is True:
         return "PASS", (f"revocation PASS: no statement applies in the list {rl.get('asserted_by')} declared "
-                        f"complete as of {rl.get('as_of')} (list sha256 {rl.get('list_digest')})")
+                        f"complete as of {rl.get('as_of')} under profile {rl.get('profile')} (list sha256 "
+                        f"{rl.get('list_digest')})")
     why = f": the declaration does not count ({rl.get('reason')})" if rl.get("counts") is False else ""
     return state, f"revocation {state}{why}"
 
