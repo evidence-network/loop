@@ -621,6 +621,52 @@ class Step02ReceiptOfflineTest(unittest.TestCase):
         self.assertNotIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
 
 
+class Step02ReceiptOpensslTest(unittest.TestCase):
+    """02's check of each receipt apart from the Rust crates that sign lab receipts (loop#219): the signed bytes are
+    rebuilt from bundle.json's checkpoint and openssl verifies them. The fixed vectors are the live-8 receipts the lab
+    test witness gave, committed with their key in findings/2026-10-31-live-8/02-book; no driver is needed."""
+
+    def setUp(self):
+        r = subprocess.run(["openssl", "version"], capture_output=True, text=True) if shutil.which("openssl") else None
+        if not (r and r.stdout.startswith("OpenSSL ") and int(r.stdout[8:].split(".")[0]) >= 3):
+            self.skipTest("openssl 3.0 or later is not installed")
+        loader = importlib.machinery.SourceFileLoader("step02_openssl", str(ROOT / "steps" / "02-book"))
+        self.m = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_openssl", loader))
+        loader.exec_module(self.m)
+        self.key = json.loads((LIVE8_02 / "witnesses.json").read_text())["witnesses"][0]["key_id"]
+        self.nodes = sorted(p.parent for p in LIVE8_02.glob("*/witness-status.json"))
+
+    def held(self, node, receipt=None, key=None, cp=None):
+        receipt = receipt or json.loads((node / "witness-status.json").read_text())["receipt"]
+        return self.m.receipt_openssl(receipt, key or self.key, cp or self.m.appended_checkpoint(node))
+
+    def test_each_live8_receipt_verifies_under_the_listed_key(self):
+        self.assertEqual(len(self.nodes), 3)
+        for node in self.nodes:
+            ok, detail = self.held(node)
+            self.assertTrue(ok, (node.name, detail))
+
+    def test_a_flipped_signature_byte_fails(self):
+        receipt = json.loads((self.nodes[0] / "witness-status.json").read_text())["receipt"]
+        raw = bytearray(base64.b64decode(receipt["Bytes"]))
+        raw[-1] ^= 1
+        self.assertFalse(self.held(self.nodes[0], dict(receipt, Bytes=base64.b64encode(bytes(raw)).decode()))[0])
+
+    def test_another_key_fails(self):
+        self.assertFalse(self.held(self.nodes[0], key="ab" * 32)[0])
+
+    def test_another_checkpoint_fails(self):
+        cp = self.m.appended_checkpoint(self.nodes[0])
+        for k, v in (("root", "00" * 32), ("mmr_size", cp["mmr_size"] + 2), ("timestamp", "2026-10-31T00:00:00Z")):
+            ok, detail = self.held(self.nodes[0], cp=dict(cp, **{k: v}))
+            self.assertFalse(ok, k)
+            self.assertIn("entry hash", detail)
+
+    def test_another_nodes_receipt_fails(self):
+        other = json.loads((self.nodes[1] / "witness-status.json").read_text())["receipt"]
+        self.assertFalse(self.held(self.nodes[0], receipt=other)[0])
+
+
 def mock_env(**values):
     from unittest import mock
     return mock.patch.dict(os.environ, values)

@@ -484,6 +484,9 @@ def keys_02_live(c, m):
         raise Unreproducible("step 02: its judge, run again here",
                              "the step 02 driver (loop-step02-book lab-check) is not installed where 08 runs; "
                              "steps/02-book.setup.sh installs it")
+    if held_offline and not openssl_ed25519():  # and checks each signature again with openssl
+        raise Unreproducible("step 02: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
     if len(held_offline) < len(receipts):  # a run before the offline check: the receipt is capsulectl's reading
         c.relies.append({"what": "step 02: each witness receipt's verified state",
                          "why": "the run predates 02's offline receipt check, so the state is capsulectl's "

@@ -48,7 +48,11 @@ from the proof bytes (witness_signature, loop#219): the step 02 driver's
 `lab-check` checks the book's COSE checkpoint statement (checkpoint.json) and
 the stored receipt under the listed key its key id names, with AAC's witness
 receipt verifier, and the statement must be the checkpoint bundle.json carries.
-Without the driver the receipt's signature is a not_checked entry. A run marks
+The driver signs lab receipts with the same Rust crates, so the signature is
+also checked apart from them: this step rebuilds the receipt's signed bytes
+from bundle.json's checkpoint (its digest, the entry hash and the RFC 9162
+leaf) and openssl verifies the Ed25519 signature under the listed key. Without
+the driver or openssl 3 the receipt's signature is a not_checked entry. A run marks
 this in inputs.json (receipt_check); an older run's receipt is judged as it was. A book with no witness configured, or one whose
 witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the witness part; a delivery capsulectl
 reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
@@ -557,9 +561,11 @@ def judge_book(cap, out):
                 bin_ = driver()
                 if inputs.get("receipt_check") != RECEIPT_CHECK:
                     pass  # a run before the offline receipt check: judged as it was, and step 08 names that
-                elif bin_ is None:
+                elif bin_ is None or not openssl_ed25519():
                     gap = {"what": f"node {name}: the witness receipt's signature, verified offline",
-                           "why": "the step 02 driver is not installed where this step runs",
+                           "why": ("the step 02 driver is not installed where this step runs" if bin_ is None else
+                                   "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where this "
+                                   "step runs"),
                            "issue": "evidence-network/loop: steps/02-book.setup.sh, run where 02 runs"}
                 else:
                     checks["witness_signature"] = receipt_signature(bin_, out, status, entries, appended_checkpoint(out))
@@ -617,9 +623,68 @@ def receipt_signature(bin_, out, status, entries, bundle_cp):
         return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
     stated = v.get("checkpoint") or {}
     same = all(stated.get(k) == bundle_cp.get(k) for k in ("log_id", "mmr_size", "root", "key_id", "timestamp"))
-    ok = r.returncode == 0 and v.get("ok") is True and same
+    held, why = receipt_openssl(receipt, entry["key_id"], bundle_cp)
+    ok = r.returncode == 0 and v.get("ok") is True and same and held
     return {"ok": ok, "detail": v.get("detail", "") + ("" if same else
-                                                     "; the witnessed checkpoint is not the one the bundle carries")}
+                                                     "; the witnessed checkpoint is not the one the bundle carries")
+            + f"; {why}"}
+
+
+# The checkpoint record's signing body, in field order (checkpointed-local-log's CheckpointRecord::signing_body at
+# the pin); a decoded COSE checkpoint is always kind mmr_checkpoint, v 1 (DecodedCheckpointCose::to_checkpoint_record).
+SIGNING_BODY = ("key_id", "kind", "log_id", "mmr_size", "prev_root", "prev_size", "root", "timestamp", "v")
+
+
+def cbor_head(major, n):
+    """A CBOR item head for a definite length n."""
+    if n < 24:
+        return bytes([major << 5 | n])
+    size = 1 if n < 256 else 2 if n < 65536 else 4
+    return bytes([major << 5 | {1: 24, 2: 25, 4: 26}[size]]) + n.to_bytes(size, "big")
+
+
+def receipt_openssl(receipt, key_id, bundle_cp):
+    """(ok, detail): the receipt's Ed25519 signature, checked apart from the Rust crates that sign and verify lab
+    receipts. The signed payload is rebuilt here from bundle.json's checkpoint: the record digest (SHA-256 of its
+    signing body), the entry hash (SHA-256 of the digest, which the receipt must state) and the RFC 9162 leaf; the
+    COSE Sig_structure over the receipt's protected header is then verified by openssl under the listed key."""
+    try:
+        raw = base64.b64decode(receipt["Bytes"])
+        msg, _ = cbor(raw)
+        protected, sig = msg[0], msg[3]
+        if not (len(msg) == 4 and isinstance(protected, bytes) and isinstance(sig, bytes) and msg[2] is None):
+            return False, "openssl: the receipt is not a detached COSE_Sign1"
+        if cbor(protected)[0].get(1) != -8:
+            return False, "openssl: the receipt's algorithm is not EdDSA"
+        rec = dict(bundle_cp, kind="mmr_checkpoint", v=1)
+        body = "{" + ",".join(f"{json.dumps(k)}:{json.dumps(rec[k], ensure_ascii=False)}" for k in SIGNING_BODY) + "}"
+    except (KeyError, ValueError, IndexError, TypeError, AttributeError) as e:
+        return False, f"openssl: the receipt or the bundle's checkpoint could not be read ({e})"
+    entry = hashlib.sha256(hashlib.sha256(body.encode()).digest()).digest()
+    if entry.hex() != receipt.get("EntryHash"):
+        return False, "openssl: the receipt's entry hash is not the bundle checkpoint's"
+    leaf = hashlib.sha256(b"\0" + entry).digest()
+    tbs = (cbor_head(4, 4) + cbor_head(3, 10) + b"Signature1" + cbor_head(2, len(protected)) + protected
+           + cbor_head(2, 0) + cbor_head(2, len(leaf)) + leaf)
+    with tempfile.TemporaryDirectory(prefix="02-receipt-") as tmp:
+        m, s, p = Path(tmp) / "m", Path(tmp) / "s", Path(tmp) / "p.der"
+        m.write_bytes(tbs)
+        s.write_bytes(sig)
+        p.write_bytes(SPKI_ED25519 + bytes.fromhex(key_id))
+        r = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(p), "-keyform", "DER", "-rawin",
+                            "-in", str(m), "-sigfile", str(s)], capture_output=True)
+    if r.returncode != 0:
+        return False, f"openssl: the receipt's signature does not verify under {key_id} over the bundle's checkpoint"
+    return True, f"openssl verifies the receipt's signature under {key_id} over the bundle's checkpoint"
+
+
+def openssl_ed25519():
+    """Whether the openssl on PATH is OpenSSL 3.0 or later, which verifies Ed25519 with pkeyutl -rawin."""
+    if shutil.which("openssl") is None:
+        return False
+    r = subprocess.run(["openssl", "version"], capture_output=True, text=True)
+    return r.returncode == 0 and r.stdout.startswith("OpenSSL ") and r.stdout[8:].split(".")[0].isdigit() \
+        and int(r.stdout[8:].split(".")[0]) >= 3
 
 
 def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):
