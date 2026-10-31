@@ -5,7 +5,7 @@
   "name": "deal",
   "not_checked": [
     {
-      "issue": "Mesh-LLM/mesh-llm#2747",
+      "issue": "no open issue yet (to be filed)",
       "what": "held, never tied",
       "why": "2 current-build halves are cited by a record with no own_half_capsule_id, so no record of the node names both halves of that exchange"
     }
