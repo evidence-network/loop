@@ -18,6 +18,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 const USAGE: &str = "usage: loop-ledger-check --file <copy> --checkpoint <reply.json> --key <node key id> [--from <i> --to <j>]";
+/// What steps/live.py puts in place of a withheld preimage value.
+const REDACTED: &str = "redacted: a payment preimage never leaves the lab host";
 const CHAIN: &str = "capsules.jsonl";
 const FILES: [&str; 6] = [
     "received-capsules.jsonl",
@@ -62,8 +64,11 @@ fn complete_lines(bytes: &[u8]) -> (Vec<&[u8]>, bool) {
 /// (digest, whether the line is a redacted one)
 fn leaf(chain: bool, index: usize, line: &[u8]) -> Result<(Hash, bool), String> {
     let parsed: Option<Value> = serde_json::from_slice(line).ok();
+    // A marker counts only on a line that says it withheld a payment preimage (steps/live.py REDACTED).
+    let withheld = std::str::from_utf8(line).map_or(false, |t| t.contains(REDACTED));
     let marker = parsed
         .as_ref()
+        .filter(|_| withheld)
         .and_then(|v| v.get("x-loop-redacted")?.get("line_sha256")?.as_str().map(str::to_string));
     if chain {
         let id = parsed
@@ -318,7 +323,7 @@ mod tests {
         let copy = chain(4);
         let reply = reply_for(CHAIN, &copy, 4, "capsules/abc");
         let mut lines: Vec<String> = String::from_utf8(copy).unwrap().lines().map(String::from).collect();
-        lines[2] = format!("{{\"capsule_id\":\"{}\",\"preimage\":\"redacted\",\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
+        lines[2] = format!("{{\"capsule_id\":\"{}\",\"preimage\":\"redacted: a payment preimage never leaves the lab host\",\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
                            id(3), id(0));
         let redacted = (lines.join("\n") + "\n").into_bytes();
         let ok = check(&redacted, &reply, &key(), None).unwrap();
@@ -333,12 +338,22 @@ mod tests {
         let log = "capsules/abc/ledger/received-provenance.jsonl";
         let reply = reply_for(file, &original, 3, log);
         assert_eq!(check(&original, &reply, &key(), None).unwrap()["redacted_lines"], json!([]));
-        let kept = format!("{{\"a\":1}}\n{{\"b\":\"REDACTED\",\"x-loop-redacted\":{{\"line_sha256\":\"{sha}\"}}}}\n{{\"c\":3}}\n");
+        let kept = format!("{{\"a\":1}}\n{{\"b\":\"redacted: a payment preimage never leaves the lab host\",\"x-loop-redacted\":{{\"line_sha256\":\"{sha}\"}}}}\n{{\"c\":3}}\n");
         assert_eq!(check(kept.as_bytes(), &reply, &key(), None).unwrap()["redacted_lines"], json!([2]));
         let wrong = kept.replace(&sha, &id(1));
         assert!(check(wrong.as_bytes(), &reply, &key(), None).is_err());
         let altered = original.iter().map(|&b| if b == b'3' { b'4' } else { b }).collect::<Vec<_>>();
         assert!(check(&altered, &reply, &key(), None).is_err());
+    }
+
+    #[test]
+    fn a_marker_on_a_line_that_withheld_no_preimage_is_not_trusted() {
+        let file = "received-provenance.jsonl";
+        let original = b"{\"a\":1}\n{\"b\":2}\n".to_vec();
+        let reply = reply_for(file, &original, 2, "capsules/abc/ledger/received-provenance.jsonl");
+        let sha = hex::encode(Sha256::digest(b"{\"b\":2}"));
+        let forged = format!("{{\"a\":1}}\n{{\"b\":\"other\",\"x-loop-redacted\":{{\"line_sha256\":\"{sha}\"}}}}\n");
+        assert!(check(forged.as_bytes(), &reply, &key(), None).is_err());
     }
 
     #[test]
@@ -359,7 +374,7 @@ mod tests {
         let mut lines: Vec<String> = String::from_utf8(copy.clone()).unwrap().lines().map(String::from).collect();
         // The node's chain reply covers 5 of the 6 lines the file holds when the copy is read (it grew after).
         let reply = reply_for(CHAIN, &copy[..lines[..5].iter().map(|l| l.len() + 1).sum()], 5, "capsules/abc");
-        lines[1] = format!("{{\"capsule_id\":\"{}\",\"preimage\":\"redacted\",\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
+        lines[1] = format!("{{\"capsule_id\":\"{}\",\"preimage\":\"redacted: a payment preimage never leaves the lab host\",\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
                            id(2), id(0));
         std::fs::write(dir.join("capsules.jsonl"), (lines.join("\n") + "\n").as_bytes()).unwrap();
         std::fs::write(dir.join("capsules.reply.json"), serde_json::to_vec_pretty(&reply).unwrap()).unwrap();

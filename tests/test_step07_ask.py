@@ -367,8 +367,9 @@ def exchange_reply(kind, half):
 class FakeConsole:
     """The reporter node's console: peer-key and mesh_evidence_request, from the reporter's fixtures."""
 
-    def __init__(self, answers, announced, ledger=None, sealed=None):
+    def __init__(self, answers, announced, ledger=None, sealed=None, checkpoint=None):
         fake = self
+        self.checkpoint = checkpoint  # ledger dir -> the ledger-checkpoint reply to serve; None refuses
         self.answers, self.announced = answers, announced
         self.ledger, self.sealed = ledger, sealed or {}
 
@@ -383,6 +384,10 @@ class FakeConsole:
                 self.wfile.write(body)
 
             def do_GET(self):
+                if self.path.startswith(ledger_proof.ROUTE):
+                    if fake.checkpoint is None:
+                        return self.reply(400, b"invalid request")
+                    return self.reply(200, json.dumps(fake.checkpoint(fake.ledger)).encode())
                 self.reply(200, json.dumps({"announced_key_id": fake.announced}).encode())
 
             def do_POST(self):
@@ -547,13 +552,13 @@ class ReporterBackendTest(Tmp):
             self.addCleanup(patcher.stop)
 
     def run_live(self, answers, announced=LISTED, key=LISTED, flags=(), ledger=None, sealed=None, extra_nodes=(),
-                 data_dir_flag=True, node_extra=None):
+                 data_dir_flag=True, node_extra=None, checkpoint=None):
         pop_dir = Path(self.tmp.name) / "live"
         pop_dir.mkdir()
         (pop_dir / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [{
             "name": "lab-1", "node_id": "1" * 64, "key_id": key, **(node_extra or {}),
             "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}, *extra_nodes]}))
-        console = FakeConsole(answers, announced, ledger, sealed)
+        console = FakeConsole(answers, announced, ledger, sealed, checkpoint)
         extra = ["--console-data-dir", str(ledger)] if ledger is not None and data_dir_flag else []
         try:
             self.assertEqual(step.main(["--population", str(pop_dir), "--out", str(self.out),
@@ -843,6 +848,21 @@ class ReporterBackendTest(Tmp):
                           data_dir_flag=False, flags=("--self-node", "lab-0"))
         self.assertNotIn(step.LEDGER_GAP, [i["why"] for i in r["not_checked"]])
         self.assertTrue(list(self.out.glob("lab-1/attempts/*/checkpoints.ledger.json")))
+
+    def test_a_checkpoint_that_checks_leaves_the_ledger_extract_unflagged_and_the_copy_in_the_proof(self):
+        ledger = self.ledger()
+        (ledger / "ledger").mkdir()
+        (ledger / "ledger" / "capsules.jsonl").touch()
+        reply = lambda d: {"ledger_checkpoint": 1, "file": "capsules.jsonl", "range_proof": {  # noqa: E731
+            "from_index": 0, "to_index": len((d / "ledger" / "capsules.jsonl").read_text().splitlines()) - 1}}
+        ok = ({"ok": True, "cut": "2999-01-01T00:00:00Z"}, None)
+        with mock.patch.object(ledger_proof, "check", return_value=ok):
+            r = self.run_live(VERIFIED, ledger=ledger, data_dir_flag=False, checkpoint=reply,
+                              flags=("--self-node", "lab-0"),
+                              extra_nodes=[{"name": "lab-0", "node_id": "0" * 64, "key_id": "k" * 64,
+                                            "data_dir": str(ledger)}])
+        self.assertNotIn(ledger_proof.ISSUE, self.issues(r))
+        self.assertIn("asker-ledger/lab-0/capsules.jsonl", [p["path"] for p in r["proof"]])
 
     def test_the_self_node_is_asked_through_the_second_console_and_read_from_the_second_data_dir(self):
         ledger = self.ledger()
@@ -1228,7 +1248,7 @@ class LedgerProofTest(unittest.TestCase):
     def write_checkpoint(self, doc):
         (self.attempt / f"checkpoints{step.CHECKPOINT_SUFFIX}").write_text(json.dumps(doc))
 
-    def judge(self, verdict=({"ok": True}, None)):
+    def judge(self, verdict=({"ok": True, "cut": "2026-10-31T12:00:00Z"}, None)):
         with mock.patch.object(ledger_proof, "check", return_value=verdict) as chk:
             r = step.judge_ledger_proof(self.out, self.pop, self.how, self.attempt, "checkpoints", self.extract,
                                         "n" * 64, self.request, self.at, self.at)
@@ -1255,6 +1275,15 @@ class LedgerProofTest(unittest.TestCase):
         errs, _ = self.judge()
         self.assertTrue(any("does not reach" in e for e in errs), errs)
 
+    def test_a_checkpoint_cut_before_the_ask_was_sent_is_a_fail(self):
+        errs, _ = self.judge(({"ok": True, "cut": "2026-10-31T11:59:00Z"}, None))
+        self.assertTrue(any("older reply does not cover the ask" in e for e in errs), errs)
+
+    def test_a_run_that_asked_for_checkpoints_and_lost_one_is_a_fail(self):
+        (self.attempt / f"checkpoints{step.CHECKPOINT_SUFFIX}").unlink()
+        errs, notes = self.judge()
+        self.assertEqual((len(errs), notes), (1, []))
+
     def test_a_refusal_is_not_checked_on_the_ledger_issue(self):
         self.write_checkpoint({"asker": "lab-0", "reply": None, "refusal": "HTTP 400: invalid request"})
         errs, notes = self.judge()
@@ -1262,9 +1291,11 @@ class LedgerProofTest(unittest.TestCase):
         self.assertEqual([n["issue"] for n in notes], [ledger_proof.ISSUE])
         self.assertIn("invalid request", notes[0]["why"])
 
-    def test_a_run_that_kept_no_reply_is_not_checked(self):
+    def test_a_run_before_checkpoints_names_nothing_here(self):
         (self.attempt / f"checkpoints{step.CHECKPOINT_SUFFIX}").unlink()
-        self.assertEqual([n["issue"] for n in self.judge()[1]], [ledger_proof.ISSUE])
+        self.how = {}
+        self.assertEqual(self.judge(), ([], []))
+        self.assertTrue(step.predates_checkpoints({"nodes": {"lab-1": {"asked": True, "via": "x"}}}))
 
     def test_an_asker_that_is_not_named_has_no_listed_key_to_check_under(self):
         self.how = {"asker": None}

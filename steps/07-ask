@@ -1483,6 +1483,8 @@ def judge_reporter(pop, out):
         failures += [f"{name}: an attempt asks {s}, which this run does not ask" for s in sorted(found)
                      if s not in stems]
         proof += [str(f.relative_to(out)) for a in layout.attempts(node_dir) for f in sorted(a.iterdir()) if f.is_file()]
+        if how.get("asker"):
+            proof += [f"{ASKER_LEDGER}/{how['asker']}/{ledger_proof.CHAIN}"]
         said = []
         with exchange_registered(half):
             for stem in stems:
@@ -1553,6 +1555,12 @@ def judge_reporter(pop, out):
 LOOP_ISSUE = "evidence-network/loop#276"
 
 
+def predates_checkpoints(ask):
+    """Whether ask.json is from a run before loop#276, which named no asker for any node it asked."""
+    nodes = ask.get("nodes")
+    return not (isinstance(nodes, dict) and any(isinstance(v, dict) and "asker" in v for v in nodes.values()))
+
+
 def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, sent_at, back):
     """(errors, not_checked entries) for one ask's ledger extract against the asker's signed ledger checkpoint
     (loop#276): the kept reply verifies, under the key the asker's nodes/ listing gives, for the first lines of the
@@ -1567,7 +1575,9 @@ def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, 
         ck = load(attempt / f"{stem}{CHECKPOINT_SUFFIX}")
         reply, refusal = ck.get("reply"), ck.get("refusal")
     except (OSError, ValueError, AttributeError):
-        return [], []  # a run before step 07 asked for checkpoints: 08 names the gap it left (rederive_07_live)
+        if "asker" in how:  # a run that asked for checkpoints kept one for every ask
+            return [f"{stem}{CHECKPOINT_SUFFIX} is missing or not readable"], []
+        return [], []  # a run before loop#276: 08 names the gap it left (rederive_07_live)
     if ck.get("asker") != asker:
         return [f"{CHECKPOINT_SUFFIX} names asker {ck.get('asker')!r}, ask.json {asker!r}"], []
     if reply is None:
@@ -1592,9 +1602,15 @@ def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, 
     if why:
         return [f"{asker}'s ledger checkpoint does not show the kept copy whole: {why}"], []
     n = ledger_proof.covered(reply)
+    errs = []
+    try:  # the ask's own records were appended before the reply, so its cut is no earlier than the ask's minute
+        if utc(info["cut"]) < sent_at.replace(second=0, microsecond=0):
+            errs.append(f"the checkpoint was cut at {info['cut']}, before the ask was sent at {stamp(sent_at)}: an "
+                        "older reply does not cover the ask")
+    except (KeyError, ValueError, TypeError):
+        errs.append("the checker named no checkpoint time")
     records = ask_records(copy.parent, ledger_proof.prefix(raw, n), numbered=True)
     found, got = select_ask(records, node_id, request, sent_at, back)
-    errs = []
     for kind, picked in (("requests", found), ("outcomes", got)):
         if extract.get(kind) != json.loads(json.dumps(extract_rows(picked))):
             errs.append(f"picked again from the checkpointed copy, the ask's {kind} are not the extract's")
