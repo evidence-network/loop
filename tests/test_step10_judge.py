@@ -503,9 +503,14 @@ class JudgeTest(Base):
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn("does not run on the rehearsal stand-ins", f["detail"])  # the rehearsal population's wording
-        self.assertEqual(step.evaluator_gap(["06-settle"], "live"),
-                         "the pinned pack's own evaluator does not run for 06-settle, whose proof keeps no node's own "
-                         "chain: this step applies the pack's terms there to the results 08 re-derived")
+        kinds = step.load_pack()["kinds"]
+        self.assertEqual(step.evaluator_gap(["06-settle"], "live", kinds=kinds),
+                         "the pinned pack's own evaluator does not run for 06-settle, whose kind binding.json gives no "
+                         "evaluator inputs: this step applies the pack's terms there to the results 08 re-derived")
+        self.assertEqual(step.evaluator_gap(["05-deal", "06-settle"], "live", kinds=kinds),
+                         "the pinned pack's own evaluator does not run for 06-settle, whose kind binding.json gives no "
+                         "evaluator inputs; nor for 05-deal, whose proof keeps no node's own chain: this step applies "
+                         "the pack's terms there to the results 08 re-derived")
         statement = load(self.run / "10-judge" / "bundles" / "05-deal.bundle.json")
         root = statement["disclosures"][statement["root"]]["agent_input"]["statement"]
         self.assertEqual(root["x-evaluator"], {"inputs": 2, "exchanges": 6})
@@ -530,6 +535,14 @@ class JudgeTest(Base):
                      "ledger/capsules.jsonl"):
             self.assertFalse(step.is_input(kind, path), path)
         self.assertFalse(step.is_input(step.load_pack()["kinds"]["06"], "lab-a/ledger/capsules.jsonl"))
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_loading_the_evaluator_leaves_the_path_and_modules_as_they_were(self):
+        path, names = list(sys.path), set(sys.modules)
+        step.load_evaluator()
+        self.assertEqual(sys.path, path)
+        self.assertEqual({"rollup", "result_v0", "capsulectl_calls", "inference_deals_pinned"} & (set(sys.modules) - names),
+                         set())
 
     def test_the_evaluator_is_held_to_the_pin_and_its_blobs(self):
         self.assertEqual(step.EVALUATOR_REF, finding.pins()["inference-deals"][1])

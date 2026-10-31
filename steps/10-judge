@@ -342,14 +342,20 @@ REHEARSAL_GAP = ("the pinned pack's own evaluator does not run on the rehearsal 
                  "pack's terms to the results 08 re-derived")
 
 
-def evaluator_gap(dirs, population, rehearsal=REHEARSAL_GAP):
+def evaluator_gap(dirs, population, rehearsal=REHEARSAL_GAP, kinds=None):
     """What a PASS leaves outside its assertion when the pack terms of `dirs` are applied from the results 08
     re-derived, the pinned pack's own evaluator not having run for them: on rehearsal `rehearsal` (its stand-ins are
-    no Mesh book records), on live those steps named (their proof keeps no node's own chain)."""
+    no Mesh book records); on live each step named with why: a kind binding.json gives no evaluator inputs (06), or a
+    step whose proof keeps no node's own chain (an older live 05). `kinds` is the pack's {step: kind}."""
     if population != "live":
         return rehearsal
-    return (f"the pinned pack's own evaluator does not run for {', '.join(dirs)}, whose proof keeps no node's own "
-            "chain: this step applies the pack's terms there to the results 08 re-derived")
+    kinds = kinds or {}
+    never = [d for d in dirs if not (kinds.get(d[:2]) or {}).get("inputs")]
+    unchained = [d for d in dirs if d not in never]
+    why = ([f"{', '.join(never)}, whose kind binding.json gives no evaluator inputs"] if never else []) + \
+          ([f"{', '.join(unchained)}, whose proof keeps no node's own chain"] if unchained else [])
+    return (f"the pinned pack's own evaluator does not run for {'; nor for '.join(why)}: this step applies the "
+            "pack's terms there to the results 08 re-derived")
 
 
 def git_blob(data):
@@ -380,6 +386,7 @@ def load_evaluator():
     # .pyc), and its helpers are the pinned ones only while the evaluator loads (it imports them by name).
     helpers = {Path(f).stem: f for f in EVALUATOR if not f.startswith("scripts/evaluators/")}
     saved = {name: sys.modules.get(name) for name in helpers}
+    saved_path = list(sys.path)  # the pinned modules put their own directory on sys.path when they run
 
     def module(name, f):
         mod = types.ModuleType(name)
@@ -396,6 +403,7 @@ def load_evaluator():
         raise NotChecked("the pinned pack's own evaluator", f"it does not load here ({type(e).__name__}: "
                          f"{str(e)[:200]})", GAP_ISSUE)
     finally:
+        sys.path[:] = saved_path
         sys.modules.pop("inference_deals_pinned", None)
         for name, old in saved.items():
             if old is None:
@@ -907,7 +915,7 @@ def main(argv=None):
               + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each."
               + (f" On live, {LIVE_JUDGE}." if population == "live" else ""))
     if result == "PASS" and unevaluated:
-        detail += " " + finding.outside(evaluator_gap(unevaluated, population), GAP_ISSUE)
+        detail += " " + finding.outside(evaluator_gap(unevaluated, population, kinds=pack["kinds"]), GAP_ISSUE)
     finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
                   pinned=pinned, proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)

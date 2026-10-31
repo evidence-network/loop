@@ -49,7 +49,8 @@ verdict) and how many exchanges it saw; its grade is `countersigned` only when e
 beside the halves, and the Result says the evaluator ran (`x-evaluator`). The chains are cited but are not records:
 step 11 counts no deal from them. The rehearsal stand-ins are no Mesh book records, so there the step applies the
 pack's terms to the results 08 re-derived, and a PASS names that as a gap on evidence-network/loop#157; on live, a
-PASS names only the steps judged that way (06, and a 05 with no chain in its proof), and step 11 says the same. An
+PASS names only the steps judged that way, with why: 06, whose kind binding.json gives no evaluator inputs, and a
+05 whose proof keeps no node's own chain; step 11 says the same. An
 evaluator not fetched or not at its blobs is a not_checked entry.
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
