@@ -68,6 +68,9 @@
       "records": [
         "dispute.json"
       ],
+      "records_if_none": [
+        "outcome.json"
+      ],
       "terms": [
         {
           "id": "referee-result",

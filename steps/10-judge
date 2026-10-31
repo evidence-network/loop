@@ -14,11 +14,12 @@ its detail says the records are that stand-in, not this run's:
   manifest   08's finding passes steps/finding.py's check and names
              verified.json in its proof with the sha256 the file has. The
              as-of instant is 08's finding `finished`.
-  window     12 whole closed calendar months before the as-of month, never
-             rolling (the pinned pack's window.months). A record is a primary record file (binding.json `records`) that 08 lists
+  window     12 whole closed calendar months before the as-of month (the pinned pack's window.months) plus the as-of
+             month to date, up to the as-of instant (Ethan, 2026-10-31, over Steven's 2026-10-29 closed-months
+             ruling, for now). It moves only when a month closes, for its start. A record is a primary record file (binding.json `records`) that 08 lists
              for a reproduced step of one of the pack's kinds (05 deals, 06
              settlements, 07 asks, 09 disputes) whose step finished in the
-             window. Its bytes must still match 08's digest. A file 08 does
+             window (start <= finished <= as-of). Its bytes must still match 08's digest. A file 08 does
              not list, and a record outside the window, is refused, not read,
              and named in detail. A step 08 did not reproduce is outside the
              window, with a not_checked entry.
@@ -87,10 +88,10 @@ import finding  # noqa: E402
 # Who owns each kind of gap 10 leaves NOT_CHECKED.
 SETUP_ISSUE = "evidence-network/loop: steps/10-judge.setup.sh, run where 10 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
-# A record enters the window once its month has closed: the window is the pinned pack's (Steven's 2026-10-29
-# ruling, 12 whole closed months), not a gap to fix.
-WINDOW_ISSUE = ("the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months "
-                "by Steven's 2026-10-29 ruling: a record is judged once its month has closed")
+# The window is the pinned pack's 12 whole closed months (Steven's 2026-10-29 ruling) plus the as-of month to date
+# (Ethan, 2026-10-31: judge October's data now; Steven may change it later).
+WINDOW_ISSUE = ("the window: the pinned inference-deals pack's 12 whole closed months (versions.lock inference-deals, "
+                "Steven's 2026-10-29 ruling) plus the as-of month to date (Ethan, 2026-10-31)")
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
 # Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.
 # Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" was ruled by Sherlock2
@@ -113,7 +114,7 @@ EVALUATOR = {"scripts/evaluators/inference_deals.py": "28544c16dafbf77c9743e0a0f
              "scripts/result_v0.py": "dcf31eaef15ea7b704d2b7546d9b50b24a96f40c",
              "scripts/rollup.py": "ba664a49e602852951473dc56e591be11c82a46e"}
 PINNED = ["capsulectl", "capsulectl-book"]
-ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of the run's records that step 08 "
+ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months plus the as-of month to date, of the run's records that step 08 "
            "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
            "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
            "pinned verifier, offline, under the repository's judge key")
@@ -203,7 +204,8 @@ def load_pack():
             else:
                 terms.append({"id": t["id"], "name": t["name"], "must_have": True, "own": True,
                               **({"counted": True} if t.get("counted") else {})})
-        kinds[nn] = {"kind": k["kind"], "records": k["records"], "only": k.get("only", {}),
+        kinds[nn] = {"kind": k["kind"], "records": k["records"], "records_if_none": k.get("records_if_none", []),
+                     "only": k.get("only", {}),
                      "inputs": k.get("inputs", {}), "terms": terms}
     return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
             "own_contract_ref": binding["own_contract_ref"],
@@ -219,10 +221,12 @@ def tools():
 
 # --- The window ---------------------------------------------------------------------------
 def window_of(as_of, periods=12):
-    """[start, end): the `periods` whole calendar months closed before as_of's month. Never rolling."""
-    end = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
-    months = end.year * 12 + end.month - 1 - periods
-    return dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc), end
+    """[start, end]: the `periods` whole calendar months closed before as_of's month, through as_of itself (the as-of
+    month to date). Ethan, 2026-10-31, over Steven's 2026-10-29 closed-months window. `end` is as_of, so a rerun over
+    the same records has the same window; it is inclusive."""
+    first = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
+    months = first.year * 12 + first.month - 1 - periods
+    return dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc), as_of
 
 
 def open_month_of(as_of):
@@ -288,20 +292,21 @@ def select(run, manifest, start, end, pack):
             problems.append(f"{e['dir']}/finding.json does not match the sha256 08's manifest gives it")
             continue
         finished = utc(load(d / "finding.json")["finished"])
-        if not start <= finished < end:
+        if not start <= finished <= end:
             refused.append(f"{e['dir']}: {len(files)} files, finished {stamp(finished)}, outside the window")
             continue
         unlisted = sorted(str(p.relative_to(d)) for p in d.rglob("*") if p.is_file()
                           and str(p.relative_to(d)) not in files and p.name != "loop-step.log")
         refused += [f"{e['dir']}/{p}: not in 08's manifest" for p in unlisted]
         kind = pack["kinds"][e["step"]]["kind"]
-        patterns = pack["kinds"][e["step"]]["records"]
+        stepkind = record_kind(pack["kinds"][e["step"]], files)
+        patterns = stepkind["records"]
         # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
         # disputes; the bundles and proof files beside them are 08's, not counted.
         matched = {p: s for p, s in files.items() if any(fnmatch.fnmatchcase(p, g) for g in patterns)}
         wanted = {}
         for p, s in matched.items():
-            if (d / p).is_file() and finding.sha256(d / p) == s and not is_record(pack["kinds"][e["step"]], p, d / p):
+            if (d / p).is_file() and finding.sha256(d / p) == s and not is_record(stepkind, p, d / p):
                 refused.append(f"{e['dir']}/{p}: not a {kind} record (binding.json `only`: "
                                f"{next(c['why'] for g, c in pack['kinds'][e['step']]['only'].items() if fnmatch.fnmatchcase(p, g))})")
                 continue
@@ -416,7 +421,8 @@ def load_evaluator():
 # pack's own weekly ones (Sherlock2, Buzz b1effd94).
 CHAIN_START = dt.datetime.min.replace(tzinfo=dt.timezone.utc)  # no bound: the chain is read whole
 CHAIN_END = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
-EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished; each chain read whole, whatever its entries' "
+EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished: 12 whole closed months plus the as-of month "
+                    "to date (not only closed months); each chain read whole, whatever its entries' "
                     "own dates; not the pack's weekly period_policy")
 
 
@@ -451,6 +457,15 @@ def evaluate(ev, run, inputs):
                 x = extras.get(term) or {}
                 verdicts.setdefault(term, []).append((v, x.get("x-reading"), x.get("grade")))
     return verdicts, exchanges
+
+
+def record_kind(kind, paths):
+    """`kind` with the `records` patterns that apply to the files 08 lists for a step: the kind's own, or, when none of
+    the files matches, its `records_if_none`. Live 09 keeps no dispute.json (Mesh disputes are adjudications only); its
+    record is the referee's sealed Result, outcome.json."""
+    if kind.get("records_if_none") and not any(fnmatch.fnmatchcase(p, g) for p in paths for g in kind["records"]):
+        return dict(kind, records=kind["records_if_none"])
+    return kind
 
 
 def is_record(kind, path, file):
@@ -517,6 +532,8 @@ def result_doc(claims, pack, start, end, extra=None):
                         "periods": pack["window"]["periods"], "pack": pack["pack"]}}
     if pack.get("preview"):
         doc["x-window"]["preview"] = pack["preview"]
+    else:
+        doc["x-window"]["through_as_of"] = True  # the as-of month to date is in, not only closed months
     doc.update(extra or {})
     return doc
 
@@ -549,11 +566,11 @@ def judge_records(records, run, pack, start, end, not_checked):
                 answered = [a for a in got.get(t["id"], []) if a[0] != "out_of_scope"]
                 verdicts = [v for v, _, _ in answered]
                 worst = next((v for v in ("not_met", "not_evaluable", "met") if v in verdicts), "not_evaluable")
-                said = ", ".join(f"{v} {verdicts.count(v)}" for v in ("met", "not_met", "not_evaluable") if v in verdicts)
+                said = ", ".join(f"{v} {verdicts.count(v)} of {len(answered)}" for v in ("met", "not_met", "not_evaluable") if v in verdicts)
                 readings = sorted({r for _, r, _ in answered if r})
                 c = claim(cid, t["id"], worst, refs, cref,
-                          f"the pinned pack's own evaluator, over {len(exchanges)} exchanges in {len(inputs)} nodes' "
-                          f"own chains, answers this term for {len(answered)} deal sides: "
+                          f"the pinned pack's own evaluator, over the nodes' own chains (x-evaluator counts them), answers "
+                          f"this term for {len(answered)} of {len(got.get(t['id'], []))} deal sides: "
                           f"{said or 'no deal in the chains carried this term'}"
                           + (f" ({', '.join(readings)})" if readings else ""))
                 # countersigned only when every answer is; the provider_states reading is the provider's word
@@ -912,7 +929,8 @@ def main(argv=None):
 
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
     window = ((f"window {stamp(start)} to {stamp(end)} (the open month)" if preview else
-               f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)")
+               f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months plus the "
+               "as-of month to date)")
               if start else "no window")
     packname = f"{pack['pack']} ({pack['pin']})" if pack else "inference-deals (not loaded)"
     what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "

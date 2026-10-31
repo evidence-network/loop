@@ -142,17 +142,17 @@ class Base(unittest.TestCase):
 
 
 class WindowTest(unittest.TestCase):
-    def test_twelve_whole_closed_months_before_the_as_of_month(self):
-        self.assertEqual(step.window_of(utc("2026-10-02T09:01:00Z")),
-                         (utc("2025-10-01T00:00:00Z"), utc("2026-10-01T00:00:00Z")))
-        self.assertEqual(step.window_of(utc("2027-01-31T23:59:59Z")),
-                         (utc("2026-01-01T00:00:00Z"), utc("2027-01-01T00:00:00Z")))
+    def test_twelve_closed_months_plus_the_as_of_month_to_date(self):
+        as_of = utc("2026-10-02T09:01:00Z")
+        self.assertEqual(step.window_of(as_of), (utc("2025-10-01T00:00:00Z"), as_of))
+        as_of = utc("2027-01-31T23:59:59Z")
+        self.assertEqual(step.window_of(as_of), (utc("2026-01-01T00:00:00Z"), as_of))
 
-    def test_never_rolling(self):
-        # Any instant in one month gives the same window: it moves only when a month closes.
+    def test_start_moves_only_when_a_month_closes_end_is_the_as_of(self):
         first = step.window_of(utc("2026-10-01T00:00:00Z"))
-        self.assertEqual(first, step.window_of(utc("2026-10-31T23:59:59Z")))
-        self.assertNotEqual(first, step.window_of(utc("2026-11-01T00:00:00Z")))
+        self.assertEqual(first[0], step.window_of(utc("2026-10-31T23:59:59Z"))[0])
+        self.assertNotEqual(first[0], step.window_of(utc("2026-11-01T00:00:00Z"))[0])
+        self.assertEqual(step.window_of(utc("2026-10-31T23:59:59Z"))[1], utc("2026-10-31T23:59:59Z"))
 
 
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
@@ -190,10 +190,9 @@ class ManifestTest(Base):
         self.assertEqual(self.judge()["result"], "FAIL")
 
     def test_todays_records_are_outside_the_window(self):
-        # 08 ran in the month the records were made: no record is in a closed month yet.
-        f = load(self.run / "08-verify" / "finding.json")
-        f["finished"] = "2026-09-30T23:00:00Z"
-        dump(self.run / "08-verify" / "finding.json", f)
+        # A step that finished after 08's as-of instant is outside the window, whatever month it is in.
+        for base in WINDOW_STEPS:
+            self.edit_step(base, finished="2026-10-03T00:00:00Z")
         f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(json.loads((self.run / "10-judge" / "window.json").read_text())["records"], [])
@@ -342,6 +341,17 @@ class JudgeTest(Base):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("05-deal: 08 lists no deal record (deal.json, */held-*[0-9].json)", f["detail"])
 
+    def test_a_live_09_with_no_dispute_json_is_recorded_by_its_referee_outcome(self):
+        # Mesh disputes are adjudications only: a live 09 keeps outcome.json, no dispute.json.
+        m = self.manifest()
+        e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
+        e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
+        self.reseal_manifest(m)
+        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        self.assertEqual([r["path"] for r in records if r["dir"] == "09-dispute"], ["outcome.json"])
+
     def live_05(self, settlement_leg=True):
         """The base run's 05 as live 05 keeps it (loop#225): two nodes' held halves of one exchange (copied from
         findings/2026-10-31-live-8), their citing and inclusion files, and, with `settlement_leg`, a settlement leg
@@ -480,8 +490,8 @@ class JudgeTest(Base):
         self.assertEqual(not_checked, [])
         for term in ("come_through.served_as_agreed", "come_through.served_named_model"):
             self.assertEqual(claims[term]["verdict"], "met", claims[term])
-            self.assertIn("the pinned pack's own evaluator, over 6 exchanges in 2 nodes' own chains, answers this term "
-                          "for 3 deal sides: met 3", claims[term]["presentation"]["narrative"])
+            self.assertIn("the pinned pack's own evaluator, over the nodes' own chains (x-evaluator counts them), answers "
+                          "this term for 3 of 6 deal sides: met 3 of 3", claims[term]["presentation"]["narrative"])
             self.assertEqual(claims[term]["presentation"]["status"], "SATISFIED")
             # every record of the step is cited, the chains beside the halves
             self.assertEqual(sorted(claims[term]["evidence"]), sorted(f"05-deal/{r['path']}" for r in records
@@ -649,12 +659,12 @@ class JudgeTest(Base):
             self.assertEqual(load(p)["verdict"], "VALID", p.name)
 
     def test_a_step_outside_the_window_is_refused_not_read(self):
-        self.edit_step("07-ask", finished="2026-10-01T00:00:00Z")
+        self.edit_step("07-ask", finished="2026-10-03T00:00:00Z")
         n07 = len(next(e for e in self.manifest()["steps"] if e["dir"] == "07-ask")["files"])  # files 08 lists, not records
         with mock.patch.object(step, "attested", wraps=step.attested) as read:
             f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertIn(f"07-ask: {n07} files, finished 2026-10-01T00:00:00Z, outside the window", f["detail"])
+        self.assertIn(f"07-ask: {n07} files, finished 2026-10-03T00:00:00Z, outside the window", f["detail"])
         self.assertFalse(any(k.startswith("07-ask/") for k in self.cited()))
         self.assertFalse(any("07-ask" in str(c.args[0]) for c in read.call_args_list))
         self.assertFalse((self.run / "10-judge" / "bundles" / "07-ask.bundle.json").exists())
@@ -717,9 +727,9 @@ class JudgeTest(Base):
 
     def cite_outside(self):
         # 07 finished outside the window; the planted pack cites its finding.json anyway.
-        self.edit_step("07-ask", finished="2026-10-01T00:00:00Z")
+        self.edit_step("07-ask", finished="2026-10-03T00:00:00Z")
         outside = {"dir": "07-ask", "step": "07", "path": "finding.json", "kind": "ask", "result": "PASS",
-                   "sha256": finding.sha256(self.run / "07-ask" / "finding.json"), "finished": "2026-10-01T00:00:00Z"}
+                   "sha256": finding.sha256(self.run / "07-ask" / "finding.json"), "finished": "2026-10-03T00:00:00Z"}
         real_judge, real_seal = step.judge_records, step.seal
 
         def extra(*a, **k):
@@ -1058,7 +1068,7 @@ class PreviewTest(Base):
     def october(self):
         """The base run's four steps, finished in October 2026: records of the month 08 ran in."""
         for i, base in enumerate(WINDOW_STEPS):
-            self.edit_step(base, finished=f"2026-10-0{i + 1}T10:00:30Z")
+            self.edit_step(base, finished=f"2026-10-01T10:0{i}:30Z")
 
     def run_preview(self, *extra, population=POPULATION):
         out = self.preview / "10-judge"
@@ -1074,7 +1084,7 @@ class PreviewTest(Base):
         self.assertEqual(step.open_month_of(utc("2026-12-31T23:59:59Z")),
                          (utc("2026-12-01T00:00:00Z"), utc("2027-01-01T00:00:00Z")))
         self.assertEqual(step.window_of(utc("2026-10-02T09:01:00Z")),
-                         (utc("2025-10-01T00:00:00Z"), utc("2026-10-01T00:00:00Z")))
+                         (utc("2025-10-01T00:00:00Z"), utc("2026-10-02T09:01:00Z")))
 
     def test_the_marker_is_the_exact_text_the_coordinator_ruled(self):
         self.assertEqual(finding.PREVIEW, "PREVIEW: open month, not a baseline result")
@@ -1150,13 +1160,17 @@ class PreviewTest(Base):
         self.assertFalse((self.run / "10-judge").exists())
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
-    def test_the_same_run_without_the_flag_still_judges_closed_months_only(self):
+    def test_the_same_run_without_the_flag_judges_october_to_date_as_a_baseline(self):
+        # Ethan, 2026-10-31: the window is 12 closed months plus the as-of month to date.
         self.october()
         f = self.judge()
-        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertFalse(f["detail"].startswith("PREVIEW"))
-        self.assertNotIn("preview", load(self.run / "10-judge" / "window.json"))
-        self.assertEqual(load(self.run / "10-judge" / "window.json")["records"], [])
+        w = load(self.run / "10-judge" / "window.json")
+        self.assertNotIn("preview", w)
+        self.assertEqual((w["start"], w["end"]), ("2025-10-01T00:00:00Z", w["as_of"]))
+        self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
+        self.assertIn("plus the as-of month to date", f["detail"])
         self.assertEqual(f["asserts"], step.ASSERTS)
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)

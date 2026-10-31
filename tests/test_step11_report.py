@@ -369,8 +369,8 @@ class ReportTest(Base):
             figures = step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
             text = next(f["text"] for f in figures if f["id"] == "count:deal")
             self.assertIn("3 of 3 deal records step 08 lists", text)  # the settlement leg is no deal record
-            self.assertIn("the live halves are 1 deal, one per exchange held on both nodes, each citing both halves "
-                          "(1 half pairs with no other node's half)", text)
+            self.assertIn("2 of 3 live halves pair into deals, one per exchange held on both nodes, each citing both halves "
+                          "(1 of 3 halves pair with no other node's half)", text)
             self.assertEqual(found, {"deals": {}, "exchanges": {}})  # nonce pairing never mixes with 06's exchange ids
             (src / "05-deal" / "lab-a" / "held-2.json").unlink()
             with self.assertRaises(step.Refused):
@@ -445,7 +445,7 @@ class ReportTest(Base):
 
     def test_a_step_outside_the_window_stays_in_the_denominator(self):
         d = self.run / "07-ask" / "finding.json"
-        dump(d, {**load(d), "finished": "2026-10-01T00:00:00Z"})
+        dump(d, {**load(d), "finished": "2026-10-03T00:00:00Z"})
         v = self.run / "08-verify"
         m = load(v / "verified.json")
         next(e for e in m["steps"] if e["dir"] == "07-ask")["files"][0]["sha256"] = finding.sha256(d)
