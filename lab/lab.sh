@@ -64,6 +64,10 @@
 #
 # Environment (LAB-BRINGUP.md, "Prerequisites"):
 #   LAB_DIR             where the nodes live: one HOME per node under $LAB_DIR/nodes (required)
+#   LAB_PAYMENTS        nodes whose config.toml gets [payments] wallet = "lexe-wallet" (step 06): space separated;
+#             off when unset. The wallet comes from lab/bin/lab-wallet-create.sh and the plugin from
+#             lab/bin/lab-wallet-setup.sh, and
+#             once a node has a wallet every later start must name it here (start refuses otherwise)
 #   MESH_LLM_BIN        the lab host build's mesh-llm binary
 #   MESH_LLM_SRC        the mesh-llm source tree that binary was built from (check)
 #   MESH_LLM_RUNTIME    its native runtimes directory (optional)
@@ -95,7 +99,7 @@
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
 #             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
 #             A node not named keeps the plugin's default, which is on at the pinned plugin unless the
-#             node's config sets it off. Read by start: restart a node to change it
+#             node's config sets it off. Read by start: stop and start the lab to change it
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -147,6 +151,13 @@ done
 # twin's signed half was pushed to the requester, and a referee is eligible once the requester holds a half from it).
 if [ "$TWINS" = 1 ] && [ "${#SHARE[@]}" = 0 ]; then SHARE=("$TWIN_A" "$TWIN_B" "$REFEREE"); fi
 shares() { local n; for n in "${SHARE[@]+"${SHARE[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
+# The nodes whose host has a wallet (step 06): space separated, as LAB_SHARE_AT_COMPLETION.
+PAYS=()
+read -r -d '' -a PAYS <<< "${LAB_PAYMENTS:-}" || true
+for n in "${PAYS[@]+"${PAYS[@]}"}"; do
+  [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_PAYMENTS names $n, not a lab node"
+done
+pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
@@ -413,6 +424,29 @@ PY
 }
 
 # --- start / stop / status --------------------------------------------------------------------
+# node_config NAME: the node's config.toml. A node named in LAB_PAYMENTS also gets the wallet section, so its
+# host pays and is paid through the lexe-wallet plugin (step 06; the plugin and the wallet files are Ethan's setup,
+# lab/bin/lab-wallet-setup.sh). It stays on every later start while the node is named; start refuses to write over
+# a config that has a wallet section for a node LAB_PAYMENTS does not name, so a wallet is never dropped unnoticed.
+node_config() {
+  local name=$1
+  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
+  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
+  printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
+  printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
+  printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
+  printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
+  # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
+  # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
+  if [ -n "$MODEL_REF" ] && serves_model "$name"; then
+    printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
+    if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
+      printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
+    fi
+  fi
+  if pays "$name"; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
+}
+
 write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   local name=$1; shift
   local home launcher
@@ -441,20 +475,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     printf ' < /dev/null >> %q 2>&1\n' "$(logfile "$name")"
   )
   local config
-  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
-  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
-  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
-    printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
-    printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
-    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
-    # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
-    # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
-    if [ -n "$MODEL_REF" ] && serves_model "$name"; then
-      printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
-      if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
-        printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
-      fi
-    fi)
+  config=$(node_config "$name")
   if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
     # The label comes from the config this node was started with, not from whatever `twins` is run with.
     python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
@@ -528,6 +549,13 @@ dead_node() { # prints the first started node that is not running
 
 cmd_start() {
   need MESH_LLM_BIN; need CAPSULES_BIN
+  # Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
+  local n
+  for n in "${NODES[@]}"; do
+    if ! pays "$n" && grep -q '^\[payments\]' "$(home_of "$n")/config.toml" 2> /dev/null; then
+      die "$n's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+  done
   if [ "$TWINS" = 1 ]; then
     # The referee compares only pairs whose halves carry a model identity hash; a local file never gets one.
     [ -n "$MODEL_REF" ] || [ "$DRY" = 1 ] || die "LAB_TWINS needs LAB_MODEL_REF (a Hugging Face ref): a local GGUF gets no identity hash and the referee answers not_comparable"
