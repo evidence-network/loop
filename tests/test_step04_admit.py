@@ -462,8 +462,9 @@ class Rows(unittest.TestCase):
         b["rows"][2].update(count=3, denominator=26)
         b["rows"][3].update(count=0, denominator=2)
         b["rows"][4].update(count=15, denominator=26)
-        b["reads"].append({"kind": "terms_pack", "role": "base", "pack": "asg/mesh_admission_base/1.0.0",
-                           "definition_digest": {"alg": "SHA-256", "digest": "d" * 64}})
+        # The plugin's order: the price pack when the price rule ran, then the base pack (admission.rs).
+        base_pack = {"kind": "terms_pack", "role": "base", "pack": "asg/mesh_admission_base/1.0.0",
+                     "definition_digest": {"alg": "SHA-256", "digest": "d" * 64}}
         if price == "not_checked":
             b["price"] = {"state": "not_checked", "reason": "host_lacks_backend_pricing"}
         elif price in ("allow", "deny"):
@@ -472,9 +473,10 @@ class Rows(unittest.TestCase):
                           "checks": [{"check": "rate_cap", "result": "pass" if price == "allow" else "fail"}]}
             b["reads"].append({"kind": "terms_pack", "role": "price", "pack": "asg/inference/1.0.0",
                                "definition_digest": {"alg": "SHA-256", "digest": "e" * 64},
-                               "profile": None})
+                               "profile": {"alg": "SHA-256", "commitment": "f" * 64}})
             if price == "deny":
                 b["verdict"], b["source"] = "NO", "price_rule"
+        b["reads"].append(base_pack)
         b.update(edits)
         return b
 
@@ -488,22 +490,39 @@ class Rows(unittest.TestCase):
         _, f = self.run_blocks(self.current("allow"), self.current("deny"))
         self.assertEqual(f["result"], "PASS", f["detail"])
 
+    def test_what_the_engine_decides_is_not_judged(self):
+        # A refusal can come from a check the engine did not evaluate, which the plugin keeps out of `checks`.
+        for outcome, checks in (("deny", [{"check": "rate_cap", "result": "pass"}]), ("escalate", []),
+                                ("allow", [{"check": "rate_cap", "result": "not_evaluated"}])):
+            b = self.current("deny")
+            b["price"].update(outcome=outcome, checks=checks)
+            if outcome == "allow":
+                b.update(verdict="GO", source="default")
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "PASS", (outcome, f["detail"]))
+
     def test_a_malformed_price_or_pack_or_row_member_fails(self):
         def drop_price_pack(b):
-            b["reads"].pop()
+            b["reads"].pop(2)
 
         cases = (
             (lambda b: b["price"].update(state="maybe"), "price state", "not_checked"),
             (lambda b: b["price"].update(reason="because"), "price not_checked", "not_checked"),
             (lambda b: b["price"].update(peer="a" * 64), "price not_checked", "not_checked"),
             (lambda b: b["price"].update(outcome="maybe"), "price outcome", "allow"),
-            (lambda b: b["price"].update(outcome="deny"), "price outcome deny with every check passed", "allow"),
             (lambda b: b["price"].update(input_msat_per_million=-1), "neither a rate nor null", "allow"),
-            (lambda b: b["price"].update(checks=[]), "price checks", "allow"),
+            (lambda b: b["price"].update(checks=[{"check": "rate_cap"}]), "price checks", "allow"),
+            (lambda b: b["price"].update(reason="guard_error") or b["price"].update(state="not_checked"),
+             "price not_checked", "allow"),
+            (lambda b: b["reads"].reverse(), "operator policy", "allow"),
+            (lambda b: b["reads"].insert(2, b["reads"].pop()), "price pack, if it ran", "allow"),
             (lambda b: b.update(price={"state": "checked"}), "does not have the plugin's members", "allow"),
             (drop_price_pack, "go together", "allow"),
-            (lambda b: b["reads"].append(b["reads"][-1]), "at most once", "allow"),
-            (lambda b: b["reads"][-1].update(profile={"alg": "SHA-256"}), "profile", "allow"),
+            (lambda b: b["reads"].append(b["reads"][-1]), "price pack, if it ran", "allow"),
+            (lambda b: b["reads"][2].update(profile={"alg": "SHA-256"}), "profile", "allow"),
+            (lambda b: b["reads"][2].update(profile={"alg": "SHA-256", "commitment": {"alg": "SHA-256",
+                                                                                       "digest": "f" * 64}}),
+             "profile", "allow"),
             (lambda b: b["reads"][2].update(role="other"), "terms pack read is not the plugin's shape", "allow"),
             (lambda b: b["reads"].pop(2), "go together", "not_checked"),
             (lambda b: b["rows"][0].pop("effect"), "some rows carry", "not_checked"),

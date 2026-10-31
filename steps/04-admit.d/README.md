@@ -47,14 +47,15 @@ strictness as the rest (a member the step does not know is a FAIL):
   which never change the decision) and, where it counts, `count` and
   `denominator` (integers, `count` at most `denominator`) (capsules-plugin
   PR #178). The effect is on every row or none, and goes with the next item.
-- `reads` cites the base terms pack (`role: base`, its pack id and definition
-  digest) after the history card, and the price pack (`role: price`, with the
-  operator profile as a commitment or null) after it, only when the price rule
-  ran (PR #178, #165).
+- `reads` cites, after the history card, the price terms pack (`role: price`,
+  with the operator profile as a commitment string or null) only when the
+  price rule ran, then the base terms pack (`role: base`, its pack id and
+  definition digest), in that order (PR #165, #178).
 - A `price` member, on a decision about a peer the lists admitted
   (PR #165): `not_checked` or `unavailable` with one of the plugin's reasons,
   or `checked` with the guard's outcome (`allow`, `deny`, `escalate`), the two
-  rates (integers or null) and each check's result. `checked` goes with the
+  rates (integers or null) and each check's result (the step does not judge
+  whether the outcome follows from the checks: that is the engine's). `checked` goes with the
   price pack read. A price that refuses (`unavailable`, or `checked` with an
   outcome other than `allow`) is exactly source `price_rule`, a NO; a profile
   that did not read is source `unreadable_profile`, a NO with no price. The

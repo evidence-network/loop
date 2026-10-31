@@ -435,8 +435,8 @@ def block_problems(blk):
     price = blk.get("price", ABSENT)
     # The operator-policy read first. A decision with rows (capsules-plugin PR #116) has one more read, the
     # peer's history card; one sealed by an earlier build has neither. After the card come the terms-pack reads
-    # (admission.rs): the base pack, cited whenever the rows carry the evaluator's effect (PR #178), then the
-    # price pack, cited only when the price rule ran (PR #165).
+    # (admission.rs): the price pack, cited only when the price rule ran (PR #165), then the base pack, cited
+    # whenever the rows were read (PR #178).
     pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
     tail = reads[1:] if isinstance(reads, list) else []
     # With no readable operator policy the plugin seals a NO and no digest, whether the policy or the target
@@ -481,7 +481,10 @@ ROW_KEYS = ({"row", "result"}, {"row", "result", "effect", "count", "denominator
 PACK_KEYS = {"base": {"kind", "role", "pack", "definition_digest"},
              "price": {"kind", "role", "pack", "definition_digest", "profile"}}
 PRICE_OUTCOMES = ("allow", "deny", "escalate")
-PRICE_REASONS = ("host_lacks_backend_pricing", "no_price_without_model", "guard_error")
+# Why the price rule did not decide, per state (admission/price.rs): not_checked only under the shipped default
+# caps; unavailable is a NO, and adds the engine refusing to decide.
+PRICE_REASONS = {"not_checked": ("host_lacks_backend_pricing", "no_price_without_model"),
+                 "unavailable": ("host_lacks_backend_pricing", "no_price_without_model", "guard_error")}
 
 
 def count_ok(v):
@@ -509,8 +512,9 @@ def row_member_problems(rows, base_pack_cited):
 
 
 def pack_problems(packs, price):
-    """Why the terms-pack reads after the history card are not the plugin's; [] when they are. The base pack, when
-    cited, comes first; the price pack is cited exactly when the price rule ran (price state checked)."""
+    """Why the terms-pack reads after the history card are not the plugin's; [] when they are. The price pack, when
+    cited, comes first and then the base pack (admission.rs pushes them in that order); the price pack is cited
+    exactly when the price rule ran (price state checked)."""
     errs, roles = [], []
     for r in packs:
         if not (isinstance(r, dict) and r.get("kind") == "terms_pack" and r.get("role") in PACK_KEYS
@@ -520,12 +524,14 @@ def pack_problems(packs, price):
             continue
         if r["role"] == "price":
             prof = r["profile"]
+            # The plugin seals the profile's commitment as a bare hex string (price.rs reads()), not as {alg, digest}.
             if not (prof is None or (isinstance(prof, dict) and set(prof) == {"alg", "commitment"}
-                                     and prof["alg"] == "SHA-256" and digest_ok(prof["commitment"]))):
+                                     and prof["alg"] == "SHA-256" and isinstance(prof["commitment"], str)
+                                     and bool(HEX64.match(prof["commitment"])))):
                 errs.append("the price pack read's profile is neither null nor a commitment")
         roles.append(r["role"])
-    if roles not in ([], ["base"], ["price"], ["base", "price"]):
-        errs.append(f"terms pack reads {roles} are not the base pack and then the price pack, each at most once")
+    if roles not in ([], ["base"], ["price", "base"]):
+        errs.append(f"terms pack reads {roles} are not the price pack, if it ran, and then the base pack")
     ran = isinstance(price, dict) and price.get("state") == "checked"
     if ("price" in roles) != ran:
         errs.append("the price terms pack read and a checked price go together; one is missing")
@@ -543,7 +549,7 @@ def price_problems(price, pc, rows):
         return ["price is not an object"]
     state = price.get("state")
     if state in ("not_checked", "unavailable"):
-        if set(price) != {"state", "reason"} or price["reason"] not in PRICE_REASONS:
+        if set(price) != {"state", "reason"} or price["reason"] not in PRICE_REASONS[state]:
             return [f"price {state} does not give one of the plugin's reasons"]
         return []
     if state != "checked":
@@ -557,15 +563,13 @@ def price_problems(price, pc, rows):
     for k in ("input_msat_per_million", "output_msat_per_million"):
         if not (price[k] is None or count_ok(price[k])):
             errs.append(f"price {k} is neither a rate nor null")
+    # Which check refuses, and whether the outcome follows from the checks, are the engine's (a refusal can come
+    # from a check it did not evaluate, which the plugin keeps out of `checks`); the step judges only the shape.
     checks = price["checks"]
-    if not (isinstance(checks, list) and checks and all(
+    if not (isinstance(checks, list) and all(
             isinstance(c, dict) and set(c) == {"check", "result"} and isinstance(c["check"], str) and c["check"]
             and isinstance(c["result"], str) and c["result"] for c in checks)):
         errs.append("price checks are not a list of check and result")
-    elif price["outcome"] == "allow" and any(c["result"] == "fail" for c in checks):
-        errs.append("price outcome allow with a failed check")
-    elif price["outcome"] != "allow" and not any(c["result"] != "pass" for c in checks):
-        errs.append(f"price outcome {price['outcome']} with every check passed")
     return errs
 
 
