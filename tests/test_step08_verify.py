@@ -640,12 +640,12 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        # This run.json pins no commit, so the listed keys are read at this checkout and 08 says so (loop#193).
         self.assertEqual({nc["issue"] for nc in f["not_checked"]},
                          {step.RUN_ISSUE, step.TRUST_ISSUE, step.LEDGER_ISSUE, "evidence-network/loop#135"})
-        pinned = [nc for nc in f["not_checked"] if nc["what"] == "the listed keys, read at the commit the run ran at"]
-        self.assertEqual([nc["issue"] for nc in pinned], [step.TRUST_ISSUE])
-        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in pinned][
+        # The run is on no merge on main, so its keys are read at this checkout and 08 says so (loop#280).
+        unanchored = [nc for nc in f["not_checked"] if nc["what"] == f"step 07: {step.ANCHOR_WHAT}"]
+        self.assertEqual([nc["issue"] for nc in unanchored], [step.TRUST_ISSUE])
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE and nc not in unanchored][
                          :len(step.LIVE_RELIES_ON["07"])],
                          step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
@@ -1100,10 +1100,11 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn(f"is not what nodes/{node_id}.json held at", f["detail"])
 
-    def scratch_main(self, replaced_at):
-        """A scratch repository whose main holds this checkout's nodes/ a day before 03 started ("then"), then the
-        first carried node's commitment changed at `replaced_at` (seconds from 03's start); carrier.json points at
-        "then". Returns the scratch repository."""
+    def published(self, merge=True, reissue=False):
+        """A scratch repository holding this checkout's nodes/ ("then", carrier.json's head), whose main then takes
+        the run under findings/ by a pull request merge (a single-parent commit when not merge), with the first
+        carried node's commitment re-issued in the same merge when reissue. origin is evidence-network/loop and
+        origin/main is main. Returns (repo, the run inside it)."""
         repo = Path(self.tmp.name) / "repo"
         (repo / "nodes").mkdir(parents=True)
         shutil.copytree(ROOT / "nodes" / "commitments", repo / "nodes" / "commitments")
@@ -1111,97 +1112,67 @@ class Step08Live03Test(unittest.TestCase):
             shutil.copyfile(f, repo / "nodes" / f.name)
         node_id = next(iter(load(self.run / "03-advertise" / "carrier.json")["nodes"].values()))["node_id"]
         git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
-        started = self.started()
-
-        def commit(msg, at):
-            date = at.strftime("%Y-%m-%dT%H:%M:%SZ")
-            env = dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date)
-            subprocess.run([*git, "add", "nodes"], check=True, env=env)
-            subprocess.run([*git, "commit", "-qm", msg], check=True, env=env)
         subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
-        commit("then", started - dt.timedelta(days=1))
+        subprocess.run([*git, "add", "nodes"], check=True)
+        subprocess.run([*git, "commit", "-qm", "then"], check=True)
         then = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        commitment = repo / "nodes" / "commitments" / f"{node_id}.json"
-        commitment.write_bytes(commitment.read_bytes() + b"\n")
-        commit("now", started + dt.timedelta(seconds=replaced_at))
         doc = load(self.run / "03-advertise" / "carrier.json")
         doc["head"] = then
         dump(self.run / "03-advertise" / "carrier.json", doc)
         rehash(self.run / "03-advertise")
-        return repo
-
-    def started(self):
-        return step.utc_time(load(self.run / "03-advertise" / "finding.json")["started"])
-
-    def sealed_at(self, at):
-        """As if this 08 run had reproduced the run's live 01 as PASS, with a capsule signed at `at`."""
-        self.sealed = mock.patch.object(step, "sealed_times", return_value=[at])
-        self.sealed.start()
+        run = repo / "findings" / self.run.name
+        shutil.copytree(self.run, run)
+        subprocess.run([*git, "checkout", "-qb", "pr"], check=True)
+        if reissue:
+            commitment = repo / "nodes" / "commitments" / f"{node_id}.json"
+            commitment.write_bytes(commitment.read_bytes() + b"\n")
+        subprocess.run([*git, "add", "findings", "nodes"], check=True)
+        subprocess.run([*git, "commit", "-qm", "findings"], check=True)
+        subprocess.run([*git, "checkout", "-q", "main"], check=True)
+        subprocess.run([*git, "merge", "-q", "--no-ff" if merge else "--ff-only", "-m", "Merge pull request", "pr"],
+                       check=True)
+        subprocess.run([*git, "remote", "add", "origin", "https://github.com/evidence-network/loop.git"], check=True)
+        subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "main"], check=True)
+        return repo, run
 
     def head_relies(self, f):
-        return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03")]
+        return [nc for nc in f["not_checked"] if nc["what"].startswith("step 03: carrier.json's commit")]
 
-    def test_the_commit_main_held_when_03_started_is_borne_out(self):
-        repo = self.scratch_main(replaced_at=3600)  # main replaced the commitment an hour after 03 started
-        self.sealed_at(self.started() - dt.timedelta(minutes=1))
+    def unanchored(self, f):
+        return [nc for nc in f["not_checked"] if nc["what"] == f"step 03: {step.ANCHOR_WHAT}"]
+
+    def verify_in(self, repo, run):
+        out = run / "08-verify"
         with mock.patch.object(step, "ROOT", repo):
-            f, entries = self.verify()
+            step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def test_the_carrier_commit_the_publishing_merge_holds_is_borne_out(self):
+        repo, run = self.published()
+        f, entries = self.verify_in(repo, run)
         self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
-        self.assertEqual(self.head_relies(f), [])
+        self.assertEqual(self.head_relies(f), [], f["not_checked"])
+        self.assertEqual(self.unanchored(f), [], f["not_checked"])
 
-    def test_a_replayed_older_commit_is_named(self):
-        repo = self.scratch_main(replaced_at=-3600)  # main had replaced a commitment by 03's start
-        self.sealed_at(self.started() - dt.timedelta(minutes=1))
-        with mock.patch.object(step, "ROOT", repo):
-            f, entries = self.verify()
+    def test_commitments_re_issued_in_the_publishing_merge_are_named(self):
+        # The merge that published 03 holds another commitment than carrier.json's commit: 03 rests on its record.
+        repo, run = self.published(reissue=True)
+        f, entries = self.verify_in(repo, run)
         self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
         self.assertEqual([nc["issue"] for nc in self.head_relies(f)], [step.TRUST_ISSUE], f["not_checked"])
+        self.assertEqual(self.unanchored(f), [], f["not_checked"])
 
-    def test_a_start_no_capsule_bounds_is_named(self):
-        for case in ("no capsule", "capsule after the start", "no main", "a 01 not reproduced"):
+    def test_a_run_no_merge_published_has_no_anchor_and_says_so(self):
+        for case in ("not in the repository", "a single-parent commit only"):
             with self.subTest(case):
                 self.tearDown()
                 self.setUp()
-                repo = self.scratch_main(replaced_at=3600)
-                if case == "capsule after the start":  # 03's start set back before 01's signed seal
-                    self.sealed_at(self.started() + dt.timedelta(minutes=1))
-                elif case == "a 01 not reproduced":  # a capsule file alone, which no judge here verified
-                    d = self.run / "01-seal" / "n1"
-                    d.mkdir(parents=True)
-                    stamp = (self.started() - dt.timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-                    dump(d / "capsule.json", {"timestamp": stamp})
-                elif case == "no main":
-                    self.sealed_at(self.started() - dt.timedelta(minutes=1))
-                    subprocess.run(["git", "-C", str(repo), "branch", "-qm", "main", "other"], check=True)
-                with mock.patch.object(step, "ROOT", repo):
-                    f, entries = self.verify()
+                repo, run = self.published(merge=case == "not in the repository")
+                if case == "not in the repository":
+                    run = self.run
+                f, entries = self.verify_in(repo, run)
                 self.assertEqual(len(self.head_relies(f)), 1, f["not_checked"])
-
-    def test_a_side_branch_commit_before_the_start_is_not_main(self):
-        # main replaced the commitment 3 hours before 03 started. A side branch off the older commit, dated 2 hours
-        # before the start but merged after it, still holds the old commitment: it is not what main held then.
-        repo = self.scratch_main(replaced_at=-3 * 3600)
-        self.sealed_at(self.started() - dt.timedelta(minutes=1))
-        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
-        then = load(self.run / "03-advertise" / "carrier.json")["head"]
-        early = (self.started() - dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        late = (self.started() + dt.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        subprocess.run([*git, "checkout", "-qb", "side", then], check=True)
-        (repo / "nodes" / "unrelated.txt").write_text("side\n")
-        subprocess.run([*git, "add", "nodes"], check=True)
-        subprocess.run([*git, "commit", "-qm", "side"], check=True,
-                       env=dict(os.environ, GIT_COMMITTER_DATE=early, GIT_AUTHOR_DATE=early))
-        side_head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        subprocess.run([*git, "checkout", "-q", "main"], check=True)
-        subprocess.run([*git, "merge", "-q", "--no-ff", "-m", "merge", "side"], check=True,
-                       env=dict(os.environ, GIT_COMMITTER_DATE=late, GIT_AUTHOR_DATE=late))
-        doc = load(self.run / "03-advertise" / "carrier.json")
-        doc["head"] = side_head
-        dump(self.run / "03-advertise" / "carrier.json", doc)
-        rehash(self.run / "03-advertise")
-        with mock.patch.object(step, "ROOT", repo):
-            f, entries = self.verify()
-        self.assertEqual(len(self.head_relies(f)), 1, f["not_checked"])
+                self.assertEqual([nc["issue"] for nc in self.unanchored(f)], [step.TRUST_ISSUE], f["not_checked"])
 
     def test_carrier_json_unreadable_or_naming_another_node_fails(self):
         for change in ("unreadable", "outside"):
@@ -1402,18 +1373,10 @@ class Step08Live01Test(unittest.TestCase):
         self.assertEqual(e["status"], "reproduced", e["problems"])
         self.assertEqual(e["rederived"]["result"], "PASS")
         # Every node sealed under its listed key: nodes.json's per-node state is borne out, so nothing is 01's word.
-        self.assertFalse([nc for nc in f["not_checked"] if nc["what"].startswith("step 01")], f["not_checked"])
+        # (LOOP_NODES_DIR gives the listings here, which 08 names apart: loop#280.)
+        self.assertFalse([nc for nc in f["not_checked"] if nc["what"].startswith("step 01")
+                          and nc["what"] != f"step 01: {step.ANCHOR_WHAT}"], f["not_checked"])
         self.assertEqual(finding.check(self.run), [])
-        # The passing 01's node-signed capsule times bound a later 03's start; a re-verification whose 01 no longer
-        # passes keeps none of them.
-        times = [step.utc_time(load(p)["timestamp"]) for p in sorted((self.run / "01-seal").glob("*/capsule.json"))]
-        self.assertEqual(step.SEALED.get(self.run.resolve()), times)
-        self.assertTrue(times)
-        shutil.copyfile(POPULATION / "keys" / "bob" / "node-key.pub.pem", self.run / "01-seal" / "lab-1" / "node-key.pub.pem")
-        rehash(self.run / "01-seal")
-        f, entries = self.verify()
-        self.assertEqual(f["result"], "FAIL", f["detail"])
-        self.assertNotIn(self.run.resolve(), step.SEALED)
 
     def test_a_node_key_the_listing_does_not_publish_fails(self):
         def swap(d):
@@ -1902,105 +1865,210 @@ class Step08Live06Test(unittest.TestCase):
 
 
 
-class Step08RunCommitTest(unittest.TestCase):
-    """loop#193: the listed keys are read at the commit run.json records, not at whatever this checkout holds now."""
+class Step08PublicationTest(unittest.TestCase):
+    """loop#280: a live step is held to the repository inputs of the pull request merge on evidence-network/loop's
+    main that first held its files, never to a time the run's own keys signed."""
 
-    def git(self, *a):
-        return subprocess.run(["git", "-C", str(self.repo), *a], capture_output=True, text=True, check=True).stdout.strip()
+    NODE = "a" * 64
+
+    def git(self, *a, repo=None):
+        return subprocess.run(["git", "-C", str(repo or self.repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid",
+                               "-c", "commit.gpgsign=false", *a], capture_output=True, text=True, check=True).stdout.strip()
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        t = Path(self.tmp.name)
-        self.repo, self.run = t / "repo", t / "run"
+        self.repo = Path(self.tmp.name) / "repo"
         (self.repo / "nodes").mkdir(parents=True)
-        self.run.mkdir()
-        self.git("init", "-q")
-        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "11" * 32})
-        self.git("add", "nodes")
-        self.git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "list")
-        self.commit = self.git("rev-parse", "HEAD")
-        patch = mock.patch.object(step, "ROOT", self.repo)
-        patch.start()
-        self.addCleanup(patch.stop)
-        env = mock.patch.dict(os.environ)
-        env.start()
-        os.environ.pop("LOOP_NODES_DIR", None)
-        self.addCleanup(env.stop)
+        self.git("init", "-q", "-b", "main")
+        self.key("11")
+        self.commit("list")
+        self.git("remote", "add", "origin", "https://github.com/evidence-network/loop.git")
+        self.run = self.repo / "findings" / "2026-10-31-live"
+        self.step = self.run / "01-seal"
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def at(self, **run):
-        dump(self.run / "run.json", dict({"population": "live", "stage": "1", "steps": []}, **run))
-        return step.nodes_at_run_commit(self.run, "live", self.tmp.name)
+    def key(self, k):
+        dump(self.repo / "nodes" / f"{self.NODE}.json", {"key_id": k * 32})
 
-    def test_the_listings_are_read_at_the_commit_even_after_a_rotation(self):
-        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": "22" * 32})  # the checkout rotated the key
-        nodes, gaps = self.at(commit=self.commit, nodes_clean=True)
-        self.assertEqual(gaps, [])
-        self.assertEqual(load(nodes / ("a" * 64 + ".json"))["key_id"], "11" * 32)
-
-    def test_a_run_that_pins_no_commit_or_an_unknown_one_or_uncommitted_nodes_is_named(self):
-        for run, why in (({}, "pins no commit"), ({"commit": "b" * 40, "nodes_clean": True}, "not in this checkout"),
-                         ({"commit": self.commit, "nodes_clean": False}, "was not committed")):
-            nodes, gaps = self.at(**run)
-            self.assertIsNone(nodes)
-            self.assertEqual([g["issue"] for g in gaps], [step.TRUST_ISSUE])
-            self.assertIn(why, gaps[0]["why"])
-
-    def test_a_rehearsal_run_or_an_explicit_nodes_dir_is_left_alone(self):
-        self.assertEqual(step.nodes_at_run_commit(self.run, "rehearsal", self.tmp.name), (None, []))
-        os.environ["LOOP_NODES_DIR"] = "/x"
-        self.assertEqual(step.nodes_at_run_commit(self.run, "live", self.tmp.name), (None, []))
-
-    def commit_at(self, when, key):
-        dump(self.repo / "nodes" / ("a" * 64 + ".json"), {"key_id": key})
-        self.git("add", "nodes")
-        env = dict(os.environ, GIT_COMMITTER_DATE=when, GIT_AUTHOR_DATE=when)
-        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", key],
-                       env=env, check=True)
+    def commit(self, msg):
+        self.git("add", "-A")
+        self.git("commit", "-qm", msg)
         return self.git("rev-parse", "HEAD")
 
-    def test_a_pinned_commit_is_trusted_only_if_it_holds_what_main_held_at_the_run_start(self):
-        self.git("checkout", "-q", "-B", "main")
-        old = self.commit_at("2026-10-30T10:00:00Z", "10" * 32)
-        new = self.commit_at("2026-10-30T12:00:00Z", "22" * 32)  # the key rotated
-        self.git("checkout", "-q", "-b", "side", old)
-        side = self.commit_at("2026-10-30T13:00:00Z", "33" * 32)
-        step.SEALED[self.run.resolve()] = [step.utc_time("2026-10-30T23:00:00Z")]
-        self.addCleanup(step.SEALED.pop, self.run.resolve(), None)
-        for commit, trusted in ((new, True), (old, False), (side, False)):
-            dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": commit})
-            self.assertIs(step.pin_is_current(self.run), trusted, commit)
-        step.SEALED.pop(self.run.resolve())  # no passing 01 bounds the start: nothing is trusted
-        dump(self.run / "run.json", {"population": "live", "started": "2026-10-31T00:00:00Z", "commit": new})
-        self.assertIs(step.pin_is_current(self.run), False)
+    def pr(self, msg, edit, merge=True):
+        """A branch off main that makes `edit`, merged into main (a merge commit, else fast-forward); returns main."""
+        self.git("checkout", "-qb", msg)
+        edit()
+        self.commit(msg)
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--no-ff" if merge else "--ff-only", "-m", f"Merge {msg}", msg)
+        self.sync()
+        return self.git("rev-parse", "HEAD")
 
-    def test_an_untrusted_pin_re_runs_08_on_this_checkouts_nodes_and_names_it(self):
-        live = Path(self.tmp.name) / "live"
-        (live / "01-x").mkdir(parents=True)
-        write_run_json(live, ["01", "08"], "live")
-        finding.write(live / "01-x", result="NOT_CHECKED", population="live", asserts="a", pinned=[], proof=[],
-                      detail="", started=finding.now(), not_checked=[{"what": "x", "why": "y", "issue": step.RUN_ISSUE}])
-        seen = []
+    def sync(self):
+        self.git("update-ref", "refs/remotes/origin/main", "main")
 
-        def verify_run(run, out, pop, population):
-            seen.append(os.environ.get("LOOP_NODES_DIR"))
-            return [{"dir": "01-x", "status": "reproduced", "recorded": {"result": "PASS"}}]
-        gap = {"what": "the listed keys, read at the commit the run ran at", "why": "x", "issue": step.TRUST_ISSUE}
-        calls = []
+    def write_step(self, d=None, text="capsule"):
+        d = d or self.step
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "capsule.json").write_text(text + "\n")
 
-        def at_run(run, population, tmp, untrusted=False):
-            calls.append(untrusted)
-            return (Path("/pinned/nodes"), []) if not untrusted else (None, [gap])
-        with mock.patch.object(step, "nodes_at_run_commit", at_run), mock.patch.object(step, "pin_is_current", return_value=False), \
-                mock.patch.object(step, "verify_run", verify_run), mock.patch.dict(os.environ):
-            os.environ.pop("LOOP_NODES_DIR", None)
-            step.main(["--population", str(ROOT / "population" / "live"), "--out", str(live / "08-verify")])
-            self.assertNotIn("LOOP_NODES_DIR", os.environ)
-        self.assertEqual(calls, [False, True])
-        self.assertEqual(seen, ["/pinned/nodes", None])  # the second run reads this checkout, not the untrusted pin
-        self.assertIn(gap, load(live / "08-verify" / "finding.json")["not_checked"])
+    def anchor(self, d=None):
+        return step.publication(d or self.step, root=self.repo)
+
+    def listed_at(self, commit):
+        env = step.inputs_at(commit, Path(self.tmp.name) / commit, root=self.repo)
+        return load(Path(env["LOOP_NODES_DIR"]) / f"{self.NODE}.json")["key_id"]
+
+    def test_a_step_published_while_its_key_was_listed_stays_held_to_it_after_a_rotation(self):
+        merged = self.pr("findings", self.write_step)
+        self.key("22")  # the key is retired after publication
+        self.commit("rotate")
+        self.sync()
+        self.assertEqual(self.anchor(), (merged, None))
+        self.assertEqual(self.listed_at(merged), "11" * 32)
+
+    def test_a_step_published_after_the_retirement_is_held_to_the_new_listing(self):
+        # A forged run, however old the times its capsules carry, reaches main only after the key was retired.
+        self.key("22")
+        self.commit("rotate")
+        merged = self.pr("findings", self.write_step)
+        self.assertEqual(self.listed_at(self.anchor()[0]), "22" * 32)
+        self.assertEqual(self.anchor()[0], merged)
+
+    def test_a_retirement_in_the_publishing_merge_holds_the_step_to_the_new_listing(self):
+        def both():
+            self.write_step()
+            self.key("22")
+        merged = self.pr("findings", both)
+        self.assertEqual(self.anchor(), (merged, None))
+        self.assertEqual(self.listed_at(merged), "22" * 32)
+
+    def test_bytes_that_differ_from_main_or_a_step_not_on_main_have_no_anchor(self):
+        self.write_step()
+        self.assertIsNone(self.anchor()[0])  # not on main yet
+        merged = self.pr("findings", self.write_step)
+        (self.step / "capsule.json").write_text("forged\n")
+        self.assertIsNone(self.anchor()[0])
+        self.write_step()
+        self.assertEqual(self.anchor()[0], merged)
+
+    def test_a_file_edited_after_publication_moves_the_anchor_later(self):
+        self.pr("findings", self.write_step)
+        self.key("22")
+        self.commit("rotate")
+        edited = self.pr("edit", lambda: self.write_step(text="edited"))
+        self.assertEqual(self.anchor(), (edited, None))
+        self.assertEqual(self.listed_at(edited), "22" * 32)
+
+    def test_single_parent_commits_are_never_anchors(self):
+        # A squash, a rebase commit or a direct push: the next merge that holds the bytes is the anchor.
+        self.write_step()
+        self.commit("squash")
+        self.sync()
+        self.assertIsNone(self.anchor()[0])
+        later = self.pr("other", lambda: (self.repo / "README").write_text("x\n"))
+        self.assertEqual(self.anchor(), (later, None))
+
+    def test_an_intermediate_commit_that_listed_the_key_is_not_an_anchor(self):
+        # A rebase merge or a direct push: one commit re-lists the retired key beside the forged step, the next
+        # restores nodes/; neither is a merge, and the next merge holds nodes/ restored.
+        self.key("22")
+        self.commit("rotate")
+        self.key("11")
+        self.write_step()
+        self.commit("re-list and forge")
+        self.key("22")
+        self.commit("restore")
+        merged = self.pr("other", lambda: (self.repo / "README").write_text("x\n"))
+        self.assertEqual(self.anchor(), (merged, None))
+        self.assertEqual(self.listed_at(merged), "22" * 32)
+
+    def test_a_step_added_later_does_not_move_an_earlier_steps_anchor(self):
+        first = self.pr("findings", self.write_step)
+        self.key("22")
+        self.commit("rotate")
+        later = self.run / "02-book"
+        second = self.pr("more", lambda: self.write_step(later))
+        self.assertEqual(self.anchor(), (first, None))
+        self.assertEqual(self.anchor(later), (second, None))
+
+    def test_an_excluded_commit_is_never_an_anchor_whatever_its_own_tree_says(self):
+        def forged():
+            self.write_step()
+            dump(self.repo / step.EXCLUSIONS, {"commits": []})  # its own copy excludes nothing
+        bad = self.pr("forged", forged)
+        later = self.pr("other", lambda: (self.repo / "README").write_text("x\n"))
+        self.assertEqual(self.anchor()[0], bad)
+        quarantine = self.pr("exclude", lambda: dump(self.repo / step.EXCLUSIONS,
+                                                     {"commits": [{"commit": bad, "why": "flagged direct push"}]}))
+        self.assertEqual(self.anchor()[0], later)
+        self.assertNotEqual(quarantine, bad)
+        (self.repo / step.EXCLUSIONS).write_text("not json")
+        self.pr("break", lambda: (self.repo / step.EXCLUSIONS).write_text("not json\n"))
+        self.assertIsNone(self.anchor()[0])
+
+    def test_a_foreign_origin_a_local_main_or_a_shallow_clone_gives_no_anchor(self):
+        self.pr("findings", self.write_step)
+        self.git("remote", "set-url", "origin", "https://github.com/someone/loop.git")
+        self.assertIn("origin is not", self.anchor()[1])
+        self.git("remote", "set-url", "origin", "git@github.com:evidence-network/loop.git")
+        self.git("update-ref", "-d", "refs/remotes/origin/main")
+        self.assertIn("no origin/main", self.anchor()[1])  # local main alone never supplies one
+        self.sync()
+        self.assertIsNotNone(self.anchor()[0])
+        shallow = Path(self.tmp.name) / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth", "2", f"file://{self.repo}", str(shallow)], check=True)
+        self.git("remote", "set-url", "origin", "https://github.com/evidence-network/loop", repo=shallow)
+        why = step.publication(shallow / "findings" / "2026-10-31-live" / "01-seal", root=shallow)[1]
+        self.assertIn("shallow", why)
+
+    def test_a_step_outside_findings_or_holding_a_symlink_has_no_anchor(self):
+        self.pr("findings", self.write_step)
+        os.symlink("capsule.json", self.step / "link.json")
+        self.assertIsNone(self.anchor()[0])
+        os.unlink(self.step / "link.json")
+        self.assertIsNotNone(self.anchor()[0])
+        elsewhere = self.repo / "lab" / "x" / "01-seal"
+        self.write_step(elsewhere)
+        self.commit("lab")
+        self.assertIsNone(self.anchor(elsewhere)[0])
+
+    def test_an_input_the_anchor_predates_is_empty(self):
+        merged = self.pr("findings", self.write_step)
+        env = step.inputs_at(merged, Path(self.tmp.name) / "in", root=self.repo)
+        self.assertFalse(Path(env["LOOP_WITNESS_LISTING"]).exists())  # lab/witness/ came later
+        self.assertEqual(list(Path(env["LOOP_LAB_RUNS"]).iterdir()), [])
+
+    def test_verify_run_reads_each_steps_inputs_at_its_anchor_and_names_a_step_without_one(self):
+        merged = self.pr("findings", self.write_step)
+        self.key("22")
+        self.commit("rotate")
+        self.sync()
+        (self.run / "04-admit").mkdir()
+        write_run_json(self.run, ["08"], "live")
+        seen = {}
+
+        def verify_step(d, pop_dir, population, tmp, anchor=None):
+            listing = Path(os.environ.get("LOOP_NODES_DIR", self.repo / "nodes")) / f"{self.NODE}.json"
+            seen[d.name] = (anchor, load(listing)["key_id"])
+            return {"dir": d.name, "step": d.name[:2], "status": "reproduced", "relies_on": []}
+        with mock.patch.object(step, "ROOT", self.repo), mock.patch.object(step, "verify_step", verify_step), \
+                mock.patch.dict(os.environ):
+            for k in ("LOOP_NODES_DIR", "LOOP_LAB_RUNS", "LOOP_WITNESS_LISTING"):
+                os.environ.pop(k, None)
+            entries = step.verify_run(self.run, self.run / "08-verify", POPULATION, "live")
+            self.assertNotIn("LOOP_NODES_DIR", os.environ)  # put back after each step
+            self.assertEqual(seen["01-seal"], (merged, "11" * 32))
+            self.assertEqual(seen["04-admit"], (None, "22" * 32))  # 04 holds nothing to a key: no anchor, no gap
+            self.assertEqual([e["relies_on"] for e in entries], [[], []])
+            (self.step / "capsule.json").write_text("forged\n")
+            entries = step.verify_run(self.run, self.run / "08-verify", POPULATION, "live")
+        self.assertEqual(seen["01-seal"], (None, "22" * 32))
+        gap = entries[0]["relies_on"]
+        self.assertEqual([(g["what"], g["issue"]) for g in gap], [(f"step 01: {step.ANCHOR_WHAT}", step.TRUST_ISSUE)])
 
 
 if __name__ == "__main__":

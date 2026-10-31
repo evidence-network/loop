@@ -589,8 +589,9 @@ DOCTOR_ROUTE = "/api/plugins/capsules/tools/doctor"
 COMMITMENT_ROUTE = "/api/plugins/capsules/tools/mesh_commitment_fetch"
 OWN_COMMITMENT_ROUTE = "/api/plugins/capsules/tools/commitment"
 JOIN_ROUTE = "/api/plugins/capsules/tools/join"
-# The commitments a findings run publishes (loop#88), one per node: nodes/commitments/<node_id>.json.
-PUBLISHED = ROOT / "nodes" / "commitments"
+# The commitments a findings run publishes (loop#88), one per node: nodes/commitments/<node_id>.json (in LOOP_NODES_DIR's
+# listings when that is set).
+PUBLISHED = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes")) / "commitments"
 # A detail line saying a node's commitment is not the published one; it stays in detail on a FAIL too.
 CHANGED = "commitment changed"
 NODE_CONSOLE_ISSUE = "evidence-network/loop: lab/lab.sh loop gives each node's console (LOOP_NODE_CONSOLES)"
@@ -1003,7 +1004,7 @@ def listed_entry(node):
     """A live node's nodes/ entry: node_id, key_id and what it lists as stranger-safe."""
     if "node_id" in node and "key_id" in node:
         return node
-    return load(ROOT / "nodes" / f"{node.get('node_id', node['name'])}.json")
+    return load(nodes_dir() / f"{node.get('node_id', node['name'])}.json")
 
 
 def judge_reporter_line(stem, line, entry, signed=None):

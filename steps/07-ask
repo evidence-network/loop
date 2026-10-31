@@ -169,9 +169,11 @@ EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node: 
 LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
-# Where the lab keeps each live node's signed join commitment (lab/lab.sh pack).
-LAB_RUNS = ROOT / "lab" / "runs"
-PUBLISHED = ROOT / "nodes" / "commitments"  # what step 03 publishes and verifies against the listed key
+# Where the lab keeps each live node's signed join commitment (lab/lab.sh pack); LOOP_LAB_RUNS when 08 re-derives a
+# published run at the commit that published it (evidence-network/loop#280).
+LAB_RUNS = Path(os.environ.get("LOOP_LAB_RUNS") or ROOT / "lab" / "runs")
+# What step 03 publishes and verifies against the listed key, in LOOP_NODES_DIR's listings when that is set.
+PUBLISHED = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes")) / "commitments"
 
 
 def load(path):

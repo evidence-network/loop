@@ -394,6 +394,10 @@ under the key that entry lists. Run it again after a later bind or checkpoint: a
 its file replaced, one that did not is left alone. `pack` takes both files for each node and stops if either is
 missing or holds an `npub`/`nsec`. Step 03 reads them from this repository's `HEAD`, so they count once they
 are merged and the lab clone is up to date; the findings PR that carries them is the publication.
+Merge a findings PR with a merge commit, not a squash: step 08 holds each published step to the keys and
+commitments of the merge commit that published it (steps/08-verify.md), and a squash leaves the step
+anchored at whichever merge comes next. Rotate a node's key in its own PR after the findings that use it
+are merged.
 
 ## 4. The reporter node
 
