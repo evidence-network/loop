@@ -23,7 +23,7 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 01, 02, 03, 04, 05, 07 and 09 are re-derived the
+  live          live steps 01, 02, 03, 04, 05, 06 (Lightning rail), 07 and 09 are re-derived the
                 same way: their judges read only their proof (and, for 07, the
                 repository's nodes/ listings; listed keys and 03's carrier
                 bytes are held to this checkout). The other live steps' judges
@@ -87,7 +87,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
+LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -393,6 +393,17 @@ LIVE_RELIES_ON = {
             "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records "
                    "skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then",
             "issue": TRUST_ISSUE}],
+    "06": [{"what": "step 06: each node's recorded.json is all the settlements its ledger held",
+            "why": "08 runs 06's ruled checks again on the records 06 kept, but no checkpoint the node signs covers "
+                   "its ledger", "issue": LEDGER_ISSUE},
+           {"what": "step 06: the preimage checks behind finality",
+            "why": "recorded.json keeps each preimage check's outcome, never the preimage, so 08 takes that a "
+                   "payer's preimage hashed to its payment_hash from 06", "issue": TRUST_ISSUE},
+           {"what": "step 06: each settlement bundle a counterparty_count was checked against",
+            "why": "the proof holds each check's status, counts and the bundle's sha256, not the signed bundle or the "
+                   "check file, so 08 takes the status against the bundle from 06 and decides again only that the "
+                   "paired count is the books' pair count",
+            "issue": TRUST_ISSUE}],
     "09": [{"what": "step 09: each node's copied ledger files are the node's whole files",
             "why": "08 checks each held Result again on the copies, but no checkpoint the node signs covers them",
             "issue": LEDGER_ISSUE}],
@@ -621,6 +632,86 @@ def keys_05_live(c):
         [f"nodes.json names nodes {sorted(read) if isinstance(read, dict) else read!r}, the population {names}"]
 
 
+def rederive_06_live(m, c):
+    """Live 06 on the Lightning rail (loop#243): its own main_lightning on the copied proof. Each node's
+    recorded.json is the record 06 read from its ledger, so the ruled checks (reference, finality, band, rail_fee,
+    exchange_match) run again on them. counterparty_count is decided from counterparty.json's rows by 06's rule:
+    08 takes each row's status, bundle sha256 and disclosed count from 06 (the check files and signed bundles are
+    not in the proof) and decides again only that its paired count is the books' pair count. checks.json is written
+    again and must be the cited bytes; counterparty.json is validated as rows and carried."""
+    old_shape(c, "06", "checks.json")
+    old_shape(c, "06", "counterparty.json")
+    pop = load(c.pop / "population.json")
+    if pop.get("rail") != "lightning":
+        raise Unreproducible("step 06: its live result re-derived from its proof bytes",
+                             f"08 re-derives the live Lightning rail only, not {pop.get('rail')!r}", LIVE_ISSUE)
+    ids = {n["name"]: n.get("node_id") for n in pop["nodes"]}
+    recorded_checks = load(c.bundle / "checks.json")  # unlinked from the copy: the judge writes it again
+    if not isinstance(recorded_checks, dict):
+        raise Mismatch("checks.json is not an object of checks")
+    rows = load(c.bundle / "counterparty.json")
+    keys = {"bundle_sha256", "disclosed_settlements", "method", "node", "paired", "peer", "status", "unpaired"}
+    pairs = {}
+    for r in rows if isinstance(rows, list) else [None]:
+        if not (isinstance(r, dict) and set(r) == keys and r["node"] in ids and r["peer"] in ids
+                and r["node"] != r["peer"] and (r["node"], r["peer"]) not in pairs
+                and all(type(r[k]) is int for k in ("paired", "unpaired")) and isinstance(r["status"], str)
+                and isinstance(r["bundle_sha256"], str)):
+            raise Mismatch(f"counterparty.json holds a row that is not one check of a node's book against a peer's "
+                           f"signed bundle: {json.dumps(r, sort_keys=True)[:200]}")
+        pairs[(r["node"], r["peer"])] = r
+    judge = m.lightning_checks
+
+    def lightning_checks(found, _ids, _checks_dir):
+        checks, _ = judge(found, ids, None)  # checks 1-5; the counterparty entries are decided from the rows below
+        cross = m.crosscheck(found, every_node=False)
+        expected = {}
+        for p in cross["paired"].values():
+            k = tuple(sorted((p["payer"], p["payee"])))
+            expected[k] = expected.get(k, 0) + 1
+        for (me, peer), r in sorted(pairs.items()):
+            what = f"counterparty_count:{me}:{peer}"
+            n = expected.get(tuple(sorted((me, peer))), 0)
+            if r["status"] == "FAIL":
+                checks[what] = {"ok": False, "detail": f"{me}'s book contradicts {peer}'s signed bundle: "
+                                                       f"{r['unpaired']} unpaired"}
+            elif isinstance(recorded_checks.get(what), dict) and recorded_checks[what].get("ok") is None and str(
+                    recorded_checks[what].get("detail")).startswith(
+                    f"{me}'s check names a bundle that is missing or changed since"):
+                # The bundle's bytes are not in the proof: 06's word, and only ever an open check, never a pass.
+                checks[what] = {"ok": None, "detail": recorded_checks[what]["detail"]}
+            elif r["status"] != "PASS" or r["paired"] != n:
+                checks[what] = {"ok": None, "detail": f"{me}'s check of {peer}'s signed bundle reads {r['status']} "
+                                                      f"with {r['paired']} paired, while the books pair {n} payments "
+                                                      "between them: the check predates a payment (run lab/lab.sh "
+                                                      "bundles)"}
+            else:
+                checks[what] = {"ok": True, "detail": f"{me}'s {r['disclosed_settlements']} settlements against "
+                                                      f"{peer}'s signed bundle (sha256 {str(r['bundle_sha256'])[:12]}"
+                                                      f"): PASS, {r['paired']} paired, {r['unpaired']} unpaired"}
+        return checks, [pairs[k] for k in sorted(pairs)]
+
+    m.lightning_checks = lightning_checks
+    found, proof, details, not_checked = {}, [], [], []
+    for n in pop["nodes"]:
+        if (c.work / n["name"] / "recorded.json").is_file():
+            found[n["name"]] = load(c.work / n["name"] / "recorded.json")
+            proof.append(f"{n['name']}/recorded.json")
+        else:
+            not_checked.append(m.live.not_checked(n["name"], "data_dir"))
+            details.append(f"node {n['name']}: not checked, data_dir or its ledger not set or unreadable")
+    m.main_lightning(pop, c.work, c.started, found, proof, details, not_checked)
+    return load(c.work / "finding.json")
+
+
+def keys_06_live(c):
+    """Nothing in live 06's proof is signed by a key, so there is none to hold to the repository. The proof's
+    nodes are the population's: a recorded.json cited for any other name is a node 06 never read."""
+    names = {n["name"] for n in load(c.pop / "population.json")["nodes"]}
+    return [f"{p['path']} is no node of the population" for p in c.record["proof"]
+            if p["path"].endswith("/recorded.json") and p["path"].split("/")[0] not in names]
+
+
 def rederive_09_live(m, c):
     """Live 09: its own judge_live on the copied proof (nodes.json, each node's copied ledger files and the
     twin-fault.json copy); each Result's signature is checked again under the keys nodes.json records."""
@@ -837,7 +928,8 @@ STEPS = {
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
 LIVE_STEPS = {"05": (rederive_05_live, keys_05_live), "09": (rederive_09_live, keys_09_live),
-              "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+              "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live),
+              "06": (rederive_06_live, keys_06_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"01", "02", "07", "09"}
