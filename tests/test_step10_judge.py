@@ -403,6 +403,46 @@ class JudgeTest(Base):
             cited = {k for k in self.cited() if k.startswith("05-deal/")}
             self.assertEqual(cited, {"05-deal/lab-a/held-1.json", "05-deal/lab-b/held-1.json"})
 
+    def live_06(self):
+        """The base run's 06 as live Lightning 06 keeps it: no ledger.jsonl, a recorded.json per node beside the
+        checks and counterparty proof files. Returns 08's manifest, resealed."""
+        m = self.manifest()
+        e06 = next(e for e in m["steps"] if e["dir"] == "06-settle")
+        d = self.run / "06-settle"
+        (d / "ledger.jsonl").unlink()
+        e06["files"] = [x for x in e06["files"] if x["path"] != "ledger.jsonl"]
+        for name, doc in (("lab-a/recorded.json", {"settlement_legs": [], "settlement_observations": []}),
+                          ("lab-b/recorded.json", {"settlement_legs": [], "settlement_observations": []}),
+                          ("checks.json", {}), ("counterparty.json", [])):
+            (d / name).parent.mkdir(parents=True, exist_ok=True)
+            dump(d / name, doc)
+            e06["files"].append({"path": name, "sha256": finding.sha256(d / name)})
+        self.reseal_manifest(m)
+        return m
+
+    def test_a_reproduced_live_06_is_read_from_its_per_node_recorded_json_not_failed(self):
+        # loop#265 makes 08 list a live 06 as reproduced; it keeps recorded.json per node, never a ledger.jsonl.
+        m = self.live_06()
+        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        self.assertEqual(sorted(r["path"] for r in records if r["dir"] == "06-settle"),
+                         ["lab-a/recorded.json", "lab-b/recorded.json"])
+        self.assertEqual({r["kind"] for r in records if r["dir"] == "06-settle"}, {"settlement"})
+        if HAS_TOOLS:
+            f = self.judge()
+            self.assertNotEqual(f["result"], "FAIL", f["detail"])
+            self.assertNotIn("08 lists no settlement record", f["detail"])
+
+    def test_a_live_06_with_no_recorded_json_still_fails(self):
+        m = self.live_06()
+        e06 = next(e for e in m["steps"] if e["dir"] == "06-settle")
+        e06["files"] = [x for x in e06["files"] if not x["path"].endswith("recorded.json")]
+        self.reseal_manifest(m)
+        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertTrue(any("06-settle: 08 lists no settlement record" in x for x in problems), problems)
+
     def with_chains(self):
         """live_05 plus each node's own chain copy (<node>/ledger/capsules.jsonl), as live 05 keeps it since loop#225:
         the exchange records, lifecycle observations and settlement legs of two lab nodes' October run, cut from
