@@ -245,6 +245,17 @@ class PolicyTest(unittest.TestCase):
         for reason in ("request_expired", "made_up", None):  # not in the spec: a breach
             self.assertEqual(step.refusal_verdict(reason), "fail")
 
+    def test_under_evidence_interop_1_a_policy_reason_is_policy(self):
+        v1 = "evidence-interop/1"
+        for reason in ("policy_declined", "not_authorized"):
+            self.assertEqual(step.refusal_verdict(reason, v1), "fail")
+            self.assertEqual(step.refusal_verdict(reason, "evidence-interop/0"), "not_checked")
+        for profile in (v1, None):
+            self.assertEqual(step.refusal_verdict("capacity_exceeded", profile), "not_checked")
+            self.assertEqual(step.refusal_verdict("request_unauthenticated", profile), "ok")
+        self.assertIn("a limit of the node's own",
+                      step.refusal_not_checked("x", "capacity_exceeded")["why"])
+
     def test_what_the_advertised_policy_answers(self):
         hc = {"subject": {"checkpoints": None}, "derivation": "history_card/1"}
         exchange = {"subject": {"exchange": "a" * 64}}
