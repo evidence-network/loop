@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|judge-key|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -762,31 +762,34 @@ cmd_witness() {
   echo "started the lab test witness $pub on port $(witness_port); commit lab/witness/witnesses.json"
 }
 
-# The live judge key (evidence-network/loop#189). Steven's GO and Sherlock2's amendment: on the lab host, never any
-# node's key, and disclosed as held by the same operator account that runs the nodes. Step 10 reads it from
-# LOOP_JUDGE_KEY (default $LAB_DIR/judge/judge.pem); only its public key enters this tree.
+# The live judge key (evidence-network/loop#189, Steven's GO Buzz 23c5f8fd): on the lab host, never any node's key,
+# and disclosed as held by the same operator account that runs the nodes (asked of Steven, Buzz 06deaebd). Step 10
+# reads it from LOOP_JUDGE_KEY (default $LAB_DIR/judge/judge.pem); only its public key enters this tree.
 cmd_judge_key() {
   local dir=$LAB_DIR/judge key=$LAB_DIR/judge/judge.pem pub=$ROOT/population/live/step10/keys/judge.pub.pem new
   run mkdir -p "$dir"
   run chmod 700 "$dir"
-  if [ "$DRY" = 1 ] || [ ! -f "$key" ]; then
+  if [ -f "$key" ]; then
+    echo "judge-key: keeping the key already at $key"
+  else
     run bash -c 'umask 077 && openssl genpkey -algorithm ed25519 -out "$1"' _ "$key"
-    run chmod 600 "$key"
   fi
+  run chmod 600 "$key"
   if [ "$DRY" = 1 ]; then echo "  > $pub (the public half of $key; refused if it is a node's key)"; return 0; fi
   new=$(openssl pkey -in "$key" -pubout) || die "cannot read the public half of $key"
+  # The same "no node's key" check step 10 makes before it seals.
   python3 -B - "$ROOT" "$new" << 'PY' || die "the judge key was refused"
-import json, sys
+import importlib.machinery, importlib.util, json, sys
 from pathlib import Path
 root, pem = Path(sys.argv[1]), sys.argv[2]
-sys.path.insert(0, str(root / "scripts"))
-import check_commitment as cc
-kid = cc.key_id_of(cc.spki_from_pem(pem))
+loader = importlib.machinery.SourceFileLoader("judge10", str(root / "steps" / "10-judge"))
+judge10 = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+loader.exec_module(judge10)
+kid = judge10.cc.key_id_of(judge10.cc.spki_from_pem(pem))
 pop = json.loads((root / "population" / "live" / "population.json").read_text())
-ids = {n.get("node_id") for n in pop["nodes"]}
-ids |= {json.loads(f.read_text()).get("key_id") for f in (root / "nodes").glob("*.json")}
-if kid in ids:
-    sys.exit(f"lab.sh: the judge key {kid} is a node's key")
+problems = judge10.node_key_problems(pop, kid, root / "nodes")
+if problems:
+    sys.exit("lab.sh: " + "; ".join(problems))
 print(f"judge key {kid}")
 PY
   if [ -f "$pub" ]; then

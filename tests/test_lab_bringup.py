@@ -641,6 +641,75 @@ class StartTest(LabRoot):
             self.assertIn(f"-n {name} bash\\ {launcher}\\ \\>\\>\\ {log}\\ 2\\>\\&1", r.stdout)
 
 
+def openssl3():
+    r = subprocess.run(["openssl", "version"], capture_output=True, text=True) if shutil.which("openssl") else None
+    return bool(r and re.match(r"OpenSSL ([3-9]|\d\d)\.", r.stdout))
+
+
+@unittest.skipUnless(openssl3(), "SKIPPED LOUDLY: lab.sh judge-key makes its key with OpenSSL 3 or later")
+class JudgeKeyTest(unittest.TestCase):
+    """lab.sh judge-key for real, in a scratch root: the key stays in $LAB_DIR/judge, only its public key is written."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.root, self.lab = self.tmp / "root", self.tmp / "lab"
+        ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+        for d in ("lab", "scripts", "steps", "nodes"):
+            shutil.copytree(ROOT / d, self.root / d, ignore=ignore)
+        (self.root / "population" / "live").mkdir(parents=True)
+        shutil.copy(ROOT / "population" / "live" / "population.json", self.root / "population" / "live")
+        self.key = self.lab / "judge" / "judge.pem"
+        self.pub = self.root / "population" / "live" / "step10" / "keys" / "judge.pub.pem"
+
+    def judge_key(self, *args):
+        return lab_sh(*args, "judge-key", env={"LAB_DIR": str(self.lab)}, root=self.root)
+
+    def test_dry_run_writes_nothing(self):
+        r = self.judge_key("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(any("genpkey" in l and l.endswith(f" _ {self.key}") for l in r.stdout.splitlines()), r.stdout)
+        self.assertIn(f"chmod 600 {self.key}", r.stdout)
+        self.assertFalse(self.lab.exists())
+        self.assertFalse(self.pub.exists())
+
+    def test_makes_the_key_in_the_lab_dir_and_writes_only_its_public_half(self):
+        r = self.judge_key()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.key.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.key.parent.stat().st_mode & 0o777, 0o700)
+        self.assertTrue(self.pub.read_text().startswith("-----BEGIN PUBLIC KEY-----\n"))
+        self.assertNotIn("PRIVATE", r.stdout + r.stderr)
+        self.assertEqual([p.name for p in self.pub.parent.iterdir()], ["judge.pub.pem"])
+
+    def test_a_second_run_keeps_the_key(self):
+        self.assertEqual(self.judge_key().returncode, 0)
+        key, pub = self.key.read_bytes(), self.pub.read_bytes()
+        self.key.chmod(0o644)
+        r = self.judge_key()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("keeping the key already at", r.stdout)
+        self.assertEqual((self.key.read_bytes(), self.pub.read_bytes()), (key, pub))
+        self.assertEqual(self.key.stat().st_mode & 0o777, 0o600)
+
+    def test_a_committed_public_key_of_another_key_is_refused(self):
+        self.pub.parent.mkdir(parents=True)
+        self.pub.write_text((ROOT / "population/rehearsal/step10/keys/judge.pub.pem").read_text())
+        r = self.judge_key()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("is another key's", r.stderr)
+
+    def test_a_nodes_key_is_refused(self):
+        self.assertEqual(self.judge_key().returncode, 0)
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import check_commitment as cc
+        kid = cc.key_id_of(cc.spki_from_pem(self.pub.read_text()))
+        (self.root / "nodes" / "judge-as-node.json").write_text(json.dumps({"key_id": kid}))
+        r = self.judge_key()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("is a node's key", r.stderr)
+
+
 class RunbookTest(unittest.TestCase):
     """LAB-BRINGUP.md section 5 matches loop.sh's step files and the live steps' inputs."""
 

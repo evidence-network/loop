@@ -717,12 +717,14 @@ class LiveFixtureTest(unittest.TestCase):
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("not under the reporting book's key", f["detail"])
+        self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
 
     def test_a_node_with_no_readable_book_is_not_checked(self):
         shutil.rmtree(self.home)
         f = self.report()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("book_dir not set or unreadable", f["not_checked"][0]["why"])
+        self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
 
 
 if __name__ == "__main__":

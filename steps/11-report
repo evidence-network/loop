@@ -640,14 +640,15 @@ def main(argv=None):
         detail += ("The page is the pinned builder's, its digest sealed in the reporting book by book report build "
                    "--seal and matched by book report check; the builder's viewer script is pinned code and was not "
                    "scanned for score-like words. ")
-        detail += (f"{LIVE_LABEL} Step 10's Results are under the live judge key: {judge10.LIVE_JUDGE}. "
-                   if population == "live" else "")
+        detail += (LIVE_LABEL + " " if population == "live" else "")
         detail += finding.outside("the pinned pack's own evaluator does not run here: step 10 applies the "
                                   "pack's terms to the results 08 re-derived", PACK_ISSUE) + " "
         detail += finding.outside("the page's text naming its two questions (did the evidence verify, is this the "
                                   "page the publisher issued)", VIEWER_ISSUE) + " "
         detail += finding.outside("a check that both sides' deals agree: only the payer seals a deal for now",
                                   PROVIDER_DEAL_ISSUE)
+    if population == "live":
+        detail += f" On live, step 10's Results are under the live judge key: {judge10.LIVE_JUDGE}."
     proof = [p for p in proof if (out / p).is_file()]
     finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
                   detail=detail.strip(), not_checked=[] if result == "PASS" else not_checked, started=started)

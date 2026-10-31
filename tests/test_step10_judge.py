@@ -542,24 +542,17 @@ class JudgeTest(Base):
         self.assertIn("is not under the repository's judge key", f["detail"])
 
 
-def openssl_key(path):
-    """A fresh Ed25519 PKCS#8 key at path (mode 600) and its SPKI public PEM beside it as <stem>.pub.pem."""
-    subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(path)], check=True, capture_output=True)
-    os.chmod(path, 0o600)
-    pub = subprocess.run(["openssl", "pkey", "-in", str(path), "-pubout"], check=True, capture_output=True, text=True)
-    Path(path).with_suffix(".pub.pem").write_text(pub.stdout)
-    return Path(path).with_suffix(".pub.pem")
+def lab_key(src, dst):
+    """A copy of a rehearsal TEST key at dst, mode 600, standing in for the lab's own key."""
+    shutil.copy(src, dst)
+    os.chmod(dst, 0o600)
+    return Path(dst)
 
 
-def openssl3():
-    r = subprocess.run(["openssl", "version"], capture_output=True, text=True) if shutil.which("openssl") else None
-    return bool(r and r.stdout.startswith("OpenSSL ") and int(r.stdout.split()[1].split(".")[0]) >= 3)
-
-
-@unittest.skipUnless(openssl3(), "SKIPPED LOUDLY: the live judge key tests make keys with OpenSSL 3 or later")
 class LiveJudgeKeyTest(Base):
     """Live: the private key is the lab's own (LOOP_JUDGE_KEY, default $LAB_DIR/judge/judge.pem), never in the
-    tree; the tree holds only its public key, population/live/step10/keys/judge.pub.pem (evidence-network/loop#189)."""
+    tree; the tree holds only its public key, population/live/step10/keys/judge.pub.pem (evidence-network/loop#189).
+    The rehearsal TEST judge key stands in for the lab's."""
 
     def setUp(self):
         super().setUp()
@@ -568,8 +561,8 @@ class LiveJudgeKeyTest(Base):
         dump(self.population / "population.json", {"population": "live", "nodes": [], "rail": None})
         self.lab = Path(self.tmp.name) / "lab"
         (self.lab / "judge").mkdir(parents=True)
-        self.key = self.lab / "judge" / "judge.pem"
-        shutil.copy(openssl_key(self.key), self.population / "step10" / "keys" / "judge.pub.pem")
+        self.key = lab_key(POPULATION / "step10" / "keys" / "judge.pem", self.lab / "judge" / "judge.pem")
+        shutil.copy(POPULATION / "step10" / "keys" / "judge.pub.pem", self.population / "step10" / "keys")
         m = self.manifest()
         m["population"] = "live"
         self.reseal_manifest(m)
@@ -627,8 +620,7 @@ class LiveJudgeKeyTest(Base):
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
     def test_a_key_that_is_not_the_committed_one_fails(self):
-        other = Path(self.tmp.name) / "other.pem"
-        openssl_key(other)
+        other = lab_key(POPULATION / "step10" / "keys" / "checkpoint.pem", Path(self.tmp.name) / "other.pem")
         os.environ["LOOP_JUDGE_KEY"] = str(other)
         f = self.live()
         self.assertEqual(f["result"], "FAIL")
@@ -640,7 +632,7 @@ class LiveJudgeKeyTest(Base):
              {"population": "live", "nodes": [{"name": "n", "node_id": kid}], "rail": None})
         f = self.live()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("is a population node's key", f["detail"])
+        self.assertIn("is a node's key", f["detail"])
 
     def test_rehearsal_ignores_the_live_key(self):
         os.environ["LOOP_JUDGE_KEY"] = str(Path(self.tmp.name) / "nowhere.pem")

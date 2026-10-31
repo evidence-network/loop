@@ -79,8 +79,9 @@ RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
 WINDOW_ISSUE = ("the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months "
                 "by Steven's 2026-10-29 ruling: a record is judged once its month has closed")
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
-# Who holds the live judge key (Steven's GO, Buzz 23c5f8fd; Sherlock2's amendment, Buzz 06deaebd): said in every live
-# detail, so a live PASS is never read as an independent judge's.
+# Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.
+# Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" is asked of him in
+# Buzz 06deaebd (the lab account that runs the nodes has passwordless sudo on the lab host).
 LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
               "operator, not an independent judge")
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
@@ -394,14 +395,12 @@ def judge_keys(population, keys):
     return {"judge": (pem, pub), "checkpoint": (pem, pub)}
 
 
-def node_key_problems(pop, judge_key):
-    """The judge key must be no population node's: not a node id, nor the key id its nodes/ entry lists."""
+def node_key_problems(pop, judge_key, nodes_dir=ROOT / "nodes"):
+    """The judge key must be no node's: not a population node id, nor the key id any nodes/ entry lists.
+    lab/lab.sh judge-key refuses a new key with this same check."""
     ids = {n.get("node_id") for n in pop.get("nodes", [])}
-    for n in pop.get("nodes", []):
-        entry = ROOT / "nodes" / f"{n.get('node_id')}.json"
-        if n.get("node_id") and entry.is_file():
-            ids.add(load(entry).get("key_id"))
-    return [f"the judge key {judge_key[:12]} is a population node's key"] if judge_key in ids else []
+    ids |= {load(f).get("key_id") for f in Path(nodes_dir).glob("*.json")}
+    return [f"the judge key {judge_key[:12]} is a node's key"] if judge_key in ids else []
 
 
 class Book:
