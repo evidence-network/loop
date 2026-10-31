@@ -29,6 +29,8 @@ POPULATION = ROOT / "population" / "rehearsal"
 BASE = POPULATION / "step10" / "run"
 
 sys.path.insert(0, str(STEPS))
+sys.path.insert(0, str(ROOT / "scripts"))
+import ecosystem_gate as gate  # noqa: E402
 import finding  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step10_judge", str(STEPS / "10-judge"))
@@ -759,6 +761,128 @@ class StandInTest(unittest.TestCase):
             f = self.judge()
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("no Result cites 07-ask/alice/asks/bob/exchange/request.json", f["detail"])
+
+
+class PreviewTest(Base):
+    """--preview-open-month (evidence-network/loop#242): the open month, a look and never a baseline result. The
+    baseline window above is untouched; a preview reads --run, writes only --out, and marks every detail."""
+
+    def setUp(self):
+        super().setUp()
+        self.preview = Path(self.tmp.name) / "preview"
+
+    def october(self):
+        """The base run's four steps, finished in October 2026: records of the month 08 ran in."""
+        for i, base in enumerate(WINDOW_STEPS):
+            self.edit_step(base, finished=f"2026-10-0{i + 1}T10:00:30Z")
+
+    def run_preview(self, *extra, population=POPULATION):
+        out = self.preview / "10-judge"
+        step.main(["--population", str(population), "--preview-open-month", "--run", str(self.run),
+                   "--out", str(out), *extra])
+        f = load(out / "finding.json")
+        self.assertEqual(finding.check_record(out, f), [], f["detail"])
+        return f
+
+    def test_the_open_month_is_the_as_of_month_and_the_baseline_window_does_not_move(self):
+        self.assertEqual(step.open_month_of(utc("2026-10-02T09:01:00Z")),
+                         (utc("2026-10-01T00:00:00Z"), utc("2026-11-01T00:00:00Z")))
+        self.assertEqual(step.open_month_of(utc("2026-12-31T23:59:59Z")),
+                         (utc("2026-12-01T00:00:00Z"), utc("2027-01-01T00:00:00Z")))
+        self.assertEqual(step.window_of(utc("2026-10-02T09:01:00Z")),
+                         (utc("2025-10-01T00:00:00Z"), utc("2026-10-01T00:00:00Z")))
+
+    def test_the_marker_is_the_exact_text_the_coordinator_ruled(self):
+        self.assertEqual(finding.PREVIEW, "PREVIEW: open month, not a baseline result")
+
+    def test_a_preview_finding_starts_with_the_marker_even_when_nothing_ran(self):
+        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
+            f = self.run_preview()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
+        self.assertIn("open calendar month", f["asserts"])
+
+    def test_the_gate_refuses_what_a_preview_writes(self):
+        # Even a preview of a live run, whose population the gate would take, is refused for what it is.
+        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
+            self.run_preview()
+        f = load(self.preview / "10-judge" / "finding.json")
+        f["population"] = "live"
+        dump(self.preview / "10-judge" / "finding.json", f)
+        steps, errs = gate.read_findings(self.preview)
+        self.assertTrue(any("an open-month preview, not a baseline result" in e for e in errs), errs)
+        self.assertNotIn("population is", " ".join(errs))
+
+    def test_a_preview_reads_the_run_and_writes_only_out(self):
+        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
+            self.run_preview()
+        self.assertFalse((self.run / "10-judge").exists())
+        self.assertEqual(sorted(p.name for p in self.preview.iterdir()), ["10-judge"])
+
+    def test_a_preview_needs_a_run_and_a_run_needs_the_flag(self):
+        out = str(self.preview / "10-judge")
+        for argv in (["--preview-open-month"], ["--run", str(self.run)]):
+            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"):
+                step.main(["--population", str(POPULATION), "--out", out, *argv])
+            self.assertEqual(e.exception.code, 2)
+        self.assertFalse(self.preview.exists())
+
+    def test_a_preview_is_not_written_into_the_run_findings_or_baseline(self):
+        findings = Path(self.tmp.name) / "findings"
+        for out in (self.run / "10-judge", self.run, findings / "2026-10-31-live" / "10-judge", ROOT / "baseline" / "x"):
+            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"), \
+                    mock.patch.dict(os.environ, {"LOOP_FINDINGS": str(findings)}):
+                step.main(["--population", str(POPULATION), "--preview-open-month", "--run", str(self.run),
+                           "--out", str(out)])
+            self.assertEqual(e.exception.code, 2, out)
+        self.assertFalse((self.run / "10-judge").exists())
+        self.assertFalse(findings.exists())
+
+    def test_a_preview_never_judges_the_stand_in(self):
+        shutil.rmtree(self.run / "08-verify")
+        f = self.run_preview()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("08-verify/verified.json", f["not_checked"][0]["why"])
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW))
+        self.assertNotIn("stand-in", f["detail"])
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_preview_judges_the_open_month_with_the_same_pack(self):
+        self.october()
+        f = self.run_preview()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
+        self.assertIn("window 2026-10-01T00:00:00Z to 2026-11-01T00:00:00Z (the open month)", f["detail"])
+        out = self.preview / "10-judge"
+        w = load(out / "window.json")
+        self.assertEqual(w["manifest_sha256"], finding.sha256(self.run / "08-verify" / "verified.json"))
+        self.assertEqual((w["preview"], w["start"], w["end"], w["periods"]),
+                         ("open-month", "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z", 1))
+        self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
+        rollup = load(out / "bundles" / "rollup.bundle.json")
+        xw = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["x-window"]
+        self.assertEqual((xw["preview"], xw["periods"], xw["pack"]),
+                         ("open-month", 1, step.load_pack()["pack"]))
+        self.assertFalse((self.run / "10-judge").exists())
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_the_same_run_without_the_flag_still_judges_closed_months_only(self):
+        self.october()
+        f = self.judge()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertFalse(f["detail"].startswith("PREVIEW"))
+        self.assertNotIn("preview", load(self.run / "10-judge" / "window.json"))
+        self.assertEqual(load(self.run / "10-judge" / "window.json")["records"], [])
+        self.assertEqual(f["asserts"], step.ASSERTS)
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_september_run_has_nothing_in_the_open_month(self):
+        # The base run's records finished in September; 08 ran in October, so the open month holds none of them.
+        f = self.run_preview()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertTrue(f["detail"].startswith(finding.PREVIEW))
+        self.assertEqual(load(self.preview / "10-judge" / "window.json")["records"], [])
+        self.assertEqual(f["not_checked"][0]["issue"], step.PREVIEW_ISSUE)  # not the closed-month window's gap
 
 
 if __name__ == "__main__":

@@ -243,6 +243,11 @@ def read_run(population, path):
         if not isinstance(r, dict):
             run.findings[n] = (d, None, [f"{d.name}: finding.json is not an object"])
             continue
+        # An open-month preview (steps 10 and 11 --preview-open-month, loop#242) is never published: the status page
+        # copies each run's findings into the site and the site's history reads every run, so any run directory holding
+        # one is refused here, where all of them are read, not shown.
+        if finding.is_preview(r):
+            raise StatusError([f"{path.name}/{d.name}: an open-month preview, not a baseline result; it is never published"])
         try:
             problems = finding.check_record(d, r)
         except (AttributeError, KeyError, TypeError) as err:

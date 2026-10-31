@@ -394,6 +394,9 @@ def measured(kind, run, population, ids, by_key, shown, host, rel, date, opted=N
     if not isinstance(rec, dict):
         return {"measured": False, "step": step,
                 "says": f"not measured yet: no step {step} finding for this {'slot' if population == 'rehearsal' else 'day'}"}, []
+    if finding.is_preview(rec):
+        return {"measured": False, "step": step, "says": f"not measured yet: the step {step} finding is an open-month "
+                "preview, not a baseline result"}, []
     if finding.check_record(d, rec) or rec.get("population") != population:
         return {"measured": False, "step": step, "finding": rel(d / "finding.json"),
                 "says": f"not measured yet: the step {step} finding does not pass the format check"}, []

@@ -34,6 +34,14 @@ CLAIMED_CHECK = re.compile(r"\b(?:checked|witnessed|verified)\b", re.I)
 OUTSIDE = "Outside this step's assertion: "
 ISSUE_REF = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+$")
 GAP = re.compile(re.escape(OUTSIDE) + r"(.+?): ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\.(?=\s|$)")
+# An open-month preview of steps 10 and 11 (--preview-open-month, evidence-network/loop#242) starts every finding's
+# detail with this, so a preview can never be read as a baseline result: the ecosystem gate refuses a finding that does.
+PREVIEW = "PREVIEW: open month, not a baseline result"
+
+
+def is_preview(record):
+    """True when a finding's detail starts with the preview marker."""
+    return isinstance(record, dict) and str(record.get("detail", "")).startswith(PREVIEW)
 
 
 def outside(what, issue):

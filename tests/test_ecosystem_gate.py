@@ -26,9 +26,9 @@ class GateTest(unittest.TestCase):
         gate.ROOT = self._root
         self.tmp.cleanup()
 
-    def run_dir(self, name, results, population="live"):
+    def run_dir(self, name, results, population="live", detail="d", under="findings"):
         """A findings dir with one step per {NN: result}."""
-        out = self.dir / "findings" / name
+        out = self.dir / under / name
         for nn, result in results.items():
             d = out / f"{nn}-step"
             d.mkdir(parents=True)
@@ -41,7 +41,7 @@ class GateTest(unittest.TestCase):
             if result == "NOT_CHECKED":
                 kw["not_checked"] = [{"what": "w", "why": "y", "issue": "o/r#1"}]
             finding.write(d, result=result, population=population, asserts="a fact holds",
-                          pinned=["capsulectl"], detail="d", started=finding.now(), **kw)
+                          pinned=["capsulectl"], detail=detail, started=finding.now(), **kw)
         return out
 
     def update(self, name, results, eco="mesh", population="live"):
@@ -222,6 +222,65 @@ class GateTest(unittest.TestCase):
         (out / "01-step" / "p.txt").write_text("changed\n")
         self.assertTrue(gate.cmd_update("mesh", out, self.baseline))
         self.assertFalse(self.baseline.exists())
+
+
+    # --- An open-month preview of steps 10 and 11 is never a baseline result (evidence-network/loop#242) ---
+    PREVIEW = finding.PREVIEW + ". run r, window 2026-10-01T00:00:00Z to 2026-11-01T00:00:00Z (the open month)"
+
+    def preview_dir(self, name="p", results=None):
+        """What steps 10 and 11 write under --preview-open-month: live PASS findings with the marker, in a preview/ dir."""
+        return self.run_dir(name, results or {"10": "PASS", "11": "PASS"}, detail=self.PREVIEW, under="preview")
+
+    def test_update_refuses_a_preview_though_it_is_live_and_all_pass(self):
+        out = self.preview_dir()
+        errs = gate.cmd_update("mesh", out, self.baseline)
+        self.assertEqual(len(errs), 2, errs)
+        self.assertTrue(all("an open-month preview, not a baseline result" in e for e in errs), errs)
+        self.assertFalse(self.baseline.exists())
+
+    def test_update_refuses_one_preview_step_among_baseline_steps(self):
+        self.update("a", {"01": "PASS", "10": "NOT_CHECKED"})
+        before = self.baseline.read_text()
+        out = self.run_dir("b", {"01": "PASS", "10": "PASS"})
+        f = json.loads((out / "10-step" / "finding.json").read_text())
+        f["detail"] = self.PREVIEW
+        gate.write(out / "10-step" / "finding.json", f)
+        errs = gate.cmd_update("mesh", out, self.baseline)
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("10-step: an open-month preview", errs[0])
+        self.assertEqual(self.baseline.read_text(), before)
+
+    def test_update_through_the_command_line_exits_1_on_a_preview(self):
+        out = self.preview_dir()
+        self.assertEqual(gate.main(["g", "update", "--ecosystem", "mesh", "--findings", str(out),
+                                    "--baseline", str(self.baseline)]), 1)
+        self.assertFalse(self.baseline.exists())
+
+    def test_verify_refuses_a_baseline_whose_findings_became_a_preview(self):
+        self.update("a", {"10": "PASS"})
+        doc = json.loads(self.baseline.read_text())
+        out = self.dir / doc["ecosystems"]["mesh"]["findings"]
+        f = json.loads((out / "10-step" / "finding.json").read_text())
+        f["detail"] = self.PREVIEW
+        gate.write(out / "10-step" / "finding.json", f)
+        self.assertTrue(any("an open-month preview" in e for e in gate.cmd_verify(self.baseline)))
+
+    def test_the_gate_never_discovers_a_preview_directory(self):
+        # The gate reads the findings directory it is handed and the ones the baseline names; nothing else under the
+        # root, a preview/ dir included, is listed or globbed, so even a malformed one beside them changes nothing.
+        self.update("a", {"01": "PASS"})
+        self.preview_dir("p")
+        junk = self.dir / "preview" / "junk"
+        junk.mkdir(parents=True)
+        (junk / "not-a-step").write_text("x\n")
+        self.assertEqual(gate.cmd_verify(self.baseline), [])
+        doc = json.loads(self.baseline.read_text())
+        self.assertEqual(doc["ecosystems"]["mesh"]["findings"], "findings/a")
+        old = self.dir / "old.json"
+        old.write_text(self.baseline.read_text())
+        self.assertEqual(gate.cmd_check(old, self.baseline), [])
+        self.assertEqual(self.update("b", {"01": "PASS"}), [])
+        self.assertEqual(json.loads(self.baseline.read_text())["ecosystems"]["mesh"]["findings"], "findings/b")
 
 
 if __name__ == "__main__":

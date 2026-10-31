@@ -3,6 +3,7 @@
 every record in the window by digest, none missing and none extra, and verify offline.
 
 Usage: 10-judge --population DIR --out RUN/10-judge
+       10-judge --population DIR --preview-open-month --run RUN --out PREVIEW/10-judge
 
 RUN is the loop run (the parent of --out). This step reads only step 08's
 manifest, RUN/08-verify/verified.json, and the files it lists for the steps it
@@ -47,6 +48,13 @@ its detail says the records are that stand-in, not this run's:
                rollup    the roll-up cites exactly the finer Results, each the
                          root of a VALID bundle.
 
+--preview-open-month (evidence-network/loop#242) judges the open month instead: the calendar month containing 08's
+as-of instant, e.g. 2026-10-01 to 2026-11-01, with the same pinned pack and the same judge key. It is a look at records
+before their month closes, never a baseline result: the baseline window stays 12 whole closed months. It reads RUN
+(--run, which holds 08-verify/, never the stand-in) and writes only --out, which may not lie inside RUN or findings/;
+every finding it writes has a detail that starts with finding.PREVIEW, which the ecosystem gate refuses. Its
+window.json names the sha256 of the manifest it judged, so step 11 can refuse a preview of another run.
+
 PASS when every check held and every step 08 lists was reproduced; FAIL when a
 check did not hold; NOT_CHECKED when the window holds no record, a step is not
 reproduced, or the tools or 08's manifest are missing. The design is
@@ -84,6 +92,7 @@ JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh 
 # under Steven's delegation, Buzz 8a67299d (the lab account that runs the nodes has passwordless sudo on the lab host).
 LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
               "operator, not an independent judge")
+PREVIEW_ISSUE = "evidence-network/loop#242"  # the open-month preview; its empty month is not the closed-month window's gap
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
 # The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
@@ -95,6 +104,10 @@ ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months of
            "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
            "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
            "pinned verifier, offline, under the repository's judge key")
+PREVIEW_ASSERTS = ("a deterministic pack runs over the open calendar month of the run's records that step 08 "
+                   "reproduced; each Result it seals cites every record in the month by digest, none missing and none "
+                   "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
+                   "pinned verifier, offline, under the repository's judge key")
 RESULT_TYPE = "evidence_result"
 
 
@@ -196,6 +209,28 @@ def window_of(as_of, periods=12):
     end = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
     months = end.year * 12 + end.month - 1 - periods
     return dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc), end
+
+
+def open_month_of(as_of):
+    """[start, end): the calendar month containing as_of, which has not closed. Only --preview-open-month uses it."""
+    start = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
+    months = start.year * 12 + start.month
+    return start, dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc)
+
+
+def preview_out_problem(out, run):
+    """Why a preview may not write to `out`, or None: not into the run it reads, nor where findings or the baseline live.
+
+    The ecosystem gate reads only the findings directory it is handed (and refuses a preview finding anyway); this keeps a
+    preview from being written next to a baseline's findings in the first place."""
+    findings = Path(os.environ.get("LOOP_FINDINGS") or ROOT / "findings")
+    for base, name in ((run, "the run it reads"), (findings, "the findings directory"), (ROOT / "baseline", "baseline/")):
+        base = Path(base).resolve()
+        # samefile, not path equality: a case-insensitive file system spells one directory several ways.
+        if out == base or base in out.parents or \
+                any(p.exists() and base.exists() and os.path.samefile(p, base) for p in (out, *out.parents)):
+            return f"a preview is written outside {name} ({base}), not into it"
+    return None
 
 
 def read_manifest(run):
@@ -309,6 +344,8 @@ def result_doc(claims, pack, start, end, extra=None):
                                       "unknown_count": 0}, "buckets": buckets},
            "x-window": {"start": stamp(start), "end": stamp(end), "period": pack["window"]["period"],
                         "periods": pack["window"]["periods"], "pack": pack["pack"]}}
+    if pack.get("preview"):
+        doc["x-window"]["preview"] = pack["preview"]
     doc.update(extra or {})
     return doc
 
@@ -583,9 +620,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--preview-open-month", action="store_true",
+                    help="judge the open month, a preview and not a baseline result; needs --run")
+    ap.add_argument("--run", type=Path, help="with --preview-open-month: the loop run holding 08-verify/ to read "
+                    "(--out is then elsewhere, outside it)")
     a = ap.parse_args(argv)
+    preview = a.preview_open_month
+    if preview != (a.run is not None):
+        ap.error("--preview-open-month and --run go together")
     started = finding.now()
     out = a.out.resolve()
+    problem = preview_out_problem(out, a.run.resolve()) if preview else None
+    if problem:
+        ap.error(problem)
     out.mkdir(parents=True, exist_ok=True)
     for p in ("finding.json", "window.json"):
         (out / p).unlink(missing_ok=True)
@@ -594,10 +641,11 @@ def main(argv=None):
     pop = load(a.population / "population.json")
     population = pop["population"]
     keys = a.population.resolve() / "step10" / "keys"
-    run = out.parent
+    run = a.run.resolve() if preview else out.parent
     # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
+    # A preview is of this run's records only.
     standin = a.population.resolve() / "step10" / "run"
-    standin = standin if not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir() else None
+    standin = standin if not preview and not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir() else None
     source = standin or run
 
     problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
@@ -612,10 +660,17 @@ def main(argv=None):
         if manifest.get("population") != population:
             raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
         pack = load_pack()
-        start, end = window_of(as_of, pack["window"]["periods"])
+        if preview:
+            # The same pack and key; only the window differs, and its Results say so (x-window.preview).
+            pack = dict(pack, window={"period": pack["window"]["period"], "periods": 1}, preview="open-month")
+            start, end = open_month_of(as_of)
+        else:
+            start, end = window_of(as_of, pack["window"]["periods"])
         records, refused, not_checked, problems = select(source, manifest, start, end, pack)
         dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
                                    "period": pack["window"]["period"], "periods": pack["window"]["periods"],
+                                   **({"preview": "open-month", "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json")}
+                                      if preview else {}),
                                    "records": records, "refused": refused})
         proof.append("window.json")
         if problems:
@@ -623,7 +678,8 @@ def main(argv=None):
         if not records:
             raise NotChecked("the pack over the window",
                              f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
-                             "step of the pack's kinds finished outside it, or none is in the run", WINDOW_ISSUE)
+                             "step of the pack's kinds finished outside it, or none is in the run",
+                             PREVIEW_ISSUE if preview else WINDOW_ISSUE)
         signer = judge_keys(population, keys)
         problems = node_key_problems(pop, pub_hex(signer["judge"][1]))
         if problems:
@@ -651,11 +707,14 @@ def main(argv=None):
         problems = [f"the judge did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
 
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
-    window = f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)" if start else "no window"
+    window = ((f"window {stamp(start)} to {stamp(end)} (the open month)" if preview else
+               f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months)")
+              if start else "no window")
     packname = f"{pack['pack']} ({pack['pin']})" if pack else "inference-deals (not loaded)"
     what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "
             f"run's records" if standin else f"run {run.name}")
-    detail = (f"{what}, {window}, deterministic pack {packname} (no model): "
+    detail = ((finding.PREVIEW + ". " if preview else "")
+              + f"{what}, {window}, deterministic pack {packname} (no model): "
               f"{len(records)} records in the window from {len({r['dir'] for r in records})} steps. "
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
@@ -665,8 +724,8 @@ def main(argv=None):
     if result == "PASS":
         detail += " " + finding.outside("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
                                         "this step applies the pack's terms to the results 08 re-derived", GAP_ISSUE)
-    finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned,
-                  proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
+    finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
+                  pinned=pinned, proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)
     return 0
 
