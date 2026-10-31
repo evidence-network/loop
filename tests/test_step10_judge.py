@@ -355,12 +355,11 @@ class JudgeTest(Base):
 
     def test_a_rehearsal_09_with_no_dispute_json_still_fails(self):
         m = self.manifest()
-        m["population"] = "rehearsal"
         e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
         e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
         _, _, _, problems = step.select(self.run, m, utc(load(
             self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
-        self.assertEqual(problems, ["09-dispute: 08 lists no dispute record (dispute.json)"])
+        self.assertEqual(problems, ["09-dispute: 08 lists no dispute record (dispute.json, outcome.json)"])
 
     def live_05(self, settlement_leg=True):
         """The base run's 05 as live 05 keeps it (loop#225): two nodes' held halves of one exchange (copied from
@@ -498,7 +497,7 @@ class JudgeTest(Base):
         self.assertEqual(not_checked, [])
         for term in ("come_through.served_as_agreed", "come_through.served_named_model"):
             self.assertEqual(claims[term]["verdict"], "met", claims[term])
-            self.assertIn("the pinned pack's own evaluator, over the nodes' own chains (x-evaluator counts them), answers "
+            self.assertIn("the pinned pack's own evaluator, over the nodes' own chains, answers "
                           "this term for 3 of 6 deal sides: met 3 of 3", claims[term]["presentation"]["narrative"])
             self.assertEqual(claims[term]["presentation"]["status"], "SATISFIED")
             # every record of the step is cited, the chains beside the halves
