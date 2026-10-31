@@ -1187,6 +1187,34 @@ class PluginToolsRunTest(Tmp):
         self.assertEqual(e["status"], "not_reproduced", e["problems"])
         self.assertIn("its proof holds no nodes.json", e["not_checked"]["why"])
 
+    def test_08_does_not_reproduce_a_live_12_whose_binding_time_left_the_run(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["bind_at"] = "2099-01-01T00:00:00Z"
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+        self.assertIn("bind_at", " ".join(e["problems"]))
+
+    def test_08_names_the_consoles_the_run_held_when_a_node_was_not_asked(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["node_consoles"] = []
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertTrue(any("which consoles the run held" in r["what"] for r in e["relies_on"]), e)
+
+    def test_08_does_not_take_a_revocations_commit_that_is_no_commit_id(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["revocations_main"] = {"commit": "--output=x"}
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+
     def data_dir(self, binding=None):
         """A data_dir holding `binding` (default: alice's, as join.sh wrote it) as controller-binding.json."""
         d = Path(self.tmp.name) / "data"
@@ -1254,7 +1282,8 @@ class PluginToolsRunTest(Tmp):
         cases = {"doctor reports another binding state": wire(doctor_unbound),
                  "a kept verification line its reply does not give": line,
                  "no nodes.json": lambda work: (work / "nodes.json").unlink(),
-                 "no wire.json": lambda work: (work / "alice" / "wire.json").unlink()}
+                 "no wire.json": lambda work: (work / "alice" / "wire.json").unlink(),
+                 "a kept reply file removed": lambda work: (work / "alice" / "doctor-probe.json").unlink()}
         for what, edit in cases.items():
             with self.subTest(what):
                 again = self.judged_again(r, edit)
