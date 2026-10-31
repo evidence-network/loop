@@ -560,7 +560,7 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
                              f"evidence-network/loop: population/{population}/step11/keys")
         return Reporter.scratch(Path(tmp) / "book", capsulectl, keys), judge10.pub_hex(keys / "reporter.pub.pem")
     node = pop["nodes"][0]
-    data_dir = live.readable(node, "data_dir", "keys/node-key.pub.pem")
+    data_dir = live.readable(node, "data_dir", "keys/node-key.pem")
     if data_dir is None:
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "data_dir not set or unreadable", live.ISSUE)
     book_dir = live.readable(node, "book_dir", "config")
@@ -571,26 +571,34 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
                          "book_dir has no book profile whose store is its book/ (config/capsule/profiles)", live.ISSUE)
     checkpoint_seed = (joined.get("checkpoint.signing.file") or "").strip()
-    if not (joined.get("log_id") and joined.get("trusted_keys") and joined.get("checkpoint.trusted_keys")
-            and checkpoint_seed and Path(checkpoint_seed).is_file()):
+    if not (joined.get("log_id") and joined.get("trusted_keys") and checkpoint_seed and Path(checkpoint_seed).is_file()):
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
-                         "the book's profile does not name its log id, trusted keys and readable checkpoint seed",
+                         "the book's profile does not name its log id, trusted keys and a readable checkpoint seed",
                          live.ISSUE)
     # lab.sh removes the book's node.seed after join (the plugin's data_dir keeps the only copy of the node key), so
     # the profile's signing key file is gone. As step 02 does, this run writes a run-only 0600 seed from data_dir and
     # makes its own profile over the same book, under the book's own log id and trusted keys.
     home = Path(tmp) / "live-book"
     home.mkdir(mode=0o700)
+    # The book trusts only the producers its profile lists: the node key in data_dir must be one of them, or the run
+    # would append a record signed by a key the book does not bind.
+    node_pub = judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
+    if node_pub not in joined["trusted_keys"]:
+        raise RuntimeError(f"live node {node['name']}: the key in its data_dir ({node_pub[:12]}) is not among the keys "
+                           "its join book's profile trusts, so the page would be sealed under a key the book does not bind")
     seed = home / "node.seed"
     fd = os.open(seed, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(judge10.seed_hex(data_dir / "keys" / "node-key.pem"))
     book = Reporter(home, capsulectl, node["name"])
+    if book.cap("key", "show-public", str(seed))["public_key"] != node_pub:
+        raise RuntimeError(f"live node {node['name']}: the private key in its data_dir is not the public key it lists")
+    checkpoint_pub = book.cap("key", "show-public", checkpoint_seed)["public_key"]
     book.cap("profile", "create", "--name", node["name"], "--type", "jsonl", "--jsonl-path", str(book_dir / "book"),
              "--log-id", joined["log_id"], "--operator", node["name"],
-             "--trusted-key", judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem"),
+             *[a for k in joined["trusted_keys"] for a in ("--trusted-key", k)],
              "--signing-key-file", str(seed), "--checkpoint-signing-key-file", checkpoint_seed,
-             "--checkpoint-trusted-key", joined["checkpoint.trusted_keys"][0])
+             "--checkpoint-trusted-key", checkpoint_pub)
     book.work = Path(tmp)
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 

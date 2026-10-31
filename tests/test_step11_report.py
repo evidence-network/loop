@@ -756,14 +756,32 @@ class LiveFixtureTest(unittest.TestCase):
     def test_lab_sh_removes_the_books_node_seed_and_the_report_still_seals(self):
         # lab.sh cmd_join runs `rm -f join-book/node.seed`: the plugin's data_dir keeps the only copy of the key.
         (self.home / "node.seed").unlink()
-        before = sorted(p.relative_to(self.home).as_posix() for p in self.home.rglob("*") if p.is_file()
-                        and "store" not in p.parts and "book" not in p.parts)
         f = self.report()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertFalse((self.home / "node.seed").exists())  # no key material left in the node's book dir
         seal = load(self.run / "11-report" / "seal.bundle.json")
         self.assertEqual(seal["extensions"]["producer-key/v1"]["public_key"],
                          step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
+
+    def test_a_data_dir_key_pair_the_book_does_not_trust_fails(self):
+        # Both halves swapped for another node's: a consistent pair, but not a producer the book binds.
+        data = self.lab / "lab-a" / "data" / "keys"
+        for n in ("node-key.pem", "node-key.pub.pem"):
+            shutil.copy(POPULATION / "keys" / "bob" / n, data / n)
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not among the keys its join book's profile trusts", f["detail"])
+
+    def test_a_private_key_that_is_not_the_listed_public_key_fails(self):
+        shutil.copy(POPULATION / "keys" / "bob" / "node-key.pem", self.lab / "lab-a" / "data" / "keys" / "node-key.pem")
+        f = self.report()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("the private key in its data_dir is not the public key it lists", f["detail"])
+
+    def test_a_data_dir_without_the_private_key_is_not_checked(self):
+        (self.lab / "lab-a" / "data" / "keys" / "node-key.pem").unlink()
+        f = self.report()
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
 
     def test_a_book_with_no_profile_for_its_store_is_not_checked(self):
         for p in (self.home / "config" / "capsule" / "profiles").glob("*.yaml"):
@@ -777,9 +795,7 @@ class LiveFixtureTest(unittest.TestCase):
             (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
-        # The run's profile trusts the listed public key but signs with the data_dir's private one: capsulectl refuses
-        # the producer before any seal exists.
-        self.assertIn("producer is not authorized by the profile trusted_keys", f["detail"])
+        self.assertIn("is not among the keys its join book's profile trusts", f["detail"])
         self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
 
     def test_a_node_with_no_readable_book_is_not_checked(self):
