@@ -1213,6 +1213,22 @@ class PluginToolsRunTest(Tmp):
         entry = next(i for i in r["not_checked"] if i["what"] == "alice: the controller binding")
         self.assertIn("no readable controller-binding.json", entry["why"])
 
+    def test_a_failing_binding_record_is_not_taken_for_a_settled_fetched_digest(self):
+        # check_binding agreed on D, then the record check FAILed: join must still be handed None, not D
+        D = "d" * 64
+        seen = {}
+        real = step.check_node_tools
+
+        def spy(*a, **kw):
+            seen["fetched"] = a[5] if len(a) > 5 else kw.get("fetched")
+            return real(*a, **kw)
+        with unittest.mock.patch.object(step, "check_binding", return_value=(None, None, "alice: agreed", D, D)), \
+                unittest.mock.patch.object(step, "live_binding_record", return_value=("alice: the record fails", [], None, [])), \
+                unittest.mock.patch.object(step, "check_node_tools", side_effect=spy):
+            r = self.run_one()
+        self.assertIsNone(seen["fetched"])
+        self.assertEqual(r["result"], "FAIL")
+
     def test_an_unbound_node_whose_signed_commitments_name_none_passes_a_whole_run(self):
         # loop#201: the binding is optional (u137); doctor and both commitments agree there is none
         r = self.run_one()

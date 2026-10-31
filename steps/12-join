@@ -974,6 +974,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
         if own:
             fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
+            settled = settled_binding(fail, named)  # before `fail` is reused for the binding record below
             if fail:
                 bad.append(fail)
             if nc:
@@ -988,8 +989,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout,
-                                                                    settled_binding(fail, named))
+            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled)
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]
