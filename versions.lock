@@ -3,11 +3,13 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: one tree, ethanyzhang/mesh-llm lab/asg-2026-10-31 @ e877a45d, that contains mesh-llm main
-# c86f58e and, merged on it, five open PRs at these heads: #2620 (a plugin the host restarts gets the mesh
+# Lab host build: one tree, ethanyzhang/mesh-llm lab/asg-2026-10-31c @ 175a31dc, that contains mesh-llm main
+# c86f58e and, merged on it, seven open PRs at these heads: #2620 (a plugin the host restarts gets the mesh
 # snapshot again, and a plugin whose start was cancelled is restarted), #2649 (it pins the capsules plugin the
 # host builds), #2719 (a test fix), #2721 (the plugin is told the exact served model on routed and paid
-# requests) and #2744 (a settled payment's preimage is passed to plugins, for step 06's finality). lab/lab.sh
+# requests), #2744 (a settled payment's preimage is passed to plugins, for step 06's finality), #2741 (the
+# console's set-value renderer, UI only) and #2748 (a paid request keeps the payer's client nonce, so the served
+# half ties to its own half for step 05, mesh-llm#2747). lab/lab.sh
 # check requires the lab source to contain mesh-llm and mesh-llm-pr-2620; the other PR pins record the commits
 # the tree carries, which check does not test.
 mesh-llm Mesh-LLM/mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183
@@ -16,6 +18,8 @@ mesh-llm-pr-2649 Mesh-LLM/mesh-llm 3e6c2fefd9fe30952d71ca4cee536fa5a2f02ab9
 mesh-llm-pr-2719 Mesh-LLM/mesh-llm 4beab7f643849b8fd5bfc7b8633ee3833622a3b3
 mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
 mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
+mesh-llm-pr-2741 Mesh-LLM/mesh-llm ff57b477fefd5a6882f012c8b088aa1c3de72eec
+mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
 # The capsules plugin (the repo was Mesh-LLM/capsules): Mesh-LLM/capsules-plugin#188 at its converged head
 # 4eba920, pinned by commit ahead of the v0.1.8 tag (Ethan's speed-up, coordinator 2026-10-31); v0.1.8 is to be cut
 # from this tree, and the pin moves to the tag once it is. On top of 0.1.7 (b482749: #176's exchange-ask fix for step

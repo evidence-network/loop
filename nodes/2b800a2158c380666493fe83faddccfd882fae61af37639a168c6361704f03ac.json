@@ -9,7 +9,7 @@
       "history_card/1"
     ]
   },
-  "host_build": "mesh-llm e877a45df949721cdffa2dcb3c9885e649fdadf6 (contains mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183, mesh-llm-pr-2620 1d96a0205ed77959485159d2110259fd32ccb35e), binary sha256 212f8a0dee57f44fabac5afdd982366a751200c4fd8799f4611f429c60985426; no relay until Mesh-LLM/capsules-plugin#48 is closed",
+  "host_build": "mesh-llm 175a31dc443daa04b0b89bbac4b7d68a7b7e73c0 (contains mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183, mesh-llm-pr-2620 1d96a0205ed77959485159d2110259fd32ccb35e), binary sha256 9e83e10566a0fd0c0c07db08e71083f90b6d3218015761c4f793a6d463b321b4; no relay until Mesh-LLM/capsules-plugin#48 is closed",
   "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
   "mesh": "lab",
   "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
