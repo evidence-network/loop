@@ -42,6 +42,7 @@ What each step's proof is, and how its judge is re-run, is steps/08-verify.md.
 Exit 0 once the finding is written, whatever the result.
 """
 import argparse
+import datetime as dt
 import fnmatch
 import importlib.machinery
 import importlib.util
@@ -404,31 +405,52 @@ def state_relies(c, nn, what):
                      "of its run", "issue": TRUST_ISSUE})
 
 
+def nodes_dir():
+    """The nodes/ listings 08 holds keys to: LOOP_NODES_DIR, else this checkout's nodes/ (as 01, 02 and 05 read)."""
+    return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+
+
 def listed(node_id):
-    """The key nodes/<node_id>.json lists (LOOP_NODES_DIR, else this checkout's nodes/), or None."""
-    path = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes")) / f"{node_id}.json"
+    """The key nodes/<node_id>.json lists, or None."""
+    path = nodes_dir() / f"{node_id}.json"
     try:
         return load(path).get("key_id") if node_id and path.is_file() else None
     except (OSError, ValueError, AttributeError):
         return None
 
 
-def join_commitment_book(key_id):
-    """{(book_id, checkpoint key)} the node's signed join commitments under lab/runs name, for those that verify
-    under key_id: the book join.sh made for it, as the node signed it."""
-    books = set()
+def join_commitment_books():
+    """{key_id: {(book_id, checkpoint key)}}: the books the nodes' signed join commitments under lab/runs name, for
+    those that verify under the key they name. Each is the book join.sh made for its node, as the node signed it."""
+    books = {}
     step12 = step_module("12-join")
     for path in sorted((ROOT / "lab" / "runs").glob("*/join/*/commitment.json")):
         try:
             doc = load(path)
-            if doc.get("key_id") != key_id:
-                continue
             errs, notes = cc.verify(doc, cc.file_fetcher(path.parent))
             if not errs and not notes:
-                books.add(step12.checkpoint_member(doc))
+                books.setdefault(doc["key_id"], set()).add(step12.checkpoint_member(doc))
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             continue
     return books
+
+
+def utc_time(s):
+    """An RFC 3339 UTC time ('...Z', fractions allowed) as an aware datetime; ValueError otherwise."""
+    if not isinstance(s, str) or not s.endswith("Z"):
+        raise ValueError(f"{s!r} is not a UTC time")
+    return dt.datetime.fromisoformat(s[:-1] + "+00:00")
+
+
+def sealed_times(c):
+    """The signed timestamps of the capsules the run's 01 kept (01 runs before every other live step), or []."""
+    times = []
+    for p in sorted((c.bundle.parent / "01-seal").glob("*/capsule.json")):
+        try:
+            times.append(utc_time(load(p)["timestamp"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return times
 
 
 def old_shape(c, nn, name):
@@ -464,19 +486,25 @@ def keys_01_live(c, m):
             continue  # an unlisted node: 01's signature check names it (not_checked), and its key is the node's word
         if m.raw_public_hex(p) != listed:
             bad.append(f"{name}/node-key.pub.pem is not the key nodes/{node_id}.json lists")
-    # nodes.json's states are borne out when every node sealed by itself under its listed key: its capsule shows it.
+    # nodes.json's states are borne out when every node sealed under its listed key during this run: the capsule,
+    # which 01's judge verifies under that key, is signed with a timestamp no earlier than 01 started. Sealing at
+    # all shows the node's pinned tools were there, so no pin was missing.
     try:
         kept = load(c.work / "nodes.json")
+        since = utc_time(c.started)
+
+        def fresh(name):
+            return utc_time(load(c.work / name / "capsule.json")["timestamp"]).replace(microsecond=0) >= since
         backed = not kept["pins"]["missing"] and all(
             (kept["nodes"].get(n["name"]) or {}).get("read") == "sealed"
             and (kept["nodes"].get(n["name"]) or {}).get("own_seal") is True
-            and m.listed_key(m.nodes_dir(), n.get("node_id")) is not None
+            and m.listed_key(m.nodes_dir(), n.get("node_id")) is not None and fresh(n["name"])
             for n in load(c.pop / "population.json")["nodes"])
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         backed = False
     if not backed:
         state_relies(c, "01", "what nodes.json says of each node (data_dir unread, a pin missing, or sealed by the "
-                              "node itself)")
+                              "node itself in this run)")
     return bad
 
 
@@ -502,37 +530,42 @@ def keys_02_live(c, m):
     if kept_listing.is_file() and (not m.LISTING.is_file() or m.LISTING.read_bytes() != kept_listing.read_bytes()):
         bad.append("witnesses.json is not the repository's lab witness listing")
     ids = {n["name"]: n.get("node_id") for n in load(c.pop / "population.json")["nodes"]}
-    nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))  # as 01 and 05 read the listings
+    pop_nodes = load(c.pop / "population.json")["nodes"]
+    listed_keys = {listed(n.get("node_id")) for n in pop_nodes} - {None}
+    books = join_commitment_books()
     for p in sorted(c.work.glob("*/inputs.json")):
         kept, name = load(p), p.parent.name
         node_id = ids.get(name)
-        listing = nodes_dir / f"{node_id}.json"
+        listing = nodes_dir() / f"{node_id}.json"
         if kept.get("node_pub") is None:
             continue  # a failed stage before the key was read: judge_live FAILs it
         if not (node_id and listing.is_file()):
-            c.relies.append({"what": f"step 02: node {name}'s key", "why": "the node has no nodes/ listing, so the "
-                             "key inputs.json records is 02's reading of its data_dir", "issue": TRUST_ISSUE})
-        elif kept["node_pub"] != load(listing).get("key_id"):
+            c.relies.append({"what": f"step 02: node {name}'s key and book", "why": "the node has no nodes/ listing, "
+                             "so the key, book id and checkpoint key inputs.json records are 02's reading of its "
+                             "data_dir", "issue": TRUST_ISSUE})
+            continue
+        if kept["node_pub"] != load(listing).get("key_id"):
             bad.append(f"{name}/inputs.json node_pub is not the key nodes/{node_id}.json lists")
-        elif (kept.get("book_id"), kept.get("book_key")) not in join_commitment_book(kept["node_pub"]) or \
-                kept.get("checkpoint_pub") != kept.get("book_key"):
-            # The book and its checkpoint key are held to the node's own signed join commitment (lab/runs).
-            state_relies(c, "02", f"node {name}'s book id and checkpoint key (no join commitment the node signed "
-                                  "under lab/runs names them)")
+            continue
+        # The book and its checkpoint key are held to a join commitment the node signed (lab/runs). The keys the
+        # book's profile trusts (`bound`) are in nothing the node signs, so they are always 02's reading.
+        joined = (kept.get("book_id"), kept.get("book_key")) in books.get(kept["node_pub"], set()) and \
+            kept.get("checkpoint_pub") == kept.get("book_key")
+        state_relies(c, "02", f"node {name}'s " + ("" if joined else "book id and checkpoint key (no join "
+                              "commitment the node signed under lab/runs names them), and its book's ") +
+                     "trusted keys (`bound`, read from the book's profile on the node)")
+        # Each node's receipt is held apart from that node's own node_keys: each must hold every listed key.
+        if not listed_keys <= set(kept.get("node_keys") or []):
+            state_relies(c, "02", f"node {name}'s node keys a receipt is held apart from (not every listed node "
+                                  "key is among them)")
     try:
         kept_nodes = load(c.work / "nodes.json")
         read_all = not kept_nodes["missing"] and all(
-            (kept_nodes["nodes"].get(n["name"]) or {}).get("read") == "ok"
-            for n in load(c.pop / "population.json")["nodes"])
-        keys = set().union(*[set(load(p).get("node_keys") or []) for p in c.work.glob("*/inputs.json")])
-        keys_all = all(listed(n.get("node_id")) in keys for n in load(c.pop / "population.json")["nodes"]
-                       if listed(n.get("node_id")))
+            (kept_nodes["nodes"].get(n["name"]) or {}).get("read") == "ok" for n in pop_nodes)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        read_all = keys_all = False
+        read_all = False
     if not read_all:
         state_relies(c, "02", "what nodes.json says of each node (read, or why not) and the pins missing")
-    if not keys_all:
-        state_relies(c, "02", "the node keys a receipt is held apart from (not every listed node key is among them)")
     marked = {p.parent.name: load(p).get("receipt_check") == m.RECEIPT_CHECK for p in c.work.glob("*/inputs.json")}
     held_offline = [p.parent.name for p in receipts if marked.get(p.parent.name)]
     if held_offline and m.driver() is None:  # 02's judge verifies those receipts offline with the step 02 driver
@@ -564,9 +597,9 @@ def keys_05_live(c):
     """nodes.json names exactly the population's nodes. Every key live 05 holds a half to (the sender's listed
     evidence key, a binding's revocations) its judge reads from the repository's nodes/ itself, never the bundle."""
     old_shape(c, "05", "nodes.json")
-    read = load(c.work / "nodes.json").get("read")
-    names = sorted(n["name"] for n in load(c.pop / "population.json")["nodes"])
     kept = load(c.work / "nodes.json")
+    read = kept.get("read")
+    names = sorted(n["name"] for n in load(c.pop / "population.json")["nodes"])
     if not (isinstance(read, dict) and all(read.get(n) is True for n in names) and not kept.get("missing")):
         state_relies(c, "05", "what nodes.json says of each node (read or not) and the pins missing")
     if kept.get("sealed_since") is not None:
@@ -603,9 +636,8 @@ def keys_09_live(c, m):
     read_ids = {node_id for name, node_id in ran.items() if read.get(name) is True}
     bad += [f"nodes.json announces a key for {node_id}, which is no node the run read"
             for node_id in sorted(set(announced) - read_ids, key=str)]
-    nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
     for name, node_id in sorted(ran.items(), key=lambda x: str(x[0])):
-        listing = nodes_dir / f"{node_id}.json"
+        listing = nodes_dir() / f"{node_id}.json"
         if not (node_id and listing.is_file()):
             if node_id in announced:
                 twins = name not in listed_pop
@@ -617,7 +649,7 @@ def keys_09_live(c, m):
             continue
         if node_id in announced and announced[node_id] != load(listing).get("key_id"):
             bad.append(f"nodes.json's announced key of {name} is not the key nodes/{node_id}.json lists")
-    if not (all(read.get(name) is True for name in listed_pop) and not kept.get("key_errors")):
+    if not (all(read.get(name) is True for name in {*listed_pop, *ran}) and not kept.get("key_errors")):
         state_relies(c, "09", "what nodes.json says of each node (read or not, a key not read)")
     return bad
 
@@ -697,20 +729,28 @@ def keys_03_live(c):
         bad += [f"{name}: carrier.json says HEAD held {p}, which 03 never reads" for p in sorted(set(paths) - set(expect))]
     if not head_was_current(c, head, nodes, at):
         state_relies(c, "03", f"carrier.json's commit {head[:12]} carried the nodes' current commitments when 03 ran "
-                              "(main at the run's start holds others, or this checkout has no main to hold it to)")
+                              "(main at 03's start holds others, this checkout has no main to hold it to, or no "
+                              "capsule 01 kept bounds 03's start)")
     return bad
 
 
 def head_was_current(c, head, nodes, at):
-    """Whether every listing and commitment carrier.json's commit holds is what main held at the run's start
-    (run.json `started`): the newest commit on main no later than it. So a replayed older commit, whose
-    commitments main had since replaced, is not taken for the run's."""
+    """Whether every listing and commitment carrier.json's commit holds is what main held when 03 started: the
+    newest commit on main's first-parent line no later than 03's `started`, as this checkout's main (origin/main,
+    else main) holds it. So a replayed older commit, whose commitments main had since replaced, is not taken for
+    the run's.
+
+    03's start is the run's clock, but it cannot be set back unseen: 01 runs first, so 03 starts no earlier than
+    every capsule 01 kept, each signed by its node with its time. A run with no 01 capsule has no such bound."""
     try:
-        started = load(c.bundle.parent / "run.json")["started"]
-    except (OSError, ValueError, KeyError, TypeError):
+        started = utc_time(c.started)
+    except ValueError:
+        return False
+    signed = sealed_times(c)
+    if not signed or started < max(signed).replace(microsecond=0):
         return False
     for ref in ("origin/main", "main"):
-        r = subprocess.run(["git", "-C", str(ROOT), "rev-list", "-1", f"--before={started}", ref],
+        r = subprocess.run(["git", "-C", str(ROOT), "rev-list", "-1", "--first-parent", f"--before={c.started}", ref],
                            capture_output=True, text=True)
         base = r.stdout.strip()
         if r.returncode == 0 and base:
