@@ -1,0 +1,793 @@
+{
+  "asserts": "each node seals records naming both halves and citing the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest, with a producer signature that verifies in a second language under the key the receiver accepted for the sender, and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration, whose binding names that key and applies (form, both signatures and the window pass in a second language, and no published revocation statement applies), or, from a sender that publishes no controller binding, on the evidence key it lists; halves from senders outside the population are not judged",
+  "detail": "node stevenmih-1: 26 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 9 sealed under the current build (accepted the half's key via host_announced; 9 tied to the node's own half, 0 held, never tied, 0 ambiguous), 17 earlier, not judged for acceptance or tie; node stevenmih-1 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:27Z; the push itself is judged from the sealed records; node stevenmih-2: 16 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 6 sealed under the current build (accepted the half's key via host_announced; 6 tied to the node's own half, 0 held, never tied, 0 ambiguous), 10 earlier, not judged for acceptance or tie; node stevenmih-2 reports (node-reported, unsigned) share_record_at_completion counterparty from env at 2026-10-30T07:19:32Z; the push itself is judged from the sealed records; node stevenmih-3: 19 held halves, each held by its digest (Class 1 and the capsule_id recomputed by the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as counterparty_half by the node's own record; 7 sealed under the current build (accepted the half's key via host_announced; 7 tied to the node's own half, 0 held, never tied, 0 ambiguous), 12 earlier, not judged for acceptance or tie; 3 held halves from senders outside the population, not judged (evidence keys ec79b7685f15d1fb (3)); node stevenmih-3 reports (node-reported, unsigned) share_record_at_completion counterparty from default at 2026-10-30T07:19:37Z; the push itself is judged from the sealed records; exchanges with a half held on each of two nodes (joined on client_nonce): 29 (nonce 3bf4d449-d9b7-4495-ab80-b551062269f6 is not one exchange held on two nodes: stevenmih-2 requested; nonce 6e2f156e-6246-4614-9cc9-3a0c8f750ac6 is not one exchange held on two nodes: stevenmih-1 requested; nonce f8dfc0a0-dc3c-4e09-8a0a-c4b217395388 is not one exchange held on two nodes: stevenmih-1 requested); judged under the current build (sealed since 2026-10-30T07:20:00Z): 22 halves, 22 tied to the node's own half, 0 held, never tied, 0 ambiguous; 39 sealed earlier, not judged; 7 current-build halves accepted on the evidence key their sender lists in nodes/, from senders whose published commitment carries no controller binding (the binding is optional, loop#187). Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
+  "finished": "2026-10-31T05:06:58Z",
+  "name": "deal",
+  "not_checked": [
+    {
+      "issue": "action-state-group/agent-action-capsule#482",
+      "what": "revocation of the controller bindings that apply",
+      "why": "15 cited bindings apply, with revocation NOT_CHECKED: no statement in nodes/revocations/ applies, and Controller Binding v0 registers no source a verifier could hold to be complete (CB-1)"
+    }
+  ],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.16.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsules": {
+      "ref": "d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/held-1.json",
+      "sha256": "07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9"
+    },
+    {
+      "path": "stevenmih-1/held-1-inclusion.json",
+      "sha256": "f252e1720b5a51516ba7ec8e69cb9605628a493f61cc83296aa8a102a1c8b811"
+    },
+    {
+      "path": "stevenmih-1/held-1-citing.json",
+      "sha256": "314d54d90dc2d8e313acb0c57d5494b6b3574d8bf4eedbf8a7c56def64bccaa4"
+    },
+    {
+      "path": "stevenmih-1/held-2.json",
+      "sha256": "808746916d9de3b8c9ce6dae366bd6929bbde07b543750cb7078549fa29471ea"
+    },
+    {
+      "path": "stevenmih-1/held-2-inclusion.json",
+      "sha256": "fdb2db0c9b193a456400a68e8c94eb700fe9130caf213961789439b1ec2aef47"
+    },
+    {
+      "path": "stevenmih-1/held-2-citing.json",
+      "sha256": "d662a60e27261399ac2ad45fba10a7639020b44fdb9ba34c95ca591dbe46e1e4"
+    },
+    {
+      "path": "stevenmih-1/held-3.json",
+      "sha256": "96236ed799b3df78fffbf425b90cf39c3a2c65e955f5cc5ebb3fcc2aebc8b33e"
+    },
+    {
+      "path": "stevenmih-1/held-3-inclusion.json",
+      "sha256": "c168faca42fc99c3749f94b0cc65b4abeddcb6ac2b49e6ffdb2ceaf5b4bce320"
+    },
+    {
+      "path": "stevenmih-1/held-3-citing.json",
+      "sha256": "bcc124fca2da3d78af95551b551b9f3bb2f51bc1ea01fa5376a861ce1a846dda"
+    },
+    {
+      "path": "stevenmih-1/held-4.json",
+      "sha256": "abb403cd7e51b9055301445fe18663b306469b6fe99c9c1401f18678a5102630"
+    },
+    {
+      "path": "stevenmih-1/held-4-inclusion.json",
+      "sha256": "e09208b735cb71bb9ccf6327a42b873b81fda43aac221a5c88028441cb21d1d3"
+    },
+    {
+      "path": "stevenmih-1/held-4-citing.json",
+      "sha256": "8ab848b8a80233a489fdbdc277ef41338c04ffe3b39069de967f9031357194c2"
+    },
+    {
+      "path": "stevenmih-1/held-5.json",
+      "sha256": "062aca22a7cf4fc3a3c7595eb8cd7f66cf7d5bd9951dc18495d5299525f38fad"
+    },
+    {
+      "path": "stevenmih-1/held-5-inclusion.json",
+      "sha256": "8fc146873b25638d0732b57d74289ccb906c8eef8e324efeb9fac57c95b6b38b"
+    },
+    {
+      "path": "stevenmih-1/held-5-citing.json",
+      "sha256": "d905c7706e589afc817fc3be309e3192c8f668d883ccea5a6c5b50ad1d766678"
+    },
+    {
+      "path": "stevenmih-1/held-6.json",
+      "sha256": "8a92d8aa6940110924af7ae326ce82966af3f091624fee7116daeaf051857e6b"
+    },
+    {
+      "path": "stevenmih-1/held-6-inclusion.json",
+      "sha256": "f0ad58821dc3ff3ae8062856adb66a1a4a68eba5986d2294b60594c57ee96232"
+    },
+    {
+      "path": "stevenmih-1/held-6-citing.json",
+      "sha256": "64e3c92daf8908ee23b0dd3919bd9888886b8c35168b7831c65ec98133547dfa"
+    },
+    {
+      "path": "stevenmih-1/held-7.json",
+      "sha256": "337a78a4f1d5359f51c3c6da897ced45ccc7ba82fa934437377fe19705748e76"
+    },
+    {
+      "path": "stevenmih-1/held-7-inclusion.json",
+      "sha256": "2f318c4d35e11948d9549f9e1b656b694d2c65a1ee3972b01a700cbc7b0e8f94"
+    },
+    {
+      "path": "stevenmih-1/held-7-citing.json",
+      "sha256": "ae8c4810d66a54ae58e30e446e13551b13dd32db9d5e5fb08e1695cc6b81ab6b"
+    },
+    {
+      "path": "stevenmih-1/held-8.json",
+      "sha256": "60810a7711685353e634f3cbbf57869f230e021a5fd2917cbe2f9dcd4018846f"
+    },
+    {
+      "path": "stevenmih-1/held-8-inclusion.json",
+      "sha256": "1526357b138dc010ea0d79b04cda950a5fd285db647a0bdbb309971b3935c975"
+    },
+    {
+      "path": "stevenmih-1/held-8-citing.json",
+      "sha256": "c3331caae13a8bb6211c0fcc24013260d958ad360ef0a8829cdae25b16e98a71"
+    },
+    {
+      "path": "stevenmih-1/held-9.json",
+      "sha256": "8a23e3f17716b1cd0bf41253c7344f63bcd954ac35fdc55c90502d9c081bcfda"
+    },
+    {
+      "path": "stevenmih-1/held-9-inclusion.json",
+      "sha256": "907827ad928cc1dea29f166154524aced59cb07eb0b4df2997ba99dc820ee983"
+    },
+    {
+      "path": "stevenmih-1/held-9-citing.json",
+      "sha256": "cf881908222a522145b7b7c733a00ba2cbad16217767a8676dacbb36ee7bc9ce"
+    },
+    {
+      "path": "stevenmih-1/held-10.json",
+      "sha256": "c3a7a01cc7ae116e8e77e184e5989049d57151a3d0bd687cade6bda0c5b754d4"
+    },
+    {
+      "path": "stevenmih-1/held-10-inclusion.json",
+      "sha256": "edd323bbc7464c43bc7bd55f4601d00fd3e0f4fe1fb03e13aaa54eb290b5e388"
+    },
+    {
+      "path": "stevenmih-1/held-10-citing.json",
+      "sha256": "965286390d3b38629643fdafe4ca5cbfb69926e8d2d44bc0ba5314c8d07a334f"
+    },
+    {
+      "path": "stevenmih-1/held-11.json",
+      "sha256": "94b5b9fe9caef149ea942a3d4b82336ef5a13e87c45c808e9506e8035c7b6e98"
+    },
+    {
+      "path": "stevenmih-1/held-11-inclusion.json",
+      "sha256": "fd98693f3ffb22e6e1b28e1fbdcba8c8a30fb48fe9041a3f2ea165cd6446323e"
+    },
+    {
+      "path": "stevenmih-1/held-11-citing.json",
+      "sha256": "3370cb66a715b1a47f5c77d861262a32563ecf226dd4e60a1d27de5632374150"
+    },
+    {
+      "path": "stevenmih-1/held-12.json",
+      "sha256": "fe4bf4c6a809244557ddb423738f3e12ac8bb1183b88894d614f77a45dce5e05"
+    },
+    {
+      "path": "stevenmih-1/held-12-inclusion.json",
+      "sha256": "f55ed87c4d0ad465f0f04f62cc5e61e9a992ca6c320e54efb0ffaf2a0d596913"
+    },
+    {
+      "path": "stevenmih-1/held-12-citing.json",
+      "sha256": "a483e4a929b030e8667aa202cbf6690fa28dade1b1d62dc7a4e6b090fa95a349"
+    },
+    {
+      "path": "stevenmih-1/held-13.json",
+      "sha256": "b010b910584985850551ada84ce69b4116f5185469a2fb24ef9a0964abb93cf4"
+    },
+    {
+      "path": "stevenmih-1/held-13-inclusion.json",
+      "sha256": "d5a3f0af8e066e8929fb7d778e2e8b12b4ea71dc1369893b8d42acfe77e80f48"
+    },
+    {
+      "path": "stevenmih-1/held-13-citing.json",
+      "sha256": "05a76455bb7c43a79c36795c150b6fc7cf45b05d0579d121425b10ec351d85f4"
+    },
+    {
+      "path": "stevenmih-1/held-14.json",
+      "sha256": "b9c8660f3c2aff64425496275618e5bcba59c57ea51dbbf217daa14d5b9b311b"
+    },
+    {
+      "path": "stevenmih-1/held-14-inclusion.json",
+      "sha256": "a7c328cebe96b53f80246a81b07bf2f51598cae8f64826c921f112c7d6956a1e"
+    },
+    {
+      "path": "stevenmih-1/held-14-citing.json",
+      "sha256": "e40dadf686d07ced0924ddf8adcf858cf5b42622484120ce830433dffaa73f2d"
+    },
+    {
+      "path": "stevenmih-1/held-15.json",
+      "sha256": "d7248909d6ce5133a3bec5020a9e8f41a3e45846055b71f2a2d5fdbaf9fc871a"
+    },
+    {
+      "path": "stevenmih-1/held-15-inclusion.json",
+      "sha256": "9fdf793824211790a06dc9753e91eb846af85224c4ce74ba802f9861e6cef99f"
+    },
+    {
+      "path": "stevenmih-1/held-15-citing.json",
+      "sha256": "0b0628be3a4b005a5ab57d4ebf614e93f1ba16f4b78ae6534b74d51d886b4667"
+    },
+    {
+      "path": "stevenmih-1/held-16.json",
+      "sha256": "bc3a4b1bfe8b6e005b44aeefc42785509109c2838d9f7a0a4a0ad144b08356c7"
+    },
+    {
+      "path": "stevenmih-1/held-16-inclusion.json",
+      "sha256": "7dc490558604beb2d0e654819c623b67e06e23a56a9cb5bd9d545d70a047781b"
+    },
+    {
+      "path": "stevenmih-1/held-16-citing.json",
+      "sha256": "e3c93816d6b0a0145a06c6e9353faaeee65c3c8e9df876c68839aafa2169824c"
+    },
+    {
+      "path": "stevenmih-1/held-17.json",
+      "sha256": "becf35dbcdea92d8840f0c6a36e57c61c0e2d622712ccc17927f96f26e816274"
+    },
+    {
+      "path": "stevenmih-1/held-17-inclusion.json",
+      "sha256": "1a7e365aa25430671de4b5a8688745b34c075543f9170c75b52d181552a2af92"
+    },
+    {
+      "path": "stevenmih-1/held-17-citing.json",
+      "sha256": "c19ddda3f09e541edca46c835c35d4ffcd1f47a29f7cd32280ca65e81749b7de"
+    },
+    {
+      "path": "stevenmih-1/held-18.json",
+      "sha256": "f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603"
+    },
+    {
+      "path": "stevenmih-1/held-18-inclusion.json",
+      "sha256": "f19085f0bfa48450378ee450702d80bf2ab10840537965c36b9299fcebd78cea"
+    },
+    {
+      "path": "stevenmih-1/held-18-citing.json",
+      "sha256": "fe87de94db7c28b88e59b7a0f433bd29568b7cfcc9deef2fdb6ac4e6c3b70639"
+    },
+    {
+      "path": "stevenmih-1/held-19.json",
+      "sha256": "13b6522b95b6d6697a56ad57eb4f231e8520f2f4411c196b5810f3f70a4e9228"
+    },
+    {
+      "path": "stevenmih-1/held-19-inclusion.json",
+      "sha256": "5f98c25d78ff4dcc3ff1766c729f2c09d3b78b43a13894a085144ec9bdf4817b"
+    },
+    {
+      "path": "stevenmih-1/held-19-citing.json",
+      "sha256": "4ad07f94c9cac0ae0236d8351ca4e7a85e9b9f7e9f5671e5f7316a9c378cbf71"
+    },
+    {
+      "path": "stevenmih-1/held-20.json",
+      "sha256": "9aa1a026a0e7d58de3b36d77182a3aed04d8496ddc1c44ba35218f3c1d7624eb"
+    },
+    {
+      "path": "stevenmih-1/held-20-inclusion.json",
+      "sha256": "df485aa0c0114736b0ba796dfbe85c93b4ea554d73ea9da291d5cf130f0bf2dd"
+    },
+    {
+      "path": "stevenmih-1/held-20-citing.json",
+      "sha256": "6ce1732434505b6a7efcc31c1b6b0d256a650ddb61ce88d18adf9cc110482375"
+    },
+    {
+      "path": "stevenmih-1/held-21.json",
+      "sha256": "0173e22fbd9c838d7a22caad51a1518e38d2ef230d719f6763c30beaa8f48084"
+    },
+    {
+      "path": "stevenmih-1/held-21-inclusion.json",
+      "sha256": "8f0283a2ce937db8540f435b1fd8ef0580111de936ce779389e19662ab2a57ae"
+    },
+    {
+      "path": "stevenmih-1/held-21-citing.json",
+      "sha256": "679b4deb660a16ebd45accb4d336165d5dfa1094859608b65ba88b66d666f53d"
+    },
+    {
+      "path": "stevenmih-1/held-22.json",
+      "sha256": "b9c68d92869073df7b0011caa0fb81161368611c1c95595abeee0c8654138788"
+    },
+    {
+      "path": "stevenmih-1/held-22-inclusion.json",
+      "sha256": "9bdde8c6c5dad0cf409982f5cb937e24d5a9bcf79c5d32a4646bc0053382cc3c"
+    },
+    {
+      "path": "stevenmih-1/held-22-citing.json",
+      "sha256": "33ba72a16695117ccc16281476cd5651418b58a4434880caaaf8d1d6f7392051"
+    },
+    {
+      "path": "stevenmih-1/held-23.json",
+      "sha256": "993892af0f098aee83f9eef37dafeb5667b82093c9d90c7698dd751e3e31f6fd"
+    },
+    {
+      "path": "stevenmih-1/held-23-inclusion.json",
+      "sha256": "0e8d89af22cf7e826caa6a2ba1ac01fa92b8a60006e6491b6dc0c1b3eecdf818"
+    },
+    {
+      "path": "stevenmih-1/held-23-citing.json",
+      "sha256": "01f0804dc7d1f941a1800e245f220f1d7c1ad2ed3fd75843995abdde9219817e"
+    },
+    {
+      "path": "stevenmih-1/held-24.json",
+      "sha256": "cd15132d0e5685232056c5b18447f765e5965eb1234d3128a2eeed7ececa2e67"
+    },
+    {
+      "path": "stevenmih-1/held-24-inclusion.json",
+      "sha256": "8a97a91b205d9aff1ebca0020934b08baa6b34f67bb64b049f7ff241afa7e797"
+    },
+    {
+      "path": "stevenmih-1/held-24-citing.json",
+      "sha256": "3df055d2daee9af241b3ab23243134a21d763134b67c71e6aff82f020924dc73"
+    },
+    {
+      "path": "stevenmih-1/held-25.json",
+      "sha256": "fe60430118565352049bcc6ff41e9a41f3679b641336e55a216ff24c3eee6f93"
+    },
+    {
+      "path": "stevenmih-1/held-25-inclusion.json",
+      "sha256": "ed734dc6ecf13be71857413271612f60f911bb6619dba7b3f01d23c838175f92"
+    },
+    {
+      "path": "stevenmih-1/held-25-citing.json",
+      "sha256": "3ae290a9c141410bc9206bd95fee1cb2a6ae298dc623a62fda55e482ce3a6095"
+    },
+    {
+      "path": "stevenmih-1/held-26.json",
+      "sha256": "dfa2b240acf6823f6035a094975afc498a28e340b8570b6a23596d2255b811dd"
+    },
+    {
+      "path": "stevenmih-1/held-26-inclusion.json",
+      "sha256": "8ec4e5ee4d6c12f87d79f766a2e5b36e2bc00138053d11296ae99ff051deae58"
+    },
+    {
+      "path": "stevenmih-1/held-26-citing.json",
+      "sha256": "6c5274eb1291ff4b03eaa087019a3cc0aa707efca6cfc9258cbc6dcd9e534fcc"
+    },
+    {
+      "path": "stevenmih-1/checks.json",
+      "sha256": "758c9e9f5b9a1d2401c019a3e64e04092fdc2006cf128904b494b0a9a6c1e1db"
+    },
+    {
+      "path": "stevenmih-1/sharing-effective.json",
+      "sha256": "769152f8af9d23da0ba715f15fc44c923ededb15720763d9073c6c3bef3470b6"
+    },
+    {
+      "path": "stevenmih-2/held-1.json",
+      "sha256": "3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694"
+    },
+    {
+      "path": "stevenmih-2/held-1-inclusion.json",
+      "sha256": "07b6a1bec0545ea5be8dccffacb8999c7aad1479b650d3b48e699e9d0a42d451"
+    },
+    {
+      "path": "stevenmih-2/held-1-citing.json",
+      "sha256": "2fa153cfc0549864cbb9cb8420447cfcc3ea58dff9e5f99a21b23253aface154"
+    },
+    {
+      "path": "stevenmih-2/held-2.json",
+      "sha256": "eeffa1110ff9a40f7a9855f892cd3d9946776abaa015b47beea534011e2fd5cd"
+    },
+    {
+      "path": "stevenmih-2/held-2-inclusion.json",
+      "sha256": "d777248be259d86700653b8ad3afc89595a54e80bfce6273b7ec2b14a6291859"
+    },
+    {
+      "path": "stevenmih-2/held-2-citing.json",
+      "sha256": "93050becede077802d5cfbc94531c7026ba9a014fb7955ce05297a8235f92c96"
+    },
+    {
+      "path": "stevenmih-2/held-3.json",
+      "sha256": "2e4ba152c0ed528752dfe5b9b6ae2958680e996b24a7f904f603817b88b6ba75"
+    },
+    {
+      "path": "stevenmih-2/held-3-inclusion.json",
+      "sha256": "138fd322f2f99e397cd8086621a9d1397e1670b47aeaedc78c15def6148e7ab1"
+    },
+    {
+      "path": "stevenmih-2/held-3-citing.json",
+      "sha256": "76cbf47db646725b13578b1c382f534ed58b459de908dd8d4bf7dbf19507139b"
+    },
+    {
+      "path": "stevenmih-2/held-4.json",
+      "sha256": "2dad71ebbc7460896fd1b5c3614bc4cb49511314e1d136cec182d481be3b248f"
+    },
+    {
+      "path": "stevenmih-2/held-4-inclusion.json",
+      "sha256": "883e91a5799fb89a5b75c14af44f4eb0d2360854cb9527fcd2c3ac8f27c02824"
+    },
+    {
+      "path": "stevenmih-2/held-4-citing.json",
+      "sha256": "ec240780bb0f796db2186ba67bad5620012034d79fd7fb6e908a65eb33de74b3"
+    },
+    {
+      "path": "stevenmih-2/held-5.json",
+      "sha256": "f139bb3f133e8101a53567517d3e78585245620d59902788bd1df99df157640d"
+    },
+    {
+      "path": "stevenmih-2/held-5-inclusion.json",
+      "sha256": "587600b58aa27a1f8e65ca4c72dc74ff4e809d24140ee9672dc51ac632eead63"
+    },
+    {
+      "path": "stevenmih-2/held-5-citing.json",
+      "sha256": "6b766043ff73e0eec6532708585cd2f2d94e833f87a2c2e85fe39d8a163999c4"
+    },
+    {
+      "path": "stevenmih-2/held-6.json",
+      "sha256": "3f559e8a474e129357b34ee359a18231f3a48584e20c694f4d2b70d4d4861bcf"
+    },
+    {
+      "path": "stevenmih-2/held-6-inclusion.json",
+      "sha256": "bbb94ace43e734037b474418ae57223b28d82954455f49a8ae6da513e97a982a"
+    },
+    {
+      "path": "stevenmih-2/held-6-citing.json",
+      "sha256": "02a13ce64baa2c679b2eeb9915f5d5170ea875ab5f73d237775ba2ced29b7bfb"
+    },
+    {
+      "path": "stevenmih-2/held-7.json",
+      "sha256": "fe289cf939244472a99aae21df86189e2162df7699ec98f7028b803b286c3700"
+    },
+    {
+      "path": "stevenmih-2/held-7-inclusion.json",
+      "sha256": "d18bca98a3453104ca2ed77aad741f8ccf86a38f7112a80d8da96d47f238495f"
+    },
+    {
+      "path": "stevenmih-2/held-7-citing.json",
+      "sha256": "bf0182a34cb2625a647b27c19424b0cf46b11dc40c8b2eeff1a5feef0b0cf9ea"
+    },
+    {
+      "path": "stevenmih-2/held-8.json",
+      "sha256": "aa3a716dda38bd95899598d5395a10590e83a9c552eee9ade24855094aaa8443"
+    },
+    {
+      "path": "stevenmih-2/held-8-inclusion.json",
+      "sha256": "0372a221b4193f1fae8c9328c1a277df0ce8b1dc8caf7b4ed89de7ba58cd8eb3"
+    },
+    {
+      "path": "stevenmih-2/held-8-citing.json",
+      "sha256": "fcc1283cad74a3afa841e6dc744b12082a1e7c28cc5e03fc3015e1532b5f0cc4"
+    },
+    {
+      "path": "stevenmih-2/held-9.json",
+      "sha256": "c32a07399cfaf670f4c34601351fe23f5760880913d281c9876f26eac23c9d6c"
+    },
+    {
+      "path": "stevenmih-2/held-9-inclusion.json",
+      "sha256": "ae1b7debbe7d2c6fcc960007cd80b7a8bdbcaea9285ba81b7a947a2e0d769bd4"
+    },
+    {
+      "path": "stevenmih-2/held-9-citing.json",
+      "sha256": "607f22c6b899f97f94588246634e7586f9ec440284a23f761aa0a564e3564013"
+    },
+    {
+      "path": "stevenmih-2/held-10.json",
+      "sha256": "e13d4db176c3d5270f5a54d02ba15c6ab46d39d40d9e953e4d33f68963795aa5"
+    },
+    {
+      "path": "stevenmih-2/held-10-inclusion.json",
+      "sha256": "d60faced32111b7efbae190beb9bbb8c281ab7af766b6e472b6a0e83d1182d83"
+    },
+    {
+      "path": "stevenmih-2/held-10-citing.json",
+      "sha256": "e79055c93e650a26759a13211851ee66a8a9719962c88c0cc87d698ba549cd2e"
+    },
+    {
+      "path": "stevenmih-2/held-11.json",
+      "sha256": "54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683"
+    },
+    {
+      "path": "stevenmih-2/held-11-inclusion.json",
+      "sha256": "b8f9e03c820003aab00b059dde6f06dff4c98e801999c7ed2cf5f4baade7abfd"
+    },
+    {
+      "path": "stevenmih-2/held-11-citing.json",
+      "sha256": "8631e3937fc7f23f9ff8d1795696c48f113e7f699b911bb4821a151b2aa64d7b"
+    },
+    {
+      "path": "stevenmih-2/held-12.json",
+      "sha256": "1863bfedb3bd9116759e4766098089bf09979c7d657e2dd223e393a9d5988bf3"
+    },
+    {
+      "path": "stevenmih-2/held-12-inclusion.json",
+      "sha256": "fb54810708d6af0b9887be57dd8fddfc4ff37cf7fa4e452cb7788523ada3de9b"
+    },
+    {
+      "path": "stevenmih-2/held-12-citing.json",
+      "sha256": "45ab161317acfdc7191509d57d1bc13814b636b9cee57cd0789a4dde2b2cb76e"
+    },
+    {
+      "path": "stevenmih-2/held-13.json",
+      "sha256": "0213ea65ee07f1755bbc0d62f4e45ba68af3a0b829a896e811a59bc3e087e02a"
+    },
+    {
+      "path": "stevenmih-2/held-13-inclusion.json",
+      "sha256": "ed657e656e021a38a4839dbc7c51eb816b3800d66d2893ebcfc84a3f755470dd"
+    },
+    {
+      "path": "stevenmih-2/held-13-citing.json",
+      "sha256": "a4edabc5b1a5fe35b7b1d174412031c9d61f7e9d02a49904d2e81c013b5e0daa"
+    },
+    {
+      "path": "stevenmih-2/held-14.json",
+      "sha256": "531dbfb16c0c6a7e3bd1d5cadeb41815952d9bf5a806a57c903d510fadd72e6a"
+    },
+    {
+      "path": "stevenmih-2/held-14-inclusion.json",
+      "sha256": "0f3483aa96e9f6e230eaa6fb53ce44dc45b0d1a230edc1ce9e6c66735ddb78f1"
+    },
+    {
+      "path": "stevenmih-2/held-14-citing.json",
+      "sha256": "8c8a4a6d059592e4726dc18220a3cc3c32d3c04da4555d693fca7efcb7e9c4e9"
+    },
+    {
+      "path": "stevenmih-2/held-15.json",
+      "sha256": "6f15599412f239e67ac5f7dc52638970f154f9291d24e953a0dde7d5114b11b0"
+    },
+    {
+      "path": "stevenmih-2/held-15-inclusion.json",
+      "sha256": "05105b7c62a492eadc33588af19c157551ed539d81d14f366c0dcc135390f496"
+    },
+    {
+      "path": "stevenmih-2/held-15-citing.json",
+      "sha256": "5e7d16b8dd4698b882a0a349b68cb9f7997ca7e644dde12a170cbbd5f8b98f7b"
+    },
+    {
+      "path": "stevenmih-2/held-16.json",
+      "sha256": "c5b1be456d043988cc0d27648deedeb3381dc2334662a6649efbff5de9d4c285"
+    },
+    {
+      "path": "stevenmih-2/held-16-inclusion.json",
+      "sha256": "cdd2502e967ad083ae17e927d89928663f9f2468a430933b695594c40c706ab3"
+    },
+    {
+      "path": "stevenmih-2/held-16-citing.json",
+      "sha256": "3a47f81a42edf59e6f87caa03c16791e38f0dd4f0c101d3908f6809a3a273356"
+    },
+    {
+      "path": "stevenmih-2/checks.json",
+      "sha256": "9017951eefaeb6d1f07660e4ad4fcdb0b854475669554bb82f21ed55bb0eb3ef"
+    },
+    {
+      "path": "stevenmih-2/sharing-effective.json",
+      "sha256": "453878a45b027f8b45db877b691c925a8502bde26e7f15f33a6e8e0fceb6f90e"
+    },
+    {
+      "path": "stevenmih-3/held-1.json",
+      "sha256": "f59bb27d2939c729fda5379fd2e5dd2607b94d29722830a1dcfbf2b89d46df1f"
+    },
+    {
+      "path": "stevenmih-3/held-1-inclusion.json",
+      "sha256": "0cd9395d238f9b18ddc415121bb9749de416ac69da266b4ba584e90eb7bf236e"
+    },
+    {
+      "path": "stevenmih-3/held-1-citing.json",
+      "sha256": "22d5b139138d952a126017c2a6c0fef2ee7717493563bdc067b18896043059e5"
+    },
+    {
+      "path": "stevenmih-3/held-2.json",
+      "sha256": "ec77363e51ac6acd549987bd66f333ffe5682d607c51dadd68c987eb91a91157"
+    },
+    {
+      "path": "stevenmih-3/held-2-inclusion.json",
+      "sha256": "778097d96ef3fd7ce93b5f188c85ac2fc957dab53a12ef6cc9137fcca8f6108a"
+    },
+    {
+      "path": "stevenmih-3/held-2-citing.json",
+      "sha256": "dc89de00cd9a69d65b9dc11a44eb83af0a725dfc9968891ecf6385b490b816e3"
+    },
+    {
+      "path": "stevenmih-3/held-3.json",
+      "sha256": "267ea925e15c79a1598d91be25c0f61097089e58aabdec5910e1603ef882203d"
+    },
+    {
+      "path": "stevenmih-3/held-3-inclusion.json",
+      "sha256": "7633fb8d8e9b6b719a4ba1b0cf704cf40b185c27f1ebe13d437631af048bc84e"
+    },
+    {
+      "path": "stevenmih-3/held-3-citing.json",
+      "sha256": "1e6d0b1fd6ab06eea308fbe30d9ade06236389f2aa5bf01acaaf43f938c5185b"
+    },
+    {
+      "path": "stevenmih-3/held-4.json",
+      "sha256": "3e94dfda53b14610fe3d43e0c3c80cf64b321a6cee9224b27312c4c30a607549"
+    },
+    {
+      "path": "stevenmih-3/held-4-inclusion.json",
+      "sha256": "bc74ee9cac48b60280658cc941ca4585065e8b5f4daea0ba33bc54e4c7113da3"
+    },
+    {
+      "path": "stevenmih-3/held-4-citing.json",
+      "sha256": "7b9732118e4c7ee68fbc8226e8dbd381d18a748f684f89e83d1a35d123ff57e5"
+    },
+    {
+      "path": "stevenmih-3/held-6.json",
+      "sha256": "56bc8a5180f7d1bb0ad6e4268ad81a139af4666406699ee3ebd347d31df25693"
+    },
+    {
+      "path": "stevenmih-3/held-6-inclusion.json",
+      "sha256": "567670a4fa8904610986740fa7688e80f88c7c09330c5df0af4b97278b2df48a"
+    },
+    {
+      "path": "stevenmih-3/held-6-citing.json",
+      "sha256": "c7476b2342641e99584453c4224bba356308549c2ba3c81a573da0afc9701942"
+    },
+    {
+      "path": "stevenmih-3/held-7.json",
+      "sha256": "c7aa8feef735ec7f9f153d6b07aa41542d669b6b2daaced09c25ec1113e0e939"
+    },
+    {
+      "path": "stevenmih-3/held-7-inclusion.json",
+      "sha256": "891c0d1766a91ffaf5b4db223b93f1cf1992f562417ac7deaf1d7792016710c5"
+    },
+    {
+      "path": "stevenmih-3/held-7-citing.json",
+      "sha256": "75d235f86701e77d02764a56c2cb4b950bcef3f134bec4bde024e76b5094807d"
+    },
+    {
+      "path": "stevenmih-3/held-8.json",
+      "sha256": "d1d7041dfb3f5ca8672cf3f181349e4835f3e445df4f068040e16c9f837b55c7"
+    },
+    {
+      "path": "stevenmih-3/held-8-inclusion.json",
+      "sha256": "e01faafc24982406645a62654eee49bfcde17dafba1d71c1c8918fc450856bfb"
+    },
+    {
+      "path": "stevenmih-3/held-8-citing.json",
+      "sha256": "fd05dd8a28c285e961cc781bcdaf6f8815b3d0f0d3a04569be07ff003c427bb6"
+    },
+    {
+      "path": "stevenmih-3/held-9.json",
+      "sha256": "8b413cade39b3ac50bbe0fa47541a5a67f5a3a6442c75f1708b5e912b819d099"
+    },
+    {
+      "path": "stevenmih-3/held-9-inclusion.json",
+      "sha256": "d302690e87359c290cfe2fcdfcc70c7bac5e7a66a67774399293af71ebda4278"
+    },
+    {
+      "path": "stevenmih-3/held-9-citing.json",
+      "sha256": "7285071f5efc571d8630643380098efeba57248e184dd1a7d4dcb5f7c076f735"
+    },
+    {
+      "path": "stevenmih-3/held-11.json",
+      "sha256": "9fd14f442b22b286a8b5f71ea8feb0fbb1d7de8006fb735e6b7f704c9663b70b"
+    },
+    {
+      "path": "stevenmih-3/held-11-inclusion.json",
+      "sha256": "c57921472af421fb41b4c3e4a67d4be2094e21b5f47555e8c74e4396c1c6d8e3"
+    },
+    {
+      "path": "stevenmih-3/held-11-citing.json",
+      "sha256": "7d602832086631ac383c6c2b3a9cf34064cffe1a624ce54cdc2f689320a2ce80"
+    },
+    {
+      "path": "stevenmih-3/held-12.json",
+      "sha256": "1aba8b56410c2abf01b5259631df403590a70fd551a720e63a454d526ac51c1f"
+    },
+    {
+      "path": "stevenmih-3/held-12-inclusion.json",
+      "sha256": "e65ff8555e73bdebd9c01a475446f060fa04fc77653fe4794774585e59c10c26"
+    },
+    {
+      "path": "stevenmih-3/held-12-citing.json",
+      "sha256": "2dce5a93433363483337bd4e4315d232c1acb773e4a919771592f01f9d2fd3dd"
+    },
+    {
+      "path": "stevenmih-3/held-13.json",
+      "sha256": "d77d340fe6dd1021a5c39e20596d3780c34067443153ccc45d127067a001aae2"
+    },
+    {
+      "path": "stevenmih-3/held-13-inclusion.json",
+      "sha256": "e8e21bc7003f57b92628b389dc494f17d87510381a5329ecadf3d48e27140dc3"
+    },
+    {
+      "path": "stevenmih-3/held-13-citing.json",
+      "sha256": "27c29c9832b58ab1e4b192b48bc51305b3a224f0f638fe939b9fec96b0071837"
+    },
+    {
+      "path": "stevenmih-3/held-14.json",
+      "sha256": "05db2b4418ca074edee12294fb9f69f9176ed3cc933564c6b62dff605cb316aa"
+    },
+    {
+      "path": "stevenmih-3/held-14-inclusion.json",
+      "sha256": "fcccc02eb19b498021b38a2396d02171f95b727140a6bd70326aa88300569c6a"
+    },
+    {
+      "path": "stevenmih-3/held-14-citing.json",
+      "sha256": "bf7c388f9b256dc5c0c60a2eaa3ab49e82e7745720ba758f6149adf402a0770a"
+    },
+    {
+      "path": "stevenmih-3/held-15.json",
+      "sha256": "b12bada165ea574738dd2e207e79434c4f06a72c8380a9e9d0b3a560b266bf4e"
+    },
+    {
+      "path": "stevenmih-3/held-15-inclusion.json",
+      "sha256": "99e2d26b8223d3ca54af21eb7bc07f2acb7dc4245590c38b55b1287af13a0fd9"
+    },
+    {
+      "path": "stevenmih-3/held-15-citing.json",
+      "sha256": "4db4dabffeb5ecab687172aea867603a7e7f5de8de80a08ceed2e187d94a7048"
+    },
+    {
+      "path": "stevenmih-3/held-16.json",
+      "sha256": "d34243593aec77631d6122495bc5e21dd72e26fdad6106b394cd8d8500c4e229"
+    },
+    {
+      "path": "stevenmih-3/held-16-inclusion.json",
+      "sha256": "0ef446e8c9d2b5e3ebf4859722dfdac784b65d4669ade0bc2d7a7e370f10707a"
+    },
+    {
+      "path": "stevenmih-3/held-16-citing.json",
+      "sha256": "04ba535d92996fef3977b94eb44fde867e40c88bf88244e837229082bb6827ab"
+    },
+    {
+      "path": "stevenmih-3/held-17.json",
+      "sha256": "e9492c28a8720ed81e32de9be10e1e330f162c90508bffc7811ae188fdfc3042"
+    },
+    {
+      "path": "stevenmih-3/held-17-inclusion.json",
+      "sha256": "b08b760468f4cb1fe4d21fe1595a50300c7158f83934178eb3aa0a8309f6e74e"
+    },
+    {
+      "path": "stevenmih-3/held-17-citing.json",
+      "sha256": "0bfe83e0335e7f6debac76470ad1c0d772e163a4e238b3e87b2ef409a81656db"
+    },
+    {
+      "path": "stevenmih-3/held-18.json",
+      "sha256": "685df7a03efcb79efece9ab4f685b0136437127ac0494f89a8cd47fb5c5c6978"
+    },
+    {
+      "path": "stevenmih-3/held-18-inclusion.json",
+      "sha256": "6d440d20961305a5f8fd7649f8ec4cf3d15141f6a2a0c1b1aeec6d4ce5f15cb5"
+    },
+    {
+      "path": "stevenmih-3/held-18-citing.json",
+      "sha256": "a7ef8a4654fd314e25352ddd18ab388ad36858c5ea406933348c966a2e229037"
+    },
+    {
+      "path": "stevenmih-3/held-19.json",
+      "sha256": "ed34654a61eaea31eb27b5136d3e8c032897cc8700d39fc83638d8258b4a0ea1"
+    },
+    {
+      "path": "stevenmih-3/held-19-inclusion.json",
+      "sha256": "d75174f7b4f170a21a1b65b63d3a745ccee99c0bd733cb95bf4ff690786ec32c"
+    },
+    {
+      "path": "stevenmih-3/held-19-citing.json",
+      "sha256": "607a16af1d966c3d6ab4dc7bb74a1376203cb8880a98225c28b96629d870555a"
+    },
+    {
+      "path": "stevenmih-3/held-21.json",
+      "sha256": "e1172d7d082ba9c205f8f50c81c555abbdf4fc86fecf0996300b89a1d48099c8"
+    },
+    {
+      "path": "stevenmih-3/held-21-inclusion.json",
+      "sha256": "0c5e4e201b08fd8ef360557a9b6c0a39becb35e4fa25ebc337f46be53d2a2328"
+    },
+    {
+      "path": "stevenmih-3/held-21-citing.json",
+      "sha256": "ea726fb63626c36fcd5686fc3a4fb723015ad39f7ee0e118cf40c89374297150"
+    },
+    {
+      "path": "stevenmih-3/held-22.json",
+      "sha256": "789a3b714f08ac51e9cf3ab32dff5a653884dadb6ce57f90d6ae9c6c9717aa57"
+    },
+    {
+      "path": "stevenmih-3/held-22-inclusion.json",
+      "sha256": "ada967c601daa6f395ffe4cd32e6e3d9ee58fb5a2c160a2caec1dc0e54ca6445"
+    },
+    {
+      "path": "stevenmih-3/held-22-citing.json",
+      "sha256": "66aaf529b06fc69a25c6b0f6fee16d03a5a46a649658a7ad747f1893f251c1fd"
+    },
+    {
+      "path": "stevenmih-3/checks.json",
+      "sha256": "fd5d09f99ef99ddcb28978752b3ecc5bd791241533f108489ec6f0cf02e72600"
+    },
+    {
+      "path": "stevenmih-3/sharing-effective.json",
+      "sha256": "05386f34c00e98ddf56857a7306076636f9d6847437667039cd8fca96cea7de6"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-10-31T05:06:55Z",
+  "step": "05"
+}
