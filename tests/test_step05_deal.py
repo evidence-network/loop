@@ -327,7 +327,7 @@ def binding_digest(text):
 
 @unittest.skipUnless(HAS_CROSS, NO_CROSS)
 class Step05BindingCheckTest(unittest.TestCase):
-    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.16.0)."""
+    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.17.0)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -339,7 +339,8 @@ class Step05BindingCheckTest(unittest.TestCase):
         os.environ["LOOP_NODES_DIR"] = str(self.dir / "nodes")
         self.addCleanup(os.environ.pop, "LOOP_NODES_DIR")
 
-    def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",)):
+    def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",),
+              started="2026-10-31T00:00:00Z"):
         text, keys = BINDINGS[case]["binding"], BINDINGS[case]["keys"]
         key = key or keys[0]
         node_id = "b1" * 32
@@ -349,13 +350,22 @@ class Step05BindingCheckTest(unittest.TestCase):
             (self.data / step.BINDING_FILE).write_text(text)
         half = {"key_id": key, "timestamp": times[0]}
         citing = {"timestamp": times[-1]}
-        return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)})
+        return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)},
+                                  started)
 
     def test_a_binding_that_names_the_key_and_applies_is_ok(self):
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("signatures and window PASS, revocation NOT_CHECKED (no statement in nodes/revocations/ "
-                      "applies; 0 published)", detail)
+        # CB-1 option A: with no file published, the run declares the empty list complete as of the step's start.
+        self.assertIn("signatures and window PASS, revocation PASS: no statement applies in the list "
+                      "evidence-network/loop step 05, run started 2026-10-31T00:00:00Z declared complete as of "
+                      f"2026-10-31T00:00:00Z (list sha256 {hashlib.sha256(b'[]').hexdigest()})", detail)
+
+    def test_a_half_issued_after_the_steps_start_leaves_revocation_open(self):
+        state, detail = self.check("valid-same-controller", started="2026-10-29T00:00:00Z")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("revocation NOT_CHECKED: the declaration does not count (as_of is earlier than a time asked "
+                      "about)", detail)
 
     # revocation statements published at nodes/revocations/<digest>.json (loop#138)
     def publish_revocations(self, case, statements=None):
@@ -383,7 +393,11 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.publish_revocations("valid-same-controller")
         state, detail = self.check("valid-same-controller", times=("2026-10-11T00:00:00Z",))
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation NOT_CHECKED (no statement in nodes/revocations/ applies; 1 published)", detail)
+        digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
+        listed = (self.dir / "nodes" / "revocations" / f"{digest}.json").read_bytes()
+        self.assertIn(f"revocation PASS: no statement applies in the list evidence-network/loop step 05, run started "
+                      f"2026-10-31T00:00:00Z declared complete as of 2026-10-31T00:00:00Z (list sha256 "
+                      f"{hashlib.sha256(listed).hexdigest()})", detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])
@@ -482,7 +496,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
     def test_a_binding_of_the_halfs_ed25519_key_to_a_bip340_key_applies(self):
-        # aac-go go/v0.16.0 (AAC#458): the controller key is bip340, the half's evidence key Ed25519.
+        # aac-go go/v0.17.0 (AAC#458): the controller key is bip340, the half's evidence key Ed25519.
         keys = BINDINGS["valid-nostr-key"]["keys"]
         state, detail = self.check("valid-nostr-key", key=keys[1], times=("2026-10-30T00:00:00Z",))
         self.assertEqual(state, "ok", detail)
@@ -500,7 +514,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("signatures FAIL", detail)
 
     def test_a_declared_bip340_key_type_is_no_longer_downgraded(self):
-        # aac-go go/v0.16.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
+        # aac-go go/v0.17.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
         keys = BINDINGS["valid-same-controller"]["keys"]
         text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": ["ed25519", "bip340"]})
         BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
@@ -535,13 +549,14 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.check("valid-same-controller")
         (self.data / step.BINDING_FILE).write_text("not json")
         state, _ = step.binding_check("cd" * 32, {"key_id": "ab" * 32, "timestamp": "2026-10-30T00:00:00Z"},
-                                      {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)})
+                                      {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)},
+                                      "2026-10-31T00:00:00Z")
         self.assertEqual(state, "unread")
 
     def test_a_half_with_no_evidence_key_is_bad_not_a_crash(self):
         for key in (None, "zz", 5):
             state, detail = step.binding_check("cd" * 32, {"key_id": key, "timestamp": "2026-10-30T00:00:00Z"},
-                                               {"timestamp": "2026-10-30T00:00:00Z"}, {})
+                                               {"timestamp": "2026-10-30T00:00:00Z"}, {}, "2026-10-31T00:00:00Z")
             self.assertEqual(state, "bad", detail)
         self.assertIsNone(step.listed_node_id(None))
 
@@ -554,16 +569,18 @@ class Step05BindingCheckTest(unittest.TestCase):
 
     def test_the_entries_name_what_is_left_and_are_absent_when_nothing_is(self):
         self.assertEqual(step.live_declarations({}, set()), [])
-        es = step.live_declarations({"ok": 2, "unread": 1, "unsupported": 1},
+        es = step.live_declarations({"ok": 2, "open": 1, "unread": 1, "unsupported": 1},
                                     {"lab-b has no readable controller-binding.json in its data_dir"})
         by = {(e["what"], e["issue"]): e["why"] for e in es}
         self.assertIn("1 cited bindings could not be checked", by[(step.LIVE_DECLARATION_WHAT, step.live.ISSUE)])
         self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.bv.UNSUPPORTED_METHOD_ISSUE)])
-        self.assertIn("revocation NOT_CHECKED", by[("revocation of the controller bindings that apply",
-                                                    step.BINDING_REVOCATION_ISSUE)])
+        self.assertIn("1 cited bindings apply, with revocation NOT_CHECKED", by[(
+            "revocation of the controller bindings that apply", step.BINDING_REVOCATION_ISSUE)])
         self.assertEqual(len(es), 3)
-        # the key's role is checked by binding_check (AAC#468, loop#196): only revocation is left for one that applies
-        self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
+        # the key's role is checked by binding_check (AAC#468, loop#196), and revocation PASSes on the run's declared
+        # snapshot (CB-1 option A): a binding that applies leaves nothing; one whose declaration did not count, CB-1
+        self.assertEqual(step.live_declarations({"ok": 1}, set()), [])
+        self.assertEqual([e["issue"] for e in step.live_declarations({"open": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE])
 
 

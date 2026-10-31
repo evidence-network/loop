@@ -36,7 +36,7 @@ none is a not_checked entry. The own book's entry, where it names a
 checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding record is checked in a second language,
-`cross_language binding` (aac-go go/v0.16.0): binding.json, as join.sh wrote
+`cross_language binding` (aac-go go/v0.17.0): binding.json, as join.sh wrote
 it, must have the digest controller.json names, name the node key and apply
 now (form, both signatures, window). That is "the binding applies", not a
 trust verdict. The node key's role is checked from the verifier's report: in a
@@ -44,10 +44,13 @@ trust verdict. The node key's role is checked from the verifier's report: in a
 `delegator` (AAC#468); the other claim types give a key no role. The
 revocation statements published for it at nodes/revocations/<digest>.json go
 to the verifier with it: one that applies makes the binding not apply (a
-failure). With none that applies, revocation is NOT_CHECKED, because Controller
-Binding v0 registers no source a verifier could hold to be complete (CB-1,
-agent-action-capsule#482); that is outside the assertion, and a PASS says so
-in detail. For a Mesh
+failure). Under CB-1 option A (Controller Binding v0 §5.1,
+agent-action-capsule#495) the run declares that list complete (`[]` when the
+folder holds no file for the binding) as of the time it checks the binding,
+and the verifier reports revocation PASS when no statement in that snapshot
+applies: the loop run's statement, scoped to the snapshot. A declaration that
+does not count leaves revocation a not_checked entry on CB-1
+(agent-action-capsule#482). For a Mesh
 node (`reporter`), the pinned plugin checks the record itself before its
 doctor reports it bound, and the loop checks the record the node holds in its
 `data_dir` (controller-binding.json) the same way.
@@ -107,8 +110,8 @@ A bound node's record is then read from the `data_dir` the population gives and 
 Go verifier against that digest: a record that does not name the node's listed key or does not
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
 have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies with the node
-key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise leaves one NOT_CHECKED entry:
-revocation.
+key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise has its revocation read as
+above, NOT_CHECKED only when the run's declaration does not count.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -152,23 +155,23 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # No released verifier the loop can call for a stapled history_card/1 (as step 03).
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
-# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.16.0,
+# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
 # inside its window now. That is "the binding applies" (form, both signatures, window; revocation not FAIL), not a
 # trust verdict. `Binds` takes either key of the binding, so the role is read from the report's claim and delegator
 # (AAC#468): a node key that is the delegator of a delegated_by binding is not the delegate its controller bound.
-# The revocation statements published in nodes/revocations/ go to the verifier; reading that list as complete would
-# change CB-1, which is Steven's call (Sherlock2, Buzz f91277af), so revocation is FAIL or NOT_CHECKED, never PASS.
+# The revocation statements published in nodes/revocations/ go to the verifier with the run's declaration that the
+# list is complete as of the binding's check time (CB-1 option A, agent-action-capsule#495, scripts/binding_verify.py):
+# revocation is PASS on that snapshot, FAIL when a statement in it applies, NOT_CHECKED when the declaration does not
+# count.
 BINDING_REVOCATION_ISSUE = "action-state-group/agent-action-capsule#482"  # CB-1
 BINDING_REVOCATION = {
     "what": "the controller binding's revocation",
-    "why": f"no statement in nodes/{bv.REVOCATIONS}/ applies, and Controller Binding v0 registers no source a "
-           "verifier could hold to be complete (CB-1)",
+    "why": f"the run's declaration that nodes/{bv.REVOCATIONS}/ is complete did not count (CB-1)",
     "issue": BINDING_REVOCATION_ISSUE,
 }
 DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
 BINDING_FILE = "controller-binding.json"  # the capsules plugin's HELD_FILE in its data dir
-BINDING_OUTSIDE = " ".join(finding.outside(e["what"], e["issue"]) for e in (BINDING_REVOCATION,))
 
 
 def utc_now():
@@ -188,15 +191,16 @@ def binding_check(name, raw, digest, key, at):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, does not name the key, or names it as the
     delegator of a delegated_by binding); "unread" (it
-    is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks). The revocation
-    statements published for `digest` (nodes/revocations/, bv.revocations) go to the verifier: one that applies at
-    `at` makes it "bad"."""
+    is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks); "open" (it applies,
+    but revocation is NOT_CHECKED: the run's declaration did not count). The revocation statements published for
+    `digest` (nodes/revocations/) go to the verifier, declared complete as of `at` (CB-1 option A): one that applies
+    at `at` makes it "bad", and with none that applies it is "ok" (revocation PASS on that snapshot)."""
     try:
-        statements = bv.revocations(nodes_dir(), digest)
+        listing = bv.revocation_list(nodes_dir(), digest, at, f"evidence-network/loop step 12, checking at {at}")
     except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
         return "bad", f"{name}'s binding {digest}: the published revocation statements are unreadable ({e})"
     try:
-        verdict, report, err, code = bv.verify(cross_language(), raw, key, [at], statements)
+        verdict, report, err, code = bv.verify(cross_language(), raw, key, [at], listing)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise SystemExit(f"12-join: cross_language binding did not run ({e}); run steps/01-seal.setup.sh")
     if verdict is None:
@@ -218,9 +222,15 @@ def binding_check(name, raw, digest, key, at):
         return "unsupported", (f"{name}'s binding {digest}: "
                                f"{', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}")
     role = "as the delegate" if report.get("claim") == DELEGATED_BY else f"({report.get('claim')}: no role)"
-    return "ok", (f"{name}'s binding {digest} names the node key {role} and applies at {at} (form, both signatures and "
-                  f"window PASS, revocation {props.get('controller_binding_revocation')}: no statement in "
-                  f"nodes/{bv.REVOCATIONS}/ applies; {len(statements)} published)")
+    revoked, said = bv.revocation(report)
+    return "ok" if revoked == "PASS" else "open", (
+        f"{name}'s binding {digest} names the node key {role} and applies at {at} (form, both signatures and "
+        f"window PASS, {said})")
+
+
+def revocation_open(detail):
+    """The not_checked entry for a binding that applies with revocation NOT_CHECKED (binding_check's "open")."""
+    return {**BINDING_REVOCATION, "why": f"{BINDING_REVOCATION['why']}: {detail}"}
 
 
 def binding_unchecked(state, detail):
@@ -326,10 +336,11 @@ def check_doctor(node_dir, adv):
     return errs
 
 
-def check_binding_record(node_dir, at):
+def check_binding_record(node_dir, at, not_checked=None):
     """What the Go verifier found wrong with binding.json, the record join.sh wrote: it has the digest
     controller.json names, names the node key and applies at `at`. A method or key type the verifier lacks cannot
-    be told from a bad record here, and join.sh writes none of them, so it counts as not holding."""
+    be told from a bad record here, and join.sh writes none of them, so it counts as not holding. A binding that
+    applies with revocation NOT_CHECKED adds its entry to `not_checked`."""
     node_dir = Path(node_dir)
     try:
         c = load(node_dir / "controller.json")
@@ -337,7 +348,9 @@ def check_binding_record(node_dir, at):
         state, detail = binding_check(node_dir.name, raw, c["binding_digest"], c["node_key"], at)
     except (OSError, ValueError, KeyError, TypeError) as e:
         return [f"binding.json and controller.json are not the controller binding join.sh writes ({e})"]
-    return [] if state == "ok" else [f"the controller binding does not hold: {state}: {detail}"]
+    if state == "open" and not_checked is not None:
+        not_checked.append(revocation_open(detail))
+    return [] if state in ("ok", "open") else [f"the controller binding does not hold: {state}: {detail}"]
 
 
 def check_policy_match(node_dir, adv):
@@ -434,11 +447,11 @@ def judge(node_dir, capsulectl, work, at=None):
     except (OSError, ValueError, KeyError, TypeError) as e:
         return errs + [f"the commitment does not advertise the node's keys and policy ({e})"], [], list(PROOF)
     errs += check_doctor(node_dir, adv)
-    errs += check_binding_record(node_dir, at or utc_now())
+    not_checked = []
+    errs += check_binding_record(node_dir, at or utc_now(), not_checked)
     errs += check_policy_match(node_dir, adv)
     errs += check_staple(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
-    not_checked = []
     # The stranger's book too: the kept answers are verified again in it, so a rerun needs its bytes.
     proof = list(PROOF) + sorted(str(f.relative_to(node_dir)) for f in (node_dir / "probe/stranger").rglob("*")
                                  if f.is_file())
@@ -639,7 +652,7 @@ def live_binding_record(name, node, entry, held, at, node_dir):
     unchecked = binding_unchecked(state, detail)
     if unchecked:
         return None, [{**unchecked, "what": f"{name}: {unchecked['what']}"}], None, kept
-    return None, [BINDING_REVOCATION], f"{name}: {detail}", kept
+    return None, [revocation_open(detail)] if state == "open" else [], f"{name}: {detail}", kept
 
 
 def no_binding(name, why):
@@ -1112,8 +1125,6 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go"]
     shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
     detail = f"probe backend: {which}. " + "; ".join(shown) + "."
-    if result == "PASS":  # a PASS covers its assertion; the binding's own verification is outside it
-        detail += " " + BINDING_OUTSIDE
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
                          detail=detail,
                          not_checked=not_checked, started=started)

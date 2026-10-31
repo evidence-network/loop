@@ -16,7 +16,7 @@ recomputes the capsule_id from them on its own. The step checks, on those bytes:
   key             key_id is the node's public key
 
   signature       the producer envelope's signature verifies in the Go verifier
-                  (`cross_language signature`, aac-go go/v0.16.0, AAC#463) under the key_id it carries, and
+                  (`cross_language signature`, aac-go go/v0.17.0, AAC#463) under the key_id it carries, and
                   that key is the node's own key (the key check) and, on the live population, the key the
                   node publishes in nodes/<node_id>.json. Exit 1 (invalid) or another key is a FAIL, and so
                   is a record capsule-emit sealed here with no signature. Exit 3 (unclaimed) on a `--sealed`
