@@ -60,6 +60,13 @@ OLDER_CONSENTS = {
         "repository, including after that repository is public. I leave by removing this entry "
         "by pull request: the asks stop from the next run, and reports already published stay."
     ),
+    "the nodes/ operator statement before it named the /watch/ pair edges (replaced 2026-10-31)": (
+        "I add this node to the evidence network to help improve the evidence layer. "
+        "The network may ask it for its history summary, usually daily, and never for the "
+        "content of any request, answer or payment. A summary of its answers, or that it did "
+        "not answer, is published at https://evidence-network.github.io/loop/stats/. "
+        "To leave, remove this entry: the asks stop on the next run, and past reports stay."
+    ),
 }
 
 
