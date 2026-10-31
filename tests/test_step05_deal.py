@@ -313,6 +313,7 @@ class Step05DealNoDriverTest(unittest.TestCase):
 
 BINDINGS = json.loads((FIXTURES / "controller-bindings.json").read_text())["cases"]
 REVOCATIONS = json.loads((FIXTURES / "controller-bindings.json").read_text())["revocations"]
+DELEGATED_BY = json.loads((ROOT / "tests" / "fixtures" / "step12" / "delegated-by.json").read_text())
 
 
 def binding_digest(text):
@@ -421,7 +422,37 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(check_revocations.check(folder), [])
         self.assertEqual(check_revocations.check(self.dir / "absent"), [])
 
-    def test_the_second_key_of_the_binding_is_ok_too_the_role_is_not_checked(self):
+    # the half's key's role (AAC#468, loop#196): in delegated_by it is the delegate, never the delegator
+    def check_delegated(self, key):
+        BINDINGS["delegated-by"] = {"binding": DELEGATED_BY["binding"], "keys": DELEGATED_BY["keys"]}
+        self.addCleanup(BINDINGS.pop, "delegated-by", None)
+        return self.check("delegated-by", key=key, times=(DELEGATED_BY["evaluation_time"],))
+
+    def test_the_delegate_of_a_delegated_by_binding_is_ok(self):
+        delegate = next(k for k in DELEGATED_BY["keys"] if k != DELEGATED_BY["delegator"])
+        state, detail = self.check_delegated(delegate)
+        self.assertEqual(state, "ok", detail)
+        self.assertIn(f"names the half's key {delegate} as the delegate and applies", detail)
+
+    def test_the_delegator_of_a_delegated_by_binding_is_bad(self):
+        state, detail = self.check_delegated(DELEGATED_BY["delegator"])
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("names the half's key as the delegator", detail)
+
+    def test_a_same_controller_binding_gives_the_key_no_role(self):
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("(same_controller_asserted: no role)", detail)
+
+    def test_an_unreadable_revocations_file_makes_the_binding_not_apply_with_a_reason(self):
+        # loop#194: a malformed nodes/revocations/<digest>.json is a FAIL with a reason, not a stopped step
+        digest = self.publish_revocations("valid-same-controller", [])
+        (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text("not json")
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("the published revocation statements are unreadable", detail)
+
+    def test_the_second_key_of_a_same_controller_binding_is_ok_too(self):
         keys = BINDINGS["valid-same-controller"]["keys"]
         self.assertEqual(self.check("valid-same-controller", key=keys[1])[0], "ok")
 
@@ -527,11 +558,10 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.bv.UNSUPPORTED_METHOD_ISSUE)])
         self.assertIn("revocation NOT_CHECKED", by[("revocation of the controller bindings that apply",
                                                     step.BINDING_REVOCATION_ISSUE)])
-        self.assertIn("is not checked", by[("the half's key's role in the controller binding that applies",
-                                            step.BINDING_ROLE_ISSUE)])
-        self.assertEqual(len(es), 4)
+        self.assertEqual(len(es), 3)
+        # the key's role is checked by binding_check (AAC#468, loop#196): only revocation is left for one that applies
         self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
-                         [step.BINDING_REVOCATION_ISSUE, step.BINDING_ROLE_ISSUE])
+                         [step.BINDING_REVOCATION_ISSUE])
 
 
 LAB3 = "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac"  # stevenmih-3, published with no binding

@@ -71,13 +71,16 @@ digest, the binding itself is checked in a second language (`cross_language bind
 go/v0.16.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
 its `node_id`, listed in nodes/) must have that digest, name the half's evidence key and apply at the half's and
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
-applies", not a trust verdict and not which role the key has in it (AAC#468). The revocation statements published
+applies", not a trust verdict. `Binds` takes either key, so the half's key's role is read from the report's claim and
+delegator (AAC#468, as step 12 since loop#191): in a `delegated_by` binding it must be the delegate, and naming it the
+delegator is a FAIL; the other claim types give a key no role. The revocation statements published
 for the binding at `nodes/revocations/<binding_digest>.json` (loop#138, `scripts/binding_verify.py`) go to the
 verifier with it, so a binding revoked at or before either time does not apply. With none that applies, revocation
 is a not_checked entry under Controller Binding v0's open point CB-1: a statement published elsewhere cannot be
 excluded. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
-not_checked entry, as is the key's role.
+not_checked entry. A revocations file that cannot be read makes the binding not apply, a FAIL with that reason
+(loop#194).
 
 The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
 `received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
@@ -335,7 +338,7 @@ BINDING_FILE = "controller-binding.json"
 LIVE_DECLARATION_WHAT = "the controller binding a node accepted a half under"
 
 
-BINDING_ROLE_ISSUE = "action-state-group/agent-action-capsule#468"
+DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
 # Controller Binding v0 registers no place to fetch revocation statements, so revocation is FAIL or NOT_CHECKED,
 # never PASS. The statements published in nodes/revocations/ are read (loop#138); reading that list as complete would
 # change CB-1, which is Steven's call (Sherlock2, Buzz f91277af).
@@ -346,8 +349,7 @@ def live_declarations(counts, unread):
     """The not_checked entries for the controller binding behind current-build halves cited with a binding
     digest: `counts` is {state: n} of binding_check, `unread` the reasons a binding could not be read. For the
     bindings that apply (ok), revocation is NOT_CHECKED (CB-1: no statement in nodes/revocations/ applies, and a
-    statement published elsewhere cannot be excluded) and so is the half's key's role in the binding (`Binds`
-    takes either key)."""
+    statement published elsewhere cannot be excluded)."""
     out = []
     if counts.get("unread"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,
@@ -361,10 +363,6 @@ def live_declarations(counts, unread):
                     "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no statement in "
                            f"nodes/{bv.REVOCATIONS}/ applies, and Controller Binding v0 registers no source a verifier "
                            f"could hold to be complete (CB-1)"})
-        out.append({"what": "the half's key's role in the controller binding that applies",
-                    "issue": BINDING_ROLE_ISSUE,
-                    "why": f"{counts['ok']} cited bindings name the half's key; which of the two keys it is (node "
-                           f"or controller) is not checked"})
     return out
 
 
@@ -611,12 +609,14 @@ def binding_check(digest, half, citing, peers):
     HELD_FILE), the record it carries whole in its push bundles; the sender is the node whose nodes/ listing holds
     the half's key, found among `peers` ({node_id: (name, data_dir)}). The binding must have the digest the citing
     record names, name the half's evidence key, and apply at the half's and the citing record's issue times (form,
-    both signatures, window; revocation not FAIL). That is "the binding applies", never a trust verdict, and not
-    which role the key has in it (agent-action-capsule#468). The revocation statements published for the binding
-    (nodes/revocations/<digest>.json, loop#138) go to the verifier with it: one that applies at or before either
-    time makes the binding not apply ("bad"). With none that applies, revocation is NOT_CHECKED (CB-1).
+    both signatures, window; revocation not FAIL). That is "the binding applies", never a trust verdict. In a
+    delegated_by binding the half's key must be the delegate, not the delegator (AAC#468). The revocation
+    statements published for the binding (nodes/revocations/<digest>.json, loop#138) go to the verifier with it: one
+    that applies at or before either time makes the binding not apply ("bad"), and so does a file that cannot be
+    read (loop#194). With none that applies, revocation is NOT_CHECKED (CB-1).
 
-    state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key);
+    state: "ok"; "bad" (the binding the record names does not apply, does not name the half's key, names it as the
+    delegator of a delegated_by binding, or its published revocation statements are unreadable);
     "unread"
     (its bytes are not available, or are not the binding the record names); "unsupported" (a method or key type the
     verifier does not implement). Usage exit 2 for an old verifier stops the step. Bytes the verifier cannot decode are not the
@@ -638,7 +638,10 @@ def binding_check(digest, half, citing, peers):
     if not all(issued):
         return "unread", "the half or the citing record carries no readable timestamp to hold the window to"
     times = sorted(set(issued))
-    statements = bv.revocations(nodes_dir(), digest)
+    try:
+        statements = bv.revocations(nodes_dir(), digest)
+    except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
+        return "bad", f"binding {digest} ({name}): the published revocation statements are unreadable ({e})"
     verdict, report, err, code = bv.verify(cross_language(), raw, key, times, statements)
     if verdict is None:
         raise RuntimeError(f"cross_language binding exited {code} ({err}); "
@@ -651,9 +654,13 @@ def binding_check(digest, half, citing, peers):
         why = ("does not name the half's key" if key not in (report.get("keys") or []) else
                ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s == "FAIL"))
         return "bad", f"binding {digest} ({name}) does not apply: {why}"
+    if report.get("claim") == DELEGATED_BY and report.get("delegator") == key:
+        return "bad", (f"binding {digest} ({name}) names the half's key as the delegator: it says the sender delegated "
+                       f"to the other key, not that the half's key is its controller's delegate (AAC#468)")
     if verdict == "unsupported":
         return "unsupported", f"binding {digest} ({name}): {', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}"
-    return "ok", (f"binding {digest} ({name}) names the half's key {key} and applies at {', '.join(times)}: form, "
+    role = "as the delegate" if report.get("claim") == DELEGATED_BY else f"({report.get('claim')}: no role)"
+    return "ok", (f"binding {digest} ({name}) names the half's key {key} {role} and applies at {', '.join(times)}: form, "
                   f"signatures and window PASS, revocation {props.get('controller_binding_revocation')} "
                   f"(no statement in nodes/{bv.REVOCATIONS}/ applies; {len(statements)} published)")
 
