@@ -286,14 +286,16 @@ def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
         mine = [e for e in steps if e["step"] == nn]
         # The same definition 10 judges by: a record is a primary record file (binding.json `records`), so a count means
         # deals, settlements, asks or disputes, not the bundles and proof files beside them.
+        rk = {e["dir"]: judge10.record_kind(k, [x["path"] for x in e.get("files", [])], manifest.get("population"))
+              for e in mine}
         listed = [(e, f["path"]) for e in mine for f in e.get("files", [])
-                  if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
+                  if any(fnmatch.fnmatchcase(f["path"], g) for g in rk[e["dir"]]["records"])]
         if source is not None:
             missing = [f"{e['dir']}/{p}" for e, p in listed if not (source / e["dir"] / p).is_file()]
             if missing:
                 raise Refused(f"{', '.join(missing)}: listed by 08's manifest, not in the run")
         refs = [f"{e['dir']}/{p}" for e, p in listed
-                if source is None or judge10.is_record(k, p, source / e["dir"] / p)]
+                if source is None or judge10.is_record(rk[e["dir"]], p, source / e["dir"] / p)]
         hit = [r for r in refs if r in cited]
         counted = any(t.get("counted") for t in k["terms"])
         # A live 05's halves of one exchange (each node holds the other's) are one deal, never two (loop#250).
@@ -304,9 +306,9 @@ def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
             f"count:{k['kind']}", "adjudications",
             f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
             f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps"
-            + (f"; the live halves are {len(deals)} deal{'' if len(deals) == 1 else 's'}, one per exchange held on "
-               f"both nodes, each citing both halves" + (f" ({lone} half{'' if lone == 1 else 'ves'} pair{'s' if lone == 1 else ''} "
-                                                        "with no other node's half)" if lone else "") if live else "") + ".",
+            + (f"; {2 * len(deals)} of {len(live)} live halves pair into deals, one per exchange held on "
+               f"both nodes, each citing both halves" + (f" ({lone} of {len(live)} halves have no pair on another node)"
+                                                        if lone else "") if live else "") + ".",
             "met", hit))
     for nn, k in pack["kinds"].items():
         dirs = sorted(d for d in finer if d[:2] == nn)
