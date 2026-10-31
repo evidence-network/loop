@@ -376,6 +376,14 @@ class ReportTest(Base):
             with self.assertRaises(step.Refused):
                 step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
 
+    def test_a_nodes_own_chain_is_cited_but_never_counted(self):
+        # loop#157: step 10 cites each node's own chain (binding.json `inputs`) for its evaluator; step 11 reads no
+        # deal or exchange from it.
+        pack = step.judge10.load_pack()
+        cited = {"05-deal/lab-a/held-1.json": "a", "05-deal/lab-a/ledger/capsules.jsonl": "b", "06-settle/ledger.jsonl": "c"}
+        refs = [r for r, _, _ in step.cited_records(Path("/nowhere"), cited, pack)]
+        self.assertEqual(refs, ["05-deal/lab-a/held-1.json", "06-settle/ledger.jsonl"])
+
     def test_one_exchange_named_twice_counts_once(self):
         line = {"exchange_id": "fixture-ex-2"}
         self.add_record("06-settle", "ledger.jsonl", line, line)

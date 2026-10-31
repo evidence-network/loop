@@ -215,7 +215,9 @@ def record_holds(path, sha):
 def cited_records(source, cited, pack):
     """[(ref, path, sha256)] of the deal and settlement records the Results cite; only these are read."""
     steps = {nn for nn, k in pack["kinds"].items() if k["kind"] in ("deal", "settlement")}
-    return [(ref, source / ref, sha) for ref, sha in sorted(cited.items()) if ref[:2] in steps]
+    # An evaluator input (a node's own chain, binding.json `inputs`, loop#157) is cited but is no record: not counted.
+    return [(ref, source / ref, sha) for ref, sha in sorted(cited.items()) if ref[:2] in steps
+            and not judge10.is_input(pack["kinds"][ref[:2]], ref.split("/", 1)[1])]
 
 
 def documents(path):
@@ -615,7 +617,8 @@ def reporting_book(population, pop, keys, tmp, capsulectl, preview=False):
 
 
 def report(run, out, population, pop, population_dir, proof, tmp, page=None, preview=False):
-    """Render, seal and check the page. Returns (problems, lines, is_standin); raises NotChecked or Refused."""
+    """Render, seal and check the page. Returns (problems, lines, is_standin, the 10 Results whose pack terms step
+    10 applied from 08's results, not the pinned evaluator); raises NotChecked or Refused."""
     judged, source, is_standin = run_inputs(run, out, population, population_dir, preview)
     record = read_judge(judged, preview)
     if preview:
@@ -685,7 +688,9 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
     problems += check_no_paid_product(page, report_json)
     if page_out:
         shutil.copyfile(page, page_out)
-    return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin
+    unevaluated = sorted(d for d, st in finer.items() if not st.get("x-evaluator")
+                         and any(not t.get("own") for t in pack["kinds"].get(d[:2], {}).get("terms", [])))
+    return problems, [c["presentation"]["summary"] for c in statement["claims"]], is_standin, unevaluated
 
 
 def main(argv=None):
@@ -715,10 +720,10 @@ def main(argv=None):
     population_dir = a.population.resolve()
     pop = load(population_dir / "population.json")
     population = pop["population"]
-    problems, not_checked, lines, proof, pinned, is_standin = [], [], [], [], [], False
+    problems, not_checked, lines, proof, pinned, is_standin, unevaluated = [], [], [], [], [], False, []
     try:
         with tempfile.TemporaryDirectory(prefix="11-report-") as tmp:
-            problems, lines, is_standin = report(run, out, population, pop, population_dir, proof, tmp,
+            problems, lines, is_standin, unevaluated = report(run, out, population, pop, population_dir, proof, tmp,
                                                   a.page.resolve() if a.page else None, preview)
         pinned = PINNED
     except NotChecked as e:
@@ -742,8 +747,12 @@ def main(argv=None):
                    "--seal and matched by book report check; the builder's viewer script is pinned code and was not "
                    "scanned for score-like words. ")
         detail += (LIVE_LABEL + " " if population == "live" else "")
-        detail += finding.outside("the pinned pack's own evaluator does not run here: step 10 applies the "
-                                  "pack's terms to the results 08 re-derived", PACK_ISSUE) + " "
+        if unevaluated:
+            detail += finding.outside(judge10.evaluator_gap(
+                unevaluated, population, "the pinned pack's own evaluator does not run here: step 10 applies the "
+                "pack's terms to the results 08 re-derived", kinds=judge10.load_pack()["kinds"]).replace(
+                "this step applies", "step 10 applies"),
+                PACK_ISSUE) + " "
         detail += finding.outside("the page's text naming its two questions (did the evidence verify, is this the "
                                   "page the publisher issued)", VIEWER_ISSUE) + " "
         detail += finding.outside("a check that both sides' deals agree: only the payer seals a deal for now",

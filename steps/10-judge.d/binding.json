@@ -29,6 +29,12 @@
           "why": "a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals",
           "path": "[^/]+/held-[0-9]+\\.json"
         }
+      },
+      "inputs": {
+        "*/ledger/capsules.jsonl": {
+          "path": "[^/]+/ledger/capsules\\.jsonl",
+          "why": "each node's own chain, as live 05 copies it (loop#225): the sealed exchange records, lifecycle observations and settlement legs the pinned pack's evaluator decides its terms from (loop#157)"
+        }
       }
     },
     "06": {

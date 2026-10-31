@@ -34,17 +34,32 @@ and the window length from there. A pinned pack whose terms the binding does not
 `must_have`, is NOT_CHECKED. The loop's own claims (07 asks, 09 disputes, the roll-up) carry the loop's own
 `own_contract_ref`, never the pack's. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
 says which stand-in record files feed which term. When the pinned pack is not fetched, the step is NOT_CHECKED,
-never a PASS. The pack's own evaluator reads a node's real Mesh book records, which the rehearsal stand-ins are
-not, so it does not run here: the step applies the pack's terms to the results 08 re-derived. A PASS names that
-as a gap on evidence-network/loop#157.
+never a PASS. The pack's own evaluator reads a node's real Mesh book records. On a live run, live 05 keeps each
+node's own chain (`<node>/ledger/capsules.jsonl`, binding.json `inputs`), and step 10 runs the pinned evaluator
+(`scripts/evaluators/inference_deals.py` and the three modules it imports, at the `inference-deals` pin, each held to
+its git blob id; `10-judge.setup.sh` fetches them beside the pack, none is kept here) over those chains in the window:
+its `collect` and `judge_deal`, per deal, with a `shop_preauth` deal not counted, as the pack's own run does
+(loop#157). Only the bounds differ: the evaluator runs over step 10's window, the calendar months its records are in,
+not the pack's weekly `period_policy`, so the chains and the halves are judged over one window. The bytes run are
+the bytes held to their blobs, compiled from them (never a cached `.pyc`); pinned code that does not load here is a
+not_checked entry, never a crash. Each chain is read once and held to 08's digest. Each 05 term's claim then carries
+the evaluator's worst verdict over the deal sides that answer the term (`out_of_scope` ones left out;
+`not_evaluable` when none does), the readings it used (`provider_states`, or `adjudicated` for a referee's sealed
+verdict) and how many exchanges it saw; its grade is `countersigned` only when every answer is. It cites the chains
+beside the halves, and the Result says the evaluator ran (`x-evaluator`). The chains are cited but are not records:
+step 11 counts no deal from them. The rehearsal stand-ins are no Mesh book records, so there the step applies the
+pack's terms to the results 08 re-derived, and a PASS names that as a gap on evidence-network/loop#157; on live, a
+PASS names only the steps judged that way, with why: 06, whose kind binding.json gives no evaluator inputs, and a
+05 whose proof keeps no node's own chain; step 11 says the same. An
+evaluator not fetched or not at its blobs is a not_checked entry.
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
 
 | Step | Claim | Verdict |
 |---|---|---|
 | 06 | `come_through.paid_as_agreed` | from the result 08 re-derived: PASS `met`, FAIL `not_met`, NOT_CHECKED `not_evaluable` |
-| 05 | `come_through.served_as_agreed` | the same |
-| 05 | `come_through.served_named_model` | "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match; where one does, a not_checked entry, since the pack has no recomputation for it yet |
+| 05 | `come_through.served_as_agreed` | the same; on live, with the nodes' own chains, the pinned evaluator's worst verdict over the deals |
+| 05 | `come_through.served_named_model` | on live, with the nodes' own chains, the pinned evaluator's (its "provider states" reading, or a referee's sealed verdict); otherwise "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match, and where one does, a not_checked entry |
 | 07 | an ask is answered or its absence recorded | from the result 08 re-derived |
 | 09 | the referee's sealed Result | cited and counted as found, never judged again |
 
