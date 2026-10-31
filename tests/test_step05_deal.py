@@ -651,7 +651,88 @@ class Step05DealLiveTest(unittest.TestCase):
         r = run_step(self.lab, self.out, env=dict(os.environ, LAB_DIR=str(self.lab),
                                                   LOOP_NODES_DIR=str(self.nodes), **env))
         self.assertEqual(r.returncode, 0, r.stderr)
-        return json.loads((self.out / "finding.json").read_text())
+        record = json.loads((self.out / "finding.json").read_text())
+        self.assert_rederives(record)
+        return record
+
+    def assert_rederives(self, record):
+        """judge_live on a copy of only the cited files, with no LAB_DIR and no LOOP_SEALED_SINCE, gives the same
+        finding: what step 08 checks (loop#188)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "05-deal"
+            for p in record["proof"]:
+                (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(self.out / p["path"], work / p["path"])
+            saved = dict(os.environ)
+            os.environ.pop("LOOP_SEALED_SINCE", None)
+            os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes))
+            try:
+                loader = importlib.machinery.SourceFileLoader("step05_again", str(STEP))
+                mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step05_again", loader))
+                loader.exec_module(mod)
+                again = mod.judge_live(json.loads((self.lab / "population.json").read_text()), work, record["started"])
+            finally:
+                os.environ.clear()
+                os.environ.update(saved)
+            self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                             (record["result"], record["not_checked"], record["detail"]))
+
+    def verify08(self):
+        """Step 08 on the run self.findings holds (05 only), with the lab's population: (finding, manifest entries)."""
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["05", "08"]}))
+        saved = dict(os.environ)
+        os.environ.pop("LOOP_SEALED_SINCE", None)
+        os.environ.update(LAB_DIR="", LOOP_NODES_DIR=str(self.nodes))
+        try:
+            loader = importlib.machinery.SourceFileLoader("step08_for_05", str(ROOT / "steps" / "08-verify"))
+            v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_05", loader))
+            loader.exec_module(v)
+            shutil.rmtree(self.findings / "08-verify", ignore_errors=True)
+            v.main(["--population", str(self.lab), "--out", str(self.findings / "08-verify")])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        out = self.findings / "08-verify"
+        return (json.loads((out / "finding.json").read_text()), v,
+                {e["dir"]: e for e in json.loads((out / "verified.json").read_text())["steps"]})
+
+    def rehash(self):
+        rec = json.loads((self.out / "finding.json").read_text())
+        for p in rec["proof"]:
+            p["sha256"] = finding.sha256(self.out / p["path"])
+        (self.out / "finding.json").write_text(json.dumps(rec))
+
+    def test_08_reproduces_live_05_from_its_proof(self):
+        self.run_live()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
+        self.assertIn(v.LIVE_RELIES_ON["05"][0], f["not_checked"])
+
+    def test_08_fails_a_held_half_altered_in_the_copy(self):
+        self.run_live()
+        p = self.out / "lab-a" / "ledger" / "received-capsules.jsonl"
+        half = json.loads(p.read_text().splitlines()[0])
+        half["key_id"] = "00" * 32
+        p.write_text(json.dumps(half) + "\n")
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+
+    def test_08_fails_a_node_dropped_from_nodes_json(self):
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        n["read"].pop(sorted(n["read"])[0])
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+
+    def test_08_does_not_reproduce_an_old_shape_live_05(self):
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-8" / "05-deal", self.out)
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no nodes.json", entries["05-deal"]["not_checked"]["why"])
 
     def ledger(self):
         return self.lab / "nodes" / "lab-a" / "data" / "ledger"

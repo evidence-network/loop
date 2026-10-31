@@ -318,7 +318,7 @@ class Step08Test(unittest.TestCase):
         finding.write(sd, result="PASS", population="rehearsal", asserts="a deal", pinned=[],
                       proof=["deal.json", "declarations.json"], detail="", started=finding.now())
         with mock.patch.dict(os.environ, {"LOOP_STEP05_DEAL_BIN": str(Path(self.tmp.name) / "none")}), \
-                mock.patch.dict(step.STEPS, {"05": (step.rederive_05, lambda c: [])}):  # a stub fixture has no keys
+                mock.patch.dict(step.STEPS, {"05": (step.rederive_05, lambda c, m=None: [])}):  # a stub fixture has no keys
             verdict, entries = verify(self.run)
         self.assertEqual(verdict["result"], "NOT_CHECKED")
         self.assertEqual(entries["05-deal"]["status"], "not_reproduced")

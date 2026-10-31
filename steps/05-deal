@@ -110,7 +110,10 @@ node's citing record accepted (`received_half.sender_key_id`) and, where the sen
 listing, the key it publishes is ok (an unlisted sender is a not_checked entry: the key is self-attested); authored under another key or
 invalid is a FAIL; unclaimed (no signature) is a not_checked entry; a half the verifier cannot read is a FAIL, and only its
 usage exit (an aac-go without the mode) stops the step. A node with no held half,
-or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over the nodes.
+or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over the nodes. The
+run copies each node's ledger files, controller binding and sharing report into the proof and keeps
+nodes.json (the cutoff, the pins missing, which node was read), then judges only the copies
+(judge_live), so step 08 checks each half again from the proof (loop#188).
 
 No spend: this step starts no exchange and pays nothing on either population.
 On the live population it reads the halves the lab run's exchanges left; the
@@ -762,10 +765,11 @@ def paired_exchanges(halves):
     return paired, notes
 
 
-def sealed_since():
-    """The instant the lab's current build started sealing, from LOOP_SEALED_SINCE (RFC 3339), or None: every
-    held half is then judged. The citing record's timestamp, which its signature covers, is compared to it."""
-    raw = os.environ.get("LOOP_SEALED_SINCE")
+def sealed_since(raw=...):
+    """The instant the lab's current build started sealing, from LOOP_SEALED_SINCE (RFC 3339; or `raw`, as a run
+    recorded it), or None: every held half is then judged. The citing record's timestamp, which its signature
+    covers, is compared to it."""
+    raw = os.environ.get("LOOP_SEALED_SINCE") if raw is ... else raw
     if raw is None:
         return None
     since = parse_time(raw)
@@ -845,7 +849,7 @@ def tie(citing, nonce, role, own_lines, held):
     return "tied", f"own half {own_id}, nonce {nonce}, role {o_role} against the held half's {role}"
 
 
-def live_node(bin_, name, data_dir, out, work, peers, members):
+def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None):
     """Check every half the node holds from a node of the population (`members`, its node_ids): (result, proof,
     detail, pairs, summary).
 
@@ -865,7 +869,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members):
     summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set()}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
-    since = sealed_since()
+    since = sealed_since(since_raw)
     checks, proof, outside = [], [], []
     for n, raw in enumerate(held, 1):
         stem = f"held-{n}"
@@ -936,7 +940,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members):
         checks.append(c)
     beyond = (f"; {len(outside)} held halves from senders outside the population, not judged (evidence keys "
               + ", ".join(f"{k[:16]} ({n})" for k, n in sorted(summary["outside"].items())) + ")") if outside else ""
-    (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
+    (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": since_raw,
                                                  "held": checks, "outside_population": outside},
                                                 indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
@@ -997,31 +1001,76 @@ def sharing_report(name, data_dir, out):
         pass
     if not isinstance(doc, dict) or doc.get("share_record_at_completion") not in (POLICY_ON, DEFAULT_POLICY):
         return None, None
-    shutil.copyfile(path, out / SHARING_FILE)
+    if path.resolve() != (out / SHARING_FILE).resolve():
+        shutil.copyfile(path, out / SHARING_FILE)
     raw = f" (raw value {doc['raw_value']!r} is not one the plugin knows)" if "raw_value" in doc else ""
     return (f"node {name} reports (node-reported, unsigned) share_record_at_completion "
             f"{doc['share_record_at_completion']} from {doc.get('source')} at {doc.get('written_at')}{raw}; the push "
             f"itself is judged from the sealed records"), f"{name}/{SHARING_FILE}"
 
 
+# What the live judge reads, copied into the proof so step 08 runs it again on the proof alone (loop#188).
+NODES_FILE = "nodes.json"  # the cutoff, the pins missing, and per node whether its data_dir was read
+LEDGER_COPY = ("received-capsules.jsonl", "received-provenance.jsonl", "received-inclusion.jsonl", "capsules.jsonl")
+
+
 def main_live(pop, out, started):
-    sealed_since()  # a malformed cutoff stops the step before any node is read
+    """Copy each readable node's held halves, provenance, inclusions and own chain, and each node's controller
+    binding and sharing report, under out; keep nodes.json; then judge only those copies (judge_live)."""
+    since_raw = os.environ.get("LOOP_SEALED_SINCE")
+    sealed_since(since_raw)  # a malformed cutoff stops the step before any node is read
     out.mkdir(parents=True, exist_ok=True)
+    (out / NODES_FILE).unlink(missing_ok=True)
+    missing = live_tools(driver())
+    read = {}
+    for entry in pop["nodes"]:
+        name = entry["name"]
+        if Path(name).name != name or name in ("", ".", ".."):
+            raise ValueError(f"node name {name!r} is not a single path component")
+        shutil.rmtree(out / name, ignore_errors=True)
+        data_dir = live.readable(entry, "data_dir", "ledger")
+        read[name] = data_dir is not None
+        src = data_dir or live.path(entry, "data_dir")
+        if src is None:
+            continue
+        for f in (BINDING_FILE, SHARING_FILE) if data_dir is None else (BINDING_FILE, SHARING_FILE, *LEDGER_COPY):
+            path = src / f if f in (BINDING_FILE, SHARING_FILE) else src / "ledger" / f
+            if path.is_file() and os.access(path, os.R_OK):
+                dest = out / name / path.relative_to(src)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, dest)
+    (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read},
+                                             indent=2, sort_keys=True) + "\n")
+    judge_live(pop, out, started)
+    return 0
+
+
+def judge_live(pop, out, started):
+    """The live finding from what main_live kept under out (nodes.json and each node's copies) only."""
+    out = Path(out)
+    try:
+        kept = json.loads((out / NODES_FILE).read_text(encoding="utf-8"))
+        since_raw, missing, read = kept["sealed_since"], kept["missing"], kept["read"]
+        if not (isinstance(missing, list) and isinstance(read, dict) and (since_raw is None or isinstance(since_raw, str))):
+            raise TypeError("nodes.json has the wrong shape")
+        sealed_since(since_raw)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return finding.write(out, result="FAIL", population=pop["population"], asserts=LIVE_ASSERTS,
+                             pinned=LIVE_PINNED, proof=[], detail=f"{NODES_FILE} is not readable ({type(e).__name__}: {e})",
+                             started=started)
     bin_ = driver()
-    missing = live_tools(bin_)
-    results, proof, details, not_checked = [], [], [], list(missing)
+    results, proof, details, not_checked = [], [NODES_FILE], [], list(missing)
     halves = {}
     total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0}
     vias, unbound, no_sharing = set(), {}, []
-    peers = {e["node_id"]: (e["name"], d) for e in pop["nodes"]
-             if isinstance(e.get("node_id"), str) and (d := live.path(e, "data_dir")) is not None}
+    peers = {e["node_id"]: (e["name"], out / e["name"]) for e in pop["nodes"] if isinstance(e.get("node_id"), str)}
     members = {e["node_id"] for e in pop["nodes"] if isinstance(e.get("node_id"), str)}
     optional = 0
     binding, unread = {}, set()
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
             name = entry["name"]
-            data_dir = live.readable(entry, "data_dir", "ledger")
+            data_dir = out / name if read.get(name) is True else None
             if data_dir is None or missing:
                 results.append("NOT_CHECKED")
                 if data_dir is None:
@@ -1029,12 +1078,11 @@ def main_live(pop, out, started):
                 details.append(f"node {name}: not checked, "
                                f"{'data_dir not set or unreadable' if data_dir is None else 'a pinned tool is missing'}")
                 continue
-            if (out / name).exists():
-                shutil.rmtree(out / name)
             result, files, detail, pairs, summary = live_node(bin_, name, data_dir, out / name, Path(tmp) / name, peers,
-                                                             members)
+                                                             members, since_raw)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
+            proof += [f"{name}/ledger/{f}" for f in LEDGER_COPY if (out / name / "ledger" / f).is_file()]
             details.append(detail)
             halves[name] = pairs
             vias |= summary["vias"]
@@ -1059,7 +1107,7 @@ def main_live(pop, out, started):
     both, unpaired = paired_exchanges(halves)
     details.append(f"exchanges with a half held on each of two nodes (joined on client_nonce): {len(both)}"
                    + (f" ({'; '.join(unpaired)})" if unpaired else ""))
-    since = os.environ.get("LOOP_SEALED_SINCE")
+    since = since_raw
     details.append(f"judged under the current build{f' (sealed since {since})' if since else ' (LOOP_SEALED_SINCE unset: every held half)'}: "
                    f"{total['judged']} halves, {total['tied']} tied to the node's own half, {total['never_tied']} "
                    f"{LIVE_NEVER_TIED}, {total['ambiguous']} ambiguous; {total['earlier']} sealed earlier, not judged")
@@ -1088,10 +1136,12 @@ def main_live(pop, out, started):
         if nc not in not_checked:
             not_checked.append(nc)
     result = live.worst(results + ["NOT_CHECKED"])
-    finding.write(out, result=result, population=pop["population"], asserts=LIVE_ASSERTS, pinned=LIVE_PINNED,
-                  proof=proof, detail="; ".join(details) + f". {NO_SPEND}", not_checked=not_checked,
-                  started=started)
-    return 0
+    # Each copied controller binding another node's half may be held to is cited too.
+    proof += [f"{n}/{BINDING_FILE}" for n in sorted(read) if (out / n / BINDING_FILE).is_file()
+              and f"{n}/{BINDING_FILE}" not in proof]
+    return finding.write(out, result=result, population=pop["population"], asserts=LIVE_ASSERTS, pinned=LIVE_PINNED,
+                         proof=proof, detail="; ".join(details) + f". {NO_SPEND}", not_checked=not_checked,
+                         started=started)
 
 
 def main(argv):
