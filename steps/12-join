@@ -608,6 +608,16 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
                              "names none"), held, named or ""
 
 
+def settled_binding(fail, named):
+    """What check_binding settled, for check_node_tools (loop#201): "" when doctor and the fetched commitment agreed
+    there is no binding; the digest the fetched commitment names when check_binding FAILed on it, so a join
+    commitment naming the same one is reported once; None otherwise (not read, or a binding that agreed, which a
+    join commitment naming it while doctor reports none must still FAIL on)."""
+    if fail is None and named == "":
+        return ""
+    return named if fail and named else None
+
+
 def live_binding_record(name, node, entry, held, at, node_dir):
     """(failure or None, not_checked list, line or None, proof paths) of the Go verifier on the record the node
     holds in its data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports
@@ -771,7 +781,8 @@ def signed_terms(doc, policy):
 
 def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     """(failures, not_checked, proof names in node_dir, lines, signed) for the plugin's doctor --probe and join.
-    `fetched` is check_binding's `named` for this node this run (None: not read).
+    `fetched` is what check_binding settled this run: "" when doctor and the fetched commitment agree there is no
+    binding, the digest the fetched commitment names when check_binding already FAILed on it, None otherwise.
     `signed` is the signed terms (signed_terms) of join's commitment when it holds (judge_join); False when it holds
     but its terms can't be read (a failure, already recorded); None when no commitment from join holds this run.
 
@@ -843,9 +854,11 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     elif before is not None and before[0] == "unbound" and after[0] == "unbound":
         join_named = (doc.get("controller_binding") or {}).get("digest") if holds else None
         if join_named:
-            if fetched != join_named:
+            if fetched != join_named:  # equal only when check_binding already FAILed on that digest
                 fails.append(f"{name}: join's commitment names the controller binding {join_named}, but doctor "
                              "reports no binding held")
+        elif fetched:
+            pass  # the fetched commitment names a binding doctor does not hold: check_binding FAILed on it
         elif holds and fetched == "":
             lines.append(f"{name}: unbound before and after the re-join (optional; its signed commitment, from join "
                          "and fetched through the asking console, carries no binding)")
@@ -975,7 +988,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, named)
+            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout,
+                                                                    settled_binding(fail, named))
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]

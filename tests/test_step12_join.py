@@ -1001,6 +1001,22 @@ class PluginToolsTest(Tmp):
         fails, _, _, _ = self.tools(before=("unbound", None), fetched="e" * 64, join=self.signed_naming(self.D))
         self.assertEqual(len(fails), 1, fails)
 
+    def test_only_a_failed_fetched_digest_or_an_agreed_none_is_settled(self):
+        D = self.D
+        self.assertEqual(step.settled_binding(None, ""), "")
+        self.assertEqual(step.settled_binding("alice: the commitment names ...", D), D)
+        # a binding that agreed in check_binding is not settled: join naming it while doctor says unbound FAILs
+        self.assertIsNone(step.settled_binding(None, D))
+        self.assertIsNone(step.settled_binding("alice: ... names none, but doctor reports it bound as d", ""))
+        self.assertIsNone(step.settled_binding(None, None))
+        fails, _, _, _ = self.tools(before=("unbound", None), fetched=step.settled_binding(None, D),
+                                    join=self.signed_naming(D))
+        self.assertEqual(len(fails), 1, fails)
+
+    def test_a_fetched_digest_that_failed_with_join_naming_none_adds_no_misleading_entry(self):
+        fails, nc, _, _ = self.tools(before=("unbound", None), fetched=self.D)
+        self.assertEqual((fails, self.binding_ncs(nc)), ([], []))
+
     def test_an_unbound_node_that_comes_back_bound_without_a_digest_is_a_fail(self):
         fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", "not-a-digest"))
         self.assertEqual(fails, ["alice: doctor after join reports the node bound without a sha256 digest"])
