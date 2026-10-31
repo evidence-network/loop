@@ -587,6 +587,13 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIsNone(self.judged()["exchange_match"]["ok"])
 
+    def test_lightning_an_observation_with_no_role_still_fails(self):
+        rows = self.paid(n=1)
+        rows[1][0]["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"].pop("observed_by")
+        r = self.lightning(rows, self.checks_dir(paired=1))
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIs(self.judged()["exchange_match"]["ok"], False)
+
     def test_lightning_fails_a_settlement_with_no_positive_amount(self):
         r = self.lightning(self.paid(amount=-1000, credited=-1005), self.checks_dir())
         self.assertEqual(r["result"], "FAIL")

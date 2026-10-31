@@ -397,7 +397,7 @@ def crosscheck(found, every_node=True):
             seen.setdefault(h, []).append(name)
     paired, unpaired = {}, {}
     for h, names in sorted(seen.items()):
-        payers, payees, malformed = set(), set(), []
+        payers, payees, malformed, unnumbered = set(), set(), [], []
         for name, f in found.items():
             for o in f["settlement_observations"]:
                 if o.get("payment_hash") != h:
@@ -407,6 +407,8 @@ def crosscheck(found, every_node=True):
                     payers.add((name, o["amount_msat"]))
                 elif role == "provider" and is_int(o.get("credited_msat")) and is_int(o.get("fee_msat")):
                     payees.add((name, o["credited_msat"] + o["fee_msat"]))
+                elif role == "provider" and all(o.get(k) is None or is_int(o.get(k)) for k in ("credited_msat", "fee_msat")):
+                    unnumbered.append(name)  # the receiving wallet gave no numbers (lightning-v0: not present)
                 else:
                     malformed.append(name)  # no role, or a role without integer amounts
         payer_nodes, payee_nodes = sorted({n for n, _ in payers}), sorted({n for n, _ in payees})
@@ -416,6 +418,8 @@ def crosscheck(found, every_node=True):
         elif malformed:
             unpaired[h] = (f"an observation on {', '.join(sorted(set(malformed)))} has no payer or provider role "
                            "or no integer amounts")
+        elif unnumbered and not payees:
+            unpaired[h] = f"a provider observation on {', '.join(sorted(set(unnumbered)))} carries no credited_msat or fee_msat"
         elif not payers or not payees:
             unpaired[h] = "no payer observation or no provider observation, with amounts"
         elif len(payer_nodes) > 1 or len(payee_nodes) > 1:
@@ -527,7 +531,8 @@ def lightning_checks(found, ids, checks_dir):
     cross = crosscheck(found, every_node=False)
     # One-sided, or a provider observation without the wallet's numbers (lightning-v0: not checked, not a FAIL).
     one_sided = {h: why for h, why in cross["unpaired"].items()
-                 if why.startswith("recorded by") or why.startswith("no payer observation") or "no integer amounts" in why}
+                 if why.startswith("recorded by") or why.startswith("no payer observation")
+                 or why.startswith("a provider observation on")}
     contradicted = {h: why for h, why in cross["unpaired"].items() if h not in one_sided}
     put("exchange_match", False if contradicted else None if one_sided or not cross["paired"] else True,
         "; ".join(f"{h}: {why}" for h, why in sorted(contradicted.items())) if contradicted else
