@@ -360,6 +360,20 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(self.run_reporter("2026-10-28"), 0)
         self.assertEqual({b["peer_id"] for _, b in self.console.asked}, {node_id(1)})
 
+    def test_the_reporter_never_reads_nodes_twins(self):
+        # nodes/twins/ lists lab nodes for step 09; check_nodes validates them but the reporter must not ask them.
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        twins = self.nodes / "twins"
+        twins.mkdir()
+        (twins / f"{node_id(2)}.json").write_text(json.dumps(entry(node_id(2), key_id(2))))
+        errs, listed = check_nodes.check_dir(self.nodes)
+        self.assertEqual((errs, listed), ([], 1))
+        self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
+                                   {node_id(1): key_id(1), node_id(2): key_id(2)})
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        self.assertEqual({b["peer_id"] for _, b in self.console.asked}, {node_id(1)})
+        self.assertFalse((self.out / "2026-10-28" / node_id(2)).exists())
+
     def test_a_placeholder_reporter_key_is_refused_before_anything_is_asked(self):
         placeholder = json.loads((ROOT / "reporter" / "reporter.json").read_text())
         self.reporter.write_text(json.dumps(placeholder))
