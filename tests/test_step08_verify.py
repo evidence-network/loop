@@ -799,5 +799,91 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("first-answered.json re-derived is not the recorded first-answered.json", f["detail"])
 
 
+LIVE2 = ROOT / "findings" / "2026-10-31-live-2"
+
+
+def live2_04(dst):
+    """Step 04 of the real live run 2026-10-31-live-2, in the proof shape step 04 now keeps.
+
+    That run predates nodes.json, so it is written here from what the finding itself says: each node was read,
+    with the ledger record count its detail gives, and its decision lines numbered in order (the numbers only name
+    records in a problem, and the run had none). The decision lines, rows.json and the result are the run's own."""
+    import re
+    src = LIVE2 / "04-admit"
+    rec = load(src / "finding.json")
+    for p in rec["proof"]:
+        (dst / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src / p["path"], dst / p["path"])
+    nodes = {}
+    for name, n, total in re.findall(r"node (\S+): (\d+) of (\d+) ledger records", rec["detail"]):
+        nodes[name] = {"read": "ok", "records": int(total), "kept": list(range(1, int(n) + 1))}
+    dump(dst / "nodes.json", nodes)
+    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(rec["pinned"]),
+                  proof=["nodes.json"] + [p["path"] for p in rec["proof"]], detail=rec["detail"],
+                  not_checked=rec["not_checked"], started=rec["started"])
+    return rec
+
+
+class Step08Live04Test(unittest.TestCase):
+    """08 re-derives live step 04 from its proof alone, on the live run's real decision lines (loop#188)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "2026-10-31-live-2"
+        self.recorded = live2_04(self.run / "04-admit")
+        write_run_json(self.run, ["04", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(LIVE_POPULATION), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def test_live_04_is_reproduced_from_its_proof(self):
+        f, entries = self.verify()
+        e = entries["04-admit"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], "PASS")
+        self.assertIn(step.LIVE_RELIES_ON["04"][0], f["not_checked"])
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual(finding.check(self.run), [])
+
+    def plant(self, edit):
+        edit(self.run / "04-admit")
+        rehash(self.run / "04-admit")
+        return self.verify()
+
+    def test_a_decision_line_altered_fails(self):
+        def forge(d):
+            p = d / "stevenmih-2" / "decisions.jsonl"
+            lines = p.read_text().splitlines()
+            lines[0] = lines[0].replace('"verdict":"GO"', '"verdict":"MAYBE"').replace('"verdict": "GO"', '"verdict": "MAYBE"')
+            p.write_text("\n".join(lines) + "\n")
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("recorded PASS, re-derived FAIL", f["detail"])
+
+    def test_a_node_dropped_from_nodes_json_fails(self):
+        def drop(d):
+            n = load(d / "nodes.json")
+            n.pop("stevenmih-1")
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("nodes.json names nodes", f["detail"])
+
+    def test_a_node_marked_unread_does_not_pass(self):
+        def unread(d):
+            n = load(d / "nodes.json")
+            n["stevenmih-1"] = {"read": "data_dir"}
+            dump(d / "nodes.json", n)
+        f, entries = self.plant(unread)
+        self.assertEqual(f["result"], "FAIL", f["detail"])  # recorded PASS, re-derived NOT_CHECKED
+        self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()

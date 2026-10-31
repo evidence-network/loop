@@ -23,11 +23,11 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live step 07 is re-derived the same way: its judge reads only
-                its proof and the repository (the nodes/ listings and signed
-                commitments). The other live steps' judges read a lab node's
+  live          live steps 04 and 07 are re-derived the same way: their
+                judges read only their proof and the repository (the nodes/
+                listings). The other live steps' judges read a lab node's
                 data dir or console, so they are not_checked
-                (evidence-network/loop#188).
+                (evidence-network/loop#188; 09: #209).
 
 The finding is FAIL when any step fails integrity or reproduction, NOT_CHECKED
 when every step present held but one or more could not be reproduced, and PASS
@@ -60,7 +60,9 @@ import finding  # noqa: E402
 
 # Who owns each kind of gap 08 leaves NOT_CHECKED.
 LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes its proof does not cite
-TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live 07 still takes on 07's word
+# A live step with a narrower owner than LIVE_ISSUE for why 08 cannot re-derive it yet.
+LIVE_STEP_ISSUES = {"09": "evidence-network/loop#209"}  # the twins run's lab-4 has no nodes/ listing
+TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live step still takes on its own word
 SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
 STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
@@ -355,8 +357,12 @@ def openssl_ed25519():
     return r.returncode == 0 and bool(m) and int(m.group(1)) >= 3
 
 
-# What a reproduced live 07 still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"07": [
+# What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
+LIVE_RELIES_ON = {"04": [
+    {"what": "step 04: each node's decisions.jsonl holds every admission decision its ledger held",
+     "why": "08 judges the decision lines 04 kept and the record count nodes.json gives, but the node's ledger is "
+            "not in the bundle", "issue": TRUST_ISSUE},
+], "07": [
     {"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
      "why": "08 checks every rule on 07's extract of the lab node's ledger (its line count and sha256 at read time "
             "are kept for an audit), but the ledger itself is not in the bundle", "issue": TRUST_ISSUE},
@@ -367,6 +373,17 @@ LIVE_RELIES_ON = {"07": [
      "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records skipped) "
             "is 07's choice.json, made from lab/runs and nodes/commitments as they were then", "issue": TRUST_ISSUE},
 ]}
+
+
+def rederive_04_live(m, c):
+    """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl). It reads the
+    ledger lines as written and relies on no key (their signatures are 04's own not_checked entry, loop#135)."""
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_04_live(c):
+    """Live 04 relies on no key: nodes.json must name the population's nodes, which judge_live checks."""
+    return []
 
 
 def keys_07_live(c, m):
@@ -402,7 +419,7 @@ STEPS = {
 
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
-LIVE_STEPS = {"07": (rederive_07_live, keys_07_live)}
+LIVE_STEPS = {"04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"07", "09"}
@@ -480,7 +497,7 @@ def verify_step(d, pop_dir, population, tmp):
         if population != "rehearsal" and nn not in LIVE_STEPS:
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                                  "its live judge reads a lab node's data dir or console while it decides, and the "
-                                 "finding does not cite those bytes", LIVE_ISSUE)
+                                 "finding does not cite those bytes", LIVE_STEP_ISSUES.get(nn, LIVE_ISSUE))
         steps = STEPS if population == "rehearsal" else LIVE_STEPS
         if nn not in steps:
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",

@@ -182,7 +182,22 @@ class Live(unittest.TestCase):
         out = Path(tmp.name) / "f" / "04-admit"
         r = run_step(lab, out, env=dict(os.environ, LAB_DIR=str(lab)))
         self.assertEqual(r.returncode, 0, r.stderr)
-        return out, load(out / "finding.json")
+        record = load(out / "finding.json")
+        self.assert_rederives(record, load(Path(lab) / "population.json"), out)
+        return out, record
+
+    def assert_rederives(self, record, pop, out):
+        """judge_live on a copy of only the files the finding cites gives the recorded result and not_checked:
+        what step 08 checks (loop#188)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "04-admit"
+            for p in record["proof"]:
+                (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(out / p["path"], work / p["path"])
+            again = step.judge_live(pop, work, record["started"])
+            self.assertEqual(again["result"], record["result"])
+            canon = lambda items: sorted(json.dumps(i, sort_keys=True) for i in items)  # noqa: E731
+            self.assertEqual(canon(again["not_checked"]), canon(record["not_checked"]))
 
     def good(self):
         return [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
@@ -204,7 +219,7 @@ class Live(unittest.TestCase):
         out, f = self.live_run(self.lab_with((LIVE / 'nodes/lab-a/data/ledger/capsules.jsonl').read_text().splitlines()))
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn("node lab-a: 2 of 4 ledger records carry an admission decision (1 GO, 1 NO)", f["detail"])
-        self.assertEqual([p["path"] for p in f["proof"]], ["lab-a/decisions.jsonl"])
+        self.assertEqual([p["path"] for p in f["proof"]], ["nodes.json", "lab-a/decisions.jsonl"])
         for issue in ("evidence-network/loop#81", "Mesh-LLM/mesh-llm#2061"):
             self.assertIn(issue, f["detail"])
         self.assertEqual(sorted(f["pinned"]), ["capsules", "mesh-llm"])
@@ -332,7 +347,7 @@ def capsule(n, block):
 
 class Rows(unittest.TestCase):
     """Each row recomputed from what a decision in the #116 record shape sealed (tests/fixtures/step04/live/rows116.json)."""
-    live_run, lab_with = Live.live_run, Live.lab_with
+    live_run, lab_with, assert_rederives = Live.live_run, Live.lab_with, Live.assert_rederives
 
     def run_blocks(self, *blocks):
         return self.live_run(self.lab_with([capsule(i, b) for i, b in enumerate(blocks)]))
@@ -433,7 +448,7 @@ class Rows(unittest.TestCase):
 
 class Verdicts(unittest.TestCase):
     """The rows decide nothing: GO or NO follows from the source alone, the same for one peer under one policy."""
-    live_run, lab_with, run_blocks = Live.live_run, Live.lab_with, Rows.run_blocks
+    live_run, lab_with, run_blocks, assert_rederives = Live.live_run, Live.lab_with, Rows.run_blocks, Live.assert_rederives
 
     def test_a_verdict_its_source_does_not_give_fails(self):
         for source, verdict in (("allow_list", "NO"), ("deny_list", "GO"), ("unreadable_policy", "GO"),
