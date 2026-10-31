@@ -40,7 +40,9 @@ node recorded, lists it (recorded.json per
 node), and is NOT_CHECKED on that issue. Where a settlement observation carries
 the payment's preimage (the host passes it from mesh-llm#2744, the lexe-wallet
 build from lexe-wallet-plugin#7), the step checks finality itself: the preimage
-is 32 bytes of lowercase hex and sha256(preimage) == payment_hash. recorded.json
+is 32 bytes of lowercase hex and sha256(preimage) == payment_hash. Only a payer
+observation's preimage proves a payment; the provider holds its preimage
+before it is paid. recorded.json
 keeps the check's outcome, never the preimage. A preimage that is malformed or
 does not hash to its payment hash is a FAIL: the node recorded a settlement as
 final that its own preimage does not prove. With every recorded hash proven by
@@ -396,15 +398,16 @@ def crosscheck(found):
 
 
 def finality_of(found):
-    """({payment hash: True when a payer observation's preimage proves it}, [problems]) over all nodes' records:
-    a hash is proven when some observation of it has preimage_check "verified"; a "malformed" or "mismatch"
-    check is a problem whatever else holds."""
+    """({payment hash: True when a payer observation's preimage proves it}, [problems]) over all nodes' records.
+    Only the payer's preimage proves the payment: the payer learns it once the payment completed, while the
+    provider made it before it issued the invoice. Any observation's "malformed" or "mismatch" check is a
+    problem whatever else holds."""
     proven, problems = {}, []
     for name, f in sorted(found.items()):
         for o in f["settlement_observations"]:
             check, h = o.get("preimage_check"), o.get("payment_hash")
             if isinstance(h, str):
-                proven[h] = proven.get(h, False) or check == "verified"
+                proven[h] = proven.get(h, False) or (check == "verified" and o.get("observed_by") == "payer")
             if check in ("malformed", "mismatch"):
                 what = ("is not 32 bytes of lowercase hex" if check == "malformed"
                         else "does not hash to its payment_hash")

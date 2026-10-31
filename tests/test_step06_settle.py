@@ -392,10 +392,10 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(step.preimage_check(7, h), "malformed")
         self.assertEqual(step.preimage_check(pre, None), "no_payment_hash")
 
-    def live_with_preimage(self, preimage, payment_hash):
+    def live_with_preimage(self, preimage, payment_hash, role="payer"):
         lab = Path(self.tmp.name) / "lab"
         obs = {"capsule_id": "c1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
-            "v": 1, "observed_by": "payer", "channel": "payment.lifecycle.v1", "exchange_id": "ex-paid-1",
+            "v": 1, "observed_by": role, "channel": "payment.lifecycle.v1", "exchange_id": "ex-paid-1",
             "phase": "output_settlement_observed", "source": "wallet_reported", "settlement": "terminal",
             "segment": 1, "payment_hash": payment_hash, "amount_msat": 2000, "preimage": preimage}}}}
         for i in (1, 2, 3):
@@ -417,6 +417,13 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(rec["settlement_observations"][0]["preimage_check"], "verified")
         self.assertNotIn(pre, self.files_out())
         self.assert_clean()
+
+    def test_a_providers_preimage_does_not_prove_the_payment(self):
+        pre = "5a" * 32
+        r = self.live_with_preimage(pre, hashlib.sha256(bytes.fromhex(pre)).hexdigest(), role="provider")
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIn("finality: 0 of 1 recorded payment hashes proven", r["detail"])
+        self.assertTrue([n for n in r["not_checked"] if "no preimage" in n["what"]])
 
     def test_a_payment_hash_with_no_preimage_leaves_finality_not_checked(self):
         r = self.live_with_preimage(None, "ab" * 32)
