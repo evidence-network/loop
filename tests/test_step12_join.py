@@ -15,9 +15,9 @@ import io
 import importlib.machinery
 import importlib.util
 import json
-import subprocess
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -27,6 +27,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+# A live step fetches origin/main before reading nodes/revocations/ (bv.snapshot); tests never touch the network.
+os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "tests" / "fixtures" / "step12"
@@ -1405,15 +1408,19 @@ class BindingRevocationTest(unittest.TestCase):
         date = "2026-10-12T12:00:00Z"
         subprocess.run([*git, "commit", "-qm", "publish"], check=True,
                        env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+        subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)  # as if pushed
         with unittest.mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)}):
-            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
-                                               "2026-10-13T00:00:00Z", from_main=True)
-            self.assertEqual(state, "bad", detail)  # the checkout (LOOP_NODES_DIR) holds none: main does
+            for at in ("2026-10-13T00:00:00Z", "2026-10-12T00:00:00Z"):
+                snap = step.bv.snapshot(repo, at)
+                state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key, at,
+                                                   from_main=snap)
+                if at == "2026-10-13T00:00:00Z":
+                    self.assertEqual(state, "bad", detail)  # the checkout (LOOP_NODES_DIR) holds none: main does
+                    self.assertIn("controller_binding_revocation FAIL", detail)
+                else:
+                    self.assertEqual(state, "open", detail)  # origin/main holds no commit that old
+                    self.assertIn("no origin/main commit at or before 2026-10-12T00:00:00Z", detail)
             self.assertEqual(self.check("2026-10-13T00:00:00Z")[0], "ok")  # a rehearsal reads its checkout
-            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
-                                               "2026-10-12T00:00:00Z", from_main=True)
-            self.assertEqual(state, "open", detail)  # main holds no commit that old
-            self.assertIn("no main commit at or before 2026-10-12T00:00:00Z", detail)
 
     def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
         with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration

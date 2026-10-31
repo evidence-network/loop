@@ -78,10 +78,12 @@ for the binding at `nodes/revocations/<binding_digest>.json` (loop#138, `scripts
 verifier with it, so a binding revoked at or before either time does not apply. Under CB-1 option A (Controller
 Binding v0 §5.1, agent-action-capsule#495) the run declares that list complete (`[]` when the folder holds no file
 for the binding) as of the step's start, and the verifier reports revocation PASS when no statement in that snapshot
-applies: the loop run's statement, scoped to the snapshot. The list is the file as main held it at the step's start
-(`origin/main`, first parent), whose commit the declaration names, so a branch cannot drop a statement from its own
-head. If the verifier rejects the declaration (a half or citing
-record issued after the step's start) leaves revocation a not_checked entry (loop#240). A binding that does not apply or does
+applies: the loop run's statement, scoped to the snapshot. The list is the file as main held it at the step's start:
+the step fetches origin/main, takes its newest first-parent commit no later than the start, keeps it in nodes.json
+(`revocations_main`) and names it in the declaration, so a branch cannot drop a statement from its own head and a
+stale clone cannot declare an old list current. If the verifier rejects the declaration (a half or citing record
+issued after the step's start), or origin/main could not be fetched or read, revocation is a not_checked entry
+(loop#240). Step 08 holds the kept commit to origin/main at the step's start in its own history. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
 not_checked entry. A revocations file that cannot be read makes the binding not apply, a FAIL with that reason
 (loop#194).
@@ -353,6 +355,7 @@ DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a
 # applies, and NOT_CHECKED when the verifier rejects the declaration (a time asked about after the step's start) or
 # the clone holds no main to read the list from.
 BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
+REVOCATIONS_KEY = "revocations_main"  # nodes.json: the main commit nodes/revocations/ is read from (bv.snapshot)
 
 
 def live_declarations(counts, unread):
@@ -617,7 +620,7 @@ def state_check(state, detail, passed="ok"):
 BINDING_VERDICT_EXIT = bv.VERDICT_EXIT
 
 
-def binding_check(digest, half, citing, peers, started):
+def binding_check(digest, half, citing, peers, started, snap):
     """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.17.0) on the controller
     binding the citing record names by `digest`: (state, detail).
 
@@ -629,8 +632,8 @@ def binding_check(digest, half, citing, peers, started):
     delegated_by binding the half's key must be the delegate, not the delegator (AAC#468). The revocation
     statements published for the binding (nodes/revocations/<digest>.json, loop#138) go to the verifier with it: one
     that applies at or before either time makes the binding not apply ("bad"), and so does a file that cannot be
-    read (loop#194). The list is the file as main held it at `started`, the step's start (bv.main_list), and the run
-    declares it complete as of that time (CB-1 option A).
+    read (loop#194). The list is the file at `snap`'s main commit, the one origin/main held at `started`, the
+    step's start (bv.snapshot, kept in nodes.json), and the run declares it complete as of that time (CB-1 option A).
 
     state: "ok" (revocation PASS on that snapshot); "open" (it applies, but the verifier rejected the declaration, so
     revocation is NOT_CHECKED); "bad" (the binding the record names does not apply, does not name the half's key, names it as the
@@ -657,7 +660,7 @@ def binding_check(digest, half, citing, peers, started):
         return "unread", "the half or the citing record carries no readable timestamp to hold the window to"
     times = sorted(set(issued))
     try:
-        commit, text = bv.main_list(revocations_root(), digest, started)
+        commit, text = bv.main_list(revocations_root(), digest, snap)
         listing = bv.revocation_list(digest, text, started, f"evidence-network/loop step 05 (run started {started}), "
                                                             f"nodes/{bv.REVOCATIONS}/ at main {commit}")
         no_list = None
@@ -871,7 +874,7 @@ def tie(citing, nonce, role, own_lines, held):
     return "tied", f"own half {own_id}, nonce {nonce}, role {o_role} against the held half's {role}"
 
 
-def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, started=None):
+def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, started=None, snap=None):
     """Check every half the node holds from a node of the population (`members`, its node_ids): (result, proof,
     detail, pairs, summary).
 
@@ -943,7 +946,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
                 rh_digest = (((record.get("model_attestation") or {}).get("compute_attestation") or {})
                              .get("received_half") or {}).get("controller_binding_digest")
                 if c["accepted"]["ok"] and is_key(rh_digest):
-                    state, detail = binding_check(rh_digest, capsule, record, peers, started)
+                    state, detail = binding_check(rh_digest, capsule, record, peers, started, snap)
                     c["binding"] = state_check(state, detail)
                 nonce, role, _ = exchange_key(capsule)
                 state, detail = tie(record, nonce, role, own_lines, held)
@@ -1075,8 +1078,10 @@ def main_live(pop, out, started):
         for f in LEDGER_COPY:
             if (src / "ledger" / f).is_file():
                 keep(src / "ledger" / f, redact=True)
-    (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read},
-                                             indent=2, sort_keys=True) + "\n")
+    # The main commit the revocation statements are read from, fetched now: step 08 reads the same one.
+    snap = bv.snapshot(revocations_root(), started)
+    (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read,
+                                              REVOCATIONS_KEY: snap}, indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)
     return 0
 
@@ -1088,6 +1093,8 @@ def judge_live(pop, out, started):
     try:
         kept = json.loads((out / NODES_FILE).read_text(encoding="utf-8"))
         since_raw, missing, read = kept["sealed_since"], kept["missing"], kept["read"]
+        snap = kept.get(REVOCATIONS_KEY) or {"commit": None, "why": f"{NODES_FILE} records no main commit to read "
+                                                                    "nodes/revocations/ from (an older run)"}
         if not (isinstance(missing, list) and isinstance(read, dict) and (since_raw is None or isinstance(since_raw, str))):
             raise TypeError("nodes.json has the wrong shape")
         sealed_since(since_raw)
@@ -1118,7 +1125,7 @@ def judge_live(pop, out, started):
                                f"{'data_dir not set or unreadable' if data_dir is None else 'a pinned tool is missing'}")
                 continue
             result, files, detail, pairs, summary = live_node(bin_, name, data_dir, out / name, Path(tmp) / name, peers,
-                                                             members, since_raw, started)
+                                                             members, since_raw, started, snap)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             proof += [f"{name}/ledger/{f}" for f in LEDGER_COPY if (out / name / "ledger" / f).is_file()]
