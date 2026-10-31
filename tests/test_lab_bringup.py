@@ -450,6 +450,19 @@ class DryRunTest(unittest.TestCase):
         r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAYMENTS": "lab-2"})
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_bundles_asks_each_node_for_its_book_with_each_other_node_and_keeps_it_private(self):
+        # Step 06 (loop#243): the counterparty's signed settlement bundle, kept on the host (it carries preimages).
+        r = lab_sh("--dry-run", "bundles", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        asks = re.findall(r"curl -fsS http://127\.0\.0\.1:(\d+)/api/plugins/capsules/http/settlement-bundle"
+                          r"\\\?peer=\\<(lab-\d)\\ node_id\\>", r.stdout)  # as `say` quotes it (%q)
+        self.assertEqual(sorted(asks), sorted((str(9810 + i), f"lab-{j}") for i in (1, 2, 3) for j in (1, 2, 3)
+                                              if i != j))
+        self.assertIn(f"chmod 700 {self.lab}/bundles", r.stdout)
+        self.assertIn(f"  > {self.lab}/bundles/lab-2.for.lab-1.json (0600)", r.stdout)
+        self.assertNotIn("findings", r.stdout)
+        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
+
     def test_admit_runs_step_04_on_the_live_population_into_the_days_findings(self):
         # Step 04 is not in stage 1, so lab.sh admit runs it (evidence-network/loop#127).
         r = lab_sh("--dry-run", "admit", env=self.env)

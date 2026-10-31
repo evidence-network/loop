@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -611,6 +611,15 @@ for each named node; `lab-wallet-setup.sh N --balance` then shows lab-N's
 balance. Every later `lab/lab.sh start` must keep `LAB_PAYMENTS`, which writes the
 same section; `start` refuses, before any node starts, a config with a wallet
 that `LAB_PAYMENTS` does not name.
+
+`lab/lab.sh bundles` asks each node for its own terminal settlement records for
+exchanges with each other node, from the capsules plugin's owner-only
+`settlement-bundle?peer=<node id>` route: a signed Evidence Bundle that the
+counterparty checks its settlement count against (evidence-network/loop#243).
+They go into `$LAB_DIR/bundles/<node>.for.<peer>.json` (dir 0700, files 0600). The records
+carry each payment's preimage, so the bundles stay on the host: never in
+findings, a pack or a message. A refusal (no settlement with that peer) is kept
+as the node's answer.
 
 ### Step 07, the later ask
 
