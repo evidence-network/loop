@@ -102,6 +102,9 @@ Only halves sealed under the current build are judged for acceptance and the tie
 timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
+A settlement leg a paid exchange leaves (`n/a-settlement-leg`, step 06's records) is no half of the exchange: it carries
+no client_nonce and its citing record no controller binding, so it is counted in the detail, not tied and not judged for
+the operator binding (loop#263); its bytes, provenance, inclusion, citation and signature are checked as any held half's.
 Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
 a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
 not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
@@ -838,6 +841,16 @@ def inclusion_cited(own_lines, cid, inc, verified_digest):
     return {"ok": False, "detail": f"no counterparty_inclusion record of the node cites {cid} with checkpoint {verified_digest}"}
 
 
+def is_settlement_leg(capsule):
+    """Whether the held capsule is a settlement leg (a record of a paid exchange's payment, step 06's), not a half of
+    the exchange. A leg carries no client_nonce and its citing record no controller binding, so it is neither tied
+    nor judged for the operator binding here (loop#263); its bytes, provenance, inclusion, citation and signature
+    are checked as any held half's."""
+    ma = capsule.get("model_attestation")
+    return (isinstance(ma, dict) and ma.get("model_id") == "n/a-settlement-leg"
+            and isinstance(capsule.get("settlement"), dict))
+
+
 def is_citing(capsule):
     """Whether the capsule is one of the node's citing records, not a half of an exchange it took part in."""
     ca = (capsule.get("model_attestation") or {}).get("compute_attestation")
@@ -889,7 +902,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
-    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set()}
+    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set(), "legs": 0}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
     since = sealed_since(since_raw)
@@ -943,12 +956,15 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
                 c["accepted"] = accepted(record, capsule)
                 rh_digest = (((record.get("model_attestation") or {}).get("compute_attestation") or {})
                              .get("received_half") or {}).get("controller_binding_digest")
-                if c["accepted"]["ok"] and is_key(rh_digest):
+                if c["accepted"]["ok"] and is_key(rh_digest) and not is_settlement_leg(capsule):
                     state, detail = binding_check(rh_digest, capsule, record, peers, started, snap)
                     c["binding"] = state_check(state, detail)
                 nonce, role, _ = exchange_key(capsule)
-                state, detail = tie(record, nonce, role, own_lines, held)
-                c["tied"] = state_check(state, detail, passed="tied")
+                if is_settlement_leg(capsule):
+                    c["leg"] = True
+                else:
+                    state, detail = tie(record, nonce, role, own_lines, held)
+                    c["tied"] = state_check(state, detail, passed="tied")
                 if inc is not None:
                     c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
         # The producer signature is checked on every held half, cited or not; the key it must be authored under is
@@ -976,6 +992,9 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     summary["judged"] = len(current)
     summary["earlier"] = sum(1 for c in checks if c.get("current_build") is False)
     for c in current:
+        if c.get("leg"):
+            summary["legs"] += 1
+            continue
         if "binding" in c:
             b = c["binding"]
             summary["binding"][b["state"]] = summary["binding"].get(b["state"], 0) + 1
@@ -1010,6 +1029,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
         + (f" (accepted the half's key via {', '.join(recorded)}; {summary['tied']} tied to the node's own half, "
            f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if current else "")
+        + (f", of which {summary['legs']} settlement legs (step 06's records, not tied)" if summary["legs"] else "")
         + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")
         + beyond), pairs, summary
 
