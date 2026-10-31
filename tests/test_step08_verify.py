@@ -335,11 +335,11 @@ class Step08Test(unittest.TestCase):
 
     def test_a_live_run_is_not_checked(self):
         live = Path(self.tmp.name) / "live"
-        sd = live / "06-settle"
+        sd = live / "10-judge"
         sd.mkdir(parents=True)
-        write_run_json(live, ["06", "08"], "live")
+        write_run_json(live, ["10", "08"], "live")
         (sd / "recorded.json").write_text("{}\n")
-        finding.write(sd, result="NOT_CHECKED", population="live", asserts="a settlement", pinned=[],
+        finding.write(sd, result="NOT_CHECKED", population="live", asserts="a judgment", pinned=[],
                       proof=["recorded.json"], detail="", started=finding.now(),
                       not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}])
         out = live / "08-verify"
@@ -1628,6 +1628,182 @@ class Step08Live09Test(unittest.TestCase):
         f, entries = self.verify()
         self.assertEqual(entries["09-dispute"]["status"], "not_reproduced")
         self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
+
+
+def lightning_ledgers(lab, n=2):
+    """lab/lab-1..3 ledgers: n payments lab-2 -> lab-1, each with the payer's preimage. The preimages exist only in
+    this temp dir, as step 06 reads them; step 06's proof keeps their outcome, never the value."""
+    import hashlib
+
+    def obs(role, cid, h, pre, **more):
+        block = {"v": 1, "observed_by": role, "channel": "payment.lifecycle.v1", "exchange_id": f"{role}-ex-{cid}",
+                 "phase": "output_settlement_observed", "source": "wallet_reported", "settlement": "terminal",
+                 "segment": 1, "payment_hash": h, "amount_msat": 1000000000, **more}
+        if pre:
+            block["preimage"] = pre
+        return {"capsule_id": cid, "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": block}}}
+    rows = {1: [], 2: [], 3: []}
+    for k in range(n):
+        pre = f"{k + 1:02x}" * 32
+        h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+        rows[2].append(obs("payer", f"p{k}", h, pre))
+        rows[1].append(obs("provider", f"s{k}", h, None, credited_msat=999999000, fee_msat=1000))
+    for i, lines in rows.items():
+        (lab / f"lab-{i}" / "ledger").mkdir(parents=True)
+        (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+
+def live06(dst, tmp, n=2):
+    """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
+    out dir being dst: the proof 08 re-derives. Returns the finding."""
+    import hashlib
+    lab = Path(tmp) / "lab"
+    lightning_ledgers(lab, n)
+    doc = load(LIVE_POPULATION / "population.json")
+    for i, node in enumerate(doc["nodes"], 1):
+        node["data_dir"] = f"$STEP06_LAB/lab-{i}"
+    bundles = Path(tmp) / "bundles"
+    bundles.mkdir()
+    ids = {node["name"]: node["node_id"] for node in doc["nodes"]}
+    for me, peer in (("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")):
+        bundle = bundles / f"{peer}.for.{me}.json"
+        bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": []}}))
+        dump(bundles / f"check.{ids[me]}.{ids[peer]}.json", {
+            "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
+            "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            "report": {"counterparty_count": {"status": "PASS", "method": "pairs", "paired": n, "unpaired": []},
+                       "disclosed_count": {"settlements": n}}})
+    doc["settlement_checks"] = str(bundles)
+    pop = Path(tmp) / "pop"
+    pop.mkdir()
+    dump(pop / "population.json", doc)
+    r = subprocess.run([str(STEPS / "06-settle"), "--population", str(pop), "--out", str(dst)],
+                       capture_output=True, text=True, env=dict(os.environ, STEP06_LAB=str(lab)), timeout=300, cwd=ROOT)
+    if r.returncode != 0:
+        raise RuntimeError(f"06-settle exited {r.returncode}: {r.stderr[-1000:]}")
+    return load(dst / "finding.json")
+
+
+@unittest.skipUnless(HAS_BASE, NO_BASE)
+class Step08Live06Test(unittest.TestCase):
+    """08 re-derives live step 06 on the Lightning rail from its proof alone (loop#258)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.run = Path(self.tmp.name) / "run" / "2026-10-31-live-t"
+        self.recorded = live06(self.run / "06-settle", self.tmp.name)
+        write_run_json(self.run, ["06", "08"], "live", stage="1")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def verify(self, population=LIVE_POPULATION):
+        out = self.run / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        step.main(["--population", str(population), "--out", str(out)])
+        return load(out / "finding.json"), {e["dir"]: e for e in load(out / "verified.json")["steps"]}
+
+    def plant(self, edit, population=LIVE_POPULATION):
+        edit(self.run / "06-settle")
+        rehash(self.run / "06-settle")
+        return self.verify(population)
+
+    def test_live_06_is_reproduced_from_its_proof(self):
+        self.assertEqual(self.recorded["result"], "PASS")
+        f, entries = self.verify()
+        e = entries["06-settle"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"], e["recorded"])
+        for x in step.LIVE_RELIES_ON["06"]:
+            self.assertIn(x, f["not_checked"])
+        self.assertEqual(finding.check(self.run), [])
+
+    def test_no_preimage_is_in_the_proof_08_reads(self):
+        for p in (self.run / "06-settle").rglob("*.json"):
+            for k in range(1, 3):
+                self.assertNotIn(f"{k:02x}" * 32, p.read_text())
+
+    def test_an_altered_record_fails(self):
+        def forge(d):
+            p = d / "stevenmih-1" / "recorded.json"
+            rec = load(p)
+            for o in rec["settlement_observations"]:
+                o["fee_msat"] = 0
+            dump(p, rec)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("recorded PASS, re-derived", entries["06-settle"]["problems"][0])
+
+    def test_a_finality_outcome_edited_to_unproven_fails(self):
+        def forge(d):
+            p = d / "stevenmih-2" / "recorded.json"
+            rec = load(p)
+            rec["settlement_observations"][0]["preimage_check"] = None
+            dump(p, rec)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_a_forged_counterparty_row_fails(self):
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            rows[0]["status"] = "FAIL"
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_a_counterparty_row_dropped_fails(self):
+        def forge(d):
+            dump(d / "counterparty.json", load(d / "counterparty.json")[:1])
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_a_row_that_is_no_check_of_a_peer_fails(self):
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            rows.append(dict(rows[0], peer="stevenmih-9"))
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertIn("not one check of a node's book", " ".join(entries["06-settle"]["problems"]))
+
+    def test_a_node_dropped_from_the_proof_fails(self):
+        def forge(d):
+            shutil.rmtree(d / "stevenmih-1")
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if not p["path"].startswith("stevenmih-1/")]
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_a_recorded_file_of_a_node_outside_the_population_fails(self):
+        def forge(d):
+            (d / "stevenmih-9").mkdir()
+            shutil.copyfile(d / "stevenmih-2" / "recorded.json", d / "stevenmih-9" / "recorded.json")
+            rec = load(d / "finding.json")
+            rec["proof"].append({"path": "stevenmih-9/recorded.json", "sha256": ""})
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertIn("stevenmih-9/recorded.json is no node of the population", entries["06-settle"]["problems"])
+
+    def test_another_rail_is_not_reproduced_not_failed(self):
+        pop = Path(self.tmp.name) / "other-pop"
+        pop.mkdir()
+        dump(pop / "population.json", dict(load(LIVE_POPULATION / "population.json"), rail=None))
+        f, entries = self.verify(pop)
+        self.assertEqual(entries["06-settle"]["status"], "not_reproduced")
+        self.assertIn("the live Lightning rail only", entries["06-settle"]["not_checked"]["why"])
+
+    def test_an_old_shape_live_06_bundle_is_not_reproduced(self):
+        def old(d):  # a live 06 from before checks.json and counterparty.json
+            for n in ("checks.json", "counterparty.json"):
+                (d / n).unlink()
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if p["path"] not in ("checks.json", "counterparty.json")]
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(old)
+        self.assertEqual(entries["06-settle"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no checks.json", entries["06-settle"]["not_checked"]["why"])
 
 
 if __name__ == "__main__":
