@@ -660,12 +660,13 @@ def main_live(pop, out, started):
             kept["announced"].append([node_id, aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")])
         except (OSError, ValueError) as e:
             kept["key_errors"][name] = str(e)
-    # The proof bytes: a copy of each readable node's adjudication files and chain.
+    # The proof bytes: a copy of each readable node's adjudication files and chain, the payment preimage taken out
+    # of each record that carries one (live.copy_redacted): the proof is published, a preimage never is.
     for name, (_, d) in readable.items():
         for f in LEDGER_FILES:
             if (d / "ledger" / f).is_file():
                 (out / name / "ledger").mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(d / "ledger" / f, out / name / "ledger" / f)
+                live.copy_redacted(d / "ledger" / f, out / name / "ledger" / f)
     copy_twin_fault(out)
     (out / NODES_FILE).write_text(json.dumps(kept, indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)

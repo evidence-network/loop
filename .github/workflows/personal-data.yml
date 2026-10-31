@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # No personal data in the commitment list or the reports: no email address, phone number or
 # public IP address. See scripts/check_personal_data.py. Also runs on push to main, which is
-# where the daily reporter's direct pushes are checked.
+# where the daily reporter's direct pushes are checked. Also: no payment preimage anywhere in the
+# checkout but test code (scripts/check_no_preimages.py).
 name: personal-data
 
 on:
@@ -21,3 +22,7 @@ jobs:
           persist-credentials: false
       - name: No personal data in nodes/ or reports/
         run: python3 scripts/check_personal_data.py nodes reports
+      - name: No payment preimage in the checkout (findings, baseline, lab/runs, reports, tests/fixtures and the rest)
+        run: python3 -B scripts/check_no_preimages.py
+      - name: The preimage scan's own tests
+        run: python3 -B -m unittest tests.test_no_preimages -v

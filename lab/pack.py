@@ -268,18 +268,24 @@ def plan(root, lab_dir, day):
 
 
 def refuse_secrets(files, lab_dir):
-    """Errors for any file that holds a PEM private key or the mesh invite token."""
+    """Errors for any file that holds a PEM private key, the mesh invite token or a payment preimage."""
     token_path = Path(lab_dir) / "run" / "invite.token"
     token = token_path.read_bytes().strip() if token_path.is_file() else b""
+    import check_no_preimages  # here, not at the top: it reads steps/live.py, which only the pack needs
     errs = []
-    for arc, path in files:
-        data = path.read_bytes()
+    datas = [(arc, path.read_bytes()) for arc, path in files]
+    # A preimage is found by its key's name, or, keyless, by hashing to a 64-hex value the packed files carry.
+    hashes = frozenset(h for _, data in datas for h in check_no_preimages.hexes(data))
+    for arc, data in datas:
         if PRIVATE_MARK in data:
             errs.append(f"{arc}: holds a private key; it is never packed")
         if NOSTR_KEY.search(data):
             errs.append(f"{arc}: holds a Nostr key (npub or nsec); the tree carries none")
         if token and token in data:
             errs.append(f"{arc}: holds the mesh invite token; it is never packed")
+        lines = check_no_preimages.hits_in(data, hashes)
+        if lines:
+            errs.append(f"{arc}: holds a payment preimage (lines {', '.join(map(str, lines[:5]))}); it is never packed")
     return errs
 
 

@@ -113,7 +113,9 @@ usage exit (an aac-go without the mode) stops the step. A node with no held half
 or whose data_dir is not readable, is NOT_CHECKED. One finding, the worst over the nodes. The
 run copies each node's ledger files, controller binding and sharing report into the proof and keeps
 nodes.json (the cutoff, the pins missing, which node was read), then judges only the copies
-(judge_live), so step 08 checks each half again from the proof (loop#188).
+(judge_live), so step 08 checks each half again from the proof (loop#188). A ledger is copied
+with the payment preimage taken out of each record that carries one, at its own line (live.copy_redacted):
+the proof is published, a preimage never is.
 
 No spend: this step starts no exchange and pays nothing on either population.
 On the live population it reads the halves the lab run's exchanges left; the
@@ -1033,10 +1035,15 @@ def main_live(pop, out, started):
         if src is None:
             continue
 
-        def keep(path):
+        def keep(path, redact=False):
             dest = out / name / path.relative_to(src)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(path, dest)  # an unreadable file raises, so the step stops, as it did reading it live
+            # An unreadable file raises, so the step stops, as it did reading it live. A ledger is copied with each
+            # preimage taken out of its record (live.copy_redacted): the proof is published, a preimage never is.
+            if redact:
+                live.copy_redacted(path, dest)
+            else:
+                shutil.copyfile(path, dest)
         # A binding is copied for every node a peer's half may be held to; "unread" is already its judged meaning.
         if (src / BINDING_FILE).is_file() and os.access(src / BINDING_FILE, os.R_OK):
             keep(src / BINDING_FILE)
@@ -1046,7 +1053,7 @@ def main_live(pop, out, started):
             keep(src / SHARING_FILE)
         for f in LEDGER_COPY:
             if (src / "ledger" / f).is_file():
-                keep(src / "ledger" / f)
+                keep(src / "ledger" / f, redact=True)
     (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read},
                                              indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)

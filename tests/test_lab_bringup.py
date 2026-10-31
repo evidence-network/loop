@@ -1168,6 +1168,19 @@ class PackTest(LabFixture):
         self.assertTrue(errs and "private key" in errs[0], errs)
         self.assertFalse(self.out.exists())
 
+    def test_refuses_a_payment_preimage_by_its_name_or_by_its_hash(self):
+        pre = "5a" * 32
+        h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+        f = self.root / "findings" / f"{DAY}-live" / "05-deal" / "copy.jsonl"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"x-mesh-settlement-v1": {"preimage": pre, "payment_hash": h}}) + "\n")
+        errs = self.pack()
+        self.assertTrue(any("payment preimage" in e for e in errs), errs)
+        self.assertFalse(self.out.exists())
+        self.assertFalse(any(pre in e for e in errs))
+        f.write_text(json.dumps({"payment_hash": h}) + "\n" + "free text " + pre + "\n")  # keyless: found by its hash
+        self.assertTrue(any("payment preimage" in e for e in self.pack()))
+
     def test_refuses_the_invite_token(self):
         (self.root / "findings" / f"{DAY}-live" / "12-join" / "loop-step.log").write_text(
             "joined with invite-token-value-for-the-test\n")

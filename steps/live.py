@@ -9,6 +9,8 @@ are set and readable by the running user; otherwise that node is NOT_CHECKED wit
 says which: a `$VAR` the step's environment does not set (expandvars leaves it in the
 path), a named file that is not readable, or the field unset or unreadable.
 """
+import hashlib
+import json
 import os
 import re
 import sys
@@ -19,6 +21,77 @@ ISSUE = "evidence-network/loop: the live lab run, which fills population/live"
 # this until one is filed, never with an issue that has closed.
 NO_ISSUE_YET = "no open issue yet (to be filed)"
 ORDER = {"PASS": 0, "NOT_CHECKED": 1, "FAIL": 2}
+
+
+# A settlement record the plugin seals keeps the payment's preimage (capsules-plugin lightning-v0, "preimage"). It is
+# bearer proof of a payment and never leaves the lab host. A ledger copied into a proof keeps every record, with only
+# the preimage's value replaced by REDACTED: the evaluator step 10 runs on 05's chain still sees each settlement
+# (phase, source, payment_hash, amounts), and line numbers (held-<n>) stay. Such a line no longer hashes to its
+# capsule_id; no step verifies an observation's bytes (05 checks citing records, own halves and inclusions).
+# A line that does not parse but names a preimage (a ledger copied while its node appends to it) is a stub instead.
+REDACTED = "redacted: a payment preimage never leaves the lab host"
+UNPARSED = "an unparsable ledger line that names a preimage, withheld"
+REDACTION = "x-loop-redacted"  # the member a redacted record gains: the sha256 of its line as the node holds it
+# Key names that carry a preimage's value; preimage_check (06's outcome) is the only other key that names one.
+NOT_A_PREIMAGE = ("preimage_check",)
+
+
+def preimage_key(key):
+    return isinstance(key, str) and "preimage" in key.lower() and key not in NOT_A_PREIMAGE
+
+
+def carries_preimage(value):
+    """Whether a parsed record holds a non-empty preimage value under any key naming one (preimage, payment_preimage,
+    preImage...) at any depth, other than the REDACTED marker; a string that is itself JSON is looked into."""
+    if isinstance(value, dict):
+        return any((preimage_key(k) and v not in (None, "", REDACTED)) or carries_preimage(v) for k, v in value.items())
+    if isinstance(value, list):
+        return any(carries_preimage(v) for v in value)
+    if isinstance(value, str) and value[:1] in "{[" and "preimage" in value.lower():
+        try:
+            return carries_preimage(json.loads(value))
+        except ValueError:
+            return True  # names a preimage and does not parse: treated as one
+    return False
+
+
+def redacted(value):
+    """value with every preimage value (as carries_preimage finds them) replaced by REDACTED."""
+    if isinstance(value, dict):
+        return {k: (REDACTED if preimage_key(k) and v not in (None, "") else redacted(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redacted(v) for v in value]
+    if isinstance(value, str) and value[:1] in "{[" and "preimage" in value.lower():
+        try:
+            return json.dumps(redacted(json.loads(value)), separators=(",", ":"), sort_keys=True)
+        except ValueError:
+            return UNPARSED
+    return value
+
+
+def copy_redacted(src, dest):
+    """Copy the JSONL ledger file src to dest line for line, each preimage value replaced by REDACTED (the rest of a
+    record kept as it parsed, re-encoded only when it held one, plus an x-loop-redacted member naming the sha256 of
+    the line as the node holds it); an unparsable line that names a preimage becomes a
+    stub with the sha256 of its bytes. Returns how many lines changed."""
+    out, n = [], 0
+    for raw in Path(src).read_bytes().split(b"\n"):
+        try:
+            record = json.loads(raw) if raw.strip() else None
+        except ValueError:
+            record = None
+            if b"preimage" in raw.lower():
+                n += 1
+                raw = json.dumps({"redacted": UNPARSED, "line_sha256": hashlib.sha256(raw).hexdigest()}).encode()
+        if record is not None and carries_preimage(record):
+            n += 1
+            kept = redacted(record)
+            if isinstance(kept, dict):  # the line as the node holds it, for whoever holds that line to confirm it
+                kept[REDACTION] = {"line_sha256": hashlib.sha256(raw).hexdigest()}
+            raw = json.dumps(kept, separators=(",", ":")).encode()
+        out.append(raw)
+    Path(dest).write_bytes(b"\n".join(out))
+    return n
 
 
 def path(node, field):
