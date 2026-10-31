@@ -11,6 +11,9 @@
 #   $LAB_DIR/nodes/lab-N/payments/wallets/lexe-wallet/   seedphrase.txt, wallet.lock, wallet data
 # Until lab.sh start writes [payments] for it (LAB_PAYMENTS), the running lab-N does not load a wallet plugin,
 # so it never opens that directory.
+# But once payments/payments.sqlite3 exists, the running lab-N opens the ledger to advertise prices and holds
+# payments/service.lock (mesh-llm host node_ext.rs advertised_prices_source), so this script works only before lab-N
+# has done that; on a second run, use lab-N's own console once lab.sh start has given it [payments].
 #
 # Steps: install the staged lexe-wallet build (lexe-wallet-plugin#7) into the throwaway HOME, start
 # the temporary instance, open the wallet (the plugin creates the seed and signs up a Lexe account
@@ -59,6 +62,9 @@ port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 ! grep -q '^\[payments\]' "$NODE_DIR/config.toml" || die "$NODE_DIR/config.toml already has [payments]: lab-N owns the wallet now; use its console :$((${LAB_PORT_BASE:-9800} + 10 + N))"
 [ ! -e "$TMP_CONFIG" ] || die "$TMP_CONFIG exists: another run is active or crashed; check for a 'client --config $TMP_CONFIG' process, then remove it"
 port_free "$API_PORT" && port_free "$CONSOLE_PORT" || die "port $API_PORT or $CONSOLE_PORT is in use"
+if [ -e "$NODE_DIR/payments/service.lock" ]; then
+  flock -n "$NODE_DIR/payments/service.lock" true || die "$NODE_DIR/payments/service.lock is held: the running $NODE opened its ledger after the first run, so a temporary instance cannot. Use $NODE's console :$((${LAB_PORT_BASE:-9800} + 10 + N)) once lab.sh start has given it [payments] (LAB_PAYMENTS)"
+fi
 if [ -e "$WALLET_DIR/wallet.lock" ]; then
   flock -n "$WALLET_DIR/wallet.lock" true || die "$WALLET_DIR/wallet.lock is held by another process"
 fi
