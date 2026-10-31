@@ -250,9 +250,14 @@ class PolicyTest(unittest.TestCase):
         for reason in ("policy_declined", "not_authorized"):
             self.assertEqual(step.refusal_verdict(reason, v1), "fail")
             self.assertEqual(step.refusal_verdict(reason, "evidence-interop/0"), "not_checked")
-        for profile in (v1, None):
-            self.assertEqual(step.refusal_verdict("capacity_exceeded", profile), "not_checked")
-            self.assertEqual(step.refusal_verdict("request_unauthenticated", profile), "ok")
+        self.assertEqual(step.refusal_verdict("capacity_exceeded", v1), "not_checked")
+        self.assertEqual(step.refusal_verdict("request_unauthenticated", v1), "ok")
+        # A sealed request with no profile asks for /0, which registers neither -02 token.
+        v0 = step.request_profile({"subject": {"checkpoints": None}})
+        self.assertEqual(v0, "evidence-interop/0")
+        for reason in ("capacity_exceeded", "request_unauthenticated"):
+            self.assertEqual(step.refusal_verdict(reason, v0), "fail")
+        self.assertEqual(step.request_profile({"profile": v1}), v1)
         self.assertIn("a limit of the node's own",
                       step.refusal_not_checked("x", "capacity_exceeded")["why"])
 
@@ -625,6 +630,19 @@ class ReporterBackendTest(Tmp):
         self.assertIn("not the listed key", fail)
         ok = line.replace("differs", "match")
         self.assertEqual(step.judge_live_line("history_card", ok, entry), (None, None))
+
+    def test_a_reporter_refusal_is_read_by_its_requests_profile(self):
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        line = "refusal reason=capacity_exceeded key=" + "3" * 64 + " listed_key=match"
+        # The reporter's stranger-safe questions ask under /0, where the -02 tokens are not registered.
+        fail, _ = step.judge_exchange_line(line, entry, "evidence-interop/0")
+        self.assertIn("is refused (capacity_exceeded)", fail)
+        fail, nc = step.judge_exchange_line(line, entry, "evidence-interop/1")
+        self.assertIsNone(fail)
+        self.assertIn("a limit of the node's own", nc["why"])
+        refused = line.replace("capacity_exceeded", "not_authorized")
+        fail, _ = step.judge_exchange_line(refused, entry, "evidence-interop/1")
+        self.assertIn("is refused (not_authorized)", fail)
 
     def test_the_deadline_runs_from_the_request_not_from_the_key_lookup(self):
         # A slow key lookup (GET) is not part of the answer time: only the POST's send time starts it.

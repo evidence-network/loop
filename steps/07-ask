@@ -42,7 +42,9 @@ it cites. The judge checks, on those bytes:
     policy_declined and not_authorized are NOT_CHECKED, as an honest node also
     sends them for limits no policy promises past (capsules-plugin#112, #114),
     except to a request under evidence-interop/1, where they are policy only and
-    a FAIL; capacity_exceeded (a limit of the node's own) is NOT_CHECKED;
+    a FAIL; capacity_exceeded (a limit of the node's own) is NOT_CHECKED and
+    request_unauthenticated blames the request under /1, and either answering
+    a /0 request (or one naming no profile) is an unregistered reason, a FAIL;
     only coverage_unsatisfiable, deadline_unmet, request_malformed,
     retention_expired and request_unauthenticated blame the request, and any
     other reason, or none, is a FAIL;
@@ -259,9 +261,9 @@ def policy_answers(request, adv, requester_authenticated=True):
 
 
 # Why a node refuses, against what its advertised policy answers (Mesh-LLM/capsules-plugin#112, #114): only
-# these two reasons withhold an answer the policy promises; policy_declined and not_authorized also cover limits
-# no policy promises past (a full stranger pool, an oversized answer, a full replay cache), so a refusal under
-# them cannot be judged.
+# these two reasons withhold an answer the policy promises; under evidence-interop/0 policy_declined and
+# not_authorized also cover limits no policy promises past (a full stranger pool, an oversized answer, a full
+# replay cache), so a refusal under them cannot be judged; under /1 they are policy (below).
 # Anything else, a reason the spec does not name included, is a breach (vectors/aac-evidence-request in
 # capsules-plugin). no_such_subject and derivation_unsupported withhold; the reasons below blame the request.
 WITHHOLDING_REASONS = ("no_such_subject", "derivation_unsupported")
@@ -272,22 +274,31 @@ REFUSAL_ISSUE = "Mesh-LLM/capsules-plugin#114"
 # limit of its own with capacity_exceeded and refuses a requester authentication that fails with
 # request_unauthenticated, so under /1 policy_declined and not_authorized are policy only and a refusal under them of
 # a subject the policy answers is a breach. A refusal carries no profile: it is read by its request's (IP v1 §6.3).
-PROFILE_V1 = "evidence-interop/1"
+PROFILE_V0, PROFILE_V1 = "evidence-interop/0", "evidence-interop/1"
 LIMIT_REASONS = ("capacity_exceeded",)
 V1_REQUEST_REASONS = ("request_unauthenticated",)
 
 
-def refusal_verdict(reason, profile=None):
+def request_profile(request):
+    """The identifier a sealed request asks for: its `profile`, or evidence-interop/0 when it names none (IP v1
+    §3.3 step 2)."""
+    return request.get("profile") or PROFILE_V0
+
+
+def refusal_verdict(reason, profile=PROFILE_V0):
     """"fail" if a refusal for `reason` of a subject the policy answers breaches the policy (a withholding reason, or
     one the spec does not name), "not_checked" if the reason is one an honest node also sends, "ok" if it blames
-    the request. `profile` is the identifier the request named, when the proof holds it: under evidence-interop/1
-    policy_declined and not_authorized are policy, so a breach; otherwise (/0, or not known) not checked.
-    capacity_exceeded (a limit of the node's own) is not checked and request_unauthenticated blames the request,
-    whichever profile."""
-    if reason in REQUEST_REASONS or reason in V1_REQUEST_REASONS:
+    the request. `profile` is the identifier the request asked for (request_profile; every caller holds the
+    request in the proof). Under evidence-interop/1 policy_declined and not_authorized are policy, so a breach,
+    capacity_exceeded (a limit of the node's own) is not checked and request_unauthenticated blames the request.
+    evidence-interop/0 registers neither -02 token, so either answering a /0 request is an unregistered reason, a
+    breach, and policy_declined and not_authorized cannot be judged (IP v1 §6.3, §9.1)."""
+    if reason in REQUEST_REASONS:
         return "ok"
-    if reason in LIMIT_REASONS:
-        return "not_checked"
+    if reason in LIMIT_REASONS or reason in V1_REQUEST_REASONS:
+        if profile != PROFILE_V1:
+            return "fail"
+        return "not_checked" if reason in LIMIT_REASONS else "ok"
     if reason in AMBIGUOUS_REASONS:
         return "fail" if profile == PROFILE_V1 else "not_checked"
     return "fail"
@@ -599,7 +610,7 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
                             f"{refused or outcome}")
         if st.get("outcome") == "refusal" and policy_answers(request, adv):
             what = "stranger-safe" if stranger_safe(request, adv) else "answered to this asker"
-            verdict_r = refusal_verdict(st.get("reason"), request.get("profile"))
+            verdict_r = refusal_verdict(st.get("reason"), request_profile(request))
             if verdict_r == "fail":
                 errs.append(f"{name}: {asked(request)} is refused ({st.get('reason')}), but the advertised policy "
                             f"lists it as {what}")
@@ -780,7 +791,7 @@ def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
         daily_report.http = real
 
 
-def judge_live_line(stem, line, entry):
+def judge_live_line(stem, line, entry, profile=PROFILE_V0):
     """step 12's verdict on a reporter line, except a refusal of a stranger-safe question: that is judged by its
     reason (refusal_verdict), as the book backend judges it."""
     qname = daily_report.QUESTION_NAMES[stem]
@@ -792,7 +803,7 @@ def judge_live_line(stem, line, entry):
     if qname not in safe:
         return None, None
     reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
-    verdict = refusal_verdict(reason)
+    verdict = refusal_verdict(reason, profile)
     if verdict == "fail":
         return f"the {qname} answer is refused ({reason}), but the node lists it as stranger-safe: {line}", None
     if verdict == "not_checked":
@@ -1094,7 +1105,7 @@ def exchange_records_cite(response, half):
             if bad else []), []
 
 
-def judge_exchange_line(line, entry):
+def judge_exchange_line(line, entry, profile=PROFILE_V0):
     """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
     holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
     (the policy answers it), an ambiguous one is not checked, and a request-blaming one is fine, except coverage_unsatisfiable (the
@@ -1104,7 +1115,7 @@ def judge_exchange_line(line, entry):
     if "listed_key=match" not in line.split():
         return f"the exchange refusal is signed under a key that is not the listed key: {line}", None
     reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
-    verdict = refusal_verdict(reason)
+    verdict = refusal_verdict(reason, profile)
     if verdict == "ok" and line.startswith("no_checkpoint_yet"):  # the request names a pin the node may not have cut
         return None, {"what": "the exchange ask", "why": f"the node refused it as unsatisfiable coverage: {line}",
                       "issue": EXCHANGE_ISSUE}
@@ -1366,8 +1377,8 @@ def judge_reporter(pop, out):
                 failures += [f"{name}: {qname}: {e}" for e in errs]
                 merge(not_checked, [{"what": f"{name}: {qname}: the sealed request and its outcome", "why": n,
                                      "issue": SEAL_ISSUE} for n in notes])
-                fail, nc2 = (judge_exchange_line(line, entry) if stem == EXCHANGE
-                             else judge_live_line(stem, line, entry))
+                fail, nc2 = (judge_exchange_line(line, entry, request_profile(request)) if stem == EXCHANGE
+                             else judge_live_line(stem, line, entry, request_profile(request)))
                 cited_ok = True
                 if stem == EXCHANGE and not fail and saw == "verified":
                     cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
