@@ -966,14 +966,29 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("exchange answer is refused (no_such_subject)", r["detail"])
 
-    def test_a_policy_declined_refusal_of_the_exchange_ask_is_not_checked(self):
+    def test_a_policy_declined_refusal_of_the_exchange_ask_is_a_fail_under_v1(self):
+        # The exchange ask goes under evidence-interop/1, where policy_declined is policy: a half the node cites,
+        # asked by the asker it names, is one the policy answers (capsules-plugin#114).
         asker, extra = self.exchange_dirs()
         r = self.run_live({"checkpoints": "absence", "history_card": "absence", "exchange": "refusal"},
                           ledger=asker, node_extra=extra, sealed={"exchange": "refusal_not_checked"})
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn(step.REFUSAL_ISSUE, self.issues(r))
-        # an unjudged refusal is not an answer
-        self.assertIsNone(json.loads((self.out / "first-answered.json").read_text())["answered_at"])
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("the exchange answer is refused (policy_declined)", r["detail"])
+        request = json.loads(next(self.out.glob("lab-1/attempts/*/exchange.request.json")).read_text())
+        self.assertEqual(request["profile"], "evidence-interop/1")
+
+    def test_an_earlier_v0_exchange_proof_is_judged_as_it_was_recorded(self):
+        # A proof from a run that asked under /0 keeps its reading: its policy_declined is not checked.
+        half = "a" * 64
+        v0 = step.exchange_question(half, "evidence-interop/0")
+        self.assertEqual(step.expected_question(step.EXCHANGE, half, v0), v0)
+        line = "refusal reason=policy_declined key=" + "3" * 64 + " listed_key=match"
+        fail, nc = step.judge_exchange_line(line, {}, step.request_profile(v0))
+        self.assertIsNone(fail)
+        self.assertEqual(nc["issue"], step.REFUSAL_ISSUE)
+        # Any other request is not the question this step asks.
+        other = dict(v0, profile="evidence-interop/9")
+        self.assertNotEqual(step.expected_question(step.EXCHANGE, half, other), other)
 
     def test_an_exchange_refusal_signed_under_another_key_is_a_fail(self):
         r = self.run_live({**VERIFIED, "exchange": "refusal"}, announced="3" * 64, **dict(

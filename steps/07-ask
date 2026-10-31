@@ -45,6 +45,8 @@ it cites. The judge checks, on those bytes:
     a FAIL; capacity_exceeded (a limit of the node's own) is NOT_CHECKED and
     request_unauthenticated blames the request under /1, and either answering
     a /0 request (or one naming no profile) is an unregistered reason, a FAIL;
+    the exchange ask goes under evidence-interop/1, and an earlier run's proof
+    is judged under the profile its sealed request records;
     only coverage_unsatisfiable, deadline_unmet, request_malformed,
     retention_expired and request_unauthenticated blame the request, and any
     other reason, or none, is a FAIL;
@@ -1060,9 +1062,22 @@ def exchange_subject(node, asker_data_dir):
                   "(step 05's live run leaves them)")
 
 
-def exchange_question(half):
-    """The exchange request about `half`, as the plugin answers it (subject = the half's id, pinned to it)."""
-    return {"profile": daily_report.PROFILE, "coverage": {"expected_pin": half}, "subject": {EXCHANGE: half}}
+def exchange_question(half, profile=PROFILE_V1):
+    """The exchange request about `half`, as the plugin answers it (subject = the half's id, pinned to it). Asked
+    under evidence-interop/1, where a policy refusal is a statement about policy, so 07 can judge it
+    (capsules-plugin#114). Runs before that asked it under /0; their proofs are judged under the profile they record
+    (expected_question)."""
+    return {"profile": profile, "coverage": {"expected_pin": half}, "subject": {EXCHANGE: half}}
+
+
+def expected_question(stem, half, request):
+    """The question an attempt's sealed request must be: for the exchange ask, the exchange question under the profile
+    the proof records (/0 for runs before /1, /1 since), so an earlier proof is judged as it was recorded; for the
+    others, the reporter's question."""
+    if stem == EXCHANGE:
+        recorded = request.get("profile")
+        return exchange_question(half, recorded if recorded in (PROFILE_V0, PROFILE_V1) else PROFILE_V1)
+    return daily_report.QUESTIONS[stem]
 
 
 class exchange_registered:
@@ -1358,7 +1373,7 @@ def judge_reporter(pop, out):
                     failures.append(f"{name}: {qname}: the attempt's request or timing is not readable "
                                     f"({type(e).__name__}: {e})")
                     continue
-                if request != daily_report.QUESTIONS[stem]:
+                if request != expected_question(stem, half, request):
                     failures.append(f"{name}: {qname}: the attempt's request is not the question this step asks")
                     continue
                 line, bad = reporter_line(attempt, stem, entry["key_id"])
