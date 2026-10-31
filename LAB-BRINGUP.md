@@ -597,7 +597,10 @@ A node pays only when its host has a wallet, in two parts, each run as
 intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
 [SATS]` creates lab-N's Lexe wallet in its payments directory through a
 temporary, unjoined instance with no relay, sets a small automatic policy and
-prints one funding invoice (none for SATS 0); lab-N is not touched. Part B:
+prints one funding invoice (none for SATS 0); lab-N is not touched. It reruns
+only until the running lab-N opens the payment ledger the first run made (within
+seconds); after that, fund through lab-N's console once `LAB_PAYMENTS` is set,
+or stop the lab first. Part B:
 `lab/bin/lab-wallet-setup.sh N` checks A's wallet is there and free and
 installs the same lexe-wallet build for lab-N; it neither writes config.toml
 nor restarts the node. Neither part reads, prints or copies the seed. Then,
