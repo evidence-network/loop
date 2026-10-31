@@ -538,9 +538,9 @@ def run_inputs(run):
 
 
 def join_profile(book_dir):
-    """The profile join.sh made for the book under `book_dir`: the one under its config whose store is book_dir/book.
-    join.sh names it after its --name (lab/lab.sh passes lab-N), not after the node's name in population.json, the
-    way step 02 finds it. None when no profile has that store."""
+    """The fields of the profile join.sh made for the book under `book_dir`: the one under its config whose store is
+    book_dir/book, found as step 02 finds it (join.sh names it after its --name, lab-N, not after the node's name in
+    population.json). None when no profile has that store."""
     want = (book_dir / "book").resolve()
     for p in sorted((book_dir / "config" / "capsule" / "profiles").glob("*.yaml")):
         try:
@@ -548,7 +548,7 @@ def join_profile(book_dir):
         except (OSError, ValueError):
             continue
         if f.get("connection.database") and Path(f["connection.database"]).resolve() == want:
-            return p.stem
+            return f
     return None
 
 
@@ -566,11 +566,31 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
     book_dir = live.readable(node, "book_dir", "config")
     if book_dir is None:
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed", "book_dir not set or unreadable", live.ISSUE)
-    profile = join_profile(book_dir)
-    if profile is None:
+    joined = join_profile(book_dir)
+    if joined is None:
         raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
                          "book_dir has no book profile whose store is its book/ (config/capsule/profiles)", live.ISSUE)
-    book = Reporter(book_dir, capsulectl, profile)
+    checkpoint_seed = (joined.get("checkpoint.signing.file") or "").strip()
+    if not (joined.get("log_id") and joined.get("trusted_keys") and joined.get("checkpoint.trusted_keys")
+            and checkpoint_seed and Path(checkpoint_seed).is_file()):
+        raise NotChecked(f"live node {node['name']}: the page's digest, sealed",
+                         "the book's profile does not name its log id, trusted keys and readable checkpoint seed",
+                         live.ISSUE)
+    # lab.sh removes the book's node.seed after join (the plugin's data_dir keeps the only copy of the node key), so
+    # the profile's signing key file is gone. As step 02 does, this run writes a run-only 0600 seed from data_dir and
+    # makes its own profile over the same book, under the book's own log id and trusted keys.
+    home = Path(tmp) / "live-book"
+    home.mkdir(mode=0o700)
+    seed = home / "node.seed"
+    fd = os.open(seed, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(judge10.seed_hex(data_dir / "keys" / "node-key.pem"))
+    book = Reporter(home, capsulectl, node["name"])
+    book.cap("profile", "create", "--name", node["name"], "--type", "jsonl", "--jsonl-path", str(book_dir / "book"),
+             "--log-id", joined["log_id"], "--operator", node["name"],
+             "--trusted-key", judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem"),
+             "--signing-key-file", str(seed), "--checkpoint-signing-key-file", checkpoint_seed,
+             "--checkpoint-trusted-key", joined["checkpoint.trusted_keys"][0])
     book.work = Path(tmp)
     return book, judge10.pub_hex(data_dir / "keys" / "node-key.pub.pem")
 

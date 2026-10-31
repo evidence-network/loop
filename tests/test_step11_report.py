@@ -681,6 +681,7 @@ class LiveFixtureTest(unittest.TestCase):
         data = self.lab / "lab-a" / "data" / "keys"
         data.mkdir(parents=True)
         shutil.copy(keys / "node-key.pub.pem", data / "node-key.pub.pem")
+        shutil.copy(keys / "node-key.pem", data / "node-key.pem")  # the plugin's data_dir holds the node key
         self.home = self.lab / "lab-a" / "join-book"
         self.home.mkdir(parents=True)
         self.make_book(keys)
@@ -744,13 +745,25 @@ class LiveFixtureTest(unittest.TestCase):
 
     def test_the_book_profile_is_found_by_its_store_not_by_the_nodes_name(self):
         # join.sh names the profile after its --name (lab-N), not after the population's node name.
-        self.assertEqual(step.join_profile(self.home), "lab-a")
+        self.assertEqual(step.join_profile(self.home)["log_id"], "lab-a-book")
         self.assertIsNone(step.join_profile(self.home / "nowhere"))
         doc = load(self.population / "population.json")
         doc["nodes"][0]["name"] = "renamed-node"
         dump(self.population / "population.json", doc)
         f = self.report()
         self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_lab_sh_removes_the_books_node_seed_and_the_report_still_seals(self):
+        # lab.sh cmd_join runs `rm -f join-book/node.seed`: the plugin's data_dir keeps the only copy of the key.
+        (self.home / "node.seed").unlink()
+        before = sorted(p.relative_to(self.home).as_posix() for p in self.home.rglob("*") if p.is_file()
+                        and "store" not in p.parts and "book" not in p.parts)
+        f = self.report()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertFalse((self.home / "node.seed").exists())  # no key material left in the node's book dir
+        seal = load(self.run / "11-report" / "seal.bundle.json")
+        self.assertEqual(seal["extensions"]["producer-key/v1"]["public_key"],
+                         step.judge10.pub_hex(POPULATION / "keys" / "alice" / "node-key.pub.pem"))
 
     def test_a_book_with_no_profile_for_its_store_is_not_checked(self):
         for p in (self.home / "config" / "capsule" / "profiles").glob("*.yaml"):
@@ -764,7 +777,9 @@ class LiveFixtureTest(unittest.TestCase):
             (POPULATION / "keys" / "bob" / "node-key.pub.pem").read_bytes())
         f = self.report()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("not under the reporting book's key", f["detail"])
+        # The run's profile trusts the listed public key but signs with the data_dir's private one: capsulectl refuses
+        # the producer before any seal exists.
+        self.assertIn("producer is not authorized by the profile trusted_keys", f["detail"])
         self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
 
     def test_a_node_with_no_readable_book_is_not_checked(self):
