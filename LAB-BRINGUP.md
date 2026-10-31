@@ -578,6 +578,22 @@ capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) a
 pays nothing. The live population names no rail, so the finding reads
 NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
 
+### Step 07, the later ask
+
+Stage 1 does not include step 07 either. `lab/lab.sh ask` runs `steps/07-ask` on
+`population/live` into the same `findings/<date>-live/` as `07-ask/`, then checks the
+finding contract over the whole directory. It asks each node for `checkpoints`,
+`history_card/1` and an exchange request about a half step 05 left, through the reporter's
+console (the reporter's own node through a second node's console, as `loop` does). Each
+answer is judged under the node's listed key, by the deadline in its signed join
+commitment. The step also reads the sealed `evidence_request` and its outcome record from
+the asker's ledger, under each node's `data_dir`. It pays nothing. Run it after `join`,
+`entries` and `loop`. With no half from an earlier `exchange` to ask about, the exchange
+ask reads NOT_CHECKED (evidence-network/loop#94). A refusal of the exchange ask for
+`policy_declined` or `not_authorized` also reads NOT_CHECKED
+(Mesh-LLM/capsules-plugin#114). `pack` takes `07-ask/` with the rest of the day's
+findings.
+
 ## 6. Pack and bring back
 
 ```sh
