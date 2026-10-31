@@ -1,0 +1,12 @@
+{
+  "missing": [],
+  "read": {
+    "stevenmih-1": true,
+    "stevenmih-2": true,
+    "stevenmih-3": true
+  },
+  "revocations_main": {
+    "commit": "e42c2f2f77e8d8a39bb2c9ffb70060a419438289"
+  },
+  "sealed_since": "2026-10-31T07:03:46Z"
+}

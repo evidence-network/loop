@@ -1,0 +1,31 @@
+{
+  "book_id": "lab-3-book",
+  "book_key": "112cfeef77aecb1b0304b6ced134a7cb129a30dfad646c014f6b8aecd1c8f4db",
+  "bound": [
+    "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff"
+  ],
+  "capsule_id": "1023344f8e85105d9d86f00fbd82f42bb43fc9446f91ac8b529bf25479e0a9e7",
+  "checkpoint": 152,
+  "checkpoint_pub": "112cfeef77aecb1b0304b6ced134a7cb129a30dfad646c014f6b8aecd1c8f4db",
+  "done": [
+    "capsule.json",
+    "append.json",
+    "checkpoint.json",
+    "bundle.json"
+  ],
+  "node": "stevenmih-3",
+  "node_keys": [
+    "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+    "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+    "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff"
+  ],
+  "node_pub": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+  "publish_rc": 0,
+  "publish_reason": null,
+  "receipt_check": "offline",
+  "status_rc": 0,
+  "witness": {
+    "endpoint": true,
+    "public_key": "81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d"
+  }
+}
