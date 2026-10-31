@@ -1142,6 +1142,51 @@ class PluginToolsRunTest(Tmp):
                   "alice/disclosure-policy.json", "alice/doctor-after.json"):
             self.assertIn(p, [x["path"] for x in r["proof"]])
 
+    # Step 08 re-derives live 12 from its proof (loop#188).
+    def verify08(self):
+        """Step 08 on the run self.out sits in (12 only), with the run's population: (finding, manifest entry)."""
+        run = self.out.parent
+        (run / "run.json").write_text(json.dumps({"population": "live", "stage": "1", "started": "2026-10-31T00:00:00Z",
+                                                  "steps": ["12", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_for_12", str(ROOT / "steps" / "08-verify"))
+        v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_12", loader))
+        loader.exec_module(v)
+        shutil.rmtree(run / "08-verify", ignore_errors=True)
+        v.main(["--population", str(Path(self.tmp.name) / "live"), "--out", str(run / "08-verify")])
+        f = json.loads((run / "08-verify" / "finding.json").read_text())
+        return f, {e["dir"]: e for e in json.loads((run / "08-verify" / "verified.json").read_text())["steps"]}["12-join"]
+
+    def rehash(self, drop=()):
+        rec = json.loads((self.out / "finding.json").read_text())
+        rec["proof"] = [p for p in rec["proof"] if p["path"] not in drop]
+        for p in rec["proof"]:
+            p["sha256"] = finding.sha256(self.out / p["path"])
+        (self.out / "finding.json").write_text(json.dumps(rec))
+
+    def test_08_reproduces_live_12_from_its_proof(self):
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], r["result"])
+
+    def test_08_fails_a_live_12_whose_kept_replies_were_altered(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        w = json.loads((self.out / "alice" / "wire.json").read_text())
+        w["binding-doctor"]["reply"]["findings"] = [{"check": "controller_binding", "state": "bound",
+                                                     "records": ["e" * 64]}]
+        (self.out / "alice" / "wire.json").write_text(json.dumps(w))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+
+    def test_08_does_not_reproduce_an_old_shape_live_12(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        (self.out / "nodes.json").unlink()
+        self.rehash(drop=("nodes.json",))
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "not_reproduced", e["problems"])
+        self.assertIn("its proof holds no nodes.json", e["not_checked"]["why"])
+
     def data_dir(self, binding=None):
         """A data_dir holding `binding` (default: alice's, as join.sh wrote it) as controller-binding.json."""
         d = Path(self.tmp.name) / "data"
@@ -1161,6 +1206,59 @@ class PluginToolsRunTest(Tmp):
         self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key (same_controller_asserted: no "
                       f"role) and applies at {FIXTURE_AT}", r["detail"])
         self.assertEqual(r["not_checked"], [])
+
+    def judged_again(self, r, edit=None):
+        """judge_live on a copy of only the cited files (step 08's view, loop#188), after `edit(work)`: its finding."""
+        work = Path(self.tmp.name) / "again" / "12-join"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in r["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.out / p["path"], work / p["path"])
+        if edit:
+            edit(work)
+        pop = json.loads((Path(self.tmp.name) / "live" / "population.json").read_text())
+        real, step.PUBLISHED = step.PUBLISHED, Path(self.tmp.name) / "none"
+        try:
+            return step.judge_live(pop, work, r["started"])
+        finally:
+            step.PUBLISHED = real
+
+    @needs_cross
+    def test_the_live_finding_is_decided_again_from_its_proof_alone(self):
+        r = self.run_bound()
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        for p in ("nodes.json", "alice/wire.json", "alice/controller-binding.json"):
+            self.assertIn(p, [x["path"] for x in r["proof"]])
+        again = self.judged_again(r)
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (r["result"], r["not_checked"], r["detail"]))
+
+    @needs_cross
+    def test_an_edited_proof_does_not_decide_the_same(self):
+        r = self.run_bound()
+
+        def wire(change):
+            def edit(work):
+                w = json.loads((work / "alice" / "wire.json").read_text())
+                change(w)
+                (work / "alice" / "wire.json").write_text(json.dumps(w))
+            return edit
+
+        def doctor_unbound(w):
+            w["binding-doctor"]["reply"]["findings"] = [{"check": "controller_binding", "state": "unbound"}]
+
+        def line(work):
+            v = next((work / "alice" / "attempts").glob("*/checkpoints.verification"))
+            v.write_text("verified listed_key=match forged\n")
+
+        cases = {"doctor reports another binding state": wire(doctor_unbound),
+                 "a kept verification line its reply does not give": line,
+                 "no nodes.json": lambda work: (work / "nodes.json").unlink(),
+                 "no wire.json": lambda work: (work / "alice" / "wire.json").unlink()}
+        for what, edit in cases.items():
+            with self.subTest(what):
+                again = self.judged_again(r, edit)
+                self.assertEqual(again["result"], "FAIL", again["detail"])
 
     @needs_cross
     def test_the_record_that_was_checked_is_kept_as_proof(self):
