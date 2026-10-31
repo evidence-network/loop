@@ -1,0 +1,9 @@
+{
+  "coverage": {
+    "expected_pin": "7cf1c23f7f2416fb38cb71639a580e34f7699f41c3d95abb93f041ce589e8abe"
+  },
+  "profile": "evidence-interop/1",
+  "subject": {
+    "exchange": "7cf1c23f7f2416fb38cb71639a580e34f7699f41c3d95abb93f041ce589e8abe"
+  }
+}

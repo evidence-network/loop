@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    {
+      "carrier": "git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json",
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "64def23c100ea52cb74f98676ce65f543d10eb6b9bab5d40bb64792eaa35c759",
+          "stream": "capsules/511b5b4246cf58e7",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
+      ],
+      "key_id": "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+      "name": "stevenmih-1",
+      "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+      "notes": [],
+      "policy_digest": "8f10b44c221629f88426c03386cff0bfdc64d329c1a7986ca28408d47fd22f73",
+      "result": "PASS",
+      "sha256": "5f800bfa3673ac21b067d73f5f2afd85041b57203d3cdc97d23a11f11017708f",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
+      "signed_by": "the node (never the harness)"
+    },
+    {
+      "carrier": "git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "242e1b2cdc7e25bebfe7882f4af72f80433aedd59e42ecb873f24a915114f23e",
+          "stream": "capsules/7e04d3e3fec1332f",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
+      ],
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "name": "stevenmih-2",
+      "node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "notes": [],
+      "policy_digest": "2af5d40ffaaa604edb691acce648d15362f648a66cb162f7035c821481b29165",
+      "result": "PASS",
+      "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
+      "signed_by": "the node (never the harness)"
+    },
+    {
+      "carrier": "git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "mesh-llm",
+          "derivation": "history_card/1",
+          "has_history": true,
+          "sha256": "19990a38bb94198ec6949d3c9e065b31fec96caf1db628d43dacea1e8aa45fae",
+          "stream": "capsules/93d20518801ba715",
+          "stream_started": "2026-10-28",
+          "witnesses": []
+        }
+      ],
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "name": "stevenmih-3",
+      "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+      "notes": [],
+      "policy_digest": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25",
+      "result": "PASS",
+      "sha256": "720af79120734f07af7046ab9df758c92e8ea42e0ab733a7bc96be45a1cdc30f",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
+      "signed_by": "the node (never the harness)"
+    }
+  ],
+  "tool": "scripts/check_commitment.py with OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0"
+}

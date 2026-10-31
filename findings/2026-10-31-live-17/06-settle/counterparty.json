@@ -1,0 +1,22 @@
+[
+  {
+    "bundle_sha256": "52445d526046acc20a297d6a9365b1702e0a266e1cabab4f1f16fef668a81baa",
+    "disclosed_settlements": 5,
+    "method": "payment_hash pairs across the two books by role and amount (loop#183)",
+    "node": "stevenmih-1",
+    "paired": 5,
+    "peer": "stevenmih-2",
+    "status": "PASS",
+    "unpaired": 0
+  },
+  {
+    "bundle_sha256": "61901e2d40f1caf6deef113190374ce7378b727bc4189d205a1bac5dc0d03615",
+    "disclosed_settlements": 5,
+    "method": "payment_hash pairs across the two books by role and amount (loop#183)",
+    "node": "stevenmih-2",
+    "paired": 5,
+    "peer": "stevenmih-1",
+    "status": "PASS",
+    "unpaired": 0
+  }
+]

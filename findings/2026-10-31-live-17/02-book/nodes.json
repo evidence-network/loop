@@ -1,0 +1,14 @@
+{
+  "missing": [],
+  "nodes": {
+    "stevenmih-1": {
+      "read": "ok"
+    },
+    "stevenmih-2": {
+      "read": "ok"
+    },
+    "stevenmih-3": {
+      "read": "ok"
+    }
+  }
+}

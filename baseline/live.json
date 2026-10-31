@@ -1,14 +1,14 @@
 {
   "ecosystems": {
     "mesh": {
-      "findings": "findings/2026-10-31-live-16",
+      "findings": "findings/2026-10-31-live-17",
       "pins": {
         "aac-go": "action-state-group/agent-action-capsule go/v0.17.0",
         "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
         "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
         "capsulectl": "action-state-group/evidencebook v0.8.1",
         "capsulectl-book": "action-state-group/evidencebook v0.8.1",
-        "capsules": "Mesh-LLM/capsules-plugin 4eba9203ed167a5bc9e7a5da062e731ba2a9639f",
+        "capsules": "Mesh-LLM/capsules-plugin v0.1.8",
         "capsules-evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.3.0",
         "checkpointed-local-log": "action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1",
         "demo-capsules": "Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc",
@@ -22,56 +22,58 @@
         "mesh-llm-pr-2649": "Mesh-LLM/mesh-llm 3e6c2fefd9fe30952d71ca4cee536fa5a2f02ab9",
         "mesh-llm-pr-2719": "Mesh-LLM/mesh-llm 4beab7f643849b8fd5bfc7b8633ee3833622a3b3",
         "mesh-llm-pr-2721": "Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860",
+        "mesh-llm-pr-2741": "Mesh-LLM/mesh-llm ff57b477fefd5a6882f012c8b088aa1c3de72eec",
         "mesh-llm-pr-2744": "Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f",
+        "mesh-llm-pr-2748": "Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787",
         "reporter": "evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202"
       },
       "steps": {
         "01": {
-          "finding_sha256": "7e75a1953c33f5ca6db3a6f625c92f425ec138ab744873a73d853cde800457f4",
+          "finding_sha256": "f7a970522d6112ede16db68527c87b25934c1c9c674250f0041e8b768d02be5b",
           "result": "PASS"
         },
         "02": {
-          "finding_sha256": "7090101720840d8a743a40879fb6b6056ee2bbe05d8a49787be4fa305d56eb24",
+          "finding_sha256": "0c28c538c77c8410dd1f589abe3ffdbf445906b5d534887694797e31573c42d8",
           "result": "PASS"
         },
         "03": {
-          "finding_sha256": "cd6986ef73105bec69f2757cd54b88463047902c5aa3a19b90fab470b6ecd0b9",
+          "finding_sha256": "4ad07c5b94c7ddc0a3c989268f5f15c3d1b941391bc13c514ed0e059a3d57747",
           "result": "PASS"
         },
         "04": {
-          "finding_sha256": "9b021aebc8555762652cbba4fa95e0789ba3fe1b2b9071b708bd060c0025e5ac",
+          "finding_sha256": "e1ea57690a98b6e9901d5ad98cef1f302e4b899dcdb87a090e4bf2bfead53a57",
           "result": "PASS"
         },
         "05": {
-          "finding_sha256": "c29f6fe58106092f9e711b625a0c369d2084330e25b628c7a260d7dba15d2795",
-          "result": "NOT_CHECKED"
+          "finding_sha256": "65a71ed18cf66412603fe7a2106363fe37c76ab8ade962e93c38097092b6dbda",
+          "result": "PASS"
         },
         "06": {
-          "finding_sha256": "82cd23d291a7dfeec831c452b082891d10ccd700b4384e718bb285df52594075",
+          "finding_sha256": "89f0bad4d6f09a08e02dff235964c7f8c5b3fd0d79825c94338854127b2469c5",
           "result": "PASS"
         },
         "07": {
-          "finding_sha256": "2e3606031af57d1f7712e0fb6e4359f22c5773ead0400561dc9f5bb22833e02f",
+          "finding_sha256": "1fe59ce19c621ae01f8d6e0b79e7ddbc7d6d04d507be7f0ab2af4b4b5baf648f",
           "result": "PASS"
         },
         "08": {
-          "finding_sha256": "2dec56da2927ca230f027e3d034cac8bbd08e26c4d85699b60d7720a74115d70",
+          "finding_sha256": "6a5d8cf23531f2284c9970dc1ff5f3313672cd0ec00f85bf2a4e765d9be6bd1d",
           "result": "NOT_CHECKED"
         },
         "09": {
-          "finding_sha256": "b95ceb6d2f234f01cad888eac5fe7e587d13d9b5c942104502db0739f9256c64",
+          "finding_sha256": "4a578082c5f979b7a80d16161a8ad7da46952bb2606852bf53bc3718e1f1a0de",
           "result": "PASS"
         },
         "10": {
-          "finding_sha256": "d7a98dfddd77900877d219a411bf1fe543d674ba5a3387810476be0c0e58f0b9",
-          "result": "NOT_CHECKED"
+          "finding_sha256": "b035db67faa56b8e0ab1df43266981a36827c7ac9c95ba3eca5318b85990e43c",
+          "result": "PASS"
         },
         "11": {
-          "finding_sha256": "36a7125b1b8479630ed40d4ebed43f9fc431c98f73190b3f673d9414a8bc9e12",
-          "result": "NOT_CHECKED"
+          "finding_sha256": "772f0e54e09a1c36bfd6004ca2178192b6ad82147de0600eb7c7f33e785186ef",
+          "result": "PASS"
         },
         "12": {
-          "finding_sha256": "0613205b342991e0377ed42860fb4576b53a25c49e2c132c5aebc5c20c652541",
+          "finding_sha256": "6146975a4fba00d9c90af95877a1227d2e05cbcf5ecb98e304a1298322135d08",
           "result": "PASS"
         }
       }

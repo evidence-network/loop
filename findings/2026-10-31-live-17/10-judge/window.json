@@ -1,0 +1,1091 @@
+{
+  "as_of": "2026-10-31T19:31:04Z",
+  "records": [
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-1.json",
+      "result": "PASS",
+      "sha256": "07c26ab9a3e56ad8edac043faebae092ac32d5c98d73c4569d77d67c8730def9",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-10.json",
+      "result": "PASS",
+      "sha256": "c3a7a01cc7ae116e8e77e184e5989049d57151a3d0bd687cade6bda0c5b754d4",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-11.json",
+      "result": "PASS",
+      "sha256": "94b5b9fe9caef149ea942a3d4b82336ef5a13e87c45c808e9506e8035c7b6e98",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-12.json",
+      "result": "PASS",
+      "sha256": "fe4bf4c6a809244557ddb423738f3e12ac8bb1183b88894d614f77a45dce5e05",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-13.json",
+      "result": "PASS",
+      "sha256": "b010b910584985850551ada84ce69b4116f5185469a2fb24ef9a0964abb93cf4",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-14.json",
+      "result": "PASS",
+      "sha256": "b9c8660f3c2aff64425496275618e5bcba59c57ea51dbbf217daa14d5b9b311b",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-15.json",
+      "result": "PASS",
+      "sha256": "d7248909d6ce5133a3bec5020a9e8f41a3e45846055b71f2a2d5fdbaf9fc871a",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-16.json",
+      "result": "PASS",
+      "sha256": "bc3a4b1bfe8b6e005b44aeefc42785509109c2838d9f7a0a4a0ad144b08356c7",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-17.json",
+      "result": "PASS",
+      "sha256": "becf35dbcdea92d8840f0c6a36e57c61c0e2d622712ccc17927f96f26e816274",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-18.json",
+      "result": "PASS",
+      "sha256": "f071d026fead89237d7a49b5a571ecb6beda1ab497425cde3a9f5e9fd32df603",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-19.json",
+      "result": "PASS",
+      "sha256": "13b6522b95b6d6697a56ad57eb4f231e8520f2f4411c196b5810f3f70a4e9228",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-2.json",
+      "result": "PASS",
+      "sha256": "808746916d9de3b8c9ce6dae366bd6929bbde07b543750cb7078549fa29471ea",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-20.json",
+      "result": "PASS",
+      "sha256": "9aa1a026a0e7d58de3b36d77182a3aed04d8496ddc1c44ba35218f3c1d7624eb",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-21.json",
+      "result": "PASS",
+      "sha256": "0173e22fbd9c838d7a22caad51a1518e38d2ef230d719f6763c30beaa8f48084",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-22.json",
+      "result": "PASS",
+      "sha256": "b9c68d92869073df7b0011caa0fb81161368611c1c95595abeee0c8654138788",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-23.json",
+      "result": "PASS",
+      "sha256": "993892af0f098aee83f9eef37dafeb5667b82093c9d90c7698dd751e3e31f6fd",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-24.json",
+      "result": "PASS",
+      "sha256": "cd15132d0e5685232056c5b18447f765e5965eb1234d3128a2eeed7ececa2e67",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-25.json",
+      "result": "PASS",
+      "sha256": "fe60430118565352049bcc6ff41e9a41f3679b641336e55a216ff24c3eee6f93",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-26.json",
+      "result": "PASS",
+      "sha256": "dfa2b240acf6823f6035a094975afc498a28e340b8570b6a23596d2255b811dd",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-27.json",
+      "result": "PASS",
+      "sha256": "e375790568eeef6a1241fa3738fdf8d119d19bbb1e2b81a1ddf2ca6a8d993354",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-28.json",
+      "result": "PASS",
+      "sha256": "fdf3d1f386899b7817ddb729cd7650cdd6e81b79efbff354f506c82eadb52ca6",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-29.json",
+      "result": "PASS",
+      "sha256": "308784e410a9fbf4877b736c4e765437a25f93b115537992768a72b111ebe5a6",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-3.json",
+      "result": "PASS",
+      "sha256": "96236ed799b3df78fffbf425b90cf39c3a2c65e955f5cc5ebb3fcc2aebc8b33e",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-30.json",
+      "result": "PASS",
+      "sha256": "864692d30d15edf8ed043c36e81429eba37ba1392e419f078792409322d77693",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-32.json",
+      "result": "PASS",
+      "sha256": "50bff1a94e7051cc760c562c186fe8fce24b88712fa4100fed54eda7857bef84",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-33.json",
+      "result": "PASS",
+      "sha256": "bf383dfce8aa1c944d28a98f2c5f1c46a432609d37e3c6ce05cc1aebf6865dde",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-35.json",
+      "result": "PASS",
+      "sha256": "7f77ba5c5216b683cafd3dc9b4839b7e9c9edbd9f1e585d8baf2075412d231c8",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-37.json",
+      "result": "PASS",
+      "sha256": "e8f37cd6ab7b92c25b9e456a03736ff4fafbb27924e203d4e472c0920b7cf022",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-38.json",
+      "result": "PASS",
+      "sha256": "9fa9ab16539c4fbd5ff4281e22b9c2d53a4f424f7fa1cd315b45c29efc5fac1d",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-39.json",
+      "result": "PASS",
+      "sha256": "5974db47cbe46e648be910bcb43c7b6a36a076a18625fe9be784210cef16cbf4",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-4.json",
+      "result": "PASS",
+      "sha256": "abb403cd7e51b9055301445fe18663b306469b6fe99c9c1401f18678a5102630",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-40.json",
+      "result": "PASS",
+      "sha256": "b924abe173842d2432cde5172487e77c91fa82ba4dd74fdfb1275a1968d9c75f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-41.json",
+      "result": "PASS",
+      "sha256": "32e74c7978f079de3655d95e80560be2786c7d95ece9f4cf28c165f988a13d6c",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-43.json",
+      "result": "PASS",
+      "sha256": "fb74fe1d8c4fdb5e6615c66e88449a67ecd9b47d692ef147f9ad5c861dba4db5",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-44.json",
+      "result": "PASS",
+      "sha256": "7e2ad67460bb3d6f0d35baa160285752dcf33afca804110dbe7d41d1e83351ec",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-46.json",
+      "result": "PASS",
+      "sha256": "795393654ff9a48dae60fea49c7243c2ba634c3ccd2eac3fe2aad1ff3e65706f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-47.json",
+      "result": "PASS",
+      "sha256": "076e66e93e3e48fb070dccc9e9366cf5f4e277de751b1db925787be9c88e1592",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-48.json",
+      "result": "PASS",
+      "sha256": "5648d6eb48db5ff1c52008289aaf6f3eb10a85b0d330b5dcbcffbd7252b35721",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-5.json",
+      "result": "PASS",
+      "sha256": "062aca22a7cf4fc3a3c7595eb8cd7f66cf7d5bd9951dc18495d5299525f38fad",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-6.json",
+      "result": "PASS",
+      "sha256": "8a92d8aa6940110924af7ae326ce82966af3f091624fee7116daeaf051857e6b",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-7.json",
+      "result": "PASS",
+      "sha256": "337a78a4f1d5359f51c3c6da897ced45ccc7ba82fa934437377fe19705748e76",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-8.json",
+      "result": "PASS",
+      "sha256": "60810a7711685353e634f3cbbf57869f230e021a5fd2917cbe2f9dcd4018846f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/held-9.json",
+      "result": "PASS",
+      "sha256": "8a23e3f17716b1cd0bf41253c7344f63bcd954ac35fdc55c90502d9c081bcfda",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-1.json",
+      "result": "PASS",
+      "sha256": "3124d7f54ecf4102c1ffc6ca08a81f08411430ef83c5ad1119ce250905905694",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-10.json",
+      "result": "PASS",
+      "sha256": "e13d4db176c3d5270f5a54d02ba15c6ab46d39d40d9e953e4d33f68963795aa5",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-11.json",
+      "result": "PASS",
+      "sha256": "54f021f1ae9c1dbb775dc455f7b59d2645ceedbd08acfcdbf8c828218cd7c683",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-12.json",
+      "result": "PASS",
+      "sha256": "1863bfedb3bd9116759e4766098089bf09979c7d657e2dd223e393a9d5988bf3",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-13.json",
+      "result": "PASS",
+      "sha256": "0213ea65ee07f1755bbc0d62f4e45ba68af3a0b829a896e811a59bc3e087e02a",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-14.json",
+      "result": "PASS",
+      "sha256": "531dbfb16c0c6a7e3bd1d5cadeb41815952d9bf5a806a57c903d510fadd72e6a",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-15.json",
+      "result": "PASS",
+      "sha256": "6f15599412f239e67ac5f7dc52638970f154f9291d24e953a0dde7d5114b11b0",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-16.json",
+      "result": "PASS",
+      "sha256": "c5b1be456d043988cc0d27648deedeb3381dc2334662a6649efbff5de9d4c285",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-17.json",
+      "result": "PASS",
+      "sha256": "facf796e3a54873ba9912561b61f2d178134184d11b7ed5f6bfa472328f46c97",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-18.json",
+      "result": "PASS",
+      "sha256": "cfa92d5c0b960904376b2287853d0c908534a7c340243d5c10e8a9151218b31e",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-19.json",
+      "result": "PASS",
+      "sha256": "e4e831d39e68d2ae4a5e961d606e370489f0b1b5bdec9b21f05cdc95604b100b",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-2.json",
+      "result": "PASS",
+      "sha256": "eeffa1110ff9a40f7a9855f892cd3d9946776abaa015b47beea534011e2fd5cd",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-20.json",
+      "result": "PASS",
+      "sha256": "6c444ed6f7c9e1ff05b4d2cebedfdd08e65e7c63f5ffb37a6eefe97cc6e1a0d2",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-21.json",
+      "result": "PASS",
+      "sha256": "fc11545e884dc2486dc4b452f732fa3bc4d4340466d138c6b1343e1087fc1996",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-22.json",
+      "result": "PASS",
+      "sha256": "01ebffa21ec8a163fe1bf56dc1fcf9fc4da8198d7e16605866353b90810f8f54",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-23.json",
+      "result": "PASS",
+      "sha256": "098ce7cf63bc024d991fca3bfec10777092c709862f02c93d8a9c51c9a7c7fea",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-24.json",
+      "result": "PASS",
+      "sha256": "84971dbd1fce3dd5401fff457d86cb690cab8134f9bd853f4b5f1f1509d658d0",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-25.json",
+      "result": "PASS",
+      "sha256": "6cb83392e459b3fa37e74e2d978099456831c04dc27faad1d818499427c63662",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-26.json",
+      "result": "PASS",
+      "sha256": "7f20d7fd3fdb34ae2e4c1019f66b4372b033337d41ff180990677d42403c4d96",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-27.json",
+      "result": "PASS",
+      "sha256": "1b950af77953fee3729759fe10d3708da8b02bb8911d7489a65163b7288fdf14",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-28.json",
+      "result": "PASS",
+      "sha256": "ac3711364d4eea162be9951e6c4c2d63de6f0d7744416973804f52b55bb0b1da",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-29.json",
+      "result": "PASS",
+      "sha256": "c54ad866ba1b7dd5e5337fc7752678a9bb7e9fa00a220c059daa4f968e927ca4",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-3.json",
+      "result": "PASS",
+      "sha256": "2e4ba152c0ed528752dfe5b9b6ae2958680e996b24a7f904f603817b88b6ba75",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-30.json",
+      "result": "PASS",
+      "sha256": "4a99da2b20e964989250de41ab2f717410b8e7b98c1c7369b60732ccf9ed7539",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-4.json",
+      "result": "PASS",
+      "sha256": "2dad71ebbc7460896fd1b5c3614bc4cb49511314e1d136cec182d481be3b248f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-5.json",
+      "result": "PASS",
+      "sha256": "f139bb3f133e8101a53567517d3e78585245620d59902788bd1df99df157640d",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-6.json",
+      "result": "PASS",
+      "sha256": "3f559e8a474e129357b34ee359a18231f3a48584e20c694f4d2b70d4d4861bcf",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-7.json",
+      "result": "PASS",
+      "sha256": "fe289cf939244472a99aae21df86189e2162df7699ec98f7028b803b286c3700",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-8.json",
+      "result": "PASS",
+      "sha256": "aa3a716dda38bd95899598d5395a10590e83a9c552eee9ade24855094aaa8443",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/held-9.json",
+      "result": "PASS",
+      "sha256": "c32a07399cfaf670f4c34601351fe23f5760880913d281c9876f26eac23c9d6c",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-1.json",
+      "result": "PASS",
+      "sha256": "f59bb27d2939c729fda5379fd2e5dd2607b94d29722830a1dcfbf2b89d46df1f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-11.json",
+      "result": "PASS",
+      "sha256": "9fd14f442b22b286a8b5f71ea8feb0fbb1d7de8006fb735e6b7f704c9663b70b",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-12.json",
+      "result": "PASS",
+      "sha256": "1aba8b56410c2abf01b5259631df403590a70fd551a720e63a454d526ac51c1f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-13.json",
+      "result": "PASS",
+      "sha256": "d77d340fe6dd1021a5c39e20596d3780c34067443153ccc45d127067a001aae2",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-14.json",
+      "result": "PASS",
+      "sha256": "05db2b4418ca074edee12294fb9f69f9176ed3cc933564c6b62dff605cb316aa",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-15.json",
+      "result": "PASS",
+      "sha256": "b12bada165ea574738dd2e207e79434c4f06a72c8380a9e9d0b3a560b266bf4e",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-16.json",
+      "result": "PASS",
+      "sha256": "d34243593aec77631d6122495bc5e21dd72e26fdad6106b394cd8d8500c4e229",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-17.json",
+      "result": "PASS",
+      "sha256": "e9492c28a8720ed81e32de9be10e1e330f162c90508bffc7811ae188fdfc3042",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-18.json",
+      "result": "PASS",
+      "sha256": "685df7a03efcb79efece9ab4f685b0136437127ac0494f89a8cd47fb5c5c6978",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-19.json",
+      "result": "PASS",
+      "sha256": "ed34654a61eaea31eb27b5136d3e8c032897cc8700d39fc83638d8258b4a0ea1",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-2.json",
+      "result": "PASS",
+      "sha256": "ec77363e51ac6acd549987bd66f333ffe5682d607c51dadd68c987eb91a91157",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-21.json",
+      "result": "PASS",
+      "sha256": "e1172d7d082ba9c205f8f50c81c555abbdf4fc86fecf0996300b89a1d48099c8",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-22.json",
+      "result": "PASS",
+      "sha256": "789a3b714f08ac51e9cf3ab32dff5a653884dadb6ce57f90d6ae9c6c9717aa57",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-23.json",
+      "result": "PASS",
+      "sha256": "e5b6b85cc33327ce3b96d0f7601f686fc2e0186ff6bec5bebb56f642d1a3c481",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-24.json",
+      "result": "PASS",
+      "sha256": "8b798f8d6273cad2f8f39eab17aff00357658c598cb2a92c61b1fd1b9b920459",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-25.json",
+      "result": "PASS",
+      "sha256": "070da42acc5dd48f85c8976694fba168ab07476d4591476bb2bf9b109829b332",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-26.json",
+      "result": "PASS",
+      "sha256": "627ccbbd07117568a98d529d1d7aa83828c42635d0b29d3b148145a1db31b461",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-27.json",
+      "result": "PASS",
+      "sha256": "a1f8f97e8b28cd277f6942c1ee7513e6b2bf91f1656a9a33e54c702f45188ee1",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-29.json",
+      "result": "PASS",
+      "sha256": "ef722ad88b7e2b7386fea5a7f08fce8f867b422b8bc3e346e9a00caab19a1acc",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-3.json",
+      "result": "PASS",
+      "sha256": "267ea925e15c79a1598d91be25c0f61097089e58aabdec5910e1603ef882203d",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-30.json",
+      "result": "PASS",
+      "sha256": "4f2540e37efe1b5c9dca1d1a348fc64654c2cf884b7d61186145c22d3b0a65bd",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-31.json",
+      "result": "PASS",
+      "sha256": "3b842a4beb19e512b9a5a0290b9ee02e5d33764482c05d0a8c9d8fcf209ec05f",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-32.json",
+      "result": "PASS",
+      "sha256": "2302883fe902703fb1cbf7df66c1fbb399dc146f152bf1ee7941741415c7f3a1",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-34.json",
+      "result": "PASS",
+      "sha256": "6158ea3a214910244a4759a1316ad2dcfdfe2ff86449d70be41e5b343953265e",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-35.json",
+      "result": "PASS",
+      "sha256": "ce0ab2bb0c20983d47de5e8aee2f71f15fb349fe9293806c56da6a7e349d45af",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-4.json",
+      "result": "PASS",
+      "sha256": "3e94dfda53b14610fe3d43e0c3c80cf64b321a6cee9224b27312c4c30a607549",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-6.json",
+      "result": "PASS",
+      "sha256": "56bc8a5180f7d1bb0ad6e4268ad81a139af4666406699ee3ebd347d31df25693",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-7.json",
+      "result": "PASS",
+      "sha256": "c7aa8feef735ec7f9f153d6b07aa41542d669b6b2daaced09c25ec1113e0e939",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-8.json",
+      "result": "PASS",
+      "sha256": "d1d7041dfb3f5ca8672cf3f181349e4835f3e445df4f068040e16c9f837b55c7",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/held-9.json",
+      "result": "PASS",
+      "sha256": "8b413cade39b3ac50bbe0fa47541a5a67f5a3a6442c75f1708b5e912b819d099",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-1/ledger/capsules.jsonl",
+      "result": "PASS",
+      "role": "input",
+      "sha256": "abf8d278c8de2d7f45a681caef90eef39e6133ca789abc0760fa1f9288bdee49",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-2/ledger/capsules.jsonl",
+      "result": "PASS",
+      "role": "input",
+      "sha256": "06d7a595731b4f25b8232e3bcb23f053beb0e65c0c4d34ad1a023f8cab762a60",
+      "step": "05"
+    },
+    {
+      "dir": "05-deal",
+      "finished": "2026-10-31T19:30:47Z",
+      "kind": "deal",
+      "path": "stevenmih-3/ledger/capsules.jsonl",
+      "result": "PASS",
+      "role": "input",
+      "sha256": "37e07427c4d8ffee6ed4feef06f44b5877db5917f684a5b935b7908a93aa9f53",
+      "step": "05"
+    },
+    {
+      "dir": "06-settle",
+      "finished": "2026-10-31T19:30:49Z",
+      "kind": "settlement",
+      "path": "stevenmih-1/recorded.json",
+      "result": "PASS",
+      "sha256": "f57ecde0a4e426159325a6ab9d029d2211e60c029780a0866895cc87dc558c0f",
+      "step": "06"
+    },
+    {
+      "dir": "06-settle",
+      "finished": "2026-10-31T19:30:49Z",
+      "kind": "settlement",
+      "path": "stevenmih-2/recorded.json",
+      "result": "PASS",
+      "sha256": "ed8760c1f6c93ea689531b39f8f101742abea8394bc3a9d1b6cf5bab589b9bd2",
+      "step": "06"
+    },
+    {
+      "dir": "06-settle",
+      "finished": "2026-10-31T19:30:49Z",
+      "kind": "settlement",
+      "path": "stevenmih-3/recorded.json",
+      "result": "PASS",
+      "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70",
+      "step": "06"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-1/attempts/20261031T193049Z/checkpoints.request.json",
+      "result": "PASS",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-1/attempts/20261031T193050Z/history_card.request.json",
+      "result": "PASS",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-1/attempts/20261031T193051Z/exchange.request.json",
+      "result": "PASS",
+      "sha256": "602bc7cbc786a5fd9501ebfb8a917dd1370645bc4fb3df55d55a857e0efd5c54",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-2/attempts/20261031T193051Z/checkpoints.request.json",
+      "result": "PASS",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-2/attempts/20261031T193052Z/history_card.request.json",
+      "result": "PASS",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-2/attempts/20261031T193053Z/exchange.request.json",
+      "result": "PASS",
+      "sha256": "2acec38d0319cc521aa8ace972c739da8888f9afd370c46265b05819915e860a",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-3/attempts/20261031T193053Z/checkpoints.request.json",
+      "result": "PASS",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-3/attempts/20261031T193054Z/history_card.request.json",
+      "result": "PASS",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999",
+      "step": "07"
+    },
+    {
+      "dir": "07-ask",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "ask",
+      "path": "stevenmih-3/attempts/20261031T193055Z/exchange.request.json",
+      "result": "PASS",
+      "sha256": "f409657eca1ab615d523a7dfed08820784eb5ac3d6d490031d876d8be7e652f2",
+      "step": "07"
+    },
+    {
+      "dir": "09-dispute",
+      "finished": "2026-10-31T19:30:55Z",
+      "kind": "dispute",
+      "path": "outcome.json",
+      "result": "PASS",
+      "sha256": "dc5504f0109223c65c7debd8a09da84bc7801461ea79db29e81992dc91f910b3",
+      "step": "09"
+    }
+  ],
+  "refused": [
+    "01-seal: 14 files, not a record kind of this pack",
+    "02-book: 33 files, not a record kind of this pack",
+    "03-advertise: 9 files, not a record kind of this pack",
+    "04-admit: 6 files, not a record kind of this pack",
+    "05-deal/stevenmih-1/held-31.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals)",
+    "05-deal/stevenmih-1/held-34.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals)",
+    "05-deal/stevenmih-1/held-36.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals)",
+    "05-deal/stevenmih-1/held-42.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals)",
+    "05-deal/stevenmih-1/held-45.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals)",
+    "12-join: 46 files, not a record kind of this pack"
+  ]
+}
