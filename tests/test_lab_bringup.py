@@ -366,6 +366,31 @@ class DryRunTest(unittest.TestCase):
             self.assertEqual(r.returncode, 2, r.stdout)
             self.assertIn(text, r.stderr)
 
+    def test_start_keeps_the_bracket_twins_added_while_the_fault_is_the_same(self):
+        # `start` rewrites twin-fault.json when twin B is configured; the bracket `twins` added must survive a restart (loop#259).
+        text = LAB.read_text()
+        code = text.split("twin-fault.json\" \"$name\" \"$FAULT_PROMPT\" << 'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        with tempfile.TemporaryDirectory() as t:
+            path = Path(t) / "twin-fault.json"
+
+            def start(prompt, node="lab-4"):
+                subprocess.run([sys.executable, "-B", "-", str(path), node, prompt], input=code, text=True, check=True)
+                return json.loads(path.read_text())
+
+            fresh = start("Reply PINEAPPLE.")
+            self.assertEqual(set(fresh), {"injected_difference"})
+            path.write_text(json.dumps(dict(fresh, twin_bracket_id="lab-twins-X", roles={"twin_b": "lab-4"}, supply_answer="ok")))
+            again = start("Reply PINEAPPLE.")
+            self.assertEqual(again["twin_bracket_id"], "lab-twins-X")
+            self.assertEqual(again["roles"], {"twin_b": "lab-4"})
+            changed = start("Reply BANANA.")  # a different fault: the old bracket describes another difference
+            self.assertEqual(set(changed), {"injected_difference"})
+            self.assertEqual(changed["injected_difference"]["value"], "Reply BANANA.")
+            path.write_text(json.dumps(dict(changed, twin_bracket_id="lab-twins-Y")))
+            self.assertEqual(set(start("Reply BANANA.", node="lab-3")), {"injected_difference"})  # another twin B node
+            path.write_text("not json")
+            self.assertEqual(set(start("Reply BANANA.")), {"injected_difference"})
+
     def test_the_twins_command_asks_the_referee_then_sends_one_bracket_to_both_twins(self):
         r = lab_sh("--dry-run", "twins", env={**self.env, "LAB_TWINS": "1", "LAB_MODEL_REF": "owner/repo/model-q4.gguf"})
         self.assertEqual(r.returncode, 0, r.stderr)

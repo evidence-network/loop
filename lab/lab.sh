@@ -485,14 +485,23 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   local config
   config=$(node_config "$name")
   if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
-    # The label comes from the config this node was started with, not from whatever `twins` is run with.
+    # The label comes from the config this node was started with, not from whatever `twins` is run with. A restart keeps
+    # what `twins` added (bracket, roles, supply answer) while the fault is the same one: the Results it names stay in the
+    # ledgers, and a file without the bracket makes step 09 apply no fault to them (loop#259).
     python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
 import json, sys
 path, node, prompt = sys.argv[1:]
-open(path, "w").write(json.dumps({"injected_difference": {
+fault = {"injected_difference": {
     "node": node, "kind": "system_prompt", "value": prompt,
     "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
-            "the model hash and weights digest are unchanged"}}, indent=2, sort_keys=True) + "\n")
+            "the model hash and weights digest are unchanged"}}
+try:
+    old = json.load(open(path))
+    if old["injected_difference"] == fault["injected_difference"]:
+        fault = old
+except (OSError, ValueError, KeyError, TypeError):
+    pass
+open(path, "w").write(json.dumps(fault, indent=2, sort_keys=True) + "\n")
 PY
   fi
   if [ "$DRY" = 1 ]; then

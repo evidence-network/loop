@@ -787,7 +787,9 @@ sent earlier is refused `signature_unverified` and never retried), then saves th
 `system_prompt` (`LAB_FAULT_SYSTEM_PROMPT`, default: reply with the single word PINEAPPLE) so its
 answer differs from twin A's under the same model hash and weights digest. No
 temperature, seed or sampler override. `twin-fault.json` records it and step 09
-says "INJECTED DIFFERENCE" in the finding. The requester gets the plugin's
+says "INJECTED DIFFERENCE" in the finding. `start` keeps the bracket that `twins` added
+to `twin-fault.json` while the fault is unchanged; a changed fault starts the file over, so run `twins`
+again. The requester gets the plugin's
 `adjudicate_differing_twins` switch (off by default: it sends the twins' request
 and both answers to the referee) and `CAPSULES_OPENAI_API_URL` for its own API.
 
