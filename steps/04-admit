@@ -798,13 +798,19 @@ RECORD_WHAT = "each decision record's producer signature and capsule_id, in a se
 TOOLS_ISSUE = "evidence-network/loop: steps/01-seal.setup.sh installs aac-go where step 04 runs"
 
 
+def tool_gaps():
+    """[{what, why, issue}] for aac-go missing or not at its versions.lock pin, read as step 01 reads it; step 04 seals
+    nothing, so capsule-emit is not needed. Step 08 asks the same before it re-runs judge_live."""
+    python, verifier = seal01.tools()
+    _, missing = seal01.installed_pins(python, verifier)
+    return [dict(x, issue=TOOLS_ISSUE) for x in missing if x["what"] != "capsule-emit"]
+
+
 def record_checks(numbers, lines, listed):
     """(problems, not_checked) of each kept decision record by the AAC Go verifier, as step 01 checks its seal:
     Class 1, the capsule_id recomputed, and the producer signature under the key the node publishes (`listed`,
-    None when the node has no nodes/ listing). Raises FileNotFoundError when the verifier is not installed."""
+    None when the node has no nodes/ listing). Run only once tool_gaps() is empty."""
     verifier = seal01.tools()[1]
-    if not verifier.is_file():
-        raise FileNotFoundError(str(verifier))
     problems, unclaimed, unlisted = [], 0, 0
     for n, raw in zip(numbers, lines):
         outputs = {}
@@ -853,6 +859,7 @@ def judge_live(pop, out, started):
     names = [e["name"] for e in pop["nodes"]]
     node_ids = {e["name"]: e.get("node_id") for e in pop["nodes"]}
     unverified = []  # records whose signature could not be checked or held to a key: never a PASS
+    gaps = None  # tool_gaps(), read once, and only when a node holds a record to check
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -877,14 +884,17 @@ def judge_live(pop, out, started):
             problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
-        try:
-            listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
-            sig_bad, sig_open = record_checks(numbers, lines, listed)
-            problems += [f"node {name} {b}" for b in sig_bad]
-            unverified += [dict(x, what=f"node {name}: {x['what']}") for x in sig_open]
-        except FileNotFoundError as e:
-            unverified.append({"what": f"node {name}: {RECORD_WHAT}", "why": f"aac-go is not installed ({e})",
-                               "issue": TOOLS_ISSUE})
+        if numbers:
+            gaps = tool_gaps() if gaps is None else gaps
+            try:
+                if gaps:
+                    raise RuntimeError("; ".join(x["why"] for x in gaps))
+                listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
+                sig_bad, sig_open = record_checks(numbers, lines, listed)
+                problems += [f"node {name} {b}" for b in sig_bad]
+                unverified += [dict(x, what=f"node {name}: {x['what']}") for x in sig_open]
+            except RuntimeError as e:  # the verifier is missing, off its pin, or does not run as pinned
+                unverified.append({"what": f"node {name}: {RECORD_WHAT}", "why": str(e), "issue": TOOLS_ISSUE})
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
         details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
                        f"({by['GO']} GO, {by['NO']} NO), read-only")

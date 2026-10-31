@@ -268,8 +268,8 @@ class Live(unittest.TestCase):
         return [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
                 if "admission_decision" in ln]
 
-    def lab_with(self, lines, unreadable=False, listed=True, seal=True):
-        """A two-node lab whose lab-a ledger holds `lines`, each decision line sealed as the plugin does (`seal`);
+    def lab_with(self, lines, unreadable=False, listed=True):
+        """A two-node lab whose lab-a ledger holds `lines`, each decision line sealed as the plugin does;
         every node reads, and with `unreadable` a third, lab-c, has no data_dir. Each node is listed under the TEST
         key in listed/ (`listed`), as nodes/<node_id>.json lists a lab node's key."""
         tmp = tempfile.TemporaryDirectory()
@@ -278,8 +278,7 @@ class Live(unittest.TestCase):
         for n in ("lab-a", "lab-b"):
             d = lab / "nodes" / n / "data" / "ledger"
             d.mkdir(parents=True)
-            (d / "capsules.jsonl").write_text("\n".join([sealed(x) if seal else x for x in lines]
-                                                        if n == "lab-a" else []) + "\n")
+            (d / "capsules.jsonl").write_text("\n".join([sealed(x) for x in lines] if n == "lab-a" else []) + "\n")
         (lab / "listed").mkdir()
         key = step.seal01.raw_public_hex(TEST_KEY / "node-key.pub.pem")
         for node_id in NODE_IDS.values():
@@ -325,6 +324,28 @@ class Live(unittest.TestCase):
         _, f = self.live_run(lab)
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn(f"not the key {other} the node publishes", f["detail"])
+
+    def test_a_record_with_no_producer_signature_is_not_checked(self):
+        lab = self.lab_with(self.good())
+        led = lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        lines = [json.dumps({k: v for k, v in json.loads(x).items() if k not in ("signature", "key_id")})
+                 if "admission_decision" in x else x for x in led.read_text().splitlines()]
+        led.write_text("\n".join(lines) + "\n")
+        _, f = self.live_run(lab)
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        why = {x["what"]: x["why"] for x in f["not_checked"]}
+        self.assertEqual(why[f"node lab-a: {step.RECORD_WHAT}"], "2 carry no producer signature")
+
+    def test_a_record_that_is_not_an_object_is_a_capsule_id_problem(self):
+        checks, capsule = step.seal01.id_checks(b"[]", CROSS, {})
+        self.assertIsNone(capsule)
+        self.assertFalse(checks["capsule_id"]["ok"])
+
+    def test_no_tool_entry_for_a_node_with_no_record(self):
+        with tempfile.TemporaryDirectory() as tools, mock.patch.dict(os.environ, {"LOOP_TOOLS": tools}):
+            self.assertTrue(step.tool_gaps())
+        _, f = self.live_run(self.lab_with(self.good()))
+        self.assertNotIn("node lab-b", " ".join(x["what"] for x in f.get("not_checked", [])))
 
     def test_a_node_with_no_listing_is_not_checked(self):
         _, f = self.live_run(self.lab_with(self.good(), listed=False))
