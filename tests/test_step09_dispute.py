@@ -442,6 +442,18 @@ class LiveTest(Tmp):
         self.assertIn("set aside, not judged: 1 Result(s) of bracket earlier-run/pair-1", r["detail"])
         self.assertIn("for each Result judged, these held", r["detail"])
 
+    def test_a_result_sealed_under_an_unannounced_key_is_never_set_aside(self):
+        # A line sealed under a key no lab node announced verifies under the key it names, but it is not an earlier
+        # run's referee Result: with twin-fault.json it stays judged and the step FAILs, whatever bracket it names.
+        d = self.copy()
+        path, own, _ = self.with_fault(d)
+        old = self.old_result()
+        path.write_text(old + "\n" + own + "\n")
+        with mock.patch.object(step.aac, "verify", side_effect=lambda v: ("unannounced-key", "ok")):
+            r = self.live(d)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertNotIn("set aside", r["detail"])
+
     def test_a_result_that_does_not_verify_is_judged_whatever_its_bracket(self):
         d = self.copy()
         path, own, _ = self.with_fault(d)

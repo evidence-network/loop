@@ -622,18 +622,20 @@ def held_brackets(out, readable):
     return found
 
 
-def in_bracket(per_party, caps, bracket):
+def in_bracket(per_party, caps, bracket, announced):
     """(per_party with the Results of `bracket` and every Result that is not provably another run's, {bracket:
-    count} of those set aside). A Result is set aside only when its signature check held and it carries another
-    non-empty twin_bracket_id: a ledger can still hold a Result an earlier twins run sealed under another build
+    count} of those set aside). A Result is set aside only when its signature held under a lab node's announced
+    key and it carries another non-empty twin_bracket_id: a ledger can still hold a Result an earlier twins run sealed under another build
     (evidence-network/loop#122), but a line that does not verify, or names no bracket, is always judged."""
     kept, aside = {}, {}
     for name, rs in per_party.items():
         kept[name] = []
         for r in rs:
-            adj = attestation(caps.get((name, r["held"])) or {}).get("adjudication")
+            v = caps.get((name, r["held"])) or {}
+            adj = attestation(v).get("adjudication")
             b = adj.get("twin_bracket_id") if isinstance(adj, dict) else None
-            signed = (r["checks"].get("result_signed") or {}).get("ok") is True
+            # signed by a lab node's announced key, not merely by some key the Result names
+            signed = (r["checks"].get("result_signed") or {}).get("ok") is True and aac.verify(v)[0] in announced.values()
             if signed and isinstance(b, str) and b and b != bracket:
                 aside[b] = aside.get(b, 0) + 1
             else:
@@ -750,7 +752,7 @@ def judge_live(pop, out, started):
         details.append(f"node {name}: {held[name]} held Result line(s)")
     if bracket is not None:
         per_party, aside = in_bracket(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party}),
-                                      bracket)
+                                      bracket, announced)
         details.append(f"judged the Results of bracket {bracket}, the one twin-fault.json names")
         if aside:
             details.append("set aside, not judged: " + ", ".join(
