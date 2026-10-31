@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -590,8 +590,13 @@ Stage 1 does not include step 06 either. `lab/lab.sh settle` runs `steps/06-sett
 on `population/live` into the same `findings/<date>-live/` as `06-settle/`, then
 checks the finding contract over the whole directory. It reads each node's
 capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) and
-pays nothing. The live population names no rail, so the finding reads
-NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
+pays nothing. The live population names the Lightning rail, so 06 judges the
+loop#243 checks: each payment's reference, its finality by the payer's preimage,
+one band per side per exchange, a fee paid to a third party, the two books'
+amounts, and each node's `counterparty_count` from `lab/lab.sh bundles` (run it
+first, after the paid exchanges). All of them pass for a PASS, whose detail
+names the one gap outside it (no public ledger, loop#247). `pack` takes
+`06-settle/` with the rest of the day's findings.
 
 A node pays only when its host has a wallet, in two parts, each run as
 intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
@@ -611,6 +616,18 @@ for each named node; `lab-wallet-setup.sh N --balance` then shows lab-N's
 balance. Every later `lab/lab.sh start` must keep `LAB_PAYMENTS`, which writes the
 same section; `start` refuses, before any node starts, a config with a wallet
 that `LAB_PAYMENTS` does not name.
+
+`lab/lab.sh bundles` asks each node for its own terminal settlement records for
+exchanges with each other node, from the capsules plugin's owner-only
+`settlement-bundle?peer=<node id>` route. The answer is a signed Evidence
+Bundle; a refusal (no settlement with that peer) is kept as the node's answer.
+Then each node's `settlement_check` checks its own book against each
+counterparty's bundle (`counterparty_count`, evidence-network/loop#243), into
+`check.<node id>.<peer node id>.json` with the bundle's sha256. Everything
+goes into `$LAB_DIR/bundles/` (dir 0700, files 0600), and a run replaces the
+last one whole. The records carry each payment's preimage, so the files stay
+on the host: never in findings, a pack or a message. Step 06 reads the check
+files and publishes only the counts and each bundle's sha256.
 
 ### Step 07, the later ask
 

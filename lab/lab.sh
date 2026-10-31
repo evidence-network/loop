@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -45,8 +45,16 @@
 #   deal      steps/05-deal on population/live, into the same findings/<date>-live/: it reads the
 #             halves the nodes in LAB_SHARE_AT_COMPLETION pushed after `exchange`. Starts no exchange
 #             and pays nothing
-#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
-#             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
+#   bundles   each node's own terminal settlement records for exchanges with each other node, from its owner-only
+#             capsules route settlement-bundle?peer=<node id>, as the signed Evidence Bundle the counterparty
+#             checks its count against (step 06, evidence-network/loop#243), into $LAB_DIR/bundles/<node>.for.<peer>.json
+#             (dir 0700, files 0600), then has each node's settlement_check check its own book against each
+#             counterparty's bundle into check.<node id>.<peer node id>.json, which step 06 reads. The records carry
+#             each payment's preimage, so all of it stays on the host and never goes into findings or the pack; 06
+#             publishes only the counts and each bundle's sha256. Pays nothing
+#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: on the Lightning rail it
+#             judges the loop#243 checks over each node's recorded settlements and the check files bundles wrote
+#             (run bundles first, after the last paid exchange). Pays nothing
 #   twins     (LAB_TWINS=1) one real step 09 Result: the requester asks the referee once (so it holds a
 #             half from it), then sends the same temperature-0 request to twin A and twin B under one
 #             x-mesh-twin-bracket; twin B's config injects a different answer (see LAB_TWINS); waits for
@@ -904,6 +912,70 @@ cmd_deal() {
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
+cmd_bundles() {
+  local dir=$LAB_DIR/bundles a b peer
+  run mkdir -p "$dir"
+  run chmod 700 "$dir"
+  # A run replaces the last one whole: no earlier bundle or check survives next to the new ones.
+  run find "$dir" -maxdepth 1 -name '*.json' -delete
+  for a in "${NODES[@]}"; do
+    for b in "${NODES[@]}"; do
+      [ "$a" = "$b" ] && continue
+      if [ "$DRY" = 1 ]; then
+        say curl -fsS --max-time 120 "$(console "$a")/api/plugins/capsules/http/settlement-bundle?peer=<$b node_id>"
+        echo "  > $dir/$a.for.$b.json.tmp (0600), then mv to $dir/$a.for.$b.json"
+        continue
+      fi
+      peer=$(node_id "$b")
+      # The owner's own route: a refusal (no settlement with that peer) is an answer too, and is kept.
+      (umask 077; curl -fsS --max-time 120 "$(console "$a")/api/plugins/capsules/http/settlement-bundle?peer=$peer" \
+        > "$dir/$a.for.$b.json.tmp") || { rm -f "$dir/$a.for.$b.json.tmp"; die "$a gave no settlement bundle for $b"; }
+      mv "$dir/$a.for.$b.json.tmp" "$dir/$a.for.$b.json"
+      python3 -B - "$dir/$a.for.$b.json" "$a" "$b" << 'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+n = len(d.get("bundle", {}).get("records", [])) if d.get("state") == "bundle" else 0
+print(f"{sys.argv[2]} for {sys.argv[3]}: {d.get('state')}" + (f", {n} records" if d.get("state") == "bundle" else f" ({d.get('why')})"))
+PY
+    done
+  done
+  # Each node checks its own book against each counterparty's bundle (the plugin's settlement_check, which seals
+  # nothing and contacts nobody): check.<node id>.<peer node id>.json holds the bundle's sha256 and the report,
+  # which step 06 reads for counterparty_count (loop#243). Still private: only 06's counts and the digest are published.
+  for a in "${NODES[@]}"; do
+    for b in "${NODES[@]}"; do
+      [ "$a" = "$b" ] && continue
+      if [ "$DRY" = 1 ]; then
+        say python3 POST "$(console "$a")/api/plugins/capsules/tools/settlement_check" "{\"counterparty_bundle\": <$b.for.$a.json bundle>}"
+        echo "  > $dir/check.<$a node_id>.<$b node_id>.json (0600), when $b.for.$a.json is a bundle"
+        continue
+      fi
+      (umask 077; python3 -B - "$dir/$b.for.$a.json" "$(console "$a")" "$(node_id "$a")" "$(node_id "$b")" "$dir" "$a" "$b" << 'PY'
+import hashlib, json, os, sys, urllib.request
+src, console, me, peer, out, a, b = sys.argv[1:]
+raw = open(src, "rb").read()
+d = json.loads(raw)
+if d.get("state") != "bundle":
+    print(f"{a} against {b}: no bundle to check ({d.get('why')})")
+    raise SystemExit
+req = urllib.request.Request(f"{console}/api/plugins/capsules/tools/settlement_check",
+                             data=json.dumps({"counterparty_bundle": d["bundle"]}).encode(),
+                             headers={"content-type": "application/json"}, method="POST")
+report = json.load(urllib.request.urlopen(req, timeout=120))
+path = os.path.join(out, f"check.{me}.{peer}.json")
+with open(path + ".tmp", "w") as f:
+    json.dump({"node_id": me, "peer_node_id": peer, "bundle_file": os.path.basename(src),
+               "bundle_sha256": hashlib.sha256(raw).hexdigest(), "report": report}, f, indent=2, sort_keys=True)
+os.replace(path + ".tmp", path)
+cc = report.get("counterparty_count") or {}
+print(f"{a} against {b}'s bundle: counterparty_count {cc.get('status')}, {cc.get('paired')} paired, "
+      f"{len(cc.get('unpaired') or [])} unpaired")
+PY
+      ) || die "$a could not check its book against $b's bundle"
+    done
+  done
+}
+
 cmd_settle() {
   local out=$ROOT/findings/$TODAY-live
   run env LAB_DIR="$LAB_DIR" "$ROOT/steps/06-settle" --population "$ROOT/population/live" --out "$out/06-settle"
@@ -1010,7 +1082,7 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
