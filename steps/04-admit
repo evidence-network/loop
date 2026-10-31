@@ -796,6 +796,7 @@ def main_live(pop, out, started):
 
 RECORD_WHAT = "each decision record's producer signature and capsule_id, in a second language"
 TOOLS_ISSUE = "evidence-network/loop: steps/01-seal.setup.sh installs aac-go where step 04 runs"
+UNVERIFIED_ISSUE = "evidence-network/loop#234"  # a record with no producer signature, or a node with no nodes/ listing
 
 
 def tool_gaps():
@@ -825,7 +826,7 @@ def record_checks(numbers, lines, listed):
         unlisted += sig["state"] == "unlisted"
     why = [f"{unclaimed} carry no producer signature"] * bool(unclaimed) + [
         f"{unlisted} verify, but the node has no nodes/<node_id>.json listing to hold the key to"] * bool(unlisted)
-    return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": live.NO_ISSUE_YET}] if why else [])
+    return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": UNVERIFIED_ISSUE}] if why else [])
 
 
 def kept_numbers(node):
