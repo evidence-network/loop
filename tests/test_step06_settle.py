@@ -391,17 +391,34 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(step.preimage_check(pre[:-2], h), "malformed")
         self.assertEqual(step.preimage_check(7, h), "malformed")
         self.assertEqual(step.preimage_check(pre, None), "no_payment_hash")
+        self.assertEqual(step.preimage_check(pre, h.upper()), "no_payment_hash")
+        self.assertEqual(step.preimage_check(pre, ""), "no_payment_hash")
+        self.assertEqual(step.preimage_check("zz", None), "malformed")  # a garbage preimage, whatever the hash
 
-    def live_with_preimage(self, preimage, payment_hash, role="payer"):
+    @staticmethod
+    def observation(preimage, payment_hash, role="payer", cid="c1", **more):
+        block = {"v": 1, "observed_by": role, "channel": "payment.lifecycle.v1", "exchange_id": "ex-paid-1",
+                 "phase": "output_settlement_observed", "source": "wallet_reported", "settlement": "terminal",
+                 "segment": 1, "payment_hash": payment_hash, "amount_msat": 2000, **more}
+        if preimage is not None:
+            block["preimage"] = preimage
+        return {"capsule_id": cid, "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": block}}}
+
+    def live_ledgers(self, rows, pop=None):
+        """rows: {lab index: [ledger objects]}; every lab-1..3 ledger exists, empty unless named."""
         lab = Path(self.tmp.name) / "lab"
-        obs = {"capsule_id": "c1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
-            "v": 1, "observed_by": role, "channel": "payment.lifecycle.v1", "exchange_id": "ex-paid-1",
-            "phase": "output_settlement_observed", "source": "wallet_reported", "settlement": "terminal",
-            "segment": 1, "payment_hash": payment_hash, "amount_msat": 2000, "preimage": preimage}}}}
+        shutil.rmtree(lab, ignore_errors=True)
         for i in (1, 2, 3):
             (lab / f"lab-{i}" / "ledger").mkdir(parents=True)
-            (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text(json.dumps(obs) + "\n" if i == 1 else "")
-        return self.run_step(self.live_population(lab), env=dict(os.environ, STEP06_LAB=str(lab)))
+            (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n"
+                                                                              for x in rows.get(i, [])))
+        if pop is None:
+            shutil.rmtree(Path(self.tmp.name) / "live", ignore_errors=True)
+            pop = self.live_population(lab)
+        return self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+
+    def live_with_preimage(self, preimage, payment_hash, role="payer"):
+        return self.live_ledgers({1: [self.observation(preimage, payment_hash, role)]})
 
     def files_out(self):
         return "".join(f.read_text() for f in self.out.rglob("*") if f.is_file())
@@ -412,7 +429,7 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(r["result"], "NOT_CHECKED")  # the rail's object by reference is still missing
         self.assertIn("1 with a preimage that hashes to its payment_hash", r["detail"])
         self.assertIn("finality: 1 of 1 recorded payment hashes proven by a preimage", r["detail"])
-        self.assertFalse([n for n in r["not_checked"] if "no preimage" in n["what"]])
+        self.assertFalse([n for n in r["not_checked"] if "no payer preimage proves" in n["what"]])
         rec = json.loads((self.out / "stevenmih-1" / "recorded.json").read_text())
         self.assertEqual(rec["settlement_observations"][0]["preimage_check"], "verified")
         self.assertNotIn(pre, self.files_out())
@@ -423,22 +440,66 @@ class Step06SettleTest(unittest.TestCase):
         r = self.live_with_preimage(pre, hashlib.sha256(bytes.fromhex(pre)).hexdigest(), role="provider")
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("finality: 0 of 1 recorded payment hashes proven", r["detail"])
-        self.assertTrue([n for n in r["not_checked"] if "no preimage" in n["what"]])
+        self.assertTrue([n for n in r["not_checked"] if "no payer preimage proves" in n["what"]])
 
     def test_a_payment_hash_with_no_preimage_leaves_finality_not_checked(self):
         r = self.live_with_preimage(None, "ab" * 32)
         self.assertEqual(r["result"], "NOT_CHECKED")
         self.assertIn("finality: 0 of 1 recorded payment hashes proven", r["detail"])
-        gap = [n for n in r["not_checked"] if "no preimage" in n["what"]]
+        gap = [n for n in r["not_checked"] if "no payer preimage proves" in n["what"]]
         self.assertEqual(len(gap), 1)
         self.assertEqual(gap[0]["issue"], step.ADAPTER_ISSUE)
 
+    def test_a_hash_only_a_leg_carries_is_not_proven(self):
+        pre = "5a" * 32
+        h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+        leg = {"capsule_id": "c2", "settlement": {"leg": "terms", "payment_ref": {"type": "ln.payment_hash",
+                                                                                  "value": "cd" * 32}}}
+        r = self.live_ledgers({1: [self.observation(pre, h), leg]})
+        self.assertIn("finality: 1 of 2 recorded payment hashes proven", r["detail"])
+        self.assertTrue([n for n in r["not_checked"] if "no payer preimage proves" in n["what"]])
+
+    def test_a_payer_preimage_on_one_node_proves_the_hash_the_provider_recorded_on_another(self):
+        pre = "5a" * 32
+        h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+        r = self.live_ledgers({1: [self.observation(pre, h)],
+                               2: [self.observation(None, h, role="provider", cid="c3", credited_msat=1990,
+                                                    fee_msat=10)]})
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIn("finality: 1 of 1 recorded payment hashes proven", r["detail"])
+        self.assertFalse([n for n in r["not_checked"] if "no payer preimage proves" in n["what"]])
+
+    def test_an_observation_with_no_payment_hash_to_check_is_not_a_fail(self):
+        r = self.live_with_preimage("5a" * 32, None)
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        rec = json.loads((self.out / "stevenmih-1" / "recorded.json").read_text())
+        self.assertEqual(rec["settlement_observations"][0]["preimage_check"], "no_payment_hash")
+
+    def test_the_demo_crosscheck_says_how_many_hashes_a_payer_preimage_proves(self):
+        pre = "5a" * 32
+        h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
+        lab = Path(self.tmp.name) / "demo-lab"
+        pop = self.demo_population(lab)
+        names = [n["name"] for n in json.loads((pop / "population.json").read_text())["nodes"]]
+        ts = {"timestamp": "2026-10-31T00:00:00Z"}
+        rows = {names[0]: [dict(self.observation(pre, h), **ts)],
+                names[1]: [dict(self.observation(None, h, role="provider", cid="c3", credited_msat=1990,
+                                                 fee_msat=10), **ts)]}
+        for name, objs in rows.items():
+            (lab / name / "ledger").mkdir(parents=True)
+            (lab / name / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in objs))
+        r = self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+        cross = [n for n in r["not_checked"] if n["what"].startswith("that the payment hashes")]
+        self.assertEqual(len(cross), 1)
+        self.assertIn("every recorded payment hash is proven by a payer's preimage", cross[0]["why"])
+        self.assertNotIn(pre, "".join(f.read_text() for f in self.out.rglob("*") if f.is_file()))
+
     def test_a_preimage_that_does_not_prove_its_payment_fails(self):
-        for pre, says in (("33" * 32, "does not hash to its payment_hash"), ("33" * 31, "is not 32 bytes")):
-            with self.subTest(pre=pre):
-                shutil.rmtree(Path(self.tmp.name) / "lab", ignore_errors=True)
-                shutil.rmtree(Path(self.tmp.name) / "live", ignore_errors=True)
-                r = self.live_with_preimage(pre, "ab" * 32)
+        for pre, says, role in (("33" * 32, "does not hash to its payment_hash", "payer"),
+                                ("33" * 31, "is not 32 bytes", "payer"),
+                                ("33" * 32, "does not hash to its payment_hash", "provider")):
+            with self.subTest(pre=pre, role=role):
+                r = self.live_with_preimage(pre, "ab" * 32, role)
                 self.assertEqual(r["result"], "FAIL")
                 self.assertIn(f"node stevenmih-1: the preimage of settlement observation c1 (payment_hash {'ab' * 32}) "
                               f"{says}", r["detail"])
