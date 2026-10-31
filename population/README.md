@@ -28,7 +28,9 @@ evidencebook's verifier. Its receipts mean nothing outside the rehearsal.
 
 Our three lab nodes, named without secrets and without hostnames. Node ids
 are `null` until the nodes have them, and `rail` is `null` until a stage
-settles. No key is kept here.
+settles. No private key is kept here. The one public key is the live judge's,
+`step10/keys/judge.pub.pem`, which `lab/lab.sh judge-key` writes; its private
+half stays on the lab host (`steps/10-judge.md`, Sealing).
 
 Each node is:
 

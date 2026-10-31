@@ -542,6 +542,140 @@ class JudgeTest(Base):
         self.assertIn("is not under the repository's judge key", f["detail"])
 
 
+def lab_key(src, dst):
+    """A copy of a rehearsal TEST key at dst, mode 600, standing in for the lab's own key."""
+    shutil.copy(src, dst)
+    os.chmod(dst, 0o600)
+    return Path(dst)
+
+
+class LiveJudgeKeyTest(Base):
+    """Live: the private key is the lab's own (LOOP_JUDGE_KEY, default $LAB_DIR/judge/judge.pem), never in the
+    tree; the tree holds only its public key, population/live/step10/keys/judge.pub.pem (evidence-network/loop#189).
+    The rehearsal TEST judge key stands in for the lab's."""
+
+    def setUp(self):
+        super().setUp()
+        self.population = Path(self.tmp.name) / "live"
+        (self.population / "step10" / "keys").mkdir(parents=True)
+        dump(self.population / "population.json", {"population": "live", "nodes": [], "rail": None})
+        self.lab = Path(self.tmp.name) / "lab"
+        (self.lab / "judge").mkdir(parents=True)
+        self.key = lab_key(POPULATION / "step10" / "keys" / "judge.pem", self.lab / "judge" / "judge.pem")
+        shutil.copy(POPULATION / "step10" / "keys" / "judge.pub.pem", self.population / "step10" / "keys")
+        m = self.manifest()
+        m["population"] = "live"
+        self.reseal_manifest(m)
+        env = mock.patch.dict(os.environ, {"LOOP_JUDGE_KEY": str(self.key)})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def live(self):
+        return self.judge(self.population)
+
+    def not_checked(self):
+        """judge_keys on the live population: the NotChecked it raises, as (what, why, issue). It runs before
+        sealing and needs neither the pinned pack nor capsulectl, so these cases run wherever the tests do."""
+        with self.assertRaises(step.NotChecked) as e:
+            step.judge_keys("live", self.population / "step10" / "keys")
+        self.assertEqual(e.exception.args[2], step.JUDGE_KEY_ISSUE)
+        return e.exception.args
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_live_seals_under_the_lab_key_and_says_who_holds_it(self):
+        f = self.live()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn(step.LIVE_JUDGE, f["detail"])
+        want = step.pub_hex(self.population / "step10" / "keys" / "judge.pub.pem")
+        for b in (self.run / "10-judge" / "bundles").glob("*.bundle.json"):
+            self.assertEqual(load(b)["extensions"]["producer-key/v1"]["public_key"], want, b.name)
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_the_key_defaults_to_the_lab_dir(self):
+        with mock.patch.dict(os.environ, {"LAB_DIR": str(self.lab)}):
+            del os.environ["LOOP_JUDGE_KEY"]
+            self.assertEqual(self.live()["result"], "PASS")
+
+    def test_the_lab_key_signs_and_the_committed_key_is_trusted(self):
+        keys = step.judge_keys("live", self.population / "step10" / "keys")
+        pub = self.population / "step10" / "keys" / "judge.pub.pem"
+        self.assertEqual(keys, {"judge": (self.key, pub), "checkpoint": (self.key, pub)})
+
+    def test_no_key_named_is_not_checked(self):
+        with mock.patch.dict(os.environ, {}):
+            del os.environ["LOOP_JUDGE_KEY"]
+            os.environ.pop("LAB_DIR", None)
+            self.assertIn("neither LOOP_JUDGE_KEY nor LAB_DIR is set", self.not_checked()[1])
+
+    def test_a_key_not_on_this_host_is_not_checked(self):
+        self.key.unlink()
+        self.assertIn("is not a readable file here", self.not_checked()[1])
+
+    def test_a_key_others_can_read_is_not_checked(self):
+        os.chmod(self.key, 0o644)
+        self.assertIn("must be mode 600", self.not_checked()[1])
+
+    def test_no_committed_public_key_is_not_checked(self):
+        (self.population / "step10" / "keys" / "judge.pub.pem").unlink()
+        self.assertIn("lists no judge public key", self.not_checked()[1])
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_judge_key_not_on_the_host_leaves_the_step_not_checked(self):
+        self.key.unlink()
+        f = self.live()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual([n["issue"] for n in f["not_checked"]], [step.JUDGE_KEY_ISSUE])
+        self.assertIn(step.LIVE_JUDGE, f["detail"])
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_key_that_is_not_the_committed_one_fails(self):
+        other = lab_key(POPULATION / "step10" / "keys" / "checkpoint.pem", Path(self.tmp.name) / "other.pem")
+        os.environ["LOOP_JUDGE_KEY"] = str(other)
+        f = self.live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("not authorized by the profile trusted_keys", f["detail"])
+
+    def test_a_node_key_is_refused(self):
+        kid = step.pub_hex(self.population / "step10" / "keys" / "judge.pub.pem")
+        empty = Path(self.tmp.name) / "no-nodes"
+        empty.mkdir()
+        self.assertEqual(step.node_key_problems({"nodes": []}, kid, empty), [])
+        self.assertEqual(step.node_key_problems({"nodes": [{"node_id": kid}]}, kid, empty),
+                         [f"the judge key {kid[:12]} is a node's key"])
+        (empty / "n.json").write_text(json.dumps({"key_id": kid}))
+        self.assertEqual(len(step.node_key_problems({"nodes": []}, kid, empty)), 1)
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_node_key_as_judge_key_fails(self):
+        kid = step.pub_hex(self.population / "step10" / "keys" / "judge.pub.pem")
+        dump(self.population / "population.json",
+             {"population": "live", "nodes": [{"name": "n", "node_id": kid}], "rail": None})
+        f = self.live()
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("is a node's key", f["detail"])
+
+    def test_rehearsal_ignores_the_live_key(self):
+        os.environ["LOOP_JUDGE_KEY"] = str(Path(self.tmp.name) / "nowhere.pem")
+        keys = step.judge_keys("rehearsal", POPULATION / "step10" / "keys")
+        self.assertEqual(keys["judge"][0], POPULATION / "step10" / "keys" / "judge.pem")
+
+
+class LiveTreeTest(unittest.TestCase):
+    def test_the_live_population_commits_no_private_key(self):
+        live = ROOT / "population" / "live"
+        for f in live.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(b"PRIVATE KEY", f.read_bytes(), f)
+        self.assertFalse((live / "step10" / "keys" / "judge.pem").exists())
+
+    def test_the_committed_live_judge_key_is_no_nodes_key(self):
+        pub = ROOT / "population" / "live" / "step10" / "keys" / "judge.pub.pem"
+        if not pub.is_file():
+            self.skipTest("SKIPPED LOUDLY: no live judge public key is committed yet (lab/lab.sh judge-key)")
+        self.assertEqual(step.node_key_problems(load(ROOT / "population" / "live" / "population.json"),
+                                                step.pub_hex(pub)), [])
+
+
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 class StandInTest(unittest.TestCase):
     """A run without 08's manifest: 10 judges the population's committed stand-in run, and says so."""

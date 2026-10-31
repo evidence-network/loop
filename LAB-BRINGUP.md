@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -339,6 +339,38 @@ This writes, in this clone (it commits nothing):
 
 `entries` refuses if `$LAB_DIR/build.json` says the build is not the pinned
 one.
+
+### The live judge key
+
+```sh
+lab/lab.sh --dry-run judge-key
+lab/lab.sh judge-key
+```
+
+Run it once, after `entries`, while no `lab.sh` or `loop.sh` run is going. It
+makes the key steps 10 and 11 seal and check live Results under
+(evidence-network/loop#189):
+
+1. makes one Ed25519 key, `$LAB_DIR/judge/judge.pem` (dir 0700, key 0600),
+   unless one is already there. It never goes into this tree or the tarball
+   (`lab/pack.py` refuses any private key);
+2. refuses it if it is any population node's key;
+3. writes its public half to `population/live/step10/keys/judge.pub.pem`, and
+   refuses to overwrite one that is another key's: a new judge key is a new
+   decision on that issue.
+
+Commit `population/live/step10/keys/judge.pub.pem` in a PR. Step 10 then reads
+the key from `LOOP_JUDGE_KEY`, default `$LAB_DIR/judge/judge.pem`. No `lab.sh`
+command runs steps 10 and 11 yet; run them after `loop`, into the same day's
+findings:
+
+```sh
+env LAB_DIR="$LAB_DIR" steps/10-judge --population population/live --out findings/<day>-live/10-judge
+env LAB_DIR="$LAB_DIR" steps/11-report --population population/live --out findings/<day>-live/11-report
+```
+
+The lab account that runs the nodes can read the key, and steps 10 and 11 say
+so in every live finding: same operator, not an independent judge.
 
 ### The commitments
 

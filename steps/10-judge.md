@@ -53,8 +53,20 @@ verdict of its claims.
 
 ## Sealing
 
-The Results are sealed in a fresh scratch book under the rehearsal TEST judge key,
-`population/rehearsal/step10/keys/`.
+The Results are sealed in a fresh scratch book under the population's judge key. On rehearsal that is the
+committed TEST key, `population/rehearsal/step10/keys/`. On live it is the lab's own judge key
+(evidence-network/loop#189), which `lab/lab.sh judge-key` makes on the lab host at `$LAB_DIR/judge/judge.pem`
+(dir 700, file 600). Step 10 reads it from `LOOP_JUDGE_KEY`, default `$LAB_DIR/judge/judge.pem`. Only its public
+half is in this tree, `population/live/step10/keys/judge.pub.pem`, and it signs the book's checkpoints too. The
+book trusts only the committed public key, so a key that is not its private half is refused (FAIL). A key no
+`LOOP_JUDGE_KEY` or `LAB_DIR` names, one not readable here, or one readable by group or others is NOT_CHECKED.
+A judge key that is a node's (a population `node_id`, or the `key_id` of any `nodes/` entry) is FAIL.
+
+The lab operator account that runs the nodes can read the live judge key: on the lab host it has passwordless
+sudo, so no other account there would keep the key from it. Steven's GO is Buzz 23c5f8fd; "same operator,
+disclosed" in place of "no node operator holds it" was ruled by Sherlock2 under Steven's delegation, Buzz
+8a67299d. Every live detail says the judge key is held by the same operator and is not an independent judge's. An
+independent judge needs a key held outside the organization.
 
 1. Each record is published as a capsule whose payload is `{step, path, sha256}`.
 2. `capsulectl book result build` seals each finer Result, then the roll-up. It refuses a claim citing a
@@ -101,4 +113,5 @@ Steven's 2026-10-29 ruling), and a step 08 did not reproduce adds its own entry 
 
 **Live:** 08 reproduces live step 07 (its asks, `*/attempts/*/*.request.json`), and not yet the other live
 steps (evidence-network/loop#188). A same-day live run is NOT_CHECKED on the window: its asks are judged once
-their month has closed. Past that, the live population lists no judge key (evidence-network/loop#189).
+their month has closed. Past that, live 10 seals under the lab's judge key (see Sealing), and it is
+NOT_CHECKED where that key is not on the host it runs on.

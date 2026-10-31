@@ -10,5 +10,5 @@
   `tests/test_step10_judge.py` runs 08 again on a copy and requires the same manifest. These are rehearsal
   records, never a node's.
 
-The keys are published on purpose and never used live. The live population lists no judge key, so step 10 is
-NOT_CHECKED there.
+The keys are published on purpose and never used live. The live judge key is the lab's own: only its public
+half is committed, at `population/live/step10/keys/judge.pub.pem` (see `steps/10-judge.md`, Sealing).
