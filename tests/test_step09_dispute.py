@@ -36,6 +36,8 @@ def load_step():
 
 step = load_step()
 finding, aac = step.finding, step.aac
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_no_preimages  # noqa: E402
 
 
 def openssl_3():
@@ -320,6 +322,23 @@ class LiveTest(Tmp):
         (d / "population.json").write_text(json.dumps(pop))
         r = self.live(d)  # live() re-derives from the proof too
         self.assertIn(r["result"], ("PASS", "NOT_CHECKED", "FAIL"))
+
+    def test_a_preimage_in_a_node_chain_never_reaches_the_proof(self):
+        # A settlement record keeps the payment's preimage; the copied chain keeps it only as a stub at its line.
+        d = self.copy()
+        chain = d / "nodes" / "lab-1" / "data" / "ledger" / "capsules.jsonl"
+        before = self.live(d)
+        obs = {"capsule_id": "obs-1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
+            "preimage": "ab" * 32, "payment_hash": "cd" * 32, "observed_by": "payer"}}}}
+        chain.write_text(chain.read_text() + json.dumps(obs) + "\n")
+        shutil.rmtree(self.out)
+        after = self.live(d)
+        self.assertEqual((after["result"], after["not_checked"]), (before["result"], before["not_checked"]))
+        self.assertEqual(check_no_preimages.scan([self.out]), [])
+        copied = self.out / "lab-1" / "ledger" / "capsules.jsonl"
+        self.assertEqual(len(copied.read_text().splitlines()), len(chain.read_text().splitlines()))
+        self.assertEqual(json.loads(copied.read_text().splitlines()[-1])["capsule_id"], "obs-1")
+        self.assertNotIn("ab" * 32, "".join(f.read_text() for f in self.out.rglob("*") if f.is_file()))
 
     def test_held_results_are_checked_read_only(self):
         before = tree_digest(FIX / "live")

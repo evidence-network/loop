@@ -27,7 +27,10 @@ POPULATION = FIXTURES / "rehearsal"
 LIVE = FIXTURES / "live"
 
 sys.path.insert(0, str(ROOT / "steps"))
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_no_preimages  # noqa: E402
 import finding  # noqa: E402
+import live  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step05_deal", str(STEP))
 _spec = importlib.util.spec_from_loader("step05_deal", _loader)
@@ -702,6 +705,22 @@ class Step05DealLiveTest(unittest.TestCase):
         for p in rec["proof"]:
             p["sha256"] = finding.sha256(self.out / p["path"])
         (self.out / "finding.json").write_text(json.dumps(rec))
+
+    def test_live_a_preimage_in_a_node_chain_never_reaches_the_proof(self):
+        # A settlement record keeps the payment's preimage; the copied chain keeps it only as a stub at its line.
+        led = self.lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        obs = {"capsule_id": "obs-1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
+            "preimage": "ab" * 32, "payment_hash": "cd" * 32, "observed_by": "payer"}}}}
+        led.write_text(led.read_text() + json.dumps(obs) + "\n")
+        self.run_live()
+        copied = self.out / "lab-a" / "ledger" / "capsules.jsonl"
+        self.assertEqual(len(copied.read_text().splitlines()), len(led.read_text().splitlines()))
+        self.assertNotIn("ab" * 32, copied.read_text())
+        stub = json.loads(copied.read_text().splitlines()[-1])
+        self.assertEqual((stub["capsule_id"], stub["redacted"]), ("obs-1", live.REDACTED))
+        self.assertEqual(check_no_preimages.scan([self.findings]), [])
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "reproduced", entries["05-deal"]["problems"])
 
     def test_08_reproduces_live_05_from_its_proof(self):
         self.run_live()

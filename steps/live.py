@@ -9,6 +9,8 @@ are set and readable by the running user; otherwise that node is NOT_CHECKED wit
 says which: a `$VAR` the step's environment does not set (expandvars leaves it in the
 path), a named file that is not readable, or the field unset or unreadable.
 """
+import hashlib
+import json
 import os
 import re
 import sys
@@ -19,6 +21,42 @@ ISSUE = "evidence-network/loop: the live lab run, which fills population/live"
 # this until one is filed, never with an issue that has closed.
 NO_ISSUE_YET = "no open issue yet (to be filed)"
 ORDER = {"PASS": 0, "NOT_CHECKED": 1, "FAIL": 2}
+
+
+# A settlement record the plugin seals keeps the payment's preimage (capsules-plugin lightning-v0, "preimage"). It is
+# bearer proof of a payment and never leaves the lab host: a ledger copied into a proof keeps each such record only
+# as a stub at its own line, so line numbers (held-<n>) and every other record stay as the node holds them.
+REDACTED = "a record carrying a payment preimage, which never leaves the lab host"
+
+
+def carries_preimage(value):
+    """Whether a parsed record holds a non-empty `preimage` member at any depth."""
+    if isinstance(value, dict):
+        return any((k == "preimage" and v not in (None, "")) or carries_preimage(v) for k, v in value.items())
+    if isinstance(value, list):
+        return any(carries_preimage(v) for v in value)
+    return False
+
+
+def copy_redacted(src, dest):
+    """Copy the JSONL ledger file src to dest, each record that carries a preimage replaced by a stub naming its
+    capsule_id and the sha256 of its line. Returns how many were replaced. A line that does not parse is copied as is."""
+    out, n = [], 0
+    for raw in Path(src).read_bytes().splitlines(keepends=True):
+        try:
+            record = json.loads(raw)
+        except ValueError:
+            out.append(raw)
+            continue
+        if carries_preimage(record):
+            n += 1
+            cid = record.get("capsule_id") if isinstance(record, dict) else None
+            stub = {"redacted": REDACTED, "capsule_id": cid, "line_sha256": hashlib.sha256(raw.rstrip(b"\n")).hexdigest()}
+            out.append(json.dumps(stub, sort_keys=True).encode() + (b"\n" if raw.endswith(b"\n") else b""))
+        else:
+            out.append(raw)
+    Path(dest).write_bytes(b"".join(out))
+    return n
 
 
 def path(node, field):
