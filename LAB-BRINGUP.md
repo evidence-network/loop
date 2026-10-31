@@ -596,13 +596,16 @@ NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
 A node pays only when its host has a wallet, in two parts, each run as
 intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
 [SATS]` creates lab-N's Lexe wallet in its payments directory through a
-temporary instance, sets a small automatic policy and prints one funding
-invoice (none for SATS 0); lab-N is not touched. Part B, while the lab is
-quiet: `lab/bin/lab-wallet-setup.sh N` installs the same lexe-wallet build for
-lab-N, adds `[payments] wallet = "lexe-wallet"` to its config.toml, restarts it
-by its launcher (rolling back if it does not come up) and opens A's wallet.
-Neither reads, prints or copies the seed. From then on every `lab/lab.sh start` must name that node in
-`LAB_PAYMENTS` (for example `LAB_PAYMENTS="lab-1 lab-2 lab-3"`), which writes the
+temporary, unjoined instance with no relay, sets a small automatic policy and
+prints one funding invoice (none for SATS 0); lab-N is not touched. Part B:
+`lab/bin/lab-wallet-setup.sh N` checks A's wallet is there and free and
+installs the same lexe-wallet build for lab-N; it neither writes config.toml
+nor restarts the node. Neither part reads, prints or copies the seed. Then,
+while the lab is quiet, `lab/lab.sh stop` and `LAB_PAYMENTS="lab-1 lab-2
+lab-3" lab/lab.sh start` restart the whole lab, so lab-1's new invite token
+reaches the other two, and `start` writes `[payments] wallet = "lexe-wallet"`
+for each named node; `lab-wallet-setup.sh N --balance` then shows lab-N's
+balance. Every later `lab/lab.sh start` must keep `LAB_PAYMENTS`, which writes the
 same section; `start` refuses, before any node starts, a config with a wallet
 that `LAB_PAYMENTS` does not name.
 

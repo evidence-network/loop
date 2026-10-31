@@ -54,7 +54,7 @@ port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 [ -x "$MESH_LLM_BIN" ] || die "$MESH_LLM_BIN not found"
 [ "$(sha "$LEXE_PLUGIN")" = "$LEXE_SHA256" ] || die "$LEXE_PLUGIN sha256 is not $LEXE_SHA256"
 # Once part B has run, lab-N itself owns the wallet; fund it through lab-N's console instead.
-! grep -q '^\[payments\]' "$NODE_DIR/config.toml" || die "$NODE_DIR/config.toml already has [payments]: lab-N owns the wallet now; use its console :981$N"
+! grep -q '^\[payments\]' "$NODE_DIR/config.toml" || die "$NODE_DIR/config.toml already has [payments]: lab-N owns the wallet now; use its console :$((${LAB_PORT_BASE:-9800} + 10 + N))"
 [ ! -e "$TMP_CONFIG" ] || die "$TMP_CONFIG exists: another run is active or crashed; check for a 'client --config $TMP_CONFIG' process, then remove it"
 port_free "$API_PORT" && port_free "$CONSOLE_PORT" || die "port $API_PORT or $CONSOLE_PORT is in use"
 if [ -e "$WALLET_DIR/wallet.lock" ]; then
@@ -81,10 +81,11 @@ tar -C "$TMP_HOME/pkg" -czf "$TMP_HOME/pkg/lexe-wallet-9f830c1-x86_64-unknown-li
 HOME=$TMP_HOME MESH_LLM_NO_DEFAULT_PLUGINS=1 "$MESH_LLM_BIN" plugins install --name lexe-wallet \
   --version 0.1.0-9f830c1 --archive "$TMP_HOME/pkg/lexe-wallet-9f830c1-x86_64-unknown-linux-gnu.tar.gz"
 
-# 2. The temporary instance: no mesh joined (no --join/--auto/--discover), its own ports.
+# 2. The temporary instance: no mesh joined (no --join/--auto/--discover), no relay (as lab.sh's nodes),
+# its own ports.
 (umask 077 && printf '[payments]\nwallet = "lexe-wallet"\n' > "$TMP_CONFIG")
 HOME=$TMP_HOME MESH_LLM_NO_DEFAULT_PLUGINS=1 "$MESH_LLM_BIN" client --config "$TMP_CONFIG" \
-  --port "$API_PORT" --console "$CONSOLE_PORT" --log-format json < /dev/null > "$TMP_HOME/client.log" 2>&1 &
+  --port "$API_PORT" --console "$CONSOLE_PORT" --headless --disable-iroh-relays --log-format json < /dev/null > "$TMP_HOME/client.log" 2>&1 &
 PID=$!
 for _ in $(seq 60); do
   curl -fsS "http://127.0.0.1:$CONSOLE_PORT/api/status" > /dev/null 2>&1 && break
