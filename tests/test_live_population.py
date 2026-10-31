@@ -64,7 +64,31 @@ class LiveCase(unittest.TestCase):
         r = run_step(step, population, out, env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(finding.check(self.findings), [])
-        return json.loads((out / "finding.json").read_text())
+        record = json.loads((out / "finding.json").read_text())
+        if step == "02-book":
+            self.assert_02_rederives(record, population, out, env)
+        return record
+
+    def assert_02_rederives(self, record, population, out, env):
+        """02's judge_live on a copy of only the cited files gives the same finding: what step 08 checks."""
+        loader = importlib.machinery.SourceFileLoader("step02_again", str(ROOT / "steps" / "02-book"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_again", loader))
+        loader.exec_module(mod)
+        work = self.tmp / "again" / "02-book"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in record["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / p["path"], work / p["path"])
+        saved = dict(os.environ)
+        os.environ.update(env or {})
+        try:
+            pop = json.loads((Path(population) / "population.json").read_text())
+            again = mod.judge_live(pop, work, record["started"])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (record["result"], record["not_checked"], record["detail"]))
 
     def assert_null_nodes(self, r, field="data_dir"):
         self.assertEqual(r["result"], "NOT_CHECKED")
@@ -355,6 +379,82 @@ class Step02LiveTest(JoinedLab):
                          ["a witness receipt on the book's checkpoint, and its verification"])
         self.assertIn("node operator-1: book lab-1-book", r["detail"])
         self.assertIn("node operator-2: book lab-2-book", r["detail"])
+
+
+class Step02LiveVerifyTest(JoinedLab):
+    """Step 08 re-derives live step 02 from its proof alone, on books join.sh made here (loop#188)."""
+
+    def setUp(self):
+        super().setUp()
+        self.recorded = self.step("02-book", self.pop, self.env)
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_for_02", str(ROOT / "steps" / "08-verify"))
+        self.v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_02", loader))
+        loader.exec_module(self.v)
+
+    def verify(self):
+        out = self.findings / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        self.v.main(["--population", str(self.pop), "--out", str(out)])
+        return (json.loads((out / "finding.json").read_text()),
+                {e["dir"]: e for e in json.loads((out / "verified.json").read_text())["steps"]})
+
+    def plant(self, edit):
+        d = self.findings / "02-book"
+        edit(d)
+        rec = json.loads((d / "finding.json").read_text())
+        for p in rec["proof"]:
+            p["sha256"] = finding.sha256(d / p["path"])
+        (d / "finding.json").write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+        return self.verify()
+
+    def test_live_02_is_reproduced_from_its_proof(self):
+        f, entries = self.verify()
+        e = entries["02-book"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], self.recorded["result"])
+        self.assertIn(self.v.LIVE_RELIES_ON["02"][0], f["not_checked"])
+
+    def test_a_bundle_altered_after_the_run_fails(self):
+        def forge(d):
+            b = json.loads((d / "lab-1" / "bundle.json").read_text())
+            b["checkpoint"]["mmr_size"] = 999
+            (d / "lab-1" / "bundle.json").write_text(json.dumps(b))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_key_not_bound_to_its_book_fails(self):
+        def forge(d):
+            i = json.loads((d / "lab-1" / "inputs.json").read_text())
+            i["bound"] = ["00" * 32]
+            (d / "lab-1" / "inputs.json").write_text(json.dumps(i))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_dropped_from_nodes_json_fails(self):
+        def drop(d):
+            n = json.loads((d / "nodes.json").read_text())
+            n["nodes"].pop("lab-1")
+            (d / "nodes.json").write_text(json.dumps(n))
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_cited_checks_file_the_judge_does_not_give_fails(self):
+        def forge(d):
+            c = json.loads((d / "lab-1" / "checks.json").read_text())
+            c["checks"]["signer"]["detail"] = "x"
+            (d / "lab-1" / "checks.json").write_text(json.dumps(c))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("lab-1/checks.json re-derived is not the recorded", f["detail"])
+
+    def test_an_old_shape_live_02_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.findings / "02-book")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "02-book", self.findings / "02-book")
+        f, entries = self.verify()
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no nodes.json", entries["02-book"]["not_checked"]["why"])
 
 
 class Step02LiveWitnessTest(JoinedLab):
