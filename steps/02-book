@@ -43,7 +43,13 @@ book stored. The step picks the receipt's entry in lab/witness/witnesses.json by
 the receipt's key id, never "the" witness key, and the receipt FAILs when that
 key id is not listed, is any node's own key, is not the key it verifies under, or
 the receipt was signed before the entry's not_before. A rotated-out key keeps its
-entry, so its receipts still pass. A book with no witness configured, or one whose
+entry, so its receipts still pass. The receipt itself is then verified offline
+from the proof bytes (witness_signature, loop#219): the step 02 driver's
+`lab-check` checks the book's COSE checkpoint statement (checkpoint.json) and
+the stored receipt under the listed key its key id names, with AAC's witness
+receipt verifier, and the statement must be the checkpoint bundle.json carries.
+Without the driver the receipt's signature is a not_checked entry. A run marks
+this in inputs.json (receipt_check); an older run's receipt is judged as it was. A book with no witness configured, or one whose
 witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the witness part; a delivery capsulectl
 reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
 data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
@@ -381,7 +387,9 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         # The lab test witness serves HTTPS on loopback under its own certificate (lab/lab.sh witness).
         env["SSL_CERT_FILE"] = os.environ["LOOP_WITNESS_CA"]
     done = []
-    inputs = {"node": name, "node_keys": sorted(node_keys)}
+    # receipt_check: this run holds each receipt offline (loop#219); a run before it has none, and its receipt is
+    # judged as it was then, on capsulectl's status alone.
+    inputs = {"node": name, "node_keys": sorted(node_keys), "receipt_check": RECEIPT_CHECK}
 
     def cap_run(stem, *args, save=None):
         r = subprocess.run([str(cap), *map(str, args)], capture_output=True, text=True, env=env)
@@ -544,6 +552,17 @@ def judge_book(cap, out):
                                                  set(inputs["node_keys"]) | {node_pub, cp_pub, *bound}, entries))
                 except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
                     checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
+                # The receipt itself, verified offline over the book's checkpoint statement (loop#219): the
+                # capsulectl state above is the lab's reading; this check holds the receipt from the proof bytes.
+                bin_ = driver()
+                if inputs.get("receipt_check") != RECEIPT_CHECK:
+                    pass  # a run before the offline receipt check: judged as it was, and step 08 names that
+                elif bin_ is None:
+                    gap = {"what": f"node {name}: the witness receipt's signature, verified offline",
+                           "why": "the step 02 driver is not installed where this step runs",
+                           "issue": "evidence-network/loop: steps/02-book.setup.sh, run where 02 runs"}
+                else:
+                    checks["witness_signature"] = receipt_signature(bin_, out, status, entries, appended_checkpoint(out))
     (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
@@ -555,6 +574,52 @@ def judge_book(cap, out):
         return "NOT_CHECKED", proof, f"{held} Witness part not checked.", gap
     return "PASS", proof, (f"{held} The receipt is from the lab test witness (lab/witness/witnesses.json), "
                            f"one organization's test witness."), None
+
+
+RECEIPT_CHECK = "offline"  # inputs.json's mark that the run verifies each receipt offline (loop#219)
+
+
+def appended_checkpoint(out):
+    """The checkpoint the node's bundle.json carries, or {} when it cannot be read."""
+    try:
+        cp = json.loads((Path(out) / "bundle.json").read_text())["checkpoint"]
+        return cp if isinstance(cp, dict) else {}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def receipt_signature(bin_, out, status, entries, bundle_cp):
+    """{ok, detail}: the stored receipt verifies, offline, under the listed witness key its key id names, over the
+    book's raw COSE checkpoint statement (checkpoint.json), and that statement is the checkpoint the bundle carries
+    (log id, size, root, signer, time). The step 02 driver's lab-check runs AAC's witness receipt verifier."""
+    receipt = (status or {}).get("receipt")
+    try:
+        kid, _ = receipt_header(base64.b64decode((receipt or {}).get("Bytes") or ""))
+    except (ValueError, IndexError, TypeError, AttributeError, KeyError):
+        kid = None
+    entry = next((e for e in entries if e.get("key_id") == kid), None)
+    if not isinstance(receipt, dict) or entry is None:
+        return {"ok": False, "detail": f"the receipt names key id {kid}, which the cited listing does not list"}
+    try:
+        statement = base64.b64decode(json.loads((Path(out) / "checkpoint.json").read_text())["statement"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return {"ok": False, "detail": f"checkpoint.json carries no readable COSE statement ({e})"}
+    with tempfile.TemporaryDirectory(prefix="02-receipt-") as tmp:
+        (Path(tmp) / "statement.cose").write_bytes(statement)
+        (Path(tmp) / "receipt.json").write_text(json.dumps(receipt))
+        r = subprocess.run([str(bin_), "lab-check", "--statement", str(Path(tmp) / "statement.cose"), "--receipt",
+                            str(Path(tmp) / "receipt.json"), "--key-id", entry["key_id"]], capture_output=True, text=True)
+    try:
+        v = json.loads(r.stdout)
+    except ValueError:
+        return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
+    if r.returncode == 2 or not isinstance(v, dict):
+        return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
+    stated = v.get("checkpoint") or {}
+    same = all(stated.get(k) == bundle_cp.get(k) for k in ("log_id", "mmr_size", "root", "key_id", "timestamp"))
+    ok = r.returncode == 0 and v.get("ok") is True and same
+    return {"ok": ok, "detail": v.get("detail", "") + ("" if same else
+                                                     "; the witnessed checkpoint is not the one the bundle carries")}
 
 
 def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):

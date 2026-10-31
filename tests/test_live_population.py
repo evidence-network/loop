@@ -537,6 +537,95 @@ class Step02LiveVerifyTest(JoinedLab):
         self.assertIn("its proof holds no nodes.json", entries["02-book"]["not_checked"]["why"])
 
 
+LIVE8_02 = ROOT / "findings" / "2026-10-31-live-8" / "02-book"
+
+
+class Step02ReceiptOfflineTest(unittest.TestCase):
+    """02's offline receipt check (loop#219), on the real live-8 receipts the lab test witness gave: the step 02
+    driver's lab-check verifies each under the listed key over the book's COSE checkpoint statement."""
+
+    def setUp(self):
+        need(DRIVER, "steps/02-book.setup.sh")
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.out = self.tmp / "02-book"
+        shutil.copytree(LIVE8_02, self.out)
+        loader = importlib.machinery.SourceFileLoader("step02_receipt", str(ROOT / "steps" / "02-book"))
+        self.m = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_receipt", loader))
+        self.env = mock_env(LOOP_STEP02_BOOK_BIN=str(DRIVER))
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        loader.exec_module(self.m)
+        self.node = self.out / "stevenmih-1"
+        self.entries = json.loads((self.out / "witnesses.json").read_text())["witnesses"]
+
+    def check(self):
+        status = json.loads((self.node / "witness-status.json").read_text())
+        return self.m.receipt_signature(DRIVER, self.node, status, self.entries, self.m.appended_checkpoint(self.node))
+
+    def test_a_real_receipt_verifies_offline(self):
+        c = self.check()
+        self.assertTrue(c["ok"], c)
+
+    def test_a_receipt_with_a_flipped_byte_fails(self):
+        p = self.node / "witness-status.json"
+        st = json.loads(p.read_text())
+        raw = bytearray(base64.b64decode(st["receipt"]["Bytes"]))
+        raw[-1] ^= 1  # the signature's last byte
+        st["receipt"]["Bytes"] = base64.b64encode(bytes(raw)).decode()
+        p.write_text(json.dumps(st))
+        self.assertFalse(self.check()["ok"])
+
+    def test_a_listing_with_another_key_under_the_receipts_id_fails(self):
+        kid = self.entries[0]["key_id"]
+        p = self.node / "witness-status.json"
+        st = json.loads(p.read_text())
+        # Only the listed key verifies: re-pointing the entry at another key id leaves the receipt unlisted.
+        self.entries = [dict(self.entries[0], key_id="ab" * 32)]
+        self.assertFalse(self.check()["ok"])
+        self.entries = [dict(self.entries[0], key_id=kid)]
+        self.assertTrue(self.check()["ok"])
+
+    def test_a_statement_not_the_bundles_checkpoint_fails(self):
+        p = self.node / "bundle.json"
+        b = json.loads(p.read_text())
+        b["checkpoint"]["mmr_size"] += 2
+        p.write_text(json.dumps(b))
+        c = self.check()
+        self.assertFalse(c["ok"])
+        self.assertIn("not the one the bundle carries", c["detail"])
+
+    def test_08_names_an_unmarked_run_and_holds_a_marked_one(self):
+        (self.tmp / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                       "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_receipt", str(ROOT / "steps" / "08-verify"))
+        v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_receipt", loader))
+        loader.exec_module(v)
+
+        def verify():
+            shutil.rmtree(self.tmp / "08-verify", ignore_errors=True)
+            v.main(["--population", str(ROOT / "population" / "live"), "--out", str(self.tmp / "08-verify")])
+            return (json.loads((self.tmp / "08-verify" / "finding.json").read_text()),
+                    {e["dir"]: e for e in json.loads((self.tmp / "08-verify" / "verified.json").read_text())["steps"]})
+        f, entries = verify()  # live-8 as found: before the offline check, its receipts are capsulectl's reading
+        self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
+        self.assertIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+        for p in self.out.glob("*/inputs.json"):  # the same receipts, judged as a run with the offline check
+            i = json.loads(p.read_text())
+            i["receipt_check"] = self.m.RECEIPT_CHECK
+            p.write_text(json.dumps(i, indent=2, sort_keys=True) + "\n")
+        pop = json.loads((ROOT / "population" / "live" / "population.json").read_text())
+        self.m.judge_live(pop, self.out, json.loads((self.out / "finding.json").read_text())["started"])
+        f, entries = verify()
+        self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
+        self.assertNotIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+
+
+def mock_env(**values):
+    from unittest import mock
+    return mock.patch.dict(os.environ, values)
+
+
 class Step02LiveWitnessTest(JoinedLab):
     """The lab test witness (lab/witness.py, signing with step 02's driver) gives each book's checkpoint a
     receipt; step 02 checks it against a listing made here. Every key is a TEST key made here."""
@@ -617,7 +706,11 @@ class Step02LiveWitnessTest(JoinedLab):
         f = json.loads((self.findings / "08-verify" / "finding.json").read_text())
         entries = {e["dir"]: e for e in json.loads((self.findings / "08-verify" / "verified.json").read_text())["steps"]}
         self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
-        self.assertIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+        # The receipt is held offline from the proof (loop#219), so 08 no longer rests on capsulectl's state.
+        self.assertNotIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+        for name in NODE_KEYS:
+            checks = json.loads((self.findings / "02-book" / name / "checks.json").read_text())["checks"]
+            self.assertTrue(checks["witness_signature"]["ok"], checks["witness_signature"])
 
     def test_a_receipt_proof_with_its_listing_cut_fails_in_08(self):
         pem, kid = self.key("w2")
@@ -655,7 +748,8 @@ class Step02LiveWitnessTest(JoinedLab):
             checks = json.loads((self.findings / "02-book" / name / "checks.json").read_text())["checks"]
             self.assertTrue(all(c["ok"] for c in checks.values()), checks)
             self.assertEqual({k for k in checks if k.startswith("witness")},
-                             {"witness_listed", "witness_not_node", "witness_not_before", "witness_receipt"})
+                             {"witness_listed", "witness_not_node", "witness_not_before", "witness_receipt",
+                              "witness_signature"})
             self.assertIn(f"{name}/witness-status.json", [p["path"] for p in r["proof"]])
 
     def test_a_receipt_the_book_rejects_fails_as_a_permanent_delivery_failure(self):
