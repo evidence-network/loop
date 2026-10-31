@@ -106,6 +106,9 @@ A settlement leg a paid exchange leaves (`n/a-settlement-leg`, step 06's records
 no client_nonce, so it is counted apart in the detail and not tied (loop#263); its bytes, provenance, inclusion,
 citation, acceptance and signature are checked as any held half's, and a controller binding its citing record names
 is judged as any half's. One whose record names none is not an unbound sender (the plugin's leg push has carried none).
+The live result is PASS only when every node's checks held and no not_checked entry is left, including that each tied
+current-build exchange is held on both nodes (the receiver's own push shown by the sender holding it) and that no node
+reports the push off; the cutoff and the copied ledgers being whole are named by step 08 when it reproduces this step.
 Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
 a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
 not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
@@ -351,6 +354,7 @@ LIVE_DEFAULT_ABSENT = {
     "issue": live.NO_ISSUE_YET,
 }
 SHARING_FILE = "sharing-effective.json"
+LIVE_ONE_SIDED_WHAT = "each side pushing its half at completion, shown on both nodes"
 VIA_KEY = ("host_announced", "operator_stopgap")
 BINDING_FILE = "controller-binding.json"
 LIVE_DECLARATION_WHAT = "the controller binding a node accepted a half under"
@@ -912,7 +916,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
-    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set(), "legs": 0}
+    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set(), "legs": 0, "nonces": set()}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
     since = sealed_since(since_raw)
@@ -975,6 +979,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
                 else:
                     state, detail = tie(record, nonce, role, own_lines, held)
                     c["tied"] = state_check(state, detail, passed="tied")
+                    c["nonce"] = nonce
                 if inc is not None:
                     c["inclusion_cited"] = inclusion_cited(own_lines, cid, inc, v.get("checkpoint_digest"))
         # The producer signature is checked on every held half, cited or not; the key it must be authored under is
@@ -1010,6 +1015,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
                 summary["unread"].add(b["detail"])
         if "tied" in c and c["tied"]["state"] != "bad":
             summary[c["tied"]["state"]] += 1
+        if "tied" in c and c["tied"]["state"] == "tied":
+            summary["nonces"].add(c["nonce"])
         # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
         # controller declaration, however the plugin first accepted it. A sender whose published commitment
         # carries no binding, cited by a record naming none, is accepted on its listed evidence key: the binding
@@ -1046,7 +1053,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
 
 
 def sharing_report(name, data_dir, out):
-    """(detail, proof file or None) for the node's sharing-effective.json, read as the node's own report."""
+    """(detail, proof file, reported value) for the node's sharing-effective.json, read as the node's own report;
+    (None, None, None) when it has none the step can read."""
     path = data_dir / SHARING_FILE
     doc = None
     try:
@@ -1054,11 +1062,11 @@ def sharing_report(name, data_dir, out):
     except (OSError, ValueError):
         pass
     if not isinstance(doc, dict) or doc.get("share_record_at_completion") not in (POLICY_ON, DEFAULT_POLICY):
-        return None, None
+        return None, None, None
     raw = f" (raw value {doc['raw_value']!r} is not one the plugin knows)" if "raw_value" in doc else ""
     return (f"node {name} reports (node-reported, unsigned) share_record_at_completion "
             f"{doc['share_record_at_completion']} from {doc.get('source')} at {doc.get('written_at')}{raw}; the push "
-            f"itself is judged from the sealed records"), f"{name}/{SHARING_FILE}"
+            f"itself is judged from the sealed records"), f"{name}/{SHARING_FILE}", doc["share_record_at_completion"]
 
 
 # What the live judge reads, copied into the proof so step 08 runs it again on the proof alone (loop#188).
@@ -1145,7 +1153,7 @@ def judge_live(pop, out, started):
     results, proof, details, not_checked = [], [NODES_FILE], [], list(missing)
     halves = {}
     total = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "legs": 0}
-    vias, unbound, no_sharing = set(), {}, []
+    vias, unbound, no_sharing, sharing_off, tied_nonces = set(), {}, [], [], set()
     # As before: a node is a peer to find a binding at only when it names a data_dir.
     peers = {e["node_id"]: (e["name"], out / e["name"]) for e in pop["nodes"]
              if isinstance(e.get("node_id"), str) and live.path(e, "data_dir") is not None}
@@ -1171,6 +1179,7 @@ def judge_live(pop, out, started):
             details.append(detail)
             halves[name] = pairs
             vias |= summary["vias"]
+            tied_nonces |= summary["nonces"]
             unread |= summary["unread"]
             for k, n in summary["binding"].items():
                 binding[k] = binding.get(k, 0) + n
@@ -1183,7 +1192,9 @@ def judge_live(pop, out, started):
                 not_checked.append({"what": f"{name}: a pushed half held", "issue": live.ISSUE, "why": (
                     "the node holds no pushed half from a node of the population, only halves from senders outside "
                     "it" if summary["outside"] else "the node holds no pushed half from the lab run's exchanges")})
-            report, file = sharing_report(name, data_dir, out / name)
+            report, file, reported = sharing_report(name, data_dir, out / name)
+            if reported == DEFAULT_POLICY:
+                sharing_off.append(name)
             if file:
                 proof.append(file)
                 details.append(report)
@@ -1218,6 +1229,18 @@ def judge_live(pop, out, started):
                                        "no acceptance or tie to read"})
     untied = ([live_never_tied(total["never_tied"])] if total["never_tied"] else []) + \
              ([live_ambiguous(total["ambiguous"])] if total["ambiguous"] else [])
+    # A tied half proves the receiver's side: its own half of the exchange exists and the sender pushed theirs. That
+    # the receiver pushed its own half back is shown only by the sender holding it, as the other half of the same
+    # nonce, so a tied current-build exchange not held on two nodes, or a node reporting the push off, is named.
+    unmatched = sorted(tied_nonces - both)
+    if unmatched:
+        not_checked.append({"what": LIVE_ONE_SIDED_WHAT, "issue": live.NO_ISSUE_YET,
+                            "why": f"{len(unmatched)} current-build exchanges are tied on the node holding the "
+                                   f"counterparty's half, but are not held as a requested and a served half on two "
+                                   f"nodes with one output digest, so the other side's push is not shown"})
+    if sharing_off:
+        not_checked.append({"what": LIVE_ONE_SIDED_WHAT, "issue": live.NO_ISSUE_YET,
+                            "why": f"{', '.join(sharing_off)} report share_record_at_completion off"})
     default = [dict(LIVE_DEFAULT_ABSENT, why=LIVE_DEFAULT_ABSENT["why"].format(nodes=", ".join(no_sharing)))] \
         if no_sharing else []
     unclaimed = [live_unclaimed(total["unclaimed"], total["unkeyed"], total["unlisted"])] \

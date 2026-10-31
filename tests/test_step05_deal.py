@@ -1435,11 +1435,18 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(step.live_result(["PASS", "NOT_CHECKED", "PASS"], []), "NOT_CHECKED")
         self.assertEqual(step.live_result(["PASS", "FAIL", "NOT_CHECKED"], gap), "FAIL")
 
-    def test_live_a_node_whose_halves_all_hold_passes_its_own_checks_and_the_step_names_the_gaps_left(self):
+    def test_live_a_tied_exchange_held_on_one_node_only_is_named_not_passed(self):
         f = self.run_live()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("node lab-a: ", f["detail"])
-        self.assertNotIn("lab-a: not checked", f["detail"])
+        gap = self.names(f)[step.LIVE_ONE_SIDED_WHAT]
+        self.assertIn("1 current-build exchanges are tied on the node holding the counterparty's half", gap["why"])
+        self.assertEqual(finding.check(self.findings), [])
+
+    def test_live_a_node_reporting_the_push_off_is_named(self):
+        (self.lab / "nodes" / "lab-a" / "data" / "sharing-effective.json").write_text(json.dumps(
+            {"v": 1, "share_record_at_completion": "off", "source": "env", "written_at": "2026-10-30T01:00:00Z"}))
+        f = self.run_live()
+        self.assertTrue(any(n["what"] == step.LIVE_ONE_SIDED_WHAT and "lab-a report share_record_at_completion off"
+                            in n["why"] for n in f["not_checked"]), f["not_checked"])
 
     def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_own_half(self):
         leg = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {}}, "settlement": {}}
