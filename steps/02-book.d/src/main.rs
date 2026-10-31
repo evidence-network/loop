@@ -6,6 +6,7 @@
 //!   loop-step02-book witness --key PEM --url URL --checkpoint FILE
 //!   loop-step02-book verify  --pub PEM --book-id ID --dir DIR [--witnesses FILE]
 //!   loop-step02-book lab-receipt --key PEM --statement FILE --at UNIX
+//!   loop-step02-book lab-check --statement FILE --receipt FILE --key-id HEX
 //!
 //! `book` opens a fresh book, appends two records sealed with the key (an
 //! opening record, then the record the step asserts on), cuts a signed
@@ -37,6 +38,16 @@
 //! checkpoint statement it checks the statement's signature with
 //! checkpointed-local-log and prints the `POST /checkpoints` response a CLL
 //! witness client reads, its receipt naming the key id and the signing time.
+//!
+//! `lab-check` verifies, offline, a receipt a book stored for its checkpoint
+//! (the `receipt` object `capsulectl cll checkpoint status` prints, in a file)
+//! over the book's raw COSE checkpoint statement: the statement's own
+//! signature (checkpointed-local-log), then the receipt by AAC's witness
+//! receipt verifier (the served summary's), under the one witness key given.
+//! It prints {ok, detail, checkpoint: {log_id, mmr_size, root, key_id,
+//! timestamp}} and exits 0 when the receipt verifies, 1 when not, 2 on a
+//! usage or input error. Step 02 and step 08 call it on the proof bytes, so
+//! the receipt is held there, not on capsulectl's word.
 //!
 //! `reseal` re-signs an edited record.json with the key: tests use it to
 //! plant a record rewritten after append by its own producer.
@@ -70,7 +81,8 @@ fn main() -> ExitCode {
         Some("witness") => flags(&args[1..]).and_then(|f| witness(&f)).map(|_| 0),
         Some("verify") => flags(&args[1..]).and_then(|f| verify(&f)),
         Some("lab-receipt") => flags(&args[1..]).and_then(|f| lab_receipt(&f)).map(|_| 0),
-        _ => Err("usage: loop-step02-book book|reseal|witness|verify|lab-receipt [flags]; see the source header".into()),
+        Some("lab-check") => flags(&args[1..]).and_then(|f| lab_check(&f)),
+        _ => Err("usage: loop-step02-book book|reseal|witness|verify|lab-receipt|lab-check [flags]; see the source header".into()),
     };
     match result {
         Ok(code) => ExitCode::from(code),
@@ -299,6 +311,52 @@ fn lab_receipt(f: &Flags) -> Result<(), String> {
     });
     println!("{body}");
     Ok(())
+}
+
+/// The endpoint a lab receipt is named under in the one-entry directory
+/// `lab_check` builds: the receipt names no URL, so the pair is matched here.
+const LAB_ENDPOINT: &str = "lab-test-witness";
+
+fn lab_check(f: &Flags) -> Result<u8, String> {
+    let statement = read(Path::new(need(f, "statement")?))?;
+    let receipt = read_json(Path::new(need(f, "receipt")?))?;
+    let key_id = need(f, "key-id")?;
+    let checked = cll::checkpoint::verify_checkpoint_cose_offline(&statement);
+    let decoded = match (checked.ok, checked.decoded) {
+        (true, Some(d)) => d,
+        _ => {
+            let out = json!({"ok": false, "detail": format!("the checkpoint statement does not verify: {}",
+                                                             checked.errors.join("; ")), "checkpoint": Value::Null});
+            println!("{out}");
+            return Ok(1);
+        }
+    };
+    let record = decoded.to_checkpoint_record();
+    let mut cp: Checkpoint = serde_json::from_value(serde_json::to_value(&record).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("the decoded checkpoint: {e}"))?;
+    let field = |k: &str| receipt.get(k).ok_or_else(|| format!("the receipt has no {k}"));
+    cp.witnesses = vec![WitnessEntry {
+        ts_url: LAB_ENDPOINT.to_string(),
+        entry_hash: field("EntryHash")?.as_str().ok_or("EntryHash is not a string")?.to_string(),
+        receipt_b64: field("Bytes")?.as_str().ok_or("Bytes is not a string")?.to_string(),
+        leaf_index: field("LeafIndex")?.as_i64().ok_or("LeafIndex is not a number")?,
+        tree_size: field("TreeSize")?.as_i64().ok_or("TreeSize is not a number")?,
+        is_stub: false,
+    }];
+    let directory = json!({"witnesses": [{"name": LAB_ENDPOINT, "endpoint": LAB_ENDPOINT, "key_ids": [key_id]}]});
+    let ok = !verified_witnesses(&cp, &statement, &directory).is_empty();
+    let out = json!({
+        "ok": ok,
+        "detail": if ok {
+            format!("the receipt verifies under witness key {key_id} over checkpoint {} of {}", cp.mmr_size, cp.log_id)
+        } else {
+            format!("the receipt does not verify under witness key {key_id} over checkpoint {} of {}", cp.mmr_size, cp.log_id)
+        },
+        "checkpoint": {"log_id": cp.log_id, "mmr_size": cp.mmr_size, "root": cp.root, "key_id": cp.key_id,
+                       "timestamp": cp.timestamp},
+    });
+    println!("{out}");
+    Ok(if ok { 0 } else { 1 })
 }
 
 fn witness(f: &Flags) -> Result<(), String> {

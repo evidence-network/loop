@@ -43,7 +43,18 @@ book stored. The step picks the receipt's entry in lab/witness/witnesses.json by
 the receipt's key id, never "the" witness key, and the receipt FAILs when that
 key id is not listed, is any node's own key, is not the key it verifies under, or
 the receipt was signed before the entry's not_before. A rotated-out key keeps its
-entry, so its receipts still pass. A book with no witness configured, or one whose
+entry, so its receipts still pass. The receipt itself is then verified offline
+from the proof bytes (witness_signature, loop#219): the step 02 driver's
+`lab-check` checks the book's COSE checkpoint statement (checkpoint.json) and
+the stored receipt under the listed key its key id names, with AAC's witness
+receipt verifier, and the statement must be the checkpoint bundle.json carries.
+The driver signs lab receipts with the same Rust crates, so the signature is
+also checked apart from them: this step rebuilds the receipt's signed bytes
+from bundle.json's checkpoint (its digest, the entry hash and the RFC 9162
+leaf) and openssl verifies the Ed25519 signature under the listed key. Without
+the driver or openssl 3 the receipt's signature is a not_checked entry. A run
+marks this in inputs.json (receipt_check); an older run's receipt is judged as
+it was. A book with no witness configured, or one whose
 witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the witness part; a delivery capsulectl
 reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
 data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
@@ -381,7 +392,9 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         # The lab test witness serves HTTPS on loopback under its own certificate (lab/lab.sh witness).
         env["SSL_CERT_FILE"] = os.environ["LOOP_WITNESS_CA"]
     done = []
-    inputs = {"node": name, "node_keys": sorted(node_keys)}
+    # receipt_check: this run holds each receipt offline (loop#219); a run before it has none, and its receipt is
+    # judged as it was then, on capsulectl's status alone.
+    inputs = {"node": name, "node_keys": sorted(node_keys), "receipt_check": RECEIPT_CHECK}
 
     def cap_run(stem, *args, save=None):
         r = subprocess.run([str(cap), *map(str, args)], capture_output=True, text=True, env=env)
@@ -544,17 +557,148 @@ def judge_book(cap, out):
                                                  set(inputs["node_keys"]) | {node_pub, cp_pub, *bound}, entries))
                 except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
                     checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
+                # The receipt itself, verified offline over the book's checkpoint statement (loop#219): the
+                # capsulectl state above is the lab's reading; this check holds the receipt from the proof bytes.
+                bin_ = driver()
+                if inputs.get("receipt_check") != RECEIPT_CHECK:
+                    pass  # a run before the offline receipt check: judged as it was, and step 08 names that
+                elif bin_ is None or not openssl_ed25519():
+                    gap = {"what": f"node {name}: the witness receipt's signature, verified offline",
+                           "why": ("the step 02 driver is not installed where this step runs" if bin_ is None else
+                                   "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where this "
+                                   "step runs"),
+                           "issue": "evidence-network/loop: steps/02-book.setup.sh, run where 02 runs"}
+                else:
+                    checks["witness_signature"] = receipt_signature(bin_, out, status, entries, appended_checkpoint(out))
     (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
     if failed:
         return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}", None
-    held = (f"{where}: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint "
-            f"status and this step's comparisons: {', '.join(checks)}.")
+    by = "capsulectl verify --bundle, capsulectl cll checkpoint status"
+    if "witness_signature" in checks:  # the receipt also rests on the step 02 driver and openssl (loop#219)
+        by += ", the step 02 driver's lab-check, openssl pkeyutl"
+    held = f"{where}: these held on the proof bytes, by {by} and this step's comparisons: {', '.join(checks)}."
     if gap:
         return "NOT_CHECKED", proof, f"{held} Witness part not checked.", gap
     return "PASS", proof, (f"{held} The receipt is from the lab test witness (lab/witness/witnesses.json), "
                            f"one organization's test witness."), None
+
+
+RECEIPT_CHECK = "offline"  # inputs.json's mark that the run verifies each receipt offline (loop#219)
+
+
+def appended_checkpoint(out):
+    """The checkpoint the node's bundle.json carries, or {} when it cannot be read."""
+    try:
+        cp = json.loads((Path(out) / "bundle.json").read_text())["checkpoint"]
+        return cp if isinstance(cp, dict) else {}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def receipt_signature(bin_, out, status, entries, bundle_cp):
+    """{ok, detail}: the stored receipt verifies, offline, under the listed witness key its key id names, over the
+    book's raw COSE checkpoint statement (checkpoint.json), and that statement is the checkpoint the bundle carries
+    (log id, size, root, signer, time). The step 02 driver's lab-check runs AAC's witness receipt verifier."""
+    receipt = (status or {}).get("receipt")
+    try:
+        kid, _ = receipt_header(base64.b64decode((receipt or {}).get("Bytes") or ""))
+    except (ValueError, IndexError, TypeError, AttributeError, KeyError):
+        kid = None
+    entry = next((e for e in entries if e.get("key_id") == kid), None)
+    if not isinstance(receipt, dict) or entry is None:
+        return {"ok": False, "detail": f"the receipt names key id {kid}, which the cited listing does not list"}
+    try:
+        statement = base64.b64decode(json.loads((Path(out) / "checkpoint.json").read_text())["statement"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return {"ok": False, "detail": f"checkpoint.json carries no readable COSE statement ({e})"}
+    with tempfile.TemporaryDirectory(prefix="02-receipt-") as tmp:
+        (Path(tmp) / "statement.cose").write_bytes(statement)
+        (Path(tmp) / "receipt.json").write_text(json.dumps(receipt))
+        r = subprocess.run([str(bin_), "lab-check", "--statement", str(Path(tmp) / "statement.cose"), "--receipt",
+                            str(Path(tmp) / "receipt.json"), "--key-id", entry["key_id"]], capture_output=True, text=True)
+    try:
+        v = json.loads(r.stdout)
+    except ValueError:
+        v = None
+    if r.returncode == 2 or not isinstance(v, dict):
+        return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
+    stated = v.get("checkpoint") or {}
+    same = all(stated.get(k) == bundle_cp.get(k) for k in ("log_id", "mmr_size", "root", "key_id", "timestamp"))
+    held, why = receipt_openssl(receipt, entry["key_id"], bundle_cp)
+    ok = r.returncode == 0 and v.get("ok") is True and same and held
+    return {"ok": ok, "detail": v.get("detail", "") + ("" if same else
+                                                     "; the witnessed checkpoint is not the one the bundle carries")
+            + f"; {why}"}
+
+
+# The checkpoint record's signing body, in field order (checkpointed-local-log's CheckpointRecord::signing_body at
+# the pin); a decoded COSE checkpoint is always kind mmr_checkpoint, v 1 (DecodedCheckpointCose::to_checkpoint_record).
+SIGNING_BODY = ("key_id", "kind", "log_id", "mmr_size", "prev_root", "prev_size", "root", "timestamp", "v")
+
+
+def cll_json(v):
+    """v as CLL's signing body writes it: Python's ensure_ascii JSON, except that json_escape also escapes DEL."""
+    return json.dumps(v).replace("\x7f", "\\u007f")
+
+
+def cbor_head(major, n):
+    """A CBOR item head for a definite length n."""
+    if n < 24:
+        return bytes([major << 5 | n])
+    size = 1 if n < 256 else 2 if n < 65536 else 4
+    return bytes([major << 5 | {1: 24, 2: 25, 4: 26}[size]]) + n.to_bytes(size, "big")
+
+
+def receipt_openssl(receipt, key_id, bundle_cp):
+    """(ok, detail): the receipt's Ed25519 signature, checked apart from the Rust crates that sign and verify lab
+    receipts. The signed payload is rebuilt here from bundle.json's checkpoint: the record digest (SHA-256 of its
+    signing body), the entry hash (SHA-256 of the digest, which the receipt must state) and the RFC 9162 leaf; the
+    COSE Sig_structure over the receipt's protected header is then verified by openssl under the listed key."""
+    try:
+        raw = base64.b64decode(receipt["Bytes"])
+        msg, _ = cbor(raw)
+        protected, sig = msg[0], msg[3]
+        if not (len(msg) == 4 and isinstance(protected, bytes) and isinstance(sig, bytes) and msg[2] is None):
+            return False, "openssl: the receipt is not a detached COSE_Sign1"
+        if cbor(protected)[0].get(1) != -8:
+            return False, "openssl: the receipt's algorithm is not EdDSA"
+        # The signed payload is the leaf itself only in a one-entry tree, which is what the lab witness signs: an
+        # inclusion proof of tree size 1, leaf 0 and no path (RFC 9162 receipt, label 396).
+        proofs = msg[1][396][-1]
+        if not (len(proofs) == 1 and cbor(proofs[0])[0] == [1, 0, []]
+                and receipt.get("TreeSize") == 1 and receipt.get("LeafIndex") == 0):
+            return False, "openssl: the receipt is not a one-entry receipt (tree size 1, leaf 0, no path)"
+        rec = dict(bundle_cp, kind="mmr_checkpoint", v=1)
+        body = "{" + ",".join(f"{json.dumps(k)}:{cll_json(rec[k])}" for k in SIGNING_BODY) + "}"
+    except (KeyError, ValueError, IndexError, TypeError, AttributeError) as e:
+        return False, f"openssl: the receipt or the bundle's checkpoint could not be read ({e})"
+    entry = hashlib.sha256(hashlib.sha256(body.encode()).digest()).digest()
+    if entry.hex() != receipt.get("EntryHash"):
+        return False, "openssl: the receipt's entry hash is not the bundle checkpoint's"
+    leaf = hashlib.sha256(b"\0" + entry).digest()
+    tbs = (cbor_head(4, 4) + cbor_head(3, 10) + b"Signature1" + cbor_head(2, len(protected)) + protected
+           + cbor_head(2, 0) + cbor_head(2, len(leaf)) + leaf)
+    with tempfile.TemporaryDirectory(prefix="02-receipt-") as tmp:
+        m, s, p = Path(tmp) / "m", Path(tmp) / "s", Path(tmp) / "p.der"
+        m.write_bytes(tbs)
+        s.write_bytes(sig)
+        p.write_bytes(SPKI_ED25519 + bytes.fromhex(key_id))
+        r = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(p), "-keyform", "DER", "-rawin",
+                            "-in", str(m), "-sigfile", str(s)], capture_output=True)
+    if r.returncode != 0:
+        return False, f"openssl: the receipt's signature does not verify under {key_id} over the bundle's checkpoint"
+    return True, f"openssl verifies the receipt's signature under {key_id} over the bundle's checkpoint"
+
+
+def openssl_ed25519():
+    """Whether the openssl on PATH is OpenSSL 3.0 or later, which verifies Ed25519 with pkeyutl -rawin."""
+    if shutil.which("openssl") is None:
+        return False
+    r = subprocess.run(["openssl", "version"], capture_output=True, text=True)
+    return r.returncode == 0 and r.stdout.startswith("OpenSSL ") and r.stdout[8:].split(".")[0].isdigit() \
+        and int(r.stdout[8:].split(".")[0]) >= 3
 
 
 def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):

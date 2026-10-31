@@ -66,7 +66,7 @@ LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes 
 # A live step with a narrower owner than LIVE_ISSUE for why 08 cannot re-derive it yet.
 LIVE_STEP_ISSUES = {}  # a live step with a narrower owner than LIVE_ISSUE, by step number
 TWINS_ISSUE = "evidence-network/loop#209"  # the twins run's lab-4 has no nodes/ listing
-WITNESS_ISSUE = "evidence-network/loop#219"  # live 02's witness state is capsulectl's reading of the stored receipt
+WITNESS_ISSUE = "evidence-network/loop#219"  # a live 02 receipt held only on capsulectl's status (an older run)
 TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live step still takes on its own word
 SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
@@ -483,11 +483,20 @@ def keys_02_live(c, m):
                              "key inputs.json records is 02's reading of its data_dir", "issue": TRUST_ISSUE})
         elif kept["node_pub"] != load(listing).get("key_id"):
             bad.append(f"{name}/inputs.json node_pub is not the key nodes/{node_id}.json lists")
-    if receipts:
+    marked = {p.parent.name: load(p).get("receipt_check") == m.RECEIPT_CHECK for p in c.work.glob("*/inputs.json")}
+    held_offline = [p.parent.name for p in receipts if marked.get(p.parent.name)]
+    if held_offline and m.driver() is None:  # 02's judge verifies those receipts offline with the step 02 driver
+        raise Unreproducible("step 02: its judge, run again here",
+                             "the step 02 driver (loop-step02-book lab-check) is not installed where 08 runs; "
+                             "steps/02-book.setup.sh installs it")
+    if held_offline and not openssl_ed25519():  # and checks each signature again with openssl
+        raise Unreproducible("step 02: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    if len(held_offline) < len(receipts):  # a run before the offline check: the receipt is capsulectl's reading
         c.relies.append({"what": "step 02: each witness receipt's verified state",
-                         "why": "08 runs 02's witness checks again on witness-status.json, but the state is "
-                                "capsulectl's re-verification against the node's book on the lab, not a check 08 "
-                                "makes from the bundle", "issue": WITNESS_ISSUE})
+                         "why": "the run predates 02's offline receipt check, so the state is capsulectl's "
+                                "re-verification against the node's book on the lab, not a check 08 makes from the "
+                                "bundle", "issue": WITNESS_ISSUE})
     return bad
 
 
