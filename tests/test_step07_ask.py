@@ -989,6 +989,10 @@ class ReporterBackendTest(Tmp):
         # Any other request is not the question this step asks.
         other = dict(v0, profile="evidence-interop/9")
         self.assertNotEqual(step.expected_question(step.EXCHANGE, half, other), other)
+        # A sealed request that is not a JSON object is not the question either, and does not raise.
+        for value in ([], "x", None, 1):
+            self.assertNotEqual(step.expected_question(step.EXCHANGE, half, value), value)
+            self.assertEqual(step.request_profile(value), "evidence-interop/0")
 
     def test_an_exchange_refusal_signed_under_another_key_is_a_fail(self):
         r = self.run_live({**VERIFIED, "exchange": "refusal"}, announced="3" * 64, **dict(

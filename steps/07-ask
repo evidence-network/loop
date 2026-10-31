@@ -284,7 +284,7 @@ V1_REQUEST_REASONS = ("request_unauthenticated",)
 def request_profile(request):
     """The identifier a sealed request asks for: its `profile`, or evidence-interop/0 when it names none (IP v1
     §3.3 step 2)."""
-    return request.get("profile") or PROFILE_V0
+    return (request.get("profile") if isinstance(request, dict) else None) or PROFILE_V0
 
 
 def refusal_verdict(reason, profile=PROFILE_V0):
@@ -1075,7 +1075,7 @@ def expected_question(stem, half, request):
     the proof records (/0 for runs before /1, /1 since), so an earlier proof is judged as it was recorded; for the
     others, the reporter's question."""
     if stem == EXCHANGE:
-        recorded = request.get("profile")
+        recorded = request.get("profile") if isinstance(request, dict) else None
         return exchange_question(half, recorded if recorded in (PROFILE_V0, PROFILE_V1) else PROFILE_V1)
     return daily_report.QUESTIONS[stem]
 
