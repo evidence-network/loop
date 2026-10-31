@@ -16,12 +16,13 @@ mesh-llm-pr-2649 Mesh-LLM/mesh-llm 3e6c2fefd9fe30952d71ca4cee536fa5a2f02ab9
 mesh-llm-pr-2719 Mesh-LLM/mesh-llm 4beab7f643849b8fd5bfc7b8633ee3833622a3b3
 mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
 mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
-# The capsules plugin (the repo was Mesh-LLM/capsules): the 0.1.6 release. It carries everything
-# merged after v0.1.5 that the earlier pin (d1f4edc, through #138) listed, and the switch to
-# evidence-interop/1 (#162, Mesh-LLM/capsules-plugin#114): it answers both profile identifiers, asks
-# under /1 with a /0 retry, and refuses a limit of its own capacity_exceeded and a failed requester
-# authentication request_unauthenticated, so policy_declined and not_authorized are policy only.
-capsules Mesh-LLM/capsules-plugin v0.1.6
+# The capsules plugin (the repo was Mesh-LLM/capsules): the 0.1.7 release (b482749). It carries
+# 0.1.6 (evidence-interop/1, #162) and adds: an exchange ask is answered to a request signed under the
+# key the cited half verified under (#176, the step 07 refusal, #172); admission's price rule through
+# capsule-engine's guard with its asg/inference terms pack, with shipped caps of 500,000 input and
+# 1,500,000 output msat per million when no operator profile is set (#105, #165); and admission's
+# lists and base rows through capsule-engine's admission evaluator (#178). CHANGELOG 0.1.7.
+capsules Mesh-LLM/capsules-plugin v0.1.7
 # The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
 # matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
 # .cargo_vcs_info.json names the tag's commit, dd64efe7).
