@@ -109,7 +109,8 @@ citation, acceptance and signature are checked as any held half's, and a control
 is judged as any half's. One whose record names none is not an unbound sender (the plugin's leg push has carried none).
 The live result is PASS only when every node's checks held and no not_checked entry is left, including that each tied
 current-build exchange is held on both nodes (the receiver's own push shown by the sender holding it) and that no node
-reports the push off; the cutoff and the copied ledgers being whole are named by step 08 when it reproduces this step.
+reports the push off, and that each copied ledger file is the node's whole file at the checkpoint it signed (below);
+the cutoff is named by step 08 when it reproduces this step.
 Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
 a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
 not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
@@ -129,7 +130,11 @@ run copies each node's ledger files, controller binding and sharing report into 
 nodes.json (the cutoff, the pins missing, which node was read), then judges only the copies
 (judge_live), so step 08 checks each half again from the proof (loop#188). A ledger is copied
 with the payment preimage taken out of each record that carries one, at its own line (live.copy_redacted):
-the proof is published, a preimage never is.
+the proof is published, a preimage never is. Each ledger file is asked for at the node's console
+(LOOP_NODE_CONSOLES) first and copied after, keeping the lines its checkpoint reply covers with the reply
+beside the copy; the judge checks each copy with loop-ledger-check under the node's listed key
+(steps/ledger_proof.py, loop#288): one that does not check is a FAIL, and a refusal, no console, no listed key
+or no checker a not_checked entry.
 
 No spend: this step starts no exchange and pays nothing on either population.
 On the live population it reads the halves the lab run's exchanges left; the
@@ -157,6 +162,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import binding_verify as bv  # noqa: E402
 import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
+import ledger_proof  # noqa: E402
 import live  # noqa: E402
 
 ASSERTS = ("both sides seal halves of one deal, each citing the other half and the other side's checkpoint; "
@@ -1073,6 +1079,8 @@ def sharing_report(name, data_dir, out):
 # What the live judge reads, copied into the proof so step 08 runs it again on the proof alone (loop#188).
 NODES_FILE = "nodes.json"  # the cutoff, the pins missing, and per node whether its data_dir was read
 LEDGER_COPY = ("received-capsules.jsonl", "received-provenance.jsonl", "received-inclusion.jsonl", "capsules.jsonl")
+# Each copy is kept with the node's checkpoint reply beside it (ledger_proof.keep_checked), so the judge shows it the
+# node's whole file (loop#288); nodes.json says so with ledger_proof.SHAPE.
 
 
 def main_live(pop, out, started):
@@ -1080,6 +1088,7 @@ def main_live(pop, out, started):
     binding and sharing report, under out; keep nodes.json; then judge only those copies (judge_live)."""
     since_raw = os.environ.get("LOOP_SEALED_SINCE")
     sealed_since(since_raw)  # a malformed cutoff stops the step before any node is read
+    consoles = ledger_proof.consoles()  # a malformed LOOP_NODE_CONSOLES stops it too
     out.mkdir(parents=True, exist_ok=True)
     (out / NODES_FILE).unlink(missing_ok=True)
     missing = live_tools(driver())
@@ -1097,15 +1106,10 @@ def main_live(pop, out, started):
         if src is None:
             continue
 
-        def keep(path, redact=False):
+        def keep(path):
             dest = out / name / path.relative_to(src)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            # An unreadable file raises, so the step stops, as it did reading it live. A ledger is copied with each
-            # preimage taken out of its record (live.copy_redacted): the proof is published, a preimage never is.
-            if redact:
-                live.copy_redacted(path, dest)
-            else:
-                shutil.copyfile(path, dest)
+            shutil.copyfile(path, dest)  # an unreadable file raises, so the step stops, as it did reading it live
         # A binding is copied for every node a peer's half may be held to; "unread" is already its judged meaning.
         if (src / BINDING_FILE).is_file() and os.access(src / BINDING_FILE, os.R_OK):
             keep(src / BINDING_FILE)
@@ -1113,13 +1117,15 @@ def main_live(pop, out, started):
             continue
         if (src / SHARING_FILE).is_file() and os.access(src / SHARING_FILE, os.R_OK):
             keep(src / SHARING_FILE)
+        # Each ledger file: the node's checkpoint asked first, then copied and cut to the lines it covers, each
+        # preimage taken out of its record (live.copy_redacted): the proof is published, a preimage never is.
         for f in LEDGER_COPY:
-            if (src / "ledger" / f).is_file():
-                keep(src / "ledger" / f, redact=True)
+            ledger_proof.keep_checked(consoles.get(name), src / "ledger" / f, out / name / "ledger" / f, f)
     # The main commit the revocation statements are read from, fetched now: step 08 reads the same one.
     snap = bv.snapshot(revocations_root(), started)
     (out / NODES_FILE).write_text(json.dumps({"sealed_since": since_raw, "missing": missing, "read": read,
-                                              REVOCATIONS_KEY: snap}, indent=2, sort_keys=True) + "\n")
+                                              REVOCATIONS_KEY: snap, ledger_proof.SHAPE: 1},
+                                             indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)
     return 0
 
@@ -1127,9 +1133,9 @@ def main_live(pop, out, started):
 def live_result(results, not_checked):
     """The step's result over the nodes': PASS only when every node's checks held and no not_checked entry is left
     (a missing node, an untied or ambiguous half, an unbound sender, an unread binding, no half judged at all, a
-    node that reports no sharing). What no step-05 entry names is owned elsewhere: that a copied ledger is the
-    node's whole file is Mesh-LLM/capsules-plugin#175 and the cutoff LOOP_SEALED_SINCE is the run's word, both
-    named by step 08 when it reproduces this finding (steps/08-verify, LIVE_RELIES_ON and keys_05_live)."""
+    node that reports no sharing, a copy not shown the node's whole file). What no step-05 entry names is owned
+    elsewhere: what the checkpoint check does not cover and the cutoff LOOP_SEALED_SINCE (the run's word) are
+    named by step 08 when it reproduces this finding (steps/08-verify, ledger_relies and keys_05_live)."""
     worst = live.worst(results)
     return "NOT_CHECKED" if worst == "PASS" and not_checked else worst
 
@@ -1176,7 +1182,16 @@ def judge_live(pop, out, started):
                                                              members, since_raw, started, snap)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
-            proof += [f"{name}/ledger/{f}" for f in LEDGER_COPY if (out / name / "ledger" / f).is_file()]
+            if kept.get(ledger_proof.SHAPE):  # a run since loop#288: each copy against the node's checkpoint
+                perrs, pnotes, pproof = ledger_proof.judge(out / name / "ledger", LEDGER_COPY,
+                                                           listed_key(entry.get("node_id")), name)
+                proof += pproof
+                not_checked += pnotes
+                if perrs:
+                    results.append("FAIL")
+                    detail += f"; did not hold: {'; '.join(perrs)}"
+            else:
+                proof += [f"{name}/ledger/{f}" for f in LEDGER_COPY if (out / name / "ledger" / f).is_file()]
             details.append(detail)
             halves[name] = pairs
             vias |= summary["vias"]

@@ -26,7 +26,9 @@ FIXTURES = ROOT / "tests" / "fixtures" / "step08"
 TOOLS_DIR = Path(os.environ.get("LOOP_TOOLS") or Path.home() / ".cache" / "evidence-network-loop")
 
 sys.path.insert(0, str(STEPS))
+sys.path.insert(0, str(ROOT / "tests"))
 import finding  # noqa: E402
+import ledger_console  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("step08_verify", str(STEPS / "08-verify"))
 _spec = importlib.util.spec_from_loader("step08_verify", _loader)
@@ -867,7 +869,7 @@ class Step08Live04Test(unittest.TestCase):
         e = entries["04-admit"]
         self.assertEqual(e["status"], "reproduced", e["problems"])
         self.assertEqual(e["rederived"]["result"], "PASS")
-        self.assertIn(step.LIVE_RELIES_ON["04"][0], f["not_checked"])
+        self.assertIn(step.UNCHECKPOINTED["04"], f["not_checked"])  # a run before loop#288
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(finding.check(self.run), [])
 
@@ -1537,7 +1539,11 @@ class Step08Live09Test(unittest.TestCase):
         self.run = t / "2026-10-31-live"
         r = subprocess.run([str(STEPS / "09-dispute"), "--population", str(STEP09_LIVE), "--out",
                             str(self.run / "09-dispute")], capture_output=True, text=True, timeout=300,
-                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+                           env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+                                    **ledger_console.env(STEP09_LIVE, STEP09_LIVE, t / "nodes")))
+        self.checker = mock.patch.dict(os.environ, {"LOOP_LEDGER_CHECK_BIN": str(ledger_console.STUB)})
+        self.checker.start()
+        self.addCleanup(self.checker.stop)
         self.assertEqual(r.returncode, 0, r.stderr)
         write_run_json(self.run, ["09", "08"], "live", stage="1")
 
@@ -1560,7 +1566,11 @@ class Step08Live09Test(unittest.TestCase):
         self.assertEqual(recorded["result"], "PASS", recorded["detail"])
         f, entries = self.verify()
         self.assertEqual(entries["09-dispute"]["status"], "reproduced", entries["09-dispute"]["problems"])
-        self.assertIn(step.LIVE_RELIES_ON["09"][0], f["not_checked"])
+        whats = [x["what"] for x in f["not_checked"]]
+        self.assertNotIn(step.UNCHECKPOINTED["09"], f["not_checked"])  # each copy checked against its checkpoint
+        self.assertIn("step 09: each node's checkpoint reply was asked before its copy was read, and a file with no "
+                      "copy held no line", whats)
+        self.assertIn("step 09: each line of a node's copied capsules.jsonl is the record its capsule_id names", whats)
         self.assertIn("step 09: node lab-4's announced key", [x["what"] for x in f["not_checked"]])
         self.assertEqual({x["issue"] for x in f["not_checked"] if "lab-4" in x["what"]}, {step.TWINS_ISSUE})
 
@@ -1621,16 +1631,29 @@ class Step08Live09Test(unittest.TestCase):
         f, entries = self.plant(forge)
         self.assertEqual(f["result"], "FAIL", f["detail"])
 
-    def test_a_cut_ledger_stays_named_as_09s_reading(self):
-        # Cutting a party's received file is 09's word about what it copied: 08 can't see it, so the #193 entry
-        # that the ledgers are copied whole must stay in 08's not_checked.
-        def cut(d):  # a consistent forger: cut a party's received file, then judge the cut bundle again
-            next(d.glob("*/ledger/received-adjudications.jsonl")).unlink()
-            started = load(d / "finding.json")["started"]
-            with mock.patch.dict(os.environ, {"LAB_DIR": ""}):
-                step.step_module("09-dispute").judge_live({"population": "live"}, d, started)
-        f, entries = self.plant(cut)
-        self.assertIn(step.LIVE_RELIES_ON["09"][0], f["not_checked"])
+    def test_a_cut_ledger_fails_against_the_nodes_checkpoint(self):
+        # loop#288: a consistent forger cuts a party's received file (and its reply too) and judges the cut bundle
+        # again: the node's checkpoint reply, or its absence, fails it, where before 08 could only name it.
+        for also in ((), (".checkpoint.json",)):
+            with self.subTest(also=also):
+                def cut(d):
+                    path = next(d.glob("*/ledger/received-adjudications.jsonl"))
+                    for p in (path, *(Path(f"{path}{x}") for x in also)):
+                        p.unlink()
+                    started = load(d / "finding.json")["started"]
+                    with mock.patch.dict(os.environ, {"LAB_DIR": ""}):
+                        step.step_module("09-dispute").judge_live({"population": "live"}, d, started)
+                saved = Path(self.tmp.name) / "saved"
+                shutil.rmtree(saved, ignore_errors=True)
+                shutil.copytree(self.run / "09-dispute", saved)
+                f, entries = self.plant(cut)
+                recorded = load(self.run / "09-dispute" / "finding.json")
+                self.assertEqual(recorded["result"], "FAIL", recorded["detail"])
+                self.assertIn("received-adjudications.jsonl" + (".checkpoint.json is missing" if also else
+                              ": the node signed a checkpoint over it, but no copy is kept"), recorded["detail"])
+                self.assertEqual(entries["09-dispute"]["rederived"]["result"], "FAIL")  # 08 holds the FAIL too
+                shutil.rmtree(self.run / "09-dispute")
+                shutil.copytree(saved, self.run / "09-dispute")
 
     def test_a_node_the_population_lists_dropped_from_nodes_json_fails(self):
         def drop(d):

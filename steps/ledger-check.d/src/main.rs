@@ -374,10 +374,17 @@ mod tests {
         let mut lines: Vec<String> = String::from_utf8(copy.clone()).unwrap().lines().map(String::from).collect();
         // The node's chain reply covers 5 of the 6 lines the file holds when the copy is read (it grew after).
         let reply = reply_for(CHAIN, &copy[..lines[..5].iter().map(|l| l.len() + 1).sum()], 5, "capsules/abc");
-        lines[1] = format!("{{\"capsule_id\":\"{}\",\"preimage\":\"redacted: a payment preimage never leaves the lab host\",\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
+        // A settlement observation's line, its preimage withheld (steps/ledger_proof.py held_a_preimage).
+        lines[1] = format!("{{\"capsule_id\":\"{}\",\"model_attestation\":{{\"compute_attestation\":{{\"x-mesh-settlement-v1\":{{\"payment_hash\":\"cd\",\"preimage\":\"{REDACTED}\"}}}}}},\"x-loop-redacted\":{{\"line_sha256\":\"{}\"}}}}",
                            id(2), id(0));
         std::fs::write(dir.join("capsules.jsonl"), (lines.join("\n") + "\n").as_bytes()).unwrap();
         std::fs::write(dir.join("capsules.reply.json"), serde_json::to_vec_pretty(&reply).unwrap()).unwrap();
         std::fs::write(dir.join("key"), key()).unwrap();
+        // A sha256-line file (loop#288), whose leaves are its lines' own bytes.
+        let file = "received-capsules.jsonl";
+        let kept = "{\"a\":1}\n{\"b\":2}\n{\"c\":3}\n";
+        let reply = reply_for(file, kept.as_bytes(), 3, "capsules/abc/ledger/received-capsules.jsonl");
+        std::fs::write(dir.join(file), kept.as_bytes()).unwrap();
+        std::fs::write(dir.join("received-capsules.reply.json"), serde_json::to_vec_pretty(&reply).unwrap()).unwrap();
     }
 }

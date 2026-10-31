@@ -414,6 +414,7 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("steps/09-dispute --population", r.stdout)
         self.assertIn(str(ROOT / "population" / "live"), r.stdout)
+        self.assertIn("LOOP_NODE_CONSOLES=stevenmih-1=http://127.0.0.1:9811\\,", r.stdout)  # loop#288
         # With LAB_TWINS the four-node population `entries` wrote under the lab dir is read.
         r = lab_sh("--dry-run", "dispute", env={**self.env, "LAB_TWINS": "1"})
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -572,7 +573,8 @@ class DryRunTest(unittest.TestCase):
         # Step 04 is not in stage 1, so lab.sh admit runs it (evidence-network/loop#127).
         r = lab_sh("--dry-run", "admit", env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/04-admit --population "
+        # Each node's own console, where the step asks for its ledger checkpoints (evidence-network/loop#288).
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} LOOP_NODE_CONSOLES=stevenmih-1=http://127.0.0.1:9811\\,stevenmih-2=http://127.0.0.1:9812\\,stevenmih-3=http://127.0.0.1:9813 \S+/steps/04-admit --population "
                                    rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/04-admit\n")
         self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
         self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
@@ -580,7 +582,8 @@ class DryRunTest(unittest.TestCase):
     def test_deal_runs_step_05_on_the_live_population_into_the_days_findings(self):
         r = lab_sh("--dry-run", "deal", env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} \S+/steps/05-deal --population "
+        # Each node's own console, where the step asks for its ledger checkpoints (evidence-network/loop#288).
+        self.assertRegex(r.stdout, rf"env LAB_DIR={re.escape(str(self.lab))} LOOP_NODE_CONSOLES=stevenmih-1=http://127.0.0.1:9811\\,stevenmih-2=http://127.0.0.1:9812\\,stevenmih-3=http://127.0.0.1:9813 \S+/steps/05-deal --population "
                                    rf"\S+/population/live --out \S+/findings/\d{{4}}-\d{{2}}-\d{{2}}-live/05-deal\n")
         self.assertRegex(r.stdout, r"steps/finding\.py check \S+/findings/\d{4}-\d{2}-\d{2}-live\n")
         self.assertNotIn("/v1/chat/completions", r.stdout)

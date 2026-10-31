@@ -75,6 +75,13 @@ Result carries, a Result whose signature holds and that names another bracket
 aside; every other Result is judged (evidence-network/loop#122). The run keeps nodes.json (its nodes, which were read, each announced key) beside
 the copied ledgers and twin-fault.json, and judges only those files
 (judge_live), so step 08 checks each Result again from the proof (loop#188).
+Each ledger file is asked for at the node's console (LOOP_NODE_CONSOLES) first
+and copied after, keeping the lines its checkpoint reply covers with the reply
+beside the copy; the judge checks each copy with loop-ledger-check under the key
+the node's nodes/ (or nodes/twins/) entry lists, or for an unlisted node the key
+its data_dir announces, which step 08 names as 09's reading (steps/ledger_proof.py,
+loop#288): one that does not check is a FAIL, and a refusal, no console or no
+checker a not_checked entry.
 
 No spend: this step pays nothing on either population, with or without
 LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;
@@ -93,6 +100,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "09-dispute.d"))
 import aac  # noqa: E402
 import finding  # noqa: E402
+import ledger_proof  # noqa: E402
 import live  # noqa: E402
 
 ASSERTS = ("the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; "
@@ -675,14 +683,17 @@ def injected_difference(out, brackets):
 
 # What the live judge reads beside the ledgers, so step 08 runs it again on the proof alone (loop#188).
 NODES_FILE = "nodes.json"  # the run's nodes (name, node_id), which were read, their announced keys, key errors
+# Each copied ledger file is kept with the node's checkpoint reply beside it (ledger_proof.keep_checked), so the judge
+# shows it the node's whole file (loop#288); nodes.json says so with ledger_proof.SHAPE.
 
 
 def main_live(pop, out, started):
     """Copy each readable lab node's adjudication files and chain, keep nodes.json (the run's nodes, which were
     read, the key each node's data_dir announces), then judge only those files (judge_live)."""
+    consoles = ledger_proof.consoles()
     clean(out)
     readable, kept = {}, {"nodes": [{"name": e["name"], "node_id": e.get("node_id")} for e in pop["nodes"]],
-                          "read": {}, "announced": [], "key_errors": {}}
+                          "read": {}, "announced": [], "key_errors": {}, ledger_proof.SHAPE: 1}
     for entry in pop["nodes"]:
         d = live.readable(entry, "data_dir", "ledger")
         kept["read"][entry["name"]] = d is not None
@@ -694,13 +705,12 @@ def main_live(pop, out, started):
             kept["announced"].append([node_id, aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")])
         except (OSError, ValueError) as e:
             kept["key_errors"][name] = str(e)
-    # The proof bytes: a copy of each readable node's adjudication files and chain, the payment preimage taken out
-    # of each record that carries one (live.copy_redacted): the proof is published, a preimage never is.
+    # The proof bytes: a copy of each readable node's adjudication files and chain, the node's checkpoint asked
+    # first and the copy cut to the lines it covers, the payment preimage taken out of each record that carries one
+    # (live.copy_redacted): the proof is published, a preimage never is.
     for name, (_, d) in readable.items():
         for f in LEDGER_FILES:
-            if (d / "ledger" / f).is_file():
-                (out / name / "ledger").mkdir(parents=True, exist_ok=True)
-                live.copy_redacted(d / "ledger" / f, out / name / "ledger" / f)
+            ledger_proof.keep_checked(consoles.get(name), d / "ledger" / f, out / name / "ledger" / f, f)
     copy_twin_fault(out)
     (out / NODES_FILE).write_text(json.dumps(kept, indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)
@@ -752,6 +762,15 @@ def judge_live(pop, out, started):
                  for name, (node_id, _) in readable.items() if (out / name / "ledger" / RECEIVED).is_file()}
     for name in readable:
         details.append(f"node {name}: {held[name]} held Result line(s)")
+    # A run since loop#288: each copy against the node's checkpoint, under its listed key; a node with no listing
+    # (the twins run's fourth node) under the key its data_dir announces, the key its Results are held to, which
+    # step 08 names as 09's reading (keys_09_live).
+    whole_errs = []
+    for name, (node_id, _) in readable.items() if kept.get(ledger_proof.SHAPE) else ():
+        key = ledger_proof.listed_key(node_id) or announced.get(node_id)
+        perrs, pnotes, _ = ledger_proof.judge(out / name / "ledger", LEDGER_FILES, key, name)
+        whole_errs += [f"node {name}: {e}" for e in perrs]
+        not_checked += pnotes
     if bracket is not None:
         per_party, aside = in_bracket(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party}),
                                       bracket, announced)
@@ -768,7 +787,8 @@ def judge_live(pop, out, started):
     elif not any(held.values()):
         not_checked.append(NO_RESULT)
     else:
-        failed = failures(per_party)
+        failed = failures(per_party) + whole_errs
+        whole_errs = []
         if failed:
             result = "FAIL"
             details.append(f"did not hold: {'; '.join(failed)}")
@@ -784,6 +804,9 @@ def judge_live(pop, out, started):
         (out / "outcome.json").write_text(json.dumps(
             outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party})),
             indent=2, sort_keys=True) + "\n")
+    if whole_errs:  # no Result was judged, but a copy the node checkpointed does not check
+        result = "FAIL"
+        details.append(f"did not hold: {'; '.join(whole_errs)}")
     detail = "; ".join(details) + f". {MESH_ONLY} {SPEND}"
     return finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
                          proof=proof_files(out), detail=detail, not_checked=not_checked, started=started)
@@ -798,7 +821,11 @@ def main(argv):
     pop = read_json(Path(a.population) / "population.json")
     out = Path(a.out)
     if pop["population"] == "live":
-        return main_live(pop, out, started)
+        try:
+            return main_live(pop, out, started)
+        except ValueError as e:  # a malformed LOOP_NODE_CONSOLES
+            print(f"09-dispute: {e}", file=sys.stderr)
+            return 2
     if not (Path(a.population) / "step09" / "dispute.json").is_file():
         print(f"09-dispute: {a.population} has no step09/dispute.json", file=sys.stderr)
         return 2

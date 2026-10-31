@@ -892,16 +892,21 @@ for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
         print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
-  # Each node's own console, for step 12 to read that node's doctor: NAME=URL per population node, by the
-  # lab-N directory its data_dir names (the name is the operator's label).
-  node_consoles=$(python3 -c 'import json, re, sys
+  node_consoles=$(node_consoles "$ROOT/population/live/population.json")
+}
+
+# Each node's own console, NAME=URL per node of the population file $1, by the lab-N directory its data_dir names
+# (the name is the operator's label): step 12 reads each node's doctor there, and steps 04, 05 and 09 ask each node
+# for its ledger checkpoints there (evidence-network/loop#288).
+node_consoles() {
+  python3 -c 'import json, re, sys
 base, pop = int(sys.argv[1]), sys.argv[2]
 out = []
 for n in json.load(open(pop))["nodes"]:
     m = re.search(r"/nodes/lab-([0-9])/", n.get("data_dir") or "")
     if m:
         out.append(n["name"] + "=http://127.0.0.1:" + str(base + 10 + int(m.group(1))))
-print(",".join(out))' "$BASE" "$ROOT/population/live/population.json")
+print(",".join(out))' "$BASE" "$1"
 }
 
 cmd_loop() {
@@ -917,7 +922,8 @@ cmd_loop() {
 cmd_admit() {
   # Step 04 is not in loop.sh's stage 1 (evidence-network/loop#127), so it runs on its own, like deal.
   local out=$ROOT/findings/$TODAY-live
-  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/04-admit" --population "$ROOT/population/live" --out "$out/04-admit"
+  run env LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$(node_consoles "$ROOT/population/live/population.json")" \
+    "$ROOT/steps/04-admit" --population "$ROOT/population/live" --out "$out/04-admit"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -926,7 +932,8 @@ cmd_deal() {
   # Step 05 is not in loop.sh's stage 1, so it runs on its own, into the day's live findings
   # beside stage 1's, and the finding contract is checked over the whole directory.
   local out=$ROOT/findings/$TODAY-live
-  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/05-deal" --population "$ROOT/population/live" --out "$out/05-deal"
+  run env LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$(node_consoles "$ROOT/population/live/population.json")" \
+    "$ROOT/steps/05-deal" --population "$ROOT/population/live" --out "$out/05-deal"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
@@ -1070,7 +1077,9 @@ cmd_dispute() {
     pop=$LAB_DIR/population-twins
     [ "$DRY" = 1 ] || [ -s "$pop/population.json" ] || die "no $pop/population.json: run LAB_TWINS=1 entries first"
   fi
-  run env LAB_DIR="$LAB_DIR" "$ROOT/steps/09-dispute" --population "$pop" --out "$out/09-dispute"
+  local consoles=""
+  [ -s "$pop/population.json" ] && consoles=$(node_consoles "$pop/population.json")
+  run env LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$consoles" "$ROOT/steps/09-dispute" --population "$pop" --out "$out/09-dispute"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
