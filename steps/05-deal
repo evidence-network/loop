@@ -169,7 +169,9 @@ LIVE_ASSERTS = ("each node seals records naming both halves and citing the other
                 "under a controller declaration, whose binding names that key and applies (form, both signatures and "
                 "the window pass in a second language, and no published revocation statement applies), or, from a "
                 "sender that publishes no controller binding, on the evidence key it lists; halves from senders "
-                "outside the population are not judged")
+                "outside the population are not judged; the tie and the acceptance are judged for the halves sealed since the "
+                "run's cutoff (LOOP_SEALED_SINCE), an earlier half only for its bytes, provenance, inclusion and "
+                "citation")
 PINNED = ["evidencebook", "checkpointed-local-log"]
 POLICY_ON = "counterparty"
 DEFAULT_POLICY = "off"
@@ -1032,7 +1034,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, summary
     recorded = sorted({c["accepted"]["via"] for c in current})
-    return "NOT_CHECKED", proof, (
+    return "PASS", proof, (
         f"node {name}: {len(checks)} held halves, each held by its digest (Class 1 and the capsule_id recomputed by "
         f"the AAC Go verifier), under the checkpoint it was pushed with (evidencebook), and cited as "
         f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
@@ -1111,6 +1113,16 @@ def main_live(pop, out, started):
                                               REVOCATIONS_KEY: snap}, indent=2, sort_keys=True) + "\n")
     judge_live(pop, out, started)
     return 0
+
+
+def live_result(results, not_checked):
+    """The step's result over the nodes': PASS only when every node's checks held and no not_checked entry is left
+    (a missing node, an untied or ambiguous half, an unbound sender, an unread binding, no half judged at all, a
+    node that reports no sharing). What no step-05 entry names is owned elsewhere: that a copied ledger is the
+    node's whole file is Mesh-LLM/capsules-plugin#175 and the cutoff LOOP_SEALED_SINCE is the run's word, both
+    named by step 08 when it reproduces this finding (steps/08-verify, LIVE_RELIES_ON and keys_05_live)."""
+    worst = live.worst(results)
+    return "NOT_CHECKED" if worst == "PASS" and not_checked else worst
 
 
 def judge_live(pop, out, started):
@@ -1213,7 +1225,7 @@ def judge_live(pop, out, started):
     for nc in (*untied, *default, *acceptance_gaps, *unclaimed):
         if nc not in not_checked:
             not_checked.append(nc)
-    result = live.worst(results + ["NOT_CHECKED"])
+    result = live_result(results, not_checked)
     # Each copied controller binding another node's half may be held to is cited too.
     proof += [f"{e['name']}/{BINDING_FILE}" for e in pop["nodes"] if (out / e["name"] / BINDING_FILE).is_file()
               and f"{e['name']}/{BINDING_FILE}" not in proof]

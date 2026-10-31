@@ -1428,6 +1428,19 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
 
+    def test_live_result_is_pass_only_with_every_node_passing_and_no_entry_left(self):
+        gap = [{"what": "w", "why": "y", "issue": "i"}]
+        self.assertEqual(step.live_result(["PASS", "PASS", "PASS"], []), "PASS")
+        self.assertEqual(step.live_result(["PASS", "PASS", "PASS"], gap), "NOT_CHECKED")
+        self.assertEqual(step.live_result(["PASS", "NOT_CHECKED", "PASS"], []), "NOT_CHECKED")
+        self.assertEqual(step.live_result(["PASS", "FAIL", "NOT_CHECKED"], gap), "FAIL")
+
+    def test_live_a_node_whose_halves_all_hold_passes_its_own_checks_and_the_step_names_the_gaps_left(self):
+        f = self.run_live()
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertIn("node lab-a: ", f["detail"])
+        self.assertNotIn("lab-a: not checked", f["detail"])
+
     def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_own_half(self):
         leg = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {}}, "settlement": {}}
         record = lambda **rh: {"model_attestation": {"compute_attestation": {"received_half": rh}}}  # noqa: E731
