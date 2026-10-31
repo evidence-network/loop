@@ -55,7 +55,7 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
-| 04 Admit | `judge_live` on the copied proof: `nodes.json` (each node read or not, its ledger's record count and the record numbers kept) and each node's `decisions.jsonl` | none: 04 reads the ledger lines as written (their signatures are its own not_checked entry, evidence-network/loop#135) | nothing outside the repository |
+| 04 Admit | `judge_live` on the copied proof: `nodes.json` (each node read or not, its ledger's record count and the record numbers kept) and each node's `decisions.jsonl` | none: 04 reads the ledger lines as written (their signatures are a gap 04 names, evidence-network/loop#135) | nothing outside the repository |
 | 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker) |
 
 Live 07 decides from its proof alone: 07 collects first (it asks each node and reads the asker's ledger and the
@@ -71,6 +71,8 @@ evidence-network/loop#193, and 08 never reads PASS over it. The listed
 keys are read at 08's own checkout, so re-deriving an old run after a key rotation reads the new key (also #193).
 Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `failed`.
 
+A live 04 or 07 finding whose proof lacks `nodes.json` or `ask.json` predates the shape 08 re-derives: it is
+`not_reproduced`, never `failed`. The `<node>/rows.json` files live 04 writes again must be the cited bytes.
 Live 04's `decisions.jsonl` is 04's selection of the node's decision lines: a reproduced live 04 adds a not_checked
 entry on evidence-network/loop#193 that it holds every decision the ledger did. Live 09 is `not_reproduced` on
 evidence-network/loop#209: the twins run's fourth node has no `nodes/` listing to hold its key to.
