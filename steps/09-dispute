@@ -69,7 +69,10 @@ signer) is not run. When no lab node holds a Result, the finding is
 NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
 but the live twin trigger on real traffic is Mesh-LLM/capsules-plugin#126 and the
 lab has not run one): this step never seals a record on a live node to make one.
-The run keeps nodes.json (its nodes, which were read, each announced key) beside
+When the run copied a twin-fault.json (lab.sh twins) naming a bracket a held
+Result carries, only the Results of that bracket are judged; the others (an
+earlier twins run's, still in the ledgers) are named by bracket and set aside
+(evidence-network/loop#122). The run keeps nodes.json (its nodes, which were read, each announced key) beside
 the copied ledgers and twin-fault.json, and judges only those files
 (judge_live), so step 08 checks each Result again from the proof (loop#188).
 
@@ -619,6 +622,38 @@ def held_brackets(out, readable):
     return found
 
 
+def fault_bracket(out, brackets):
+    """The bracket twin-fault.json names, when a held Result carries it; None otherwise (no fault copied, an
+    unreadable one, or one naming a bracket no Result carries: then every held Result is judged, as before)."""
+    try:
+        b = json.loads((Path(out) / "twin-fault.json").read_text(encoding="utf-8")).get("twin_bracket_id")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return b if isinstance(b, str) and b in brackets else None
+
+
+def result_bracket(ledger, r):
+    """The twin bracket id of the Result `r` that check_held read from line r["held"] of the ledger's RECEIVED."""
+    held = (lines(Path(ledger) / RECEIVED)[r["held"] - 1] or {}).get("verdict_capsule") or {}
+    b = attestation(held).get("adjudication")
+    return b.get("twin_bracket_id") if isinstance(b, dict) else None
+
+
+def in_bracket(per_party, ledgers, bracket):
+    """(per_party with only the Results of `bracket`, {bracket: count} of the Results set aside). A ledger can
+    still hold a Result an earlier twins run sealed under another build (evidence-network/loop#122)."""
+    kept, aside = {}, {}
+    for name, rs in per_party.items():
+        kept[name] = []
+        for r in rs:
+            b = result_bracket(ledgers[name], r)
+            if b == bracket:
+                kept[name].append(r)
+            else:
+                aside[b] = aside.get(b, 0) + 1
+    return kept, aside
+
+
 def injected_difference(out, brackets):
     """The lab-only fault `lab.sh twins` wrote, as copied into the proof (twin-fault.json), as a sentence that
     labels it plainly; empty when the run copied none. The Result is then real (sealed by the plugin on lab nodes)
@@ -717,6 +752,13 @@ def judge_live(pop, out, started):
                  for name, (node_id, _) in readable.items() if (out / name / "ledger" / RECEIVED).is_file()}
     for name in readable:
         details.append(f"node {name}: {held[name]} held Result line(s)")
+    bracket = fault_bracket(out, held_brackets(out, readable))
+    if bracket is not None:
+        per_party, aside = in_bracket(per_party, {n: out / n / "ledger" for n in per_party}, bracket)
+        details.append(f"judged only the Results of bracket {bracket}, the one twin-fault.json names")
+        if aside:
+            details.append("set aside, not judged: " + ", ".join(
+                f"{c} Result(s) of bracket {b}" for b, c in sorted(aside.items(), key=lambda x: str(x[0]))))
     result = "NOT_CHECKED"
     (out / "checks.json").unlink(missing_ok=True)
     (out / "outcome.json").unlink(missing_ok=True)
