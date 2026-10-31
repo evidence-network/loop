@@ -47,10 +47,10 @@ it cites. The judge checks, on those bytes:
     a /0 request (or one naming no profile) is an unregistered reason, a FAIL;
     the exchange ask goes under evidence-interop/1, and an earlier run's proof
     is judged under the profile its sealed request records;
-    only coverage_unsatisfiable, deadline_unmet, request_malformed,
-    request_unauthenticated blame the request; retention_expired is NOT_CHECKED, as no node
-    publishes a retention commitment to judge it against (loop#60), and any
-    other reason, or none, is a FAIL;
+    only coverage_unsatisfiable, deadline_unmet, request_malformed and
+    request_unauthenticated blame the request; retention_expired is NOT_CHECKED,
+    as no node publishes a retention commitment to judge it against (loop#60),
+    and any other reason, or none, is a FAIL;
   - an absence's window opens at the request record and closes no earlier
     than the deadline, and the carrier delivered no reply by the deadline; a
     sent request with no recorded outcome is a failure.
@@ -300,7 +300,9 @@ def refusal_verdict(reason, profile=PROFILE_V0):
     request in the proof). Under evidence-interop/1 policy_declined and not_authorized are policy, so a breach,
     capacity_exceeded (a limit of the node's own) is not checked and request_unauthenticated blames the request.
     evidence-interop/0 registers neither -02 token, so either answering a /0 request is an unregistered reason, a
-    breach, and policy_declined and not_authorized cannot be judged (IP v1 §6.3, §9.1)."""
+    breach, and policy_declined and not_authorized cannot be judged (IP v1 §6.3, §9.1). retention_expired is not
+    checked under either profile: it is right only once a retention commitment lapses, and none is readable
+    (loop#60)."""
     if reason in REQUEST_REASONS:
         return "ok"
     if reason in RETENTION_REASONS:

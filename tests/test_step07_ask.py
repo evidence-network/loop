@@ -646,6 +646,11 @@ class ReporterBackendTest(Tmp):
         fail, nc = step.judge_exchange_line(line, entry, "evidence-interop/1")
         self.assertIsNone(fail)
         self.assertIn("a limit of the node's own", nc["why"])
+        retained = line.replace("capacity_exceeded", "retention_expired")
+        for profile in ("evidence-interop/0", "evidence-interop/1"):
+            fail, nc = step.judge_exchange_line(retained, entry, profile)
+            self.assertIsNone(fail)
+            self.assertEqual(nc["issue"], "evidence-network/loop#60")  # never counted as answered (loop#60)
         refused = line.replace("capacity_exceeded", "not_authorized")
         fail, _ = step.judge_exchange_line(refused, entry, "evidence-interop/1")
         self.assertIn("is refused (not_authorized)", fail)
