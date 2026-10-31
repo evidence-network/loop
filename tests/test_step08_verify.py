@@ -644,7 +644,7 @@ class Step08Live07Test(unittest.TestCase):
         self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] != step.RUN_ISSUE], step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
-    def test_live_10_and_11_then_read_not_checked_on_the_window(self):
+    def test_live_10_and_11_then_read_not_checked_on_the_judge_key(self):
         self.verify()
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         for base in ("10-judge", "11-report"):
@@ -659,10 +659,12 @@ class Step08Live07Test(unittest.TestCase):
         if window is None:  # the pinned pack is not fetched here: 10 stops before its window, on its setup
             self.assertEqual({nc["issue"] for nc in f10["not_checked"]}, {judge10.SETUP_ISSUE})
             return
-        # 07 is reproduced, so it is no refused step; its asks finished in the open month, outside the window.
-        self.assertTrue(any("07-ask" in x and "outside the window" in x for x in window["refused"]), window["refused"])
-        self.assertEqual({nc["issue"] for nc in f10["not_checked"]}, {judge10.WINDOW_ISSUE})
-        self.assertEqual({nc["issue"] for nc in f11["not_checked"]}, {judge10.WINDOW_ISSUE})
+        # 07 is reproduced and its asks finished in the as-of month, which the window now includes (Ethan, 2026-10-31).
+        self.assertFalse(any("07-ask" in x and "outside the window" in x for x in window["refused"]), window["refused"])
+        self.assertTrue(any(r["dir"] == "07-ask" for r in window["records"]), window["records"])
+        # What is left to check is only the lab host's judge key, not the window.
+        self.assertEqual({nc["issue"] for nc in f10["not_checked"]}, {judge10.JUDGE_KEY_ISSUE})
+        self.assertEqual({nc["issue"] for nc in f11["not_checked"]}, {judge10.JUDGE_KEY_ISSUE})
         self.assertEqual(finding.check(self.run), [])
 
     def plant(self, edit):

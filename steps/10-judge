@@ -52,7 +52,7 @@ its detail says the records are that stand-in, not this run's:
 
 --preview-open-month (evidence-network/loop#242) judges the open month instead: the calendar month containing 08's
 as-of instant, e.g. 2026-10-01 to 2026-11-01, with the same pinned pack and the same judge key. It is a look at records
-before their month closes, never a baseline result: the baseline window stays 12 whole closed months. It reads RUN
+before their month closes, never a baseline result: the baseline window is the 12 closed months plus the as-of month to date (so the open month is also in it). It reads RUN
 (--run, which holds 08-verify/, never the stand-in) and writes only --out, which may not lie inside RUN or findings/;
 every finding it writes has a detail that starts with finding.PREVIEW, which the ecosystem gate refuses. Its
 window.json names the sha256 of the manifest it judged, so step 11 can refuse a preview of another run.
@@ -270,7 +270,7 @@ def select(run, manifest, start, end, pack):
     """(records, refused, not_checked, problems) over 08's manifest.
 
     A record is {dir, step, path, sha256, kind, result}: a primary record file (binding.json `records`) that 08 lists for a reproduced step of the pack's kinds
-    whose step finished in [start, end). Only finding.json is read before that is known, and only after its
+    whose step finished in [start, end] (end is the as-of instant). Only finding.json is read before that is known, and only after its
     bytes match 08's digest.
     """
     records, refused, not_checked, problems = [], [], [], []
@@ -299,7 +299,7 @@ def select(run, manifest, start, end, pack):
                           and str(p.relative_to(d)) not in files and p.name != "loop-step.log")
         refused += [f"{e['dir']}/{p}: not in 08's manifest" for p in unlisted]
         kind = pack["kinds"][e["step"]]["kind"]
-        stepkind = record_kind(pack["kinds"][e["step"]], files)
+        stepkind = record_kind(pack["kinds"][e["step"]], files, manifest.get("population"))
         patterns = stepkind["records"]
         # A record is the step's primary record file(s) of its kind, so a count means deals, settlements, asks or
         # disputes; the bundles and proof files beside them are 08's, not counted.
@@ -459,11 +459,12 @@ def evaluate(ev, run, inputs):
     return verdicts, exchanges
 
 
-def record_kind(kind, paths):
+def record_kind(kind, paths, population):
     """`kind` with the `records` patterns that apply to the files 08 lists for a step: the kind's own, or, when none of
-    the files matches, its `records_if_none`. Live 09 keeps no dispute.json (Mesh disputes are adjudications only); its
+    the files matches, its `records_if_none`, on a live run only (a rehearsal 09 without its dispute.json is a FAIL).
+    Live 09 keeps no dispute.json (Mesh disputes are adjudications only); its
     record is the referee's sealed Result, outcome.json."""
-    if kind.get("records_if_none") and not any(fnmatch.fnmatchcase(p, g) for p in paths for g in kind["records"]):
+    if population == "live" and kind.get("records_if_none") and not any(fnmatch.fnmatchcase(p, g) for p in paths for g in kind["records"]):
         return dict(kind, records=kind["records_if_none"])
     return kind
 

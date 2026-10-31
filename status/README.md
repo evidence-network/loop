@@ -31,7 +31,7 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   never in its PASS. Its `verified.json` is what steps 10 and 11 read.
 - Row 10 (Judge) is step 10's own finding, read like any other row. Step 10
   reads only 08's manifest and the records of the steps it shows reproduced,
-  in a window of 12 whole closed months before 08 ran. A run without 08's
+  in a window of the 12 whole closed months before 08 ran plus the month 08 ran in, to date. A run without 08's
   manifest is judged on the committed stand-in run in
   `population/rehearsal/step10/run`, and its detail says so. A real run whose
   records are all in the open month reads `NOT_CHECKED`; a step 08 did not

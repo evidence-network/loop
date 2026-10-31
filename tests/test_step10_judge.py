@@ -189,7 +189,7 @@ class ManifestTest(Base):
         self.reseal_manifest(m)
         self.assertEqual(self.judge()["result"], "FAIL")
 
-    def test_todays_records_are_outside_the_window(self):
+    def test_a_step_finished_after_the_as_of_is_outside_the_window(self):
         # A step that finished after 08's as-of instant is outside the window, whatever month it is in.
         for base in WINDOW_STEPS:
             self.edit_step(base, finished="2026-10-03T00:00:00Z")
@@ -344,6 +344,7 @@ class JudgeTest(Base):
     def test_a_live_09_with_no_dispute_json_is_recorded_by_its_referee_outcome(self):
         # Mesh disputes are adjudications only: a live 09 keeps outcome.json, no dispute.json.
         m = self.manifest()
+        m["population"] = "live"
         e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
         e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
         self.reseal_manifest(m)
@@ -351,6 +352,15 @@ class JudgeTest(Base):
             self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
         self.assertEqual(problems, [])
         self.assertEqual([r["path"] for r in records if r["dir"] == "09-dispute"], ["outcome.json"])
+
+    def test_a_rehearsal_09_with_no_dispute_json_still_fails(self):
+        m = self.manifest()
+        m["population"] = "rehearsal"
+        e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
+        e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
+        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, ["09-dispute: 08 lists no dispute record (dispute.json)"])
 
     def live_05(self, settlement_leg=True):
         """The base run's 05 as live 05 keeps it (loop#225): two nodes' held halves of one exchange (copied from
