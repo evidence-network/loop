@@ -1165,6 +1165,7 @@ class Step08Live01Test(unittest.TestCase):
         e = entries["01-seal"]
         self.assertEqual(e["status"], "reproduced", e["problems"])
         self.assertEqual(e["rederived"]["result"], "PASS")
+        self.assertIn(step.LIVE_RELIES_ON["01"][0], f["not_checked"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_a_node_key_the_listing_does_not_publish_fails(self):

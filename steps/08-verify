@@ -368,7 +368,12 @@ def openssl_ed25519():
 
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"03": [
+LIVE_RELIES_ON = {"01": [
+    {"what": "step 01: what nodes.json says of each node (data_dir unread, a pin missing, or sealed by the node "
+             "itself)",
+     "why": "08 judges each kept capsule again, but which node was read, the pins found and own_seal are 01's "
+            "record of its run", "issue": TRUST_ISSUE},
+], "03": [
     {"what": "step 03: carrier.json's commit was the carrier's HEAD when 03 ran",
      "why": "08 holds the cited bytes to that commit, but that it was HEAD at the run (and no later commit) is "
             "03's reading", "issue": TRUST_ISSUE},
