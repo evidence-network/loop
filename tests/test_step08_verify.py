@@ -1568,6 +1568,26 @@ class Step08Live09Test(unittest.TestCase):
         self.assertIn("step 09: node lab-4's announced key", [x["what"] for x in f["not_checked"]])
         self.assertEqual({x["issue"] for x in f["not_checked"] if "lab-4" in x["what"]}, {step.TWINS_ISSUE})
 
+    def twins_listing(self, key=None):
+        mod = step.step_module("09-dispute")
+        twin = load(STEP09_LIVE / "population.json")["nodes"][3]
+        key = key or mod.aac.key_id_of_pem(STEP09_LIVE / "nodes" / twin["name"] / "data" / "keys" / "node-key.pub.pem")
+        d = Path(os.environ["LOOP_NODES_DIR"]) / "twins"
+        d.mkdir(exist_ok=True)
+        dump(d / f"{twin['node_id']}.json", {"node_id": twin["node_id"], "key_id": key})
+
+    def test_a_twins_node_listed_under_nodes_twins_has_its_key_held_and_is_no_longer_named(self):
+        self.twins_listing()  # loop#209
+        f, entries = self.verify()
+        self.assertEqual(entries["09-dispute"]["status"], "reproduced", entries["09-dispute"]["problems"])
+        self.assertFalse([x for x in f["not_checked"] if x["issue"] == step.TWINS_ISSUE], f["not_checked"])
+
+    def test_a_twins_key_the_nodes_twins_listing_does_not_publish_fails(self):
+        self.twins_listing(key="ab" * 32)
+        f, entries = self.verify()
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("nodes/twins/", f["detail"])
+
     def test_a_held_result_altered_fails(self):
         def forge(d):
             p = next(d.glob("*/ledger/received-adjudications.jsonl"))

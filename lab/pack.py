@@ -103,6 +103,20 @@ def host_name(node):
     return m.group(1) if m else node["name"]
 
 
+def make_entry(identity, operator, host_build, plugin_version):
+    return {
+        "node_id": identity["node_id"],
+        "key_id": identity["key_id"],
+        "operator": operator,
+        "consent": check_nodes.CONSENT,
+        "mesh": "lab",
+        "ask_route": "mesh",
+        "disclosure": {"policy": "counterparties", "stranger_safe": list(check_nodes.STRANGER_SAFE)},
+        "host_build": host_build,
+        "plugin_version": plugin_version,
+    }
+
+
 def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     """Write (or print) the entries. Returns a list of errors; empty means done."""
     build_path = Path(lab_dir) / "build.json"
@@ -116,7 +130,8 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
                   f"(operator {operator}, consent check_nodes.CONSENT, mesh lab, ask_route mesh)")
         print("would write population/live/population.json (the node ids, data_dir and book_dir)")
         for host in add_hosts:
-            print(f"would write {lab_dir}/population-twins/population.json (with {host}; not nodes/, not population/live)")
+            print(f"would write nodes/twins/<{host} node_id>.json and {lab_dir}/population-twins/population.json "
+                  f"(with {host}; not nodes/<node_id>.json, not population/live)")
         print(f"would write reporter/reporter.json ({reporter}'s node_id and key_id)")
         return []
     if not build_path.is_file():
@@ -129,9 +144,11 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
         return errs
     host_build, plugin_version = build_strings(build)
     pop = load(pop_path)
-    # A twins-only lab node (lab-4 with LAB_TWINS=1) is not a committed live node: it gets no nodes/ entry and is not in
-    # population/live. It joins a separate population written under the lab dir (population-twins/), which
-    # `lab.sh dispute` reads, so step 09 can verify its half without the committed population changing.
+    # A twins-only lab node (lab-4 with LAB_TWINS=1) is not a committed live node: it gets no nodes/<node_id>.json entry
+    # (the daily reporter asks, and /stats/ shows, every one) and is not in population/live. Its key is listed under
+    # nodes/twins/<node_id>.json, which neither reads, so step 08 can hold the key step 09 announced to a committed file
+    # (loop#209). It joins a separate population written under the lab dir (population-twins/), which `lab.sh dispute`
+    # reads, so step 09 can verify its half without the committed population changing.
     twins_pop = None
     extra = []
     for host in add_hosts:
@@ -155,17 +172,7 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
             identity = reporter_key.read_identity(d)
         except (OSError, ValueError) as e:
             return [f"{node['name']}: {e}"]
-        entry = {
-            "node_id": identity["node_id"],
-            "key_id": identity["key_id"],
-            "operator": operator,
-            "consent": check_nodes.CONSENT,
-            "mesh": "lab",
-            "ask_route": "mesh",
-            "disclosure": {"policy": "counterparties", "stranger_safe": list(check_nodes.STRANGER_SAFE)},
-            "host_build": host_build,
-            "plugin_version": plugin_version,
-        }
+        entry = make_entry(identity, operator, host_build, plugin_version)
         path = root / "nodes" / f"{identity['node_id']}.json"
         # Opting in to public pair edges is the operator's choice in their entry (evidence-network/loop#77), never the
         # lab's: an entries run keeps it, for the same operator only, and check_entry still refuses a bad value.
@@ -196,9 +203,16 @@ def entries(root, lab_dir, operator, reporter, dry_run=False, add_hosts=()):
     if extra:
         for node in extra:
             try:
-                node["node_id"] = reporter_key.read_identity(data_dir(lab_dir, host_name(node)))["node_id"]
+                identity = reporter_key.read_identity(data_dir(lab_dir, host_name(node)))
             except (OSError, ValueError) as e:
                 return [f"{node['name']}: {e}"]
+            node["node_id"] = identity["node_id"]
+            tpath = root / "nodes" / "twins" / f"{identity['node_id']}.json"
+            entry = make_entry(identity, operator, host_build, plugin_version)
+            errs = check_nodes.check_entry(tpath, entry)
+            if errs:
+                return errs
+            writes.append((tpath, dump(entry)))
         twins_pop = dict(pop, nodes=pop["nodes"] + extra)
         writes.append((Path(lab_dir) / "population-twins" / "population.json", json.dumps(twins_pop, indent=2) + "\n"))
     rep_path = root / "reporter" / "reporter.json"
@@ -252,12 +266,14 @@ def plan(root, lab_dir, day):
             missing.append(f"{run}/join/{node['name']}/ (run lab/lab.sh join)")
         files += joined
     # A twins run (LAB_TWINS=1 entries): the four-node population its 09-dispute finding ran on, and the twins-only node's join
-    # output, as lab provenance under the run (neither is committed live: lab-4 is not in population/live or nodes/).
+    # output, as lab provenance under the run (neither is committed live: lab-4 is not in population/live or listed in nodes/, only under nodes/twins/).
     twins_path = lab_dir / "population-twins" / "population.json"
     if twins_path.is_file():
         files.append((f"{run}/population-twins/population.json", twins_path))
         for node in load(twins_path)["nodes"]:
             if host_name(node) not in {host_name(n) for n in pop["nodes"]}:
+                if node.get("node_id"):
+                    files.append((f"nodes/twins/{node['node_id']}.json", root / "nodes" / "twins" / f"{node['node_id']}.json"))
                 joined = walk(lab_dir / "join" / host_name(node), f"{run}/join/{node['name']}")
                 if not joined:
                     missing.append(f"{run}/join/{node['name']}/ (run LAB_TWINS=1 lab/lab.sh join)")
