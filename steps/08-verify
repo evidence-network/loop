@@ -87,7 +87,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json", "counterparty.json"]}
+LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -400,8 +400,9 @@ LIVE_RELIES_ON = {
             "why": "recorded.json keeps each preimage check's outcome, never the preimage, so 08 takes that a "
                    "payer's preimage hashed to its payment_hash from 06", "issue": TRUST_ISSUE},
            {"what": "step 06: each settlement bundle a counterparty_count was checked against",
-            "why": "the proof holds each check's counts and the bundle's sha256, not the signed bundle or the check "
-                   "file, so 08 decides the count again from those rows and takes the bundle's bytes from 06",
+            "why": "the proof holds each check's status, counts and the bundle's sha256, not the signed bundle or the "
+                   "check file, so 08 takes the status against the bundle from 06 and decides again only that the "
+                   "paired count is the books' pair count",
             "issue": TRUST_ISSUE}],
     "09": [{"what": "step 09: each node's copied ledger files are the node's whole files",
             "why": "08 checks each held Result again on the copies, but no checkpoint the node signs covers them",
@@ -634,9 +635,10 @@ def keys_05_live(c):
 def rederive_06_live(m, c):
     """Live 06 on the Lightning rail (loop#243): its own main_lightning on the copied proof. Each node's
     recorded.json is the record 06 read from its ledger, so the ruled checks (reference, finality, band, rail_fee,
-    exchange_match) run again on them; counterparty_count is decided again from counterparty.json's rows by 06's
-    rule, since the check files and settlement bundles those rows come from are not in the proof. checks.json and
-    counterparty.json are written again and must be the cited bytes."""
+    exchange_match) run again on them. counterparty_count is decided from counterparty.json's rows by 06's rule:
+    08 takes each row's status, bundle sha256 and disclosed count from 06 (the check files and signed bundles are
+    not in the proof) and decides again only that its paired count is the books' pair count. checks.json is written
+    again and must be the cited bytes; counterparty.json is validated as rows and carried."""
     old_shape(c, "06", "checks.json")
     old_shape(c, "06", "counterparty.json")
     pop = load(c.pop / "population.json")
@@ -645,12 +647,16 @@ def rederive_06_live(m, c):
                              f"08 re-derives the live Lightning rail only, not {pop.get('rail')!r}", LIVE_ISSUE)
     ids = {n["name"]: n.get("node_id") for n in pop["nodes"]}
     recorded_checks = load(c.bundle / "checks.json")  # unlinked from the copy: the judge writes it again
+    if not isinstance(recorded_checks, dict):
+        raise Mismatch("checks.json is not an object of checks")
     rows = load(c.bundle / "counterparty.json")
     keys = {"bundle_sha256", "disclosed_settlements", "method", "node", "paired", "peer", "status", "unpaired"}
     pairs = {}
     for r in rows if isinstance(rows, list) else [None]:
         if not (isinstance(r, dict) and set(r) == keys and r["node"] in ids and r["peer"] in ids
-                and r["node"] != r["peer"] and (r["node"], r["peer"]) not in pairs):
+                and r["node"] != r["peer"] and (r["node"], r["peer"]) not in pairs
+                and all(type(r[k]) is int for k in ("paired", "unpaired")) and isinstance(r["status"], str)
+                and isinstance(r["bundle_sha256"], str)):
             raise Mismatch(f"counterparty.json holds a row that is not one check of a node's book against a peer's "
                            f"signed bundle: {json.dumps(r, sort_keys=True)[:200]}")
         pairs[(r["node"], r["peer"])] = r
@@ -669,8 +675,8 @@ def rederive_06_live(m, c):
             if r["status"] == "FAIL":
                 checks[what] = {"ok": False, "detail": f"{me}'s book contradicts {peer}'s signed bundle: "
                                                        f"{r['unpaired']} unpaired"}
-            elif (recorded_checks.get(what) or {}).get("ok") is None and str(
-                    recorded_checks[what].get("detail")).startswith(f"{me}'s check names a bundle that is missing"):
+            elif str((recorded_checks.get(what) or {}).get("detail")).startswith(
+                    f"{me}'s check names a bundle that is missing or changed since"):
                 checks[what] = recorded_checks[what]  # the bundle's bytes are not in the proof: 06's word
             elif r["status"] != "PASS" or r["paired"] != n:
                 checks[what] = {"ok": None, "detail": f"{me}'s check of {peer}'s signed bundle reads {r['status']} "

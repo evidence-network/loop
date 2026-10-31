@@ -1653,12 +1653,14 @@ def lightning_ledgers(lab, n=2):
         (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
-def live06(dst, tmp, n=2):
+def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
     out dir being dst: the proof 08 re-derives. Returns the finding."""
     import hashlib
     lab = Path(tmp) / "lab"
     lightning_ledgers(lab, n)
+    if drop_node:
+        shutil.rmtree(lab / f"lab-{drop_node}")
     doc = load(LIVE_POPULATION / "population.json")
     for i, node in enumerate(doc["nodes"], 1):
         node["data_dir"] = f"$STEP06_LAB/lab-{i}"
@@ -1671,8 +1673,11 @@ def live06(dst, tmp, n=2):
         dump(bundles / f"check.{ids[me]}.{ids[peer]}.json", {
             "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
             "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
-            "report": {"counterparty_count": {"status": "PASS", "method": "pairs", "paired": n, "unpaired": []},
+            "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": n if paired is None else paired,
+                                                 "unpaired": []},
                        "disclosed_count": {"settlements": n}}})
+        if tamper_bundle:
+            bundle.write_text("changed")
     doc["settlement_checks"] = str(bundles)
     pop = Path(tmp) / "pop"
     pop.mkdir()
@@ -1793,6 +1798,44 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.verify(pop)
         self.assertEqual(entries["06-settle"]["status"], "not_reproduced")
         self.assertIn("the live Lightning rail only", entries["06-settle"]["not_checked"]["why"])
+
+    def honest(self, **kw):
+        """A fresh honest 06 run with these differences, verified by 08."""
+        shutil.rmtree(self.run / "06-settle")
+        scratch = Path(self.tmp.name) / "honest"
+        scratch.mkdir()
+        self.recorded = live06(self.run / "06-settle", scratch, **kw)
+        return self.verify()
+
+    def test_an_honest_fail_row_is_reproduced_as_fail(self):
+        f, entries = self.honest(status="FAIL")
+        self.assertEqual(self.recorded["result"], "FAIL")
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+        self.assertEqual(entries["06-settle"]["rederived"]["result"], "FAIL")
+
+    def test_an_honest_check_older_than_the_books_is_reproduced_as_not_checked(self):
+        f, entries = self.honest(paired=1)
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_an_honest_changed_bundle_is_reproduced_as_not_checked(self):
+        f, entries = self.honest(tamper_bundle=True)
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        self.assertIn("missing or changed since", self.recorded["not_checked"][0]["why"])
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_an_honest_unreadable_node_is_reproduced_as_not_checked(self):
+        f, entries = self.honest(drop_node=3)
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_a_checks_file_without_a_rows_check_fails_naming_it(self):
+        def forge(d):
+            checks = load(d / "checks.json")
+            del checks["counterparty_count:stevenmih-1:stevenmih-2"]
+            dump(d / "checks.json", checks)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
 
     def test_an_old_shape_live_06_bundle_is_not_reproduced(self):
         def old(d):  # a live 06 from before checks.json and counterparty.json
