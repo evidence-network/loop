@@ -31,6 +31,7 @@ PEM private key or the mesh invite token stops the pack.
 --dry-run prints what would be written or packed and writes nothing.
 """
 import argparse
+import datetime as dt
 import hashlib
 import io
 import json
@@ -336,6 +337,24 @@ def pack(root, lab_dir, day, dry_run=False):
     return []
 
 
+def build_mark(path, binary, now=None):
+    """Write {plugin_sha256, since} to `path` for the plugin `binary` a lab node starts on: since is now unless the file
+    already names this binary's sha256, so a restart on the same binary keeps it and a new binary resets it
+    (evidence-network/loop#103). An unreadable or malformed file is written again. Returns the mark."""
+    sha = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+    try:
+        old = json.loads(Path(path).read_text(encoding="utf-8"))
+        dt.datetime.strptime(old["since"], "%Y-%m-%dT%H:%M:%SZ")
+    except (OSError, ValueError, KeyError, TypeError):
+        old = {}
+    if old.get("plugin_sha256") == sha:
+        return old
+    now = now or dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    mark = {"plugin_sha256": sha, "since": now}
+    Path(path).write_text(json.dumps(mark, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return mark
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -346,6 +365,9 @@ def main(argv=None):
     e.add_argument("--operator", required=True)
     e.add_argument("--reporter", default="lab-3")
     e.add_argument("--add-host", action="append", default=[], help="a twins-only lab host directory (lab-4): written to the lab dir's population-twins/, not to population/live")
+    b = sub.add_parser("build-mark")
+    b.add_argument("--file", required=True, type=Path)
+    b.add_argument("--binary", required=True, type=Path)
     p = sub.add_parser("pack")
     p.add_argument("--date", required=True)
     for s in (e, p):
@@ -360,6 +382,9 @@ def main(argv=None):
             print(f"pack.py: record {a.section}: not JSON on stdin: {e}", file=sys.stderr)
             return 1
         record(a.lab_dir, a.section, outcome)
+        return 0
+    if a.cmd == "build-mark":
+        build_mark(a.file, a.binary)
         return 0
     if a.cmd == "entries":
         errs = entries(a.root, a.lab_dir, a.operator, a.reporter, a.dry_run, a.add_host)

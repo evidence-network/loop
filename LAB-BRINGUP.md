@@ -37,7 +37,7 @@ export LAB_DIR=$HOME/loop-lab          # any empty directory you own
 | `$LAB_DIR/nodes/<name>/join-book/` | the book `join.sh` creates (`--home`) |
 | `$LAB_DIR/controllers/<name>/` | the controller key `join.sh` binds the node key to |
 | `$LAB_DIR/join/<name>/` | what `join.sh` wrote (`--out`): binding, book, commitment, probe |
-| `$LAB_DIR/run/` | pid files, launch scripts and the mesh invite token (mode 0700) |
+| `$LAB_DIR/run/` | pid files, launch scripts and the mesh invite token (mode 0700), and each node's plugin build mark `<name>.build.json` (the plugin binary's sha256 and since when the node runs it, which `start` writes and step 04 reads; not `$LAB_DIR/build.json`) |
 | `$LAB_DIR/logs/<name>.log` | each node's log. It holds the invite token: never copy a log off the host |
 | `$LAB_DIR/build.json` | what `check` confirmed about the build, and each `tools` setup's exit code |
 | `$LAB_DIR/out/loop-lab-<date>.tgz` | the tarball you bring back |

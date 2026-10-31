@@ -104,6 +104,13 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("git -C /src/capsules rev-parse HEAD", self.out)
         self.assertIn("sha256sum /opt/mesh-llm /opt/capsules", self.out)
 
+    def test_each_node_gets_its_build_mark_before_its_launch(self):
+        # loop#103: the mark's time must not be later than the node's first decision.
+        for name in ("lab-1", "lab-2", "lab-3"):
+            mark, launch = f"{self.lab}/run/{name}.build.json", f"tmux new-window -d -t loop-lab -n {name}"
+            self.assertIn(mark, self.out)
+            self.assertLess(self.out.index(mark), self.out.index(launch))
+
     def test_three_nodes_own_home_and_ports_no_relay(self):
         for i, name in enumerate(("lab-1", "lab-2", "lab-3"), 1):
             self.assertIn(f"HOME={self.lab}/nodes/{name} ", self.out)
@@ -854,6 +861,24 @@ class JudgeKeyTest(unittest.TestCase):
         r = self.judge_key()
         self.assertEqual(r.returncode, 2)
         self.assertIn("is a node's key", r.stderr)
+
+
+class BuildMarkTest(unittest.TestCase):
+    """lab/pack.py build-mark, which lab.sh start runs for each node (loop#103)."""
+
+    def test_a_restart_keeps_the_mark_and_a_new_binary_resets_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary, mark = Path(tmp) / "capsules", Path(tmp) / "lab-1.build.json"
+            binary.write_bytes(b"build one")
+            first = pack.build_mark(mark, binary, now="2026-10-31T06:00:00Z")
+            self.assertEqual(first["since"], "2026-10-31T06:00:00Z")
+            self.assertEqual(first["plugin_sha256"], hashlib.sha256(b"build one").hexdigest())
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T07:00:00Z"), first)  # same binary
+            binary.write_bytes(b"build two")
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T08:00:00Z")["since"], "2026-10-31T08:00:00Z")
+            mark.write_text("{")  # unreadable: written again
+            self.assertEqual(pack.build_mark(mark, binary, now="2026-10-31T09:00:00Z")["since"], "2026-10-31T09:00:00Z")
+            self.assertEqual(json.loads(mark.read_text())["since"], "2026-10-31T09:00:00Z")
 
 
 class RunbookTest(unittest.TestCase):
