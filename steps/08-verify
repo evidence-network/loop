@@ -24,8 +24,8 @@ this step, with no account and no network call:
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
   live          live steps 04 and 07 are re-derived the same way: their
-                judges read only their proof and the repository (the nodes/
-                listings). The other live steps' judges read a lab node's
+                judges read only their proof (and, for 07, the repository's
+                nodes/ listings). The other live steps' judges read a lab node's
                 data dir or console, so they are not_checked
                 (evidence-network/loop#188; 09: #209).
 
@@ -41,6 +41,7 @@ What each step's proof is, and how its judge is re-run, is steps/08-verify.md.
 Exit 0 once the finding is written, whatever the result.
 """
 import argparse
+import fnmatch
 import importlib.machinery
 import importlib.util
 import json
@@ -77,7 +78,10 @@ ASSERTS = ("an outsider reproduces every finding of the run offline from the run
 # A finding loop.sh wrote because the step broke: there is no judge to run again.
 BROKE = "the step runs to the end and writes its finding"
 # Files a status-page number is read from: the re-derived bytes must be the recorded ones.
-NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
+NUMBERS = {"04": ["counts.json", "*/rows.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
+# The file a live step's re-derivable proof always holds: a finding without it predates that shape (loop#188).
+LIVE_SHAPE = {"04": "nodes.json", "07": "ask.json"}
+OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
 
 def stages():
@@ -359,9 +363,10 @@ def openssl_ed25519():
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
 LIVE_RELIES_ON = {"04": [
-    {"what": "step 04: each node's decisions.jsonl holds every admission decision its ledger held",
-     "why": "08 judges the decision lines 04 kept and the record count nodes.json gives, but the node's ledger is "
-            "not in the bundle", "issue": TRUST_ISSUE},
+    {"what": "step 04: what nodes.json says of each node (read or not, its record count) and each decisions.jsonl "
+             "holding every admission decision its ledger held",
+     "why": "08 judges the decision lines 04 kept and what nodes.json says, but the node's ledger is not in the "
+            "bundle", "issue": TRUST_ISSUE},
 ], "07": [
     {"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
      "why": "08 checks every rule on 07's extract of the lab node's ledger (its line count and sha256 at read time "
@@ -377,7 +382,7 @@ LIVE_RELIES_ON = {"04": [
 
 def rederive_04_live(m, c):
     """Live 04: its own judge_live on the copied proof (nodes.json and each node's decisions.jsonl). It reads the
-    ledger lines as written and relies on no key (their signatures are 04's own not_checked entry, loop#135)."""
+    ledger lines as written and relies on no key (their signatures are a gap 04 names, loop#135)."""
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
@@ -498,6 +503,10 @@ def verify_step(d, pop_dir, population, tmp):
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                                  "its live judge reads a lab node's data dir or console while it decides, and the "
                                  "finding does not cite those bytes", LIVE_STEP_ISSUES.get(nn, LIVE_ISSUE))
+        if population != "rehearsal" and LIVE_SHAPE[nn] not in {p["path"] for p in record["proof"]}:
+            raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
+                                 f"its proof holds no {LIVE_SHAPE[nn]}: the finding predates the proof shape 08 "
+                                 "re-derives", OLD_SHAPE_ISSUE)
         steps = STEPS if population == "rehearsal" else LIVE_STEPS
         if nn not in steps:
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
@@ -531,8 +540,10 @@ def verify_step(d, pop_dir, population, tmp):
     if population != "rehearsal":
         entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
     entry["problems"] += mismatches(record, again)
-    entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in NUMBERS.get(nn, [])
-                          if n in {p["path"] for p in record["proof"]} and (work / n).read_bytes() != (d / n).read_bytes()]
+    # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
+    again_files = [p["path"] for p in record["proof"] if any(fnmatch.fnmatchcase(p["path"], g) for g in NUMBERS.get(nn, []))]
+    entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files
+                          if not (work / n).is_file() or (work / n).read_bytes() != (d / n).read_bytes()]
     return done("failed" if entry["problems"] else "reproduced")
 
 

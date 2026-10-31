@@ -617,6 +617,8 @@ def main_live(pop, out, started):
     out.mkdir(parents=True, exist_ok=True)
     (out / "finding.json").unlink(missing_ok=True)
     for entry in pop["nodes"]:
+        if Path(entry["name"]).name != entry["name"] or entry["name"] in ("", ".", ".."):
+            raise SystemExit(f"04-admit: node name {entry['name']!r} is not a single path component")
         shutil.rmtree(out / entry["name"], ignore_errors=True)
     nodes = {}
     for entry in pop["nodes"]:
@@ -636,36 +638,54 @@ def main_live(pop, out, started):
     return 0
 
 
+def kept_numbers(node):
+    """(record count, [record numbers]) of a node nodes.json reads as "ok", or ValueError: the count a whole number,
+    the numbers whole, strictly increasing and within 1..count, as main_live writes them."""
+    if node.get("read") != "ok":
+        raise ValueError(f"read is {node.get('read')!r}, not ok, data_dir or ledger")
+    total, numbers = node.get("records"), node.get("kept")
+    whole = lambda x: isinstance(x, int) and not isinstance(x, bool)  # noqa: E731
+    if not whole(total) or total < 0:
+        raise ValueError(f"records is {total!r}, not a whole number")
+    if not isinstance(numbers, list) or not all(whole(n) and 1 <= n <= total for n in numbers) \
+            or any(a >= b for a, b in zip(numbers, numbers[1:])):
+        raise ValueError(f"kept is not a strictly increasing list of record numbers within 1..{total}")
+    return total, numbers
+
+
 def judge_live(pop, out, started):
     """The live finding from what main_live kept under out (nodes.json and each node's decisions.jsonl) only."""
     out = Path(out)
-    details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [NODES_FILE], [], 0, False
+    details, not_checked, proof, problems, decided, unreadable = [], list(LIVE_NOT_CHECKED), [], [], 0, False
     tally = {"PASS": 0, "NOT_CHECKED": 0, "FAIL": 0}
+    nodes = None
     try:
         nodes = load(out / NODES_FILE)
+        proof.append(NODES_FILE)
         if not isinstance(nodes, dict):
             raise TypeError("not an object")
     except (OSError, ValueError, TypeError) as e:
-        nodes, problems = {}, [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"]
+        nodes, problems = None, [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"]
     names = [e["name"] for e in pop["nodes"]]
-    if nodes and sorted(nodes) != sorted(names):
+    if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
-    for name in names:
-        node = nodes.get(name) if isinstance(nodes.get(name), dict) else {}
+    for name in names if nodes is not None else []:
+        node = nodes.get(name)
+        if not isinstance(node, dict):
+            continue  # named above
         if node.get("read") in ("data_dir", "ledger"):
             not_checked.append(live.not_checked(name, node["read"]))
             details.append(f"node {name}: {'data_dir not set or unreadable' if node['read'] == 'data_dir' else 'ledger not readable'}")
             unreadable = True
             continue
+        kept_file = out / name / "decisions.jsonl"
         try:
-            total, numbers = int(node["records"]), [int(n) for n in node["kept"]]
-            text = (out / name / "decisions.jsonl").read_text(encoding="utf-8") if numbers else ""
-            lines = text.splitlines()
+            total, numbers = kept_numbers(node)
+            lines = kept_file.read_text(encoding="utf-8").splitlines() if kept_file.is_file() else []
             if len(lines) != len(numbers):
                 raise ValueError(f"decisions.jsonl holds {len(lines)} lines, nodes.json numbers {len(numbers)}")
         except (OSError, ValueError, KeyError, TypeError) as e:
-            if nodes:
-                problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
+            problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}

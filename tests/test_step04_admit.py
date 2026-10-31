@@ -198,6 +198,33 @@ class Live(unittest.TestCase):
             self.assertEqual(again["result"], record["result"])
             canon = lambda items: sorted(json.dumps(i, sort_keys=True) for i in items)  # noqa: E731
             self.assertEqual(canon(again["not_checked"]), canon(record["not_checked"]))
+            self.assertEqual(again["detail"], record["detail"])  # record numbers in problems included
+
+    def test_a_malformed_block_is_named_by_its_ledger_record_number(self):
+        # Records 1 and 3 carry no decision; record 2 is a malformed one: the problem names record 2, as before.
+        bad = json.dumps({"model_attestation": {"compute_attestation": {"admission_decision": {"verdict": "GO"}}}})
+        _, f = self.live_run(self.lab_with(['{"capsule_id":"00"}', bad, "", '{"capsule_id":"01"}']))
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("node lab-a record 2:", f["detail"])
+
+    def test_nodes_json_the_collector_cannot_write_fails(self):
+        out, f = self.live_run(self.lab_with(self.good()))
+        cases = {"an unknown read": {"read": "maybe"},
+                 "numbers out of range": {"read": "ok", "records": 1, "kept": [1, 5]},
+                 "numbers repeated": {"read": "ok", "records": 9, "kept": [2, 2]},
+                 "a count that is not whole": {"read": "ok", "records": True, "kept": []},
+                 "kept emptied beside a decisions file": {"read": "ok", "records": 9, "kept": []}}
+        for why, node in cases.items():
+            with self.subTest(why):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp) / "04-admit"
+                    shutil.copytree(out, work)
+                    nodes = load(work / "nodes.json")
+                    nodes["lab-a"] = node
+                    (work / "nodes.json").write_text(json.dumps(nodes))
+                    pop = {"population": "live", "nodes": [{"name": "lab-a"}, {"name": "lab-b"}]}
+                    again = step.judge_live(pop, work, f["started"])
+                    self.assertEqual(again["result"], "FAIL", again["detail"])
 
     def good(self):
         return [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
