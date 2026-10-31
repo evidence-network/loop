@@ -345,6 +345,20 @@ class ReportTest(Base):
         self.assertNotIn("deal-random-2", json.dumps(self.statement()))
         self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
 
+    def test_a_live_09_with_only_a_referee_outcome_counts_one_dispute_and_dispute_json_wins(self):
+        kind = {"kind": "dispute", "records": ["dispute.json"], "records_if_none": ["outcome.json"], "terms": []}
+        pack = {"kinds": {"09": kind}}
+        for files, population, want in ((["finding.json", "outcome.json"], "live", "1 of 1 dispute records"),
+                                        (["dispute.json", "outcome.json"], "live", "1 of 1 dispute records"),
+                                        (["finding.json", "outcome.json"], "rehearsal", "0 of 0 dispute records")):
+            manifest = {"population": population,
+                        "steps": [{"dir": "09-dispute", "step": "09", "status": "reproduced",
+                                   "files": [{"path": n} for n in files]}]}
+            cited = {f"09-dispute/{n}": "s" for n in files}
+            text = next(f["text"] for f in step.render_figures(manifest, {}, None, cited, pack, {"deals": {}, "exchanges": {}}, None)
+                        if f["id"] == "count:dispute")
+            self.assertIn(want, text, (files, population))
+
     def test_live_05_halves_of_one_exchange_are_one_deal(self):
         # Each node holds the other's half of one exchange: paired as step 05 pairs them (one requested and one served
         # half of one client_nonce on two nodes), the two are one deal citing both halves (Sherlock2, loop#250). A
@@ -370,7 +384,7 @@ class ReportTest(Base):
             text = next(f["text"] for f in figures if f["id"] == "count:deal")
             self.assertIn("3 of 3 deal records step 08 lists", text)  # the settlement leg is no deal record
             self.assertIn("2 of 3 live halves pair into deals, one per exchange held on both nodes, each citing both halves "
-                          "(1 of 3 halves pair with no other node's half)", text)
+                          "(1 of 3 halves have no pair on another node)", text)
             self.assertEqual(found, {"deals": {}, "exchanges": {}})  # nonce pairing never mixes with 06's exchange ids
             (src / "05-deal" / "lab-a" / "held-2.json").unlink()
             with self.assertRaises(step.Refused):
