@@ -71,9 +71,13 @@ digest, the binding itself is checked in a second language (`cross_language bind
 go/v0.16.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
 its `node_id`, listed in nodes/) must have that digest, name the half's evidence key and apply at the half's and
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
-applies", not a trust verdict and not which role the key has in it (AAC#468). A binding that does not apply or does
+applies", not a trust verdict and not which role the key has in it (AAC#468). The revocation statements published
+for the binding at `nodes/revocations/<binding_digest>.json` (loop#138, `scripts/binding_verify.py`) go to the
+verifier with it, so a binding revoked at or before either time does not apply. With none that applies, revocation
+is a not_checked entry under Controller Binding v0's open point CB-1: a statement published elsewhere cannot be
+excluded. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
-not_checked entry, as are revocation (no statement is read from the lab, loop#138) and the key's role.
+not_checked entry, as is the key's role.
 
 The tie (loop#107): each node seals a record naming both halves of an exchange (the citing record's
 `received_half.own_half_capsule_id`, capsules-plugin#138) and cites the other side's checkpoint. It must
@@ -89,9 +93,14 @@ Only halves sealed under the current build are judged for acceptance and the tie
 timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
-Unset, every held half is judged. Current-build halves accepted on the evidence key from a sender
-whose published commitment carries no equal operator binding are their own entry ("halves from an
-unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
+Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
+a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
+not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
+half accepted on the evidence key from a sender whose published commitment carries no controller binding, cited by
+a record naming none, is accepted on the key the sender lists in nodes/ (loop#187) and counted in the detail. "No
+binding" is read only from a commitment that verifies this run under that listed key; an unverified one stays a gap.
+Other current-build halves accepted on the evidence key, from a sender whose published commitment carries no
+equal operator binding, are their own entry ("halves from an unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
 read, are not_checked entries. Each held half's producer signature is checked in
 a second language (`cross_language signature`, AAC#463, aac-go go/v0.16.0): authored under the key the
 node's citing record accepted (`received_half.sender_key_id`) and, where the sender has a `nodes/<node_id>.json`
@@ -124,6 +133,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import binding_verify as bv  # noqa: E402
+import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
@@ -139,7 +149,9 @@ LIVE_ASSERTS = ("each node seals records naming both halves and citing the other
                 "foreign bytes by digest, with a producer signature that verifies in a second language under the "
                 "key the receiver accepted for the sender, and seals a record citing them; acceptance is keyed on the evidence key "
                 "under a controller declaration, whose binding names that key and applies (form, both signatures and "
-                "the window pass in a second language)")
+                "the window pass in a second language, and no published revocation statement applies), or, from a "
+                "sender that publishes no controller binding, on the evidence key it lists; halves from senders "
+                "outside the population are not judged")
 PINNED = ["evidencebook", "checkpointed-local-log"]
 POLICY_ON = "counterparty"
 DEFAULT_POLICY = "off"
@@ -324,14 +336,18 @@ LIVE_DECLARATION_WHAT = "the controller binding a node accepted a half under"
 
 
 BINDING_ROLE_ISSUE = "action-state-group/agent-action-capsule#468"
-BINDING_REVOCATION_ISSUE = "evidence-network/loop#138"
+# Controller Binding v0 registers no place to fetch revocation statements, so revocation is FAIL or NOT_CHECKED,
+# never PASS. The statements published in nodes/revocations/ are read (loop#138); reading that list as complete would
+# change CB-1, which is Steven's call (Sherlock2, Buzz f91277af).
+BINDING_REVOCATION_ISSUE = "action-state-group/agent-action-capsule#482"  # CB-1
 
 
 def live_declarations(counts, unread):
     """The not_checked entries for the controller binding behind current-build halves cited with a binding
     digest: `counts` is {state: n} of binding_check, `unread` the reasons a binding could not be read. For the
-    bindings that apply (ok), revocation is NOT_CHECKED (no revocation statement is read from the lab) and so is
-    the half's key's role in the binding (`Binds` takes either key)."""
+    bindings that apply (ok), revocation is NOT_CHECKED (CB-1: no statement in nodes/revocations/ applies, and a
+    statement published elsewhere cannot be excluded) and so is the half's key's role in the binding (`Binds`
+    takes either key)."""
     out = []
     if counts.get("unread"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,
@@ -342,8 +358,9 @@ def live_declarations(counts, unread):
                            f"implement"})
     if counts.get("ok"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
-                    "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no revocation "
-                           f"statement is read from the lab"})
+                    "why": f"{counts['ok']} cited bindings apply, with revocation NOT_CHECKED: no statement in "
+                           f"nodes/{bv.REVOCATIONS}/ applies, and Controller Binding v0 registers no source a verifier "
+                           f"could hold to be complete (CB-1)"})
         out.append({"what": "the half's key's role in the controller binding that applies",
                     "issue": BINDING_ROLE_ISSUE,
                     "why": f"{counts['ok']} cited bindings name the half's key; which of the two keys it is (node "
@@ -351,15 +368,19 @@ def live_declarations(counts, unread):
     return out
 
 
-LIVE_UNLISTED = "evidence-network/loop#174"  # a sender with no nodes/ listing: its key is only self-attested
+# A population sender with no nodes/ listing: its key is only self-attested. Every live population node is listed
+# at bring-up (lab.sh entries); a sender outside the population is not judged at all (loop#174).
+LIVE_UNLISTED = live.ISSUE
 LIVE_NO_VIA = "evidence-network/loop: the live lab run, on the pinned capsules build"
 
 
-# A half whose sender published no operator binding the citing record names (a lab node that has not run
-# lab.sh bind, or one that does not push its binding) is its own line, not the plugin gap capsules-plugin#113
-# closed with #135.
+# A half whose sender's published commitment and citing record disagree on the operator binding (no commitment
+# published, or one carrying a binding the record does not name: the node bound again after lab.sh commitments, or
+# does not push its binding) is its own line, not the plugin gap capsules-plugin#113 closed with #135. A sender that
+# publishes no binding at all is not on it: the binding is optional (loop#187).
 LIVE_UNBOUND_WHAT = "halves from an unbound sender"
-LIVE_UNBOUND_ISSUE = "evidence-network/loop: a lab node that publishes no operator binding (lab.sh bind)"
+LIVE_UNBOUND_ISSUE = ("evidence-network/loop: a sender's published commitment and its citing record disagree on the "
+                      "operator binding (lab.sh bind, lab.sh commitments)")
 
 
 def live_unbound(unbound, vias):
@@ -370,7 +391,7 @@ def live_unbound(unbound, vias):
             "why": f"{sum(unbound.values())} current-build halves accepted via {', '.join(vias)} from sender evidence "
                    f"keys {senders}, with no operator binding digest equal to the one in the sender's published "
                    f"commitment; the pinned plugin accepts them on the evidence key (capsules-plugin PR #77), so this "
-                   f"is the sender's missing binding, not a plugin gap"}
+                   f"is the sender's missing or stale published binding, not a plugin gap"}
 
 
 def live_never_tied(n):
@@ -526,10 +547,13 @@ def nodes_dir():
 
 
 def published_binding(key_id):
-    """(controller_binding.digest, {path, sha256}) of the commitment the node holding evidence key `key_id`
-    published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
+    """(controller_binding.digest, {path, sha256, verified}) of the commitment the node holding evidence key
+    `key_id` published at nodes/commitments/<node_id>.json (loop#88); (None, None) when there is no such node or
     commitment, and a None digest when the commitment carries no binding. The path and the sha256 of the bytes
-    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes."""
+    read go into checks.json, so a finding that says "bound" can be reproduced after nodes/ changes. `verified` is
+    true only when the commitment verifies this run (scripts/check_commitment.py: fields, its signature under its
+    spki) and names that node and `key_id`, the key the node's nodes/ listing holds: only then does "carries no
+    binding" say the sender published none (loop#187), since an unsigned or stripped file could hide one."""
     d = nodes_dir()
     for entry in sorted(d.glob("*.json")):
         try:
@@ -537,11 +561,15 @@ def published_binding(key_id):
             if node.get("key_id") != key_id:
                 continue
             raw = (d / "commitments" / f"{node['node_id']}.json").read_bytes()
-            digest = (json.loads(raw).get("controller_binding") or {}).get("digest")
-        except (OSError, ValueError, KeyError, AttributeError):
+            doc = json.loads(raw)
+            digest = (doc.get("controller_binding") or {}).get("digest")
+        except (OSError, ValueError, KeyError, AttributeError, TypeError):
             continue
+        errs, _ = cc.verify(doc, cc.file_fetcher(d / "commitments"))
+        verified = not errs and doc.get("key_id") == key_id and doc.get("node_id") == node["node_id"]
         return (digest if is_key(digest) else None,
-                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest()})
+                {"path": f"nodes/commitments/{node['node_id']}.json", "sha256": hashlib.sha256(raw).hexdigest(),
+                 "verified": verified})
     return None, None
 
 
@@ -584,8 +612,9 @@ def binding_check(digest, half, citing, peers):
     the half's key, found among `peers` ({node_id: (name, data_dir)}). The binding must have the digest the citing
     record names, name the half's evidence key, and apply at the half's and the citing record's issue times (form,
     both signatures, window; revocation not FAIL). That is "the binding applies", never a trust verdict, and not
-    which role the key has in it (agent-action-capsule#468). Revocation is NOT_CHECKED: nothing in the lab carries
-    a revocation statement.
+    which role the key has in it (agent-action-capsule#468). The revocation statements published for the binding
+    (nodes/revocations/<digest>.json, loop#138) go to the verifier with it: one that applies at or before either
+    time makes the binding not apply ("bad"). With none that applies, revocation is NOT_CHECKED (CB-1).
 
     state: "ok"; "bad" (the binding the record names does not apply, or does not name the half's key);
     "unread"
@@ -609,7 +638,8 @@ def binding_check(digest, half, citing, peers):
     if not all(issued):
         return "unread", "the half or the citing record carries no readable timestamp to hold the window to"
     times = sorted(set(issued))
-    verdict, report, err, code = bv.verify(cross_language(), raw, key, times)
+    statements = bv.revocations(nodes_dir(), digest)
+    verdict, report, err, code = bv.verify(cross_language(), raw, key, times, statements)
     if verdict is None:
         raise RuntimeError(f"cross_language binding exited {code} ({err}); "
                            f"run steps/01-seal.setup.sh for the pinned aac-go")
@@ -624,7 +654,8 @@ def binding_check(digest, half, citing, peers):
     if verdict == "unsupported":
         return "unsupported", f"binding {digest} ({name}): {', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}"
     return "ok", (f"binding {digest} ({name}) names the half's key {key} and applies at {', '.join(times)}: form, "
-                  f"signatures and window PASS, revocation {props.get('controller_binding_revocation')}")
+                  f"signatures and window PASS, revocation {props.get('controller_binding_revocation')} "
+                  f"(no statement in nodes/{bv.REVOCATIONS}/ applies; {len(statements)} published)")
 
 
 def accepted(citing, half):
@@ -636,7 +667,10 @@ def accepted(citing, half):
     counterparty bound to the receiver's own controller (same_controller_as_receiver true). `bound` is
     true when the record names a controller_binding_digest equal to the controller_binding.digest in the
     sender's published commitment, however the key was accepted; a declaration has no anchor key under a
-    bip340 anchor, so the own-key check applies only when one is present.
+    bip340 anchor, so the own-key check applies only when one is present. `optional` is true when the record
+    names no binding digest and the sender (the node whose nodes/ listing holds the half's key) publishes a
+    commitment with no controller binding, verified this run under that key: the binding is optional (loop#187),
+    so the half is accepted on the listed evidence key. An unverified commitment leaves it unbound.
     """
     rh = ((citing.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half")
     rh = rh if isinstance(rh, dict) else {}
@@ -673,7 +707,13 @@ def accepted(citing, half):
         return {"ok": True, "via": via, "bound": False, **compared,
                 "detail": f"accepted the half's key {half.get('key_id')} via {via}, naming operator binding "
                           f"{digest}, which the sender's published commitment does not carry"}
-    return {"ok": True, "via": via, "bound": False,
+    published, commitment = published_binding(half.get("key_id"))
+    if commitment and commitment["verified"] and published is None and digest is None:
+        return {"ok": True, "via": via, "bound": False, "optional": True, "commitment": commitment,
+                "detail": f"accepted the half's key {half.get('key_id')} via {via}, the key the sender lists in "
+                          f"nodes/; the sender's published commitment, verified under that key, carries no controller "
+                          f"binding (optional)"}
+    return {"ok": True, "via": via, "bound": False, **({"commitment": commitment} if commitment else {}),
             "detail": f"accepted the half's key {half.get('key_id')} via {via}"}
 
 
@@ -798,12 +838,15 @@ def tie(citing, nonce, role, own_lines, held):
     return "tied", f"own half {own_id}, nonce {nonce}, role {o_role} against the held half's {role}"
 
 
-def live_node(bin_, name, data_dir, out, work, peers):
-    """Check every half the node holds: (result, proof, detail, pairs, summary).
+def live_node(bin_, name, data_dir, out, work, peers, members):
+    """Check every half the node holds from a node of the population (`members`, its node_ids): (result, proof,
+    detail, pairs, summary).
 
-    summary: {"unclaimed", "unkeyed", "unlisted", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias", "unbound"}. Acceptance and the tie
-    are judged on the halves sealed under the current build (LOOP_SEALED_SINCE); an earlier half still has its
-    bytes, provenance, inclusion and citation checked."""
+    summary: {"unclaimed", "unkeyed", "unlisted", "judged", "earlier", "tied", "never_tied", "ambiguous", "vias",
+    "unbound", "optional", "outside"}. Acceptance and the tie are judged on the halves sealed under the current
+    build (LOOP_SEALED_SINCE); an earlier half still has its bytes, provenance, inclusion and citation checked. A
+    half whose provenance names a sender outside the population (lab-4, the twins-only node, loop#174) is out of
+    the step's scope: counted by sender in `outside` and in checks.json, never judged."""
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
     ledger = data_dir / "ledger"
@@ -812,21 +855,28 @@ def live_node(bin_, name, data_dir, out, work, peers):
     inclusions = [p for p in map(parsed, lines(ledger / "received-inclusion.jsonl")) if p]
     own_lines = lines(ledger / "capsules.jsonl")
     own = [c for c in map(parsed, own_lines) if c]
-    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "binding": {}, "unread": set()}
+    summary = {"unclaimed": 0, "unkeyed": 0, "unlisted": 0, "judged": 0, "earlier": 0, "tied": 0, "never_tied": 0, "ambiguous": 0, "vias": set(), "unbound": {}, "optional": 0, "outside": {}, "binding": {}, "unread": set()}
     if not held:
         return "NOT_CHECKED", [], f"node {name}: holds no pushed half", [], summary
     since = sealed_since()
-    checks, proof = [], []
+    checks, proof, outside = [], [], []
     for n, raw in enumerate(held, 1):
         stem = f"held-{n}"
-        (out / f"{stem}.json").write_text(raw + "\n")
-        proof.append(f"{stem}.json")
         capsule = parsed(raw) or {}
         cid = capsule.get("capsule_id")
-        c = {"held": stem, "capsule_id": cid}
+        prov = next((p for p in provenance if p.get("capsule_id") == cid), None)
+        sender = (prov or {}).get("received_from")
+        # only a sender named by a well-formed node_id is out of scope; a missing or malformed one is judged (and fails)
+        if is_key(sender) and sender not in members:
+            outside.append({"held": stem, "capsule_id": cid, "received_from": sender, "key_id": capsule.get("key_id")})
+            key = capsule.get("key_id") if is_key(capsule.get("key_id")) else "unknown"
+            summary["outside"][key] = summary["outside"].get(key, 0) + 1
+            continue
+        (out / f"{stem}.json").write_text(raw + "\n")
+        proof.append(f"{stem}.json")
+        c = {"held": stem, "capsule_id": cid, "key_id": capsule.get("key_id")}
         ok, detail = capsule_checks(raw)
         c["held_by_digest"] = {"ok": ok, "detail": detail}
-        prov = next((p for p in provenance if p.get("capsule_id") == cid), None)
         c["provenance"] = {"ok": prov is not None,
                            "detail": f"received from {prov.get('received_from')} via {prov.get('via')} at "
                                      f"{prov.get('received_at')}" if prov else "no provenance line names it"}
@@ -877,9 +927,14 @@ def live_node(bin_, name, data_dir, out, work, peers):
             state, detail = "uncited", detail.split(";")[0] + "; no record of the node cites it, so there is no accepted key"
         c["signature"] = state_check(state, detail)
         checks.append(c)
+    beyond = (f"; {len(outside)} held halves from senders outside the population, not judged (evidence keys "
+              + ", ".join(f"{k[:16]} ({n})" for k, n in sorted(summary["outside"].items())) + ")") if outside else ""
     (out / "checks.json").write_text(json.dumps({"node": name, "sealed_since": os.environ.get("LOOP_SEALED_SINCE"),
-                                                 "held": checks}, indent=2, sort_keys=True) + "\n")
+                                                 "held": checks, "outside_population": outside},
+                                                indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
+    if not checks:
+        return "NOT_CHECKED", proof, f"node {name}: holds no pushed half from a node of the population{beyond}", [], summary
     failed = [f"{c['held']} {k} ({v['detail']})" for c in checks for k, v in c.items() if isinstance(v, dict) and not v["ok"]]
     current = [c for c in checks if "accepted" in c]
     for state in ("unclaimed", "unkeyed", "unlisted"):
@@ -895,17 +950,23 @@ def live_node(bin_, name, data_dir, out, work, peers):
         if c["tied"]["state"] != "bad":
             summary[c["tied"]["state"]] += 1
         # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
-        # controller declaration, however the plugin first accepted it; an unbound sender is its own line.
+        # controller declaration, however the plugin first accepted it. A sender whose published commitment
+        # carries no binding, cited by a record naming none, is accepted on its listed evidence key: the binding
+        # is optional (loop#187). Any other key-only acceptance is an unbound sender's own line.
         a = c["accepted"]
         if a["bound"]:
             summary["vias"].add("controller_declaration")
         elif a["via"] in VIA_KEY:
-            key = parsed(held[checks.index(c)]).get("key_id") or "unknown"
-            summary["unbound"][key] = summary["unbound"].get(key, 0) + 1
+            if a.get("optional"):
+                summary["optional"] += 1
+            else:
+                key = c.get("key_id") or "unknown"
+                summary["unbound"][key] = summary["unbound"].get(key, 0) + 1
             summary["vias"].add(a["via"])
         else:
             summary["vias"].add(a["via"])
-    pairs = [exchange_key(capsule) for capsule in map(lambda r: parsed(r) or {}, held)]
+    kept = {c["held"] for c in checks}
+    pairs = [exchange_key(parsed(raw) or {}) for n, raw in enumerate(held, 1) if f"held-{n}" in kept]
     if failed:
         return "FAIL", proof, f"node {name}: did not hold: {'; '.join(failed)}", pairs, summary
     recorded = sorted({c["accepted"]["via"] for c in current})
@@ -915,7 +976,8 @@ def live_node(bin_, name, data_dir, out, work, peers):
         f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
         + (f" (accepted the half's key via {', '.join(recorded)}; {summary['tied']} tied to the node's own half, "
            f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if current else "")
-        + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")), pairs, summary
+        + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")
+        + beyond), pairs, summary
 
 
 def sharing_report(name, data_dir, out):
@@ -946,6 +1008,8 @@ def main_live(pop, out, started):
     vias, unbound, no_sharing = set(), {}, []
     peers = {e["node_id"]: (e["name"], d) for e in pop["nodes"]
              if isinstance(e.get("node_id"), str) and (d := live.path(e, "data_dir")) is not None}
+    members = {e["node_id"] for e in pop["nodes"] if isinstance(e.get("node_id"), str)}
+    optional = 0
     binding, unread = {}, set()
     with tempfile.TemporaryDirectory(prefix="05-deal-") as tmp:
         for entry in pop["nodes"]:
@@ -960,7 +1024,8 @@ def main_live(pop, out, started):
                 continue
             if (out / name).exists():
                 shutil.rmtree(out / name)
-            result, files, detail, pairs, summary = live_node(bin_, name, data_dir, out / name, Path(tmp) / name, peers)
+            result, files, detail, pairs, summary = live_node(bin_, name, data_dir, out / name, Path(tmp) / name, peers,
+                                                             members)
             results.append(result)
             proof += [f"{name}/{f}" for f in files]
             details.append(detail)
@@ -973,9 +1038,11 @@ def main_live(pop, out, started):
                 total[k] += summary[k]
             for k, n in summary["unbound"].items():
                 unbound[k] = unbound.get(k, 0) + n
-            if not files:
-                not_checked.append({"what": f"{name}: a pushed half held", "why": "the node holds no pushed half "
-                                    "from the lab run's exchanges", "issue": live.ISSUE})
+            optional += summary["optional"]
+            if not any(f.startswith("held-") for f in files):
+                not_checked.append({"what": f"{name}: a pushed half held", "issue": live.ISSUE, "why": (
+                    "the node holds no pushed half from a node of the population, only halves from senders outside "
+                    "it" if summary["outside"] else "the node holds no pushed half from the lab run's exchanges")})
             report, file = sharing_report(name, data_dir, out / name)
             if file:
                 proof.append(file)
@@ -989,6 +1056,10 @@ def main_live(pop, out, started):
     details.append(f"judged under the current build{f' (sealed since {since})' if since else ' (LOOP_SEALED_SINCE unset: every held half)'}: "
                    f"{total['judged']} halves, {total['tied']} tied to the node's own half, {total['never_tied']} "
                    f"{LIVE_NEVER_TIED}, {total['ambiguous']} ambiguous; {total['earlier']} sealed earlier, not judged")
+    if optional:
+        details.append(f"{optional} current-build halves accepted on the evidence key their sender lists in nodes/, "
+                       f"from senders whose published commitment carries no controller binding (the binding is "
+                       f"optional, loop#187)")
     acceptance_gaps = live_declarations(binding, unread)
     if unbound:
         acceptance_gaps.append(live_unbound(unbound, sorted(vias & set(VIA_KEY))))
