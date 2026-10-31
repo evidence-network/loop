@@ -6,7 +6,7 @@ Usage: check_revocations.py [DIR]   (default: nodes/revocations; a missing folde
 Each file is a non-empty JSON array of Controller Binding v0 §5 statements for the binding its name gives:
 exactly the members revocation_version (controller-binding-revocation/0), binding (the file's digest), key_id,
 revoked_at and sig. Signatures and times are not checked here: step 05 passes the statements to the pinned
-verifier (`cross_language binding`), which ignores one that does not apply. Step 12 does not read them yet.
+verifier (`cross_language binding`), which ignores one that does not apply. Step 12 does the same.
 Exit 0 = clean, 1 = refused.
 """
 import sys

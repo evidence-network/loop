@@ -9,6 +9,8 @@ Fixtures: tests/fixtures/step12/, made by make_fixtures.py.
 import base64
 import contextlib
 import copy
+import functools
+import hashlib
 import io
 import importlib.machinery
 import importlib.util
@@ -19,6 +21,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -129,10 +132,9 @@ class DoctorBackendTest(Tmp):
         r = json.loads((self.out / "finding.json").read_text())
         self.assertEqual(r["result"], "PASS", r["detail"])
         self.assertEqual(r["not_checked"], [])
-        # The record is checked by the Go verifier; what stays outside the assertion: revocation (loop#138) and
-        # the node key's role in the binding (AAC#468).
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])],
-                         ["evidence-network/loop#138", "action-state-group/agent-action-capsule#468"])
+        # The record is checked by the Go verifier, the node key's role included (AAC#468); what stays outside the
+        # assertion is revocation (CB-1, agent-action-capsule#482).
+        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#482"])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -427,7 +429,7 @@ class ReporterBackendTest(Tmp):
         """The probe answers' per-node entries: not the binding's, nor the plugin's doctor --probe and join's."""
         return [i for i in r["not_checked"] if i["what"].startswith("lab-") and "binding" not in i["what"]
                 and "doctor --probe" not in i["what"] and "the plugin's" not in i["what"]
-                and "commitment/1" not in i["what"]]
+                and "commitment/1" not in i["what"] and step.SIGNED_WHAT not in i["what"]]
 
     def test_with_both_flags_the_reporter_node_is_asked_through_the_second_console(self):
         r = self.run_lab("self", "second")
@@ -644,7 +646,11 @@ class ReporterBackendTest(Tmp):
         r = self.run_live({"checkpoints": "verified", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         issues = {i["issue"] for i in r["not_checked"]}
-        self.assertIn("evidence-network/loop#161", issues)
+        self.assertNotIn("evidence-network/loop#161", issues)  # matched per node against the signed commitment
+        self.assertIn({"what": f"lab-1: {step.SIGNED_WHAT}",
+                       "why": "its commitment and signed policy come from join on the node's own console, which this "
+                              "run does not hold, so the answers are matched against the nodes/ entry",
+                       "issue": step.NODE_CONSOLE_ISSUE}, r["not_checked"])
         self.assertFalse([i for i in issues if i.endswith("agent-action-capsule#432")])
         # The plugin's join and doctor --probe are no longer loop-wide gaps: per node, and here no console is held.
         self.assertNotIn("one command that binds the key, creates the book and publishes the commitment on a Mesh "
@@ -677,20 +683,47 @@ ALICE_ID = ALICE_DOC["node_id"]
 BINDING_DIGEST = json.loads((ALICE / "controller.json").read_text())["binding_digest"]
 ALICE_ENTRY = {"name": "alice", "node_id": ALICE_ID, "key_id": ALICE_DOC["key_id"],
                "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]}}
+ALICE_KEY = FIX / "population" / "keys" / "alice" / "node-key.pem"
 OPENSSL_ = shutil.which("openssl")
 NO_OPENSSL = "openssl not on PATH: step 03's checker verifies the commitment's signature with it"
+
+
+# The pinned plugin's disclosure policy, as a live node signs it (findings/2026-10-30-live-5, stevenmih-1).
+PLUGIN_POLICY = {"advertise_evidence_requests": "off", "share_adjudications": "off",
+                 "share_exchange_corroboration": "off", "share_history_segments": "counterparties",
+                 "share_record_at_completion": "counterparty", "share_standard_history": "off",
+                 "stranger_safe": ["checkpoints", "history_card/1"]}
+
+
+@functools.cache
+def plugin_pair(stranger_safe=tuple(PLUGIN_POLICY["stranger_safe"]), subjects=("checkpoints", "full_history")):
+    """(commitment, policy bytes) for alice as the pinned plugin builds them: a policy carrying stranger_safe, and a
+    commitment that also advertises full_history, the subject of the reporter's history_card/1 question
+    (daily_report.QUESTIONS). Both signed again under alice's TEST key."""
+    cc = step.check_commitment_
+    policy = cc.sign({"key_id": ALICE_DOC["key_id"], "profile": "disclosure-policy/0",
+                      "policy": {**PLUGIN_POLICY, "stranger_safe": list(stranger_safe)}}, ALICE_KEY)
+    raw = cc.canonical(policy)
+    doc = copy.deepcopy(ALICE_DOC)
+    doc["answers"]["subjects"] = list(subjects)
+    doc["lcap"]["policy_digest"] = hashlib.sha256(raw).hexdigest()
+    return cc.sign(doc, ALICE_KEY), raw
+
+
+def plugin_doc():
+    return plugin_pair()[0]
 
 
 def plugin_fixture(name, digest=None):
     """tests/fixtures/step12/plugin/<name>.json with its markers filled: alice's signed commitment pair."""
     text = (FIX / "plugin" / f"{name}.json").read_text()
     for marker, value in (("@KEY_ID@", ALICE_DOC["key_id"]), ("@ANCHOR@", "a" * 64), ("@BOOK@", "/book"),
-                          ("@POLICY_DIGEST@", ALICE_DOC["lcap"]["policy_digest"])):
+                          ("@POLICY_DIGEST@", plugin_doc()["lcap"]["policy_digest"])):
         text = text.replace(marker, value)
     reply = json.loads(text)
     if "commitment" in reply:
-        reply["commitment"] = {"commitment": copy.deepcopy(ALICE_DOC),
-                               "policy": base64.b64encode((ALICE / "disclosure-policy.json").read_bytes()).decode()}
+        reply["commitment"] = {"commitment": copy.deepcopy(plugin_doc()),
+                               "policy": base64.b64encode(plugin_pair()[1]).decode()}
     return reply
 
 
@@ -800,7 +833,7 @@ class PluginToolsTest(Tmp):
         node_dir = self.out / "alice"
         node_dir.mkdir(exist_ok=True)
         try:
-            fails, nc, proof, lines = step.check_node_tools("alice", entry, console.url, node_dir, 5)
+            fails, nc, proof, lines, self.signed = step.check_node_tools("alice", entry, console.url, node_dir, 5)
         finally:
             console.close()
         self.console = console
@@ -818,7 +851,7 @@ class PluginToolsTest(Tmp):
         self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
         self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
                                  "doctor-after.json"])
-        self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), ALICE_DOC)
+        self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), plugin_doc())
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
         self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))
 
@@ -897,7 +930,8 @@ class PluginToolsTest(Tmp):
         console.close()  # nothing listens: the call fails
         node_dir = self.out / "alice"
         node_dir.mkdir()
-        fails, nc, _, _ = step.check_node_tools("alice", ALICE_ENTRY, console.url, node_dir, 2)
+        fails, nc, _, _, signed = step.check_node_tools("alice", ALICE_ENTRY, console.url, node_dir, 2)
+        self.assertIsNone(signed)
         self.assertEqual(fails, [])
         self.assertEqual(self.whats(nc), ["alice: the plugin's doctor --probe and join"])
 
@@ -980,13 +1014,13 @@ class PluginToolsTest(Tmp):
                       lines)
 
     def test_a_published_commitment_join_returns_unchanged_is_said_so(self):
-        (self.published / f"{ALICE_ID}.json").write_text(json.dumps(ALICE_DOC, indent=2))
+        (self.published / f"{ALICE_ID}.json").write_text(json.dumps(plugin_doc(), indent=2))
         _, _, _, lines = self.tools()
         self.assertIn("alice: join's commitment is the one published under nodes/commitments/", lines)
         self.assertNotIn(step.CHANGED, " ".join(lines))
 
     def test_a_changed_commitment_is_reported_as_a_change_not_a_fail(self):
-        older = copy.deepcopy(ALICE_DOC)
+        older = copy.deepcopy(plugin_doc())
         older["issued_at"] = "2026-01-01T00:00:00Z"
         (self.published / f"{ALICE_ID}.json").write_text(json.dumps(older))
         fails, nc, _, lines = self.tools(before=("bound", "d" * 64))
@@ -1001,15 +1035,14 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gaps are what the verifier leaves unchecked: revocation (loop#138) and the key's role (AAC#468). The plugin's join and doctor --probe are no longer loop-wide gaps."""
+    """The binding gap is what the verifier leaves unchecked: revocation (CB-1, AAC#482). The key's role (AAC#468) is
+    checked from its report, and no gap is loop-wide any more: the signed commitment (loop#161) is matched per node."""
 
-    def test_the_binding_gaps_are_revocation_and_the_keys_role(self):
-        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#138")
-        self.assertEqual(step.BINDING_ROLE["issue"], "action-state-group/agent-action-capsule#468")
-
-    def test_the_live_gap_for_every_run_is_the_signed_commitment_only(self):
-        self.assertEqual([i["what"] for i in step.LIVE_NOT_CHECKED], [
-            "the signed commitment and the policy digest the answers are matched against"])
+    def test_the_binding_gap_is_revocation(self):
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "action-state-group/agent-action-capsule#482")
+        self.assertEqual(step.BINDING_OUTSIDE, finding.outside(step.BINDING_REVOCATION["what"],
+                                                               "action-state-group/agent-action-capsule#482"))
+        self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 
 @unittest.skipUnless(OPENSSL_, NO_OPENSSL)
@@ -1039,12 +1072,12 @@ class PluginToolsRunTest(Tmp):
         self.assertEqual(finding.check(self.out.parent), [])
         return json.loads((self.out / "finding.json").read_text())
 
-    def test_a_healthy_node_reads_not_checked_on_the_binding_and_signed_commitment_gaps_only(self):
+    def test_a_healthy_node_reads_not_checked_on_the_binding_record_only(self):
         r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        # The population has no data_dir, so the record behind the digest cannot be read.
-        self.assertEqual([i["what"] for i in r["not_checked"]],
-                         [i["what"] for i in step.LIVE_NOT_CHECKED] + ["alice: the controller binding"])
+        # The population has no data_dir, so the record behind the digest cannot be read. The answers are matched
+        # against join's signed commitment, so that is no gap (loop#161).
+        self.assertEqual([i["what"] for i in r["not_checked"]], ["alice: the controller binding"])
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", r["detail"])
         for p in ("alice/doctor-probe.json", "alice/join.json", "alice/commitment.json",
                   "alice/disclosure-policy.json", "alice/doctor-after.json"):
@@ -1062,13 +1095,12 @@ class PluginToolsRunTest(Tmp):
                             run_at=FIXTURE_AT)
 
     @needs_cross
-    def test_a_held_binding_that_applies_leaves_revocation_and_the_keys_role(self):
+    def test_a_held_binding_that_applies_leaves_revocation_only(self):
         r = self.run_bound()
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key and applies at {FIXTURE_AT}", r["detail"])
-        self.assertEqual([i["what"] for i in r["not_checked"]],
-                         [i["what"] for i in step.LIVE_NOT_CHECKED] + [step.BINDING_REVOCATION["what"],
-                                                                     step.BINDING_ROLE["what"]])
+        self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key (same_controller_asserted: no "
+                      f"role) and applies at {FIXTURE_AT}", r["detail"])
+        self.assertEqual([i["what"] for i in r["not_checked"]], [step.BINDING_REVOCATION["what"]])
 
     @needs_cross
     def test_the_record_that_was_checked_is_kept_as_proof(self):
@@ -1138,6 +1170,171 @@ class PluginToolsRunTest(Tmp):
         self.assertIn(f"alice: the node was bound ({D}) before join, and doctor after join reports it unbound",
                       r["detail"])
 
+
+    # --- The signed commitment the answers are matched against (loop#161) ---------
+    def test_a_commitment_that_does_not_advertise_a_listed_question_is_a_listing_misstatement(self):
+        r = self.run_one(join=signed_pair(subjects=("checkpoints",)))
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: nodes/ lists history_card/1 as stranger-safe, but the node's signed commitment does not "
+                      "advertise it (subjects ['full_history'], derivation history_card/1)", r["detail"])
+
+    def test_a_signed_policy_other_than_the_listing_is_a_fail(self):
+        r = self.run_one(join=signed_pair(stranger_safe=("checkpoints",)))
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: nodes/ lists ['checkpoints', 'history_card/1'] as stranger-safe, but the node's signed "
+                      "policy lists ['checkpoints']", r["detail"])
+
+    def test_a_healthy_node_says_its_answers_are_matched_against_the_signed_commitment(self):
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        self.assertIn("alice: the answers are matched against its signed commitment and policy, and its nodes/ entry "
+                      "lists the same stranger-safe subjects", r["detail"])
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_a_probe_mismatch_join_reports_does_not_unverify_the_commitment(self):
+        def mismatch(reply):
+            for f in reply["findings"]:
+                if f["check"] == "probe_checkpoints":
+                    f["state"] = "mismatch"
+            return reply
+        r = self.run_one(join=mismatch)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: join: doctor --probe probe_checkpoints: mismatch", r["detail"])
+        # The commitment held, so the answers were matched against it: no claim that none was verified.
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_signed_terms_that_cannot_be_read_are_a_fail_not_a_missing_commitment(self):
+        def no_stranger_safe(reply):
+            doc, _ = plugin_pair()
+            cc = step.check_commitment_
+            policy = cc.sign({"key_id": ALICE_DOC["key_id"], "profile": "disclosure-policy/0",
+                              "policy": {k: v for k, v in PLUGIN_POLICY.items() if k != "stranger_safe"}}, ALICE_KEY)
+            raw = cc.canonical(policy)
+            doc = cc.sign({**copy.deepcopy(doc), "lcap": {**doc["lcap"], "policy_digest": hashlib.sha256(raw).hexdigest()}},
+                          ALICE_KEY)
+            return {**reply, "commitment": {"commitment": doc, "policy": base64.b64encode(raw).decode()}}
+        r = self.run_one(join=no_stranger_safe)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("alice: join's commitment and policy do not carry answers.subjects and stranger_safe as lists "
+                      "of names", r["detail"])
+        self.assertNotIn(step.SIGNED_WHAT, " ".join(i["what"] for i in r["not_checked"]))
+
+    def test_join_returning_no_commitment_leaves_the_match_not_checked(self):
+        r = self.run_one(join=lambda reply: {**reply, "commitment": None})
+        self.assertIn({"what": f"alice: {step.SIGNED_WHAT}",
+                       "why": "this run verified no commitment from join under the listed key with its policy, so the "
+                              "answers are matched against the nodes/ entry",
+                       "issue": step.live.ISSUE}, r["not_checked"])
+
+
+def signed_pair(**kw):
+    """A join change: the commitment pair plugin_pair(**kw) builds, in place of the healthy one."""
+    def join(reply):
+        doc, raw = plugin_pair(**kw)
+        return {**reply, "commitment": {"commitment": copy.deepcopy(doc), "policy": base64.b64encode(raw).decode()}}
+    return join
+
+
+class SignedTermsTest(unittest.TestCase):
+    """The reporter's answers judged against the signed policy, not the nodes/ entry (loop#161)."""
+
+    SIGNED = {"subjects": ["checkpoints", "full_history"], "derivations": ["history_card/1"],
+              "stranger_safe": ["checkpoints"]}
+    REFUSED = "refusal mesh_evidence_request: refused"
+
+    def test_the_signed_policy_decides_which_refusal_fails(self):
+        entry = {"disclosure": {"stranger_safe": ["checkpoints", "history_card/1"]}}
+        self.assertEqual(step.judge_reporter_line("history_card", self.REFUSED, entry, self.SIGNED), (None, None))
+        fail, _ = step.judge_reporter_line("checkpoints", self.REFUSED, entry, self.SIGNED)
+        self.assertIn("is refused, but the node's signed policy lists it as stranger-safe", fail)
+        # Without signed terms the entry decides, as before (and as step 07 calls it).
+        fail, _ = step.judge_reporter_line("history_card", self.REFUSED, entry)
+        self.assertIn("is refused, but the node lists it as stranger-safe", fail)
+
+    def test_signed_terms_need_lists_of_names(self):
+        doc = {"answers": {"subjects": ["checkpoints"], "derivations": ["history_card/1"]}}
+        policy = json.dumps({"policy": {"stranger_safe": ["checkpoints"]}}).encode()
+        self.assertEqual(step.signed_terms(doc, policy), {"subjects": ["checkpoints"],
+                                                          "derivations": ["history_card/1"],
+                                                          "stranger_safe": ["checkpoints"]})
+        self.assertIsNone(step.signed_terms(doc, json.dumps({"policy": {}}).encode()))
+        self.assertIsNone(step.signed_terms(doc, json.dumps({"policy": {"stranger_safe": "checkpoints"}}).encode()))
+        self.assertIsNone(step.signed_terms({"answers": {"subjects": [1]}}, policy))
+        self.assertIsNone(step.signed_terms(doc, b"not json"))
+
+
+@needs_cross
+class BindingRoleTest(unittest.TestCase):
+    """The node key's role in its controller binding (AAC#468): in delegated_by it is the delegate, never the
+    delegator. The record is the AAC vector valid-delegated-by (tests/fixtures/step12/delegated-by.json)."""
+
+    CASE = json.loads((FIX / "delegated-by.json").read_text())
+
+    def check(self, key):
+        c = self.CASE
+        digest = step.bv.verify(step.cross_language(), c["binding"], key, [c["evaluation_time"]])[1]["binding_digest"]
+        return step.binding_check("node", c["binding"], digest, key, c["evaluation_time"])
+
+    def test_the_delegate_holds(self):
+        delegate = next(k for k in self.CASE["keys"] if k != self.CASE["delegator"])
+        state, detail = self.check(delegate)
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("names the node key as the delegate and applies", detail)
+
+    def test_the_delegator_is_a_fail(self):
+        state, detail = self.check(self.CASE["delegator"])
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("names the node key as the delegator", detail)
+
+@needs_cross
+class BindingRevocationTest(unittest.TestCase):
+    """The statements published at nodes/revocations/<digest>.json (loop#138) go to the verifier with the binding."""
+
+    BINDINGS = json.loads((ROOT / "tests/fixtures/step05/controller-bindings.json").read_text())
+    CASE = BINDINGS["cases"]["valid-same-controller"]
+    STATEMENT = BINDINGS["revocations"]["valid-same-controller"]  # revoked_at 2026-10-12
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patch = unittest.mock.patch.dict(os.environ, {"LOOP_NODES_DIR": self.tmp.name})
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.key = self.CASE["keys"][0]
+        self.digest = step.bv.verify(step.cross_language(), self.CASE["binding"], self.key,
+                                     ["2026-10-11T00:00:00Z"])[1]["binding_digest"]
+
+    def check(self, at):
+        return step.binding_check("node", self.CASE["binding"], self.digest, self.key, at)
+
+    def publish(self):
+        folder = Path(self.tmp.name) / step.bv.REVOCATIONS
+        folder.mkdir()
+        (folder / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
+
+    def test_with_none_published_revocation_is_not_checked(self):
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("revocation NOT_CHECKED: no statement in nodes/revocations/ applies; 0 published", detail)
+
+    def test_a_published_statement_that_applies_makes_the_binding_not_apply(self):
+        self.publish()
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_revocation FAIL", detail)
+
+    def test_an_unreadable_revocations_file_is_a_fail_not_a_crash(self):
+        folder = Path(self.tmp.name) / step.bv.REVOCATIONS
+        folder.mkdir()
+        (folder / f"{self.digest}.json").write_text("[]")
+        state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("the published revocation statements are unreadable", detail)
+
+    def test_a_statement_dated_after_the_time_asked_leaves_it_applying(self):
+        self.publish()
+        state, detail = self.check("2026-10-11T00:00:00Z")
+        self.assertEqual(state, "ok", detail)
+        self.assertIn("1 published", detail)
 
 if __name__ == "__main__":
     unittest.main()

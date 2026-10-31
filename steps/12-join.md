@@ -25,6 +25,8 @@ is a write, so it is never sent to another node.
 | doctor's `probe_checkpoints`, `probe_history_card` | `match` | `mismatch` | the plugin's `NOT_CHECKED` (no checkpoint yet), or no such finding |
 | doctor's `policy_in_commitment` | `present` | `missing` for a served commitment that does not verify or advertises another policy | `missing` because no commitment is served yet |
 | join's commitment | verifies with step 03's checker, policy bytes included, under the listed `key_id`, for the listed `node_id` | any of those does not hold | join returns none |
+| the nodes/ entry against that commitment (loop#161) | the entry's `stranger_safe` is the signed policy's, and the commitment advertises each question it covers (`checkpoints`; `full_history` with derivation `history_card/1`) | a difference: the listing misstates what the node signs | no verified commitment this run: the answers are matched against the entry alone |
+| the reporter's answers | verify under the listed key; a refusal only of a subject the **signed** policy does not list as stranger-safe | an answer under another key, one that does not verify, or a refusal of a subject the signed policy lists | no verifiable answer |
 | join's `joined` | `true` | | `false`: each `pending` line is the reason |
 | the binding | bound before the re-join and the same binding after | bound before the re-join, then unbound or bound by another binding after | unbound before and after (no controller binding recorded: `join {}` sends none), or the state can't be read before join (join is then **not called**) or after it |
 
@@ -44,10 +46,16 @@ With no published file, the detail says nothing is compared.
 
 ## What stays open
 
-- The controller binding's revocation (evidence-network/loop#138: no
-  revocation statement is read from the lab), and the node key's role in
-  its binding (action-state-group/agent-action-capsule#468: the verifier
-  checks that the binding names the key, either of its two keys). The
+- The controller binding's revocation: the statements published for it at
+  `nodes/revocations/<binding_digest>.json` go to the verifier, and one that
+  applies is a failure. With none that applies, revocation is NOT_CHECKED,
+  since Controller Binding v0 registers no source a verifier could hold to be
+  complete (CB-1, action-state-group/agent-action-capsule#482). The node key's role in its
+  binding is checked from the verifier's report (claim and `delegator`,
+  action-state-group/agent-action-capsule#468): in a `delegated_by` binding
+  the node key must be the delegate, and a node key that is the `delegator`
+  is a failure; `same_controller_asserted` and
+  `same_organization_credentialed` give a key no role. The
   record itself is checked in a second language: `cross_language binding`
   (aac-go go/v0.16.0) runs on the record the node holds
   (`controller-binding.json` in its `data_dir`, or `binding.json` for a
@@ -58,8 +66,6 @@ With no published file, the detail says nothing is compared.
   than doctor's, or a method or key type the verifier lacks is NOT_CHECKED.
   For a node `join.sh` joined, a record that does not hold in any of those
   ways is a failure, and the record checked is kept in the finding's proof.
-- The signed commitment and the policy digest that the reporter's answers are
-  matched against: `nodes/` entries are unsigned.
 
 ## Rehearsal (probe backend `doctor`): proof step 08 reproduces from
 

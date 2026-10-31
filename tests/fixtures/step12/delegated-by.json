@@ -1,0 +1,10 @@
+{
+  "about": "The controller-binding/0 record of case valid-delegated-by in agent-action-capsule vectors/controller-binding-v0/vectors.json (BSD-3-Clause, main 201f4df): a delegated_by binding that applies at evaluation_time. delegator is one of keys; the other key is the delegate. tests/test_step12_join.py checks the node key's role in it (AAC#468). Test keys only.",
+  "binding": "{\"binding_version\":\"controller-binding/0\",\"claim\":\"delegated_by\",\"delegator\":\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"issued_at\":\"2026-10-01T00:00:00Z\",\"keys\":[\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c\"],\"method\":\"dual_signature/0\",\"nonce\":\"ceremony-1\",\"not_after\":\"2027-10-01T00:00:00Z\",\"not_before\":\"2026-10-01T00:00:00Z\",\"revocation\":\"revocation_statement/0\",\"sigs\":[{\"key_id\":\"8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f\",\"sig\":\"c0fcc57dc8e0f1c7c0383bd60da373f48e9f6d87d515aa800c420ecd13dfa73a0074ae2d08a6a8f3e8cd6a26e2a01f8f7a0e83a18d12e5128b6d52879a7e950c\"},{\"key_id\":\"f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c\",\"sig\":\"fb0fcc6c612541ebd8a7e910208cef09c40cc5236ae69041426946b9434826c17eeb5fa1b88d9d5c42ec1f5bf3304e36e1e3c367f6484737fe4c26b4ce4de202\"}]}",
+  "keys": [
+    "8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f",
+    "f0e8b3356ce3f2a41a4c5583c3a6c30dfa24f0a09a24d166422d09341e391f0c"
+  ],
+  "delegator": "8934da1869ca4dd634e362e4959e029bf4175f5dc9ea28f573a5e4f1835cfc0f",
+  "evaluation_time": "2026-10-19T01:00:00Z"
+}

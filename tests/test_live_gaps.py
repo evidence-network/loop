@@ -148,7 +148,6 @@ class LiveFindingsTest(unittest.TestCase):
                                     "--console", "http://127.0.0.1:1"]), 0)
         r = self.record("12-join")
         self.assertEqual(cited_by_finding(r), [])
-        self.assertEqual(cited_by_finding({"not_checked": step.LIVE_NOT_CHECKED, "detail": ""}), [])
 
 
 if __name__ == "__main__":
