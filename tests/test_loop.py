@@ -287,7 +287,11 @@ class PopulationTest(unittest.TestCase):
             self.assertEqual(n["host"], "lab")
             for path in (n["data_dir"], n["book_dir"]):  # null, or named from $LAB_DIR: never a host path
                 self.assertTrue(path is None or path.startswith("$LAB_DIR/"), path)
-        self.assertFalse(list((POPULATION / "live").glob("**/*.pem")))
+        # The one key here is the live judge's public key (evidence-network/loop#189); its private half stays on the
+        # lab host.
+        pems = sorted(p.relative_to(POPULATION / "live") for p in (POPULATION / "live").glob("**/*.pem"))
+        self.assertEqual(pems, [Path("step10/keys/judge.pub.pem")])
+        self.assertTrue((POPULATION / "live/step10/keys/judge.pub.pem").read_text().startswith("-----BEGIN PUBLIC KEY-----\n"))
 
     def test_rehearsal_keys_load_and_match_their_pub_pems(self):
         for name, stem in (("alice", "node-key"), ("bob", "node-key"), ("witness", "witness-key")):

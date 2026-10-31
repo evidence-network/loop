@@ -636,8 +636,14 @@ class LiveFixtureTest(unittest.TestCase):
         self.population = root / "live"
         self.population.mkdir()
         shutil.copy(FIXTURES / "live-population.json", self.population / "population.json")
-        shutil.copytree(POPULATION / "step10" / "keys", self.population / "step10" / "keys")
-        patch = mock.patch.dict(os.environ, {"LOOP_TEST_LAB": str(self.lab)})
+        # Live commits only the judge's public key; its private key is the lab's own, named by LOOP_JUDGE_KEY.
+        (self.population / "step10" / "keys").mkdir(parents=True)
+        shutil.copy(POPULATION / "step10" / "keys" / "judge.pub.pem", self.population / "step10" / "keys")
+        judge_key = root / "judge" / "judge.pem"
+        judge_key.parent.mkdir()
+        shutil.copy(POPULATION / "step10" / "keys" / "judge.pem", judge_key)
+        judge_key.chmod(0o600)
+        patch = mock.patch.dict(os.environ, {"LOOP_TEST_LAB": str(self.lab), "LOOP_JUDGE_KEY": str(judge_key)})
         patch.start()
         self.addCleanup(patch.stop)
         keys = POPULATION / "keys" / "alice"
@@ -697,6 +703,7 @@ class LiveFixtureTest(unittest.TestCase):
         self.assertEqual(f["population"], "live")
         self.assertIn("operator-collected from the lab's own nodes", f["detail"])
         self.assertIn("this proves the report, not how an operator gets bundles from peers", f["detail"])
+        self.assertIn(step.judge10.LIVE_JUDGE, f["detail"])
         self.assertNotIn("stand-in", f["detail"])
         # The seal is in the node's own book, under its own key.
         seal = load(self.run / "11-report" / "seal.bundle.json")

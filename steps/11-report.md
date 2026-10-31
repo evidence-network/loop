@@ -91,5 +91,6 @@ join book (`book_dir`, with a profile named for the node), under its key in `dat
 operator-collected from the lab's own nodes, and that this proves the report, not how an operator gets bundles from
 peers. With no 08 and 10 outputs in the run, it is NOT_CHECKED with the reason. When 10 is NOT_CHECKED, 11
 carries each of 10's not_checked entries over with the issue 10 names, so a same-day live run reads NOT_CHECKED
-on the window, and a step 08 did not reproduce on 08's issue for it. The live judge key is
-evidence-network/loop#189.
+on the window, and a step 08 did not reproduce on 08's issue for it. 11 checks 10's Results under the committed
+live judge public key, `population/live/step10/keys/judge.pub.pem` (evidence-network/loop#189), and a live PASS
+says that key is held by the lab operator account that also runs the nodes, not by an independent judge.

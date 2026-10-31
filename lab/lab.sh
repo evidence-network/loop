@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|judge-key|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -21,6 +21,11 @@
 #             certificate under $LAB_DIR/witness). Step 02 then gets a receipt on each book's checkpoint
 #             and checks it against the listing. Run it after join and tools. One organization's test
 #             witness for its own lab, not a witness for the network
+#   judge-key the live judge key steps 10 and 11 seal and check under (evidence-network/loop#189): one Ed25519 key
+#             at $LAB_DIR/judge/judge.pem (dir 700, file 600), outside every node's HOME and never in this tree;
+#             refused if it is any node's key. Writes only its public key, population/live/step10/keys/judge.pub.pem,
+#             to commit. An existing key is kept, and a committed public key that is not its own is refused. Run it
+#             after entries. The lab operator account that runs the nodes can read it: steps 10 and 11 say so
 #   bind      each node's own join ceremony (capsules-plugin#121) with a test Nostr key kept in
 #             $LAB_DIR/controllers/<node>/nostr.key, so doctor reports the controller binding and the
 #             commitment names its digest. All nodes but the reporter (it stays unbound, the binding being
@@ -757,6 +762,41 @@ cmd_witness() {
   echo "started the lab test witness $pub on port $(witness_port); commit lab/witness/witnesses.json"
 }
 
+# The live judge key (evidence-network/loop#189). Steven's GO and Sherlock2's amendment: on the lab host, never any
+# node's key, and disclosed as held by the same operator account that runs the nodes. Step 10 reads it from
+# LOOP_JUDGE_KEY (default $LAB_DIR/judge/judge.pem); only its public key enters this tree.
+cmd_judge_key() {
+  local dir=$LAB_DIR/judge key=$LAB_DIR/judge/judge.pem pub=$ROOT/population/live/step10/keys/judge.pub.pem new
+  run mkdir -p "$dir"
+  run chmod 700 "$dir"
+  if [ "$DRY" = 1 ] || [ ! -f "$key" ]; then
+    run bash -c 'umask 077 && openssl genpkey -algorithm ed25519 -out "$1"' _ "$key"
+    run chmod 600 "$key"
+  fi
+  if [ "$DRY" = 1 ]; then echo "  > $pub (the public half of $key; refused if it is a node's key)"; return 0; fi
+  new=$(openssl pkey -in "$key" -pubout) || die "cannot read the public half of $key"
+  python3 -B - "$ROOT" "$new" << 'PY' || die "the judge key was refused"
+import json, sys
+from pathlib import Path
+root, pem = Path(sys.argv[1]), sys.argv[2]
+sys.path.insert(0, str(root / "scripts"))
+import check_commitment as cc
+kid = cc.key_id_of(cc.spki_from_pem(pem))
+pop = json.loads((root / "population" / "live" / "population.json").read_text())
+ids = {n.get("node_id") for n in pop["nodes"]}
+ids |= {json.loads(f.read_text()).get("key_id") for f in (root / "nodes").glob("*.json")}
+if kid in ids:
+    sys.exit(f"lab.sh: the judge key {kid} is a node's key")
+print(f"judge key {kid}")
+PY
+  if [ -f "$pub" ]; then
+    [ "$(cat "$pub")" = "$new" ] || die "$pub is another key's: a new judge key is a new decision (evidence-network/loop#189)"
+  else
+    mkdir -p "$(dirname "$pub")" && printf '%s\n' "$new" > "$pub"
+  fi
+  echo "judge-key: $key stays on this host; commit population/live/step10/keys/judge.pub.pem"
+}
+
 # --- entries / loop / pack --------------------------------------------------------------------
 cmd_entries() {
   need LAB_OPERATOR
@@ -930,5 +970,6 @@ cmd_all() {
 
 case "$cmd" in
   check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

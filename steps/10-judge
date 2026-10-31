@@ -28,8 +28,12 @@ its detail says the records are that stand-in, not this run's:
              carries model_attestation. 09's referee Result is cited and
              counted as found, never judged again. The pack is the one versions.lock
              pins (`inference-deals`), fetched by 10-judge.setup.sh; not fetched is NOT_CHECKED.
-  seal       a fresh book under the repository's rehearsal TEST judge key
-             (population/<p>/step10/keys): each record is published as a
+  seal       a fresh book under the population's judge key: on rehearsal the
+             committed TEST key (population/rehearsal/step10/keys); on live the
+             lab's own judge key, read from LOOP_JUDGE_KEY (default
+             $LAB_DIR/judge/judge.pem, never in this tree), whose public half
+             is the committed population/live/step10/keys/judge.pub.pem. It
+             signs the book's checkpoints too. Each record is published as a
              capsule whose payload is {step, path, sha256}; `capsulectl book
              result build` seals one Result per step and a roll-up Result
              citing them; `capsulectl book disclose` writes one bundle per
@@ -74,7 +78,11 @@ RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
 # ruling, 12 whole closed months), not a gap to fix.
 WINDOW_ISSUE = ("the pinned inference-deals pack's window (versions.lock inference-deals), 12 whole closed months "
                 "by Steven's 2026-10-29 ruling: a record is judged once its month has closed")
-JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # no judge key for the live population
+JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
+# Who holds the live judge key (Steven's GO, Buzz 23c5f8fd; Sherlock2's amendment, Buzz 06deaebd): said in every live
+# detail, so a live PASS is never read as an independent judge's.
+LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
+              "operator, not an independent judge")
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
 # The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
@@ -356,21 +364,62 @@ def pub_hex(pem):
     return cc.key_id_of(cc.spki_from_pem(Path(pem).read_text(encoding="utf-8")))
 
 
+def judge_keys(population, keys):
+    """{"judge": (private PEM, public PEM), "checkpoint": (...)} for the population, or raise NotChecked.
+
+    Rehearsal: the committed TEST keys in `keys`. Live: the private key is the lab's own, at LOOP_JUDGE_KEY (default
+    $LAB_DIR/judge/judge.pem) and never in this tree; it signs the checkpoints too, and its public half must be the
+    committed keys/judge.pub.pem, which the book's trusted key enforces (capsulectl refuses a producer it does not list)."""
+    if population != "live":
+        if not (keys / "judge.pem").is_file():
+            raise NotChecked("the pack's Results, sealed", f"the {population} population lists no judge key "
+                                                           "(step10/keys)", JUDGE_KEY_ISSUE)
+        return {k: (keys / f"{k}.pem", keys / f"{k}.pub.pem") for k in ("judge", "checkpoint")}
+    pub = keys / "judge.pub.pem"
+    if not pub.is_file():
+        raise NotChecked("the pack's Results, sealed", "the live population lists no judge public key "
+                                                       "(step10/keys/judge.pub.pem)", JUDGE_KEY_ISSUE)
+    named = os.environ.get("LOOP_JUDGE_KEY") or (os.environ.get("LAB_DIR") and
+                                                 str(Path(os.environ["LAB_DIR"]) / "judge" / "judge.pem"))
+    if not named:
+        raise NotChecked("the pack's Results, sealed", "neither LOOP_JUDGE_KEY nor LAB_DIR is set, so this step has no "
+                                                       "live judge key (run it on the lab host)", JUDGE_KEY_ISSUE)
+    pem = Path(named)
+    if not (pem.is_file() and os.access(pem, os.R_OK)):
+        raise NotChecked("the pack's Results, sealed", f"the live judge key {pem} is not a readable file here "
+                                                       "(lab/lab.sh judge-key makes it on the lab host)", JUDGE_KEY_ISSUE)
+    if pem.stat().st_mode & 0o077:
+        raise NotChecked("the pack's Results, sealed", f"the live judge key {pem} is readable by group or others; "
+                                                       "it must be mode 600", JUDGE_KEY_ISSUE)
+    return {"judge": (pem, pub), "checkpoint": (pem, pub)}
+
+
+def node_key_problems(pop, judge_key):
+    """The judge key must be no population node's: not a node id, nor the key id its nodes/ entry lists."""
+    ids = {n.get("node_id") for n in pop.get("nodes", [])}
+    for n in pop.get("nodes", []):
+        entry = ROOT / "nodes" / f"{n.get('node_id')}.json"
+        if n.get("node_id") and entry.is_file():
+            ids.add(load(entry).get("key_id"))
+    return [f"the judge key {judge_key[:12]} is a population node's key"] if judge_key in ids else []
+
+
 class Book:
     """A scratch book profile under the judge key, driven through the pinned capsulectl."""
 
     def __init__(self, home, capsulectl, keys):
         self.home, self.capsulectl = Path(home), Path(capsulectl)
         self.home.mkdir(parents=True, exist_ok=True)
-        for k in ("judge", "checkpoint"):
+        self.home.chmod(0o700)
+        for k, (pem, _) in keys.items():
             f = self.home / f"{k}.seed"
-            f.write_text(seed_hex(keys / f"{k}.pem"))
-            f.chmod(0o600)
+            f.touch(mode=0o600)
+            f.write_text(seed_hex(pem))
         self.cap("profile", "create", "--name", "judge", "--type", "jsonl", "--jsonl-path", str(self.home / "store"),
-                 "--log-id", "judge", "--operator", "loop-judge", "--trusted-key", pub_hex(keys / "judge.pub.pem"),
+                 "--log-id", "judge", "--operator", "loop-judge", "--trusted-key", pub_hex(keys["judge"][1]),
                  "--signing-key-file", str(self.home / "judge.seed"),
                  "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),
-                 "--checkpoint-trusted-key", pub_hex(keys / "checkpoint.pub.pem"))
+                 "--checkpoint-trusted-key", pub_hex(keys["checkpoint"][1]))
         self.cap("store", "init", "--profile", "judge")
 
     def cap(self, *args):
@@ -543,7 +592,8 @@ def main(argv=None):
         (out / p).unlink(missing_ok=True)
     for p in ("bundles", "verify"):
         shutil.rmtree(out / p, ignore_errors=True)
-    population = load(a.population / "population.json")["population"]
+    pop = load(a.population / "population.json")
+    population = pop["population"]
     keys = a.population.resolve() / "step10" / "keys"
     run = out.parent
     # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
@@ -575,9 +625,10 @@ def main(argv=None):
             raise NotChecked("the pack over the window",
                              f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
                              "step of the pack's kinds finished outside it, or none is in the run", WINDOW_ISSUE)
-        if not (keys / "judge.pem").is_file():
-            raise NotChecked("the pack's Results, sealed", f"the {population} population lists no judge key "
-                                                           "(step10/keys)", JUDGE_KEY_ISSUE)
+        signer = judge_keys(population, keys)
+        problems = node_key_problems(pop, pub_hex(signer["judge"][1]))
+        if problems:
+            raise RuntimeError("; ".join(problems))
         capsulectl, book_plugin = tools()
         if not (capsulectl.is_file() and book_plugin.is_file()):
             raise NotChecked("the pack's Results, sealed and verified offline",
@@ -586,9 +637,9 @@ def main(argv=None):
         pinned = PINNED + ["inference-deals"]
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
             docs = judge_records(records, source, pack, start, end, not_checked)
-            book = Book(Path(tmp) / "book", capsulectl, keys)
+            book = Book(Path(tmp) / "book", capsulectl, signer)
             sealed = seal(book, records, docs, pack, start, end, out)
-            problems, lines = judge(out, records, capsulectl, pub_hex(keys / "judge.pub.pem"), tmp)
+            problems, lines = judge(out, records, capsulectl, pub_hex(signer["judge"][1]), tmp)
         proof += [str(p.relative_to(out)) for p in sorted((out / "bundles").glob("*.json"))]
         proof += [str(p.relative_to(out)) for p in sorted((out / "verify").glob("*.json"))]
         lines.append(f"roll-up {sealed['rollup'][:12]} over {len(sealed['finer'])} Results")
@@ -610,7 +661,8 @@ def main(argv=None):
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
               + (f"Refused, not read: {'; '.join(refused)}. " if refused else "")
-              + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each.")
+              + "Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each."
+              + (f" On live, {LIVE_JUDGE}." if population == "live" else ""))
     if result == "PASS":
         detail += " " + finding.outside("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
                                         "this step applies the pack's terms to the results 08 re-derived", GAP_ISSUE)

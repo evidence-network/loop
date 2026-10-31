@@ -74,7 +74,7 @@ _loader.exec_module(judge10)
 
 SETUP_ISSUE = "evidence-network/loop: steps/11-report.setup.sh, run where 11 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs steps 08 and 10 before step 11"
-LIVE_KEY_ISSUE = judge10.JUDGE_KEY_ISSUE  # the live population lists no judge key, so no live Result to read
+LIVE_KEY_ISSUE = judge10.JUDGE_KEY_ISSUE  # the live judge public key, population/live/step10/keys/judge.pub.pem
 PACK_ISSUE = judge10.GAP_ISSUE  # the pinned pack's own evaluator does not run: step 10 applies its terms itself
 VIEWER_ISSUE = "action-state-group/capsule-viewer#158"
 PROVIDER_DEAL_ISSUE = "Mesh-LLM/capsules-plugin#134"
@@ -501,7 +501,7 @@ def run_inputs(run, out, population, population_dir):
             return out / "standin" / "10-judge", standin, True
         raise NotChecked("the report page, over step 08's manifest and step 10's Results",
                          f"{run.name} holds no 10-judge/ output to render from" +
-                         (" and the live population lists no judge key and no stand-in; this step never fetches "
+                         (" and the live population has no stand-in; this step never fetches "
                           "records through a peer" if population == "live" else ""), RUN_ISSUE)
     if not (judged / "window.json").is_file():
         return judged, run, False
@@ -542,8 +542,8 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None):
         raise Refused(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
     judge_pub = population_dir / "step10" / "keys" / "judge.pub.pem"
     if not judge_pub.is_file():
-        raise NotChecked("step 10's Results, under the judge key", f"the {population} population lists no judge key",
-                         LIVE_KEY_ISSUE)
+        raise NotChecked("step 10's Results, under the judge key", f"the {population} population lists no judge "
+                         "public key (step10/keys/judge.pub.pem)", LIVE_KEY_ISSUE)
     capsulectl, plugin = judge10.tools()
     if not (capsulectl.is_file() and plugin.is_file()):
         raise NotChecked("the report page, built and sealed", f"capsulectl and capsulectl-book are not installed "
@@ -640,7 +640,8 @@ def main(argv=None):
         detail += ("The page is the pinned builder's, its digest sealed in the reporting book by book report build "
                    "--seal and matched by book report check; the builder's viewer script is pinned code and was not "
                    "scanned for score-like words. ")
-        detail += (LIVE_LABEL + " " if population == "live" else "")
+        detail += (f"{LIVE_LABEL} Step 10's Results are under the live judge key: {judge10.LIVE_JUDGE}. "
+                   if population == "live" else "")
         detail += finding.outside("the pinned pack's own evaluator does not run here: step 10 applies the "
                                   "pack's terms to the results 08 re-derived", PACK_ISSUE) + " "
         detail += finding.outside("the page's text naming its two questions (did the evidence verify, is this the "

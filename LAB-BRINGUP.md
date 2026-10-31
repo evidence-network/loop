@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|judge-key|bind|entries|commitments|loop|deal|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -308,6 +308,30 @@ Commit the updated `lab/witness/witnesses.json` (the public key only) in a
 PR. Until that entry is in the clone the loop runs from, step 02 FAILs
 `witness_listed` on each node. This is one organization's test witness for its
 own lab, not a witness for the network.
+
+### The live judge key
+
+```sh
+lab/lab.sh --dry-run judge-key
+lab/lab.sh judge-key
+```
+
+Run it once, after `entries`, while no `lab.sh` or `loop.sh` run is going. It
+makes the key steps 10 and 11 seal and check live Results under
+(evidence-network/loop#189):
+
+1. makes one Ed25519 key, `$LAB_DIR/judge/judge.pem` (dir 0700, key 0600),
+   unless one is already there. It never goes into this tree or the tarball
+   (`lab/pack.py` refuses any private key);
+2. refuses it if it is any population node's key;
+3. writes its public half to `population/live/step10/keys/judge.pub.pem`, and
+   refuses to overwrite one that is another key's: a new judge key is a new
+   decision on that issue.
+
+Commit `population/live/step10/keys/judge.pub.pem` in a PR. Step 10 then reads
+the key from `LOOP_JUDGE_KEY`, default `$LAB_DIR/judge/judge.pem`. The lab
+account that runs the nodes can read it, and steps 10 and 11 say so in every
+live finding: same operator, not an independent judge.
 
 To rotate: move `witness-key.pem` aside, run `lab/lab.sh witness` (a new key,
 a new entry, the old entry kept), then restart the witness
