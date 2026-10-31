@@ -130,6 +130,13 @@ preset `LOOP_NODES_DIR` is honored and named the same way. The exclusions and th
 before running 08 on published runs: a stale `origin/main` misses an exclusion made since. Publish findings with a merge commit, so each step's
 anchor is its own pull request.
 
+Live 05 and 12 also read `nodes/revocations/` at the main commit their `nodes.json` keeps (`revocations_main`), which
+must be on `origin/main` (evidence-network/loop#281). That list is held to P, or with no anchor to this clone's
+`origin/main` as last fetched: when `nodes/revocations/` differs between the kept commit and that one, the judge runs
+again on a fresh copy reading it there and must give the recorded result and not_checked (by what and issue). With no
+anchor, the same not_checked entry names the revocation statements too, with that commit and its date. The run's own
+start or binding time, which no node signs, never picks the list.
+
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
 dir or console while they decide, and their findings don't cite those bytes.
 

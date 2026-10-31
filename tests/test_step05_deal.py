@@ -455,12 +455,12 @@ class Step05BindingCheckTest(unittest.TestCase):
                       "about)", detail)
 
     # revocation statements published at nodes/revocations/<digest>.json (loop#138)
-    def publish_revocations(self, case, statements=None):
+    def publish_revocations(self, case, statements=None, commit_date="2026-10-15T00:00:00Z"):
         digest = binding_digest(BINDINGS[case]["binding"])
         (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
         statements = [json.loads(REVOCATIONS[case])] if statements is None else statements
         (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text(json.dumps(statements))
-        self.commit("2026-10-15T00:00:00Z", "publish", "--allow-empty")  # merged to main before the step starts
+        self.commit(commit_date, "publish", "--allow-empty")  # by default merged to main before the step starts
         return digest
 
     def test_a_published_revocation_before_the_halfs_time_makes_the_binding_not_apply(self):
@@ -484,6 +484,20 @@ class Step05BindingCheckTest(unittest.TestCase):
         digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
         listed = (self.dir / "nodes" / "revocations" / f"{digest}.json").read_bytes()
         self.assertIn(self.passed(listed), detail)
+
+    def test_a_statement_merged_after_the_steps_start_applies_when_read_at_that_later_main(self):
+        # Step 08's second run (loop#281) reads the list at a main commit newer than the run's own start, with the
+        # run's declaration time: a back-dated start no longer hides a statement that applies at the signed times,
+        # and one revoked after those times still leaves the binding applying with revocation PASS.
+        self.publish_revocations("valid-same-controller", commit_date="2026-11-05T00:00:00Z")
+        self.snap = {"commit": step.bv.main_commit(self.dir, "2026-11-06T00:00:00Z")}
+        state, detail = self.check("valid-same-controller")  # times 2026-10-30, start 2026-10-31
+        self.assertEqual(state, "bad", detail)
+        self.assertIn("controller_binding_revocation FAIL", detail)
+        state, detail = self.check("valid-same-controller", times=("2026-10-11T00:00:00Z",))
+        self.assertEqual(state, "ok", detail)
+        self.assertIn(f"nodes/revocations/ at main {self.snap['commit']} declared complete as of 2026-10-31T00:00:00Z",
+                      detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])

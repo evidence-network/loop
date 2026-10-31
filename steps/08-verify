@@ -27,7 +27,9 @@ this step, with no account and no network call:
                 same way: their judges read only their proof and the
                 repository's listings, witness listing and join commitments,
                 as the pull request merge that published the step held them
-                (publication, loop#280). The other live steps' judges
+                (publication, loop#280); live 05 and 12 also judge again with
+                nodes/revocations/ as main held it there, or at this clone's
+                origin/main with none (loop#281). The other live steps' judges
                 read a lab node's data dir or console, so they are not_checked
                 (evidence-network/loop#188).
 
@@ -746,12 +748,6 @@ def keys_02_live(c, m):
 REVOCATIONS_ISSUE = "evidence-network/loop#281"  # the revocations a live 05 or 12 read, held to main outside the run
 
 
-def git_out(root, *args):
-    """git's stdout in the repository at `root`, stripped, or None when git fails."""
-    r = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else None
-
-
 def revocations_anchor(m, c, nn, snap):
     """Hold the main commit C a live 05 or 12 read nodes/revocations/ from (`snap`, nodes.json's revocations_main) to
     an anchor A the run does not choose (loop#281): the step's publication on main (c.anchor), else this clone's
@@ -771,8 +767,8 @@ def revocations_anchor(m, c, nn, snap):
                              "nodes/revocations/ from (fetch main's history)")
     anchor = c.anchor
     if anchor is None:
-        anchor = git_out(root, "rev-parse", "--verify", "-q", "origin/main^{commit}")
-        when = git_out(root, "show", "-s", "--format=%cI", anchor) if anchor else None
+        anchor = (git("rev-parse", "--verify", "-q", "origin/main^{commit}", root=root) or b"").decode().strip()
+        when = (git("show", "-s", "--format=%cI", anchor, root=root) or b"").decode().strip() if anchor else None
         if not (anchor and when):  # holds_on_main passed, so origin/main is there; never trust C in its place
             raise Unreproducible(f"step {nn}: its revocation reads, run again here",
                                  "this clone's origin/main cannot be read to hold them to")
@@ -780,14 +776,13 @@ def revocations_anchor(m, c, nn, snap):
         c.relies.append({"what": f"step {nn}: {ANCHOR_REVOKED}", "why": "the revocation statements were read at this "
                          f"clone's origin/main as last fetched, {anchor}, committed {when}: a statement merged after "
                          "that fetch is not applied", "issue": REVOCATIONS_ISSUE})
-    elif subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{anchor}^{{commit}}"],
-                        capture_output=True).returncode:
+    elif git("cat-file", "-e", f"{anchor}^{{commit}}", root=root) is None:
         raise Unreproducible(f"step {nn}: its revocation reads, run again here",
                              f"the repository revocations are read from does not hold the step's publication "
                              f"{anchor[:12]} (fetch main's history)")
     folder = f"nodes/{m.bv.REVOCATIONS}"
-    same = git_out(root, "rev-parse", "--verify", "-q", f"{commit}:{folder}") == \
-        git_out(root, "rev-parse", "--verify", "-q", f"{anchor}:{folder}")  # absent at both is the same (None)
+    same = git("rev-parse", "--verify", "-q", f"{commit}:{folder}", root=root) == \
+        git("rev-parse", "--verify", "-q", f"{anchor}:{folder}", root=root)  # absent at both is the same (None)
     return None if same else anchor
 
 
