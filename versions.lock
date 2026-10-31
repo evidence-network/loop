@@ -3,15 +3,19 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: one tree (fc35ee49) that contains mesh-llm main 2809443, #2620 at its head
-# 1d96a020 and #2649 at its head 9c8cf6e8. #2620 is still open: a plugin the host restarts gets
-# the mesh snapshot again, and a plugin whose start was cancelled is restarted. #2649 is still
-# open: it pins the capsules plugin the host builds. lab/lab.sh check requires the lab source to
-# contain mesh-llm and mesh-llm-pr-2620; mesh-llm-pr-2649 records the third commit, which check
-# does not test.
-mesh-llm Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123
+# Lab host build: one tree, ethanyzhang/mesh-llm lab/asg-2026-10-31 @ e877a45d, that contains mesh-llm main
+# c86f58e and, merged on it, five open PRs at these heads: #2620 (a plugin the host restarts gets the mesh
+# snapshot again, and a plugin whose start was cancelled is restarted), #2649 (it pins the capsules plugin the
+# host builds), #2719 (a test fix), #2721 (the plugin is told the exact served model on routed and paid
+# requests) and #2744 (a settled payment's preimage is passed to plugins, for step 06's finality). lab/lab.sh
+# check requires the lab source to contain mesh-llm and mesh-llm-pr-2620; the other PR pins record the commits
+# the tree carries, which check does not test.
+mesh-llm Mesh-LLM/mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183
 mesh-llm-pr-2620 Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e
-mesh-llm-pr-2649 Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8
+mesh-llm-pr-2649 Mesh-LLM/mesh-llm 3e6c2fefd9fe30952d71ca4cee536fa5a2f02ab9
+mesh-llm-pr-2719 Mesh-LLM/mesh-llm 4beab7f643849b8fd5bfc7b8633ee3833622a3b3
+mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
+mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
 # The capsules plugin (the repo was Mesh-LLM/capsules): the 0.1.6 release. It carries everything
 # merged after v0.1.5 that the earlier pin (d1f4edc, through #138) listed, and the switch to
 # evidence-interop/1 (#162, Mesh-LLM/capsules-plugin#114): it answers both profile identifiers, asks
