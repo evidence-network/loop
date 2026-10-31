@@ -1,0 +1,43 @@
+{
+  "asserts": "each paid exchange's settlement is referenced by the payment_hash its payer sealed with the exchange id, no hash under two exchanges, and is final by preimage (sha256 of the payer's preimage equals the payment_hash); one value band per side per exchange, from the capsules adapter's band(); each payment carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's settlements with a counterparty equal that counterparty's checkpoint-signed settlement bundle (counterparty_count)",
+  "detail": "node stevenmih-1: 4 settlement legs and 4 wallet-reported settlement observations recorded, 4 with a preimage that hashes to its payment_hash; node stevenmih-2: 12 settlement legs and 4 wallet-reported settlement observations recorded, 4 with a preimage that hashes to its payment_hash; node stevenmih-3: no settlement recorded; band: stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-2 payer BTC decade -8; counterparty_count:stevenmih-1:stevenmih-2: stevenmih-1's 4 settlements against stevenmih-2's signed bundle (sha256 67bfc0299d39): PASS, 4 paired, 0 unpaired; counterparty_count:stevenmih-2:stevenmih-1: stevenmih-2's 4 settlements against stevenmih-1's signed bundle (sha256 7adb88fbf6d9): PASS, 4 paired, 0 unpaired; exchange_match: 4 payments paired: the payer's amount equals the payee's credit plus fee; finality: 4 of 4 payment hashes final by the payer's preimage; rail_fee: each of 4 payments carries a wallet provider's fee (fee_msat > 0); reference: 4 payments, each referenced by one payment_hash under one exchange in each book. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays). Outside this step's assertion: a public ledger's count of each node's settlements (Lightning has none; the counterparty's signed book stands in): evidence-network/loop#247.",
+  "finished": "2026-10-31T12:33:03Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "4eba9203ed167a5bc9e7a5da062e731ba2a9639f",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/recorded.json",
+      "sha256": "1c56f62cffa50b94872db86df5da2f0f7b2071d0ff4182ead6b24b1b691aaf43"
+    },
+    {
+      "path": "stevenmih-2/recorded.json",
+      "sha256": "b27f8106cc33b9855abbfa993b656c6a4a488578d46a53782f310d84bfef651d"
+    },
+    {
+      "path": "stevenmih-3/recorded.json",
+      "sha256": "fc983487ba19b4b8f7990fa4355fdbd7b4419f3b7ac39f350010a30e65d3af70"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "6c9f010a9c5998d85e10b99c938fd563be9408ded6495b74d36df8ee6fc46f88"
+    },
+    {
+      "path": "counterparty.json",
+      "sha256": "16ed4cf2c670f7191db4399714f0e7241e1139eaddd4544d9fdc5029e1a90ae4"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-31T12:33:03Z",
+  "step": "06"
+}

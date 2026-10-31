@@ -1,0 +1,38 @@
+{
+  "action_id": "inference_completion/2049b223-76c6-42a7-97c5-b3f4da109487",
+  "action_type": "decide",
+  "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "confirmed",
+    "ledger_mode": "standalone"
+  },
+  "canonicalization_id": "jcs",
+  "capsule_id": "c4e6ff681b08caba1bfba347156a3628820529ed5615d6b576f9cc8115b4ed41",
+  "developer": "loop-step-01",
+  "disposition": {
+    "approver": "policy",
+    "decision": "accept",
+    "human_disposed": false,
+    "verdict_class": "executed"
+  },
+  "effect": {
+    "effect_attestation": "runtime_claimed",
+    "response_digest": "cce5ecc272e032155464ec4417189890cafb9be4609380cad1b76c049407f09c",
+    "status": "confirmed",
+    "type": "inference_completion"
+  },
+  "format_version": "4",
+  "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+  "model_attestation": {
+    "compute_attestation": {
+      "agent_input_digest": "1390191acf93ead6e9c15bce5a3b0fbe517eb1ba430bb4c35f61e574fe0f1d29",
+      "agent_output_digest": "cce5ecc272e032155464ec4417189890cafb9be4609380cad1b76c049407f09c"
+    },
+    "model_id": "rehearsal-model",
+    "provider": "rehearsal"
+  },
+  "operator": "live",
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458206216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e260127a05820c4e6ff681b08caba1bfba347156a3628820529ed5615d6b576f9cc8115b4ed415840436ca193ef5ac3fbe2675635d7836905fe768cd786221323fd5d080aa81f40e0d8705314e803b0d2df3b1f251e70f3a073fa0952041def9f9efbd4fc0668ae0f",
+  "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+  "timestamp": "2026-10-31T12:33:10.158265Z"
+}

@@ -1424,6 +1424,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         gap = self.names(f)[step.LIVE_NEVER_TIED]
         self.assertIn("1 current-build halves are cited by a record with no own_half_capsule_id", gap["why"])
+        self.assertEqual(gap["issue"], "Mesh-LLM/mesh-llm#2747")
         self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
 
