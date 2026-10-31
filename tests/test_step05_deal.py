@@ -730,6 +730,12 @@ class Step05DealLiveTest(unittest.TestCase):
 
     def test_08_does_not_reproduce_an_old_shape_live_05(self):
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-8" / "05-deal", self.out)
+        # It ran under an earlier versions.lock; this test is about its proof's shape, so its pins
+        # are set to today's lock (pinned is not proof).
+        lock = finding.pins()
+        rec = json.loads((self.out / "finding.json").read_text())
+        rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"]}
+        (self.out / "finding.json").write_text(json.dumps(rec, indent=2) + "\n")
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "not_reproduced")
         self.assertIn("its proof holds no nodes.json", entries["05-deal"]["not_checked"]["why"])

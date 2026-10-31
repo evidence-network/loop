@@ -1391,6 +1391,12 @@ class Step08Live09Test(unittest.TestCase):
     def test_an_old_shape_live_09_bundle_is_not_reproduced(self):
         shutil.rmtree(self.run / "09-dispute")
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "09-dispute", self.run / "09-dispute")
+        # It ran under an earlier versions.lock; this test is about its proof's shape, so its pins
+        # are set to today's lock (pinned is not proof).
+        lock = finding.pins()
+        rec = load(self.run / "09-dispute" / "finding.json")
+        rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"]}
+        dump(self.run / "09-dispute" / "finding.json", rec)
         f, entries = self.verify()
         self.assertEqual(entries["09-dispute"]["status"], "not_reproduced")
         self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
