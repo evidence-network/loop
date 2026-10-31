@@ -75,7 +75,7 @@ import finding  # noqa: E402
 # Who owns each kind of gap 10 leaves NOT_CHECKED.
 SETUP_ISSUE = "evidence-network/loop: steps/10-judge.setup.sh, run where 10 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
-# The window is every record of the run up to the as-of instant (Ethan, 2026-10-31): no closed-month boundary.
+# The window is every record of the run up to the as-of instant (Ethan, 2026-10-31).
 WINDOW_ISSUE = "evidence-network/loop: a run whose reproduced steps of the pack's kinds are all after 08's as-of instant"
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
 # Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.

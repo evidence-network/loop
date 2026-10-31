@@ -10,10 +10,8 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
 1. **08's manifest.** 08's `finding.json` passes `steps/finding.py`'s check and names `verified.json` in
    `proof`, with the sha256 the file has. The manifest is of this run's population. The as-of instant is 08's
    finding `finished`.
-2. **The window.** Every record of the run up to the as-of instant, 08's finding `finished`: no month boundary,
-   no minimum age. A record made today is judged today. Ethan, 2026-10-31 ("用 10 月份数据赶紧给我 run"), deleted
-   the earlier rule that a record is judged only once its month has closed (a 12-whole-closed-months window),
-   and with it the open-month preview and the committed stand-in run it needed: there is one window. The
+2. **The window.** Every record of the run up to the as-of instant, 08's finding `finished`: no month boundary and no
+   minimum age, so a record made today is judged today (Ethan, 2026-10-31: "用 10 月份数据赶紧给我 run"). The
    Result's `x-window.through` and `x-evaluator.bounds` name the actual bound.
 3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05 (rehearsal), and on a live run each held half, `<node>/held-<n>.json`, the counterparty capsule a node holds, when it is a host-served capsule (its `action_id`; a settlement leg held beside it is not a deal; binding.json `only`; its `-citing` and `-inclusion` files stay 08's proof; loop#250), `ledger.jsonl` for 06 on the mock rail and, on live, each node's `<node>/recorded.json` (the settlement legs and observations that node's ledger holds, which 06 keeps; a terms leg is settlement evidence under 06's kind, never a deal; Buzz 34760604), each `request.json` of an ask for 07, `dispute.json` for 09 (the referee's `outcome.json` stays 08's, beside it; `records` in `steps/10-judge.d/binding.json`). A live 09 keeps no `dispute.json` (Mesh disputes are adjudications only), so when 08 lists none its record is the referee's sealed `outcome.json` (`records_if_none`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
    The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
