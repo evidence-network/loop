@@ -14,7 +14,7 @@ the commands it would run (and, for `pack`, the files it would take) and
 changes nothing. Read a dry run before each real step the first time.
 
 ```
-lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|restart NODE|all
+lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
 ```
 
 `all` runs the sections below in order: `check`, `tools`, `start`,
@@ -592,6 +592,15 @@ checks the finding contract over the whole directory. It reads each node's
 capsules ledger, lists the settlements recorded there (`<node>/recorded.json`) and
 pays nothing. The live population names no rail, so the finding reads
 NOT_CHECKED. `pack` takes `06-settle/` with the rest of the day's findings.
+
+A node pays only when its host has a wallet. Ethan creates the wallets himself;
+`lab/bin/lab-wallet-setup.sh N`, run as intangible while the lab is quiet,
+installs the pinned lexe-wallet plugin for lab-N, adds `[payments] wallet =
+"lexe-wallet"` to its config.toml and restarts it. It never prints or copies a
+wallet secret. From then on every `lab/lab.sh start` must name that node in
+`LAB_PAYMENTS` (for example `LAB_PAYMENTS="lab-1 lab-2 lab-3"`), which writes the
+same section; `start` refuses, before any node starts, a config with a wallet
+that `LAB_PAYMENTS` does not name.
 
 ### Step 07, the later ask
 

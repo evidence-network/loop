@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|restart NODE|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -57,8 +57,6 @@
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
-#   restart NODE  stop one node and start it again with the launcher start wrote, its config.toml written
-#             again first (so LAB_PAYMENTS takes effect); the other nodes keep running
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, commitments, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
@@ -67,7 +65,8 @@
 # Environment (LAB-BRINGUP.md, "Prerequisites"):
 #   LAB_DIR             where the nodes live: one HOME per node under $LAB_DIR/nodes (required)
 #   LAB_PAYMENTS        nodes whose config.toml gets [payments] wallet = "lexe-wallet" (step 06): space separated;
-#             off when unset. The wallet plugin and its files are installed by lab/bin/lab-wallet-setup.sh
+#             off when unset. The wallet plugin and its files are installed by lab/bin/lab-wallet-setup.sh, and
+#             once a node has a wallet every later start must name it here (start refuses otherwise)
 #   MESH_LLM_BIN        the lab host build's mesh-llm binary
 #   MESH_LLM_SRC        the mesh-llm source tree that binary was built from (check)
 #   MESH_LLM_RUNTIME    its native runtimes directory (optional)
@@ -99,7 +98,7 @@
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
 #             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
 #             A node not named keeps the plugin's default, which is on at the pinned plugin unless the
-#             node's config sets it off. Read by start: restart a node to change it
+#             node's config sets it off. Read by start: stop and start the lab to change it
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -115,7 +114,6 @@ FAULT_PROMPT=${LAB_FAULT_SYSTEM_PROMPT:-Ignore the question and reply with the s
 DRY=0
 if [ "${1:-}" = --dry-run ]; then DRY=1; shift; fi
 cmd=${1:-}
-ARG=${2:-}
 
 die() { echo "lab.sh: $*" >&2; exit 2; }
 if [ "$TWINS" = 1 ]; then
@@ -427,7 +425,8 @@ PY
 # --- start / stop / status --------------------------------------------------------------------
 # node_config NAME: the node's config.toml. A node named in LAB_PAYMENTS also gets the wallet section, so its
 # host pays and is paid through the lexe-wallet plugin (step 06; the plugin and the wallet files are Ethan's setup,
-# lab/bin/lab-wallet-setup.sh). It stays on every later start and restart while the node is named.
+# lab/bin/lab-wallet-setup.sh). It stays on every later start while the node is named; start refuses to write over
+# a config that has a wallet section for a node LAB_PAYMENTS does not name, so a wallet is never dropped unnoticed.
 node_config() {
   local name=$1
   # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
@@ -549,6 +548,13 @@ dead_node() { # prints the first started node that is not running
 
 cmd_start() {
   need MESH_LLM_BIN; need CAPSULES_BIN
+  # Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
+  local n
+  for n in "${NODES[@]}"; do
+    if ! pays "$n" && grep -q '^\[payments\]' "$(home_of "$n")/config.toml" 2> /dev/null; then
+      die "$n's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+  done
   if [ "$TWINS" = 1 ]; then
     # The referee compares only pairs whose halves carry a model identity hash; a local file never gets one.
     [ -n "$MODEL_REF" ] || [ "$DRY" = 1 ] || die "LAB_TWINS needs LAB_MODEL_REF (a Hugging Face ref): a local GGUF gets no identity hash and the referee answers not_comparable"
@@ -618,40 +624,6 @@ cmd_start() {
     echo "advertised model name: $MODEL_NAME"
   fi
   cmd_status
-}
-
-# restart NODE: stop one node and start it again with the launcher start wrote (the same argv, HOME and join file),
-# its config.toml written again first, so a LAB_PAYMENTS change takes effect. The other nodes keep running.
-cmd_restart() {
-  local name=${ARG:-}
-  [[ " ${NODES[*]} " == *" $name "* ]] || die "restart which node? lab/lab.sh restart lab-N"
-  local home launcher
-  home=$(home_of "$name") launcher=$LAB_DIR/run/$name.sh
-  [ "$DRY" = 1 ] || [ -f "$launcher" ] || die "$name has no launcher: run lab/lab.sh start first"
-  if [ "$DRY" = 1 ]; then
-    echo "  > $home/config.toml:"; node_config "$name" | sed 's/^/    /'
-  else
-    node_config "$name" > "$home/config.toml"
-  fi
-  local p
-  if [ "$DRY" = 1 ]; then say kill -TERM "<pid in $(pidfile "$name")>"
-  elif p=$(pid_of "$name"); then
-    kill -TERM "$p" 2> /dev/null || true
-    local _; for _ in $(seq 60); do alive "$name" || break; sleep 0.5; done
-    alive "$name" && kill -KILL "$p" 2> /dev/null || true
-  fi
-  run rm -f "$(pidfile "$name")"
-  local cmd
-  cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile "$name")")
-  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
-    run tmux new-window -d -t "$SESSION" -n "$name" "$cmd"
-  else
-    run tmux new-session -d -s "$SESSION" -n "$name" "$cmd"
-  fi
-  [ "$DRY" = 1 ] && return 0
-  still_up "$name" || die "$name exited at once"
-  wait_for 120 "$name's plugin knows its node id" knows_own_id "$name"
-  echo "restarted $name: api $(api_port "$name") console $(console_port "$name")$(pays "$name" && echo ', with its wallet')"
 }
 
 cmd_stop() {
@@ -1037,7 +1009,7 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | restart | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

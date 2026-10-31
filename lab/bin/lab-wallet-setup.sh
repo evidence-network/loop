@@ -47,7 +47,8 @@ HOME_N=$LAB_DIR/nodes/$NODE
 CONFIG=$HOME_N/config.toml
 LAUNCHER=$LAB_DIR/run/$NODE.sh
 LOG=$LAB_DIR/logs/$NODE.log
-PORT=$((9810 + N)) # lab.sh console_port: BASE 9800 + 10 + index
+PORT=$((${LAB_PORT_BASE:-9800} + 10 + N)) # lab.sh console_port: BASE + 10 + index
+SESSION=${LAB_TMUX_SESSION:-loop-lab}
 WALLET_DIR=$HOME_N/payments/wallets/lexe-wallet
 BACKUP=
 
@@ -86,7 +87,7 @@ stop_node() { # PID; lab.sh stop also SIGTERMs and waits for the shutdown checkp
 }
 
 launch() { # CWD
-  tmux new-window -d -t loop-lab -n "$NODE" -c "$1" "bash $LAUNCHER >> $LOG 2>&1"
+  tmux new-window -d -t "$SESSION" -n "$NODE" -c "$1" "$(printf 'bash %q >> %q 2>&1' "$LAUNCHER" "$LOG")"
 }
 
 if [ "$INVOICE_ONLY" = 0 ]; then
@@ -106,7 +107,7 @@ if [ "$INVOICE_ONLY" = 0 ]; then
   # The launcher lab.sh wrote must start exactly the running process, so the replay changes nothing
   # but the config.
   grep -qF -- "$live_cmd < /dev/null" "$LAUNCHER" || die "$LAUNCHER does not start the running $NODE's cmdline; restart it with lab.sh instead"
-  tmux has-session -t loop-lab 2> /dev/null || die "tmux session loop-lab not found"
+  tmux has-session -t "$SESSION" 2> /dev/null || die "tmux session $SESSION not found"
   if [ "$CHECK_ONLY" = 1 ]; then
     echo "check: lab quiet; $NODE pid $pid in $cwd matches $LAUNCHER; nothing changed"
     exit 0
@@ -118,6 +119,7 @@ if [ "$INVOICE_ONLY" = 0 ]; then
   installed=$HOME_N/.mesh-llm/plugins/installed/lexe-wallet/lexe-wallet
   if [ -f "$installed" ] && [ "$(sha "$installed")" = "$LEXE_SHA256" ]; then
     echo "plugin: lexe-wallet $LEXE_SHA256 already installed for $NODE"
+    HOME=$HOME_N "$MESH_LLM_BIN" plugins enable lexe-wallet  # a rollback of an earlier run disabled it
   else
     t=$(mktemp -d)
     trap 'rm -rf "$t"' EXIT
@@ -129,12 +131,10 @@ if [ "$INVOICE_ONLY" = 0 ]; then
       --version 0.1.0-9f830c1 --archive "$t/lexe-wallet-9f830c1-x86_64-unknown-linux-gnu.tar.gz"
   fi
 
-  # 2. Config, with a rollback copy of the config and the running process's argv, environ and cwd.
+  # 2. Config, with a rollback copy of the config and the running process's cwd.
   BACKUP=$HOME_N/pre-wallet-$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -m 700 "$BACKUP"
   cp -p "$CONFIG" "$BACKUP/config.toml"
-  cp "/proc/$pid/cmdline" "$BACKUP/cmdline"
-  (umask 077 && cp "/proc/$pid/environ" "$BACKUP/environ")
   echo "$cwd" > "$BACKUP/cwd"
   echo "rollback copy: $BACKUP"
   if grep -q '^\[payments\]' "$CONFIG"; then
@@ -181,3 +181,4 @@ w fund-wallet --amount-sats "$FUND_SATS"
 echo
 echo "After paying, check: HOME=$HOME_N $MESH_LLM_BIN --config $CONFIG wallet --port $PORT get-balance"
 echo "Back up $WALLET_DIR/seedphrase.txt privately. This script never prints it."
+echo "From now on every lab.sh start must name $NODE in LAB_PAYMENTS, or start refuses (it would drop the wallet)."

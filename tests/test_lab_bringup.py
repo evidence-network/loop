@@ -439,18 +439,16 @@ class DryRunTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("LAB_PAYMENTS names lab-9, not a lab node", r.stderr)
 
-    def test_restart_writes_one_nodes_config_and_relaunches_its_launcher(self):
-        r = lab_sh("--dry-run", "restart", "lab-2", env={**self.env, "LAB_PAYMENTS": "lab-2"})
+    def test_start_refuses_to_drop_a_wallet_lab_payments_does_not_name(self):
+        home = self.lab / "nodes" / "lab-2"
+        home.mkdir(parents=True)
+        (home / "config.toml").write_text('[payments]\nwallet = "lexe-wallet"\n')
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAYMENTS": "lab-1"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("lab-2's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it", r.stderr)
+        self.assertNotIn("tmux", r.stdout, "a node started before the refusal")
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAYMENTS": "lab-2"})
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn(f"  > {self.lab}/nodes/lab-2/config.toml:", r.stdout)
-        self.assertIn('    wallet = "lexe-wallet"', r.stdout)
-        self.assertIn(f"tmux new-window -d -t loop-lab -n lab-2 bash\\ {self.lab}/run/lab-2.sh", r.stdout)
-        self.assertNotIn("lab-1", r.stdout)
-        self.assertFalse(self.lab.exists(), "a dry run created LAB_DIR")
-        for bad in ((), ("lab-9",)):
-            r = lab_sh("--dry-run", "restart", *bad, env=self.env)
-            self.assertNotEqual(r.returncode, 0)
-            self.assertIn("restart which node?", r.stderr)
 
     def test_admit_runs_step_04_on_the_live_population_into_the_days_findings(self):
         # Step 04 is not in stage 1, so lab.sh admit runs it (evidence-network/loop#127).
