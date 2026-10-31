@@ -342,10 +342,14 @@ class Live(unittest.TestCase):
         self.assertFalse(checks["capsule_id"]["ok"])
 
     def test_no_tool_entry_for_a_node_with_no_record(self):
+        # Without aac-go only lab-a, which holds decision records, gets the tool entry; lab-b holds none.
+        lab = self.lab_with(self.good())
         with tempfile.TemporaryDirectory() as tools, mock.patch.dict(os.environ, {"LOOP_TOOLS": tools}):
             self.assertTrue(step.tool_gaps())
-        _, f = self.live_run(self.lab_with(self.good()))
-        self.assertNotIn("node lab-b", " ".join(x["what"] for x in f.get("not_checked", [])))
+            _, f = self.live_run(lab)
+        whats = [x["what"] for x in f["not_checked"]]
+        self.assertIn(f"node lab-a: {step.RECORD_WHAT}", whats)
+        self.assertFalse([w for w in whats if w.startswith("node lab-b")], whats)
 
     def test_a_node_with_no_listing_is_not_checked(self):
         _, f = self.live_run(self.lab_with(self.good(), listed=False))
