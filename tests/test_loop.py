@@ -12,6 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOOP = ROOT / "loop.sh"
+sys.path.insert(0, str(ROOT / "steps"))
+import finding  # noqa: E402
 POPULATION = ROOT / "population"
 
 # A fake step: writes a finding through steps/finding.py, or misbehaves as told.
@@ -92,8 +94,6 @@ class LoopTest(unittest.TestCase):
     def test_a_step_written_before_loop_sh_keeps_the_runs_start(self):
         # lab.sh deal writes 05-deal into the day's directory before loop.sh runs (evidence-network/loop#65).
         self.all_steps()
-        sys.path.insert(0, str(ROOT / "steps"))
-        import finding
         early = "2026-10-29T22:16:32Z"
         (self.out / "05-deal").mkdir(parents=True)
         finding.write(self.out / "05-deal", result="NOT_CHECKED", population="rehearsal", asserts="a deal",
@@ -102,9 +102,20 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads((self.out / "run.json").read_text())["started"], early)
-        # A second loop.sh run into the same directory keeps it too.
+        # A second loop.sh run keeps it from run.json alone, once the early finding is gone.
+        shutil.rmtree(self.out / "05-deal")
         self.assertEqual(self.loop("--out", str(self.out)).returncode, 0)
         self.assertEqual(json.loads((self.out / "run.json").read_text())["started"], early)
+
+    def test_a_start_that_is_not_a_time_is_skipped(self):
+        self.all_steps()
+        self.out.mkdir(parents=True)
+        (self.out / "run.json").write_text(json.dumps({"population": "rehearsal", "stage": "1", "steps": ["01"],
+                                                        "started": "0000-00-00T00:00:00Z"}))
+        r = self.loop("--out", str(self.out))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        started = json.loads((self.out / "run.json").read_text())["started"]
+        self.assertEqual(started[:4], str(dt.datetime.now(dt.timezone.utc).year))
 
     def test_muse_and_cross_run_nothing_and_say_not_checked_until_their_steps_exist(self):
         for eco in ("muse", "cross"):

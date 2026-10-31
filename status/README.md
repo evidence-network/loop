@@ -52,7 +52,8 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   the marker step's PASS finding `finished`; step 07 uses `answered_at` in the
   `first-answered.json` its finding names in `proof`, from a valid PASS or
   NOT_CHECKED finding (never a FAIL or malformed one). Each is minus the run's
-  `run.json` `started` (loop.sh writes it before the first step), in seconds
+  `run.json` `started` (loop.sh writes it before its first step, as the earliest start of the day's
+  directory, a step `lab.sh` ran there earlier included), in seconds
   when under one minute. Admission decisions that were NO
   (M3) read step 04's `counts.json` proof (`refused` of `decisions`: the NO decisions) when its finding is a valid
   `PASS`, and show both numbers or neither. Filtered volume beside raw (M2) reads `raw` and

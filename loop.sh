@@ -8,7 +8,8 @@
 # exits non-zero, gets a FAIL finding written here through steps/finding.py, naming what
 # broke. Then `steps/finding.py check DIR` runs, status/findings.py writes DIR/index.md,
 # and one line per step is printed: `NN name RESULT`. Before the first step it writes
-# DIR/run.json: {"stage", "population", "started", "steps"} (UTC), the run's own start and the step numbers it runs.
+# DIR/run.json: {"stage", "population", "started", "steps"} (UTC): started is the earliest of this run's start, an
+# existing run.json's and each finding's already in DIR (loop#65); stage and steps are this run's.
 #
 # Exit 0: every step has a valid finding (FAIL and NOT_CHECKED included: the result is in
 # the finding, not the exit code). Exit 1: the check refused a finding. Exit 2: usage.
@@ -134,16 +135,18 @@ PY
 # already holds this day's steps (lab.sh deal, settle or ask write into it before or after loop.sh) keeps the
 # earliest start: of a run.json already there and of each finding there (evidence-network/loop#65).
 python3 -B - "$out/run.json" "$stage" "$population" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$ecosystem" $steps <<'PY' || die "cannot write $out/run.json"
-import json, re, sys
+import datetime as dt, json, sys
 from pathlib import Path
 path, stage, population, started, ecosystem, *steps = sys.argv[1:]
 earlier = [Path(path)] + sorted(Path(path).parent.glob("*/finding.json"))
 for f in earlier:
     try:
-        t = json.loads(f.read_text()).get("started")
-    except (OSError, ValueError, AttributeError):
+        doc = json.loads(f.read_text())
+        t = doc["started"]
+        dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ")  # a real UTC time in loop.sh's own form, or skipped
+    except (OSError, ValueError, KeyError, TypeError):
         continue
-    if isinstance(t, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", t):
+    if doc.get("population") == population:  # the guard above already refuses another population's finding
         started = min(started, t)
 run = {"stage": stage, "population": population, "started": started, "steps": steps}
 if ecosystem != "mesh":
