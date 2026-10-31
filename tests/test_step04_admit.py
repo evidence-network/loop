@@ -334,7 +334,7 @@ class Live(unittest.TestCase):
         _, f = self.live_run(lab)
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         why = {x["what"]: x["why"] for x in f["not_checked"]}
-        self.assertEqual(why[f"node lab-a: {step.RECORD_WHAT}"], "2 carry no producer signature")
+        self.assertEqual(why[f"node lab-a: {step.RECORD_WHAT}"], "2 record(s) carry no producer signature")
         self.assertIn(step.UNVERIFIED_ISSUE, [x["issue"] for x in f["not_checked"]])
 
     def test_a_record_that_is_not_an_object_is_a_capsule_id_problem(self):
