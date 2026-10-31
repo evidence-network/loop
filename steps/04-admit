@@ -72,8 +72,8 @@ verifier (`cross_language`, aac-go at its pin; steps/01-seal.setup.sh installs
 it): Class 1, its capsule_id recomputed, and its producer signature under the key
 the node's nodes/<node_id>.json publishes (LOOP_NODES_DIR, default nodes/). A
 record that fails any of these is a FAIL naming it; a node with no listing, a
-record with no producer signature, or no verifier installed is NOT_CHECKED,
-never a PASS (evidence-network/loop#135).
+record with neither signature nor key_id (one of the two alone is malformed and
+FAILs), or no verifier installed is NOT_CHECKED, never a PASS (evidence-network/loop#135).
 
 No spend: nothing is paid on either population.
 
@@ -824,8 +824,8 @@ def record_checks(numbers, lines, listed):
             problems.append(f"record {n}: {sig['detail']}")
         unclaimed += sig["state"] == "unclaimed"
         unlisted += sig["state"] == "unlisted"
-    why = [f"{unclaimed} carry no producer signature"] * bool(unclaimed) + [
-        f"{unlisted} verify, but the node has no nodes/<node_id>.json listing to hold the key to"] * bool(unlisted)
+    why = [f"{unclaimed} record(s) carry no producer signature"] * bool(unclaimed) + [
+        f"{unlisted} record(s) verify, but the node has no nodes/<node_id>.json listing to hold the key to"] * bool(unlisted)
     return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": UNVERIFIED_ISSUE}] if why else [])
 
 
