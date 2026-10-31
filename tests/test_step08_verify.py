@@ -1003,6 +1003,69 @@ class Step08Live03Test(unittest.TestCase):
         self.assertEqual(entries["03-advertise"]["status"], "reproduced", entries["03-advertise"]["problems"])
         self.assertIn("is not in the checkout 08 runs in", " ".join(x["why"] for x in f["not_checked"]))
 
+    def first(self, d):
+        doc = load(d / "carrier.json")
+        name = sorted(doc["nodes"])[0]
+        return doc, name, doc["nodes"][name]
+
+    def test_a_path_dropped_from_carrier_json_and_its_file_deleted_fails(self):
+        # 08 works out the paths from the commit itself, so a commitment the commit holds can't be hidden.
+        def drop(d):
+            doc, name, entry = self.first(d)
+            entry["paths"] = {p: v for p, v in entry["paths"].items() if not p.endswith(f"{entry['node_id']}.json")}
+            dump(d / "carrier.json", doc)
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if p["path"] != f"{name}.commitment.json"]
+            dump(d / "finding.json", rec)
+            (d / f"{name}.commitment.json").unlink()
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("is not what the carrier's commit", f["detail"])
+
+    def test_a_policy_not_what_the_carrier_held_fails(self):
+        def forge(d):
+            p = next(d.glob("*.policy.json"))
+            p.write_bytes(p.read_bytes() + b" ")
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_path_03_never_reads_fails(self):
+        def extra(d):
+            doc, name, entry = self.first(d)
+            entry["paths"]["nodes/other.json"] = False
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(extra)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("which 03 never reads", f["detail"])
+
+    def test_a_head_that_is_not_a_full_commit_id_is_named_not_compared(self):
+        def ref(d):
+            doc = load(d / "carrier.json")
+            doc["head"] = "HEAD"
+            dump(d / "carrier.json", doc)
+        f, entries = self.plant(ref)
+        self.assertIn("names no full commit id", " ".join(x["why"] for x in f["not_checked"]))
+
+    def test_a_replayed_commit_still_names_that_it_was_head(self):
+        f, entries = self.verify()
+        self.assertIn(step.LIVE_RELIES_ON["03"][0], f["not_checked"])
+
+    def test_carrier_json_unreadable_or_naming_another_node_fails(self):
+        for change in ("unreadable", "outside"):
+            with self.subTest(change):
+                self.tearDown()
+                self.setUp()
+
+                def edit(d):
+                    if change == "unreadable":
+                        (d / "carrier.json").write_text("{")
+                    else:
+                        doc = load(d / "carrier.json")
+                        doc["nodes"]["stranger"] = {"node_id": None, "key_id": None, "paths": {}}
+                        dump(d / "carrier.json", doc)
+                f, entries = self.plant(edit)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+
     def test_an_old_shape_live_03_bundle_is_not_reproduced(self):
         shutil.rmtree(self.run / "03-advertise")
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-4" / "03-advertise", self.run / "03-advertise")

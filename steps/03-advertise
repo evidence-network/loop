@@ -159,9 +159,9 @@ def publish(carrier, node_id, doc, policy_bytes):
     git(carrier, "commit", "-q", "--allow-empty", "-m", f"advertise: commitment for {node_id}")
 
 
-def fetch(carrier, path):
-    """The bytes at HEAD:<path> in the carrier, or None."""
-    r = git(carrier, "show", f"HEAD:{path}", check=False)
+def fetch(carrier, path, ref="HEAD"):
+    """The bytes at <ref>:<path> in the carrier, or None."""
+    r = git(carrier, "show", f"{ref}:{path}", check=False)
     return r.stdout if r.returncode == 0 else None
 
 
@@ -182,7 +182,7 @@ def rehearsal_node(population, node, carrier):
             "published_commit": git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}, key_id
 
 
-def live_node(node, carrier):
+def live_node(node, carrier, ref="HEAD"):
     """A live node: the harness never signs for it. Returns (record, the listed key_id or None).
 
     The commitment must be one the node signed and published itself; the key it
@@ -191,7 +191,7 @@ def live_node(node, carrier):
     rec = {"name": node["name"], "node_id": node.get("node_id"), "signed_by": "the node (never the harness)"}
     if not node.get("node_id"):
         return rec, None
-    listed = fetch(carrier, f"nodes/{node['node_id']}.json")
+    listed = fetch(carrier, f"nodes/{node['node_id']}.json", ref)
     try:
         key_id = json.loads(listed)["key_id"] if listed is not None else None
     except (ValueError, KeyError, TypeError):
@@ -200,13 +200,10 @@ def live_node(node, carrier):
     return rec, key_id
 
 
-def check_node(population, out, node, carrier, live):
-    """One node's verification record, and the proof files it wrote."""
-    if live:
-        rec, key_id = live_node(node, carrier)
-    else:
-        rec, key_id = rehearsal_node(population, node, carrier)
-    return verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), live)
+def check_node(population, out, node, carrier):
+    """One rehearsal node's verification record, and the proof files it wrote."""
+    rec, key_id = rehearsal_node(population, node, carrier)
+    return verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), False)
 
 
 def verify_node(out, name, rec, key_id, read, live):
@@ -283,16 +280,14 @@ def main(argv=None):
     records, proof = [], []
     with tempfile.TemporaryDirectory() as tmp:
         carrier = Path(tmp) / "carrier"
-        if not live:
-            carrier.mkdir()
-            git(carrier, "init", "-q")
+        carrier.mkdir()
+        git(carrier, "init", "-q")
         for node in pop["nodes"]:
-            rec, files = check_node(population, out, node, carrier, live)
+            rec, files = check_node(population, out, node, carrier)
             records.append(rec)
             proof += files
-        if not live:
-            git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")
-            proof.append("carrier.bundle")
+        git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")
+        proof.append("carrier.bundle")
     conclude(out, kind, records, proof, started)
     return 0
 
@@ -305,17 +300,20 @@ def collect_live(pop, out, carrier):
     """Read each live node's listing, commitment and policy at the carrier's HEAD; keep what was read under out
     (carrier.json, <name>.commitment.json, <name>.policy.json). The harness never signs for a live node."""
     out = Path(out)
-    for p in out.glob("*.json"):
-        p.unlink()
-    head = git(carrier, "rev-parse", "HEAD", check=False)
+    for p in [out / CARRIER_FILE, out / "verification.json", out / "finding.json",
+              *out.glob("*.commitment.json"), *out.glob("*.policy.json")]:
+        p.unlink(missing_ok=True)
+    rev = git(carrier, "rev-parse", "HEAD", check=False)
+    head = rev.stdout.decode().strip() if rev.returncode == 0 else None
+    ref = head or "HEAD"  # every read is at the one commit recorded, even if the carrier moves meanwhile
     held = {}
     for node in pop["nodes"]:
-        _, key_id = live_node(node, carrier)
+        _, key_id = live_node(node, carrier, ref)
         held[node["name"]] = entry = {"node_id": node.get("node_id"), "key_id": key_id, "paths": {}}
         if not node.get("node_id"):
             continue
         path = f"nodes/commitments/{node['node_id']}.json"
-        got = fetch(carrier, path)
+        got = fetch(carrier, path, ref)
         entry["paths"][path] = got is not None
         if got is None:
             continue
@@ -325,11 +323,11 @@ def collect_live(pop, out, carrier):
         except (ValueError, KeyError, TypeError):
             continue
         if isinstance(uri, str) and not ("://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]):
-            pol = fetch(carrier, f"nodes/commitments/{uri}")
+            pol = fetch(carrier, f"nodes/commitments/{uri}", ref)
             entry["paths"][f"nodes/commitments/{uri}"] = pol is not None
             if pol is not None:
                 (out / f"{node['name']}.policy.json").write_bytes(pol)
-    doc = {"head": head.stdout.decode().strip() if head.returncode == 0 else None, "nodes": held}
+    doc = {"head": head, "nodes": held}
     (out / CARRIER_FILE).write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
 
 
@@ -369,7 +367,9 @@ def judge_live(pop, out, started):
             r, files_written = {**rec, "result": "FAIL", "carrier": CARRIER_FILE, "notes": [],
                                 "errors": [f"a file carrier.json says HEAD held is not in the proof ({e})"]}, []
         records.append(r)
-        proof += files_written
+        # Every file collect_live kept for the node is cited, even one the checker stopped before reading.
+        proof += files_written + [f for f in (f"{name}.commitment.json", f"{name}.policy.json")
+                                  if f not in files_written and (out / f).is_file()]
     extra = sorted(set(held) - set(names))
     if extra:
         records.append({"name": CARRIER_FILE, "node_id": None, "result": "FAIL", "carrier": CARRIER_FILE,
