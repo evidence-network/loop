@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|settle|twins|dispute|ask|pack|stop|restart NODE|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -57,6 +57,8 @@
 #             node's console (and the reporter node itself from a second node's). Pays nothing
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
+#   restart NODE  stop one node and start it again with the launcher start wrote, its config.toml written
+#             again first (so LAB_PAYMENTS takes effect); the other nodes keep running
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, commitments, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
@@ -64,6 +66,8 @@
 #
 # Environment (LAB-BRINGUP.md, "Prerequisites"):
 #   LAB_DIR             where the nodes live: one HOME per node under $LAB_DIR/nodes (required)
+#   LAB_PAYMENTS        nodes whose config.toml gets [payments] wallet = "lexe-wallet" (step 06): space separated;
+#             off when unset. The wallet plugin and its files are installed by lab/bin/lab-wallet-setup.sh
 #   MESH_LLM_BIN        the lab host build's mesh-llm binary
 #   MESH_LLM_SRC        the mesh-llm source tree that binary was built from (check)
 #   MESH_LLM_RUNTIME    its native runtimes directory (optional)
@@ -111,6 +115,7 @@ FAULT_PROMPT=${LAB_FAULT_SYSTEM_PROMPT:-Ignore the question and reply with the s
 DRY=0
 if [ "${1:-}" = --dry-run ]; then DRY=1; shift; fi
 cmd=${1:-}
+ARG=${2:-}
 
 die() { echo "lab.sh: $*" >&2; exit 2; }
 if [ "$TWINS" = 1 ]; then
@@ -147,6 +152,13 @@ done
 # twin's signed half was pushed to the requester, and a referee is eligible once the requester holds a half from it).
 if [ "$TWINS" = 1 ] && [ "${#SHARE[@]}" = 0 ]; then SHARE=("$TWIN_A" "$TWIN_B" "$REFEREE"); fi
 shares() { local n; for n in "${SHARE[@]+"${SHARE[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
+# The nodes whose host has a wallet (step 06): space separated, as LAB_SHARE_AT_COMPLETION.
+PAYS=()
+read -r -d '' -a PAYS <<< "${LAB_PAYMENTS:-}" || true
+for n in "${PAYS[@]+"${PAYS[@]}"}"; do
+  [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_PAYMENTS names $n, not a lab node"
+done
+pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
@@ -413,6 +425,28 @@ PY
 }
 
 # --- start / stop / status --------------------------------------------------------------------
+# node_config NAME: the node's config.toml. A node named in LAB_PAYMENTS also gets the wallet section, so its
+# host pays and is paid through the lexe-wallet plugin (step 06; the plugin and the wallet files are Ethan's setup,
+# lab/bin/lab-wallet-setup.sh). It stays on every later start and restart while the node is named.
+node_config() {
+  local name=$1
+  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
+  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
+  printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
+  printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
+  printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
+  printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
+  # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
+  # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
+  if [ -n "$MODEL_REF" ] && serves_model "$name"; then
+    printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
+    if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
+      printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
+    fi
+  fi
+  if pays "$name"; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
+}
+
 write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   local name=$1; shift
   local home launcher
@@ -441,20 +475,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
     printf ' < /dev/null >> %q 2>&1\n' "$(logfile "$name")"
   )
   local config
-  # The grant lets mesh-llm ask the plugin's admission hook at backend_selected (capsules-plugin INSTALL.md,
-  # "Admit or refuse peers"); without it the plugin is never asked and seals no admission_decision (step 04).
-  config=$(printf 'version = 1\n\n[[plugin]]\nname = "capsules"\nenabled = true\ncommand = "%s"\nargs = []\n' "$CAPSULES_BIN"
-    printf '\n[plugin.openai_exchange_grant]\nendpoints = ["chat_completions", "completions", "responses"]\n'
-    printf 'phases = ["backend_selected"]\nadmission = true\ndeadline_ms = 250\nmax_body_bytes = 1048576\n'
-    printf 'max_queue_bytes = 4194304\nmax_in_flight = 32\nfailure_policy = "required"\n'
-    # LAB-ONLY FAULT INJECTION (LAB_TWINS=1, twin B only): a per-model system prompt, so this node's answer
-    # differs from twin A's under the same model hash and weights digest. Written to twin-fault.json by `twins`.
-    if [ -n "$MODEL_REF" ] && serves_model "$name"; then
-      printf '\n[[models]]\nmodel = "%s"\n' "$MODEL_REF"
-      if [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
-        printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
-      fi
-    fi)
+  config=$(node_config "$name")
   if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
     # The label comes from the config this node was started with, not from whatever `twins` is run with.
     python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
@@ -597,6 +618,40 @@ cmd_start() {
     echo "advertised model name: $MODEL_NAME"
   fi
   cmd_status
+}
+
+# restart NODE: stop one node and start it again with the launcher start wrote (the same argv, HOME and join file),
+# its config.toml written again first, so a LAB_PAYMENTS change takes effect. The other nodes keep running.
+cmd_restart() {
+  local name=${ARG:-}
+  [[ " ${NODES[*]} " == *" $name "* ]] || die "restart which node? lab/lab.sh restart lab-N"
+  local home launcher
+  home=$(home_of "$name") launcher=$LAB_DIR/run/$name.sh
+  [ "$DRY" = 1 ] || [ -f "$launcher" ] || die "$name has no launcher: run lab/lab.sh start first"
+  if [ "$DRY" = 1 ]; then
+    echo "  > $home/config.toml:"; node_config "$name" | sed 's/^/    /'
+  else
+    node_config "$name" > "$home/config.toml"
+  fi
+  local p
+  if [ "$DRY" = 1 ]; then say kill -TERM "<pid in $(pidfile "$name")>"
+  elif p=$(pid_of "$name"); then
+    kill -TERM "$p" 2> /dev/null || true
+    local _; for _ in $(seq 60); do alive "$name" || break; sleep 0.5; done
+    alive "$name" && kill -KILL "$p" 2> /dev/null || true
+  fi
+  run rm -f "$(pidfile "$name")"
+  local cmd
+  cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile "$name")")
+  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "$SESSION" -n "$name" "$cmd"
+  else
+    run tmux new-session -d -s "$SESSION" -n "$name" "$cmd"
+  fi
+  [ "$DRY" = 1 ] && return 0
+  still_up "$name" || die "$name exited at once"
+  wait_for 120 "$name's plugin knows its node id" knows_own_id "$name"
+  echo "restarted $name: api $(api_port "$name") console $(console_port "$name")$(pays "$name" && echo ', with its wallet')"
 }
 
 cmd_stop() {
@@ -982,7 +1037,7 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | settle | twins | dispute | ask | pack | stop | restart | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
