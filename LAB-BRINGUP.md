@@ -595,8 +595,9 @@ own node through a second node's console, as `loop` does), and pays nothing. Run
   ledger (`<data_dir>/ledger/capsules.jsonl` of the reporter's node, or of the second node
   when the reporter's node is asked).
 - The exchange request is about the newest half the asker pushed to the asked node after an
-  `exchange` (the halves `deal` reads) that the asked node's chain cites as a counterparty
-  half. With no such half, the exchange ask reads NOT_CHECKED (evidence-network/loop#94).
+  `exchange`, by a node started with `LAB_SHARE_AT_COMPLETION` (the halves `deal` reads), that
+  the asked node's chain cites as a counterparty half. With no such half, the exchange ask
+  reads NOT_CHECKED (evidence-network/loop#94).
 - An exchange refusal for `policy_declined` or `not_authorized` reads NOT_CHECKED
   (Mesh-LLM/capsules-plugin#114). One for `coverage_unsatisfiable` (the node has no
   checkpoint covering the half yet) is checked for its key and left NOT_CHECKED
