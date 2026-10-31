@@ -48,7 +48,14 @@ source does not give, a row value its rules cannot give, rows under another poli
 two decisions disagreeing under one policy digest); NOT_CHECKED otherwise. The pinned plugin
 also seals the base policy's five rows with each decision that names a peer,
 and a second read, the peer's history card (capsules-plugin PR #116); a
-decision sealed by an earlier build has neither. The step recomputes each row
+decision sealed by an earlier build has neither. The current plugin adds, all
+additive: on each row the evaluator's effect (none, as the five are record
+rows) and, where it counts, count and denominator (PR #178); a read citing the
+base terms pack (PR #178); and, once the lists admit a peer, a price member
+recording the price rule, with the price pack read when it ran (PR #165). The
+step judges each: the members and their values, the packs read in order, and
+that the price member and the source agree (a refusing price is source
+price_rule, the NO the lists did not give). The step recomputes each row
 from what the decision sealed, by the base policy's rules (admission/base.rs):
 identity passes exactly when a card is cited, key age is not_read when none is,
 and the three local rows come from one snapshot of the node's chain, all
@@ -393,7 +400,7 @@ LIVE_GAPS = " ".join([
 
 ABSENT = object()
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-KEYS = {"peer_commitment", "verdict", "source", "reads", "rows", "request_id", "attempt", "model"}
+KEYS = {"peer_commitment", "verdict", "source", "reads", "rows", "request_id", "attempt", "model", "price"}
 # The base policy's rows, in the order the plugin lists them, and a row's results (capsules-plugin admission/base.rs).
 ROWS = ("identity", "key_age", "performed_and_settled", "disputes", "corroboration")
 ROW_RESULTS = ("pass", "fail", "not_read")
@@ -425,10 +432,13 @@ def block_problems(blk):
         errs.append(f"unexpected members {', '.join(sorted(set(blk) - KEYS))}")
     reads = blk.get("reads")
     rows = blk.get("rows", ABSENT)
+    price = blk.get("price", ABSENT)
     # The operator-policy read first. A decision with rows (capsules-plugin PR #116) has one more read, the
-    # peer's history card; one sealed by an earlier build has neither.
-    want = 1 if rows is ABSENT else 2
-    pol = reads[0] if isinstance(reads, list) and len(reads) == want and isinstance(reads[0], dict) else {}
+    # peer's history card; one sealed by an earlier build has neither. After the card come the terms-pack reads
+    # (admission.rs): the price pack, cited only when the price rule ran (PR #165), then the base pack, cited
+    # whenever the rows were read (PR #178).
+    pol = reads[0] if isinstance(reads, list) and reads and isinstance(reads[0], dict) else {}
+    tail = reads[1:] if isinstance(reads, list) else []
     # With no readable operator policy the plugin seals a NO and no digest, whether the policy or the target
     # was unreadable first; every other decision cites the policy's digest.
     unread = blk.get("source") in ("unreadable_policy", "unreadable_target") and blk.get("verdict") == "NO" \
@@ -441,25 +451,135 @@ def block_problems(blk):
     no_peer = blk.get("verdict") == "NO" and blk.get("source") == "unreadable_target"
     if not (digest_ok(pc) or (pc is None and no_peer)):
         errs.append("peer_commitment is missing or not a commitment")
-    if rows is not ABSENT:
+    packs = [r for r in tail if isinstance(r, dict) and r.get("kind") == "terms_pack"]
+    if rows is ABSENT:
+        if tail:
+            errs.append("reads cites more than the operator policy on a decision with no rows")
+    else:
         if pc is None:
             errs.append("rows on a decision that names no peer")
         if not (isinstance(rows, list) and len(rows) == len(ROWS)
-                and all(isinstance(x, dict) and set(x) == {"row", "result"} and x["row"] == name
+                and all(isinstance(x, dict) and ROW_KEYS[0] <= set(x) <= ROW_KEYS[1] and x["row"] == name
                         and x["result"] in ROW_RESULTS for x, name in zip(rows, ROWS))):
             errs.append("rows are not the five base-policy rows in order, each pass, fail or not_read")
-        card = reads[1] if isinstance(reads, list) and len(reads) == 2 else None
+        else:
+            errs += row_member_problems(rows, bool(packs))
+        card = tail[0] if tail else None
         if not (card == {"kind": "history_card", "state": "not_read"}
                 or (isinstance(card, dict) and set(card) == {"kind", "derivation", "commitment"}
                     and card["kind"] == "history_card" and card["derivation"] == "history_card/1"
                     and digest_ok(card["commitment"]))):
             errs.append("the second read is not the peer's history card")
+        errs += pack_problems(tail[1:], price)
+    errs += price_problems(price, pc, rows)
+    return errs
+
+
+# A row is {row, result}; the evaluator's own view of it (PR #178) adds effect, and count and denominator where
+# it counts. The base policy's five rows are record rows, which never change the decision (effect none).
+ROW_KEYS = ({"row", "result"}, {"row", "result", "effect", "count", "denominator"})
+PACK_KEYS = {"base": {"kind", "role", "pack", "definition_digest"},
+             "price": {"kind", "role", "pack", "definition_digest", "profile"}}
+PRICE_OUTCOMES = ("allow", "deny", "escalate")
+# Why the price rule did not decide, per state (admission/price.rs): not_checked only under the shipped default
+# caps; unavailable is a NO, and adds the engine refusing to decide.
+PRICE_REASONS = {"not_checked": ("host_lacks_backend_pricing", "no_price_without_model"),
+                 "unavailable": ("host_lacks_backend_pricing", "no_price_without_model", "guard_error")}
+
+
+def count_ok(v):
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
+def row_member_problems(rows, base_pack_cited):
+    """Why the evaluator's members on the five rows are not the plugin's; [] when they are. The effect is on
+    every row or none, and the base pack is cited exactly when it is."""
+    errs, with_effect = [], ["effect" in x for x in rows]
+    if any(with_effect) and not all(with_effect):
+        errs.append("some rows carry the evaluator's effect and some do not")
+    if all(with_effect) != base_pack_cited:
+        errs.append("the rows' effect and the base terms pack read go together; one is missing")
+    for x in rows:
+        if "effect" in x and x["effect"] != "none":
+            errs.append(f"row {x['row']} has effect {x['effect']!r}; the five base rows are record rows, effect none")
+        for k in ("count", "denominator"):
+            if k in x and not count_ok(x[k]):
+                errs.append(f"row {x['row']}: {k} is not a count")
+        if "count" in x and "denominator" in x and count_ok(x["count"]) and count_ok(x["denominator"]) \
+                and x["count"] > x["denominator"]:
+            errs.append(f"row {x['row']}: count {x['count']} is over its denominator {x['denominator']}")
+    return errs
+
+
+def pack_problems(packs, price):
+    """Why the terms-pack reads after the history card are not the plugin's; [] when they are. The price pack, when
+    cited, comes first and then the base pack (admission.rs pushes them in that order); the price pack is cited
+    exactly when the price rule ran (price state checked)."""
+    errs, roles = [], []
+    for r in packs:
+        if not (isinstance(r, dict) and r.get("kind") == "terms_pack" and r.get("role") in PACK_KEYS
+                and set(r) == PACK_KEYS[r["role"]] and isinstance(r.get("pack"), str) and r["pack"]
+                and digest_ok(r.get("definition_digest"))):
+            errs.append("a terms pack read is not the plugin's shape")
+            continue
+        if r["role"] == "price":
+            prof = r["profile"]
+            # The plugin seals the profile's commitment as a bare hex string (price.rs reads()), not as {alg, digest}.
+            if not (prof is None or (isinstance(prof, dict) and set(prof) == {"alg", "commitment"}
+                                     and prof["alg"] == "SHA-256" and isinstance(prof["commitment"], str)
+                                     and bool(HEX64.match(prof["commitment"])))):
+                errs.append("the price pack read's profile is neither null nor a commitment")
+        roles.append(r["role"])
+    if roles not in ([], ["base"], ["price", "base"]):
+        errs.append(f"terms pack reads {roles} are not the price pack, if it ran, and then the base pack")
+    ran = isinstance(price, dict) and price.get("state") == "checked"
+    if ("price" in roles) != ran:
+        errs.append("the price terms pack read and a checked price go together; one is missing")
+    return errs
+
+
+def price_problems(price, pc, rows):
+    """Why a decision's price member (PR #165) is not the plugin's; [] when it is. It is present only on a peer
+    the lists admitted, with rows, and it never names the peer."""
+    if price is ABSENT:
+        return []
+    if pc is None or rows is ABSENT:
+        return ["price on a decision that names no peer or seals no rows"]
+    if not isinstance(price, dict):
+        return ["price is not an object"]
+    state = price.get("state")
+    if state in ("not_checked", "unavailable"):
+        if set(price) != {"state", "reason"} or price["reason"] not in PRICE_REASONS[state]:
+            return [f"price {state} does not give one of the plugin's reasons"]
+        return []
+    if state != "checked":
+        return [f"price state {state!r} is none the plugin gives"]
+    errs = []
+    if set(price) != {"state", "outcome", "input_msat_per_million", "output_msat_per_million", "checks"}:
+        errs.append("a checked price does not have the plugin's members")
+        return errs
+    if price["outcome"] not in PRICE_OUTCOMES:
+        errs.append(f"price outcome {price['outcome']!r} is none the guard gives")
+    for k in ("input_msat_per_million", "output_msat_per_million"):
+        if not (price[k] is None or count_ok(price[k])):
+            errs.append(f"price {k} is neither a rate nor null")
+    # Which check refuses, and whether the outcome follows from the checks, are the engine's (a refusal can come
+    # from a check it did not evaluate, which the plugin keeps out of `checks`); the step judges only the shape.
+    checks = price["checks"]
+    if not (isinstance(checks, list) and all(
+            isinstance(c, dict) and set(c) == {"check", "result"} and isinstance(c["check"], str) and c["check"]
+            and isinstance(c["result"], str) and c["result"] for c in checks)):
+        errs.append("price checks are not a list of check and result")
     return errs
 
 
 # The verdict each source gives (capsules-plugin admission.rs, Policy::decide); `default` gives the policy's default.
-VERDICT_OF = {"allow_list": "GO", "deny_list": "NO", "unreadable_policy": "NO", "unreadable_target": "NO"}
+VERDICT_OF = {"allow_list": "GO", "deny_list": "NO", "unreadable_policy": "NO", "unreadable_target": "NO",
+              "price_rule": "NO", "unreadable_profile": "NO"}
 SOURCES = (*VERDICT_OF, "default")
+# The price rule's sources: the lists admitted the peer and the price then refused, so they say nothing about the
+# lists' or the default's verdict.
+PRICED = ("price_rule", "unreadable_profile")
 POLICY_WITH_ROWS = "base/1"
 CARD_ROWS, LOCAL_ROWS = ROWS[:2], ROWS[2:]
 NO_CARD = ("the plugin seals nowhere whether the last ask of the card failed to verify (fail) or went unanswered "
@@ -530,7 +650,27 @@ def verdict_problems(blk):
         errs.append(f"rows under policy {pol.get('policy')!r}, not {POLICY_WITH_ROWS}")
     if pol.get("policy") == POLICY_WITH_ROWS and blk.get("peer_commitment") is not None and "rows" not in blk:
         errs.append(f"policy {POLICY_WITH_ROWS} names a peer but seals no rows (the plugin always seals them)")
+    errs += price_verdict_problems(blk)
     return errs
+
+
+def price_verdict_problems(blk):
+    """Why the price member and the source disagree; [] when they agree. The price rule runs after the lists, on a
+    peer they admitted, and refuses (NO, source price_rule) on a checked outcome other than allow or on an
+    unavailable price (capsules-plugin admission.rs); a profile that did not read gives NO with no price member."""
+    price, source = blk.get("price"), blk["source"]
+    if source == "unreadable_profile":
+        return ["an unreadable profile with a price member"] if price is not None else []
+    if source == "price_rule":
+        refuses = isinstance(price, dict) and (price.get("state") == "unavailable"
+                                              or (price.get("state") == "checked" and price.get("outcome") != "allow"))
+        return [] if refuses else ["source price_rule with no price that refuses"]
+    if isinstance(price, dict):
+        if source not in ("allow_list", "default"):
+            return [f"a price member on a decision from {source}, which the lists decided"]
+        if price.get("state") == "unavailable" or (price.get("state") == "checked" and price.get("outcome") != "allow"):
+            return [f"a price that refuses ({price.get('state')}) under source {source}, which is not price_rule"]
+    return []
 
 
 def same_policy_problems(found):
@@ -540,6 +680,8 @@ def same_policy_problems(found):
     for n, blk in found:
         digest = (blk["reads"][0].get("digest") or {}).get("digest")
         if digest is None:
+            continue
+        if blk["source"] in PRICED:
             continue
         if blk["source"] == "default":
             defaults.setdefault(digest, {}).setdefault(blk["verdict"], n)

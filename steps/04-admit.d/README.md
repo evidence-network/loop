@@ -38,6 +38,31 @@ default the policy's default. On one node, under one policy digest, the
 default is one verdict and one peer commitment gets one verdict and source.
 The rows decide nothing, so a row never changes the verdict.
 
+### The shape the current plugin seals
+
+Three additions to the decision, all additive, are judged with the same
+strictness as the rest (a member the step does not know is a FAIL):
+
+- Each row carries the evaluator's `effect` (`none`: the five are record rows,
+  which never change the decision) and, where it counts, `count` and
+  `denominator` (integers, `count` at most `denominator`) (capsules-plugin
+  PR #178). The effect is on every row or none, and goes with the next item.
+- `reads` cites, after the history card, the price terms pack (`role: price`,
+  with the operator profile as a commitment string or null) only when the
+  price rule ran, then the base terms pack (`role: base`, its pack id and
+  definition digest), in that order (PR #165, #178).
+- A `price` member, on a decision about a peer the lists admitted
+  (PR #165): `not_checked` or `unavailable` with one of the plugin's reasons,
+  or `checked` with the guard's outcome (`allow`, `deny`, `escalate`), the two
+  rates (integers or null) and each check's result (the step does not judge
+  whether the outcome follows from the checks: that is the engine's). `checked` goes with the
+  price pack read. A price that refuses (`unavailable`, or `checked` with an
+  outcome other than `allow`) is exactly source `price_rule`, a NO; a profile
+  that did not read is source `unreadable_profile`, a NO with no price. The
+  price rule is the engine's, so the step judges only that the record is
+  consistent, not the caps. A `price_rule` NO says nothing about the lists'
+  verdict, so it is left out of the same-peer and default agreement checks.
+
 ### The five rows
 
 The pinned plugin (capsules-plugin PR #116) seals the base policy's five rows

@@ -323,7 +323,7 @@ class Live(unittest.TestCase):
                           (lambda c: self.dec(c).update(rows=rows[:4]), "five base-policy rows"),
                           (lambda c: self.dec(c)["rows"][2].update(result="maybe"), "five base-policy rows"),
                           (lambda c: self.dec(c)["rows"][0].update(peer="a" * 64), "five base-policy rows"),
-                          (lambda c: self.dec(c)["reads"].pop(), "operator policy"),
+                          (lambda c: self.dec(c)["reads"].pop(), "history card"),
                           (lambda c: self.dec(c)["reads"].__setitem__(1, {"kind": "history_card"}), "history card"),
                           (lambda c: self.dec(c)["reads"][1].update(peer="a" * 64), "history card"),
                           (lambda c: self.dec(c).update(peer_commitment=None, verdict="NO",
@@ -450,6 +450,110 @@ class Rows(unittest.TestCase):
         _, f = self.run_blocks(dropped)
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("names a peer but seals no rows", f["detail"])
+
+    # The shape the pinned plugin seals now (capsules-plugin #178 and #165): each row carries the evaluator's
+    # effect, and count and denominator where it counts; reads cite the base terms pack; a price member records
+    # the price rule. The digests here are synthetic.
+    @staticmethod
+    def current(price="not_checked", **edits):
+        b = json.loads(json.dumps(ROWS116["all-pass"]))
+        for r in b["rows"]:
+            r["effect"] = "none"
+        b["rows"][2].update(count=3, denominator=26)
+        b["rows"][3].update(count=0, denominator=2)
+        b["rows"][4].update(count=15, denominator=26)
+        # The plugin's order: the price pack when the price rule ran, then the base pack (admission.rs).
+        base_pack = {"kind": "terms_pack", "role": "base", "pack": "asg/mesh_admission_base/1.0.0",
+                     "definition_digest": {"alg": "SHA-256", "digest": "d" * 64}}
+        if price == "not_checked":
+            b["price"] = {"state": "not_checked", "reason": "host_lacks_backend_pricing"}
+        elif price in ("allow", "deny"):
+            b["price"] = {"state": "checked", "outcome": price, "input_msat_per_million": 10,
+                          "output_msat_per_million": 20,
+                          "checks": [{"check": "rate_cap", "result": "pass" if price == "allow" else "fail"}]}
+            b["reads"].append({"kind": "terms_pack", "role": "price", "pack": "asg/inference/1.0.0",
+                               "definition_digest": {"alg": "SHA-256", "digest": "e" * 64},
+                               "profile": {"alg": "SHA-256", "commitment": "f" * 64}})
+            if price == "deny":
+                b["verdict"], b["source"] = "NO", "price_rule"
+        b["reads"].append(base_pack)
+        b.update(edits)
+        return b
+
+    def test_the_current_plugin_shape_passes(self):
+        for price in (None, "not_checked", "allow", "deny"):
+            with self.subTest(price=price):
+                _, f = self.run_blocks(self.current(price))
+                self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_a_price_refusal_does_not_disagree_with_an_admitting_decision_for_the_same_peer(self):
+        _, f = self.run_blocks(self.current("allow"), self.current("deny"))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+
+    def test_an_unavailable_price_is_a_price_rule_no(self):
+        for reason in ("host_lacks_backend_pricing", "no_price_without_model", "guard_error"):
+            b = self.current(None, verdict="NO", source="price_rule")
+            b["price"] = {"state": "unavailable", "reason": reason}
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "PASS", (reason, f["detail"]))
+
+    def test_what_the_engine_decides_is_not_judged(self):
+        # A refusal can come from a check the engine did not evaluate, which the plugin keeps out of `checks`.
+        for outcome, checks in (("deny", [{"check": "rate_cap", "result": "pass"}]), ("escalate", []),
+                                ("allow", [{"check": "rate_cap", "result": "not_evaluated"}])):
+            b = self.current("deny")
+            b["price"].update(outcome=outcome, checks=checks)
+            if outcome == "allow":
+                b.update(verdict="GO", source="default")
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "PASS", (outcome, f["detail"]))
+
+    def test_a_malformed_price_or_pack_or_row_member_fails(self):
+        def drop_price_pack(b):
+            b["reads"].pop(2)
+
+        cases = (
+            (lambda b: b["price"].update(state="maybe"), "price state", "not_checked"),
+            (lambda b: b["price"].update(reason="because"), "price not_checked", "not_checked"),
+            (lambda b: b["price"].update(peer="a" * 64), "price not_checked", "not_checked"),
+            (lambda b: b["price"].update(outcome="maybe"), "price outcome", "allow"),
+            (lambda b: b["price"].update(input_msat_per_million=-1), "neither a rate nor null", "allow"),
+            (lambda b: b["price"].update(checks=[{"check": "rate_cap"}]), "price checks", "allow"),
+            (lambda b: b.update(price={"state": "not_checked", "reason": "guard_error"}),
+             "price not_checked", "not_checked"),
+            (lambda b: b.update(price={"state": "unavailable", "reason": "because"}), "price unavailable",
+             "not_checked"),
+            (lambda b: b["reads"].reverse(), "operator policy", "allow"),
+            (lambda b: b["reads"].insert(2, b["reads"].pop()), "price pack, if it ran", "allow"),
+            (lambda b: b.update(price={"state": "checked"}), "does not have the plugin's members", "allow"),
+            (drop_price_pack, "go together", "allow"),
+            (lambda b: b["reads"].append(b["reads"][-1]), "price pack, if it ran", "allow"),
+            (lambda b: b["reads"][2].update(profile={"alg": "SHA-256"}), "profile", "allow"),
+            (lambda b: b["reads"][2].update(profile={"alg": "SHA-256", "commitment": {"alg": "SHA-256",
+                                                                                       "digest": "f" * 64}}),
+             "profile", "allow"),
+            (lambda b: b["reads"][2].update(role="other"), "terms pack read is not the plugin's shape", "allow"),
+            (lambda b: b["reads"].pop(2), "go together", "not_checked"),
+            (lambda b: b["rows"][0].pop("effect"), "some rows carry", "not_checked"),
+            (lambda b: b["rows"][0].update(effect="NO"), "record rows", "not_checked"),
+            (lambda b: b["rows"][2].update(count=27), "over its denominator", "not_checked"),
+            (lambda b: b["rows"][2].update(count="3"), "not a count", "not_checked"),
+            (lambda b: b.update(source="allow_list", verdict="GO") or b.update(source="deny_list", verdict="NO"),
+             "decided", "not_checked"),
+            (lambda b: b.update(source="price_rule", verdict="NO"), "price_rule with no price that refuses",
+             "not_checked"),
+            (lambda b: b.update(source="unreadable_profile", verdict="NO"), "unreadable profile with a price",
+             "not_checked"),
+            (lambda b: b.update(source="default", verdict="GO"), "not price_rule", "deny"),
+            (lambda b: b.update(peer_commitment=None, source="unreadable_target", verdict="NO"), "", "not_checked"),
+        )
+        for edit, why, price in cases:
+            with self.subTest(why=why, price=price):
+                b = self.current(price)
+                edit(b)
+                _, f = self.run_blocks(b)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+                self.assertIn(why, f["detail"])
 
     def test_the_read_rule_holds_on_both_shapes(self):
         # Rows: the policy read first, the card second. An earlier build: the policy read alone.
