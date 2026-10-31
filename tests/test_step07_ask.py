@@ -986,7 +986,7 @@ class ReporterBackendTest(Tmp):
                 **h["statement"]["request"], "coverage": {"min_freshness": 99}}}}) if
                     h.get("record_type") == "evidence_request" else (rid, h) for rid, h in records]
         ask = step.ask_records
-        with mock.patch.object(step, "ask_records", side_effect=lambda l: altered(ask(l))):
+        with mock.patch.object(step, "ask_records", side_effect=lambda l, raw=None: altered(ask(l, raw))):
             r = self.run_live(VERIFIED, ledger=self.ledger())
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("holds 0 sealed evidence_request records for this ask", r["detail"])
@@ -1002,6 +1002,29 @@ class ReporterBackendTest(Tmp):
                 errs, notes = step.judge_sealed(extract, "peer-1", asked, at, at, None, dt.timedelta(minutes=5))
         self.assertEqual(errs, [])
         self.assertTrue(any("not sealed yet" in n for n in notes), notes)
+
+    def test_an_outcome_sealed_while_waiting_is_kept_with_the_ledger_it_was_read_from(self):
+        ledger, asked = self.ledger(), {"profile": "p", "subject": {"checkpoints": None}}
+        seal_records(ledger, "peer-1", asked, "none")
+        path = ledger / "ledger" / "capsules.jsonl"
+        req = json.loads(path.read_text().splitlines()[-1])
+        rid, h = req["capsule_id"], req["model_attestation"]["compute_attestation"][step.BOOK_BLOCK]
+        sealed = step.utc(h["committed_at"])
+        window = {"opened": h["committed_at"], "closed": iso(sealed + dt.timedelta(seconds=60))}
+
+        def seal_absence(_):  # the plugin seals the absence while the step waits
+            with path.open("a") as f:
+                f.write(ask_record("f" * 64, {
+                    "record_type": "recorded_absence", "epistemic_type": "observed_event",
+                    "links": [{"type": "cites", "target": rid}], "committed_at": window["closed"],
+                    "statement": {"outcome": "recorded_absence", "request_digest": step.request_digest(
+                        h["statement"]["request"]), "window": window}}))
+        at = step.now()
+        with mock.patch.object(step.time, "sleep", side_effect=seal_absence):
+            extract = step.ledger_extract(ledger / "ledger", "peer-1", asked, at, at, None, None)
+        self.assertEqual([o["record"] for o in extract["outcomes"]], ["f" * 64])
+        raw = path.read_bytes()
+        self.assertEqual(extract["held"], {"sha256": step.sha256(raw), "lines": len(raw.splitlines())})
 
     def test_an_unreadable_ledger_is_not_checked_on_the_issue(self):
         r = self.run_live(VERIFIED)

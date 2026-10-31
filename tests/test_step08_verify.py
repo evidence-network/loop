@@ -722,6 +722,19 @@ class Step08Live07Test(unittest.TestCase):
             f, entries = self.verify()
         self.assertEqual(entries["07-ask"]["status"], "reproduced", entries["07-ask"]["problems"])
 
+    def test_a_commitment_choice_with_no_commitment_and_no_reason_fails(self):
+        def drop(d):  # with no commitment there is no deadline: a choice that says nothing about why can't stand
+            shutil.rmtree(d / "stevenmih-1" / "commitment")
+            (d / "stevenmih-1" / "commitment").mkdir()
+            dump(d / "stevenmih-1" / "commitment" / "choice.json", {"commitment": None, "not_checked": []})
+            rec = load(d / "finding.json")
+            rec["proof"] = [p for p in rec["proof"] if not p["path"].startswith("stevenmih-1/commitment/")
+                            or p["path"].endswith("choice.json")]
+            dump(d / "finding.json", rec)
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("names no commitment and no reason why", f["detail"])
+
     def test_first_answered_the_proof_does_not_give_fails(self):
         def forge(d):
             fa = load(d / "first-answered.json")

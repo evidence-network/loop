@@ -785,9 +785,10 @@ MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENC
 OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
 
 
-def ledger_lines(path):
+def ledger_lines(path, raw=None):
+    """The JSON object lines of a ledger file (or of `raw`, its bytes as read); None when it cannot be read."""
     try:
-        text = Path(path).read_text(encoding="utf-8")
+        text = Path(path).read_text(encoding="utf-8") if raw is None else raw.decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     out = []
@@ -801,10 +802,10 @@ def ledger_lines(path):
     return out
 
 
-def ask_records(ledger):
+def ask_records(ledger, raw=None):
     """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header). None when the
-    ledger cannot be read."""
-    recs = ledger_lines(Path(ledger) / "capsules.jsonl")
+    ledger cannot be read. `raw` is the ledger's bytes when the caller has read them."""
+    recs = ledger_lines(Path(ledger) / "capsules.jsonl", raw)
     if recs is None:
         return None
     records = []
@@ -873,14 +874,18 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
 
     An outcome not sealed yet, for an ask the reporter saw unanswered, is waited for while its window closes
     within OPEN_WINDOW_WAIT."""
-    records = ask_records(ledger) if ledger else None
+    def read():
+        """(records, held) from one read of the ledger: `held` is its sha256 and line count, so the extract can be
+        audited against the node later (loop#193)."""
+        try:
+            raw = (Path(ledger) / "capsules.jsonl").read_bytes()
+        except OSError:
+            return None, None
+        return ask_records(ledger, raw), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
+
+    records, held = read() if ledger else (None, None)
     if records is None:
         return {"ledger": None, "read_at": stamp(now())}
-    try:  # what the ledger was when read, so the extract can be audited against the node later (loop#193)
-        raw = (Path(ledger) / "capsules.jsonl").read_bytes()
-        held = {"sha256": sha256(raw), "lines": len(raw.splitlines())}
-    except OSError:
-        held = None
     lo, hi = ask_bracket(posted, back)
     found = [(i, rid, h) for i, (rid, h) in enumerate(records) if is_ask_request(h, node_id, request, lo, hi)]
     got = citing(records, {rid for _, rid, _ in found})
@@ -888,8 +893,12 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
         close = window_close(found[0][2], within)
         while not got and now() < close + dt.timedelta(seconds=5) and close - now() <= OPEN_WINDOW_WAIT:
             time.sleep(max(1.0, min(5.0, (close - now()).total_seconds())))
-            records = ask_records(ledger) or records
-            got = citing(records, {found[0][1]})
+            again, again_held = read()
+            if again is not None:
+                records, held = again, again_held
+                found = [(i, rid, h) for i, (rid, h) in enumerate(records)
+                         if is_ask_request(h, node_id, request, lo, hi)]
+                got = citing(records, {rid for _, rid, _ in found})
 
     def rows(items):
         return [{"index": i, "record": rid, "header": h} for i, rid, h in items]
@@ -1184,8 +1193,8 @@ def kept_commitment(node_dir, entry):
             raise TypeError("not_checked is not a list of entries")
     except (OSError, ValueError, KeyError, TypeError) as e:
         return None, [], [f"{COMMITMENT_DIR}/choice.json is not readable ({type(e).__name__}: {e})"]
-    if chosen is None:
-        return None, ncs, []
+    if chosen is None:  # live_commitment always says why it chose none: a choice with no reason is not one
+        return None, ncs, [] if ncs else [f"{COMMITMENT_DIR}/choice.json names no commitment and no reason why"]
     try:
         doc = load(d / "commitment.json")
         uri = Path(doc["lcap"]["policy_uri"])
