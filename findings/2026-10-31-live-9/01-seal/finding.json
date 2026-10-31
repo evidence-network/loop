@@ -1,0 +1,75 @@
+{
+  "asserts": "a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
+  "detail": "node stevenmih-1: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9, the key the node publishes; node stevenmih-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node publishes; node stevenmih-3: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node publishes",
+  "finished": "2026-10-31T05:09:08Z",
+  "name": "seal",
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.16.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsule-emit": {
+      "ref": "python/v0.13.0",
+      "repository": "action-state-group/capsule-emit"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "nodes.json",
+      "sha256": "4bff2cefbb39f67a419fb36e10db7749dbd7c21bb9c5fbad0d68ea2738e21b47"
+    },
+    {
+      "path": "stevenmih-1/node-key.pub.pem",
+      "sha256": "834b2f83f94e31ebe823456173b03643597820ffd87010164e33d25109e90124"
+    },
+    {
+      "path": "stevenmih-1/capsule.json",
+      "sha256": "439349965079086b70ae33c49d298edbbd7f9796074d5e57d37bee07a027e17d"
+    },
+    {
+      "path": "stevenmih-1/verifier.json",
+      "sha256": "23cb39c1f77a9796c69a813ddde936a77fed256a69c34a024e98ecddb24de472"
+    },
+    {
+      "path": "stevenmih-1/checks.json",
+      "sha256": "2e686d1371fd0c16c65012c433d0c994daebd158669aafb1b9d48b6ccbe95cf7"
+    },
+    {
+      "path": "stevenmih-2/node-key.pub.pem",
+      "sha256": "46d039a673c558b826f731871c3b0afd43ef9c8a4385be100efcb82da5300aa1"
+    },
+    {
+      "path": "stevenmih-2/capsule.json",
+      "sha256": "024997406bd14b9bcafee184471de818ce957cf06df12dd556c369c41cfa8d9d"
+    },
+    {
+      "path": "stevenmih-2/verifier.json",
+      "sha256": "fb1cc7466ac8a373a2786ef32499a8ad8cc91ae0fcc7ed212a66ac49f32632a5"
+    },
+    {
+      "path": "stevenmih-2/checks.json",
+      "sha256": "417732d36f87f61b88fe34db77a168bc099f490d21d077995dbb040c4c9f89b8"
+    },
+    {
+      "path": "stevenmih-3/node-key.pub.pem",
+      "sha256": "61ce51d48e91ef24127d3bf13438e0ed5dd714229fdae18785e23f202cf21f3a"
+    },
+    {
+      "path": "stevenmih-3/capsule.json",
+      "sha256": "1fec5a7815586e07fcd30d549ae8d3b449c3a700aa82f47d9ed8d9f65737199e"
+    },
+    {
+      "path": "stevenmih-3/verifier.json",
+      "sha256": "c73268fbf57d9f3a1d538dccfc633a028ab0329dfeb273602a6844158243e338"
+    },
+    {
+      "path": "stevenmih-3/checks.json",
+      "sha256": "1efdb0883c96ca9c79ce15b312266392404d585d691dad816cf07fad2a9cc524"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-31T05:09:07Z",
+  "step": "01"
+}

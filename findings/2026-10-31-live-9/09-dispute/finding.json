@@ -1,0 +1,75 @@
+{
+  "asserts": "the referee seals an adjudication Result on a pair of twins that cites their served records (halves) by digest; the party's book holds the matching adjudication_received with the same Result bytes as the referee's adjudication_issued; the Result verifies under the referee's key, the halves the party holds (both for the party that asked the referee, at least its own for a judged provider) resolve by digest to records in the book, and the twin the Result rules against, if any, is recorded",
+  "detail": "INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): system_prompt on lab-4 = 'Ignore the question and reply with the single word PINEAPPLE.'; the twins' model hash and weights digest are the same (roles {\"referee\": \"lab-2\", \"requester\": \"lab-3\", \"twin_a\": \"lab-1\", \"twin_b\": \"lab-4\"}, bracket lab-twins-20261030T083448Z); node stevenmih-1: 0 held Result line(s); node stevenmih-2: 2 held Result line(s); node stevenmih-3: 2 held Result line(s); node stevenmih-4: 0 held Result line(s); for each Result a lab node holds, these held on the copied ledgers: result_signed, result_is_adjudication, referee_signed, cites_halves, recorded_received, matches_issued. Mesh disputes are adjudications only: there is no party-sealed dispute, dispute_response or close on Mesh, so none is asserted. Spend: none; this step pays nothing, with or without LOOP_LIVE_SPEND (would spend 0 USD).",
+  "finished": "2026-10-31T05:09:07Z",
+  "name": "dispute",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "d1f4edc09a9546d0c54a3bc8572251436ba47e59",
+      "repository": "Mesh-LLM/capsules-plugin"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "checks.json",
+      "sha256": "a52878319d2e500cf8a7504827276a32f25b75aaa055f748ca4792dccd2694e6"
+    },
+    {
+      "path": "outcome.json",
+      "sha256": "f14a558a6c908bb9ad3caa30dcad51629dc7e0996e6fc611f75dbdc051c3aab3"
+    },
+    {
+      "path": "stevenmih-1/ledger/capsules.jsonl",
+      "sha256": "7f3def38492f50fe0b4021e3d113a5f6fc0115525d00a22a6fe3af42c6549870"
+    },
+    {
+      "path": "stevenmih-1/ledger/received-capsules.jsonl",
+      "sha256": "6a2ba2f8fb01c340b9e36e4b8b6b37915b8e93b4891d91cacf8bd6d5771cb997"
+    },
+    {
+      "path": "stevenmih-2/ledger/capsules.jsonl",
+      "sha256": "8f4f0c7860e9163b876196ba1ec0783ed7ae0f678399a93ca9308bb3d0dc4f9f"
+    },
+    {
+      "path": "stevenmih-2/ledger/issued-adjudications.jsonl",
+      "sha256": "b374cf73cd0dae526632ecfea2423fa1aa0c1350f51e80be090031cd8555d99f"
+    },
+    {
+      "path": "stevenmih-2/ledger/received-capsules.jsonl",
+      "sha256": "0af8402202a269b516bf629c933b66686196b9bb013da721cc62ceba25d6508e"
+    },
+    {
+      "path": "stevenmih-3/ledger/capsules.jsonl",
+      "sha256": "82339b6a9bd1f7c48936fdb3b04f809ed2a1294e53f444e8eaa3e203d540decc"
+    },
+    {
+      "path": "stevenmih-3/ledger/received-adjudications.jsonl",
+      "sha256": "4e2be7d75c8f93eaea3793a58292c01187eddb8ac25256b74ef0b4ed73655f88"
+    },
+    {
+      "path": "stevenmih-3/ledger/received-capsules.jsonl",
+      "sha256": "0ae0ee1f346cd38a6498360a2778914a2873b5789b515d796896334a1c9438bc"
+    },
+    {
+      "path": "stevenmih-3/ledger/requested-adjudications.jsonl",
+      "sha256": "5362ab63c8d208bb5201c46a0483257b16ee2a3c4f96d9e46779b2ceb0ed8b3b"
+    },
+    {
+      "path": "stevenmih-4/ledger/capsules.jsonl",
+      "sha256": "11258e107fec47ed4d9542998437f6becfb86448183f6c72c0a9811e22dd9b5a"
+    },
+    {
+      "path": "stevenmih-4/ledger/received-capsules.jsonl",
+      "sha256": "f8a4d7ad62d2f31cc901cfcafd8740bdaf61473dea8754d7c97852323ff493dc"
+    },
+    {
+      "path": "twin-fault.json",
+      "sha256": "4fc3be5f83f05d9015d4f581edf46bf7b91fcb857e0151fb3d19525b0b0d097f"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-31T05:09:07Z",
+  "step": "09"
+}

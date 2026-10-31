@@ -1,0 +1,49 @@
+{
+  "checks": {
+    "bundle": {
+      "detail": "capsulectl verify --bundle exit 0, verdict VALID",
+      "ok": true
+    },
+    "checkpoint": {
+      "detail": "checkpoint over 104 nodes of lab-3-book, signed by 112cfeef77aecb1b0304b6ced134a7cb129a30dfad646c014f6b8aecd1c8f4db, the book's checkpoint key 112cfeef77aecb1b0304b6ced134a7cb129a30dfad646c014f6b8aecd1c8f4db",
+      "ok": true
+    },
+    "membership": {
+      "detail": "checkpoint pass, per_record_membership pass, producer_signatures pass",
+      "ok": true
+    },
+    "node_key": {
+      "detail": "node key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff; the book was bound to ['99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff']",
+      "ok": true
+    },
+    "position": {
+      "detail": "log lab-3-book seq 52, appended at 52",
+      "ok": true
+    },
+    "record": {
+      "detail": "book record 63198f69a9219b69468d377c0f94b919a5284919a2e61a917efc5197259bdfb2 (bundle root 63198f69a9219b69468d377c0f94b919a5284919a2e61a917efc5197259bdfb2) carries capsule f75270085a619b12f176a7be61c4c421e76126ecb1c0546f27e469215dc95349 in book lab-3-book; header digest e780b247ea20825563e93254ba973388aa567ddd6017e85629053e69a486bf45, signed e780b247ea20825563e93254ba973388aa567ddd6017e85629053e69a486bf45",
+      "ok": true
+    },
+    "signer": {
+      "detail": "record key_id 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, producer key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, node key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "ok": true
+    },
+    "witness_listed": {
+      "detail": "receipt key id 81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d; the lab test witness listing has ['81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d']",
+      "ok": true
+    },
+    "witness_not_before": {
+      "detail": "signed at 2026-10-31T05:09:09Z; the entry's not_before 2026-10-30T19:35:13Z",
+      "ok": true
+    },
+    "witness_not_node": {
+      "detail": "receipt key id 81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d; not a key of any node it witnesses",
+      "ok": true
+    },
+    "witness_receipt": {
+      "detail": "capsulectl cll checkpoint status exit 0, state verified, under the book's witness key 81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d; receipt key id 81eca780cddfbeff2c83c5cbaaaafdd705e165e8decf6fd528b9601a3cd9248d",
+      "ok": true
+    }
+  },
+  "node": "stevenmih-3"
+}
