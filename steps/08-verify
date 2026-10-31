@@ -453,10 +453,12 @@ def listed(node_id):
 
 def join_commitment_books():
     """{key_id: {(book_id, checkpoint key)}}: the books the nodes' signed join commitments under lab/runs name, for
-    those that verify under the key they name. Each is the book join.sh made for its node, as the node signed it."""
+    those that verify under the key they name. Each is the book join.sh made for its node, as the node signed it.
+    lab/runs is LOOP_LAB_RUNS when 08 holds the step to the merge that published it (publication)."""
     books = {}
     step12 = step_module("12-join")
-    for path in sorted((ROOT / "lab" / "runs").glob("*/join/*/commitment.json")):
+    runs = Path(os.environ.get("LOOP_LAB_RUNS") or ROOT / "lab" / "runs")
+    for path in sorted(runs.glob("*/join/*/commitment.json")):
         try:
             doc = load(path)
             errs, notes = cc.verify(doc, cc.file_fetcher(path.parent))

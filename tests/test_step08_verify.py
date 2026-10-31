@@ -2042,6 +2042,16 @@ class Step08PublicationTest(unittest.TestCase):
         self.assertFalse(Path(env["LOOP_WITNESS_LISTING"]).exists())  # lab/witness/ came later
         self.assertEqual(list(Path(env["LOOP_LAB_RUNS"]).iterdir()), [])
 
+    def test_join_commitments_are_read_from_the_anchors_lab_runs(self):
+        runs = Path(self.tmp.name) / "runs"
+        dump((runs / "r" / "join" / "n").mkdir(parents=True) or runs / "r" / "join" / "n" / "commitment.json",
+             {"key_id": "k"})
+        member = mock.Mock(checkpoint_member=lambda doc: ("book", "key"))
+        with mock.patch.dict(os.environ, {"LOOP_LAB_RUNS": str(runs)}), \
+                mock.patch.object(step.cc, "verify", return_value=([], [])), \
+                mock.patch.object(step, "step_module", return_value=member):
+            self.assertEqual(step.join_commitment_books(), {"k": {("book", "key")}})
+
     def test_verify_run_reads_each_steps_inputs_at_its_anchor_and_names_a_step_without_one(self):
         merged = self.pr("findings", self.write_step)
         self.key("22")
