@@ -20,13 +20,12 @@ mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
 mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
 mesh-llm-pr-2741 Mesh-LLM/mesh-llm ff57b477fefd5a6882f012c8b088aa1c3de72eec
 mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
-# The capsules plugin (the repo was Mesh-LLM/capsules): Mesh-LLM/capsules-plugin#188 at its converged head
-# 4eba920, pinned by commit ahead of the v0.1.8 tag (Ethan's speed-up, coordinator 2026-10-31); v0.1.8 is to be cut
-# from this tree, and the pin moves to the tag once it is. On top of 0.1.7 (b482749: #176's exchange-ask fix for step
-# 07, #165 and #178's admission rules), it pushes a payer's settlement terms leg under a checkpoint with its inclusion
-# proof (capsules-plugin#187, step 05's pushed_under_checkpoint), and at start re-pushes earlier terms legs that went
-# out bare, up to 64 per start, to the peer each leg's sealed exchange names.
-capsules Mesh-LLM/capsules-plugin 4eba9203ed167a5bc9e7a5da062e731ba2a9639f
+# The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.8 release (tag on cc21587). Over 4eba920
+# (capsules-plugin#188, the previous pin), it adds #188's catch-up from the first mesh event, #193's own_binding on
+# leg pushes, and #177's signed ledger checkpoints (the `ledger-checkpoint` console route and `capsules
+# ledger-check`, which loop#276 needs). The lab leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on
+# and a ledger-checkpoint ask is served.
+capsules Mesh-LLM/capsules-plugin v0.1.8
 # The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
 # matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
 # .cargo_vcs_info.json names the tag's commit, dd64efe7).

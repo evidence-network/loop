@@ -4,7 +4,7 @@
   "operator": "StevenMih",
   "mesh": "lab",
   "host_build": "mesh-llm 175a31dc443daa04b0b89bbac4b7d68a7b7e73c0 (contains mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183, mesh-llm-pr-2620 1d96a0205ed77959485159d2110259fd32ccb35e), binary sha256 9e83e10566a0fd0c0c07db08e71083f90b6d3218015761c4f793a6d463b321b4; no relay until Mesh-LLM/capsules-plugin#48 is closed",
-  "plugin_version": "capsules 4eba9203ed167a5bc9e7a5da062e731ba2a9639f, binary sha256 1078c7a0eb58e49e1276d029a48ac04e6ff365f64b0d32ed8be271a9f9ded601",
+  "plugin_version": "capsules v0.1.8 (cc21587bb6d47ee7a288474f77fa10bb29bbd698), binary sha256 9d5abd585fa46979299c229faf77dd5efe01844cca62ea27b27cf33eeefb2cdd",
   "retry_after_s": [
     3600,
     10800,
