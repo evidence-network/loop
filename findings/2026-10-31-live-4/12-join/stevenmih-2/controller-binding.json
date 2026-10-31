@@ -1,0 +1,31 @@
+{
+  "binding_version": "controller-binding/0",
+  "claim": "same_controller_asserted",
+  "method": "dual_signature/0",
+  "keys": [
+    "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+    "6254218cf05bb9528a45ce80e2113ecc7754a1606922e5073c3a2411d607d24d"
+  ],
+  "key_types": [
+    "ed25519",
+    "bip340"
+  ],
+  "issued_at": "2026-10-30T03:15:01Z",
+  "not_before": "2026-10-30T03:15:01Z",
+  "not_after": "2027-10-30T03:15:01Z",
+  "revocation": "revocation_statement/0",
+  "nonce": "af9c4a52928dbdea0a30dcfd7d3369ee",
+  "sigs": [
+    {
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "sig": "b083d30e2c2c62aae2e6abfc9662ffafc1a985e434fe1a1fa713464de28700cadbcd2c0e61f32d2686fcff9fdc88e1e087b5b481ef22e4505bca365b4fba1308"
+    },
+    {
+      "key_id": "6254218cf05bb9528a45ce80e2113ecc7754a1606922e5073c3a2411d607d24d",
+      "sig": {
+        "created_at": 1793330101,
+        "sig": "a8f71d1bf2a4cf8f050e94454bfdf5c501c6ff10b8e023a656defd16b5a12aec2d781051436a440a912b8e8a72391a2f61ff15a2cf3303d4f5914327eb4b0e1d"
+      }
+    }
+  ]
+}
