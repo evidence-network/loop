@@ -27,7 +27,9 @@ this step, with no account and no network call:
                 same way: their judges read only their proof and the
                 repository's listings, witness listing and join commitments,
                 as the pull request merge that published the step held them
-                (publication, loop#280). The other live steps' judges
+                (publication, loop#280); live 05 and 12 also judge again with
+                nodes/revocations/ as main held it there, or at this clone's
+                origin/main with none (loop#281). The other live steps' judges
                 read a lab node's data dir or console, so they are not_checked
                 (evidence-network/loop#188).
 
@@ -492,6 +494,9 @@ ANCHORED_INPUTS = (("nodes", "LOOP_NODES_DIR"), ("lab/witness", None), ("lab/run
 ANCHORED_STEPS = {"01", "02", "03", "04", "05", "07", "09", "12"}
 ANCHOR_WHAT = ("the listed keys, witness listing and join commitments it is held to, read at the pull request merge "
                "on main that published it")
+# Live 05 and 12 also read nodes/revocations/ (loop#281): with no publication, at this clone's origin/main.
+ANCHOR_REVOKED = ("the listed keys, witness listing, join commitments and revocation statements it is held to, read at "
+                  "the pull request merge on main that published it")
 
 
 def git(*args, root=None):
@@ -740,27 +745,88 @@ def keys_02_live(c, m):
     return bad
 
 
+REVOCATIONS_ISSUE = "evidence-network/loop#281"  # the revocations a live 05 or 12 read, held to main outside the run
+
+
+def revocations_anchor(m, c, nn, snap):
+    """Hold the main commit C a live 05 or 12 read nodes/revocations/ from (`snap`, nodes.json's revocations_main) to
+    an anchor A the run does not choose (loop#281): the step's publication on main (c.anchor), else this clone's
+    origin/main as last fetched, which verify_run names in the step's ANCHOR_WHAT entry. The run's own `started` or `bind_at` is unsigned, so it never picks the list. Returns None
+    when the judge's run at C is all there is to check: there is no C (the judge then declares no list and revocation
+    stays NOT_CHECKED, never PASS), or nodes/revocations/ is the same tree at C and A. Otherwise returns A, and the
+    caller judges again with the lists at A (judge_at_anchor)."""
+    commit = snap.get("commit") if isinstance(snap, dict) else None
+    if commit is None:
+        return None
+    if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
+        raise Mismatch(f"{c.work.name}: nodes.json's revocations commit {commit!r} is not a commit id")
+    root = m.revocations_root()
+    if not m.bv.holds_on_main(root, commit):  # 08's clone may be behind the run's fetch
+        raise Unreproducible(f"step {nn}: its revocation reads, run again here",
+                             f"this clone's origin/main does not hold the commit {commit[:12]} {nn} read "
+                             "nodes/revocations/ from (fetch main's history)")
+    anchor = c.anchor
+    if anchor is None:
+        anchor = (git("rev-parse", "--verify", "-q", "origin/main^{commit}", root=root) or b"").decode().strip()
+        when = (git("show", "-s", "--format=%cI", anchor, root=root) or b"").decode().strip() if anchor else None
+        if not (anchor and when):  # holds_on_main passed, so origin/main is there; never trust C in its place
+            raise Unreproducible(f"step {nn}: its revocation reads, run again here",
+                                 "this clone's origin/main cannot be read to hold them to")
+        # verify_run folds this into the step's one ANCHOR_WHAT entry, which says why there is no publication.
+        c.relies.append({"what": f"step {nn}: {ANCHOR_REVOKED}", "why": "the revocation statements were read at this "
+                         f"clone's origin/main as last fetched, {anchor}, committed {when}: a statement merged after "
+                         "that fetch is not applied", "issue": REVOCATIONS_ISSUE})
+    elif git("cat-file", "-e", f"{anchor}^{{commit}}", root=root) is None:
+        raise Unreproducible(f"step {nn}: its revocation reads, run again here",
+                             f"the repository revocations are read from does not hold the step's publication "
+                             f"{anchor[:12]} (fetch main's history)")
+    folder = f"nodes/{m.bv.REVOCATIONS}"
+    same = git("rev-parse", "--verify", "-q", f"{commit}:{folder}", root=root) == \
+        git("rev-parse", "--verify", "-q", f"{anchor}:{folder}", root=root)  # absent at both is the same (None)
+    return None if same else anchor
+
+
+def judge_at_anchor(m, c, nn, anchor):
+    """The judge again, on a fresh copy of the proof whose nodes.json reads nodes/revocations/ at `anchor`
+    (revocations_anchor): judge_live takes the commit from nodes.json alone. The same started and bind_at keep the
+    declaration time and the times asked about. Its result, and its not_checked by what and issue, must be the
+    recorded ones; each why may name the anchor's commit and list digest. A statement merged since C that applies at
+    those times turns a recorded PASS into a Mismatch, and one removed since C that applied turns a recorded FAIL into
+    one, never a pass. This copy's re-written files are never compared: the cited bytes are held to the run at C."""
+    work = Path(c.tmp) / "revocations-at-anchor" / c.work.name
+    for p in c.record["proof"]:
+        if any(fnmatch.fnmatchcase(p["path"], g) for g in LIVE_AGAIN.get(nn, [])):
+            continue  # the judge writes it again, as on the first run
+        (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(c.bundle / p["path"], work / p["path"])
+    kept = load(work / "nodes.json")
+    commit = kept["revocations_main"]["commit"]
+    kept["revocations_main"] = {"commit": anchor}
+    (work / "nodes.json").write_text(json.dumps(kept, indent=2, sort_keys=True) + "\n")
+    again = m.judge_live(load(c.pop / "population.json"), work, c.started)
+
+    def gaps(f):
+        return sorted({json.dumps([x.get("what"), x.get("issue")]) for x in f["not_checked"]})
+    if again["result"] != c.record["result"] or gaps(again) != gaps(c.record):
+        raise Mismatch(f"{c.work.name}: re-derived with nodes/{m.bv.REVOCATIONS}/ as main held it at {anchor[:12]} "
+                       f"(the step's publication, or this clone's origin/main): {again['result']}, not_checked "
+                       f"{gaps(again)}; recorded {c.record['result']}, not_checked {gaps(c.record)} with the list at "
+                       f"{commit[:12]}: the step read a different revocation list than main held there")
+
+
 def rederive_05_live(m, c):
     """Live 05: its own judge_live on the copied proof (nodes.json, each node's copied ledger files, controller
-    binding and sharing report): the pinned driver and cross_language check each held half again."""
+    binding and sharing report): the pinned driver and cross_language check each held half again, with the
+    revocations main commit nodes.json names held to main outside the run (revocations_anchor)."""
     old_shape(c, "05", "nodes.json")
     missing = m.live_tools(m.driver())
     if missing:
         raise Unreproducible("step 05: its judge, run again here", "; ".join(x["why"] for x in missing))
-    # The main commit 05 read nodes/revocations/ from must be the one origin/main held at its start, in this
-    # clone's own history (never fetched here): an older commit could hide a revocation merged since.
-    snap = load(c.work / "nodes.json").get(m.REVOCATIONS_KEY)
-    commit = snap.get("commit") if isinstance(snap, dict) else None
-    if commit is not None:
-        expected = m.bv.main_commit(m.revocations_root(), c.started)
-        if expected is None or not m.bv.holds_on_main(m.revocations_root(), commit):  # 08's clone is behind
-            raise Unreproducible("step 05: its revocation reads, run again here",
-                                 f"this clone's origin/main does not hold the commit {commit[:12]} 05 read "
-                                 f"nodes/revocations/ from, or no history at {c.started} (fetch main's history)")
-        if commit != expected:
-            raise Mismatch(f"05-deal: nodes.json reads nodes/revocations/ at {commit[:12]}, but origin/main held "
-                           f"{expected[:12]} at the step's start {c.started}")
-    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+    anchor = revocations_anchor(m, c, "05", load(c.work / "nodes.json").get(m.REVOCATIONS_KEY))
+    again = m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+    if anchor is not None:
+        judge_at_anchor(m, c, "05", anchor)
+    return again
 
 
 def keys_05_live(c):
@@ -863,7 +929,7 @@ def rederive_12_live(m, c):
     """Live 12 (reporter backend): its own judge_live on the copied proof (nodes.json, each node's reporter attempt,
     plugin calls (wire.json and the reply bytes) and binding record). The kept verification lines are computed again
     from their replies, join's commitment is verified under the listed key, and a kept binding is checked again by
-    cross_language with the revocations main commit nodes.json names."""
+    cross_language with the revocations main commit nodes.json names, held to main outside the run as live 05's."""
     old_shape(c, "12", "nodes.json")
     if any(p["path"].endswith("/" + m.BINDING_FILE) for p in c.record["proof"]) and not m.cross_language().is_file():
         raise Unreproducible("step 12: its judge, run again here",
@@ -871,26 +937,16 @@ def rederive_12_live(m, c):
                              "steps/01-seal.setup.sh installs it")
     kept = load(c.work / "nodes.json")
     snap = kept.get("revocations_main") if isinstance(kept, dict) else None
-    commit = snap.get("commit") if isinstance(snap, dict) else None
     # The binding window is judged at bind_at, so it lies inside the step's run whatever revocations were read.
     at = kept.get("bind_at") if isinstance(kept, dict) else None
     if not (isinstance(at, str) and c.started <= at <= c.record["finished"]):
         raise Mismatch(f"12-join: nodes.json's bind_at {at!r} is not inside the step's run "
                        f"({c.started} to {c.record['finished']})")
-    if commit is not None:
-        # As live 05: the main commit nodes/revocations/ was read from is origin/main's at the binding time, held in
-        # this clone's own history (never fetched here).
-        if not (isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)):
-            raise Mismatch(f"12-join: nodes.json's revocations commit {commit!r} is not a commit id")
-        expected = m.bv.main_commit(m.revocations_root(), at)
-        if expected is None or not m.bv.holds_on_main(m.revocations_root(), commit):
-            raise Unreproducible("step 12: its revocation reads, run again here",
-                                 f"this clone's origin/main does not hold the commit {commit[:12]} 12 read "
-                                 f"nodes/revocations/ from, or no history at {at} (fetch main's history)")
-        if commit != expected:
-            raise Mismatch(f"12-join: nodes.json reads nodes/revocations/ at {commit[:12]}, but origin/main held "
-                           f"{expected[:12]} at the binding time {at}")
-    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+    anchor = revocations_anchor(m, c, "12", snap)
+    again = m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+    if anchor is not None:
+        judge_at_anchor(m, c, "12", anchor)
+    return again
 
 
 def keys_12_live(c):
@@ -908,7 +964,7 @@ def keys_12_live(c):
     # A node left out of node_consoles, or the self node without a second console, is judged NOT_CHECKED instead of
     # asked: which consoles the run held is its own record, so 08 names it when the proof shows a node not asked.
     state_relies(c, "12", f"the run's clock: nodes.json's bind_at {kept.get('bind_at')}, which the binding window and "
-                 "the revocations main commit are read at (no node signs it)")
+                 "the revocation statements are judged at (no node signs it)")
     if isinstance(owns, list) and (set(owns) != names or (kept.get("self_node") and not kept.get("second_console"))):
         state_relies(c, "12", "which consoles the run held (a node's own console, a second node's console), kept in "
                      "nodes.json")
@@ -1296,9 +1352,12 @@ def verify_run(run, out, pop_dir, population):
             if why and entry["status"] == "reproduced":
                 where = "where LOOP_NODES_DIR and this checkout hold them" if anchor is None and \
                     os.environ.get("LOOP_NODES_DIR") else "at this checkout"
-                entry["relies_on"].append({"what": f"step {entry['step']}: {ANCHOR_WHAT}", "why": why + f", so "
-                                           f"08 read them {where}, where a key rotated since would be read as "
-                                           "the new one", "issue": TRUST_ISSUE})
+                revoked = [x for x in entry["relies_on"] if x.get("issue") == REVOCATIONS_ISSUE]  # revocations_anchor
+                entry["relies_on"] = [x for x in entry["relies_on"] if x not in revoked]
+                entry["relies_on"].append({"what": f"step {entry['step']}: {ANCHOR_REVOKED if revoked else ANCHOR_WHAT}",
+                                           "why": why + f", so 08 read them {where}, where a key rotated since would "
+                                           "be read as the new one" + "".join(f"; {x['why']}" for x in revoked),
+                                           "issue": TRUST_ISSUE})
             entries.append(entry)
     return entries
 

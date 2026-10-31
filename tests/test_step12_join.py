@@ -1316,6 +1316,95 @@ class PluginToolsRunTest(Tmp):
             os.environ.pop("LOOP_TOOLS") if real is None else os.environ.__setitem__("LOOP_TOOLS", real)
         self.assertIn("steps/01-seal.setup.sh", str(live.exception))
 
+    # Step 08 holds the revocations commit live 12 read to main outside the run (loop#281).
+    def revocations_main(self):
+        """A scratch main live 12 reads nodes/revocations/ from, with one commit before the binding time, as if
+        pushed. Returns a function that commits the folder's state on main at `date` and moves origin/main to it."""
+        repo = Path(self.tmp.name) / "revocations"
+        (repo / "nodes" / step.bv.REVOCATIONS).mkdir(parents=True)
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+
+        def commit(date, files=None):
+            for name, text in (files or {}).items():
+                (repo / "nodes" / step.bv.REVOCATIONS / name).write_text(text)
+            subprocess.run([*git, "add", "-A"], check=True)
+            subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", date], check=True,
+                           env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+            subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+        commit("2026-10-20T00:00:00Z")
+        patch = unittest.mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)})
+        patch.start()
+        self.addCleanup(patch.stop)
+        return commit
+
+    def bound_run_for_08(self):
+        """A live 12 whose binding applies (revocation PASS at the scratch main's commit), with the finding's run
+        window around the binding time, as a run made at that time would have it."""
+        r = self.run_bound()
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        rec = json.loads((self.out / "finding.json").read_text())
+        rec["started"], rec["finished"] = "2026-10-31T00:00:00Z", "2026-11-02T00:00:00Z"
+        (self.out / "finding.json").write_text(json.dumps(rec))
+        return r
+
+    @needs_cross
+    def test_08_holds_the_revocations_to_this_clones_main_when_the_step_is_unpublished(self):
+        commit = self.revocations_main()
+        self.bound_run_for_08()
+        commit("2026-11-03T00:00:00Z")  # main moves on, nodes/revocations/ the same
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        tip = subprocess.run(["git", "-C", os.environ["LOOP_REVOCATIONS_GIT"], "rev-parse", "origin/main"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        # One entry says what the step was not held to at a publication, and where its revocations were read.
+        [gap] = [x for x in e["relies_on"] if "read at the pull request merge on main" in x["what"]]
+        self.assertIn("join commitments and revocation statements it is held to", gap["what"])
+        self.assertIn(f"origin/main as last fetched, {tip}, committed 2026-11-03T00:00:00", gap["why"])
+
+    @needs_cross
+    def test_08_fails_a_live_12_whose_list_main_has_changed_for_its_binding(self):
+        # The run read main before a change to its binding's list; main since holds a file for it that is not a
+        # revocations file, so the binding does not apply there (loop#194): judged again at main, FAIL, not PASS.
+        commit = self.revocations_main()
+        self.bound_run_for_08()
+        kept = json.loads((self.out / "nodes.json").read_text())["revocations_main"]["commit"]
+        commit("2026-11-03T00:00:00Z", {f"{BINDING_DIGEST}.json": "not json"})
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", e)
+        [problem] = e["problems"]
+        self.assertIn("re-derived with nodes/revocations/ as main held it at", problem)
+        self.assertIn(f"FAIL, not_checked []; recorded PASS, not_checked [] with the list at {kept[:12]}", problem)
+        # The cited bytes are still the run's at its own commit: only the result decided at main differs.
+        self.assertNotIn("re-derived is not the recorded", " ".join(e["problems"]))
+
+    @needs_cross
+    def test_08_reproduces_a_live_12_when_main_changed_only_another_bindings_list(self):
+        commit = self.revocations_main()
+        self.bound_run_for_08()
+        commit("2026-11-03T00:00:00Z", {f"{'e' * 64}.json": "not json"})
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+
+    @needs_cross
+    def test_08_reproduces_no_kept_revocations_commit_as_revocation_not_checked(self):
+        # No commit kept (the run's fetch failed): no list is declared, so revocation is open, never PASS.
+        self.revocations_main()
+        self.bound_run_for_08()
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["revocations_main"] = {"commit": None, "why": "origin/main could not be fetched"}
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        rec = json.loads((self.out / "finding.json").read_text())
+        again = self.judged_again(rec)
+        self.assertEqual(again["result"], "NOT_CHECKED", again["detail"])
+        self.assertIn(step.BINDING_REVOCATION["what"], " ".join(x["what"] for x in again["not_checked"]))
+        rec["result"], rec["not_checked"] = again["result"], again["not_checked"]
+        (self.out / "finding.json").write_text(json.dumps(rec))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], "NOT_CHECKED")
+
     @needs_cross
     def test_a_held_binding_that_does_not_name_the_nodes_key_is_a_fail(self):
         raw = json.loads((ALICE / "binding.json").read_text())
@@ -1557,6 +1646,33 @@ class BindingRevocationTest(unittest.TestCase):
                     self.assertEqual(state, "open", detail)  # origin/main holds no commit that old
                     self.assertIn("no origin/main commit at or before 2026-10-12T00:00:00Z", detail)
             self.assertEqual(self.check("2026-10-13T00:00:00Z")[0], "ok")  # a rehearsal reads its checkout
+
+    def test_a_list_read_at_a_later_main_commit_applies_by_revoked_at(self):
+        # Step 08's second run (loop#281) reads the list at a main commit newer than the time asked about, with the
+        # run's own declaration time: a statement merged since applies when its revoked_at is at or before that time,
+        # and with a later revoked_at the binding still applies with revocation PASS (the declaration counts).
+        repo = Path(self.tmp.name) / "repo"
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        (repo / "nodes" / step.bv.REVOCATIONS).mkdir(parents=True)
+        (repo / "nodes" / step.bv.REVOCATIONS / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        subprocess.run([*git, "add", "nodes"], check=True)
+        date = "2026-11-05T00:00:00Z"  # merged long after both times asked about
+        subprocess.run([*git, "commit", "-qm", "publish"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+        subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)
+        later = {"commit": subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True,
+                                          check=True).stdout.strip()}
+        with unittest.mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)}):
+            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
+                                               "2026-10-13T00:00:00Z", from_main=later)
+            self.assertEqual(state, "bad", detail)  # revoked_at 2026-10-12 is before the time asked about
+            self.assertIn("controller_binding_revocation FAIL", detail)
+            state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key,
+                                               "2026-10-11T00:00:00Z", from_main=later)
+            self.assertEqual(state, "ok", detail)  # revoked after the time asked about: an honest run still holds
+            self.assertIn(f"revocation PASS: no statement applies in the list evidence-network/loop step 12 (checking "
+                          f"at 2026-10-11T00:00:00Z), nodes/revocations/ at main {later['commit']}", detail)
 
     def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
         with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration
