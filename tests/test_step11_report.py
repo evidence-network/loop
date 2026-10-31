@@ -345,32 +345,36 @@ class ReportTest(Base):
         self.assertNotIn("deal-random-2", json.dumps(self.statement()))
         self.assertIn("sealed deal: 1 of 5 exchanges", self.summaries()["exchanges:deals"])
 
-    def test_live_05_halves_of_one_exchange_count_once(self):
-        # Each node holds the other's half of one exchange: the two make one exchange, joined on client_nonce as 05
-        # joins them (Sherlock2, loop#250); a settlement leg (store_nonce only) names no exchange.
+    def test_live_05_halves_of_one_exchange_are_one_deal(self):
+        # Each node holds the other's half of one exchange: paired as step 05 pairs them (one requested and one served
+        # half of one client_nonce on two nodes), the two are one deal citing both halves (Sherlock2, loop#250). A
+        # settlement leg is no deal record, and a half no other node pairs is named, not counted.
         live = ROOT / "findings" / "2026-10-31-live-8" / "05-deal"
         a, b = (json.loads((live / n / "held-1.json").read_text()) for n in ("stevenmih-1", "stevenmih-2"))
-        self.assertIsNotNone(step.exchange_of(a))
-        self.assertEqual(step.exchange_of(a), step.exchange_of(b))
-        leg = {"action_id": "mesh/settlement/terms", "model_attestation": {"compute_attestation": {"store_nonce": "x"}}}
-        self.assertIsNone(step.exchange_of(leg))
+        lone = json.loads((live / "stevenmih-1" / "held-2.json").read_text())
+        leg = {**a, "action_id": "mesh/settlement/terms"}
         kind = {"kind": "deal", "records": ["deal.json", "*/held-*[0-9].json"], "terms": [],
                 "only": {"*/held-*[0-9].json": {"action_id_prefix": "mesh-poc/capsule-emit-mesh-host-served/",
                                                 "path": "[^/]+/held-[0-9]+\\.json", "why": "w"}}}
+        names = {"lab-a/held-1.json": a, "lab-b/held-1.json": b, "lab-a/held-2.json": lone, "lab-a/held-31.json": leg}
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp)
-            for name, doc in (("lab-a/held-1.json", a), ("lab-b/held-1.json", b), ("lab-a/held-31.json", leg)):
+            for name, doc in names.items():
                 (src / "05-deal" / name).parent.mkdir(parents=True, exist_ok=True)
                 (src / "05-deal" / name).write_text(json.dumps(doc))
-            manifest = {"steps": [{"dir": "05-deal", "step": "05", "status": "reproduced", "files": [
-                {"path": n} for n in ("lab-a/held-1.json", "lab-a/held-1-citing.json", "lab-b/held-1.json",
-                                      "lab-a/held-31.json")]}]}
-            cited = {"05-deal/lab-a/held-1.json": "s", "05-deal/lab-b/held-1.json": "s"}
-            found = {"deals": {}, "exchanges": {step.exchange_of(a): set(cited)}}
+            manifest = {"steps": [{"dir": "05-deal", "step": "05", "status": "reproduced",
+                                   "files": [{"path": n} for n in names]}]}
+            cited = {f"05-deal/{n}": "s" for n in names if n != "lab-a/held-31.json"}
+            found = step.count_exchanges(src, {}, {"kinds": {"05": kind}})
             figures = step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
-        text = next(f["text"] for f in figures if f["id"] == "count:deal")
-        self.assertIn("2 of 2 deal records step 08 lists", text)  # the settlement leg is no deal record
-        self.assertIn("they are 1 deals, one per exchange, each held on both nodes and citing both halves", text)
+            text = next(f["text"] for f in figures if f["id"] == "count:deal")
+            self.assertIn("3 of 3 deal records step 08 lists", text)  # the settlement leg is no deal record
+            self.assertIn("the live halves are 1 deal, one per exchange held on both nodes, each citing both halves "
+                          "(1 halves pair with no other node's half)", text)
+            self.assertEqual(found, {"deals": {}, "exchanges": {}})  # nonce pairing never mixes with 06's exchange ids
+            (src / "05-deal" / "lab-a" / "held-2.json").unlink()
+            with self.assertRaises(step.Refused):
+                step.render_figures(manifest, {}, None, cited, {"kinds": {"05": kind}}, found, src)
 
     def test_one_exchange_named_twice_counts_once(self):
         line = {"exchange_id": "fixture-ex-2"}

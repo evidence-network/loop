@@ -82,6 +82,10 @@ _loader = importlib.machinery.SourceFileLoader("step10_judge_for_report", str(HE
 _spec = importlib.util.spec_from_loader(_loader.name, _loader)
 judge10 = importlib.util.module_from_spec(_spec)
 _loader.exec_module(judge10)
+# Step 05, for how it pairs a live exchange's two halves (exchange_key, paired_exchanges): read, never changed.
+_loader05 = importlib.machinery.SourceFileLoader("step05_deal_for_report", str(HERE / "05-deal"))
+step05 = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader05.name, _loader05))
+_loader05.exec_module(step05)
 
 SETUP_ISSUE = "evidence-network/loop: steps/11-report.setup.sh, run where 11 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs steps 08 and 10 before step 11"
@@ -231,15 +235,22 @@ def deal_of(doc):
 
 
 def exchange_of(doc):
-    """The exchange a record belongs to, or None: its exchange or exchange_id, or, for a live 05 held half (a
-    host-served capsule), the client_nonce 05 joins an exchange's two halves on (loop#250), so the half each node
-    holds of one exchange counts once."""
     for key in ("exchange", "exchange_id"):
         if isinstance(doc.get(key), str) and doc[key]:
             return doc[key]
-    ca = ((doc.get("model_attestation") or {}).get("compute_attestation") or {}) if isinstance(doc.get("model_attestation"), dict) else {}
-    nonce = (ca.get("x-mesh-poc-v1") or {}).get("client_nonce") if isinstance(ca, dict) and isinstance(ca.get("x-mesh-poc-v1"), dict) else None
-    return f"client_nonce:{nonce}" if isinstance(nonce, str) and nonce else None
+    return None
+
+
+def live_deals(source, hits):
+    """(deals, unpaired) of a live 05's cited host-served halves: an exchange is held on both nodes, each holding the
+    other's half, and the two are one deal (Sherlock2, loop#250). They are paired exactly as step 05 pairs them
+    (step05.exchange_key, paired_exchanges: one requested and one served half of one client_nonce on two nodes, with
+    the same output digest). Returns ({client_nonce}, [why a half pairs with none])."""
+    halves = {}
+    for r in hits:
+        node = r.split("/")[1]
+        halves.setdefault(node, []).append(step05.exchange_key(load(source / r)))
+    return step05.paired_exchanges(halves)
 
 
 def count_exchanges(source, cited, pack):
@@ -273,19 +284,26 @@ def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
         mine = [e for e in steps if e["step"] == nn]
         # The same definition 10 judges by: a record is a primary record file (binding.json `records`), so a count means
         # deals, settlements, asks or disputes, not the bundles and proof files beside them.
-        refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])
-                if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])
-                and (source is None or judge10.is_record(k, f["path"], source / e["dir"] / f["path"]))]
+        listed = [(e, f["path"]) for e in mine for f in e.get("files", [])
+                  if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
+        if source is not None:
+            missing = [f"{e['dir']}/{p}" for e, p in listed if not (source / e["dir"] / p).is_file()]
+            if missing:
+                raise Refused(f"{', '.join(missing)}: listed by 08's manifest, not in the run")
+        refs = [f"{e['dir']}/{p}" for e, p in listed
+                if source is None or judge10.is_record(k, p, source / e["dir"] / p)]
         hit = [r for r in refs if r in cited]
         counted = any(t.get("counted") for t in k["terms"])
-        # Halves of one exchange (each node holds the other's) are one exchange, never two (loop#250).
-        joined = {x for x, rs in found["exchanges"].items() if rs & set(hit)} if k["kind"] == "deal" else set()
+        # A live 05's halves of one exchange (each node holds the other's) are one deal, never two (loop#250).
+        live = [r for r in hit if k.get("only") and any(fnmatch.fnmatchcase(r.split("/", 1)[1], g) for g in k["only"])]
+        deals, unpaired = live_deals(source, live) if live and source is not None else (set(), [])
         figures.append(figure(
             f"count:{k['kind']}", "adjudications",
             f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
             f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps"
-            + (f"; they are {len(joined)} deals, one per exchange, each held on both nodes and citing both halves"
-               if joined else "") + ".",
+            + (f"; the live halves are {len(deals)} deal{'' if len(deals) == 1 else 's'}, one per exchange held on "
+               f"both nodes, each citing both halves" + (f" ({len(unpaired)} halves pair with no other node's half)"
+                                                        if unpaired else "") if live else "") + ".",
             "met", hit))
     for nn, k in pack["kinds"].items():
         dirs = sorted(d for d in finer if d[:2] == nn)

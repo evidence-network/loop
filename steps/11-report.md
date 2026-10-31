@@ -36,10 +36,11 @@ a settlement line that carries a `deal_id` seals no deal. An exchange is a disti
 or `exchange_id`. The stand-in's deal names no exchange, so its page reads "1 of 4": the deal against the four exchanges 06's ledger holds.
 
 On a live run, 05's deal records are the host-served halves each node holds (loop#250; a settlement leg held beside
-them is no deal record). Each exchange is held on both nodes, the other's half on each, so the two halves are joined
-on the `client_nonce` 05 joins them on and count one deal per exchange, never two, citing both halves: the
-adjudications line names how many deals its deal records make up. A live half names no top-level `deal_id`: it is a served exchange, not the
-payer's sealed deal, so it adds to the exchanges and never to the deals.
+them is no deal record). Each exchange is held on both nodes, the other's half on each, so the two halves are paired
+exactly as step 05 pairs them (one requested and one served half of one `client_nonce` on two nodes, with the same
+output digest) and count one deal per exchange, never two, citing both halves: the adjudications line names how many
+deals they make up, and how many halves pair with no other node's. A live half names no top-level `deal_id`, `exchange`
+or `exchange_id`, so it adds nothing to the exchanges line, which counts the payer's sealed deals and 06's exchanges.
 
 For now only the payer seals a deal for a paid exchange, so each deal counts one paid exchange. A provider-side deal is
 never expected or reported as missing, and no check compares two sides' deals. A PASS names that gap on

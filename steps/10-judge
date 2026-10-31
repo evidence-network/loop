@@ -295,7 +295,9 @@ def select(run, manifest, start, end, pack):
             wanted[p] = s
         if not wanted:
             refused.append(f"{e['dir']}: {len(files)} files, none is a {kind} record ({', '.join(patterns)})")
-            problems.append(f"{e['dir']}: 08 lists no {kind} record ({', '.join(patterns)})")
+            problems.append(f"{e['dir']}: 08 lists no {kind} record ({', '.join(patterns)})"
+                            + (f"; the {len(matched)} files matching those names are not {kind} records "
+                               "(binding.json `only`)" if matched else ""))
             continue
         for path, sha in sorted(wanted.items()):
             if not (d / path).is_file() or finding.sha256(d / path) != sha:
