@@ -34,17 +34,24 @@ and the window length from there. A pinned pack whose terms the binding does not
 `must_have`, is NOT_CHECKED. The loop's own claims (07 asks, 09 disputes, the roll-up) carry the loop's own
 `own_contract_ref`, never the pack's. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
 says which stand-in record files feed which term. When the pinned pack is not fetched, the step is NOT_CHECKED,
-never a PASS. The pack's own evaluator reads a node's real Mesh book records, which the rehearsal stand-ins are
-not, so it does not run here: the step applies the pack's terms to the results 08 re-derived. A PASS names that
-as a gap on evidence-network/loop#157.
+never a PASS. The pack's own evaluator reads a node's real Mesh book records. On a live run, live 05 keeps each
+node's own chain (`<node>/ledger/capsules.jsonl`, binding.json `inputs`), and step 10 runs the pinned evaluator
+(`scripts/evaluators/inference_deals.py` and the three modules it imports, at the `inference-deals` pin, each held to
+its git blob id; `10-judge.setup.sh` fetches them beside the pack, none is kept here) over those chains in the window:
+its `collect` and `judge_deal`, per deal, as the pack's own run does (loop#157). Each 05 term's claim then carries
+the evaluator's worst verdict over the deals that carry the term (`out_of_scope` ones left out; `not_evaluable` when
+none does), cites the chains beside the halves, and the gap below is gone. The chains are cited but are not records:
+step 11 counts no deal from them. The rehearsal stand-ins are no Mesh book records, so there the step applies the
+pack's terms to the results 08 re-derived, and a PASS names that as a gap on evidence-network/loop#157; so does a
+live 05 with no chain in its proof, or an evaluator not fetched or not at its blobs (a not_checked entry).
 
 Each step gets one Result, with one claim per term. Each claim cites every record of the step:
 
 | Step | Claim | Verdict |
 |---|---|---|
 | 06 | `come_through.paid_as_agreed` | from the result 08 re-derived: PASS `met`, FAIL `not_met`, NOT_CHECKED `not_evaluable` |
-| 05 | `come_through.served_as_agreed` | the same |
-| 05 | `come_through.served_named_model` | "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match; where one does, a not_checked entry, since the pack has no recomputation for it yet |
+| 05 | `come_through.served_as_agreed` | the same; on live, with the nodes' own chains, the pinned evaluator's worst verdict over the deals |
+| 05 | `come_through.served_named_model` | on live, with the nodes' own chains, the pinned evaluator's (its "provider states" reading, or a referee's sealed verdict); otherwise "provider states" (`self-attested`, `not_evaluable`) where no record carries `model_attestation`, never a judged match, and where one does, a not_checked entry |
 | 07 | an ask is answered or its absence recorded | from the result 08 re-derived |
 | 09 | the referee's sealed Result | cited and counted as found, never judged again |
 

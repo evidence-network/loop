@@ -48,6 +48,19 @@ def _has_pack():
 
 
 HAS_TOOLS = all(p.is_file() for p in step.tools()) and _has_pack()
+LIVE_CHAIN = ROOT / "tests" / "fixtures" / "step10" / "live-chain"
+
+
+def _has_evaluator():
+    try:
+        step.load_evaluator()
+        return True
+    except step.NotChecked:
+        return False
+
+
+HAS_EVALUATOR = _has_pack() and _has_evaluator()
+NO_EVALUATOR = "SKIPPED LOUDLY: the pinned inference-deals evaluator is not fetched; steps/10-judge.setup.sh fetches it"
 NO_TOOLS = ("SKIPPED LOUDLY: capsulectl, capsulectl-book and the pinned inference-deals pack are not installed; "
             "run steps/10-judge.setup.sh")
 if not HAS_TOOLS:
@@ -389,6 +402,97 @@ class JudgeTest(Base):
             self.assertEqual({x["issue"] for x in f["not_checked"]}, {step.GAP_ISSUE})
             cited = {k for k in self.cited() if k.startswith("05-deal/")}
             self.assertEqual(cited, {"05-deal/lab-a/held-1.json", "05-deal/lab-b/held-1.json"})
+
+    def with_chains(self):
+        """live_05 plus each node's own chain copy (<node>/ledger/capsules.jsonl), as live 05 keeps it since loop#225:
+        the exchange records, lifecycle observations and settlement legs of two lab nodes' October run, cut from
+        live-14's copies to the records the evaluator reads (tests/fixtures/step10/live-chain). Returns 08's manifest."""
+        m = self.live_05()
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        d = self.run / "05-deal"
+        for node, src in (("lab-a", "stevenmih-1"), ("lab-b", "stevenmih-2")):
+            (d / node / "ledger").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(LIVE_CHAIN / f"{src}.capsules.jsonl", d / node / "ledger" / "capsules.jsonl")
+            e05["files"].append({"path": f"{node}/ledger/capsules.jsonl",
+                                 "sha256": finding.sha256(d / node / "ledger" / "capsules.jsonl")})
+        self.reseal_manifest(m)
+        return m
+
+    def october(self, m):
+        """select over the stand-in's window, then the Results over October 2026, the month the chains hold."""
+        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        not_checked = []
+        start = dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc)
+        docs = step.judge_records(records, self.run, step.load_pack(), start, dt.datetime(2026, 11, 1, tzinfo=dt.timezone.utc),
+                                  not_checked)
+        return records, {c["requirement_ref"]: c for c in docs["05-deal"]["claims"]}, not_checked
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_the_pinned_evaluator_decides_live_05s_terms_from_its_own_chains(self):
+        # loop#157: the pack's own evaluator, at the pin, over each node's own chain; the GAP is gone where it ran.
+        records, claims, not_checked = self.october(self.with_chains())
+        inputs = sorted(r["path"] for r in records if r.get("role") == "input")
+        self.assertEqual(inputs, ["lab-a/ledger/capsules.jsonl", "lab-b/ledger/capsules.jsonl"])
+        self.assertEqual(not_checked, [])
+        for term in ("come_through.served_as_agreed", "come_through.served_named_model"):
+            self.assertEqual(claims[term]["verdict"], "met", claims[term])
+            self.assertIn("the pinned pack's own evaluator over 6 deals in 2 nodes' own chains: met 3",
+                          claims[term]["presentation"]["narrative"])
+            # every record of the step is cited, the chains beside the halves
+            self.assertEqual(sorted(claims[term]["evidence"]), sorted(f"05-deal/{r['path']}" for r in records
+                                                                     if r["dir"] == "05-deal"))
+
+    @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
+    def test_a_deal_the_evaluator_finds_not_met_is_not_met(self):
+        m = self.with_chains()
+        chain = self.run / "05-deal" / "lab-a" / "ledger" / "capsules.jsonl"
+        lines = chain.read_text().splitlines()
+        for i, line in enumerate(lines):
+            doc = json.loads(line)
+            inv = ((doc.get("model_attestation") or {}).get("compute_attestation") or {}).get("invocation")
+            if isinstance(inv, dict) and inv.get("resolved_model_id"):  # the provider answered with another model
+                inv["resolved_model_id"] = "another-model"
+                lines[i] = json.dumps(doc)
+        chain.write_text("\n".join(lines) + "\n")
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        next(x for x in e05["files"] if x["path"] == "lab-a/ledger/capsules.jsonl")["sha256"] = finding.sha256(chain)
+        self.reseal_manifest(m)
+        _, claims, _ = self.october(m)
+        self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_met")
+
+    def test_the_evaluator_not_held_to_its_pin_is_not_checked_not_a_crash(self):
+        with mock.patch.dict(step.EVALUATOR, {"scripts/rollup.py": "0" * 40}):
+            _, claims, not_checked = self.october(self.with_chains())
+        self.assertTrue(any(x["what"] == "05-deal: the pinned pack's own evaluator" and x["issue"] == step.GAP_ISSUE
+                            for x in not_checked), not_checked)
+        self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_evaluable")
+
+    def test_without_chains_the_gap_stays(self):
+        # No own chain in the proof (an older live 05, or the rehearsal stand-ins): the evaluator does not run.
+        _, claims, not_checked = self.october(self.live_05())
+        self.assertEqual({x["issue"] for x in not_checked}, {step.GAP_ISSUE})
+        self.assertIn("this pack does not recompute it yet", claims["come_through.served_named_model"]["presentation"]["narrative"])
+
+    def test_only_a_nodes_own_chain_is_an_evaluator_input(self):
+        kind = step.load_pack()["kinds"]["05"]
+        self.assertTrue(step.is_input(kind, "lab-a/ledger/capsules.jsonl"))
+        for path in ("a/b/ledger/capsules.jsonl", "lab-a/ledger/received-capsules.jsonl", "lab-a/held-1.json",
+                     "ledger/capsules.jsonl"):
+            self.assertFalse(step.is_input(kind, path), path)
+        self.assertFalse(step.is_input(step.load_pack()["kinds"]["06"], "lab-a/ledger/capsules.jsonl"))
+
+    def test_the_evaluator_is_held_to_the_pin_and_its_blobs(self):
+        self.assertEqual(step.EVALUATOR_REF, finding.pins()["inference-deals"][1])
+        self.assertEqual(step.git_blob(b""), "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391")
+        if HAS_EVALUATOR:
+            where = TOOLS_DIR / "packs" / f"inference-deals-{step.EVALUATOR_REF}"
+            for f, blob in step.EVALUATOR.items():
+                self.assertEqual(step.git_blob((where / f).read_bytes()), blob, f)
+        setup = (STEPS / "10-judge.setup.sh").read_text()
+        for f in step.EVALUATOR:
+            self.assertIn(f, setup)
 
     def test_a_verdict_comes_from_the_result_08_rederived(self):
         m = self.manifest()
