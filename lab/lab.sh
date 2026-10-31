@@ -763,7 +763,7 @@ cmd_witness() {
 }
 
 # The live judge key (evidence-network/loop#189, Steven's GO Buzz 23c5f8fd): on the lab host, never any node's key,
-# and disclosed as held by the same operator account that runs the nodes (asked of Steven, Buzz 06deaebd). Step 10
+# and disclosed as held by the same operator account that runs the nodes (Sherlock2's ruling under Steven's delegation, Buzz 8a67299d). Step 10
 # reads it from LOOP_JUDGE_KEY (default $LAB_DIR/judge/judge.pem); only its public key enters this tree.
 cmd_judge_key() {
   local dir=$LAB_DIR/judge key=$LAB_DIR/judge/judge.pem pub=$ROOT/population/live/step10/keys/judge.pub.pem new

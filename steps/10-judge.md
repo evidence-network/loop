@@ -64,9 +64,9 @@ A judge key that is a node's (a population `node_id`, or the `key_id` of any `no
 
 The lab operator account that runs the nodes can read the live judge key: on the lab host it has passwordless
 sudo, so no other account there would keep the key from it. Steven's GO is Buzz 23c5f8fd; "same operator,
-disclosed" in place of "no node operator holds it" is asked of him in Buzz 06deaebd. Every live detail says the
-judge key is held by the same operator and is not an independent judge's. An independent judge needs a key held
-outside the organization.
+disclosed" in place of "no node operator holds it" was ruled by Sherlock2 under Steven's delegation, Buzz
+8a67299d. Every live detail says the judge key is held by the same operator and is not an independent judge's. An
+independent judge needs a key held outside the organization.
 
 1. Each record is published as a capsule whose payload is `{step, path, sha256}`.
 2. `capsulectl book result build` seals each finer Result, then the roll-up. It refuses a claim citing a

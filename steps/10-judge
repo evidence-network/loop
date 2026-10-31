@@ -80,8 +80,8 @@ WINDOW_ISSUE = ("the pinned inference-deals pack's window (versions.lock inferen
                 "by Steven's 2026-10-29 ruling: a record is judged once its month has closed")
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
 # Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.
-# Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" is asked of him in
-# Buzz 06deaebd (the lab account that runs the nodes has passwordless sudo on the lab host).
+# Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" was ruled by Sherlock2
+# under Steven's delegation, Buzz 8a67299d (the lab account that runs the nodes has passwordless sudo on the lab host).
 LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
               "operator, not an independent judge")
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
