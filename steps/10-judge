@@ -414,9 +414,10 @@ def load_evaluator():
 
 # The evaluator's bounds are step 10's, never the pack's: a reader of the Result must not take its verdicts for the
 # pack's own weekly ones (Sherlock2, Buzz b1effd94).
-CHAIN_START = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
-EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished; each chain read whole up to the window's end; "
-                    "not the pack's weekly period_policy")
+CHAIN_START = dt.datetime.min.replace(tzinfo=dt.timezone.utc)  # no bound: the chain is read whole
+CHAIN_END = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
+EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished; each chain read whole, whatever its entries' "
+                    "own dates; not the pack's weekly period_policy")
 
 
 def evaluate(ev, run, inputs, start, end):
@@ -424,8 +425,9 @@ def evaluate(ev, run, inputs, start, end):
     (`inputs`, records of role input): its collect() and judge_deal() per deal, a shop_preauth deal not counted, as
     the pack's own build_result does. Only the bounds differ from the pack's own run (Sherlock2 confirmed, Buzz
     b1effd94): a chain is in step 10's window as its step is, by the step's finding `finished`, never by the dates
-    in its entries (a record's own clock is the operator's), so a chain is read whole, up to `end`, exactly as the
-    halves beside it are taken whole. The pack's weekly period_policy is not used. Each chain is read once and held to
+    in its entries (a record's own clock is the operator's), so a chain is read whole, with no bound on either side,
+    exactly as the halves beside it are taken whole. The chain is the node's whole ledger, so a later run's chain holds
+    this run's deals again: each Result counts the deals in its own run's chains, never a sum across runs. The pack's weekly period_policy is not used. Each chain is read once and held to
     its sha256 first. Raises ValueError (the evaluator's DealsError) when a chain cannot be read as the pack reads a
     book."""
     verdicts, exchanges = {}, set()
@@ -438,7 +440,7 @@ def evaluate(ev, run, inputs, start, end):
             if line.strip():
                 body = json.loads(line)
                 records.append((body.get("capsule_id"), body))
-        found, legs, own_keys = ev.collect(records, CHAIN_START, end)
+        found, legs, own_keys = ev.collect(records, CHAIN_START, CHAIN_END)
         for deal in found.values():
             if ev.counterparty_class(deal)[0] == "shop_preauth":
                 continue  # the pack's own run does not count it
@@ -552,7 +554,7 @@ def judge_records(records, run, pack, start, end, not_checked):
                 c = claim(cid, t["id"], worst, refs, cref,
                           f"the pinned pack's own evaluator, over {len(exchanges)} exchanges in {len(inputs)} nodes' "
                           f"own chains, answers this term for {len(answered)} deal sides: "
-                          f"{said or 'no deal in the window carried this term'}"
+                          f"{said or 'no deal in the chains carried this term'}"
                           + (f" ({', '.join(readings)})" if readings else ""))
                 # countersigned only when every answer is; the provider_states reading is the provider's word
                 if answered and all(g == "countersigned" for _, _, g in answered):

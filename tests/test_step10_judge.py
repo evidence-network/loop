@@ -455,9 +455,11 @@ class JudgeTest(Base):
             self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
         self.assertEqual(problems, [])
         not_checked = []
-        later = dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc)  # every chain entry is dated before this start
-        docs = step.judge_records(records, self.run, step.load_pack(), later, later + dt.timedelta(days=30), not_checked)
-        self.assertEqual(docs["05-deal"]["x-evaluator"]["exchanges"], 6, not_checked)
+        for start, end in ((dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc), dt.datetime(2027, 1, 1, tzinfo=dt.timezone.utc)),
+                           (dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc), dt.datetime(2026, 10, 29, tzinfo=dt.timezone.utc))):
+            # a window that starts after every entry, and one that ends inside the chain (entries stamped after its end)
+            docs = step.judge_records(records, self.run, step.load_pack(), start, end, not_checked)
+            self.assertEqual(docs["05-deal"]["x-evaluator"]["exchanges"], 6, (start, end, not_checked))
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_deal_the_evaluator_finds_not_met_is_not_met(self):
@@ -493,7 +495,7 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         _, claims, _ = self.october(m)
         self.assertEqual(claims["come_through.served_named_model"]["verdict"], "not_evaluable")
-        self.assertIn("no deal in the window carried this term", claims["come_through.served_named_model"]["presentation"]["narrative"])
+        self.assertIn("no deal in the chains carried this term", claims["come_through.served_named_model"]["presentation"]["narrative"])
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_chain_the_evaluator_cannot_read_is_not_checked(self):
