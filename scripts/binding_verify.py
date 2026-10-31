@@ -92,6 +92,12 @@ def main_commit(root, at):
     return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
 
 
+def holds_on_main(root, commit):
+    """Whether `commit` is on origin/main in the clone at `root` (an ancestor of it, or it)."""
+    return subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", str(commit), "origin/main"],
+                          capture_output=True).returncode == 0
+
+
 def snapshot(root, at):
     """The main commit a live run reads nodes/revocations/ from, as {"commit"} or {"commit": None, "why"}: origin/main
     is fetched first (a clone that last fetched before a revocation was merged would otherwise declare an older list
@@ -101,8 +107,10 @@ def snapshot(root, at):
     has_origin = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True).returncode == 0
     if has_origin and os.environ.get("LOOP_REVOCATIONS_FETCH", "1") != "0":
         try:
-            f = subprocess.run(["git", "-C", str(root), "fetch", "-q", "origin", "main"], capture_output=True,
-                               timeout=120, stdin=subprocess.DEVNULL)
+            # An explicit refspec, so origin/main moves even in a single-branch clone; never a credential prompt.
+            f = subprocess.run(["git", "-C", str(root), "fetch", "-q", "origin",
+                                "+refs/heads/main:refs/remotes/origin/main"], capture_output=True, timeout=120,
+                               stdin=subprocess.DEVNULL, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
             failed = f.stderr.decode(errors="replace").strip() if f.returncode else None
         except (OSError, subprocess.TimeoutExpired) as e:
             failed = str(e)
