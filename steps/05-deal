@@ -103,8 +103,9 @@ timestamps to the minute) is compared to the citing record's timestamp,
 and earlier halves are counted and still checked for their bytes, provenance, held inclusion proof and citing
 record (not for the counterparty_inclusion record, the tie or acceptance).
 A settlement leg a paid exchange leaves (`n/a-settlement-leg`, step 06's records) is no half of the exchange: it carries
-no client_nonce and its citing record no controller binding, so it is counted in the detail, not tied and not judged for
-the operator binding (loop#263); its bytes, provenance, inclusion, citation and signature are checked as any held half's.
+no client_nonce, so it is counted apart in the detail and not tied (loop#263); its bytes, provenance, inclusion,
+citation, acceptance and signature are checked as any held half's, and a controller binding its citing record names
+is judged as any half's. One whose record names none is not an unbound sender (the plugin's leg push has carried none).
 Unset, every held half is judged. The step judges halves between population nodes: a half whose provenance names
 a sender that is not a node of the population (`population/live/population.json`; lab-4, the twins-only node, is
 not, loop#174) is counted in the detail by sender key and listed in checks.json, with no verdict. The controller binding is optional: a current-build
@@ -844,16 +845,15 @@ def inclusion_cited(own_lines, cid, inc, verified_digest):
 def is_settlement_leg(capsule, record):
     """Whether the held capsule is a settlement leg (a record of a paid exchange's payment, step 06's), not a half of
     the exchange: the shape (`n/a-settlement-leg` with a `settlement` member), no client_nonce, and a citing
-    `record` that names neither an own half nor a controller binding. The sender signs the shape, so the node's own
-    record decides: one that names either is judged for it as any half (loop#263). A leg is neither tied nor judged
-    for the operator binding; its bytes, provenance, inclusion, citation, acceptance and signature are checked as
-    any held half's."""
+    `record` that names no own half. The sender signs the shape, so the node's own record decides: one that names an
+    own half is tied as any half (loop#263). A leg is not tied; its bytes, provenance, inclusion, citation,
+    acceptance and signature are checked as any held half's, and a controller binding its record names is judged as
+    any half's. One naming none is not an unbound sender: there is nothing to compare."""
     ma = capsule.get("model_attestation")
     rh = (((record.get("model_attestation") or {}).get("compute_attestation") or {}).get("received_half") or {})
     return (isinstance(ma, dict) and ma.get("model_id") == "n/a-settlement-leg"
             and isinstance(capsule.get("settlement"), dict) and exchange_key(capsule)[0] is None
-            and isinstance(rh, dict) and rh.get("own_half_capsule_id") is None
-            and rh.get("controller_binding_digest") is None)
+            and isinstance(rh, dict) and rh.get("own_half_capsule_id") is None)
 
 
 def is_citing(capsule):
@@ -998,15 +998,12 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
     summary["judged"] = len(current) - summary["legs"]
     summary["earlier"] = sum(1 for c in checks if c.get("current_build") is False)
     for c in current:
-        if c.get("leg"):
-            summary["vias"].add(c["accepted"]["via"])
-            continue
         if "binding" in c:
             b = c["binding"]
             summary["binding"][b["state"]] = summary["binding"].get(b["state"], 0) + 1
             if b["state"] == "unread":
                 summary["unread"].add(b["detail"])
-        if c["tied"]["state"] != "bad":
+        if "tied" in c and c["tied"]["state"] != "bad":
             summary[c["tied"]["state"]] += 1
         # A key tied to an operator by a binding the sender's commitment carries counts as accepted under a
         # controller declaration, however the plugin first accepted it. A sender whose published commitment
@@ -1018,6 +1015,8 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         elif a["via"] in VIA_KEY:
             if a.get("optional"):
                 summary["optional"] += 1
+            elif c.get("leg") and "binding" not in c:
+                pass  # a leg whose record names no binding: nothing to compare with the sender's commitment
             else:
                 key = c.get("key_id") or "unknown"
                 summary["unbound"][key] = summary["unbound"].get(key, 0) + 1
@@ -1036,8 +1035,7 @@ def live_node(bin_, name, data_dir, out, work, peers, members, since_raw=None, s
         f"counterparty_half by the node's own record; {summary['judged']} sealed under the current build"
         + (f" (accepted the half's key via {', '.join(recorded)}; {summary['tied']} tied to the node's own half, "
            f"{summary['never_tied']} held, never tied, {summary['ambiguous']} ambiguous)" if summary["judged"] else "")
-        + (f"; {summary['legs']} settlement legs besides, step 06's records, not tied and not read for the "
-           f"operator binding" if summary["legs"] else "")
+        + (f"; {summary['legs']} settlement legs besides, step 06's records, not tied" if summary["legs"] else "")
         + (f", {summary['earlier']} earlier, not judged for acceptance or tie" if summary["earlier"] else "")
         + beyond), pairs, summary
 

@@ -1404,19 +1404,20 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
 
-    def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_tie_or_binding(self):
+    def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_own_half(self):
         leg = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {}}, "settlement": {}}
         record = lambda **rh: {"model_attestation": {"compute_attestation": {"received_half": rh}}}  # noqa: E731
         self.assertTrue(step.is_settlement_leg(leg, record(accepted_via="host_announced")))
         self.assertFalse(step.is_settlement_leg({**leg, "settlement": None}, record()))
         self.assertFalse(step.is_settlement_leg({**leg, "model_attestation": {"model_id": "lab-model"}}, record()))
         self.assertFalse(step.is_settlement_leg({}, record()))
-        # a sender cannot mark a chat half as a leg: a nonce, or a record that names a tie or a binding, is judged
+        # a sender cannot mark a chat half as a leg: a nonce, or a record that names an own half, is tied; a binding
+        # the record names does not make a leg a half (its binding is judged either way)
         nonce = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {
             "x-mesh-poc-v1": {"client_nonce": "n", "role": "served"}}}, "settlement": {}}
         self.assertFalse(step.is_settlement_leg(nonce, record()))
         self.assertFalse(step.is_settlement_leg(leg, record(own_half_capsule_id="ab" * 32)))
-        self.assertFalse(step.is_settlement_leg(leg, record(controller_binding_digest="cd" * 32)))
+        self.assertTrue(step.is_settlement_leg(leg, record(controller_binding_digest="cd" * 32)))
 
     def run_in_process(self):
         with mock.patch.dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)):
@@ -1441,12 +1442,15 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertNotIn("tied", c)
         self.assertTrue(c["signature"]["ok"] and c["pushed_under_checkpoint"]["ok"] and c["accepted"]["ok"])
 
-    def test_live_a_settlement_leg_with_a_bad_key_still_fails(self):
-        self.reseal_citing(own_half_capsule_id=None, accepted_via="host_announced", sender_key_id="00" * 32)
+    def test_live_a_settlement_leg_accepted_under_another_key_still_fails_its_acceptance(self):
+        self.reseal_citing(own_half_capsule_id=None, sender_key_id="ab" * 32)
         with mock.patch.object(step, "is_settlement_leg", lambda capsule, record: True):
             f = self.run_in_process()
         self.assertEqual(f["result"], "FAIL")
-        self.assertIn("accepted", f["detail"])
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(c["leg"])
+        self.assertFalse(c["accepted"]["ok"], c["accepted"])
+        self.assertIn("held-1 accepted (", f["detail"])
 
     def test_live_a_tie_naming_an_own_half_the_chain_does_not_hold_fails(self):
         self.reseal_citing(own_half_capsule_id="ab" * 32)
