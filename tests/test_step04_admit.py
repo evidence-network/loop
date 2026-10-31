@@ -3,8 +3,11 @@
 The rehearsal runs on capsulectl and capsulectl-book (steps/04-admit.setup.sh,
 through steps/12-join.setup.sh). Without them the tests that seal SKIP, saying
 so: they never pass without the bundle verifier. With LOOP_REQUIRE_TOOLS=1 (CI,
-after the setups ran) a missing tool is an error instead. The live tests need
-nothing installed.
+after the setups ran) a missing tool is an error instead. The live tests check
+each decision record in the AAC Go verifier, as step 04 does (loop#135): they
+seal each one from a real live record (live/decision-template.json) under a
+rehearsal TEST key with steps/01-seal.setup.sh's capsule-emit and aac-go, and
+SKIP without them.
 
 Fixtures: tests/fixtures/step04/make_fixtures.sh.
 """
@@ -18,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 STEP = ROOT / "steps" / "04-admit"
@@ -43,6 +47,34 @@ if not HAS_BIN:
     if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":
         raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_BIN}")
     print(f"\ntest_step04_admit: {NO_BIN}", file=sys.stderr)
+
+SEAL_PY, CROSS = step.seal01.tools()
+HAS_SIGNER = SEAL_PY.is_file() and CROSS.is_file()
+NO_SIGNER = ("SKIPPED LOUDLY: steps/01-seal.setup.sh's capsule-emit and aac-go are not installed, so the live "
+             "decision records cannot be sealed and verified")
+if not HAS_SIGNER:
+    if os.environ.get("LOOP_REQUIRE_TOOLS") == "1":
+        raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: {NO_SIGNER}")
+    print(f"\ntest_step04_admit: {NO_SIGNER}", file=sys.stderr)
+TEST_KEY = POPULATION / "keys" / "alice"  # a rehearsal TEST key, standing in for a lab node's plugin key
+NODE_IDS = {"lab-a": "a" * 64, "lab-b": "b" * 64}
+
+
+def sealed(line):
+    """The line as a lab node's plugin seals it: a line carrying an admission decision becomes a real capsule
+    (the template's) with that block, its capsule_id recomputed and signed under TEST_KEY; others stay as written."""
+    try:
+        doc = json.loads(line)
+    except ValueError:
+        return line
+    if not isinstance(doc, dict) or step.decision_block(line) is step.ABSENT:
+        return line
+    block = doc["model_attestation"]["compute_attestation"]["admission_decision"]
+    r = subprocess.run([str(SEAL_PY), "-I", str(FIXTURES / "sign_decision.py"), str(CROSS),
+                        str(TEST_KEY / "node-key.pem")], input=json.dumps(block), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.strip()
+
 
 EXPECTED = {"go": "GO", "go-allow-list": "GO", "no-deny-list": "NO", "no-default": "NO", "no-unreadable-policy": "NO",
             "no-unreadable-target": "NO"}
@@ -174,16 +206,19 @@ class Rehearsal(unittest.TestCase):
             self.assertIn("steps/04-admit.setup.sh", r.stderr)
 
 
+@unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
 class Live(unittest.TestCase):
     def live_run(self, lab):
-        """Step 04 on `lab` (a dir holding population.json); a committed fixture dir is its own LAB_DIR."""
+        """Step 04 on `lab` (a dir holding population.json and, for its listed keys, listed/)."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         out = Path(tmp.name) / "f" / "04-admit"
-        r = run_step(lab, out, env=dict(os.environ, LAB_DIR=str(lab)))
+        env = {"LAB_DIR": str(lab), "LOOP_NODES_DIR": str(Path(lab) / "listed")}
+        r = run_step(lab, out, env=dict(os.environ, **env))
         self.assertEqual(r.returncode, 0, r.stderr)
         record = load(out / "finding.json")
-        self.assert_rederives(record, load(Path(lab) / "population.json"), out)
+        with mock.patch.dict(os.environ, env):
+            self.assert_rederives(record, load(Path(lab) / "population.json"), out)
         return out, record
 
     def assert_rederives(self, record, pop, out):
@@ -233,17 +268,28 @@ class Live(unittest.TestCase):
         return [ln for ln in (LIVE / "nodes/lab-a/data/ledger/capsules.jsonl").read_text().splitlines()
                 if "admission_decision" in ln]
 
-    def lab_with(self, lines):
-        """A two-node lab whose lab-a ledger holds `lines`; every node reads."""
+    def lab_with(self, lines, unreadable=False, listed=True, seal=True):
+        """A two-node lab whose lab-a ledger holds `lines`, each decision line sealed as the plugin does (`seal`);
+        every node reads, and with `unreadable` a third, lab-c, has no data_dir. Each node is listed under the TEST
+        key in listed/ (`listed`), as nodes/<node_id>.json lists a lab node's key."""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        lab = Path(tmp.name)
         for n in ("lab-a", "lab-b"):
-            d = Path(tmp.name) / "nodes" / n / "data" / "ledger"
+            d = lab / "nodes" / n / "data" / "ledger"
             d.mkdir(parents=True)
-            (d / "capsules.jsonl").write_text("\n".join(lines if n == "lab-a" else []) + "\n")
-        (Path(tmp.name) / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": [
-            {"name": n, "data_dir": f"$LAB_DIR/nodes/{n}/data", "book_dir": None} for n in ("lab-a", "lab-b")]}))
-        return Path(tmp.name)
+            (d / "capsules.jsonl").write_text("\n".join([sealed(x) if seal else x for x in lines]
+                                                        if n == "lab-a" else []) + "\n")
+        (lab / "listed").mkdir()
+        key = step.seal01.raw_public_hex(TEST_KEY / "node-key.pub.pem")
+        for node_id in NODE_IDS.values():
+            if listed:
+                (lab / "listed" / f"{node_id}.json").write_text(json.dumps({"node_id": node_id, "key_id": key}))
+        nodes = [{"name": n, "node_id": NODE_IDS[n], "data_dir": f"$LAB_DIR/nodes/{n}/data", "book_dir": None}
+                 for n in ("lab-a", "lab-b")] + ([{"name": "lab-c", "data_dir": None, "book_dir": None}]
+                                                 if unreadable else [])
+        (lab / "population.json").write_text(json.dumps({"population": "live", "rail": None, "nodes": nodes}))
+        return lab
 
     def test_decisions_in_the_ledger_pass(self):
         out, f = self.live_run(self.lab_with((LIVE / 'nodes/lab-a/data/ledger/capsules.jsonl').read_text().splitlines()))
@@ -252,11 +298,54 @@ class Live(unittest.TestCase):
         self.assertEqual([p["path"] for p in f["proof"]], ["nodes.json", "lab-a/decisions.jsonl"])
         for issue in ("evidence-network/loop#81", "Mesh-LLM/mesh-llm#2061"):
             self.assertIn(issue, f["detail"])
-        self.assertEqual(sorted(f["pinned"]), ["capsules", "mesh-llm"])
+        self.assertEqual(sorted(f["pinned"]), ["aac-go", "capsules", "mesh-llm"])
+        self.assertIn("its producer signature verifies, in the AAC Go verifier", f["detail"])
+        self.assertNotIn("evidence-network/loop#135", f["detail"])
         self.assertEqual(finding.check(out.parent), [])
 
+    def test_a_record_changed_after_it_was_sealed_fails(self):
+        # loop#135: each decision record is checked in the AAC Go verifier, as step 01 checks its seal.
+        lab = self.lab_with(self.good())
+        led = lab / "nodes" / "lab-a" / "data" / "ledger" / "capsules.jsonl"
+        lines = led.read_text().splitlines()
+        n, ln = next((i, x) for i, x in enumerate(lines) if "admission_decision" in x)
+        cap = json.loads(ln)
+        cap["timestamp"] = "2026-01-01T00:00:00Z"  # outside the block: the shape checks still hold
+        lines[n] = json.dumps(cap)
+        led.write_text("\n".join(lines) + "\n")
+        _, f = self.live_run(lab)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn(f"node lab-a record {n + 1}: capsule_id carried", f["detail"])
+
+    def test_a_record_under_another_key_than_the_listed_one_fails(self):
+        lab = self.lab_with(self.good())
+        other = step.seal01.raw_public_hex(POPULATION / "keys" / "bob" / "node-key.pub.pem")
+        for f in (lab / "listed").glob("*.json"):
+            f.write_text(json.dumps(dict(json.loads(f.read_text()), key_id=other)))
+        _, f = self.live_run(lab)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn(f"not the key {other} the node publishes", f["detail"])
+
+    def test_a_node_with_no_listing_is_not_checked(self):
+        _, f = self.live_run(self.lab_with(self.good(), listed=False))
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertIn(f"node lab-a: {step.RECORD_WHAT}", [x["what"] for x in f["not_checked"]])
+
+    def test_no_verifier_is_not_checked_never_a_pass(self):
+        lab = self.lab_with(self.good())
+        with tempfile.TemporaryDirectory() as tools:
+            tmp = tempfile.TemporaryDirectory()
+            self.addCleanup(tmp.cleanup)
+            out = Path(tmp.name) / "f" / "04-admit"
+            r = run_step(lab, out, env=dict(os.environ, LAB_DIR=str(lab), LOOP_NODES_DIR=str(lab / "listed"),
+                                            LOOP_TOOLS=tools))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        f = load(out / "finding.json")
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertIn(step.TOOLS_ISSUE, [x["issue"] for x in f["not_checked"]])
+
     def test_an_unreadable_node_keeps_it_not_checked(self):
-        _, f = self.live_run(LIVE)
+        _, f = self.live_run(self.lab_with(self.good(), unreadable=True))
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("live node lab-c", [x["what"] for x in f["not_checked"]])
         self.assertIn("evidence-network/loop#81", [x["issue"] for x in f["not_checked"]])
@@ -375,6 +464,7 @@ def capsule(n, block):
                        "model_attestation": {"compute_attestation": {"admission_decision": block}}})
 
 
+@unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
 class Rows(unittest.TestCase):
     """Each row recomputed from what a decision in the #116 record shape sealed (tests/fixtures/step04/live/rows116.json)."""
     live_run, lab_with, assert_rederives = Live.live_run, Live.lab_with, Live.assert_rederives
@@ -580,6 +670,7 @@ class Rows(unittest.TestCase):
         self.assertIn("rows under policy 'basic/1'", f["detail"])
 
 
+@unittest.skipUnless(HAS_SIGNER, NO_SIGNER)
 class Verdicts(unittest.TestCase):
     """The rows decide nothing: GO or NO follows from the source alone, the same for one peer under one policy."""
     live_run, lab_with, run_blocks, assert_rederives = Live.live_run, Live.lab_with, Rows.run_blocks, Live.assert_rederives
