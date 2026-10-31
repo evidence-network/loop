@@ -215,7 +215,9 @@ def record_holds(path, sha):
 def cited_records(source, cited, pack):
     """[(ref, path, sha256)] of the deal and settlement records the Results cite; only these are read."""
     steps = {nn for nn, k in pack["kinds"].items() if k["kind"] in ("deal", "settlement")}
-    return [(ref, source / ref, sha) for ref, sha in sorted(cited.items()) if ref[:2] in steps]
+    # An evaluator input (a node's own chain, binding.json `inputs`, loop#157) is cited but is no record: not counted.
+    return [(ref, source / ref, sha) for ref, sha in sorted(cited.items()) if ref[:2] in steps
+            and not judge10.is_input(pack["kinds"][ref[:2]], ref.split("/", 1)[1])]
 
 
 def documents(path):
