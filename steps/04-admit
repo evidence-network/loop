@@ -671,8 +671,11 @@ def judge_live(pop, out, started):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
         node = nodes.get(name)
+        if node is None:
+            continue  # a node nodes.json does not name: the names check above says so
         if not isinstance(node, dict):
-            continue  # named above
+            problems.append(f"node {name}: its {NODES_FILE} entry is not an object")
+            continue
         if node.get("read") in ("data_dir", "ledger"):
             not_checked.append(live.not_checked(name, node["read"]))
             details.append(f"node {name}: {'data_dir not set or unreadable' if node['read'] == 'data_dir' else 'ledger not readable'}")
