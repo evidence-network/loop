@@ -82,7 +82,11 @@ arguments: it binds nothing new), and judges what they return:
   - join keeps the binding: doctor's controller_binding is read before join,
     and join is not called when it cannot be (NOT_CHECKED). A node bound
     before that doctor after join reports unbound, or bound by another
-    binding, is a failure.
+    binding, is a failure. The binding is optional (Steven's ruling u137;
+    loop#201): a node unbound before and after holds only when join's
+    commitment holds and names no binding and the commitment fetched through
+    the asking console was read to name none (else NOT_CHECKED); join's
+    commitment naming a binding the node does not hold is a failure.
 
 The commitment join returns is compared with the node's published one,
 nodes/commitments/<node_id>.json, when that file exists. A re-join returns
@@ -557,7 +561,9 @@ def post_json(url, body, timeout):
 
 
 def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
-    """(failure or None, not_checked or None, line, held digest or None) for the controller binding of one node.
+    """(failure or None, not_checked or None, line, held digest or None, named) for the controller binding of one
+    node. `named` is what the fetched commitment was read to name: its binding digest, "" for none, or None when it
+    was not read (loop#201 reads the optional unbound case, and reports a commitment naming a binding once, by it).
 
     Its doctor, asked through its own console, says bound (with the binding digest) or unbound; its commitment,
     fetched through the asking console, may name a binding by digest. Both agree, or neither names one: the
@@ -570,7 +576,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     a rerun settles it.
     """
     def unreadable(why):
-        return None, no_binding(name, why), f"{name}: binding not read", None
+        return None, no_binding(name, why), f"{name}: binding not read", None, None
 
     own = post_json(doctor_console + OWN_COMMITMENT_ROUTE, {}, timeout)
     mine = own.get("commitment") if isinstance(own, dict) else None
@@ -583,7 +589,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
     held = state[1]
     if state[0] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
-        return f"{name}: doctor reports the binding bound without a sha256 digest", None, "", None
+        return f"{name}: doctor reports the binding bound without a sha256 digest", None, "", None, None
     fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
     if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
         return unreadable("its commitment could not be fetched and checked through the console that asks it"
@@ -595,11 +601,11 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     named = (fetched["commitment"].get("controller_binding") or {}).get("digest")
     if named != held:
         return (f"{name}: the commitment names the controller binding {named or 'none'}, but doctor reports "
-                f"{('it bound as ' + held) if held else 'no binding held'}"), None, "", None
+                f"{('it bound as ' + held) if held else 'no binding held'}"), None, "", None, named or ""
     return None, None, (f"{name}: doctor reports the controller binding bound ({held}); its signed commitment, "
                         "fetched through the console that asks it, names the same digest" if held
                         else f"{name}: doctor reports no controller binding held, and the signed commitment "
-                             "names none"), held
+                             "names none"), held, named or ""
 
 
 def live_binding_record(name, node, entry, held, at, node_dir):
@@ -763,14 +769,21 @@ def signed_terms(doc, policy):
     return terms if all(isinstance(v, list) and all(isinstance(x, str) for x in v) for v in terms.values()) else None
 
 
-def check_node_tools(name, entry, console, node_dir, timeout=30):
+def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     """(failures, not_checked, proof names in node_dir, lines, signed) for the plugin's doctor --probe and join.
+    `fetched` is check_binding's `named` for this node this run (None: not read).
     `signed` is the signed terms (signed_terms) of join's commitment when it holds (judge_join); False when it holds
     but its terms can't be read (a failure, already recorded); None when no commitment from join holds this run.
 
     The binding state is read from doctor before join; join is called only when it was, and a node that was
     bound must come back bound to the same binding in doctor after join. The console must answer as this
     node first: join is a write, and never sent to a node other than the one named.
+
+    The binding is optional (Steven's ruling u137, Buzz 087f74f4; loop#201): a node unbound before and after the
+    re-join is the optional case, with no not_checked entry, only when join's commitment holds this run and names
+    no controller binding, and the commitment fetched through the asking console was read to name none
+    (`fetched` ""). Otherwise it stays NOT_CHECKED. Join's commitment naming a binding the node does not hold is
+    a FAIL, reported once when the fetched commitment already named the same one.
     """
     def nc_(what, why, issue=live.ISSUE):
         return {"what": f"{name}: {what}", "why": why, "issue": issue}
@@ -782,6 +795,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
         why = f"the console given for it answers as {answered_as or 'no node'}, not as {entry['node_id']}"
         return [], [nc_("the plugin's doctor --probe and join", why)], [], [f"{name}: doctor and join not asked"], None
     fails, nc, proof, lines, signed = [], [], [], [], None
+    doc, holds = None, False
 
     def call(stem, route, body):
         reply, raw, err = tool(console, route, body, timeout)
@@ -827,8 +841,18 @@ def check_node_tools(name, entry, console, node_dir, timeout=30):
         fails.append(f"{name}: the node was bound ({before[1]}) before join, and doctor after join reports "
                      + (f"it bound as {after[1]}" if after[0] == "bound" else "it unbound"))
     elif before is not None and before[0] == "unbound" and after[0] == "unbound":
-        nc.append(nc_("the controller binding", "no controller binding recorded: the node was unbound before "
-                                                "the re-join and is after it (join {} sends no binding)"))
+        join_named = (doc.get("controller_binding") or {}).get("digest") if holds else None
+        if join_named:
+            if fetched != join_named:
+                fails.append(f"{name}: join's commitment names the controller binding {join_named}, but doctor "
+                             "reports no binding held")
+        elif holds and fetched == "":
+            lines.append(f"{name}: unbound before and after the re-join (optional; its signed commitment, from join "
+                         "and fetched through the asking console, carries no binding)")
+        else:
+            nc.append(nc_("the controller binding", "no controller binding recorded: the node was unbound before "
+                                                    "the re-join and is after it (join {} sends no binding), and "
+                                                    "this run did not read a signed commitment naming none"))
     if not fails and not nc:
         lines.append(f"{name}: doctor --probe finds both probes match and the commitment it serves carries its "
                      "policy; the re-join reports it joined, and its commitment holds under the listed key with "
@@ -936,7 +960,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         bad, signed = [], None
         own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
         if own:
-            fail, nc, line, held = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
+            fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
             if fail:
                 bad.append(fail)
             if nc:
@@ -951,7 +975,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout)
+            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, named)
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]

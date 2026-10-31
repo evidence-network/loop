@@ -628,10 +628,11 @@ class ReporterBackendTest(Tmp):
         real = step.post_json
         step.post_json = lambda url, body, timeout: {"commitment": [1]}
         try:
-            fail, nc, _, _ = step.check_binding("lab-1", "1" * 64, LISTED, "http://x", "http://y", 1)
+            fail, nc, _, _, named = step.check_binding("lab-1", "1" * 64, LISTED, "http://x", "http://y", 1)
         finally:
             step.post_json = real
         self.assertIsNone(fail)
+        self.assertIsNone(named)
         self.assertIn("answers as no node", nc["why"])
 
     def test_a_malformed_node_console_is_refused(self):
@@ -827,13 +828,14 @@ class PluginToolsTest(Tmp):
         step.PUBLISHED = self.real_published
         super().tearDown()
 
-    def tools(self, entry=ALICE_ENTRY, **kw):
+    def tools(self, entry=ALICE_ENTRY, fetched=None, **kw):
         kw.setdefault("before", ("bound", "d" * 64))  # an unbound node is NOT_CHECKED, which the tests below pin
         console = PluginConsole(**kw)
         node_dir = self.out / "alice"
         node_dir.mkdir(exist_ok=True)
         try:
-            fails, nc, proof, lines, self.signed = step.check_node_tools("alice", entry, console.url, node_dir, 5)
+            fails, nc, proof, lines, self.signed = step.check_node_tools("alice", entry, console.url, node_dir, 5,
+                                                                         fetched)
         finally:
             console.close()
         self.console = console
@@ -953,14 +955,51 @@ class PluginToolsTest(Tmp):
         self.assertEqual(fails, [f"alice: the node was bound ({self.D}) before join, and doctor after join reports "
                                  f"it bound as {'e' * 64}"])
 
-    def test_a_node_unbound_before_and_after_is_not_checked_not_held(self):
+    UNBOUND_NC = {"what": "alice: the controller binding", "why": "no controller binding recorded: the node was "
+                  "unbound before the re-join and is after it (join {} sends no binding), and this run did not read "
+                  "a signed commitment naming none", "issue": step.live.ISSUE}
+
+    def binding_ncs(self, nc):
+        return [x for x in nc if x["what"] == "alice: the controller binding"]
+
+    def test_a_node_unbound_before_and_after_with_no_fetched_commitment_read_is_not_checked(self):
         fails, nc, _, lines = self.tools(before=("unbound", None))
         self.assertEqual(fails, [])
-        self.assertEqual([x for x in nc if x["what"] == "alice: the controller binding"],
-                         [{"what": "alice: the controller binding", "why": "no controller binding recorded: the node "
-                           "was unbound before the re-join and is after it (join {} sends no binding)",
-                           "issue": step.live.ISSUE}])
+        self.assertEqual(self.binding_ncs(nc), [self.UNBOUND_NC])
         self.assertNotIn("the binding is", " ".join(lines))
+
+    # loop#201: the binding is optional (u137); unbound is the optional case only on a signed commitment naming none
+    def test_unbound_with_a_holding_commitment_naming_none_is_the_optional_case(self):
+        fails, nc, _, lines = self.tools(before=("unbound", None), fetched="")
+        self.assertEqual((fails, nc), ([], []))
+        self.assertIn("alice: unbound before and after the re-join (optional; its signed commitment, from join and "
+                      "fetched through the asking console, carries no binding)", lines)
+        self.assertIn("the binding is unbound before the re-join and unbound after", " ".join(lines))
+
+    def test_unbound_with_a_join_commitment_that_does_not_hold_stays_not_checked(self):
+        fails, nc, _, _ = self.tools(before=("unbound", None), fetched="",
+                                     join=commitment_change(lambda pair: pair["commitment"].update(answers_within="PT24H")))
+        self.assertEqual(fails, ["alice: join's commitment does not verify: signature does not verify under spki"])
+        self.assertEqual(self.binding_ncs(nc), [self.UNBOUND_NC])
+
+    def signed_naming(self, digest):
+        def change(pair):
+            pair["commitment"] = step.check_commitment_.sign(
+                {**pair["commitment"], "controller_binding": {"digest": digest}}, ALICE_KEY)
+        return commitment_change(change)
+
+    def test_unbound_with_a_join_commitment_naming_a_binding_is_a_fail(self):
+        fails, nc, _, _ = self.tools(before=("unbound", None), fetched="", join=self.signed_naming(self.D))
+        self.assertEqual(fails, [f"alice: join's commitment names the controller binding {self.D}, but doctor "
+                                 "reports no binding held"])
+        self.assertEqual(self.binding_ncs(nc), [])
+
+    def test_the_same_binding_named_by_the_fetched_commitment_is_reported_once(self):
+        # check_binding already failed on the fetched commitment naming it; join's names the same: no second FAIL
+        fails, nc, _, _ = self.tools(before=("unbound", None), fetched=self.D, join=self.signed_naming(self.D))
+        self.assertEqual(fails, [])
+        fails, _, _, _ = self.tools(before=("unbound", None), fetched="e" * 64, join=self.signed_naming(self.D))
+        self.assertEqual(len(fails), 1, fails)
 
     def test_an_unbound_node_that_comes_back_bound_without_a_digest_is_a_fail(self):
         fails, _, _, _ = self.tools(before=("unbound", None), after=("bound", "not-a-digest"))
@@ -1158,10 +1197,12 @@ class PluginToolsRunTest(Tmp):
         entry = next(i for i in r["not_checked"] if i["what"] == "alice: the controller binding")
         self.assertIn("no readable controller-binding.json", entry["why"])
 
-    def test_an_unbound_node_reads_not_checked_in_a_whole_run(self):
+    def test_an_unbound_node_whose_signed_commitments_name_none_passes_a_whole_run(self):
+        # loop#201: the binding is optional (u137); doctor and both commitments agree there is none
         r = self.run_one()
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
-        self.assertIn("alice: the controller binding", [i["what"] for i in r["not_checked"]])
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertNotIn("alice: the controller binding", [i["what"] for i in r.get("not_checked", [])])
+        self.assertIn("alice: unbound before and after the re-join (optional;", r["detail"])
 
     def test_a_bound_node_join_unbinds_is_a_fail(self):
         D = "d" * 64
