@@ -1215,6 +1215,15 @@ class PluginToolsRunTest(Tmp):
         f, e = self.verify08()
         self.assertEqual(e["status"], "failed", f["detail"])
 
+    def test_a_malformed_502_line_with_no_reply_replays_as_the_line_kept(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        att = next((self.out / "alice" / "attempts").glob("*"))
+        (att / "checkpoints.response.json").unlink()
+        (att / "checkpoints.verification").write_text("not_evidence why=http 502: malformed\n")
+        self.rehash(drop=[str(p.relative_to(self.out)) for p in [att / "checkpoints.response.json"]])
+        f, e = self.verify08()
+        self.assertNotIn("does not hold", " ".join(e["problems"]), e)
+
     def data_dir(self, binding=None):
         """A data_dir holding `binding` (default: alice's, as join.sh wrote it) as controller-binding.json."""
         d = Path(self.tmp.name) / "data"

@@ -399,7 +399,7 @@ LIVE_RELIES_ON = {
     "12": [{"what": "step 12: what each node's plugin answered to doctor, join and the commitment fetches",
             "why": "08 judges the kept replies (wire.json and the reply bytes) again, and join's commitment is "
                    "verified under the listed key, but doctor's findings and the fetch replies are console reads "
-                   "no key signs", "issue": TRUST_ISSUE},
+                   "no key signs, and neither is each attempt's peer-key.json, the announced key the lines are matched with", "issue": TRUST_ISSUE},
            {"what": "step 12: each probe reply's signatures, verified again offline",
             "why": "each kept verification line is computed again from its reply, but from the pinned plugin's "
                    "verification in it; 08 does not verify the reply bytes under the listed key itself",
@@ -690,6 +690,8 @@ def keys_12_live(c):
         bad.append(f"nodes.json names own consoles {owns!r}, not population nodes")
     # A node left out of node_consoles, or the self node without a second console, is judged NOT_CHECKED instead of
     # asked: which consoles the run held is its own record, so 08 names it when the proof shows a node not asked.
+    state_relies(c, "12", f"the run's clock: nodes.json's bind_at {kept.get('bind_at')}, which the binding window and "
+                 "the revocations main commit are read at (no node signs it)")
     if isinstance(owns, list) and (set(owns) != names or (kept.get("self_node") and not kept.get("second_console"))):
         state_relies(c, "12", "which consoles the run held (a node's own console, a second node's console), kept in "
                      "nodes.json")
