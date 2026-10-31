@@ -573,8 +573,13 @@ class LiveJudgeKeyTest(Base):
     def live(self):
         return self.judge(self.population)
 
-    def why(self, f):
-        return " ".join(n["why"] for n in f["not_checked"])
+    def not_checked(self):
+        """judge_keys on the live population: the NotChecked it raises, as (what, why, issue). It runs before
+        sealing and needs neither the pinned pack nor capsulectl, so these cases run wherever the tests do."""
+        with self.assertRaises(step.NotChecked) as e:
+            step.judge_keys("live", self.population / "step10" / "keys")
+        self.assertEqual(e.exception.args[2], step.JUDGE_KEY_ISSUE)
+        return e.exception.args
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
     def test_live_seals_under_the_lab_key_and_says_who_holds_it(self):
@@ -591,32 +596,36 @@ class LiveJudgeKeyTest(Base):
             del os.environ["LOOP_JUDGE_KEY"]
             self.assertEqual(self.live()["result"], "PASS")
 
+    def test_the_lab_key_signs_and_the_committed_key_is_trusted(self):
+        keys = step.judge_keys("live", self.population / "step10" / "keys")
+        pub = self.population / "step10" / "keys" / "judge.pub.pem"
+        self.assertEqual(keys, {"judge": (self.key, pub), "checkpoint": (self.key, pub)})
+
     def test_no_key_named_is_not_checked(self):
         with mock.patch.dict(os.environ, {}):
             del os.environ["LOOP_JUDGE_KEY"]
             os.environ.pop("LAB_DIR", None)
-            f = self.live()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("neither LOOP_JUDGE_KEY nor LAB_DIR is set", self.why(f))
-        self.assertEqual({n["issue"] for n in f["not_checked"]}, {step.JUDGE_KEY_ISSUE})
+            self.assertIn("neither LOOP_JUDGE_KEY nor LAB_DIR is set", self.not_checked()[1])
 
     def test_a_key_not_on_this_host_is_not_checked(self):
         self.key.unlink()
-        f = self.live()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("is not a readable file here", self.why(f))
+        self.assertIn("is not a readable file here", self.not_checked()[1])
 
     def test_a_key_others_can_read_is_not_checked(self):
         os.chmod(self.key, 0o644)
-        f = self.live()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("must be mode 600", self.why(f))
+        self.assertIn("must be mode 600", self.not_checked()[1])
 
     def test_no_committed_public_key_is_not_checked(self):
         (self.population / "step10" / "keys" / "judge.pub.pem").unlink()
+        self.assertIn("lists no judge public key", self.not_checked()[1])
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
+    def test_a_judge_key_not_on_the_host_leaves_the_step_not_checked(self):
+        self.key.unlink()
         f = self.live()
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("lists no judge public key", self.why(f))
+        self.assertEqual([n["issue"] for n in f["not_checked"]], [step.JUDGE_KEY_ISSUE])
+        self.assertIn(step.LIVE_JUDGE, f["detail"])
 
     @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
     def test_a_key_that_is_not_the_committed_one_fails(self):
@@ -626,6 +635,17 @@ class LiveJudgeKeyTest(Base):
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("not authorized by the profile trusted_keys", f["detail"])
 
+    def test_a_node_key_is_refused(self):
+        kid = step.pub_hex(self.population / "step10" / "keys" / "judge.pub.pem")
+        empty = Path(self.tmp.name) / "no-nodes"
+        empty.mkdir()
+        self.assertEqual(step.node_key_problems({"nodes": []}, kid, empty), [])
+        self.assertEqual(step.node_key_problems({"nodes": [{"node_id": kid}]}, kid, empty),
+                         [f"the judge key {kid[:12]} is a node's key"])
+        (empty / "n.json").write_text(json.dumps({"key_id": kid}))
+        self.assertEqual(len(step.node_key_problems({"nodes": []}, kid, empty)), 1)
+
+    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
     def test_a_node_key_as_judge_key_fails(self):
         kid = step.pub_hex(self.population / "step10" / "keys" / "judge.pub.pem")
         dump(self.population / "population.json",
