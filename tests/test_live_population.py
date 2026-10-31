@@ -64,7 +64,31 @@ class LiveCase(unittest.TestCase):
         r = run_step(step, population, out, env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(finding.check(self.findings), [])
-        return json.loads((out / "finding.json").read_text())
+        record = json.loads((out / "finding.json").read_text())
+        if step == "02-book":
+            self.assert_02_rederives(record, population, out, env)
+        return record
+
+    def assert_02_rederives(self, record, population, out, env):
+        """02's judge_live on a copy of only the cited files gives the same finding: what step 08 checks."""
+        work = self.tmp / "again" / "02-book"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in record["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / p["path"], work / p["path"])
+        saved = dict(os.environ)
+        os.environ.update(env or {})  # before the module loads: it reads LOOP_WITNESS_LISTING then
+        try:
+            loader = importlib.machinery.SourceFileLoader("step02_again", str(ROOT / "steps" / "02-book"))
+            mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_again", loader))
+            loader.exec_module(mod)
+            pop = json.loads((Path(population) / "population.json").read_text())
+            again = mod.judge_live(pop, work, record["started"])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (record["result"], record["not_checked"], record["detail"]))
 
     def assert_null_nodes(self, r, field="data_dir"):
         self.assertEqual(r["result"], "NOT_CHECKED")
@@ -357,6 +381,162 @@ class Step02LiveTest(JoinedLab):
         self.assertIn("node operator-2: book lab-2-book", r["detail"])
 
 
+class Step02LiveVerifyTest(JoinedLab):
+    """Step 08 re-derives live step 02 from its proof alone, on books join.sh made here (loop#188)."""
+
+    def setUp(self):
+        super().setUp()
+        self.recorded = self.step("02-book", self.pop, self.env)
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_for_02", str(ROOT / "steps" / "08-verify"))
+        self.v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_02", loader))
+        loader.exec_module(self.v)
+
+    def verify(self):
+        out = self.findings / "08-verify"
+        shutil.rmtree(out, ignore_errors=True)
+        self.v.main(["--population", str(self.pop), "--out", str(out)])
+        return (json.loads((out / "finding.json").read_text()),
+                {e["dir"]: e for e in json.loads((out / "verified.json").read_text())["steps"]})
+
+    def plant(self, edit):
+        d = self.findings / "02-book"
+        edit(d)
+        rec = json.loads((d / "finding.json").read_text())
+        for p in rec["proof"]:
+            p["sha256"] = finding.sha256(d / p["path"])
+        (d / "finding.json").write_text(json.dumps(rec, indent=2, sort_keys=True) + "\n")
+        return self.verify()
+
+    def test_live_02_is_reproduced_from_its_proof(self):
+        f, entries = self.verify()
+        e = entries["02-book"]
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], self.recorded["result"])
+        self.assertIn(self.v.LIVE_RELIES_ON["02"][0], f["not_checked"])
+
+    def test_a_bundle_altered_after_the_run_fails(self):
+        def forge(d):
+            b = json.loads((d / "lab-1" / "bundle.json").read_text())
+            b["checkpoint"]["mmr_size"] = 999
+            (d / "lab-1" / "bundle.json").write_text(json.dumps(b))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_key_not_bound_to_its_book_fails(self):
+        def forge(d):
+            i = json.loads((d / "lab-1" / "inputs.json").read_text())
+            i["bound"] = ["00" * 32]
+            (d / "lab-1" / "inputs.json").write_text(json.dumps(i))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_node_dropped_from_nodes_json_fails(self):
+        def drop(d):
+            n = json.loads((d / "nodes.json").read_text())
+            n["nodes"].pop("lab-1")
+            (d / "nodes.json").write_text(json.dumps(n))
+        f, entries = self.plant(drop)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+
+    def test_a_cited_checks_file_the_judge_does_not_give_fails(self):
+        def forge(d):
+            c = json.loads((d / "lab-1" / "checks.json").read_text())
+            c["checks"]["signer"]["detail"] = "x"
+            (d / "lab-1" / "checks.json").write_text(json.dumps(c))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("lab-1/checks.json re-derived is not the recorded", f["detail"])
+
+    def test_a_node_key_its_listing_does_not_publish_fails(self):
+        nodes = self.tmp / "nodes"
+        nodes.mkdir()
+        node_id = json.loads((self.pop / "population.json").read_text())["nodes"][0].get("node_id") or "n1"
+        pop = json.loads((self.pop / "population.json").read_text())
+        pop["nodes"][0]["node_id"] = node_id
+        (self.pop / "population.json").write_text(json.dumps(pop))
+        (nodes / f"{node_id}.json").write_text(json.dumps({"node_id": node_id, "key_id": "ab" * 32}))
+        saved = os.environ.get("LOOP_NODES_DIR")
+        os.environ["LOOP_NODES_DIR"] = str(nodes)
+        try:
+            f, entries = self.verify()
+        finally:
+            os.environ.pop("LOOP_NODES_DIR") if saved is None else os.environ.__setitem__("LOOP_NODES_DIR", saved)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("node_pub is not the key", f["detail"])
+
+    def test_an_unlisted_node_key_is_named_as_02s_reading(self):
+        f, entries = self.verify()
+        self.assertTrue(any(x["what"].startswith("step 02: node lab-1's key") for x in f["not_checked"]), f["not_checked"])
+
+    def test_a_witness_listing_not_the_repositorys_fails(self):
+        def forge(d):
+            (d / "witnesses.json").write_text('{"witnesses": []}\n')
+            rec = json.loads((d / "finding.json").read_text())
+            if "witnesses.json" not in [p["path"] for p in rec["proof"]]:
+                rec["proof"].append({"path": "witnesses.json", "sha256": ""})
+            (d / "finding.json").write_text(json.dumps(rec))
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("witnesses.json is not the repository's", f["detail"])
+
+    def test_a_failed_stage_reproduces_its_fail(self):
+        keys = self.lab_dir / "nodes" / "lab-2" / ".local" / "share" / "capsules" / "keys"
+        (keys / "node-key.pem").write_text("not a key")
+        self.recorded = self.step("02-book", self.pop, self.env)
+        self.assertEqual(self.recorded["result"], "FAIL")
+        f, entries = self.verify()
+        self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
+
+    def test_an_old_shape_bundle_is_not_reproduced_even_after_the_listing_changes(self):
+        shutil.rmtree(self.findings / "02-book")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "02-book", self.findings / "02-book")
+        other = self.tmp / "other-witnesses.json"
+        other.write_text('{"witnesses": []}\n')
+        saved = os.environ.get("LOOP_WITNESS_LISTING")
+        os.environ["LOOP_WITNESS_LISTING"] = str(other)
+        try:
+            f, entries = self.verify()
+        finally:
+            os.environ.pop("LOOP_WITNESS_LISTING") if saved is None else os.environ.__setitem__("LOOP_WITNESS_LISTING", saved)
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced", entries["02-book"]["problems"])
+
+    def test_a_malformed_append_fails_its_node_not_the_step(self):
+        loader = importlib.machinery.SourceFileLoader("step02_append", str(ROOT / "steps" / "02-book"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_append", loader))
+        loader.exec_module(mod)
+        real = mod.subprocess.run
+
+        def run(cmd, *a, **k):
+            r = real(cmd, *a, **k)
+            if "append" in cmd[1:3]:
+                r = subprocess.CompletedProcess(r.args, 0, "[]\n", r.stderr)
+            return r
+        out = self.tmp / "m" / "02-book"
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            mod.subprocess = type("S", (), {"run": staticmethod(run), "CompletedProcess": subprocess.CompletedProcess})
+            pop = json.loads((self.pop / "population.json").read_text())
+            self.assertEqual(mod.main_live(pop, out, "2026-10-31T00:00:00Z"), 0)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        f = json.loads((out / "finding.json").read_text())
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("the node's key or book could not be read", f["detail"])
+        again = mod.judge_live(pop, out, f["started"])
+        self.assertEqual(again["detail"], f["detail"])
+
+    def test_an_old_shape_live_02_bundle_is_not_reproduced(self):
+        shutil.rmtree(self.findings / "02-book")
+        shutil.copytree(ROOT / "findings" / "2026-10-31-live-6" / "02-book", self.findings / "02-book")
+        f, entries = self.verify()
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced")
+        self.assertIn("its proof holds no nodes.json", entries["02-book"]["not_checked"]["why"])
+
+
 class Step02LiveWitnessTest(JoinedLab):
     """The lab test witness (lab/witness.py, signing with step 02's driver) gives each book's checkpoint a
     receipt; step 02 checks it against a listing made here. Every key is a TEST key made here."""
@@ -416,6 +596,53 @@ class Step02LiveWitnessTest(JoinedLab):
     def witnessed(self, pem, key_id, at=None):
         self.configure(self.serve(pem, at), key_id)
         return self.step("02-book", self.pop, self.env)
+
+    def test_08_names_a_verified_receipt_as_capsulectls_reading(self):
+        pem, kid = self.key("w1")
+        self.list_keys((kid, "2026-01-01T00:00:00Z"))
+        r = self.witnessed(pem, kid)
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            loader = importlib.machinery.SourceFileLoader("step08_w", str(ROOT / "steps" / "08-verify"))
+            v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_w", loader))
+            loader.exec_module(v)
+            v.main(["--population", str(self.pop), "--out", str(self.findings / "08-verify")])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        f = json.loads((self.findings / "08-verify" / "finding.json").read_text())
+        entries = {e["dir"]: e for e in json.loads((self.findings / "08-verify" / "verified.json").read_text())["steps"]}
+        self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
+        self.assertIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+
+    def test_a_receipt_proof_with_its_listing_cut_fails_in_08(self):
+        pem, kid = self.key("w2")
+        self.list_keys((kid, "2026-01-01T00:00:00Z"))
+        self.witnessed(pem, kid)
+        d = self.findings / "02-book"
+        rec = json.loads((d / "finding.json").read_text())
+        rec["proof"] = [p for p in rec["proof"] if p["path"] != "witnesses.json"]
+        (d / "finding.json").write_text(json.dumps(rec))
+        (d / "witnesses.json").unlink()
+        (self.findings / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
+                                                            "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
+        saved = dict(os.environ)
+        os.environ.update(self.env)
+        try:
+            loader = importlib.machinery.SourceFileLoader("step08_cut", str(ROOT / "steps" / "08-verify"))
+            v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_cut", loader))
+            loader.exec_module(v)
+            v.main(["--population", str(self.pop), "--out", str(self.findings / "08-verify")])
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        f = json.loads((self.findings / "08-verify" / "finding.json").read_text())
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("cites no witnesses.json", f["detail"])
 
     def test_a_listed_witness_receipt_passes(self):
         pem, kid = self.key("witness")

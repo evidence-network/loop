@@ -48,7 +48,11 @@ witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the wi
 reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
 data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
 `$LAB_DIR` the environment does not set says so). One finding, the worst over
-the nodes, its detail listing each node.
+the nodes, its detail listing each node. The run keeps nodes.json (the pins
+found; per node read or why not) and, per node, inputs.json (the keys and book
+coordinates read, the witness exit codes, a failed stage), then judges only the
+kept files (judge_live): `capsulectl verify --bundle` runs again there, so step
+08 gets the same verdict from the proof (loop#188).
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (no driver installed, unreadable population).
@@ -339,11 +343,12 @@ def utc_seconds(text):
     return int(datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp())
 
 
-def witness_checks(status_rc, status, profile_key, node_keys):
-    """The checks on the receipt the book stored for its checkpoint: {name: {ok, detail}}."""
+def witness_checks(status_rc, status, profile_key, node_keys, entries=None):
+    """The checks on the receipt the book stored for its checkpoint: {name: {ok, detail}}. `entries` is the witness
+    listing's entries (the repository's, listing(), unless given)."""
     receipt = base64.b64decode(((status or {}).get("receipt") or {}).get("Bytes") or "")
     kid, iat = receipt_header(receipt)
-    entries = listing()
+    entries = listing() if entries is None else entries
     entry = next((e for e in entries if e.get("key_id") == kid), None)
     when = datetime.fromtimestamp(iat, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if iat is not None else None
     checks = {"witness_listed": {"ok": entry is not None,
@@ -366,10 +371,8 @@ def witness_checks(status_rc, status, profile_key, node_keys):
 
 
 def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time):
-    """Append one record to the node's book and check it, then its witness receipt: (result, proof, detail, gap).
-
-    gap is the node's witness not_checked entry when the witness part could not be checked, else None.
-    """
+    """Append one record to the node's book, then deliver its checkpoint to the book's witness, and keep what the
+    judge reads (inputs.json beside the proof files); judge_book judges those files."""
     out.mkdir(parents=True, exist_ok=True)
     work.mkdir(mode=0o700, parents=True)
     env = dict(os.environ, XDG_CONFIG_HOME=str(work / "config"),
@@ -378,6 +381,7 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         # The lab test witness serves HTTPS on loopback under its own certificate (lab/lab.sh witness).
         env["SSL_CERT_FILE"] = os.environ["LOOP_WITNESS_CA"]
     done = []
+    inputs = {"node": name, "node_keys": sorted(node_keys)}
 
     def cap_run(stem, *args, save=None):
         r = subprocess.run([str(cap), *map(str, args)], capture_output=True, text=True, env=env)
@@ -385,9 +389,13 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
             (out / save).write_text(r.stdout)
         if r.returncode != 0:
             (out / f"{stem}.stderr.txt").write_text(r.stderr)
-            if stem not in ("verify", "publish", "status"):
+            if stem not in ("publish", "status"):
                 raise RuntimeError(stem)
         return r
+
+    def keep(**more):
+        inputs.update(more, done=done)
+        (out / INPUTS_FILE).write_text(json.dumps(inputs, indent=2, sort_keys=True) + "\n")
 
     try:
         # The node key's seed, for this run only: capsulectl reads a key from a 0600 file.
@@ -401,6 +409,8 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         first = json.loads((records / "checkpoints.jsonl").read_text().splitlines()[0])
         book_id, book_key = first["log_id"], first["key_id"]
         bound = profile["trusted_keys"]
+        inputs.update(node_pub=node_pub, checkpoint_pub=cp_pub, book_id=book_id, book_key=book_key, bound=bound,
+                      witness={"endpoint": bool(profile["endpoint"]), "public_key": profile["public_key"]})
         # The book's witness, as its profile names it: the step delivers this run's checkpoint there.
         witness = (["--checkpoint-endpoint", profile["endpoint"], "--checkpoint-public-key", profile["public_key"]]
                    if profile["endpoint"] else [])
@@ -419,6 +429,8 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         capsule_id = json.loads((out / "capsule.json").read_text())["capsule_id"]
         appended = json.loads(cap_run("append", "cll", "append", "--profile", name, "--capsule",
                                       out / "capsule.json", save="append.json").stdout)
+        if not isinstance(appended, dict):
+            raise ValueError("capsulectl cll append printed no JSON object")
         done.append("append.json")
         size = json.loads(cap_run("checkpoint", "cll", "checkpoint", "create", "--profile", name,
                                   save="checkpoint.json").stdout)["checkpoint"]
@@ -426,30 +438,77 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         cap_run("bundle", "book", "bundle", "--profile", name, "--root", capsule_id, "--out", out / "bundle.json")
         done.append("bundle.json")
     except RuntimeError as e:
-        proof = done + [f"{e}.stderr.txt"]
-        return "FAIL", proof, f"node {name}: capsulectl {e} did not run on the node's book (exit non-zero)", None
+        return keep(failed={"stage": str(e)})
     except (OSError, ValueError, KeyError, IndexError) as e:
         (out / "input.stderr.txt").write_text(f"{e}\n")
-        return "FAIL", done + ["input.stderr.txt"], f"node {name}: the node's key or book could not be read: {e}", None
+        return keep(failed={"stage": "input", "error": str(e)})
 
     # The book record that carries the appended capsule.
     line = next((ln for ln in (records / "records.jsonl").read_text().splitlines()
                  if json.loads(ln)["header"].get("subject_ref") == capsule_id), None)
     (out / "book-record.json").write_text((line or "null") + "\n")
-    r = cap_run("verify", "verify", "--bundle", out / "bundle.json", save="verify.json")
-    checks = live_checks(r.returncode, out, capsule_id, appended, node_pub, book_id, book_key)
-    checks["node_key"] = {"ok": node_pub in bound, "detail": f"node key {node_pub}; the book was bound to {bound}"}
-    proof = LIVE_PROOF + ["checks.json"] + (["verify.stderr.txt"] if r.returncode else [])
-    gap = None
-    if not profile["endpoint"]:
-        gap = LIVE_WITNESS_NOT_CHECKED
-    else:
+    witnessed = {}
+    if profile["endpoint"]:
         # Deliver this run's checkpoint to the book's witness; the book keeps the receipt it gets.
         published = cap_run("publish", "cll", "checkpoint", "publish", "--profile", name, "--checkpoint", size,
                             save="publish.json")
-        proof += ["publish.json"] + (["publish.stderr.txt"] if published.returncode else [])
+        witnessed.update(publish_rc=published.returncode,
+                         publish_reason=(published.stderr.strip().splitlines() or [None])[-1])
         try:
             state = json.loads(published.stdout)
+        except ValueError:
+            state = {}
+        if state.get("receipt"):
+            # Re-verified from the receipt the book stored, offline, by the pinned capsulectl.
+            r = cap_run("status", "cll", "checkpoint", "status", "--profile", name, "--checkpoint", size,
+                        save="witness-status.json")
+            witnessed.update(status_rc=r.returncode)
+    return keep(capsule_id=capsule_id, checkpoint=size, **witnessed)
+
+
+# What the live judge reads beside the proof files, so step 08 runs it again on the proof alone (loop#188).
+INPUTS_FILE = "inputs.json"  # per node: the keys and book coordinates read, the witness exit codes, a failed stage
+NODES_FILE = "nodes.json"  # the pins found, and per node whether its data_dir and book_dir were read
+
+
+def judge_book(cap, out):
+    """One node's verdict from what live_book kept under out (inputs.json and the proof files): capsulectl verify
+    --bundle runs again on bundle.json, offline, and the checks run on the files: (result, proof, detail, gap)."""
+    inputs = json.loads((out / INPUTS_FILE).read_text(encoding="utf-8"))
+    name, done = inputs["node"], list(inputs["done"])
+    failed = inputs.get("failed")
+    if failed:
+        stage = failed["stage"]
+        if stage == "input":
+            return ("FAIL", done + ["input.stderr.txt", INPUTS_FILE],
+                    f"node {name}: the node's key or book could not be read: {failed.get('error')}", None)
+        return ("FAIL", done + [f"{stage}.stderr.txt", INPUTS_FILE],
+                f"node {name}: capsulectl {stage} did not run on the node's book (exit non-zero)", None)
+    node_pub, cp_pub, bound = inputs["node_pub"], inputs["checkpoint_pub"], inputs["bound"]
+    book_id, book_key, capsule_id = inputs["book_id"], inputs["book_key"], inputs["capsule_id"]
+    size, witness = inputs["checkpoint"], inputs["witness"]
+    appended = json.loads((out / "append.json").read_text())
+    if not isinstance(appended, dict):
+        raise ValueError("append.json is not a JSON object")
+    with tempfile.TemporaryDirectory(prefix="02-verify-") as tmp:
+        env = dict(os.environ, XDG_CONFIG_HOME=str(Path(tmp) / "config"),
+                   CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
+        r = subprocess.run([str(cap), "verify", "--bundle", str(out / "bundle.json")], capture_output=True, text=True,
+                           env=env)
+    (out / "verify.json").write_text(r.stdout)
+    (out / "verify.stderr.txt").unlink(missing_ok=True)
+    if r.returncode:
+        (out / "verify.stderr.txt").write_text(r.stderr)
+    checks = live_checks(r.returncode, out, capsule_id, appended, node_pub, book_id, book_key)
+    checks["node_key"] = {"ok": node_pub in bound, "detail": f"node key {node_pub}; the book was bound to {bound}"}
+    proof = LIVE_PROOF + [INPUTS_FILE, "checks.json"] + (["verify.stderr.txt"] if r.returncode else [])
+    gap = None
+    if not witness["endpoint"]:
+        gap = LIVE_WITNESS_NOT_CHECKED
+    else:
+        proof += ["publish.json"] + (["publish.stderr.txt"] if inputs["publish_rc"] else [])
+        try:
+            state = json.loads((out / "publish.json").read_text())
         except ValueError:
             state = {}
         if not state.get("receipt") and state.get("state") == "failed":
@@ -459,24 +518,32 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
                                          "witness failed permanently, so it holds no receipt (the cause is hidden "
                                          "by capsulectl: a receipt the book rejects, or a refused request)"}
         elif not state.get("receipt"):
-            reason = (published.stderr.strip().splitlines() or [f"state {state.get('state')}"])[-1]
+            reason = inputs.get("publish_reason") or f"state {state.get('state')}"
             gap = {"what": f"a witness receipt on node {name}'s checkpoint, and its verification",
                    "why": f"the book delivered checkpoint {size} to its witness and holds no receipt: {reason}",
                    "issue": "evidence-network/loop: the lab test witness gave no receipt (lab/lab.sh witness)"}
         else:
-            # Re-verified from the receipt the book stored, offline, by the pinned capsulectl.
-            r = cap_run("status", "cll", "checkpoint", "status", "--profile", name, "--checkpoint", size,
-                        save="witness-status.json")
-            proof += ["witness-status.json"] + (["status.stderr.txt"] if r.returncode else [])
+            status_rc = inputs["status_rc"]
+            proof += ["witness-status.json"] + (["status.stderr.txt"] if status_rc else [])
             try:
-                status = json.loads(r.stdout)
+                status = json.loads((out / "witness-status.json").read_text())
             except ValueError:
                 status = state
+            # The listing the run cites (witnesses.json beside the nodes), which 08 holds to the repository's.
             try:
-                checks.update(witness_checks(r.returncode, status, profile["public_key"],
-                                             node_keys | {node_pub, cp_pub, *bound}))
-            except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
-                checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
+                entries = [e for e in json.loads((out.parent / "witnesses.json").read_text()).get("witnesses", [])
+                           if isinstance(e, dict)]
+            except (OSError, ValueError, AttributeError):
+                entries = None
+            if entries is None:
+                checks["witness_receipt"] = {"ok": False, "detail": "the run cites no readable witness listing "
+                                                                   "(witnesses.json) to hold the receipt to"}
+            else:
+                try:
+                    checks.update(witness_checks(status_rc, status, witness["public_key"],
+                                                 set(inputs["node_keys"]) | {node_pub, cp_pub, *bound}, entries))
+                except (ValueError, IndexError, TypeError, AttributeError, KeyError) as e:
+                    checks["witness_receipt"] = {"ok": False, "detail": f"the stored receipt could not be read: {e}"}
     (out / "checks.json").write_text(json.dumps({"node": name, "checks": checks}, indent=2, sort_keys=True) + "\n")
     failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
@@ -537,18 +604,24 @@ def live_checks(rc, out, capsule_id, appended, node_pub, book_id, book_key):
 
 
 def main_live(pop, out, started):
+    """Each live node appends to its own book (live_book), and the run keeps nodes.json; then judge_live judges what
+    was kept, so the finding is a function of its proof."""
     cap, missing = capsulectl()
-    results, proof, details, not_checked = [], [], [], list(missing)
     out.mkdir(parents=True, exist_ok=True)
+    for p in ("witnesses.json", NODES_FILE, "finding.json"):
+        (out / p).unlink(missing_ok=True)
     if LISTING.is_file():
         shutil.copyfile(LISTING, out / "witnesses.json")
-        proof.append("witnesses.json")
     # Every node's own key: a receipt under any of them is not a witness's.
     node_keys = {k for k in (spki_hex(d / "keys" / "node-key.pub.pem") for d in
                              (live.readable(n, "data_dir", "keys/node-key.pub.pem") for n in pop["nodes"]) if d) if k}
+    nodes = {}
     with tempfile.TemporaryDirectory(prefix="02-book-") as tmp:
         for entry in pop["nodes"]:
             name = entry["name"]
+            if Path(name).name != name or name in ("", ".", ".."):
+                raise SystemExit(f"02-book: node name {name!r} is not a single path component")
+            shutil.rmtree(out / name, ignore_errors=True)
             need = {"data_dir": ("keys/node-key.pem",),
                     "book_dir": ("checkpoint.seed", "book/book/records/checkpoints.jsonl",
                                  "book/book/records/records.jsonl")}
@@ -558,22 +631,66 @@ def main_live(pop, out, started):
             if dirs["book_dir"] and profile is None:
                 why["book_dir"] = "book_dir has no book profile whose store is its book/ (config/capsule/profiles)"
             if why or missing:
-                results.append("NOT_CHECKED")
-                not_checked += [live.not_checked(name, f, w) for f, w in why.items()]
-                details.append(f"node {name}: not checked, {'; '.join(why.values()) or 'a pinned tool is missing'}")
+                nodes[name] = {"read": "no", "why": [[f, w] for f, w in why.items()]}  # in the order checked
                 continue
-            if (out / name).exists():
-                shutil.rmtree(out / name)
-            result, files, detail, gap = live_book(cap, name, dirs["data_dir"], dirs["book_dir"], profile, node_keys,
-                                                   out / name, Path(tmp) / name, started)
-            results.append(result)
-            proof += [f"{name}/{f}" for f in files if (out / name / f).is_file()]
-            details.append(detail)
-            if result == "NOT_CHECKED" and gap and gap not in not_checked:
-                not_checked.append(gap)
-    finding.write(out, result=live.worst(results), population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
-                  proof=proof, detail="; ".join(details), not_checked=not_checked, started=started)
+            live_book(cap, name, dirs["data_dir"], dirs["book_dir"], profile, node_keys, out / name,
+                      Path(tmp) / name, started)
+            nodes[name] = {"read": "ok"}
+    (out / NODES_FILE).write_text(json.dumps({"missing": missing, "nodes": nodes}, indent=2, sort_keys=True) + "\n")
+    judge_live(pop, out, started)
     return 0
+
+
+def judge_live(pop, out, started):
+    """The live finding from what main_live kept under out (nodes.json, each node's inputs.json and proof files)."""
+    out = Path(out)
+    cap, _ = capsulectl()
+    results, proof, details, not_checked = [], [], [], []
+    try:
+        kept = json.loads((out / NODES_FILE).read_text(encoding="utf-8"))
+        missing, nodes = kept["missing"], kept["nodes"]
+        if not (isinstance(missing, list) and isinstance(nodes, dict)):
+            raise TypeError("missing or nodes has the wrong type")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return finding.write(out, result="FAIL", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                             proof=[], detail=f"{NODES_FILE} is not readable ({type(e).__name__}: {e})",
+                             started=started)
+    not_checked += missing
+    proof.append(NODES_FILE)
+    if (out / "witnesses.json").is_file():
+        proof.append("witnesses.json")
+    names = [e["name"] for e in pop["nodes"]]
+    if sorted(nodes) != sorted(names):
+        results.append("FAIL")
+        details.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
+    for name in names:
+        if name not in nodes:
+            continue
+        node = nodes[name] if isinstance(nodes[name], dict) else {}
+        why = node.get("why")
+        if node.get("read") == "no" and isinstance(why, list) and all(
+                isinstance(x, list) and len(x) == 2 and all(isinstance(y, str) for y in x) for x in why) and (why or missing):
+            results.append("NOT_CHECKED")
+            not_checked += [live.not_checked(name, f, w) for f, w in why]
+            details.append(f"node {name}: not checked, {'; '.join(w for _, w in why) or 'a pinned tool is missing'}")
+            continue
+        if node.get("read") != "ok" or missing or not (out / name / INPUTS_FILE).is_file():
+            results.append("FAIL")
+            details.append(f"node {name}: {NODES_FILE} records {node!r}, which its kept files do not bear out")
+            continue
+        try:
+            result, files, detail, gap = judge_book(cap, out / name)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+            result, files, detail, gap = ("FAIL", [], f"node {name}: its kept inputs are not readable "
+                                                      f"({type(e).__name__}: {e})", None)
+        results.append(result)
+        proof += [f"{name}/{f}" for f in files if (out / name / f).is_file()]
+        details.append(detail)
+        if result == "NOT_CHECKED" and gap and gap not in not_checked:
+            not_checked.append(gap)
+    return finding.write(out, result=live.worst(results), population=pop["population"], asserts=ASSERTS,
+                         pinned=LIVE_PINNED, proof=proof, detail="; ".join(details), not_checked=not_checked,
+                         started=started)
 
 
 def main(argv):
