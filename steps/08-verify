@@ -467,6 +467,14 @@ def verify_step(d, pop_dir, population, tmp):
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
                                  "loop.sh wrote this FAIL because the step broke before writing its own finding; "
                                  "there is no judged result to run again", BROKE_ISSUE)
+        if record["result"] == "NOT_CHECKED" and not record["proof"]:
+            # The step judged nothing (a tool it pins is missing, say): no bytes to judge again, and its reason is
+            # the machine it ran on, so it is not reproduced, never a key check FAIL (loop#204).
+            first = record["not_checked"][0] if record["not_checked"] else {}
+            raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
+                                 "its finding cites no proof: the step judged nothing"
+                                 + (f" ({first['what']}: {first['why']})" if first else ""),
+                                 first.get("issue") or SETUP_ISSUE)
         if population != "rehearsal" and nn not in LIVE_STEPS:
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                                  "its live judge reads a lab node's data dir or console while it decides, and the "
