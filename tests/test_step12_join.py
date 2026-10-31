@@ -135,6 +135,7 @@ class DoctorBackendTest(Tmp):
         # The record is checked by the Go verifier, the node key's role included (AAC#468), and its revocation PASSes
         # on the list the run declares complete (CB-1 option A, agent-action-capsule#495): nothing stays outside.
         self.assertEqual(finding.gaps(r["detail"]), [])
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -1090,11 +1091,12 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap is what the verifier leaves unchecked: revocation (CB-1, AAC#482). The key's role (AAC#468) is
-    checked from its report, and no gap is loop-wide any more: the signed commitment (loop#161) is matched per node."""
+    """The binding gap left is a revocation declaration the verifier does not count (loop#240; CB-1 itself closed in
+    AAC#495). The key's role (AAC#468) is checked from its report, and no gap is loop-wide any more: the signed
+    commitment (loop#161) is matched per node."""
 
-    def test_the_binding_gap_is_revocation(self):
-        self.assertEqual(step.BINDING_REVOCATION["issue"], "action-state-group/agent-action-capsule#482")
+    def test_the_binding_gap_is_a_declaration_that_does_not_count(self):
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#240")
         self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 
@@ -1387,8 +1389,8 @@ class BindingRevocationTest(unittest.TestCase):
         state, detail = self.check("2026-10-13T00:00:00Z")
         self.assertEqual(state, "ok", detail)
         self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12, checking at "
-                      "2026-10-13T00:00:00Z declared complete as of 2026-10-13T00:00:00Z (list sha256 "
-                      f"{hashlib.sha256(b'[]').hexdigest()})", detail)
+                      f"2026-10-13T00:00:00Z declared complete as of 2026-10-13T00:00:00Z under profile {step.bv.PROFILE} "
+                      f"(list sha256 {hashlib.sha256(b'[]').hexdigest()})", detail)
 
     def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
         with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration
