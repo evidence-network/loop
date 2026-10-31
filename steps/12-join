@@ -1072,7 +1072,8 @@ def kept_lines(node_dir, entry):
             again = daily_report.verification_line(200, reply.read_bytes(), None, announced, entry["key_id"])
             if again != kept:
                 raise ValueError(f"the {stem} line kept ({kept}) is not the one its reply gives ({again})")
-        elif kept.split(" ", 1)[0] in layout.ANSWERED:
+        elif kept.split(" ", 1)[0] in ("verified", "refusal", "no_checkpoint_yet", "no_announced_key"):
+            # not_evidence is the line of a malformed 502, which keeps no reply (as step 07's reporter_line)
             raise ValueError(f"the {stem} line claims a reply the attempt does not hold: {kept}")
         lines[stem] = kept
     return lines
