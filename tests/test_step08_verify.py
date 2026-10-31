@@ -839,6 +839,9 @@ def live2_04(dst):
     return rec
 
 
+@unittest.skipUnless((TOOLS_DIR / "01-seal" / "bin" / "cross_language").is_file(),
+                     "SKIPPED LOUDLY: step 01's Go verifier is not installed (live 04 checks each decision record in "
+                     "it, loop#135); run steps/01-seal.setup.sh")
 class Step08Live04Test(unittest.TestCase):
     """08 re-derives live step 04 from its proof alone, on the live run's real decision lines (loop#188)."""
 

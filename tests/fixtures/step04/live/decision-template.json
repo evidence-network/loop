@@ -1,0 +1,58 @@
+{
+  "action_id": "mesh-poc/admission-decision/7c59873bd19d353f4842e70a5976268c4291fa66e6895ceea6f10d3acd099640",
+  "action_type": "fyi",
+  "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "not_applicable",
+    "ledger_mode": "chained"
+  },
+  "canonicalization_id": "jcs",
+  "capsule_id": "fcbf6e3d6dcedc8533945b68106d630ab353af1958983e6509b7b6f948ca0a37",
+  "chain": {
+    "parent_capsule_id": "cff75b8514ae8561e3a1109a689151efc72b28e04d90b6f0f71ee0f530110215",
+    "relation": "follows"
+  },
+  "developer": "capsule-emit-mesh/0.1.5",
+  "disposition": {
+    "approver": "policy",
+    "decision": "accept",
+    "human_disposed": false,
+    "verdict_class": "executed"
+  },
+  "domain": "action",
+  "format_version": "4",
+  "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+  "model_attestation": {
+    "compute_attestation": {
+      "admission_decision": {
+        "attempt": 1,
+        "model": "lab-model",
+        "peer_commitment": {
+          "alg": "SHA-256",
+          "digest": "7c672fc1c417aced800b6906ce8462ee881adb8692bd57706edfba4e8fa641cc"
+        },
+        "reads": [
+          {
+            "digest": {
+              "alg": "SHA-256",
+              "digest": "2ec5febee93490a3568982ea8e99fb1089e18ebec76ed030f40cbe69ada7e354"
+            },
+            "kind": "operator_policy",
+            "policy": "basic/1"
+          }
+        ],
+        "request_id": "23676ff6-b865-4770-9b74-9308b75f0038",
+        "source": "default",
+        "verdict": "GO"
+      },
+      "store_nonce": "1e93ee4fa0c0e713726812ad7d781ee5b99b49d0c637cb88668c0e6e5e7142aa"
+    },
+    "model_id": "n/a-admission-decision",
+    "provider": "mesh-llm"
+  },
+  "operator": "capsule-emit-mesh-poc-rust",
+  "provenance": "collector",
+  "signature": "d284584ca301270378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458206216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26a05820fcbf6e3d6dcedc8533945b68106d630ab353af1958983e6509b7b6f948ca0a3758403bb0f5593637df06c559d35681778f12e2aa21e13384c8c3f86133b41402bb83b34a8e8f9a8db87eaef6a4bef04c53ee54f266336498c44256a9ede81fcbe101",
+  "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+  "timestamp": "2026-10-29T23:48:00Z"
+}
