@@ -127,14 +127,14 @@ class BindingRecordTest(Tmp):
 
 class DoctorBackendTest(Tmp):
     @needs_capsulectl
-    def test_rehearsal_population_joins_and_passes_citing_the_binding_gap(self):
+    def test_rehearsal_population_joins_and_passes_with_revocation_on_the_runs_snapshot(self):
         self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
         r = json.loads((self.out / "finding.json").read_text())
         self.assertEqual(r["result"], "PASS", r["detail"])
         self.assertEqual(r["not_checked"], [])
-        # The record is checked by the Go verifier, the node key's role included (AAC#468); what stays outside the
-        # assertion is revocation (CB-1, agent-action-capsule#482).
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#482"])
+        # The record is checked by the Go verifier, the node key's role included (AAC#468), and its revocation PASSes
+        # on the list the run declares complete (CB-1 option A, agent-action-capsule#495): nothing stays outside.
+        self.assertEqual(finding.gaps(r["detail"]), [])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -1095,8 +1095,6 @@ class BindingGapTest(unittest.TestCase):
 
     def test_the_binding_gap_is_revocation(self):
         self.assertEqual(step.BINDING_REVOCATION["issue"], "action-state-group/agent-action-capsule#482")
-        self.assertEqual(step.BINDING_OUTSIDE, finding.outside(step.BINDING_REVOCATION["what"],
-                                                               "action-state-group/agent-action-capsule#482"))
         self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 
@@ -1150,12 +1148,13 @@ class PluginToolsRunTest(Tmp):
                             run_at=FIXTURE_AT)
 
     @needs_cross
-    def test_a_held_binding_that_applies_leaves_revocation_only(self):
+    def test_a_held_binding_that_applies_passes_with_revocation_on_the_runs_snapshot(self):
         r = self.run_bound()
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
         self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key (same_controller_asserted: no "
                       f"role) and applies at {FIXTURE_AT}", r["detail"])
-        self.assertEqual([i["what"] for i in r["not_checked"]], [step.BINDING_REVOCATION["what"]])
+        self.assertEqual(r["not_checked"], [])
 
     @needs_cross
     def test_the_record_that_was_checked_is_kept_as_proof(self):
@@ -1187,7 +1186,7 @@ class PluginToolsRunTest(Tmp):
 
     @needs_cross
     def test_a_bip340_binding_of_the_nodes_ed25519_key_applies(self):
-        # aac-go go/v0.16.0 (AAC#458): the node key is keys[1] of the vector, the controller key bip340.
+        # aac-go go/v0.17.0 (AAC#458): the node key is keys[1] of the vector, the controller key bip340.
         case = json.loads((ROOT / "tests/fixtures/step05/controller-bindings.json").read_text())["cases"]["valid-nostr-key"]
         digest = step.bv.verify(step.cross_language(), case["binding"], case["keys"][1], [FIXTURE_AT])[1]["binding_digest"]
         state, detail = step.binding_check("alice", case["binding"], digest, case["keys"][1], FIXTURE_AT)
@@ -1384,10 +1383,19 @@ class BindingRevocationTest(unittest.TestCase):
         folder.mkdir()
         (folder / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
 
-    def test_with_none_published_revocation_is_not_checked(self):
+    def test_with_none_published_revocation_passes_on_the_runs_declared_empty_list(self):
         state, detail = self.check("2026-10-13T00:00:00Z")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation NOT_CHECKED: no statement in nodes/revocations/ applies; 0 published", detail)
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12, checking at "
+                      "2026-10-13T00:00:00Z declared complete as of 2026-10-13T00:00:00Z (list sha256 "
+                      f"{hashlib.sha256(b'[]').hexdigest()})", detail)
+
+    def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
+        with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration
+            state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("revocation NOT_CHECKED: the declaration does not count", detail)
+        self.assertEqual(step.revocation_open(detail)["issue"], step.BINDING_REVOCATION_ISSUE)
 
     def test_a_published_statement_that_applies_makes_the_binding_not_apply(self):
         self.publish()
@@ -1407,7 +1415,7 @@ class BindingRevocationTest(unittest.TestCase):
         self.publish()
         state, detail = self.check("2026-10-11T00:00:00Z")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("1 published", detail)
+        self.assertIn("revocation PASS", detail)
 
 if __name__ == "__main__":
     unittest.main()
