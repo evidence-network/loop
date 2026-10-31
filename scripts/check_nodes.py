@@ -8,7 +8,8 @@ is not <node_id>.json, whose node_id or key_id repeats another entry's, that is
 missing a field, whose consent is not the published operator statement (CONSENT),
 or whose operator is not a GitHub handle (an email address or a phone number is
 refused: the list holds no personal data). Also checks the leave marks in
-<DIR>/left/<node_id>.json. Standard library only. Exit 0 = clean, 1 = refused.
+<DIR>/left/<node_id>.json and the twins-only lab nodes in <DIR>/twins/<node_id>.json
+(same shape, not asked by the reporter). Standard library only. Exit 0 = clean, 1 = refused.
 """
 import datetime as dt
 import json
@@ -127,7 +128,33 @@ def check_dir(root):
                 else:
                     seen[value] = path.name
     errs += check_left(root / "left", seen_node)
+    errs += check_twins(root / "twins", seen_node, seen_key)
     return errs, len(seen_node)
+
+
+def check_twins(twins, listed_node, listed_key):
+    """twins/<node_id>.json: a lab node the step 09 twins run adds (lab/pack.py entries). Same shape as a listing, but
+    not a listed node: the daily reporter does not ask it, and a node listed under nodes/ is not repeated here."""
+    errs = []
+    seen_node, seen_key = {}, {}
+    for path in sorted(twins.glob("*.json")) if twins.is_dir() else []:
+        where = f"twins/{path.name}"
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            errs.append(f"{where}: not valid JSON ({e})")
+            continue
+        errs += [f"twins/{e}" for e in check_entry(path, entry)]
+        if not isinstance(entry, dict):
+            continue
+        for field, seen, listed in (("node_id", seen_node, listed_node), ("key_id", seen_key, listed_key)):
+            value = entry.get(field)
+            if isinstance(value, str):
+                value = value.lower()
+                if value in listed or value in seen:
+                    errs.append(f"{where}: {field} repeats {listed.get(value) or seen[value]}")
+                seen[value] = path.name
+    return errs
 
 
 def check_left(left, listed):

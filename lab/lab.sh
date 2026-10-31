@@ -32,7 +32,8 @@
 #             optional); one already bound is left as it is unless LAB_REBIND=1. Order: join, bind, entries,
 #             loop, pack. The key never leaves the lab
 #   entries   write nodes/<node_id>.json, population/live/population.json (ids, data_dir, book_dir) and
-#             (with LAB_TWINS) the four-node $LAB_DIR/population-twins/population.json that dispute reads, and
+#             (with LAB_TWINS) nodes/twins/<lab-4 node_id>.json (its key for step 08; not a listed node, so never asked)
+#             and the four-node $LAB_DIR/population-twins/population.json that dispute reads, and
 #             reporter/reporter.json here
 #   commitments  each node's own signed commitment (the plugin's console `commitment` tool), written exactly as
 #             returned to nodes/commitments/<node_id>.json with its policy at nodes/commitments/policies/<node_id>.json,

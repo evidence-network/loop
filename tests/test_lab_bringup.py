@@ -979,6 +979,25 @@ class EntriesTest(LabFixture):
         self.assertIn(f"lab/runs/{DAY}/population-twins/population.json", arcs)
         self.assertTrue(any("/join/" in a and a.endswith("-4/commitment.json") for a in arcs), sorted(arcs))
 
+    def test_the_twins_node_is_listed_under_nodes_twins_and_packed_never_under_nodes(self):
+        # loop#209: step 08 holds lab-4's key to a committed file, but the daily reporter asks only nodes/<node_id>.json.
+        self._lab_4()
+        (self.lab / "build.json").write_text(json.dumps(BUILD))
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(pack.entries(self.root, self.lab, "lab-operator", "lab-3", add_hosts=["lab-4"]), [])
+        twin = json.loads((self.lab / "population-twins" / "population.json").read_text())["nodes"][-1]
+        listing = self.root / "nodes" / "twins" / f"{twin['node_id']}.json"
+        entry = json.loads(listing.read_text())
+        self.assertEqual(entry["node_id"], twin["node_id"])
+        self.assertEqual(check_nodes.check_entry(listing, entry), [])
+        self.assertFalse((self.root / "nodes" / f"{twin['node_id']}.json").exists())
+        self.assertEqual(check_nodes.check_dir(self.root / "nodes")[1], len(list((self.root / "nodes").glob("*.json"))))
+        j = self.lab / "join" / "lab-4"
+        j.mkdir(parents=True)
+        (j / "commitment.json").write_text("{}")
+        files, _ = pack.plan(self.root, self.lab, DAY)
+        self.assertIn(f"nodes/twins/{twin['node_id']}.json", {a for a, _ in files})
+
     def test_a_later_entries_run_without_the_twins_node_drops_the_old_twins_population(self):
         self._lab_4()
         (self.lab / "build.json").write_text(json.dumps(BUILD))
