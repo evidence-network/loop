@@ -83,7 +83,7 @@ the node made on the old stream still bind until their `until`.
 A controller binding says that several subjects (nodes, or a node and a
 personal agent) are under one controller. Only a verifier can say a binding
 holds. Steps 05 and 12 check a binding record with aac-go's
-`cross_language binding` (Controller Binding v0, go/v0.16.0), but that
+`cross_language binding` (Controller Binding v0, go/v0.17.0), but that
 writes no verdict and no `binding-verifier` is pinned, so this repository
 groups no subjects by it. A verifier's verdict would be published as
 `bindings/<controller_key_id>.json` (`binding-verdict/0`; see
@@ -104,12 +104,16 @@ binding the file name gives, each exactly
 and signed by one of the binding's two keys. The loop never signs one; the key
 holder does and opens the pull request. Step 05 passes the statements to the
 pinned verifier with the binding, so a binding revoked at or before the half's
-or the citing record's issue time does not apply (step 12 does not read them
-yet). CB v0 registers no place to fetch statements (CB-1), so
-the verifier knows only those it is given. This folder is the loop profile's
-own delivery point, not a registry: a statement published elsewhere is not
-excluded, so revocation stays NOT_CHECKED, never PASS, with none here that
-applies.
+or the citing record's issue time does not apply; step 12 does the same at the
+time it checks the binding. This folder is the loop profile's own delivery
+point, not a registry. Under CB-1 option A (Controller Binding v0 §5.1,
+agent-action-capsule#495), the loop run declares this folder complete for the
+binding as of the time the step evaluates, and passes that declaration with
+the list's exact bytes (`[]` when the folder holds no file for the binding).
+Revocation PASS then means only that no statement in that snapshot applies:
+it is the loop run's statement, and a statement published after the snapshot
+can still withdraw the binding. A declaration that does not count leaves
+revocation NOT_CHECKED.
 `scripts/check_revocations.py nodes/revocations` checks the files' shape (the
 `commitments` check); the verifier checks signatures and times.
 
