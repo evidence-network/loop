@@ -33,8 +33,8 @@ step = importlib.util.module_from_spec(_spec)
 _loader.exec_module(step)
 
 BASE_STEPS = ("03-advertise", "06-settle", "09-dispute")
-HAS_BASE = bool(shutil.which("git") and shutil.which("openssl"))
-NO_BASE = "SKIPPED LOUDLY: git and openssl are needed to run steps 03, 06 and 09 for the base run"
+HAS_BASE = bool(shutil.which("git") and step.openssl_ed25519())
+NO_BASE = "SKIPPED LOUDLY: git and OpenSSL 3+ (Ed25519) are needed to run steps 03, 06 and 09 for the base run"
 HAS_GO = all((TOOLS_DIR / "01-seal" / p).is_file() for p in ("bin/cross_language", "venv/bin/python")) \
     and bool(shutil.which("go"))
 NO_GO = "SKIPPED LOUDLY: step 01's sealer and Go verifier are not installed; run steps/01-seal.setup.sh"
@@ -277,6 +277,30 @@ class Step08Test(unittest.TestCase):
         self.assertIn("no re-derivation", nc["why"])
         self.assertIn("11-report: recorded PASS, not reproduced", verdict["detail"])
         self.assertEqual(finding.check(self.run), [])
+
+    def test_a_not_checked_step_that_judged_nothing_is_not_reproduced_not_failed(self):
+        # Step 01 with a pinned tool missing writes NOT_CHECKED, no proof and no checks.json (loop#204).
+        sd = self.run / "01-seal"
+        sd.mkdir()
+        finding.write(sd, result="NOT_CHECKED", population="rehearsal", asserts="a seal", pinned=[], proof=[],
+                      detail="node alice: a pinned tool is missing or not the pin", started=finding.now(),
+                      not_checked=[{"what": "capsule-emit", "why": "not installed", "issue": "x/y#1"},
+                                   {"what": "aac-go", "why": "not the pin", "issue": "x/y#1"}])
+        verdict, entries = verify(self.run)
+        self.assertEqual(entries["01-seal"]["status"], "not_reproduced", entries["01-seal"]["problems"])
+        why = entries["01-seal"]["not_checked"]["why"]
+        self.assertIn("the step says: capsule-emit: not installed; aac-go: not the pin", why)
+        self.assertEqual(entries["01-seal"]["not_checked"]["issue"], step.EMPTY_ISSUE)
+        self.assertEqual(verdict["result"], "NOT_CHECKED", verdict["detail"])
+
+    def test_another_step_emptied_to_a_not_checked_still_fails_its_key_check(self):
+        # 06 never writes an empty proof: emptying it and rewriting it NOT_CHECKED does not skip its trust anchor.
+        sd = self.run / "06-settle"
+        rec = load(sd / "finding.json")
+        rec.update(result="NOT_CHECKED", proof=[], not_checked=[{"what": "w", "why": "y", "issue": "x/y#1"}])
+        dump(sd / "finding.json", rec)
+        f, entries = verify(self.run)
+        self.assertFailsNaming("06-settle", entries, f)
 
     def test_step_12_without_capsulectl_is_not_checked_not_failed(self):
         class NoTools:
@@ -736,6 +760,34 @@ class Step08Live07Test(unittest.TestCase):
         f, entries = self.plant(drop)
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("names no commitment and no reason why", f["detail"])
+
+    def test_a_ledger_extract_holding_a_record_that_is_not_the_asks_fails(self):
+        # The extract holds only the asker's own request for this ask: another node's, another question's or one
+        # outside the ask's time bracket is refused, so unrelated subjects can't be carried in it.
+        for change in ({"responder_ref": "0" * 64, "audience": "0" * 64}, {"subject": {"exchange": "e" * 64}},
+                       {"committed_at": "2026-10-30T20:00:00Z"}):
+            with self.subTest(change=change):
+                self.tearDown()  # a fresh copy of the live run for each plant
+                self.setUp()
+
+                def forge(d):
+                    led = next(d.glob("stevenmih-1/attempts/*/checkpoints.ledger.json"))
+                    x = load(led)
+                    other = json.loads(json.dumps(x["requests"][0]))
+                    other["record"] = "9" * 64
+                    h = other["header"]
+                    if "committed_at" in change:
+                        h["committed_at"] = change["committed_at"]
+                    if "subject" in change:
+                        h["statement"]["request"]["subject"] = change["subject"]
+                    if "responder_ref" in change:
+                        h["statement"]["responder_ref"] = change["responder_ref"]
+                        h["statement"]["request"]["audience"] = change["audience"]
+                    x["requests"].append(other)
+                    dump(led, x)
+                f, entries = self.plant(forge)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+                self.assertIn("holds a request record that is not this ask's", f["detail"])
 
     def test_first_answered_the_proof_does_not_give_fails(self):
         def forge(d):

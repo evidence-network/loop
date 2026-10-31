@@ -65,6 +65,10 @@ SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
 STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
 BROKE_ISSUE = "evidence-network/loop: the step that broke (its loop-step.log in the run)"
+EMPTY_ISSUE = "evidence-network/loop: the step's own not_checked entries, as its finding states them"
+# Steps whose script writes a NOT_CHECKED finding citing no proof (01: a pinned tool missing; 05: no pushed half).
+# Only these may reach 08 with nothing to judge; any other step with an empty proof still meets its key checks.
+EMPTY_PROOF_STEPS = {"01", "05"}
 ASSERTS = ("an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file "
            "matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, "
            "run again on the proof bytes it cites, gives the result and not_checked list the step recorded")
@@ -467,6 +471,12 @@ def verify_step(d, pop_dir, population, tmp):
             raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
                                  "loop.sh wrote this FAIL because the step broke before writing its own finding; "
                                  "there is no judged result to run again", BROKE_ISSUE)
+        if record["result"] == "NOT_CHECKED" and not record["proof"] and nn in EMPTY_PROOF_STEPS:
+            # Nothing to judge again, and no key in the proof to check: not reproduced, never a key check FAIL
+            # (loop#204). What the step says of why is its claim, which 08 cannot check, so it is quoted as such.
+            raise Unreproducible(f"step {nn}: its result re-derived from its proof bytes",
+                                 "its finding cites no proof, so 08 has nothing to judge again; the step says: "
+                                 + "; ".join(f"{x['what']}: {x['why']}" for x in record["not_checked"]), EMPTY_ISSUE)
         if population != "rehearsal" and nn not in LIVE_STEPS:
             raise Unreproducible(f"step {nn}: its live result re-derived from its proof bytes",
                                  "its live judge reads a lab node's data dir or console while it decides, and the "

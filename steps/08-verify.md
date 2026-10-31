@@ -73,6 +73,8 @@ Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `fail
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
 dir or console while they decide, and their findings don't cite those bytes.
 
-**Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a step whose tool isn't
-installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
+**Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a NOT_CHECKED finding
+of step 01 or 05 that cites no proof at all (those scripts write one when a pinned tool is missing or a node holds no
+pushed half; 08 quotes the step's reasons as its claim and skips the key checks, so the ceiling is NOT_CHECKED, as for
+a trimmed `run.json`; on a live run this reason comes before the live one), a step whose tool isn't installed where 08 runs (its `setup.sh`), and a step 08 has no re-derivation for. A run that lists fewer steps
 than its stage names each step left out, owned by loop.sh's whole-stage run.
