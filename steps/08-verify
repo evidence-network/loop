@@ -23,12 +23,12 @@ this step, with no account and no network call:
                 judge needs bytes the finding does not cite, a live data dir, or
                 a verifier not installed here) is never passed on trust: it is a
                 not_checked entry {what, why, issue} saying what is missing.
-  live          live steps 01, 02, 03, 04 and 07 are re-derived the same way: their
-                judges read only their proof (and, for 07, the repository's
-                nodes/ listings; 03's listed keys and carrier bytes are held
-                to this checkout). The other live steps' judges read a lab node's
-                data dir or console, so they are not_checked
-                (evidence-network/loop#188; 09: #209).
+  live          live steps 01, 02, 03, 04, 07 and 09 are re-derived the same
+                way: their judges read only their proof (and, for 07, the
+                repository's nodes/ listings; listed keys and 03's carrier
+                bytes are held to this checkout). The other live steps' judges
+                read a lab node's data dir or console, so they are not_checked
+                (evidence-network/loop#188).
 
 The finding is FAIL when any step fails integrity or reproduction, NOT_CHECKED
 when every step present held but one or more could not be reproduced, and PASS
@@ -64,7 +64,8 @@ import finding  # noqa: E402
 # Who owns each kind of gap 08 leaves NOT_CHECKED.
 LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes its proof does not cite
 # A live step with a narrower owner than LIVE_ISSUE for why 08 cannot re-derive it yet.
-LIVE_STEP_ISSUES = {"09": "evidence-network/loop#209"}  # the twins run's lab-4 has no nodes/ listing
+LIVE_STEP_ISSUES = {}  # a live step with a narrower owner than LIVE_ISSUE, by step number
+TWINS_ISSUE = "evidence-network/loop#209"  # the twins run's lab-4 has no nodes/ listing
 WITNESS_ISSUE = "evidence-network/loop#219"  # live 02's witness state is capsulectl's reading of the stored receipt
 TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live step still takes on its own word
 SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
@@ -85,7 +86,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
+LIVE_AGAIN = {"09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -370,7 +371,11 @@ def openssl_ed25519():
 
 
 # What a reproduced live step still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
-LIVE_RELIES_ON = {"02": [
+LIVE_RELIES_ON = {"09": [
+    {"what": "step 09: what nodes.json records of the run (which node was read, each announced key, a key not read)",
+     "why": "08 checks each held Result again on the copied ledgers, but which node was read and the ledger files "
+            "copied whole are 09's reading of the nodes' data dirs", "issue": TRUST_ISSUE},
+], "02": [
     {"what": "step 02: what nodes.json and each inputs.json record of the run (which node was read, the pins "
              "missing, the book's checkpoint key, the keys it was bound to, its book id and first checkpoint key, "
              "every node's key, whether a witness is set, and the witness exit codes and stated cause)",
@@ -478,6 +483,50 @@ def keys_02_live(c, m):
                          "why": "08 runs 02's witness checks again on witness-status.json, but the state is "
                                 "capsulectl's re-verification against the node's book on the lab, not a check 08 "
                                 "makes from the bundle", "issue": WITNESS_ISSUE})
+    return bad
+
+
+def rederive_09_live(m, c):
+    """Live 09: its own judge_live on the copied proof (nodes.json, each node's copied ledger files and the
+    twin-fault.json copy); each Result's signature is checked again under the keys nodes.json records."""
+    old_shape(c, "09", "nodes.json")
+    if not openssl_ed25519():
+        raise Unreproducible("step 09: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
+
+
+def keys_09_live(c, m):
+    """Each node of the repository's population is one 09's run names, with the same node_id, and each announced
+    key nodes.json records for a listed node is the key its nodes/ listing publishes. A node the run names that has
+    no listing (the twins run's fourth node) is named: its key is 09's reading of its data_dir (loop#209)."""
+    old_shape(c, "09", "nodes.json")
+    kept, bad = load(c.work / "nodes.json"), []
+    ran = {n.get("name"): n.get("node_id") for n in kept.get("nodes") or [] if isinstance(n, dict)}
+    listed_pop = {n["name"]: n.get("node_id") for n in load(c.pop / "population.json")["nodes"]}
+    bad += [f"nodes.json names {name} as {ran.get(name)}, the population lists {node_id}"
+            for name, node_id in sorted(listed_pop.items()) if ran.get(name) != node_id]
+    pairs = kept.get("announced") if isinstance(kept.get("announced"), list) else []
+    announced = {p[0]: p[1] for p in pairs if isinstance(p, list) and len(p) == 2}
+    # main_live records a key only for a node it read: any other entry would let a Result name a made-up node.
+    read = kept.get("read") if isinstance(kept.get("read"), dict) else {}
+    read_ids = {node_id for name, node_id in ran.items() if read.get(name) is True}
+    bad += [f"nodes.json announces a key for {node_id}, which is no node the run read"
+            for node_id in sorted(set(announced) - read_ids, key=str)]
+    nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+    for name, node_id in sorted(ran.items(), key=lambda x: str(x[0])):
+        listing = nodes_dir / f"{node_id}.json"
+        if not (node_id and listing.is_file()):
+            if node_id in announced:
+                twins = name not in listed_pop
+                c.relies.append({"what": f"step 09: node {name}'s announced key",
+                                 "why": "the node has no nodes/ listing" + (" (a node the twins run adds, which the "
+                                        "repository's population does not list)" if twins else "") + ", so the key "
+                                        "nodes.json records is 09's reading of its data_dir",
+                                 "issue": TWINS_ISSUE if twins else TRUST_ISSUE})
+            continue
+        if node_id in announced and announced[node_id] != load(listing).get("key_id"):
+            bad.append(f"nodes.json's announced key of {name} is not the key nodes/{node_id}.json lists")
     return bad
 
 
@@ -601,7 +650,8 @@ STEPS = {
 
 # Live steps 08 re-derives: their judge reads only the proof and the repository. Every other live step's judge
 # reads a lab node's data dir or console while it decides (LIVE_ISSUE).
-LIVE_STEPS = {"01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
+LIVE_STEPS = {"09": (rederive_09_live, keys_09_live),
+              "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
 NEEDS_MODULE = {"01", "02", "07", "09"}

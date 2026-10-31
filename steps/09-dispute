@@ -69,6 +69,9 @@ signer) is not run. When no lab node holds a Result, the finding is
 NOT_CHECKED (the plugin seals one in its two-node e2e, Mesh-LLM/capsules-plugin#102,
 but the live twin trigger on real traffic is Mesh-LLM/capsules-plugin#126 and the
 lab has not run one): this step never seals a record on a live node to make one.
+The run keeps nodes.json (its nodes, which were read, each announced key) beside
+the copied ledgers and twin-fault.json, and judges only those files
+(judge_live), so step 08 checks each Result again from the proof (loop#188).
 
 No spend: this step pays nothing on either population, with or without
 LOOP_LIVE_SPEND. Exit 0 once the finding is written, whatever the result;
@@ -617,49 +620,93 @@ def held_brackets(out, readable):
 
 
 def injected_difference(out, brackets):
-    """The lab-only fault `lab.sh twins` wrote ($LAB_DIR/twin-fault.json), copied into the proof, as a sentence
-    that labels it plainly; empty when the lab ran no such pair. The Result is then real (sealed by the
-    plugin on lab nodes) but its disagreement is injected, not organic twin traffic."""
-    if not os.environ.get("LAB_DIR"):
+    """The lab-only fault `lab.sh twins` wrote, as copied into the proof (twin-fault.json), as a sentence that
+    labels it plainly; empty when the run copied none. The Result is then real (sealed by the plugin on lab nodes)
+    but its disagreement is injected, not organic twin traffic."""
+    src = Path(out) / "twin-fault.json"
+    if not src.is_file():
         return ""
-    src = Path(os.environ["LAB_DIR"]) / "twin-fault.json"
     try:
         doc = json.loads(src.read_text(encoding="utf-8"))
         inj = doc["injected_difference"]
         if doc.get("twin_bracket_id") not in brackets:
             return (f"twin-fault.json names bracket {doc.get('twin_bracket_id')!r}, which no Result a lab node holds "
                     "carries: it is not applied to this finding")
-        text = (f"INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): {inj['kind']} on "
+        return (f"INJECTED DIFFERENCE (lab-only fault injection, not organic twin traffic): {inj['kind']} on "
                 f"{inj['node']} = {inj['value']!r}; the twins' model hash and weights digest are the same "
                 f"(roles {json.dumps(doc.get('roles'), sort_keys=True)}, bracket {doc.get('twin_bracket_id')})")
     except (OSError, ValueError, KeyError, TypeError):
         return ""
-    shutil.copyfile(src, out / "twin-fault.json")
-    return text
+
+
+# What the live judge reads beside the ledgers, so step 08 runs it again on the proof alone (loop#188).
+NODES_FILE = "nodes.json"  # the run's nodes (name, node_id), which were read, their announced keys, key errors
 
 
 def main_live(pop, out, started):
+    """Copy each readable lab node's adjudication files and chain, keep nodes.json (the run's nodes, which were
+    read, the key each node's data_dir announces), then judge only those files (judge_live)."""
     clean(out)
-    readable, not_checked, details = {}, [], []
+    readable, kept = {}, {"nodes": [{"name": e["name"], "node_id": e.get("node_id")} for e in pop["nodes"]],
+                          "read": {}, "announced": [], "key_errors": {}}
     for entry in pop["nodes"]:
         d = live.readable(entry, "data_dir", "ledger")
-        if d is None:
-            not_checked.append(live.not_checked(entry["name"], "data_dir"))
-            details.append(f"node {entry['name']}: data_dir not set or unreadable")
-        else:
+        kept["read"][entry["name"]] = d is not None
+        if d is not None:
             readable[entry["name"]] = (entry.get("node_id"), d)
-    announced = {}
     for name, (node_id, d) in readable.items():
         try:
-            announced[node_id] = aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")
+            # [node_id, key] pairs: a node with no node_id yet keeps its null id, as the judge reads it.
+            kept["announced"].append([node_id, aac.key_id_of_pem(d / "keys" / "node-key.pub.pem")])
         except (OSError, ValueError) as e:
-            details.append(f"node {name}: no readable node key ({e})")
+            kept["key_errors"][name] = str(e)
     # The proof bytes: a copy of each readable node's adjudication files and chain.
     for name, (_, d) in readable.items():
         for f in LEDGER_FILES:
             if (d / "ledger" / f).is_file():
                 (out / name / "ledger").mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(d / "ledger" / f, out / name / "ledger" / f)
+    copy_twin_fault(out)
+    (out / NODES_FILE).write_text(json.dumps(kept, indent=2, sort_keys=True) + "\n")
+    judge_live(pop, out, started)
+    return 0
+
+
+def copy_twin_fault(out):
+    """Copy the lab-only fault `lab.sh twins` wrote ($LAB_DIR/twin-fault.json) into the proof, when there is one."""
+    if os.environ.get("LAB_DIR") and (Path(os.environ["LAB_DIR"]) / "twin-fault.json").is_file():
+        shutil.copyfile(Path(os.environ["LAB_DIR"]) / "twin-fault.json", out / "twin-fault.json")
+
+
+def judge_live(pop, out, started):
+    """The live finding from what main_live kept under out (nodes.json, each node's copied ledger files and the
+    twin-fault.json copy) only."""
+    out = Path(out)
+    try:
+        kept = read_json(out / NODES_FILE)
+        nodes, read, pairs, key_errors = kept["nodes"], kept["read"], kept["announced"], kept["key_errors"]
+        if not (isinstance(nodes, list) and all(isinstance(n, dict) and isinstance(n.get("name"), str) for n in nodes)
+                and isinstance(read, dict) and isinstance(pairs, list) and isinstance(key_errors, dict)
+                and all(isinstance(p, list) and len(p) == 2 for p in pairs)):
+            raise TypeError("nodes.json has the wrong shape")
+        bad = [n["name"] for n in nodes if Path(n["name"]).name != n["name"] or n["name"] in ("", ".", "..")]
+        if bad:
+            raise ValueError(f"node names {bad} are not single path components")
+        announced = {node_id: key for node_id, key in pairs}
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return finding.write(out, result="FAIL", population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                             proof=proof_files(out), detail=f"{NODES_FILE} is not readable ({type(e).__name__}: {e})",
+                             started=started)
+    readable, not_checked, details = {}, [], []
+    for n in nodes:
+        name = n["name"]
+        if read.get(name) is True:
+            readable[name] = (n.get("node_id"), out / name / "ledger")
+        else:
+            not_checked.append(live.not_checked(name, "data_dir"))
+            details.append(f"node {name}: data_dir not set or unreadable")
+    for name in sorted(key_errors):
+        details.append(f"node {name}: no readable node key ({key_errors[name]})")
     fault = injected_difference(out, held_brackets(out, readable))
     if fault:
         details.append(fault)
@@ -671,6 +718,8 @@ def main_live(pop, out, started):
     for name in readable:
         details.append(f"node {name}: {held[name]} held Result line(s)")
     result = "NOT_CHECKED"
+    (out / "checks.json").unlink(missing_ok=True)
+    (out / "outcome.json").unlink(missing_ok=True)
     if not readable:
         not_checked.append(dict(NO_RESULT, why="no lab node's data dir is readable here, so no Result a node holds "
                                                "is in reach; this step never seals one on a live node"))
@@ -693,9 +742,8 @@ def main_live(pop, out, started):
             outcomes(per_party, held_by(per_party, {n: out / n / "ledger" for n in per_party})),
             indent=2, sort_keys=True) + "\n")
     detail = "; ".join(details) + f". {MESH_ONLY} {SPEND}"
-    finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
-                  proof=proof_files(out), detail=detail, not_checked=not_checked, started=started)
-    return 0
+    return finding.write(out, result=result, population=pop["population"], asserts=ASSERTS, pinned=LIVE_PINNED,
+                         proof=proof_files(out), detail=detail, not_checked=not_checked, started=started)
 
 
 def main(argv):

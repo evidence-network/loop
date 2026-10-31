@@ -55,6 +55,7 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
+| 09 Dispute | `judge_live` on the copied proof: `nodes.json` (the run's nodes, which were read, each announced key, a key not read), each node's copied ledger files and `twin-fault.json` | each population node is one the run names with the same node_id; each listed node's announced key is its `nodes/` key; an unlisted node's (the twins node's) is 09's reading (evidence-network/loop#209); nodes.json itself is 09's record (#193) | openssl 3+ |
 | 01 Seal | `judge_live` on the copied proof: `nodes.json` (the pins the run found; per node unread, sealed or not sealed) and each node's `capsule.json` and `node-key.pub.pem`; the checks run again with the pinned `cross_language` | each kept `node-key.pub.pem` of a listed node is the key its `nodes/` listing publishes; an unlisted node's key is 01's word, and 01's signature check names that as not_checked; nodes.json's per-node state is 01's record, a not_checked entry on evidence-network/loop#193 | aac-go `cross_language` at the pin (otherwise `not_reproduced`) |
 | 02 Book | `judge_live` on the copied proof: `nodes.json` (pins; per node read or why not), each node's `inputs.json` (the keys and book coordinates read, the witness exit codes, a failed stage) and its proof files; `capsulectl verify --bundle` runs again on each bundle | `witnesses.json` is the repository's lab witness listing (and must be cited when a receipt is judged: the judge reads that copy); each listed node's `node_pub` is its `nodes/` key, and an unlisted node's key is 02's reading; nodes.json and the book's keys are 02's reading (a not_checked entry on evidence-network/loop#193), and a receipt's verified state is capsulectl's status against the node's book (evidence-network/loop#219) | capsulectl and capsulectl-book at the pin |
 | 03 Advertise | `judge_live` on the copied proof: `carrier.json` (the carrier's HEAD commit; per node its listed `key_id` and which paths HEAD held) and each `<name>.commitment.json` and `<name>.policy.json` | each listed `key_id` is `nodes/<node_id>.json`'s in this checkout (otherwise `not_reproduced` on evidence-network/loop#193); when `head` is a full commit id this checkout holds, 08 works out each node's paths from that commit (listing, commitment, the policy it names), whatever carrier.json lists: each must match byte for byte and the listed key must be that commit's, otherwise FAIL; a path carrier.json lists that 03 never reads FAILs. A `head` that is missing, not a full id or not in this checkout is a not_checked entry on #193, and so is that the commit was HEAD when 03 ran | openssl 3+, git |
@@ -77,8 +78,9 @@ Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `fail
 A live 04 or 07 finding whose proof lacks `nodes.json` or `ask.json` predates the shape 08 re-derives: it is
 `not_reproduced`, never `failed`. The `<node>/rows.json` files live 04 writes again must be the cited bytes.
 Live 04's `decisions.jsonl` is 04's selection of the node's decision lines: a reproduced live 04 adds a not_checked
-entry on evidence-network/loop#193 that it holds every decision the ledger did. Live 09 is `not_reproduced` on
-evidence-network/loop#209: the twins run's fourth node has no `nodes/` listing to hold its key to.
+entry on evidence-network/loop#193 that it holds every decision the ledger did. Live 09 is re-derived from
+nodes.json and the copied ledgers; the twins run's fourth node has no `nodes/` listing to hold its key to, so its
+announced key is a not_checked entry on evidence-network/loop#209.
 
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
 dir or console while they decide, and their findings don't cite those bytes.
