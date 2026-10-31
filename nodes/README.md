@@ -112,8 +112,12 @@ binding as of the time the step evaluates, and passes that declaration with
 the list's exact bytes (`[]` when the folder holds no file for the binding).
 Revocation PASS then means only that no statement in that snapshot applies:
 it is the loop run's statement, and a statement published after the snapshot
-can still withdraw the binding. A declaration that does not count leaves
-revocation NOT_CHECKED.
+can still withdraw the binding. A declaration that does not count (a time
+asked about after the snapshot) leaves revocation NOT_CHECKED
+(evidence-network/loop#240). The loop is stricter than CB v0 §9.4 about this
+folder: a file in it that is out of shape makes the binding not apply, rather
+than leaving revocation NOT_CHECKED, because every pull request checks the
+folder and a bad file is a defect in the loop's own delivery.
 `scripts/check_revocations.py nodes/revocations` checks the files' shape (the
 `commitments` check); the verifier checks signatures and times.
 
