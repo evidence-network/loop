@@ -569,6 +569,14 @@ def live5_07(dst):
             if (a / "exchange.request.json").is_file():
                 half = load(a / "exchange.request.json")["subject"]["exchange"]
         dump(nd / "exchange-subject.json", {"half": half, "why": None})
+        # The commitment each ask's deadline came from (its timing.json names nodes/commitments/<node_id>.json):
+        # the bytes the same run's step 03 published, so a later re-sign in the repository changes nothing here.
+        cd = nd / "commitment"
+        (cd / "policies").mkdir(parents=True)
+        shutil.copyfile(LIVE5 / "03-advertise" / f"{node['name']}.commitment.json", cd / "commitment.json")
+        shutil.copyfile(LIVE5 / "03-advertise" / f"{node['name']}.policy.json",
+                        cd / "policies" / f"{node['node_id']}.json")
+        dump(cd / "choice.json", {"commitment": f"nodes/commitments/{node['node_id']}.json", "not_checked": []})
     dump(dst / "ask.json", {"self_node": "stevenmih-3", "second_console": True, "nodes": nodes})
     proof = ["first-answered.json", "ask.json"] + sorted(
         str(f.relative_to(dst)) for f in dst.rglob("*") if f.is_file() and f.parent != dst)
@@ -605,7 +613,8 @@ class Step08Live07Test(unittest.TestCase):
         self.assertIn("07-ask: reproduced NOT_CHECKED", f["detail"])
         # The run left out the rest of stage 1: each step named, on loop.sh's whole-stage run.
         self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE})
+        self.assertEqual({nc["issue"] for nc in f["not_checked"]}, {step.RUN_ISSUE, step.TRUST_ISSUE})
+        self.assertEqual([nc for nc in f["not_checked"] if nc["issue"] == step.TRUST_ISSUE], step.LIVE_RELIES_ON["07"])
         self.assertEqual(finding.check(self.run), [])
 
     def test_live_10_and_11_then_read_not_checked_on_the_window(self):
@@ -681,6 +690,37 @@ class Step08Live07Test(unittest.TestCase):
         f, entries = self.plant(forge)
         self.assertEqual(f["result"], "FAIL", f["detail"])
         self.assertIn("names another request than the one sealed", f["detail"])
+
+    def test_an_exchange_subject_that_is_not_a_capsule_id_fails(self):
+        def blank(d):  # "" would ask nothing about the exchange and add no not_checked entry
+            dump(d / "stevenmih-1" / "exchange-subject.json", {"half": "", "why": None})
+        f, entries = self.plant(blank)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("neither null nor a capsule id", f["detail"])
+
+    def test_a_kept_commitment_altered_after_signing_fails(self):
+        def forge(d):
+            c = load(d / "stevenmih-1" / "commitment" / "commitment.json")
+            c["answers_within"] = "PT1H"
+            dump(d / "stevenmih-1" / "commitment" / "commitment.json", c)
+        f, entries = self.plant(forge)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("commitment does not verify", f["detail"])
+
+    def test_an_openssl_without_ed25519_leaves_live_07_not_reproduced_not_failed(self):
+        with mock.patch.object(step, "openssl_ed25519", return_value=False):
+            f, entries = self.verify()
+        self.assertEqual(entries["07-ask"]["status"], "not_reproduced")
+        self.assertIn("openssl 3.0 or later", entries["07-ask"]["not_checked"]["why"])
+        self.assertEqual(f["result"], "NOT_CHECKED")
+
+    def test_a_commitment_re_signed_later_in_the_repository_changes_nothing(self):
+        live07 = step.step_module("07-ask")
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(live07, "PUBLISHED", Path(tmp)), mock.patch.object(live07, "LAB_RUNS", Path(tmp)), \
+                mock.patch.object(step, "step_module", lambda base: live07):
+            f, entries = self.verify()
+        self.assertEqual(entries["07-ask"]["status"], "reproduced", entries["07-ask"]["problems"])
 
     def test_first_answered_the_proof_does_not_give_fails(self):
         def forge(d):

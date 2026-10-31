@@ -55,14 +55,19 @@ not hold, and the sha256 of every file 08 read.
 
 | Step | Judge re-run | Keys from the repository | Needs |
 |---|---|---|---|
-| 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the signed commitments under `nodes/commitments` and `lab/runs` | nothing outside the repository |
+| 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker) |
 
 Live 07 decides from its proof alone: 07 collects first (it asks each node and reads the asker's ledger and the
 asked node's data dir) and writes what its judge reads, then judges those files, so 08 running the same judge on
-the cited files gets the same verdict. A verification line is computed again from the reply, the announced key and
+the cited files gets the same verdict, however the repository's commitments move later. A verification line is computed again from the reply, the announced key and
 the listed key, and must be the one kept. `ask.json` must name every population node, and each node asked must
 have exactly one attempt per question. The ledger extract is 07's reading of the asker's ledger, kept as bytes:
-08 checks every rule on it, but not that the ledger held nothing more (the ledger is the lab node's).
+08 checks every rule on it, but not that the ledger held nothing more (the ledger is the lab node's; the extract
+keeps its line count and sha256 at read time for an audit). Nor are the replies' signatures checked again: live
+07 takes the pinned plugin's `verification` in each reply, as it did before. So a reproduced live 07 still adds
+two not_checked entries to 08's finding, on evidence-network/loop#193, and 08 never reads PASS over it. The listed
+keys are read at 08's own checkout, so re-deriving an old run after a key rotation reads the new key (also #193).
+Without OpenSSL 3.0 or later (Ed25519), live 07 is `not_reproduced`, never `failed`.
 
 The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
 dir or console while they decide, and their findings don't cite those bytes.

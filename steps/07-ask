@@ -84,8 +84,9 @@ through its own console: `--self-node` and `--second-console` work as in step 12
 The reporter backend collects first, then judges only what it kept (judge_reporter), so step 08 gets the same
 verdict from the proof: per ask, its attempt files, timing.json and <stem>.ledger.json (whether the asker's
 ledger was read, when, every evidence_request sealed for the ask and every outcome record citing one, with their
-ledger positions); per node, exchange-subject.json (the half, or why there is none); and ask.json (which node was
-asked through which console, or why not). A verification line is computed again from the reply, the announced
+ledger positions); per node, exchange-subject.json (the half, or why there is none) and commitment/ (the
+commitment the deadline came from, its policy and choice.json, so a later re-sign does not change the verdict);
+and ask.json (which node was asked through which console, or why not). A verification line is computed again from the reply, the announced
 key and the listed key, and must be the line kept.
 
 first-answered.json names the first ask answered (a verified artifact or a
@@ -736,7 +737,8 @@ def live_commitment(entry):
 def note(path, errs):
     """The not_checked entry for a commitment record the live ask did not use."""
     return {"what": "the deadline (answers_within): a commitment record of the node",
-            "why": f"{path}: {'; '.join(errs)}", "issue": NO_COMMITMENT_ISSUE}
+            "why": f"{path.relative_to(ROOT) if path.is_relative_to(ROOT) else path}: {'; '.join(errs)}",
+            "issue": NO_COMMITMENT_ISSUE}
 
 
 def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
@@ -874,6 +876,11 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
     records = ask_records(ledger) if ledger else None
     if records is None:
         return {"ledger": None, "read_at": stamp(now())}
+    try:  # what the ledger was when read, so the extract can be audited against the node later (loop#193)
+        raw = (Path(ledger) / "capsules.jsonl").read_bytes()
+        held = {"sha256": sha256(raw), "lines": len(raw.splitlines())}
+    except OSError:
+        held = None
     lo, hi = ask_bracket(posted, back)
     found = [(i, rid, h) for i, (rid, h) in enumerate(records) if is_ask_request(h, node_id, request, lo, hi)]
     got = citing(records, {rid for _, rid, _ in found})
@@ -887,7 +894,7 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
     def rows(items):
         return [{"index": i, "record": rid, "header": h} for i, rid, h in items]
 
-    return {"ledger": "read", "read_at": stamp(now()), "requests": rows(found), "outcomes": rows(got)}
+    return {"ledger": "read", "read_at": stamp(now()), "held": held, "requests": rows(found), "outcomes": rows(got)}
 
 
 def judge_sealed(extract, node_id, request, posted, back, saw, within, policy_digest=None):
@@ -1081,6 +1088,7 @@ def judge_exchange_line(line, entry):
 # What the reporter backend keeps beside the attempts, so its judge reads only the proof (judge_reporter).
 ASK_FILE = "ask.json"  # which node was asked through which console, or why it was not asked
 SUBJECT_FILE = "exchange-subject.json"  # per node: the half the exchange ask is about, or why there is none
+COMMITMENT_DIR = "commitment"  # per node: the commitment the deadline came from, its policy, and choice.json
 OWN_NODE = "the reporter's own node and no second console"
 NO_LISTING = "no nodes/ entry"
 
@@ -1112,9 +1120,10 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         except FileNotFoundError:
             asked[name] = {"asked": False, "why": NO_LISTING}
             continue
-        adv, _ = live_commitment(entry)
+        adv, ncs = live_commitment(entry)
         node_dir = out / name
         node_dir.mkdir(parents=True)
+        keep_commitment(node_dir, adv, ncs)
         half, why = exchange_subject(node, ledger)
         write_json(node_dir / SUBJECT_FILE, {"half": half, "why": why})
         asked[name] = {"asked": True, "via": via}
@@ -1147,6 +1156,52 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                         adv["within"] if adv else None))
     write_json(out / ASK_FILE, {"self_node": self_node, "second_console": bool(second_console), "nodes": asked})
     return judge_reporter(pop, out)
+
+
+def keep_commitment(node_dir, adv, ncs):
+    """Copy the commitment live_commitment chose, and the policy it pins, into <node>/commitment/, with choice.json
+    naming where it came from and the records it skipped. The judge reads this copy, so a commitment re-signed or a
+    lab pack made after the ask does not change the verdict on it."""
+    d = Path(node_dir) / COMMITMENT_DIR
+    d.mkdir(parents=True)
+    if adv is not None:
+        src = Path(adv["commitment"])
+        src = src if src.is_absolute() else ROOT / src
+        shutil.copyfile(src, d / "commitment.json")
+        (d / adv["policy_uri"]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src.parent / adv["policy_uri"], d / adv["policy_uri"])
+    write_json(d / "choice.json", {"commitment": adv["commitment"] if adv else None, "not_checked": ncs})
+
+
+def kept_commitment(node_dir, entry):
+    """(advertised or None, [not_checked], [errors]) from the commitment keep_commitment copied: it is under the
+    node's listed key, has a UTC issued_at and verifies with step 03's checker against the policy copied beside it."""
+    d = Path(node_dir) / COMMITMENT_DIR
+    try:
+        choice = load(d / "choice.json")
+        chosen, ncs = choice["commitment"], choice["not_checked"]
+        if not isinstance(ncs, list) or not all(isinstance(n, dict) for n in ncs):
+            raise TypeError("not_checked is not a list of entries")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, [], [f"{COMMITMENT_DIR}/choice.json is not readable ({type(e).__name__}: {e})"]
+    if chosen is None:
+        return None, ncs, []
+    try:
+        doc = load(d / "commitment.json")
+        uri = Path(doc["lcap"]["policy_uri"])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return None, ncs, [f"the kept commitment is not readable ({type(e).__name__}: {e})"]
+    if doc.get("key_id") != entry.get("key_id"):
+        return None, ncs, ["the kept commitment names a key other than the node's listed key"]
+    if uri.is_absolute() or ".." in uri.parts:
+        return None, ncs, [f"the kept commitment's policy_uri {str(uri)!r} is not a path beside it"]
+    if commitment_time(doc) is None:
+        return None, ncs, ["the kept commitment's issued_at is not a UTC timestamp (YYYY-MM-DDTHH:MM:SSZ)"]
+    adv, errs = advertisement(d, "commitment.json")
+    if errs:
+        return None, ncs, errs
+    adv["commitment"] = chosen
+    return adv, ncs, []
 
 
 def reporter_line(attempt, stem, listed):
@@ -1222,12 +1277,16 @@ def judge_reporter(pop, out):
         if how.get("asked") is not True:
             failures.append(f"{name}: not asked ({how.get('why')}), though it is listed and asked through a console")
             continue
-        adv, ncs = live_commitment(entry)
-        merge(not_checked, [{**nc, "what": f"{name}: {nc['what']}"} for nc in ncs])
         node_dir = out / name
+        adv, ncs, bad = kept_commitment(node_dir, entry)
+        failures += [f"{name}: {e}" for e in bad]
+        merge(not_checked, [{**nc, "what": f"{name}: {nc.get('what')}"} for nc in ncs])
+        proof += sorted(str(f.relative_to(out)) for f in (node_dir / COMMITMENT_DIR).rglob("*") if f.is_file())
         try:
             subject = load(node_dir / SUBJECT_FILE)
             half, why = subject["half"], subject["why"]
+            if half is not None and not (isinstance(half, str) and daily_report.HEX64.match(half)):
+                raise ValueError(f"half {half!r} is neither null nor a capsule id")
         except (OSError, ValueError, KeyError, TypeError) as e:
             failures.append(f"{name}: {SUBJECT_FILE} is not readable ({type(e).__name__}: {e})")
             continue

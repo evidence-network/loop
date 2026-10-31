@@ -246,14 +246,14 @@ class StatusPageTest(unittest.TestCase):
         row = re.search(r'<tr class="row" id="step-07".*?</tr>', self.html).group(0)
         self.assertIn('href="https://github.com/Mesh-LLM/capsules-plugin/issues/49"', row)
         row = re.search(r'<tr class="row" id="step-08".*?</tr>', self.html).group(0)
-        self.assertIn('href="https://github.com/evidence-network/loop/issues/24"', row)
+        self.assertIn('href="https://github.com/evidence-network/loop/issues/188"', row)
 
     def test_steps_08_10_and_11_are_owned_by_a_loop_issue(self):
         self.write(1, "PASS")
         self.page()
-        for n in (8, 10, 11):
+        for n, issue in ((8, 188), (10, 189), (11, 189)):
             row = re.search(rf'<tr class="row" id="step-{n:02d}".*?</tr>', self.html).group(0)
-            self.assertIn('owner: <a href="https://github.com/evidence-network/loop/issues/24">loop #24</a>', row)
+            self.assertIn(f'owner: <a href="https://github.com/evidence-network/loop/issues/{issue}">loop #{issue}</a>', row)
             self.assertNotIn("evidencebook-skills", row)
 
     # A PASS finding's gaps, in the convention the steps write: one sentence in

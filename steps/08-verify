@@ -46,6 +46,7 @@ import importlib.util
 import json
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -59,6 +60,7 @@ import finding  # noqa: E402
 
 # Who owns each kind of gap 08 leaves NOT_CHECKED.
 LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes its proof does not cite
+TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live 07 still takes on 07's word
 SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"
 STAGE1_ISSUE = "evidence-network/loop: 08 re-derives stage 1's steps"
@@ -327,13 +329,37 @@ def rederive_07(m, c):
 
 def rederive_07_live(m, c):
     """Live 07 (the reporter backend): its own judge_reporter on the copied proof. It reads the attempts, each
-    ask's ledger extract, each node's exchange subject and ask.json, and from the repository the nodes/ listings
-    (the listed keys) and the signed commitments; no console and no data dir."""
+    ask's ledger extract, each node's exchange subject, the commitment it kept and ask.json, and from the
+    repository the nodes/ listings (the listed keys); no console and no data dir."""
+    if not openssl_ed25519():  # step 03's checker verifies each kept commitment with it
+        raise Unreproducible("step 07: its judge, run again here",
+                             "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
     pop = load(c.pop / "population.json")
     if m.backend(pop) != "reporter":
         raise Unreproducible("step 07: its live result re-derived from its proof bytes",
                              f"08 re-derives the live reporter backend only, not {m.backend(pop)!r}", LIVE_ISSUE)
     return m.conclude(c.work, c.population, *m.judge_reporter(pop, c.work), c.started, "reporter")
+
+
+def openssl_ed25519():
+    """Whether the openssl on PATH is OpenSSL 3.0 or later, which verifies Ed25519 with pkeyutl -rawin (LibreSSL,
+    whose version string also starts with 3, does not)."""
+    if shutil.which("openssl") is None:
+        return False
+    r = subprocess.run(["openssl", "version"], capture_output=True, text=True)
+    m = re.match(r"OpenSSL (\d+)\.", r.stdout)
+    return r.returncode == 0 and bool(m) and int(m.group(1)) >= 3
+
+
+# What a reproduced live 07 still rests on: its own readings, which the bundle carries as bytes 08 cannot check.
+LIVE_RELIES_ON = {"07": [
+    {"what": "step 07: each ask's ledger extract is all the asker's ledger held for it",
+     "why": "08 checks every rule on 07's extract of the lab node's ledger (its line count and sha256 at read time "
+            "are kept for an audit), but the ledger itself is not in the bundle", "issue": TRUST_ISSUE},
+    {"what": "step 07: each reply's signatures, verified again offline",
+     "why": "live 07 reads the pinned plugin's verification in each reply; 08 does not verify the reply bytes under "
+            "the listed key itself", "issue": TRUST_ISSUE},
+]}
 
 
 def keys_07_live(c, m):
@@ -472,6 +498,8 @@ def verify_step(d, pop_dir, population, tmp):
         return done("failed")
 
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
+    if population != "rehearsal":
+        entry["relies_on"] = LIVE_RELIES_ON.get(nn, [])
     entry["problems"] += mismatches(record, again)
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in NUMBERS.get(nn, [])
                           if n in {p["path"] for p in record["proof"]} and (work / n).read_bytes() != (d / n).read_bytes()]
@@ -522,6 +550,8 @@ def main(argv=None):
     failed = [e for e in entries if e["status"] == "failed"]
     unrun = [e for e in entries if e["status"] == "not_reproduced"]
     not_checked = [e["not_checked"] for e in unrun]
+    # A reproduced live step still names what it rests on, so 08 never reads PASS over it.
+    not_checked += [x for e in entries if e["status"] == "reproduced" for x in e.get("relies_on", [])]
     listed = expected_steps(out.parent)
     if listed is None:
         not_checked.append({"what": "which steps the run holds",
