@@ -1,0 +1,92 @@
+{
+  "held": {
+    "lines": 2566,
+    "sha256": "40bcf6d7f147eb2f691a7a85f1402e9ec7c3722eeb96b6564dc9af35a08c52ad"
+  },
+  "ledger": "read",
+  "outcomes": [
+    {
+      "header": {
+        "committed_at": "2026-10-31T12:33:09Z",
+        "epistemic_type": "observed_event",
+        "links": [
+          {
+            "target": "3036c5bc8068ce06132b85c233b8c6243554b46ba130c0c8f25383ffbc48eac3",
+            "type": "cites"
+          }
+        ],
+        "record_type": "evidence_response",
+        "statement": {
+          "outcome": "artifact",
+          "request_digest": "457e295e8a602414e01f78b0dbeaac1f429781bd276a940f1509c49f90432d4c",
+          "verification": {
+            "anchor": "772cf6a2ac1b67382b1eb3e8bc662615336a23f1da889b7d6f8641f68b4e28e5",
+            "checkpoints": 0,
+            "records": [
+              2464
+            ],
+            "state": "artifact"
+          }
+        }
+      },
+      "index": 253,
+      "record": "16b1f8c668f84b6308505fcca22e6bc7cb49f7367bfb8ea5da0618f648c6e3a3"
+    }
+  ],
+  "read_at": "2026-10-31T12:33:09.109449Z",
+  "requests": [
+    {
+      "header": {
+        "committed_at": "2026-10-31T12:33:09Z",
+        "epistemic_type": "observed_event",
+        "links": [],
+        "record_type": "evidence_request",
+        "statement": {
+          "commitment": {
+            "digest": "6e5badbf83d3e37b79b2a37a861bb317e4036d6c6f09b70aa8512877b329aae8",
+            "policy": {
+              "advertise_evidence_requests": "off",
+              "share_adjudications": "off",
+              "share_exchange_corroboration": "off",
+              "share_history_segments": "counterparties",
+              "share_record_at_completion": "counterparty",
+              "share_standard_history": "off",
+              "stranger_safe": [
+                "checkpoints",
+                "history_card/1"
+              ]
+            },
+            "policy_digest": "1b87d79ac99741853560f4902cc303211178d9c1e2b233bcf8faf4527136db25",
+            "subjects": [
+              "checkpoints",
+              "full_history",
+              "record",
+              "exchange",
+              "correlation"
+            ]
+          },
+          "request": {
+            "audience": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
+            "coverage": {
+              "expected_pin": "aa6a9131857c7ce7e681acb7e8ae1ad5c95175cf79774018bf7587f97120342b"
+            },
+            "deadline": "2026-10-31T12:35:09Z",
+            "nonce": "453a5fd2e105ab733ccafea4193f24fb58f726523b2392e6a229900cf67bc1d9",
+            "profile": "evidence-interop/1",
+            "requester_auth": {
+              "key_id": "1dd25d9938ba4841f5e127e39e8dcc71df82b2072d9186ece75e431063ab26d9",
+              "sig": "64db9359651734c403d63dc2981bd9d279102ad5907f58e10525b0cfb52ce17a32e30d8ce2e81ef33ff08e8d7a0a487eecfb66a194ae93587c9173041c2f2c07"
+            },
+            "requester_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+            "subject": {
+              "exchange": "aa6a9131857c7ce7e681acb7e8ae1ad5c95175cf79774018bf7587f97120342b"
+            }
+          },
+          "responder_ref": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac"
+        }
+      },
+      "index": 252,
+      "record": "3036c5bc8068ce06132b85c233b8c6243554b46ba130c0c8f25383ffbc48eac3"
+    }
+  ]
+}

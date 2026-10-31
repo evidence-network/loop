@@ -1,0 +1,20 @@
+{
+  "as_of": "2026-10-31T12:33:18Z",
+  "end": "2026-10-01T00:00:00Z",
+  "period": "month",
+  "periods": 12,
+  "records": [],
+  "refused": [
+    "01-seal: 14 files, not a record kind of this pack",
+    "02-book: 33 files, not a record kind of this pack",
+    "03-advertise: 9 files, not a record kind of this pack",
+    "04-admit: 6 files, not a record kind of this pack",
+    "05-deal: 325 files, finished 2026-10-31T12:33:01Z, outside the window",
+    "06-settle: 6 files, finished 2026-10-31T12:33:03Z, outside the window",
+    "07-ask: 78 files, finished 2026-10-31T12:33:09Z, outside the window",
+    "09-dispute: 16 files, finished 2026-10-31T12:33:09Z, outside the window",
+    "12-join: 46 files, not a record kind of this pack"
+  ],
+  "source": "run",
+  "start": "2025-10-01T00:00:00Z"
+}

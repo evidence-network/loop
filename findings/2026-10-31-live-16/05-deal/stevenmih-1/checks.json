@@ -1,0 +1,1353 @@
+{
+  "held": [
+    {
+      "capsule_id": "7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497",
+      "cited": {
+        "detail": "record 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6 cites it: Class 1 exit 0; carried 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6, recomputed 9d5bf69e8270ae41a0c41c67dfc3579a220ee4ee6fa7642402026cf2eb9e51c6",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-1",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497, recomputed 7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-29T22:15:01.846Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "7e4aefd010d1665d0ede3ceb6d4b0741840c4481601534a05cd8930635ff8497 is included under checkpoint 76f8f5c2f72dd52540a78797887c641aee40d02520223f53cc7b2fd66c929f6a of capsules/7e04d3e3fec1332f (mmr_size 127), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8",
+      "cited": {
+        "detail": "record 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67 cites it: Class 1 exit 0; carried 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67, recomputed 5e95a1a36592dfbe3768229f0fc85ec153a2f548c381cc3ba4bb726a5c082c67",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-2",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8, recomputed 866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-29T22:15:02.108Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "866770872be9eabc21adfc57159a5d108c2ee1436abb24676cc00fdd73ad6db8 is included under checkpoint 73b2f8cd1a5c926b66bc9d6bc88318f935487a31ce5c75073eea516ffa620c5e of capsules/93d20518801ba715 (mmr_size 127), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "277782534fe0d031eb3b572ce489dff8e90ae48c68e64c1ec160f675bde577d0",
+      "cited": {
+        "detail": "record 2abeb7821ddab22ebfe1df610eed3630b428ad02fc22ab66a2873f688295db5b cites it: Class 1 exit 0; carried 2abeb7821ddab22ebfe1df610eed3630b428ad02fc22ab66a2873f688295db5b, recomputed 2abeb7821ddab22ebfe1df610eed3630b428ad02fc22ab66a2873f688295db5b",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-3",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 277782534fe0d031eb3b572ce489dff8e90ae48c68e64c1ec160f675bde577d0, recomputed 277782534fe0d031eb3b572ce489dff8e90ae48c68e64c1ec160f675bde577d0",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-29T23:48:34.835Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "277782534fe0d031eb3b572ce489dff8e90ae48c68e64c1ec160f675bde577d0 is included under checkpoint 167895e55875fdfa7023aaec79a23ad0cf230d33f39602f07807932fa5f7a7e9 of capsules/7e04d3e3fec1332f (mmr_size 255), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "b305c11bc127e44e8d4ac036df4ae16ac670062c0300dac949d39f835d9bbe53",
+      "cited": {
+        "detail": "record 1a0ea769e09b8bc961d4b33115715cabfc0af6cd1a27a1512550c3759a035d85 cites it: Class 1 exit 0; carried 1a0ea769e09b8bc961d4b33115715cabfc0af6cd1a27a1512550c3759a035d85, recomputed 1a0ea769e09b8bc961d4b33115715cabfc0af6cd1a27a1512550c3759a035d85",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-4",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried b305c11bc127e44e8d4ac036df4ae16ac670062c0300dac949d39f835d9bbe53, recomputed b305c11bc127e44e8d4ac036df4ae16ac670062c0300dac949d39f835d9bbe53",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-29T23:48:35.125Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "b305c11bc127e44e8d4ac036df4ae16ac670062c0300dac949d39f835d9bbe53 is included under checkpoint 24b4bc6bce79dfe0362be695ebd5b284a1a0cfe96cda7c20f2cb3bac12e12b06 of capsules/93d20518801ba715 (mmr_size 255), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "38f8b7e2c219dbeaf4f6a90569d81d93d18e099366e692adf0dbfe4d31f9fb09",
+      "cited": {
+        "detail": "record 28be09dc89e976c47fbd41de1a9f14288eb47bed79ff37917e244f8cda4c89eb cites it: Class 1 exit 0; carried 28be09dc89e976c47fbd41de1a9f14288eb47bed79ff37917e244f8cda4c89eb, recomputed 28be09dc89e976c47fbd41de1a9f14288eb47bed79ff37917e244f8cda4c89eb",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-5",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 38f8b7e2c219dbeaf4f6a90569d81d93d18e099366e692adf0dbfe4d31f9fb09, recomputed 38f8b7e2c219dbeaf4f6a90569d81d93d18e099366e692adf0dbfe4d31f9fb09",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:07:17.740Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "38f8b7e2c219dbeaf4f6a90569d81d93d18e099366e692adf0dbfe4d31f9fb09 is included under checkpoint 50a954f47dee4d09002c896d3249ae08b857a745fb987ce308374c1e3fff9529 of capsules/93d20518801ba715 (mmr_size 511), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "334ef5a9e4700586ed462d027883c9d7c275e0fc04f4ad17303012e78cfc0658",
+      "cited": {
+        "detail": "record 02ae7327e691e400848ae6d4119d5c37a6ee2e36bdc71a29b27a5e62b660fbc7 cites it: Class 1 exit 0; carried 02ae7327e691e400848ae6d4119d5c37a6ee2e36bdc71a29b27a5e62b660fbc7, recomputed 02ae7327e691e400848ae6d4119d5c37a6ee2e36bdc71a29b27a5e62b660fbc7",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-6",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 334ef5a9e4700586ed462d027883c9d7c275e0fc04f4ad17303012e78cfc0658, recomputed 334ef5a9e4700586ed462d027883c9d7c275e0fc04f4ad17303012e78cfc0658",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T01:40:11.480Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "334ef5a9e4700586ed462d027883c9d7c275e0fc04f4ad17303012e78cfc0658 is included under checkpoint 3e7a261abeef5556599434402c781d1e60319d0d6a729f55bbde081dc5919a35 of capsules/7e04d3e3fec1332f (mmr_size 574), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "7c39c2ab4fd652572e986189eb75ce7825317cd969aa6769d16d78272f1c08d3",
+      "cited": {
+        "detail": "record c2b9a8ec709c1a4d5ba65c4e8c9a7be18122942cd2deea549a232e37d8ff1cc7 cites it: Class 1 exit 0; carried c2b9a8ec709c1a4d5ba65c4e8c9a7be18122942cd2deea549a232e37d8ff1cc7, recomputed c2b9a8ec709c1a4d5ba65c4e8c9a7be18122942cd2deea549a232e37d8ff1cc7",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-7",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 7c39c2ab4fd652572e986189eb75ce7825317cd969aa6769d16d78272f1c08d3, recomputed 7c39c2ab4fd652572e986189eb75ce7825317cd969aa6769d16d78272f1c08d3",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:40:11.786Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "7c39c2ab4fd652572e986189eb75ce7825317cd969aa6769d16d78272f1c08d3 is included under checkpoint 1598dd417294dcb6a8e8b85295696a44c964a81216acafec8168d9911d3fcefd of capsules/93d20518801ba715 (mmr_size 701), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "149550de0ffc4c73779b069c1903551a28305f253780ff74ac5bc38ee5ba7f49",
+      "cited": {
+        "detail": "record bf2fa42388512155154a4b322e8dd9a0e1bad362f3233c7a0e18da857cd67977 cites it: Class 1 exit 0; carried bf2fa42388512155154a4b322e8dd9a0e1bad362f3233c7a0e18da857cd67977, recomputed bf2fa42388512155154a4b322e8dd9a0e1bad362f3233c7a0e18da857cd67977",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-8",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 149550de0ffc4c73779b069c1903551a28305f253780ff74ac5bc38ee5ba7f49, recomputed 149550de0ffc4c73779b069c1903551a28305f253780ff74ac5bc38ee5ba7f49",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:40:12.676Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "149550de0ffc4c73779b069c1903551a28305f253780ff74ac5bc38ee5ba7f49 is included under checkpoint 6fdf1ca34f6c23c57cef137999c9bfd6733073cd614131d1b37f3d884ede6605 of capsules/93d20518801ba715 (mmr_size 829), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "7d3a7f32c74fec2fafdcbd2491ad78025e33562cf5e5ccb9c1a6bb2509ab0927",
+      "cited": {
+        "detail": "record 0621e837f9f4c37f1312b35a92f6e7601a1c575f2fb8b5deb648e96c580ecb17 cites it: Class 1 exit 0; carried 0621e837f9f4c37f1312b35a92f6e7601a1c575f2fb8b5deb648e96c580ecb17, recomputed 0621e837f9f4c37f1312b35a92f6e7601a1c575f2fb8b5deb648e96c580ecb17",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-9",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 7d3a7f32c74fec2fafdcbd2491ad78025e33562cf5e5ccb9c1a6bb2509ab0927, recomputed 7d3a7f32c74fec2fafdcbd2491ad78025e33562cf5e5ccb9c1a6bb2509ab0927",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:45:18.345Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "7d3a7f32c74fec2fafdcbd2491ad78025e33562cf5e5ccb9c1a6bb2509ab0927 is included under checkpoint e40f865194900cfa3a9cd71b71158ba5925ced8081f3cb4aff60547e1e55f519 of capsules/93d20518801ba715 (mmr_size 956), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "00e86a057a9a37da22ae0102b4e66663e27b6c22b8cd78d27ae84f07c2d57322",
+      "cited": {
+        "detail": "record f8bee770a2f523b71a9ab210d0a91611e2e482730267cbe47e82c56996335749 cites it: Class 1 exit 0; carried f8bee770a2f523b71a9ab210d0a91611e2e482730267cbe47e82c56996335749, recomputed f8bee770a2f523b71a9ab210d0a91611e2e482730267cbe47e82c56996335749",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-10",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 00e86a057a9a37da22ae0102b4e66663e27b6c22b8cd78d27ae84f07c2d57322, recomputed 00e86a057a9a37da22ae0102b4e66663e27b6c22b8cd78d27ae84f07c2d57322",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:45:19.776Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "00e86a057a9a37da22ae0102b4e66663e27b6c22b8cd78d27ae84f07c2d57322 is included under checkpoint a5223cde465c676499e7ff1efb2f035567a6b3d4d03e0c0c593da7ad19765d1f of capsules/93d20518801ba715 (mmr_size 1023), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "23532bfacff842af57676765e52b2a6924c9194b7485aa5780c76a45e4cf2177",
+      "cited": {
+        "detail": "record 0aeb806b8ddefd3ca2a9824f3695e955e72d25df0e8b9ca08d705045aec22ecc cites it: Class 1 exit 0; carried 0aeb806b8ddefd3ca2a9824f3695e955e72d25df0e8b9ca08d705045aec22ecc, recomputed 0aeb806b8ddefd3ca2a9824f3695e955e72d25df0e8b9ca08d705045aec22ecc",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-11",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 23532bfacff842af57676765e52b2a6924c9194b7485aa5780c76a45e4cf2177, recomputed 23532bfacff842af57676765e52b2a6924c9194b7485aa5780c76a45e4cf2177",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:45:46.658Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "23532bfacff842af57676765e52b2a6924c9194b7485aa5780c76a45e4cf2177 is included under checkpoint 7355bd98fc5dbec85fada27d262996fc94115faa2e90607980e44388c72590ee of capsules/93d20518801ba715 (mmr_size 1150), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "fb83f7713e3d99db496c8250e919d06f2fe128868c6380826073435db35d2aa6",
+      "cited": {
+        "detail": "record 2ec87b46cfe49f43104d458bedfe63d34320bde9f07972db57dd2133dced1ebc cites it: Class 1 exit 0; carried 2ec87b46cfe49f43104d458bedfe63d34320bde9f07972db57dd2133dced1ebc, recomputed 2ec87b46cfe49f43104d458bedfe63d34320bde9f07972db57dd2133dced1ebc",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-12",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried fb83f7713e3d99db496c8250e919d06f2fe128868c6380826073435db35d2aa6, recomputed fb83f7713e3d99db496c8250e919d06f2fe128868c6380826073435db35d2aa6",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T01:57:27.173Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "fb83f7713e3d99db496c8250e919d06f2fe128868c6380826073435db35d2aa6 is included under checkpoint b05f92fbbb7b2cafca0de8273162a37da04b0264285ae668211ef5dcf012608e of capsules/7e04d3e3fec1332f (mmr_size 893), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "1f1642f162ef6c0ea002fdd11a44ad88949e812cf652308d55851b28dbb6ff72",
+      "cited": {
+        "detail": "record 61b24779910a714e037462a96fce91c8dcd386613db5b8716e09f5d669603dc8 cites it: Class 1 exit 0; carried 61b24779910a714e037462a96fce91c8dcd386613db5b8716e09f5d669603dc8, recomputed 61b24779910a714e037462a96fce91c8dcd386613db5b8716e09f5d669603dc8",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-13",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 1f1642f162ef6c0ea002fdd11a44ad88949e812cf652308d55851b28dbb6ff72, recomputed 1f1642f162ef6c0ea002fdd11a44ad88949e812cf652308d55851b28dbb6ff72",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T01:57:27.457Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "1f1642f162ef6c0ea002fdd11a44ad88949e812cf652308d55851b28dbb6ff72 is included under checkpoint 1c985a52dd6a25b78f76cb28098cc038389215db589c7e55f603dcc40a29e9c8 of capsules/93d20518801ba715 (mmr_size 1405), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "75766118e6539d3c2ce641b25dbb0d440db0fe355b7b1e6415ce534e3200a175",
+      "cited": {
+        "detail": "record ee2d997b8ced9a130fbcb6e3756f059cfe32f042c130a486b48d7b8a4f46b110 cites it: Class 1 exit 0; carried ee2d997b8ced9a130fbcb6e3756f059cfe32f042c130a486b48d7b8a4f46b110, recomputed ee2d997b8ced9a130fbcb6e3756f059cfe32f042c130a486b48d7b8a4f46b110",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-14",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 75766118e6539d3c2ce641b25dbb0d440db0fe355b7b1e6415ce534e3200a175, recomputed 75766118e6539d3c2ce641b25dbb0d440db0fe355b7b1e6415ce534e3200a175",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T05:24:39.466Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "75766118e6539d3c2ce641b25dbb0d440db0fe355b7b1e6415ce534e3200a175 is included under checkpoint af99afe5977323ff628e49b6b8f0bd4e50f6aa75aba6be8b1fbc400f3b560300 of capsules/7e04d3e3fec1332f (mmr_size 1023), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "6f7794ab6f69abb1bc2ca4487426679ef19c799076ec4f890fc3f335c92835b5",
+      "cited": {
+        "detail": "record 46830a32538ac7456db4b51ebdb16d00d9a3d8d80a6ab448d582a221975c5cae cites it: Class 1 exit 0; carried 46830a32538ac7456db4b51ebdb16d00d9a3d8d80a6ab448d582a221975c5cae, recomputed 46830a32538ac7456db4b51ebdb16d00d9a3d8d80a6ab448d582a221975c5cae",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-15",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 6f7794ab6f69abb1bc2ca4487426679ef19c799076ec4f890fc3f335c92835b5, recomputed 6f7794ab6f69abb1bc2ca4487426679ef19c799076ec4f890fc3f335c92835b5",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T05:24:39.683Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "6f7794ab6f69abb1bc2ca4487426679ef19c799076ec4f890fc3f335c92835b5 is included under checkpoint a9ae1dfc0a09fb50095c71d2764fcf3bad6b71797c10dad51e351e3bc39ab34f of capsules/93d20518801ba715 (mmr_size 1661), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "2547b17c4d51e73a085b7397bee6384ba8ee757cf49b2436034c45dd349d18cc",
+      "cited": {
+        "detail": "record e24cc642043d11feb40795e95369cc330dcc35af7394cdc3790e930a7f4d07b8 cites it: Class 1 exit 0; carried e24cc642043d11feb40795e95369cc330dcc35af7394cdc3790e930a7f4d07b8, recomputed e24cc642043d11feb40795e95369cc330dcc35af7394cdc3790e930a7f4d07b8",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-16",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 2547b17c4d51e73a085b7397bee6384ba8ee757cf49b2436034c45dd349d18cc, recomputed 2547b17c4d51e73a085b7397bee6384ba8ee757cf49b2436034c45dd349d18cc",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T05:51:35.627Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "2547b17c4d51e73a085b7397bee6384ba8ee757cf49b2436034c45dd349d18cc is included under checkpoint fff95560914e6021755952df9b31372026bfb21a328b2050959d0432386e21cc of capsules/7e04d3e3fec1332f (mmr_size 1150), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "70258ca3a8f9d32c68c5551ce6bf064f5e7daf8b284c2dbb6fe283a15df5f844",
+      "cited": {
+        "detail": "record f0d06fc205711905b7eafbbf9696225ff4d4a5da111f0b5ab4f09f3c6d653640 cites it: Class 1 exit 0; carried f0d06fc205711905b7eafbbf9696225ff4d4a5da111f0b5ab4f09f3c6d653640, recomputed f0d06fc205711905b7eafbbf9696225ff4d4a5da111f0b5ab4f09f3c6d653640",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-17",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 70258ca3a8f9d32c68c5551ce6bf064f5e7daf8b284c2dbb6fe283a15df5f844, recomputed 70258ca3a8f9d32c68c5551ce6bf064f5e7daf8b284c2dbb6fe283a15df5f844",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T05:51:35.918Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "70258ca3a8f9d32c68c5551ce6bf064f5e7daf8b284c2dbb6fe283a15df5f844 is included under checkpoint e777d77724199bf6b7921a278ea8808cdd670ce0f5ee31d86ff1cc522ef73d9e of capsules/93d20518801ba715 (mmr_size 1789), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "a930596b65cecdf6541f610b148bbd0ac7bef30e9215656cda134aca405065e9",
+      "cited": {
+        "detail": "record 1ed02f21feb8b7e72e3bbe092c057a289cef7f3d0489703f8ac73dc08821b970 cites it: Class 1 exit 0; carried 1ed02f21feb8b7e72e3bbe092c057a289cef7f3d0489703f8ac73dc08821b970, recomputed 1ed02f21feb8b7e72e3bbe092c057a289cef7f3d0489703f8ac73dc08821b970",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-18",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried a930596b65cecdf6541f610b148bbd0ac7bef30e9215656cda134aca405065e9, recomputed a930596b65cecdf6541f610b148bbd0ac7bef30e9215656cda134aca405065e9",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T07:21:22.248Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "a930596b65cecdf6541f610b148bbd0ac7bef30e9215656cda134aca405065e9 is included under checkpoint 13bff0c79f3ac215a1eef34aaa0a4ef26dfe491a26661acc7ff58bd84cc8d413 of capsules/7e04d3e3fec1332f (mmr_size 1278), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "88b4ec6185fbe8db2fddc45dd543cbd7fb7d1836d55d510ae8184f8d1d05e306",
+      "cited": {
+        "detail": "record 8f90a46947fe02ede2e18521c4adb95e3185fda57a27ff52c230b54308f19577 cites it: Class 1 exit 0; carried 8f90a46947fe02ede2e18521c4adb95e3185fda57a27ff52c230b54308f19577, recomputed 8f90a46947fe02ede2e18521c4adb95e3185fda57a27ff52c230b54308f19577",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-19",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 88b4ec6185fbe8db2fddc45dd543cbd7fb7d1836d55d510ae8184f8d1d05e306, recomputed 88b4ec6185fbe8db2fddc45dd543cbd7fb7d1836d55d510ae8184f8d1d05e306",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T07:21:22.525Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "88b4ec6185fbe8db2fddc45dd543cbd7fb7d1836d55d510ae8184f8d1d05e306 is included under checkpoint c64ad7b477a3abf2b66951485ffa461fc00241c54425e1e59c33af295c0aca9e of capsules/93d20518801ba715 (mmr_size 1979), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "afae60a03b30eabfcee576a075b40ed92dae1d75af81285af23db7f3012710a6",
+      "cited": {
+        "detail": "record 57f2207c317362541960a2e3e8b606b66bb67c623d7dc994c84cbd97b5b1dd4b cites it: Class 1 exit 0; carried 57f2207c317362541960a2e3e8b606b66bb67c623d7dc994c84cbd97b5b1dd4b, recomputed 57f2207c317362541960a2e3e8b606b66bb67c623d7dc994c84cbd97b5b1dd4b",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-20",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried afae60a03b30eabfcee576a075b40ed92dae1d75af81285af23db7f3012710a6, recomputed afae60a03b30eabfcee576a075b40ed92dae1d75af81285af23db7f3012710a6",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T08:21:19.721Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "afae60a03b30eabfcee576a075b40ed92dae1d75af81285af23db7f3012710a6 is included under checkpoint a3c36f7ff1b67f4702e71958ea48342c60dd2cff8d5f4cb583dc7f9d5b74d1e2 of capsules/7e04d3e3fec1332f (mmr_size 1405), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "9f1cd570d4755a0465362efdb627e99731a5dea48f5da2236327d6531705b1b2",
+      "cited": {
+        "detail": "record e5588a855ea7d067ef8edde1fa3a6378834ed436f2878c64bfb1988d943d996e cites it: Class 1 exit 0; carried e5588a855ea7d067ef8edde1fa3a6378834ed436f2878c64bfb1988d943d996e, recomputed e5588a855ea7d067ef8edde1fa3a6378834ed436f2878c64bfb1988d943d996e",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-21",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 9f1cd570d4755a0465362efdb627e99731a5dea48f5da2236327d6531705b1b2, recomputed 9f1cd570d4755a0465362efdb627e99731a5dea48f5da2236327d6531705b1b2",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T08:21:19.997Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "9f1cd570d4755a0465362efdb627e99731a5dea48f5da2236327d6531705b1b2 is included under checkpoint 07b7d519fcfce6df5b56498fd734cef74d6d5966433af3d00cb012c0bd7f1274 of capsules/93d20518801ba715 (mmr_size 2110), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "a2b0672710cadd07c124d089bddee12202bd80e3dc0c5ad6443de1a7c2e7d21f",
+      "cited": {
+        "detail": "record 0c144219877c0b8484ab035ce3491c7d9ee46ccd4c380d67142f5b4b67130f46 cites it: Class 1 exit 0; carried 0c144219877c0b8484ab035ce3491c7d9ee46ccd4c380d67142f5b4b67130f46, recomputed 0c144219877c0b8484ab035ce3491c7d9ee46ccd4c380d67142f5b4b67130f46",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-22",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried a2b0672710cadd07c124d089bddee12202bd80e3dc0c5ad6443de1a7c2e7d21f, recomputed a2b0672710cadd07c124d089bddee12202bd80e3dc0c5ad6443de1a7c2e7d21f",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T08:34:48.698Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "a2b0672710cadd07c124d089bddee12202bd80e3dc0c5ad6443de1a7c2e7d21f is included under checkpoint 5fd1355a6d4c5e506df19274ddcd8aa31699515a1ed4ff31b544a6da07a3abad of capsules/7e04d3e3fec1332f (mmr_size 1534), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "beaac60d25b10e435520c3f049c9d6a947b0a269d6b776c4d27b4d9238e64ac1",
+      "cited": {
+        "detail": "record a925eb6b83f6348b5d08ad559fd8a4e0b804b718bba0ab60331ecd43d7a9d5c1 cites it: Class 1 exit 0; carried a925eb6b83f6348b5d08ad559fd8a4e0b804b718bba0ab60331ecd43d7a9d5c1, recomputed a925eb6b83f6348b5d08ad559fd8a4e0b804b718bba0ab60331ecd43d7a9d5c1",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-23",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried beaac60d25b10e435520c3f049c9d6a947b0a269d6b776c4d27b4d9238e64ac1, recomputed beaac60d25b10e435520c3f049c9d6a947b0a269d6b776c4d27b4d9238e64ac1",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T08:34:48.986Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "beaac60d25b10e435520c3f049c9d6a947b0a269d6b776c4d27b4d9238e64ac1 is included under checkpoint 9f93bfe7ca72f6c70a4e882aced1070d83cc658815a460f1b29ae2cf58d73f6b of capsules/93d20518801ba715 (mmr_size 2237), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "58d4f8ad34d9180b11de3041aa7c402be750562481467c83eca9167d7128e3ff",
+      "cited": {
+        "detail": "record 66aa8fec6b7c888f6a6b4ba275d230972e84b677d7b25130370521b431b0bf8b cites it: Class 1 exit 0; carried 66aa8fec6b7c888f6a6b4ba275d230972e84b677d7b25130370521b431b0bf8b, recomputed 66aa8fec6b7c888f6a6b4ba275d230972e84b677d7b25130370521b431b0bf8b",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-24",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 58d4f8ad34d9180b11de3041aa7c402be750562481467c83eca9167d7128e3ff, recomputed 58d4f8ad34d9180b11de3041aa7c402be750562481467c83eca9167d7128e3ff",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T08:34:49.791Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "58d4f8ad34d9180b11de3041aa7c402be750562481467c83eca9167d7128e3ff is included under checkpoint aa70f1be0b4c1757b9217d080c7348d1b2c6c7c9e96097afa0cb9361696d89ac of capsules/93d20518801ba715 (mmr_size 2365), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "4685d3b7a3b8d6c7d291ad801addc6cee27f9d7ba2d6232f9d4a1849797763d3",
+      "cited": {
+        "detail": "record 181be9c54a9dfdbc8ad97b9ebdce3bf908f17ed47c93cfd4ccf2f6934cc9cf62 cites it: Class 1 exit 0; carried 181be9c54a9dfdbc8ad97b9ebdce3bf908f17ed47c93cfd4ccf2f6934cc9cf62, recomputed 181be9c54a9dfdbc8ad97b9ebdce3bf908f17ed47c93cfd4ccf2f6934cc9cf62",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-25",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 4685d3b7a3b8d6c7d291ad801addc6cee27f9d7ba2d6232f9d4a1849797763d3, recomputed 4685d3b7a3b8d6c7d291ad801addc6cee27f9d7ba2d6232f9d4a1849797763d3",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-30T08:36:38.417Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "4685d3b7a3b8d6c7d291ad801addc6cee27f9d7ba2d6232f9d4a1849797763d3 is included under checkpoint bac04298963ed47fc01d20f3c8d8c7b2b18a41e5c6e5f8763f3a5d96a3b286fc of capsules/7e04d3e3fec1332f (mmr_size 1789), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "09a313c6bd08ecc6070332cc076f3817c06117935dc15cf37048b36612507d1f",
+      "cited": {
+        "detail": "record 99a51a060ce31ed2c1c5b576da7174473297180ef3162fa97324c05a865a28f7 cites it: Class 1 exit 0; carried 99a51a060ce31ed2c1c5b576da7174473297180ef3162fa97324c05a865a28f7, recomputed 99a51a060ce31ed2c1c5b576da7174473297180ef3162fa97324c05a865a28f7",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-26",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 09a313c6bd08ecc6070332cc076f3817c06117935dc15cf37048b36612507d1f, recomputed 09a313c6bd08ecc6070332cc076f3817c06117935dc15cf37048b36612507d1f",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-30T08:36:38.701Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "09a313c6bd08ecc6070332cc076f3817c06117935dc15cf37048b36612507d1f is included under checkpoint aa6fa6855fb873279080844705b535e0b7d2d8f5f5050021698e09c1fb3f993c of capsules/93d20518801ba715 (mmr_size 2621), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "6ef9befae00d839a119854e4fd52cc41f2b356dfea415121b94b24893e3a57c9",
+      "cited": {
+        "detail": "record 3edcd882d8c79cf33b3a9f3754c0af6e359ba1f8dcf40aca929ef8654487c9e0 cites it: Class 1 exit 0; carried 3edcd882d8c79cf33b3a9f3754c0af6e359ba1f8dcf40aca929ef8654487c9e0, recomputed 3edcd882d8c79cf33b3a9f3754c0af6e359ba1f8dcf40aca929ef8654487c9e0",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-27",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 6ef9befae00d839a119854e4fd52cc41f2b356dfea415121b94b24893e3a57c9, recomputed 6ef9befae00d839a119854e4fd52cc41f2b356dfea415121b94b24893e3a57c9",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T05:16:08.825Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "6ef9befae00d839a119854e4fd52cc41f2b356dfea415121b94b24893e3a57c9 is included under checkpoint f91a746cde508f200fe8cca673d06faacd6ff6e8a87be6c8da19d5a759346cfd of capsules/7e04d3e3fec1332f (mmr_size 1916), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "41d379500ea930b509b9fa5530b94d7d746f4694bf5367ab29988eacdfcaea88",
+      "cited": {
+        "detail": "record 885918e44bebf7316bf6188745c121b2647369d18e6b93d6d571eb3cf2885d1e cites it: Class 1 exit 0; carried 885918e44bebf7316bf6188745c121b2647369d18e6b93d6d571eb3cf2885d1e, recomputed 885918e44bebf7316bf6188745c121b2647369d18e6b93d6d571eb3cf2885d1e",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-28",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 41d379500ea930b509b9fa5530b94d7d746f4694bf5367ab29988eacdfcaea88, recomputed 41d379500ea930b509b9fa5530b94d7d746f4694bf5367ab29988eacdfcaea88",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T05:16:09.119Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "41d379500ea930b509b9fa5530b94d7d746f4694bf5367ab29988eacdfcaea88 is included under checkpoint e62a67657cbf96addc81b8de439c5f8b3c40f416a3459ce38d6e2545bf15378c of capsules/93d20518801ba715 (mmr_size 3771), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "20c05b59b9d196dcd50f04e3585a151674ed8ac67360f6c9fe3c84b696fd7cbc",
+      "cited": {
+        "detail": "record 15d991601bdf2773e3c10c17a93a2566c93b735dc24ef44615f1ffc42589c74b cites it: Class 1 exit 0; carried 15d991601bdf2773e3c10c17a93a2566c93b735dc24ef44615f1ffc42589c74b, recomputed 15d991601bdf2773e3c10c17a93a2566c93b735dc24ef44615f1ffc42589c74b",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-29",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 20c05b59b9d196dcd50f04e3585a151674ed8ac67360f6c9fe3c84b696fd7cbc, recomputed 20c05b59b9d196dcd50f04e3585a151674ed8ac67360f6c9fe3c84b696fd7cbc",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T07:05:27.277Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "20c05b59b9d196dcd50f04e3585a151674ed8ac67360f6c9fe3c84b696fd7cbc is included under checkpoint 31c773360c738e4f0fb81820aa2e293fc1283e7eaf6f279e2c9d39c861618888 of capsules/7e04d3e3fec1332f (mmr_size 2047), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "4b59270d0045039fde7da542ceea6f6e2c4fb7a3402c4a66df47bb8a19b9eabc",
+      "cited": {
+        "detail": "record d87dfd90fe492bbfd7ebecff8bfde86bd30b7768bfa2da558296d95fd51b4103 cites it: Class 1 exit 0; carried d87dfd90fe492bbfd7ebecff8bfde86bd30b7768bfa2da558296d95fd51b4103, recomputed d87dfd90fe492bbfd7ebecff8bfde86bd30b7768bfa2da558296d95fd51b4103",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-30",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 4b59270d0045039fde7da542ceea6f6e2c4fb7a3402c4a66df47bb8a19b9eabc, recomputed 4b59270d0045039fde7da542ceea6f6e2c4fb7a3402c4a66df47bb8a19b9eabc",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T07:05:27.586Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "4b59270d0045039fde7da542ceea6f6e2c4fb7a3402c4a66df47bb8a19b9eabc is included under checkpoint 04a70ffb944b79043b2e2c7fb06347207fd5f4fa8e1211ea133d16d12c3cedf8 of capsules/93d20518801ba715 (mmr_size 4026), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "13db50c73ae1ad7d799e476e454a6a4808149eff51223a65e3aad345e1eac5d3",
+      "cited": {
+        "detail": "record aca7623932e88985e0cfd837f874c0fffa47ee059cae349a638557f8fbe6d221 cites it: Class 1 exit 0; carried aca7623932e88985e0cfd837f874c0fffa47ee059cae349a638557f8fbe6d221, recomputed aca7623932e88985e0cfd837f874c0fffa47ee059cae349a638557f8fbe6d221",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-31",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 13db50c73ae1ad7d799e476e454a6a4808149eff51223a65e3aad345e1eac5d3, recomputed 13db50c73ae1ad7d799e476e454a6a4808149eff51223a65e3aad345e1eac5d3",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:10:15.964Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "13db50c73ae1ad7d799e476e454a6a4808149eff51223a65e3aad345e1eac5d3 is included under checkpoint d9fdbd0565926001181c5e61b76d50a256a150dd203969b6049657a8dd25c5b9 of capsules/7e04d3e3fec1332f (mmr_size 2621), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "10608a20d26dfa6b14f34e6ebc23a4cf7ccc67a736306e84f9a2866449313d3f",
+      "cited": {
+        "detail": "record ba29e918a5ad544d2949e1368238a3b2239d92feffd9c785ffff76c519964a91 cites it: Class 1 exit 0; carried ba29e918a5ad544d2949e1368238a3b2239d92feffd9c785ffff76c519964a91, recomputed ba29e918a5ad544d2949e1368238a3b2239d92feffd9c785ffff76c519964a91",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-32",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 10608a20d26dfa6b14f34e6ebc23a4cf7ccc67a736306e84f9a2866449313d3f, recomputed 10608a20d26dfa6b14f34e6ebc23a4cf7ccc67a736306e84f9a2866449313d3f",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:10:16.182Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "10608a20d26dfa6b14f34e6ebc23a4cf7ccc67a736306e84f9a2866449313d3f is included under checkpoint 0b3daea2bc1bd8bf6574007ffa1c27ad75faa359526090835bdab26481590c77 of capsules/7e04d3e3fec1332f (mmr_size 2174), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "2a955a808096a2d40f6554ee3f356d2fc6eea6c5517bbed969ead17f200bd5f7",
+      "cited": {
+        "detail": "record d013724e322fe28d9340c4290900e80e08fbbaa9d861014567ecda1c089c20c8 cites it: Class 1 exit 0; carried d013724e322fe28d9340c4290900e80e08fbbaa9d861014567ecda1c089c20c8, recomputed d013724e322fe28d9340c4290900e80e08fbbaa9d861014567ecda1c089c20c8",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-33",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 2a955a808096a2d40f6554ee3f356d2fc6eea6c5517bbed969ead17f200bd5f7, recomputed 2a955a808096a2d40f6554ee3f356d2fc6eea6c5517bbed969ead17f200bd5f7",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:10:48.537Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "2a955a808096a2d40f6554ee3f356d2fc6eea6c5517bbed969ead17f200bd5f7 is included under checkpoint 29a0c64afe6d965c0ecc2e999fc9d053ec45c29582aaeeed56cdc5eccdafba5a of capsules/7e04d3e3fec1332f (mmr_size 2237), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "0b55a6956f9f3f19b5e755bc8578f188ae6e35b23835aff394a033ebacfa13f9",
+      "cited": {
+        "detail": "record b04bb78c7a8d531f38bbfa68843c9809a8c93d6f4b4bd3a223c1fe1ad84aab83 cites it: Class 1 exit 0; carried b04bb78c7a8d531f38bbfa68843c9809a8c93d6f4b4bd3a223c1fe1ad84aab83, recomputed b04bb78c7a8d531f38bbfa68843c9809a8c93d6f4b4bd3a223c1fe1ad84aab83",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-34",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 0b55a6956f9f3f19b5e755bc8578f188ae6e35b23835aff394a033ebacfa13f9, recomputed 0b55a6956f9f3f19b5e755bc8578f188ae6e35b23835aff394a033ebacfa13f9",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:10:50.558Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "0b55a6956f9f3f19b5e755bc8578f188ae6e35b23835aff394a033ebacfa13f9 is included under checkpoint d9fdbd0565926001181c5e61b76d50a256a150dd203969b6049657a8dd25c5b9 of capsules/7e04d3e3fec1332f (mmr_size 2621), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "73ab751b445c0943be9e709e9c27b8a9d8d28934a49d35d4a49b0d07dd9eadee",
+      "cited": {
+        "detail": "record e3e1157f0475f7e60c1e00c4ecab415ae7c37663246393dc896161bed8f69b20 cites it: Class 1 exit 0; carried e3e1157f0475f7e60c1e00c4ecab415ae7c37663246393dc896161bed8f69b20, recomputed e3e1157f0475f7e60c1e00c4ecab415ae7c37663246393dc896161bed8f69b20",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-35",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 73ab751b445c0943be9e709e9c27b8a9d8d28934a49d35d4a49b0d07dd9eadee, recomputed 73ab751b445c0943be9e709e9c27b8a9d8d28934a49d35d4a49b0d07dd9eadee",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:11:08.854Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "73ab751b445c0943be9e709e9c27b8a9d8d28934a49d35d4a49b0d07dd9eadee is included under checkpoint b6b3c0e0fccc0f74613302016a9ca153c8db94bd92e62e48b701058eb43ea8f0 of capsules/7e04d3e3fec1332f (mmr_size 2302), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "af34d439d7d07bdfea2f8e50e57527d114cefae1a1a47618163983eb4a34d347",
+      "cited": {
+        "detail": "record 272e1741a4cb6e58a883b28ed872b06fb0a6df14ab569f97bc5d133bbff5be84 cites it: Class 1 exit 0; carried 272e1741a4cb6e58a883b28ed872b06fb0a6df14ab569f97bc5d133bbff5be84, recomputed 272e1741a4cb6e58a883b28ed872b06fb0a6df14ab569f97bc5d133bbff5be84",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-36",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried af34d439d7d07bdfea2f8e50e57527d114cefae1a1a47618163983eb4a34d347, recomputed af34d439d7d07bdfea2f8e50e57527d114cefae1a1a47618163983eb4a34d347",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:11:10.872Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "af34d439d7d07bdfea2f8e50e57527d114cefae1a1a47618163983eb4a34d347 is included under checkpoint d9fdbd0565926001181c5e61b76d50a256a150dd203969b6049657a8dd25c5b9 of capsules/7e04d3e3fec1332f (mmr_size 2621), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "ad2a37a31c60aec1fb2338106c084eaf08ec14008a41ca6fad13d7a5533ab9a0",
+      "cited": {
+        "detail": "record b383fd58f0011dab9f7b7b5e1272754cd3798501296fbf570951ac877609efec cites it: Class 1 exit 0; carried b383fd58f0011dab9f7b7b5e1272754cd3798501296fbf570951ac877609efec, recomputed b383fd58f0011dab9f7b7b5e1272754cd3798501296fbf570951ac877609efec",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-37",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried ad2a37a31c60aec1fb2338106c084eaf08ec14008a41ca6fad13d7a5533ab9a0, recomputed ad2a37a31c60aec1fb2338106c084eaf08ec14008a41ca6fad13d7a5533ab9a0",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T08:56:32.400Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "ad2a37a31c60aec1fb2338106c084eaf08ec14008a41ca6fad13d7a5533ab9a0 is included under checkpoint 9d53267554077c4654a6281eca44a5a8dfded5487e6e08c8c71c643f2305c641 of capsules/7e04d3e3fec1332f (mmr_size 2429), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "726c4d2afdf0c9135590b24a04f657c9d33c2b12e9018e5de86e2f1518b50b75",
+      "cited": {
+        "detail": "record f0e27c5e019773cfdfdf6ffb1fd4dfdfb2d4ad0d1849454a00dc7c2214b1a72b cites it: Class 1 exit 0; carried f0e27c5e019773cfdfdf6ffb1fd4dfdfb2d4ad0d1849454a00dc7c2214b1a72b, recomputed f0e27c5e019773cfdfdf6ffb1fd4dfdfb2d4ad0d1849454a00dc7c2214b1a72b",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-38",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 726c4d2afdf0c9135590b24a04f657c9d33c2b12e9018e5de86e2f1518b50b75, recomputed 726c4d2afdf0c9135590b24a04f657c9d33c2b12e9018e5de86e2f1518b50b75",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T08:56:32.701Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "726c4d2afdf0c9135590b24a04f657c9d33c2b12e9018e5de86e2f1518b50b75 is included under checkpoint ea2c1fd03f12e8b839bba349171b77bbffe9f14eb00c346877b23b2ab3665c54 of capsules/93d20518801ba715 (mmr_size 4285), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "capsule_id": "6866e36fbe40ab9f7f8757942df87a469d935138572b89404de4c276572a5943",
+      "cited": {
+        "detail": "record a58e1f3cdef4aac01f304413f827bfe6aef7fd1cd513ab666a21470e303ccb22 cites it: Class 1 exit 0; carried a58e1f3cdef4aac01f304413f827bfe6aef7fd1cd513ab666a21470e303ccb22, recomputed a58e1f3cdef4aac01f304413f827bfe6aef7fd1cd513ab666a21470e303ccb22",
+        "ok": true
+      },
+      "current_build": false,
+      "held": "held-39",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 6866e36fbe40ab9f7f8757942df87a469d935138572b89404de4c276572a5943, recomputed 6866e36fbe40ab9f7f8757942df87a469d935138572b89404de4c276572a5943",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T08:56:33.566Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "6866e36fbe40ab9f7f8757942df87a469d935138572b89404de4c276572a5943 is included under checkpoint bcf57b6fc549db934bbed45356d1b5f5f0caa274754286897c3a5296543b8096 of capsules/93d20518801ba715 (mmr_size 4413), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": true,
+        "commitment": {
+          "path": "nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+          "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd",
+          "verified": true
+        },
+        "detail": "accepted the half's key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26 via host_announced, its operator binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e the one in the sender's published commitment",
+        "ok": true,
+        "via": "host_announced"
+      },
+      "binding": {
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) names the half's key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26 (same_controller_asserted: no role) and applies at 2026-10-31T11:12:00Z: form, signatures and window PASS, revocation PASS: no statement applies in the list evidence-network/loop step 05 (run started 2026-10-31T12:32:57Z), nodes/revocations/ at main 6696e2922717d87a5f91ee22247ffc981d24a6ca declared complete as of 2026-10-31T12:32:57Z under profile evidence-network/loop: nodes/revocations/<binding_digest>.json (list sha256 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945); a statement made after 2026-10-31T12:32:57Z is not excluded",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "capsule_id": "9156e38eb62bfc3f55f9c606be4512e43b9865a3530d049baa81b533d973d101",
+      "cited": {
+        "detail": "record 152ab8f42cddf7a6d43f18c65986b042da9919f5d1d67fc6041f0593817d1ef4 cites it: Class 1 exit 0; carried 152ab8f42cddf7a6d43f18c65986b042da9919f5d1d67fc6041f0593817d1ef4, recomputed 152ab8f42cddf7a6d43f18c65986b042da9919f5d1d67fc6041f0593817d1ef4",
+        "ok": true
+      },
+      "current_build": true,
+      "held": "held-40",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 9156e38eb62bfc3f55f9c606be4512e43b9865a3530d049baa81b533d973d101, recomputed 9156e38eb62bfc3f55f9c606be4512e43b9865a3530d049baa81b533d973d101",
+        "ok": true
+      },
+      "inclusion_cited": {
+        "detail": "a counterparty_inclusion record cites 9156e38eb62bfc3f55f9c606be4512e43b9865a3530d049baa81b533d973d101 and checkpoint 4c2ad8bed0ebc5833fb7eda0493201798e8de15c378450694b65cf9ada6a8b0a: Class 1 exit 0; carried 4917e51c6c45c51230761df4e42819a56be901e6d2641c365d3953154d77c021, recomputed 4917e51c6c45c51230761df4e42819a56be901e6d2641c365d3953154d77c021",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T11:12:38.077Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "9156e38eb62bfc3f55f9c606be4512e43b9865a3530d049baa81b533d973d101 is included under checkpoint 4c2ad8bed0ebc5833fb7eda0493201798e8de15c378450694b65cf9ada6a8b0a of capsules/7e04d3e3fec1332f (mmr_size 2685), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "tied": {
+        "detail": "own half 5a3775b99905ffa0ed70e65027dd5bd9f81d6a701ab953d28ec44b470b631351, nonce 2bad7aff-f1fd-460d-a01e-9d61fe577475, role served against the held half's requested",
+        "ok": true,
+        "state": "tied",
+        "verified": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": false,
+        "commitment": {
+          "path": "nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
+          "sha256": "720af79120734f07af7046ab9df758c92e8ea42e0ab733a7bc96be45a1cdc30f",
+          "verified": true
+        },
+        "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced, the key the sender lists in nodes/; the sender's published commitment, verified under that key, carries no controller binding (optional)",
+        "ok": true,
+        "optional": true,
+        "via": "host_announced"
+      },
+      "capsule_id": "a92fc480577c25af980c064d838c487b52f42ac8eda7073930e1523167ac83ae",
+      "cited": {
+        "detail": "record cb69aeb65930758529b8a612b4eae2b4afe7d148e5eea515c6171eb1c04ba802 cites it: Class 1 exit 0; carried cb69aeb65930758529b8a612b4eae2b4afe7d148e5eea515c6171eb1c04ba802, recomputed cb69aeb65930758529b8a612b4eae2b4afe7d148e5eea515c6171eb1c04ba802",
+        "ok": true
+      },
+      "current_build": true,
+      "held": "held-41",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried a92fc480577c25af980c064d838c487b52f42ac8eda7073930e1523167ac83ae, recomputed a92fc480577c25af980c064d838c487b52f42ac8eda7073930e1523167ac83ae",
+        "ok": true
+      },
+      "inclusion_cited": {
+        "detail": "a counterparty_inclusion record cites a92fc480577c25af980c064d838c487b52f42ac8eda7073930e1523167ac83ae and checkpoint 061217ee24ac24df8edf2c6db1a43d5eaa25a71020d77fe4ae2f58eda81636aa: Class 1 exit 0; carried 6989f933bc5f03c56e093dd5fa1bcdbf5366a2de9accfc1b505d28642f129cde, recomputed 6989f933bc5f03c56e093dd5fa1bcdbf5366a2de9accfc1b505d28642f129cde",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T11:12:38.385Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "a92fc480577c25af980c064d838c487b52f42ac8eda7073930e1523167ac83ae is included under checkpoint 061217ee24ac24df8edf2c6db1a43d5eaa25a71020d77fe4ae2f58eda81636aa of capsules/93d20518801ba715 (mmr_size 4669), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "tied": {
+        "detail": "own half dfe906166477edba261af14ff7943ad6106b078799f5b9094e6cd705c2577c50, nonce 3e3c37c1-c98b-4226-b100-1457b64b7200, role served against the held half's requested",
+        "ok": true,
+        "state": "tied",
+        "verified": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": false,
+        "commitment": {
+          "path": "nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+          "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd",
+          "verified": true
+        },
+        "detail": "accepted the half's key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26 via host_announced",
+        "ok": true,
+        "via": "host_announced"
+      },
+      "capsule_id": "767b56c45ffff1f37722678aad00bec26cc19d5d640596942336d60e3fd6752e",
+      "cited": {
+        "detail": "record 3d144c41113328afcd691fd3503e04e60959eead07fbe96a0e143f9f723bc80a cites it: Class 1 exit 0; carried 3d144c41113328afcd691fd3503e04e60959eead07fbe96a0e143f9f723bc80a, recomputed 3d144c41113328afcd691fd3503e04e60959eead07fbe96a0e143f9f723bc80a",
+        "ok": true
+      },
+      "current_build": true,
+      "held": "held-42",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 767b56c45ffff1f37722678aad00bec26cc19d5d640596942336d60e3fd6752e, recomputed 767b56c45ffff1f37722678aad00bec26cc19d5d640596942336d60e3fd6752e",
+        "ok": true
+      },
+      "inclusion_cited": {
+        "detail": "a counterparty_inclusion record cites 767b56c45ffff1f37722678aad00bec26cc19d5d640596942336d60e3fd6752e and checkpoint c08335f6f33aa6d06b30b97167bb2d970e7b6f6a0faed33470c4f83fc49f13da: Class 1 exit 0; carried 092afdf8bfafc53bde93230cb140e0ccf49ddd3c57e4f5100a03c1243ed2059f, recomputed 092afdf8bfafc53bde93230cb140e0ccf49ddd3c57e4f5100a03c1243ed2059f",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "leg": true,
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T11:14:08.089Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "767b56c45ffff1f37722678aad00bec26cc19d5d640596942336d60e3fd6752e is included under checkpoint c08335f6f33aa6d06b30b97167bb2d970e7b6f6a0faed33470c4f83fc49f13da of capsules/7e04d3e3fec1332f (mmr_size 2748), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      }
+    },
+    {
+      "accepted": {
+        "bound": true,
+        "commitment": {
+          "path": "nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json",
+          "sha256": "24f5cafcc03024e6d9c76b77d867371ef6225aa02896c1824506dfab23dcbfdd",
+          "verified": true
+        },
+        "detail": "accepted the half's key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26 via host_announced, its operator binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e the one in the sender's published commitment",
+        "ok": true,
+        "via": "host_announced"
+      },
+      "binding": {
+        "detail": "binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e (stevenmih-2) names the half's key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26 (same_controller_asserted: no role) and applies at 2026-10-31T11:14:00Z: form, signatures and window PASS, revocation PASS: no statement applies in the list evidence-network/loop step 05 (run started 2026-10-31T12:32:57Z), nodes/revocations/ at main 6696e2922717d87a5f91ee22247ffc981d24a6ca declared complete as of 2026-10-31T12:32:57Z under profile evidence-network/loop: nodes/revocations/<binding_digest>.json (list sha256 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945); a statement made after 2026-10-31T12:32:57Z is not excluded",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "capsule_id": "ae82048a0b4bdaafc114c1214a06b054f369a491156a3028d7a3cd33d21b790c",
+      "cited": {
+        "detail": "record 47630bf227f1a44298a791e5fe7f47f0ea58391c1c737154df373e920143fd7f cites it: Class 1 exit 0; carried 47630bf227f1a44298a791e5fe7f47f0ea58391c1c737154df373e920143fd7f, recomputed 47630bf227f1a44298a791e5fe7f47f0ea58391c1c737154df373e920143fd7f",
+        "ok": true
+      },
+      "current_build": true,
+      "held": "held-43",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried ae82048a0b4bdaafc114c1214a06b054f369a491156a3028d7a3cd33d21b790c, recomputed ae82048a0b4bdaafc114c1214a06b054f369a491156a3028d7a3cd33d21b790c",
+        "ok": true
+      },
+      "inclusion_cited": {
+        "detail": "a counterparty_inclusion record cites ae82048a0b4bdaafc114c1214a06b054f369a491156a3028d7a3cd33d21b790c and checkpoint 3d05a3e750284684ba9b8b1e614e65dc3ee1640d3abd8dd2b5d37834bcc1ba3e: Class 1 exit 0; carried fb6d405d242a8c1af38939e8abd382817fc0114f874edff8fa2dc166dd1be702, recomputed fb6d405d242a8c1af38939e8abd382817fc0114f874edff8fa2dc166dd1be702",
+        "ok": true
+      },
+      "key_id": "6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+      "provenance": {
+        "detail": "received from 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9 via push at 2026-10-31T11:14:08.282Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "ae82048a0b4bdaafc114c1214a06b054f369a491156a3028d7a3cd33d21b790c is included under checkpoint 3d05a3e750284684ba9b8b1e614e65dc3ee1640d3abd8dd2b5d37834bcc1ba3e of capsules/7e04d3e3fec1332f (mmr_size 2813), signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "tied": {
+        "detail": "the citing record names no own_half_capsule_id",
+        "ok": true,
+        "state": "never_tied",
+        "verified": false
+      }
+    },
+    {
+      "accepted": {
+        "bound": false,
+        "commitment": {
+          "path": "nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json",
+          "sha256": "720af79120734f07af7046ab9df758c92e8ea42e0ab733a7bc96be45a1cdc30f",
+          "verified": true
+        },
+        "detail": "accepted the half's key 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff via host_announced, the key the sender lists in nodes/; the sender's published commitment, verified under that key, carries no controller binding (optional)",
+        "ok": true,
+        "optional": true,
+        "via": "host_announced"
+      },
+      "capsule_id": "3a009c4bb48ba82365011b93be4eaba97e9c1d2c3443ea3f02d6caea1ee1e021",
+      "cited": {
+        "detail": "record 88f7bee36932f28092ed409b2915351464ad3ddf09e18750ea8301a192f8df3f cites it: Class 1 exit 0; carried 88f7bee36932f28092ed409b2915351464ad3ddf09e18750ea8301a192f8df3f, recomputed 88f7bee36932f28092ed409b2915351464ad3ddf09e18750ea8301a192f8df3f",
+        "ok": true
+      },
+      "current_build": true,
+      "held": "held-44",
+      "held_by_digest": {
+        "detail": "Class 1 exit 0; carried 3a009c4bb48ba82365011b93be4eaba97e9c1d2c3443ea3f02d6caea1ee1e021, recomputed 3a009c4bb48ba82365011b93be4eaba97e9c1d2c3443ea3f02d6caea1ee1e021",
+        "ok": true
+      },
+      "inclusion_cited": {
+        "detail": "a counterparty_inclusion record cites 3a009c4bb48ba82365011b93be4eaba97e9c1d2c3443ea3f02d6caea1ee1e021 and checkpoint 7f236a1e3403b171f8e362b6bb6957a637b50780ecc88e85f6a7c9dc8606cbda: Class 1 exit 0; carried 3699475d338095c8b287799ba3a0b0b2a08f7a12139d90f27ede02e18d820300, recomputed 3699475d338095c8b287799ba3a0b0b2a08f7a12139d90f27ede02e18d820300",
+        "ok": true
+      },
+      "key_id": "99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+      "provenance": {
+        "detail": "received from 2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac via push at 2026-10-31T11:54:34.277Z",
+        "ok": true
+      },
+      "pushed_under_checkpoint": {
+        "detail": "3a009c4bb48ba82365011b93be4eaba97e9c1d2c3443ea3f02d6caea1ee1e021 is included under checkpoint 7f236a1e3403b171f8e362b6bb6957a637b50780ecc88e85f6a7c9dc8606cbda of capsules/93d20518801ba715 (mmr_size 4924), signed by 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff",
+        "ok": true
+      },
+      "signature": {
+        "detail": "authored under 99d5ce4f8e9f9c2442189096a248482dea1145a600e06e18c941729c83843aff, the key the node accepted and the sender publishes",
+        "ok": true,
+        "state": "ok",
+        "verified": true
+      },
+      "tied": {
+        "detail": "own half aa6a9131857c7ce7e681acb7e8ae1ad5c95175cf79774018bf7587f97120342b, nonce a53ccfc6-4bbb-4b98-8f51-2b9a17cf9238, role served against the held half's requested",
+        "ok": true,
+        "state": "tied",
+        "verified": true
+      }
+    }
+  ],
+  "node": "stevenmih-1",
+  "outside_population": [],
+  "sealed_since": "2026-10-31T11:11:17Z"
+}

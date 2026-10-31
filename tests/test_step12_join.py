@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -26,6 +27,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+# A live step fetches origin/main before reading nodes/revocations/ (bv.snapshot); tests never touch the network.
+os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
 
 ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "tests" / "fixtures" / "step12"
@@ -127,14 +131,15 @@ class BindingRecordTest(Tmp):
 
 class DoctorBackendTest(Tmp):
     @needs_capsulectl
-    def test_rehearsal_population_joins_and_passes_citing_the_binding_gap(self):
+    def test_rehearsal_population_joins_and_passes_with_revocation_on_the_runs_snapshot(self):
         self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
         r = json.loads((self.out / "finding.json").read_text())
         self.assertEqual(r["result"], "PASS", r["detail"])
         self.assertEqual(r["not_checked"], [])
-        # The record is checked by the Go verifier, the node key's role included (AAC#468); what stays outside the
-        # assertion is revocation (CB-1, agent-action-capsule#482).
-        self.assertEqual([i for _, i in finding.gaps(r["detail"])], ["action-state-group/agent-action-capsule#482"])
+        # The record is checked by the Go verifier, the node key's role included (AAC#468), and its revocation PASSes
+        # on the list the run declares complete (CB-1 option A, agent-action-capsule#495): nothing stays outside.
+        self.assertEqual(finding.gaps(r["detail"]), [])
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
         self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
@@ -1090,13 +1095,12 @@ class PluginToolsTest(Tmp):
 
 
 class BindingGapTest(unittest.TestCase):
-    """The binding gap is what the verifier leaves unchecked: revocation (CB-1, AAC#482). The key's role (AAC#468) is
-    checked from its report, and no gap is loop-wide any more: the signed commitment (loop#161) is matched per node."""
+    """The binding gap left is a revocation declaration the verifier rejects (loop#240; CB-1 narrowed by
+    AAC#495, which left a registered source and a signed declaration open). The key's role (AAC#468) is checked from its report, and no gap is loop-wide any more: the signed
+    commitment (loop#161) is matched per node."""
 
-    def test_the_binding_gap_is_revocation(self):
-        self.assertEqual(step.BINDING_REVOCATION["issue"], "action-state-group/agent-action-capsule#482")
-        self.assertEqual(step.BINDING_OUTSIDE, finding.outside(step.BINDING_REVOCATION["what"],
-                                                               "action-state-group/agent-action-capsule#482"))
+    def test_the_binding_gap_is_a_declaration_that_does_not_count(self):
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#240")
         self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 
@@ -1138,6 +1142,88 @@ class PluginToolsRunTest(Tmp):
                   "alice/disclosure-policy.json", "alice/doctor-after.json"):
             self.assertIn(p, [x["path"] for x in r["proof"]])
 
+    # Step 08 re-derives live 12 from its proof (loop#188).
+    def verify08(self):
+        """Step 08 on the run self.out sits in (12 only), with the run's population: (finding, manifest entry)."""
+        run = self.out.parent
+        (run / "run.json").write_text(json.dumps({"population": "live", "stage": "1", "started": "2026-10-31T00:00:00Z",
+                                                  "steps": ["12", "08"]}))
+        loader = importlib.machinery.SourceFileLoader("step08_for_12", str(ROOT / "steps" / "08-verify"))
+        v = importlib.util.module_from_spec(importlib.util.spec_from_loader("step08_for_12", loader))
+        loader.exec_module(v)
+        shutil.rmtree(run / "08-verify", ignore_errors=True)
+        v.main(["--population", str(Path(self.tmp.name) / "live"), "--out", str(run / "08-verify")])
+        f = json.loads((run / "08-verify" / "finding.json").read_text())
+        return f, {e["dir"]: e for e in json.loads((run / "08-verify" / "verified.json").read_text())["steps"]}["12-join"]
+
+    def rehash(self, drop=()):
+        rec = json.loads((self.out / "finding.json").read_text())
+        rec["proof"] = [p for p in rec["proof"] if p["path"] not in drop]
+        for p in rec["proof"]:
+            p["sha256"] = finding.sha256(self.out / p["path"])
+        (self.out / "finding.json").write_text(json.dumps(rec))
+
+    def test_08_reproduces_live_12_from_its_proof(self):
+        r = self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "reproduced", e["problems"])
+        self.assertEqual(e["rederived"]["result"], r["result"])
+
+    def test_08_fails_a_live_12_whose_kept_replies_were_altered(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        w = json.loads((self.out / "alice" / "wire.json").read_text())
+        w["binding-doctor"]["reply"]["findings"] = [{"check": "controller_binding", "state": "bound",
+                                                     "records": ["e" * 64]}]
+        (self.out / "alice" / "wire.json").write_text(json.dumps(w))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+
+    def test_08_does_not_reproduce_an_old_shape_live_12(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        (self.out / "nodes.json").unlink()
+        self.rehash(drop=("nodes.json",))
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "not_reproduced", e["problems"])
+        self.assertIn("its proof holds no nodes.json", e["not_checked"]["why"])
+
+    def test_08_does_not_reproduce_a_live_12_whose_binding_time_left_the_run(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["bind_at"] = "2099-01-01T00:00:00Z"
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+        self.assertIn("bind_at", " ".join(e["problems"]))
+
+    def test_08_names_the_consoles_the_run_held_when_a_node_was_not_asked(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["node_consoles"] = []
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertTrue(any("which consoles the run held" in r["what"] for r in e["relies_on"]), e)
+
+    def test_08_does_not_take_a_revocations_commit_that_is_no_commit_id(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        k = json.loads((self.out / "nodes.json").read_text())
+        k["revocations_main"] = {"commit": "--output=x"}
+        (self.out / "nodes.json").write_text(json.dumps(k))
+        self.rehash()
+        f, e = self.verify08()
+        self.assertEqual(e["status"], "failed", f["detail"])
+
+    def test_a_malformed_502_line_with_no_reply_replays_as_the_line_kept(self):
+        self.run_one(before=("bound", "d" * 64), committed="d" * 64)
+        att = next((self.out / "alice" / "attempts").glob("*"))
+        (att / "checkpoints.response.json").unlink()
+        (att / "checkpoints.verification").write_text("not_evidence why=http 502: malformed\n")
+        self.rehash(drop=[str(p.relative_to(self.out)) for p in [att / "checkpoints.response.json"]])
+        f, e = self.verify08()
+        self.assertNotIn("does not hold", " ".join(e["problems"]), e)
+
     def data_dir(self, binding=None):
         """A data_dir holding `binding` (default: alice's, as join.sh wrote it) as controller-binding.json."""
         d = Path(self.tmp.name) / "data"
@@ -1150,12 +1236,67 @@ class PluginToolsRunTest(Tmp):
                             run_at=FIXTURE_AT)
 
     @needs_cross
-    def test_a_held_binding_that_applies_leaves_revocation_only(self):
+    def test_a_held_binding_that_applies_passes_with_revocation_on_the_runs_snapshot(self):
         r = self.run_bound()
-        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
         self.assertIn(f"alice: alice's binding {BINDING_DIGEST} names the node key (same_controller_asserted: no "
                       f"role) and applies at {FIXTURE_AT}", r["detail"])
-        self.assertEqual([i["what"] for i in r["not_checked"]], [step.BINDING_REVOCATION["what"]])
+        self.assertEqual(r["not_checked"], [])
+
+    def judged_again(self, r, edit=None):
+        """judge_live on a copy of only the cited files (step 08's view, loop#188), after `edit(work)`: its finding."""
+        work = Path(self.tmp.name) / "again" / "12-join"
+        shutil.rmtree(work.parent, ignore_errors=True)
+        for p in r["proof"]:
+            (work / p["path"]).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.out / p["path"], work / p["path"])
+        if edit:
+            edit(work)
+        pop = json.loads((Path(self.tmp.name) / "live" / "population.json").read_text())
+        real, step.PUBLISHED = step.PUBLISHED, Path(self.tmp.name) / "none"
+        try:
+            return step.judge_live(pop, work, r["started"])
+        finally:
+            step.PUBLISHED = real
+
+    @needs_cross
+    def test_the_live_finding_is_decided_again_from_its_proof_alone(self):
+        r = self.run_bound()
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        for p in ("nodes.json", "alice/wire.json", "alice/controller-binding.json"):
+            self.assertIn(p, [x["path"] for x in r["proof"]])
+        again = self.judged_again(r)
+        self.assertEqual((again["result"], again["not_checked"], again["detail"]),
+                         (r["result"], r["not_checked"], r["detail"]))
+
+    @needs_cross
+    def test_an_edited_proof_does_not_decide_the_same(self):
+        r = self.run_bound()
+
+        def wire(change):
+            def edit(work):
+                w = json.loads((work / "alice" / "wire.json").read_text())
+                change(w)
+                (work / "alice" / "wire.json").write_text(json.dumps(w))
+            return edit
+
+        def doctor_unbound(w):
+            w["binding-doctor"]["reply"]["findings"] = [{"check": "controller_binding", "state": "unbound"}]
+
+        def line(work):
+            v = next((work / "alice" / "attempts").glob("*/checkpoints.verification"))
+            v.write_text("verified listed_key=match forged\n")
+
+        cases = {"doctor reports another binding state": wire(doctor_unbound),
+                 "a kept verification line its reply does not give": line,
+                 "no nodes.json": lambda work: (work / "nodes.json").unlink(),
+                 "no wire.json": lambda work: (work / "alice" / "wire.json").unlink(),
+                 "a kept reply file removed": lambda work: (work / "alice" / "doctor-probe.json").unlink()}
+        for what, edit in cases.items():
+            with self.subTest(what):
+                again = self.judged_again(r, edit)
+                self.assertEqual(again["result"], "FAIL", again["detail"])
 
     @needs_cross
     def test_the_record_that_was_checked_is_kept_as_proof(self):
@@ -1187,7 +1328,7 @@ class PluginToolsRunTest(Tmp):
 
     @needs_cross
     def test_a_bip340_binding_of_the_nodes_ed25519_key_applies(self):
-        # aac-go go/v0.16.0 (AAC#458): the node key is keys[1] of the vector, the controller key bip340.
+        # aac-go go/v0.17.0 (AAC#458): the node key is keys[1] of the vector, the controller key bip340.
         case = json.loads((ROOT / "tests/fixtures/step05/controller-bindings.json").read_text())["cases"]["valid-nostr-key"]
         digest = step.bv.verify(step.cross_language(), case["binding"], case["keys"][1], [FIXTURE_AT])[1]["binding_digest"]
         state, detail = step.binding_check("alice", case["binding"], digest, case["keys"][1], FIXTURE_AT)
@@ -1384,10 +1525,45 @@ class BindingRevocationTest(unittest.TestCase):
         folder.mkdir()
         (folder / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
 
-    def test_with_none_published_revocation_is_not_checked(self):
+    def test_with_none_published_revocation_passes_on_the_runs_declared_empty_list(self):
         state, detail = self.check("2026-10-13T00:00:00Z")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation NOT_CHECKED: no statement in nodes/revocations/ applies; 0 published", detail)
+        self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12 (checking at "
+                      "2026-10-13T00:00:00Z), nodes/revocations/ in this checkout declared complete as of "
+                      f"2026-10-13T00:00:00Z under profile {step.bv.PROFILE} (list sha256 "
+                      f"{hashlib.sha256(b'[]').hexdigest()}); a statement made after 2026-10-13T00:00:00Z is not "
+                      "excluded", detail)
+
+    def test_a_live_check_reads_the_list_main_held_at_the_check_time(self):
+        repo = Path(self.tmp.name) / "repo"
+        git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c", "commit.gpgsign=false"]
+        (repo / "nodes" / step.bv.REVOCATIONS).mkdir(parents=True)
+        (repo / "nodes" / step.bv.REVOCATIONS / f"{self.digest}.json").write_text(json.dumps([json.loads(self.STATEMENT)]))
+        subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+        subprocess.run([*git, "add", "nodes"], check=True)
+        date = "2026-10-12T12:00:00Z"
+        subprocess.run([*git, "commit", "-qm", "publish"], check=True,
+                       env=dict(os.environ, GIT_COMMITTER_DATE=date, GIT_AUTHOR_DATE=date))
+        subprocess.run([*git, "update-ref", "refs/remotes/origin/main", "HEAD"], check=True)  # as if pushed
+        with unittest.mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_GIT": str(repo)}):
+            for at in ("2026-10-13T00:00:00Z", "2026-10-12T00:00:00Z"):
+                snap = step.bv.snapshot(repo, at)
+                state, detail = step.binding_check("node", self.CASE["binding"], self.digest, self.key, at,
+                                                   from_main=snap)
+                if at == "2026-10-13T00:00:00Z":
+                    self.assertEqual(state, "bad", detail)  # the checkout (LOOP_NODES_DIR) holds none: main does
+                    self.assertIn("controller_binding_revocation FAIL", detail)
+                else:
+                    self.assertEqual(state, "open", detail)  # origin/main holds no commit that old
+                    self.assertIn("no origin/main commit at or before 2026-10-12T00:00:00Z", detail)
+            self.assertEqual(self.check("2026-10-13T00:00:00Z")[0], "ok")  # a rehearsal reads its checkout
+
+    def test_a_declaration_that_does_not_count_leaves_revocation_open(self):
+        with unittest.mock.patch.object(step.bv, "MAX_AGE", -1):  # the verifier refuses the declaration
+            state, detail = self.check("2026-10-13T00:00:00Z")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("revocation NOT_CHECKED: the verifier rejected the declaration", detail)
+        self.assertEqual(step.revocation_open(detail)["issue"], step.BINDING_REVOCATION_ISSUE)
 
     def test_a_published_statement_that_applies_makes_the_binding_not_apply(self):
         self.publish()
@@ -1407,7 +1583,7 @@ class BindingRevocationTest(unittest.TestCase):
         self.publish()
         state, detail = self.check("2026-10-11T00:00:00Z")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("1 published", detail)
+        self.assertIn("revocation PASS", detail)
 
 if __name__ == "__main__":
     unittest.main()

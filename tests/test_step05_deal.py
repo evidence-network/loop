@@ -32,6 +32,9 @@ import check_no_preimages  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
+# A live step fetches origin/main before reading nodes/revocations/ (bv.snapshot); tests never touch the network.
+os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
+
 _loader = importlib.machinery.SourceFileLoader("step05_deal", str(STEP))
 _spec = importlib.util.spec_from_loader("step05_deal", _loader)
 step = importlib.util.module_from_spec(_spec)
@@ -327,7 +330,7 @@ def binding_digest(text):
 
 @unittest.skipUnless(HAS_CROSS, NO_CROSS)
 class Step05BindingCheckTest(unittest.TestCase):
-    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.16.0)."""
+    """The sender's controller-binding.json, checked by `cross_language binding` (aac-go go/v0.17.0)."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -338,8 +341,29 @@ class Step05BindingCheckTest(unittest.TestCase):
         (self.dir / "nodes").mkdir()
         os.environ["LOOP_NODES_DIR"] = str(self.dir / "nodes")
         self.addCleanup(os.environ.pop, "LOOP_NODES_DIR")
+        # Revocation statements are read from main as it stood at the step's start: a scratch repository's main.
+        os.environ["LOOP_REVOCATIONS_GIT"] = str(self.dir)
+        self.addCleanup(os.environ.pop, "LOOP_REVOCATIONS_GIT")
+        self.snap = None  # bv.snapshot of the scratch origin/main at the step's start, unless a test sets one
+        self.git("init", "-q", "-b", "main")
+        self.commit("2026-10-01T00:00:00Z", "start", "--allow-empty")
 
-    def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",)):
+    def git(self, *args, date=None):
+        env = dict(os.environ, **({"GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date} if date else {}))
+        subprocess.run(["git", "-C", str(self.dir), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c",
+                        "commit.gpgsign=false", *args], check=True, capture_output=True, env=env)
+
+    def commit(self, date, msg, *extra):
+        if (self.dir / "nodes" / "revocations").is_dir():
+            self.git("add", "nodes/revocations")
+        self.git("commit", "-qm", msg, *extra, date=date)
+        branch = subprocess.run(["git", "-C", str(self.dir), "branch", "--show-current"], capture_output=True,
+                                text=True).stdout.strip()
+        if branch == "main":  # as if pushed: the run reads origin/main, never a local branch
+            self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+
+    def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",),
+              started="2026-10-31T00:00:00Z"):
         text, keys = BINDINGS[case]["binding"], BINDINGS[case]["keys"]
         key = key or keys[0]
         node_id = "b1" * 32
@@ -349,13 +373,86 @@ class Step05BindingCheckTest(unittest.TestCase):
             (self.data / step.BINDING_FILE).write_text(text)
         half = {"key_id": key, "timestamp": times[0]}
         citing = {"timestamp": times[-1]}
-        return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)})
+        snap = self.snap if self.snap is not None else step.bv.snapshot(self.dir, started)
+        return step.binding_check(digest or binding_digest(text), half, citing, {node_id: ("lab-b", self.data)},
+                                  started, snap)
 
     def test_a_binding_that_names_the_key_and_applies_is_ok(self):
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "ok", detail)
-        self.assertIn("signatures and window PASS, revocation NOT_CHECKED (no statement in nodes/revocations/ "
-                      "applies; 0 published)", detail)
+        # CB-1 option A: with no file published, the run declares the empty list complete as of the step's start.
+        self.assertIn(self.passed(b"[]"), detail)
+
+    def passed(self, octets, started="2026-10-31T00:00:00Z"):
+        """The revocation PASS text for the list `octets` that main held at `started`."""
+        main = step.bv.main_commit(self.dir, started)
+        return (f"revocation PASS: no statement applies in the list evidence-network/loop step 05 (run started "
+                f"{started}), nodes/revocations/ at main {main} declared complete as of {started} under profile "
+                f"{step.bv.PROFILE} (list sha256 {hashlib.sha256(octets).hexdigest()}); a statement made after "
+                f"{started} is not excluded")
+
+    def test_a_revocation_on_a_branch_is_read_only_once_merged_and_one_dropped_on_a_branch_still_counts(self):
+        # Sherlock2 (loop#239): the list is main's at the step's start, never the checked-out branch's.
+        digest = self.publish_revocations("valid-same-controller")
+        self.git("checkout", "-qb", "branch")
+        (self.dir / "nodes" / "revocations" / f"{digest}.json").unlink()
+        self.commit("2026-10-20T00:00:00Z", "drop it on a branch")
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "bad", detail)  # main still holds the statement
+        self.assertIn("controller_binding_revocation FAIL", detail)
+        self.git("checkout", "-q", "main")
+        self.git("checkout", "-qb", "other")
+        (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
+        self.git("rm", "-q", f"nodes/revocations/{digest}.json")
+        self.commit("2026-10-21T00:00:00Z", "drop it on another branch")
+        self.git("checkout", "-q", "main")
+        self.git("rm", "-q", f"nodes/revocations/{digest}.json")
+        self.commit("2026-11-02T00:00:00Z", "dropped on main after the start")
+        self.assertEqual(self.check("valid-same-controller")[0], "bad")  # main at the start held it
+
+    def test_with_no_origin_main_to_read_from_revocation_is_open(self):
+        self.git("update-ref", "-d", "refs/remotes/origin/main")  # a local main alone is never read
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("no origin/main commit at or before 2026-10-31T00:00:00Z", detail)
+
+    def test_a_kept_commit_this_clone_lacks_or_a_failed_fetch_leaves_revocation_open(self):
+        self.snap = {"commit": "ab" * 20}
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("this clone does not hold main commit abababababab", detail)
+        self.snap = {"commit": None, "why": "origin/main could not be fetched (offline)"}
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("origin/main could not be fetched (offline)", detail)
+
+    def test_the_snapshot_fetches_origin_main_first(self):
+        # A clone that fetched before a revocation was merged reads it once the run fetches (reviewers, loop#239).
+        side = tempfile.TemporaryDirectory()
+        self.addCleanup(side.cleanup)
+        remote = Path(side.name) / "remote"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dir), str(remote)], check=True)
+        self.git("remote", "add", "origin", str(remote))
+        self.git("fetch", "-q", "origin")
+        before = step.bv.main_commit(self.dir, "2026-10-31T00:00:00Z")
+        other = Path(side.name) / "other"
+        subprocess.run(["git", "clone", "-q", str(remote), str(other)], check=True)
+        env = dict(os.environ, GIT_COMMITTER_DATE="2026-10-20T00:00:00Z", GIT_AUTHOR_DATE="2026-10-20T00:00:00Z")
+        subprocess.run(["git", "-C", str(other), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c",
+                        "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "merged later"], check=True,
+                       env=env)
+        subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "HEAD:main"], check=True)
+        with mock.patch.dict(os.environ, {"LOOP_REVOCATIONS_FETCH": "1"}):
+            snap = step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z")
+        self.assertNotEqual(snap["commit"], before)
+        self.assertEqual(snap["commit"], subprocess.run(["git", "-C", str(other), "rev-parse", "HEAD"],
+                                                        capture_output=True, text=True).stdout.strip())
+
+    def test_a_half_issued_after_the_steps_start_leaves_revocation_open(self):
+        state, detail = self.check("valid-same-controller", started="2026-10-29T00:00:00Z")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("revocation NOT_CHECKED: the verifier rejected the declaration (as_of is earlier than a time asked "
+                      "about)", detail)
 
     # revocation statements published at nodes/revocations/<digest>.json (loop#138)
     def publish_revocations(self, case, statements=None):
@@ -363,6 +460,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
         statements = [json.loads(REVOCATIONS[case])] if statements is None else statements
         (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text(json.dumps(statements))
+        self.commit("2026-10-15T00:00:00Z", "publish", "--allow-empty")  # merged to main before the step starts
         return digest
 
     def test_a_published_revocation_before_the_halfs_time_makes_the_binding_not_apply(self):
@@ -383,7 +481,9 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.publish_revocations("valid-same-controller")
         state, detail = self.check("valid-same-controller", times=("2026-10-11T00:00:00Z",))
         self.assertEqual(state, "ok", detail)
-        self.assertIn("revocation NOT_CHECKED (no statement in nodes/revocations/ applies; 1 published)", detail)
+        digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
+        listed = (self.dir / "nodes" / "revocations" / f"{digest}.json").read_bytes()
+        self.assertIn(self.passed(listed), detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])
@@ -407,7 +507,7 @@ class Step05BindingCheckTest(unittest.TestCase):
                 step.bv.read_revocations(folder / name)
             self.assertIn(why, str(e.exception))
             (folder / name).unlink()
-        self.assertEqual(step.bv.revocations(self.dir / "nodes", digest), [])
+        self.assertEqual(step.bv.checkout_list(self.dir / "nodes", digest), "[]")
         # a repeated member, at the top or nested in a bip340 sig, is refused rather than read as its last value
         text = json.dumps(good)
         for dup in (text.replace('"revoked_at":', '"revoked_at": "2026-01-01T00:00:00Z", "revoked_at":', 1),
@@ -418,7 +518,7 @@ class Step05BindingCheckTest(unittest.TestCase):
             self.assertIn("repeated member", str(e.exception))
         (folder / f"{digest}.json").write_text("not json")
         with self.assertRaises(ValueError):
-            step.bv.revocations(self.dir / "nodes", digest)
+            step.bv.checkout_list(self.dir / "nodes", digest)
         import check_revocations
         self.assertEqual(len(check_revocations.check(folder)), 1)
         (folder / f"{digest}.json").write_text(json.dumps([good]))
@@ -451,6 +551,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         # loop#194: a malformed nodes/revocations/<digest>.json is a FAIL with a reason, not a stopped step
         digest = self.publish_revocations("valid-same-controller", [])
         (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text("not json")
+        self.commit("2026-10-16T00:00:00Z", "break")
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "bad", detail)
         self.assertIn("the published revocation statements are unreadable", detail)
@@ -482,7 +583,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("controller_binding_signatures NOT_CHECKED", detail)
 
     def test_a_binding_of_the_halfs_ed25519_key_to_a_bip340_key_applies(self):
-        # aac-go go/v0.16.0 (AAC#458): the controller key is bip340, the half's evidence key Ed25519.
+        # aac-go go/v0.17.0 (AAC#458): the controller key is bip340, the half's evidence key Ed25519.
         keys = BINDINGS["valid-nostr-key"]["keys"]
         state, detail = self.check("valid-nostr-key", key=keys[1], times=("2026-10-30T00:00:00Z",))
         self.assertEqual(state, "ok", detail)
@@ -500,7 +601,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertIn("signatures FAIL", detail)
 
     def test_a_declared_bip340_key_type_is_no_longer_downgraded(self):
-        # aac-go go/v0.16.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
+        # aac-go go/v0.17.0 verifies bip340 (AAC#458): a binding the verifier rejects is a FAIL whatever it declares.
         keys = BINDINGS["valid-same-controller"]["keys"]
         text = json.dumps({**json.loads(BINDINGS["valid-same-controller"]["binding"]), "key_types": ["ed25519", "bip340"]})
         BINDINGS["with-key-types"] = {"binding": text, "keys": keys}
@@ -535,13 +636,15 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.check("valid-same-controller")
         (self.data / step.BINDING_FILE).write_text("not json")
         state, _ = step.binding_check("cd" * 32, {"key_id": "ab" * 32, "timestamp": "2026-10-30T00:00:00Z"},
-                                      {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)})
+                                      {"timestamp": "2026-10-30T00:00:00Z"}, {"b1" * 32: ("lab-b", self.data)},
+                                      "2026-10-31T00:00:00Z", step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z"))
         self.assertEqual(state, "unread")
 
     def test_a_half_with_no_evidence_key_is_bad_not_a_crash(self):
         for key in (None, "zz", 5):
             state, detail = step.binding_check("cd" * 32, {"key_id": key, "timestamp": "2026-10-30T00:00:00Z"},
-                                               {"timestamp": "2026-10-30T00:00:00Z"}, {})
+                                               {"timestamp": "2026-10-30T00:00:00Z"}, {}, "2026-10-31T00:00:00Z",
+                                               step.bv.snapshot(self.dir, "2026-10-31T00:00:00Z"))
             self.assertEqual(state, "bad", detail)
         self.assertIsNone(step.listed_node_id(None))
 
@@ -554,16 +657,18 @@ class Step05BindingCheckTest(unittest.TestCase):
 
     def test_the_entries_name_what_is_left_and_are_absent_when_nothing_is(self):
         self.assertEqual(step.live_declarations({}, set()), [])
-        es = step.live_declarations({"ok": 2, "unread": 1, "unsupported": 1},
+        es = step.live_declarations({"ok": 2, "open": 1, "unread": 1, "unsupported": 1},
                                     {"lab-b has no readable controller-binding.json in its data_dir"})
         by = {(e["what"], e["issue"]): e["why"] for e in es}
         self.assertIn("1 cited bindings could not be checked", by[(step.LIVE_DECLARATION_WHAT, step.live.ISSUE)])
         self.assertIn("does not implement", by[(step.LIVE_DECLARATION_WHAT, step.bv.UNSUPPORTED_METHOD_ISSUE)])
-        self.assertIn("revocation NOT_CHECKED", by[("revocation of the controller bindings that apply",
-                                                    step.BINDING_REVOCATION_ISSUE)])
+        self.assertIn("1 cited bindings apply, with revocation NOT_CHECKED", by[(
+            "revocation of the controller bindings that apply", step.BINDING_REVOCATION_ISSUE)])
         self.assertEqual(len(es), 3)
-        # the key's role is checked by binding_check (AAC#468, loop#196): only revocation is left for one that applies
-        self.assertEqual([e["issue"] for e in step.live_declarations({"ok": 1}, set())],
+        # the key's role is checked by binding_check (AAC#468, loop#196), and revocation PASSes on the run's declared
+        # snapshot (CB-1 option A): a binding that applies leaves nothing; one whose declaration the verifier rejected, CB-1
+        self.assertEqual(step.live_declarations({"ok": 1}, set()), [])
+        self.assertEqual([e["issue"] for e in step.live_declarations({"open": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE])
 
 
@@ -750,6 +855,33 @@ class Step05DealLiveTest(unittest.TestCase):
         self.rehash()
         f, v, entries = self.verify08()
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+
+    def test_08_holds_the_kept_revocations_commit_to_main_at_the_steps_start(self):
+        # nodes.json keeps the origin/main commit 05 read nodes/revocations/ from; 08 recomputes it from its own
+        # history. An older commit (which could hide a revocation merged since) FAILs.
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        kept = n["revocations_main"]["commit"]
+        self.assertIsNotNone(kept, n["revocations_main"])
+        older = subprocess.run(["git", "-C", str(ROOT), "rev-parse", f"{kept}^"], capture_output=True,
+                               text=True).stdout.strip()
+        n["revocations_main"] = {"commit": older}
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
+        self.assertIn("but origin/main held", f["detail"])
+
+    def test_08_does_not_reproduce_a_kept_commit_its_own_main_does_not_hold(self):
+        # 08's clone may be behind the run's fetch: not reproduced (fetch main's history), never a FAIL.
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        n["revocations_main"] = {"commit": "ab" * 20}
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "not_reproduced", f["detail"])
+        self.assertIn("fetch main's history", entries["05-deal"]["not_checked"]["why"])
 
     def test_08_does_not_reproduce_an_old_shape_live_05(self):
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-8" / "05-deal", self.out)
@@ -1292,8 +1424,57 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
         gap = self.names(f)[step.LIVE_NEVER_TIED]
         self.assertIn("1 current-build halves are cited by a record with no own_half_capsule_id", gap["why"])
+        self.assertEqual(gap["issue"], "Mesh-LLM/mesh-llm#2747")
         self.assertIn("0 tied to the node's own half, 1 held, never tied", f["detail"])
         self.assertEqual(finding.check(self.findings), [])
+
+    def test_is_settlement_leg_needs_the_shape_no_nonce_and_a_record_naming_no_own_half(self):
+        leg = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {}}, "settlement": {}}
+        record = lambda **rh: {"model_attestation": {"compute_attestation": {"received_half": rh}}}  # noqa: E731
+        self.assertTrue(step.is_settlement_leg(leg, record(accepted_via="host_announced")))
+        self.assertFalse(step.is_settlement_leg({**leg, "settlement": None}, record()))
+        self.assertFalse(step.is_settlement_leg({**leg, "model_attestation": {"model_id": "lab-model"}}, record()))
+        self.assertFalse(step.is_settlement_leg({}, record()))
+        # a sender cannot mark a chat half as a leg: a nonce, or a record that names an own half, is tied; a binding
+        # the record names does not make a leg a half (its binding is judged either way)
+        nonce = {"model_attestation": {"model_id": "n/a-settlement-leg", "compute_attestation": {
+            "x-mesh-poc-v1": {"client_nonce": "n", "role": "served"}}}, "settlement": {}}
+        self.assertFalse(step.is_settlement_leg(nonce, record()))
+        self.assertFalse(step.is_settlement_leg(leg, record(own_half_capsule_id="ab" * 32)))
+        self.assertTrue(step.is_settlement_leg(leg, record(controller_binding_digest="cd" * 32)))
+
+    def run_in_process(self):
+        with mock.patch.dict(os.environ, LAB_DIR=str(self.lab), LOOP_NODES_DIR=str(self.nodes)):
+            code = step.main(["--population", str(self.lab), "--out", str(self.out)])
+        self.assertEqual(code, 0)
+        return json.loads((self.out / "finding.json").read_text())
+
+    def test_live_a_settlement_leg_is_counted_not_tied_and_not_an_unbound_sender(self):
+        # The fixture's held half is a chat half; the predicate is what separates a leg, so it is forced for the run.
+        self.reseal_citing(own_half_capsule_id=None)
+        with mock.patch.object(step, "is_settlement_leg", lambda capsule, record: True):
+            f = self.run_in_process()
+        self.assertNotIn(step.LIVE_NEVER_TIED, self.names(f))
+        self.assertNotIn(step.LIVE_UNBOUND_WHAT, self.names(f))
+        self.assertIn("0 halves, 0 tied to the node's own half, 0 held, never tied, 0 ambiguous", f["detail"])
+        self.assertIn("1 settlement legs besides", f["detail"])
+        self.assertNotIn("carries no client_nonce", f["detail"])
+        # only legs were held: no tie was read, and the step says so
+        self.assertIn(step.ACCEPTANCE_WHAT, self.names(f))
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(c["leg"])
+        self.assertNotIn("tied", c)
+        self.assertTrue(c["signature"]["ok"] and c["pushed_under_checkpoint"]["ok"] and c["accepted"]["ok"])
+
+    def test_live_a_settlement_leg_accepted_under_another_key_still_fails_its_acceptance(self):
+        self.reseal_citing(own_half_capsule_id=None, sender_key_id="ab" * 32)
+        with mock.patch.object(step, "is_settlement_leg", lambda capsule, record: True):
+            f = self.run_in_process()
+        self.assertEqual(f["result"], "FAIL")
+        [c] = json.loads((self.out / "lab-a" / "checks.json").read_text())["held"]
+        self.assertTrue(c["leg"])
+        self.assertFalse(c["accepted"]["ok"], c["accepted"])
+        self.assertIn("held-1 accepted (", f["detail"])
 
     def test_live_a_tie_naming_an_own_half_the_chain_does_not_hold_fails(self):
         self.reseal_citing(own_half_capsule_id="ab" * 32)
@@ -1408,7 +1589,7 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(acc["what"], step.ACCEPTANCE_WHAT)
         self.assertIn("0 halves, 0 tied", f["detail"])
         self.assertIn("1 sealed earlier, not judged", f["detail"])
-        self.assertIn("no node holds a current-build half", acc["why"])
+        self.assertIn("no node holds a current-build exchange half", acc["why"])
         self.assertIn("sealed since 2099-01-01T00:00:00Z", f["detail"])
         self.assertEqual(json.loads((self.out / "lab-a" / "checks.json").read_text())["sealed_since"], "2099-01-01T00:00:00Z")
         # the same half is judged when the build started before it was sealed

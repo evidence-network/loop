@@ -83,7 +83,7 @@ the node made on the old stream still bind until their `until`.
 A controller binding says that several subjects (nodes, or a node and a
 personal agent) are under one controller. Only a verifier can say a binding
 holds. Steps 05 and 12 check a binding record with aac-go's
-`cross_language binding` (Controller Binding v0, go/v0.16.0), but that
+`cross_language binding` (Controller Binding v0, go/v0.17.0), but that
 writes no verdict and no `binding-verifier` is pinned, so this repository
 groups no subjects by it. A verifier's verdict would be published as
 `bindings/<controller_key_id>.json` (`binding-verdict/0`; see
@@ -97,19 +97,33 @@ them. `scripts/check_binding.py bindings` checks the verdicts.
 ### Revocation statements
 
 Either key of a binding can withdraw it with a revocation statement
-(Controller Binding v0 §5). The lab publishes them by pull request at
+(Controller Binding v0 §5). A key holder files them by pull request at
 `nodes/revocations/<binding_digest>.json`: a JSON array of statements for the
 binding the file name gives, each exactly
 `{"revocation_version": "controller-binding-revocation/0", "binding", "key_id", "revoked_at", "sig"}`
 and signed by one of the binding's two keys. The loop never signs one; the key
-holder does and opens the pull request. Step 05 passes the statements to the
+holder does and opens the pull request. For a binding the loop lists, a
+revocation counts in the loop only once it is merged here; one published
+anywhere else is not read. Step 05 passes the statements to the
 pinned verifier with the binding, so a binding revoked at or before the half's
-or the citing record's issue time does not apply (step 12 does not read them
-yet). CB v0 registers no place to fetch statements (CB-1), so
-the verifier knows only those it is given. This folder is the loop profile's
-own delivery point, not a registry: a statement published elsewhere is not
-excluded, so revocation stays NOT_CHECKED, never PASS, with none here that
-applies.
+or the citing record's issue time does not apply; step 12 does the same at the
+time it checks the binding. This folder is the loop profile's own delivery
+point, not a registry. Under CB-1 option A (Controller Binding v0 §5.1,
+action-state-group/agent-action-capsule#495), the loop run declares this
+folder complete for the binding, as main held it when the run started, as of
+the time the step evaluates, and passes that declaration with the list's exact
+bytes (`[]` when main holds no file for the binding). A branch cannot drop a
+statement from its own head: the run reads main's commit (the clone's
+`origin/main`, so fetch it first) and names that commit.
+Revocation PASS then means only that no statement in that snapshot applies:
+it is the loop run's statement, and a statement published after the snapshot
+can still withdraw the binding. If the verifier rejects the declaration (for
+example, a time asked about after it, or older than its max age), revocation
+is NOT_CHECKED (evidence-network/loop#240), and so it is when the clone holds
+no main to read from. The loop is stricter than CB v0 §9.4 about this
+folder: a file in it that is out of shape makes the binding not apply, rather
+than leaving revocation NOT_CHECKED, because every pull request checks the
+folder and a bad file is a defect in the loop's own delivery.
 `scripts/check_revocations.py nodes/revocations` checks the files' shape (the
 `commitments` check); the verifier checks signatures and times.
 

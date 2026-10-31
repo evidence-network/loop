@@ -1,0 +1,43 @@
+{
+  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest; the verdict follows from its source as the plugin decides, and each base-policy row it seals is one the plugin's rules give from the reads it seals",
+  "detail": "node stevenmih-1: 0 of 2560 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: 18 of 1536 ledger records carry an admission decision (18 GO, 0 NO), read-only; node stevenmih-3: 38 of 2560 ledger records carry an admission decision (38 GO, 0 NO), read-only; of the base-policy rows sealed, 38 were fixed by the record and matched it, 152 are values the rules allow but the record does not fix (rows.json) and 0 disagree. Each decision is GO or NO, names its source, cites the operator policy it read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and names the peer by commitment only; its verdict follows from its source alone, the same for one peer under one policy digest; each row it seals is one the base policy's rules give from what it read. The step read the ledger lines as written, without verifying their signatures. Spend: none; this step pays nothing (would spend 0 USD). Outside this step's assertion: each base-policy row's value where the sealed decision does not fix it: identity's fail or not_read on no card, key age on a cited card, and the three local rows: evidence-network/loop#81. Outside this step's assertion: each ledger record's producer signature and capsule_id: evidence-network/loop#135. Outside this step's assertion: the routing path enforcing the decision when it chooses a candidate: Mesh-LLM/mesh-llm#2061.",
+  "finished": "2026-10-31T12:32:57Z",
+  "name": "admit",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "4eba9203ed167a5bc9e7a5da062e731ba2a9639f",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "c86f58e58de7bf02bce52a390a144413d8d99183",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "nodes.json",
+      "sha256": "a7c7200415f32c3aaac5251c7e009cd5b84fb8fe47606a4384325bbae8a659e5"
+    },
+    {
+      "path": "stevenmih-2/decisions.jsonl",
+      "sha256": "68771fe590ff6c2223e86cb0f749a834c89475c461209603f757e02fdc109489"
+    },
+    {
+      "path": "stevenmih-2/rows.json",
+      "sha256": "c374276755f7b532bc1a3d3830b1c5e26b112a0033ec75f98dce142777436e10"
+    },
+    {
+      "path": "stevenmih-3/decisions.jsonl",
+      "sha256": "2acee72c1c576fb5e86c5af60cdfa4396877baf4d217c2e6720982bed35e85c4"
+    },
+    {
+      "path": "stevenmih-3/rows.json",
+      "sha256": "78d7f713c1e90df68520ebc18a9cfbb69ca8adb6e614aa0ffb553323d8ee141c"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-10-31T12:32:57Z",
+  "step": "04"
+}

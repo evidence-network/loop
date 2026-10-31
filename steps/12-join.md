@@ -48,16 +48,22 @@ With no published file, the detail says nothing is compared.
 
 - The controller binding's revocation: the statements published for it at
   `nodes/revocations/<binding_digest>.json` go to the verifier, and one that
-  applies is a failure. With none that applies, revocation is NOT_CHECKED,
-  since Controller Binding v0 registers no source a verifier could hold to be
-  complete (CB-1, action-state-group/agent-action-capsule#482). The node key's role in its
+  applies is a failure. Under CB-1 option A (Controller Binding v0 §5.1,
+  action-state-group/agent-action-capsule#495), the run declares that list
+  complete (`[]` when no file is published for the binding), as main held it
+  at the check time for a live run (its fixtures' checkout for a rehearsal),
+  as of the time it checks the binding, and the verifier reports revocation PASS when no
+  statement in that snapshot applies. That PASS is the loop run's statement,
+  scoped to the snapshot: a statement published later can still withdraw the
+  binding. If the verifier rejects the declaration, revocation is NOT_CHECKED
+  (evidence-network/loop#240); the detail names the snapshot either way. The node key's role in its
   binding is checked from the verifier's report (claim and `delegator`,
   action-state-group/agent-action-capsule#468): in a `delegated_by` binding
   the node key must be the delegate, and a node key that is the `delegator`
   is a failure; `same_controller_asserted` and
   `same_organization_credentialed` give a key no role. The
   record itself is checked in a second language: `cross_language binding`
-  (aac-go go/v0.16.0) runs on the record the node holds
+  (aac-go go/v0.17.0) runs on the record the node holds
   (`controller-binding.json` in its `data_dir`, or `binding.json` for a
   node `join.sh` joined), which must have the digest doctor reports, name
   the node key and apply now (form, both signatures and window). That is
@@ -66,6 +72,19 @@ With no published file, the detail says nothing is compared.
   than doctor's, or a method or key type the verifier lacks is NOT_CHECKED.
   For a node `join.sh` joined, a record that does not hold in any of those
   ways is a failure, and the record checked is kept in the finding's proof.
+
+## Live (probe backend `reporter`): proof step 08 reproduces from
+
+The live step collects first, then judges only what it kept (loop#188). Per node it keeps the reporter's attempt
+(the requests, replies, peer-key.json and verification lines), its plugin calls (`wire.json`: what each JSON call
+answered and how each tool call ended, with the reply bytes beside it as `doctor-probe.json`, `join.json` and
+`doctor-after.json`), join's commitment pair and the `controller-binding.json` it checked; and for the run,
+`nodes.json` (the self node, whether a second console and which own consoles were given, the binding time, and the
+main commit `nodes/revocations/` was read from). `judge_live(pop, out, started)` decides from those files alone:
+each verification line is computed again from its reply and must be the one kept, join's commitment is verified
+again under the listed key, and a kept binding is checked again by `cross_language`. So step 08 runs it on the cited
+copy and gets the same verdict. Doctor's findings and the fetch replies stay console reads no key signs, which 08
+names (evidence-network/loop#193).
 
 ## Rehearsal (probe backend `doctor`): proof step 08 reproduces from
 

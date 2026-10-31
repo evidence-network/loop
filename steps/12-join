@@ -36,7 +36,7 @@ none is a not_checked entry. The own book's entry, where it names a
 checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding record is checked in a second language,
-`cross_language binding` (aac-go go/v0.16.0): binding.json, as join.sh wrote
+`cross_language binding` (aac-go go/v0.17.0): binding.json, as join.sh wrote
 it, must have the digest controller.json names, name the node key and apply
 now (form, both signatures, window). That is "the binding applies", not a
 trust verdict. The node key's role is checked from the verifier's report: in a
@@ -44,10 +44,14 @@ trust verdict. The node key's role is checked from the verifier's report: in a
 `delegator` (AAC#468); the other claim types give a key no role. The
 revocation statements published for it at nodes/revocations/<digest>.json go
 to the verifier with it: one that applies makes the binding not apply (a
-failure). With none that applies, revocation is NOT_CHECKED, because Controller
-Binding v0 registers no source a verifier could hold to be complete (CB-1,
-agent-action-capsule#482); that is outside the assertion, and a PASS says so
-in detail. For a Mesh
+failure). Under CB-1 option A (Controller Binding v0 §5.1,
+agent-action-capsule#495) the run declares that list complete (`[]` when the
+folder holds no file for the binding) as of the time it checks the binding,
+and the verifier reports revocation PASS when no statement in that snapshot
+applies: the loop run's statement, scoped to the snapshot. A live run reads
+the list as main held it at that time. If the verifier rejects the
+declaration, revocation is a not_checked entry (loop#240); here every
+time asked about is the declaration's own, so that is defensive only. For a Mesh
 node (`reporter`), the pinned plugin checks the record itself before its
 doctor reports it bound, and the loop checks the record the node holds in its
 `data_dir` (controller-binding.json) the same way.
@@ -107,8 +111,8 @@ A bound node's record is then read from the `data_dir` the population gives and 
 Go verifier against that digest: a record that does not name the node's listed key or does not
 apply now is a failure; one that is missing, is another binding than doctor's (the node may
 have bound again), or uses a method or key type the verifier lacks is NOT_CHECKED. A binding that applies with the node
-key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise leaves one NOT_CHECKED entry:
-revocation.
+key as its delegator (delegated_by) is a failure (AAC#468); one that applies otherwise has its revocation read as
+above, NOT_CHECKED only when the verifier rejects the run's declaration or the clone holds no main to read from.
 
 A node cannot be asked through its own console. `--self-node` names the
 population node whose console `--console` is; that node is asked through
@@ -116,6 +120,13 @@ population node whose console `--console` is; that node is asked through
 `--console`. A self node with no second console is NOT_CHECKED, never FAIL.
 
 A part that was checked and did not hold makes the finding FAIL.
+
+The reporter backend collects first, then judges only what it kept (loop#188): each node's attempt, its plugin
+calls (wire.json records what each JSON call answered and how each tool call ended; the reply bytes sit beside it
+as doctor-probe.json, join.json, doctor-after.json), its controller-binding.json, and nodes.json (the self node,
+whether a second console and which own consoles were given, the binding time and the main commit revocations are
+read from). judge_live decides from those files alone, with no console and no data dir, so step 08 runs it again
+on the cited proof and gets the same verdict.
 """
 import argparse
 import base64
@@ -152,23 +163,24 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # No released verifier the loop can call for a stapled history_card/1 (as step 03).
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 
-# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.16.0,
+# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
 # inside its window now. That is "the binding applies" (form, both signatures, window; revocation not FAIL), not a
 # trust verdict. `Binds` takes either key of the binding, so the role is read from the report's claim and delegator
 # (AAC#468): a node key that is the delegator of a delegated_by binding is not the delegate its controller bound.
-# The revocation statements published in nodes/revocations/ go to the verifier; reading that list as complete would
-# change CB-1, which is Steven's call (Sherlock2, Buzz f91277af), so revocation is FAIL or NOT_CHECKED, never PASS.
-BINDING_REVOCATION_ISSUE = "action-state-group/agent-action-capsule#482"  # CB-1
+# The revocation statements published in nodes/revocations/ go to the verifier with the run's declaration that the
+# list is complete as of the binding's check time (CB-1 option A, agent-action-capsule#495, scripts/binding_verify.py):
+# revocation is PASS on that snapshot, FAIL when a statement in it applies, NOT_CHECKED when the declaration does not
+# count, which with as_of the one time asked about (and E) only a declaration the verifier refuses can give.
+BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
 BINDING_REVOCATION = {
     "what": "the controller binding's revocation",
-    "why": f"no statement in nodes/{bv.REVOCATIONS}/ applies, and Controller Binding v0 registers no source a "
-           "verifier could hold to be complete (CB-1)",
+    "why": f"the verifier rejected the run's declaration that nodes/{bv.REVOCATIONS}/ is complete, or the "
+           "clone holds no main to read it from",
     "issue": BINDING_REVOCATION_ISSUE,
 }
 DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
 BINDING_FILE = "controller-binding.json"  # the capsules plugin's HELD_FILE in its data dir
-BINDING_OUTSIDE = " ".join(finding.outside(e["what"], e["issue"]) for e in (BINDING_REVOCATION,))
 
 
 def utc_now():
@@ -180,23 +192,40 @@ def cross_language():
 
 
 def nodes_dir():
-    """The node list whose revocation statements are read: this clone's nodes/ working tree (as step 05)."""
+    """The node list whose revocation statements a rehearsal reads: this clone's nodes/ working tree."""
     return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
 
 
-def binding_check(name, raw, digest, key, at):
+def revocations_root():
+    """The git repository whose main a live run reads revocation statements from (LOOP_REVOCATIONS_GIT, else this
+    clone), as step 05 does: main as it stood at the check time, never the checked-out branch."""
+    return Path(os.environ.get("LOOP_REVOCATIONS_GIT", ROOT))
+
+
+def binding_check(name, raw, digest, key, at, from_main=None):
     """(state, detail) of the Go verifier on the binding text `raw`, which must have `digest`, name `key` and apply
     at `at` (YYYY-MM-DDTHH:MM:SSZ). state: "ok"; "bad" (it does not apply, does not name the key, or names it as the
     delegator of a delegated_by binding); "unread" (it
-    is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks). The revocation
-    statements published for `digest` (nodes/revocations/, bv.revocations) go to the verifier: one that applies at
-    `at` makes it "bad"."""
+    is not the binding `digest` names); "unsupported" (a method or key type the verifier lacks); "open" (it applies,
+    but revocation is NOT_CHECKED: the verifier rejected the run's declaration). The revocation statements published for
+    `digest` (nodes/revocations/) go to the verifier, declared complete as of `at` (CB-1 option A): one that applies
+    at `at` makes it "bad", and with none that applies it is "ok" (revocation PASS on that snapshot). A live run
+    passes `from_main`, the bv.snapshot of origin/main at `at`, and reads the file at that commit; a rehearsal reads
+    its own checkout's fixtures."""
+    no_list = None
     try:
-        statements = bv.revocations(nodes_dir(), digest)
+        if from_main is not None:
+            commit, text = bv.main_list(revocations_root(), digest, from_main)
+            where = f"nodes/{bv.REVOCATIONS}/ at main {commit}"
+        else:
+            text, where = bv.checkout_list(nodes_dir(), digest), f"nodes/{bv.REVOCATIONS}/ in this checkout"
+        listing = bv.revocation_list(digest, text, at, f"evidence-network/loop step 12 (checking at {at}), {where}")
+    except LookupError as e:  # no main to read the merged list from: no declaration, so revocation stays open
+        listing, no_list = None, str(e)
     except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
         return "bad", f"{name}'s binding {digest}: the published revocation statements are unreadable ({e})"
     try:
-        verdict, report, err, code = bv.verify(cross_language(), raw, key, [at], statements)
+        verdict, report, err, code = bv.verify(cross_language(), raw, key, [at], listing)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise SystemExit(f"12-join: cross_language binding did not run ({e}); run steps/01-seal.setup.sh")
     if verdict is None:
@@ -218,13 +247,22 @@ def binding_check(name, raw, digest, key, at):
         return "unsupported", (f"{name}'s binding {digest}: "
                                f"{', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}")
     role = "as the delegate" if report.get("claim") == DELEGATED_BY else f"({report.get('claim')}: no role)"
-    return "ok", (f"{name}'s binding {digest} names the node key {role} and applies at {at} (form, both signatures and "
-                  f"window PASS, revocation {props.get('controller_binding_revocation')}: no statement in "
-                  f"nodes/{bv.REVOCATIONS}/ applies; {len(statements)} published)")
+    revoked, said = bv.revocation(report)
+    if no_list:
+        said += f": {no_list}"
+    return "ok" if revoked == "PASS" else "open", (
+        f"{name}'s binding {digest} names the node key {role} and applies at {at} (form, both signatures and "
+        f"window PASS, {said})")
+
+
+def revocation_open(detail):
+    """The not_checked entry for a binding that applies with revocation NOT_CHECKED (binding_check's "open")."""
+    return {**BINDING_REVOCATION, "why": f"{BINDING_REVOCATION['why']}: {detail}"}
 
 
 def binding_unchecked(state, detail):
-    """The not_checked entry for a binding_check state that is neither ok nor bad, None for those two."""
+    """The not_checked entry for a binding_check state that is unread or unsupported, None for the others (ok,
+    open and bad: revocation_open names open)."""
     why = {"unread": "its record could not be read as the held binding", "unsupported": "the verifier lacks its method or key type"}.get(state)
     issue = live.ISSUE if state == "unread" else bv.UNSUPPORTED_METHOD_ISSUE
     return {"what": "the controller binding record, checked by a second verifier", "why": f"{why}: {detail}",
@@ -326,10 +364,11 @@ def check_doctor(node_dir, adv):
     return errs
 
 
-def check_binding_record(node_dir, at):
+def check_binding_record(node_dir, at, not_checked=None, lines=None):
     """What the Go verifier found wrong with binding.json, the record join.sh wrote: it has the digest
     controller.json names, names the node key and applies at `at`. A method or key type the verifier lacks cannot
-    be told from a bad record here, and join.sh writes none of them, so it counts as not holding."""
+    be told from a bad record here, and join.sh writes none of them, so it counts as not holding. A binding that
+    applies with revocation NOT_CHECKED adds its entry to `not_checked`."""
     node_dir = Path(node_dir)
     try:
         c = load(node_dir / "controller.json")
@@ -337,7 +376,11 @@ def check_binding_record(node_dir, at):
         state, detail = binding_check(node_dir.name, raw, c["binding_digest"], c["node_key"], at)
     except (OSError, ValueError, KeyError, TypeError) as e:
         return [f"binding.json and controller.json are not the controller binding join.sh writes ({e})"]
-    return [] if state == "ok" else [f"the controller binding does not hold: {state}: {detail}"]
+    if state == "open" and not_checked is not None:
+        not_checked.append(revocation_open(detail))
+    if state in ("ok", "open") and lines is not None:
+        lines.append(detail)  # what the revocation PASS is scoped to, or why it is not checked
+    return [] if state in ("ok", "open") else [f"the controller binding does not hold: {state}: {detail}"]
 
 
 def check_policy_match(node_dir, adv):
@@ -424,9 +467,10 @@ def verify_answers(node_dir, adv, capsulectl, work):
     return errs
 
 
-def judge(node_dir, capsulectl, work, at=None):
+def judge(node_dir, capsulectl, work, at=None, said=None):
     """(failures, not_checked, proof paths relative to node_dir) for one joined node. `at` is the time the
-    binding must apply at, now by default."""
+    binding must apply at, now by default. The binding's line (what its revocation PASS is scoped to) is added to
+    `said` when given."""
     node_dir = Path(node_dir)
     errs = check_commitment(node_dir)
     try:
@@ -434,11 +478,11 @@ def judge(node_dir, capsulectl, work, at=None):
     except (OSError, ValueError, KeyError, TypeError) as e:
         return errs + [f"the commitment does not advertise the node's keys and policy ({e})"], [], list(PROOF)
     errs += check_doctor(node_dir, adv)
-    errs += check_binding_record(node_dir, at or utc_now())
+    not_checked = []
+    errs += check_binding_record(node_dir, at or utc_now(), not_checked, said)
     errs += check_policy_match(node_dir, adv)
     errs += check_staple(node_dir, adv)
     errs += verify_answers(node_dir, adv, capsulectl, work)
-    not_checked = []
     # The stranger's book too: the kept answers are verified again in it, so a rerun needs its bytes.
     proof = list(PROOF) + sorted(str(f.relative_to(node_dir)) for f in (node_dir / "probe/stranger").rglob("*")
                                  if f.is_file())
@@ -514,10 +558,11 @@ def decide_nodes(out, names, capsulectl, tmp):
             continue
         node_out = out / name
         try:
-            errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify")
+            said = []
+            errs, nc, p = judge(node_out, capsulectl, Path(tmp) / f"{name}-verify", said=said)
         except (OSError, ValueError, KeyError, TypeError) as e:  # a proof file altered or missing
             failures.append(f"{name}: the proof could not be judged ({type(e).__name__}: {str(e)[:200]})")
-            errs, nc = [], []
+            errs, nc, said = [], [], []
             p = list(PROOF) + [str(f.relative_to(node_out)) for f in sorted(node_out.rglob("*")) if f.is_file()]
         failures += [f"{name}: {e}" for e in errs]
         merge(not_checked, nc)
@@ -525,6 +570,7 @@ def decide_nodes(out, names, capsulectl, tmp):
         lines.append(f"{name}: joined; the commitment verifies, doctor --probe finds both answers verify and match "
                      "the policy, and the kept answers verify under the advertised keys and match the advertised "
                      "policy" if not errs else f"{name}: {len(errs)} check(s) did not hold")
+        lines += [f"{name}: {x}" for x in said]
     return failures, not_checked, proof, lines
 
 
@@ -560,7 +606,60 @@ def post_json(url, body, timeout):
         return None
 
 
-def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30):
+WIRE_FILE = "wire.json"  # per node: how each plugin call this run made ended, so judge_live replays it
+
+
+class Wire:
+    """A node's plugin calls (loop#188): live, each made over HTTP and kept under node_dir (wire.json records what a
+    JSON call answered, and how a tool call ended beside its reply bytes, <stem>.json); or replayed from those files
+    (judge_live), so the judge decides from the proof alone and step 08 gets the same verdict. A live Wire with no
+    node_dir keeps nothing (a direct call, as a test makes)."""
+
+    def __init__(self, node_dir=None, replay=False, timeout=30):
+        self.dir, self.replay, self.timeout = (Path(node_dir) if node_dir else None), replay, timeout
+        self.ended = load(self.dir / WIRE_FILE) if replay else {}
+        if not isinstance(self.ended, dict):
+            raise ValueError(f"{WIRE_FILE} is not an object")
+        self.used = []
+
+    def kept(self, stem):
+        if not isinstance(self.ended.get(stem), dict):
+            raise ValueError(f"{WIRE_FILE} records no {stem} call")
+        return self.ended[stem]
+
+    def keep(self, stem, record):
+        if self.dir is not None:
+            self.ended[stem] = record
+            (self.dir / WIRE_FILE).write_text(json.dumps(self.ended, indent=2, sort_keys=True) + "\n")
+
+    def post_json(self, stem, console, route, body):
+        """The JSON a plugin tool answered, or None (post_json), kept in wire.json."""
+        if self.replay:
+            return self.kept(stem).get("reply")
+        reply = post_json(console + route, body, self.timeout)
+        self.keep(stem, {"reply": reply})
+        return reply
+
+    def tool(self, stem, console, route, body):
+        """(reply object or None, the bytes, what went wrong or None), as tool(); the bytes are <stem>.json."""
+        if self.replay:
+            err = self.kept(stem).get("error")
+            raw = (self.dir / f"{stem}.json").read_bytes()
+        else:
+            reply, raw, err = tool(console, route, body, self.timeout)
+            if self.dir is not None:
+                (self.dir / f"{stem}.json").write_bytes(raw)
+            self.keep(stem, {"error": err})
+        if err:
+            return None, raw, err
+        try:
+            reply = json.loads(raw)
+        except ValueError:
+            return None, raw, "the reply is not JSON"
+        return (reply, raw, None) if isinstance(reply, dict) else (None, raw, "the reply is not a JSON object")
+
+
+def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30, wire=None):
     """(failure or None, not_checked or None, line, held digest or None, named) for the controller binding of one
     node. `named` is what the fetched commitment was read to name: its binding digest, "" for none, or None when it
     was not read (loop#201 reads the optional unbound case, and reports a commitment naming a binding once, by it).
@@ -575,22 +674,24 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     of the binding. A binding whose window closes between the two calls shows as one FAIL; that is rare, and
     a rerun settles it.
     """
+    wire = wire or Wire(timeout=timeout)
+
     def unreadable(why):
         return None, no_binding(name, why), f"{name}: binding not read", None, None
 
-    own = post_json(doctor_console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    own = wire.post_json("binding-own-commitment", doctor_console, OWN_COMMITMENT_ROUTE, {})
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != node_id:
         return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
-    doctor = post_json(doctor_console + DOCTOR_ROUTE, {}, timeout)
+    doctor = wire.post_json("binding-doctor", doctor_console, DOCTOR_ROUTE, {})
     state = binding_state(doctor)
     if state is None:
         return unreadable("its doctor reports no controller_binding of bound or unbound (an older plugin, or no answer)")
     held = state[1]
     if state[0] == "bound" and not (isinstance(held, str) and len(held) == 64 and set(held) <= HEX64):
         return f"{name}: doctor reports the binding bound without a sha256 digest", None, "", None, None
-    fetched = post_json(commitment_console + COMMITMENT_ROUTE, {"peer_id": node_id}, timeout)
+    fetched = wire.post_json("binding-fetched-commitment", commitment_console, COMMITMENT_ROUTE, {"peer_id": node_id})
     if not isinstance(fetched, dict) or not isinstance(fetched.get("commitment"), dict) or fetched.get("problems"):
         return unreadable("its commitment could not be fetched and checked through the console that asks it"
                           + (f" ({'; '.join(map(str, fetched['problems']))})" if isinstance(fetched, dict)
@@ -618,28 +719,34 @@ def settled_binding(fail, named):
     return named if fail and named else None
 
 
-def live_binding_record(name, node, entry, held, at, node_dir):
+def live_binding_record(name, node, entry, held, at, node_dir, snap=None, replay=False):
     """(failure or None, not_checked list, line or None, proof paths) of the Go verifier on the record the node
     holds in its data_dir (the population's `data_dir`, controller-binding.json), for the binding doctor reports
-    `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them. A node that holds no
-    binding has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
+    `held`. The bytes checked are kept in node_dir, so the archived finding can recheck them; `replay` reads that
+    kept copy instead (judge_live: none kept means the data_dir held none readable). A node that holds no binding
+    has none to check; one whose data_dir or record is not readable is NOT_CHECKED."""
     if not held:
         return None, [], None, []
-    data_dir = live.path(node, "data_dir")
+    src = Path(node_dir) if replay else live.path(node, "data_dir")
     try:
-        raw = (data_dir / BINDING_FILE).read_text(encoding="utf-8")
+        raw = (src / BINDING_FILE).read_text(encoding="utf-8")
     except (OSError, ValueError, TypeError):
         return None, [no_binding(name, f"it has no readable {BINDING_FILE} in its data_dir (the population's) to "
                                        "check the record by")], None, []
-    (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
+    if not replay:
+        (Path(node_dir) / BINDING_FILE).write_text(raw, encoding="utf-8")
     kept = [f"{name}/{BINDING_FILE}"]
-    state, detail = binding_check(name, raw, held, entry["key_id"], at)
+    state, detail = binding_check(name, raw, held, entry["key_id"], at,
+                                  from_main=snap or {"commit": None, "why": "no main commit was read"})
     if state == "bad":
         return f"{name}: {detail}", [], None, kept
     unchecked = binding_unchecked(state, detail)
     if unchecked:
         return None, [{**unchecked, "what": f"{name}: {unchecked['what']}"}], None, kept
-    return None, [BINDING_REVOCATION], f"{name}: {detail}", kept
+    if state == "open":
+        nc = revocation_open(detail)
+        return None, [{**nc, "what": f"{name}: {nc['what']}"}], f"{name}: {detail}", kept
+    return None, [], f"{name}: {detail}", kept
 
 
 def no_binding(name, why):
@@ -779,7 +886,7 @@ def signed_terms(doc, policy):
     return terms if all(isinstance(v, list) and all(isinstance(x, str) for x in v) for v in terms.values()) else None
 
 
-def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
+def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, wire=None):
     """(failures, not_checked, proof names in node_dir, lines, signed) for the plugin's doctor --probe and join.
     `fetched` is what check_binding settled this run: "" when doctor and the fetched commitment agree there is no
     binding, the digest the fetched commitment names when check_binding already FAILed on it, None otherwise.
@@ -799,7 +906,8 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     def nc_(what, why, issue=live.ISSUE):
         return {"what": f"{name}: {what}", "why": why, "issue": issue}
 
-    own = post_json(console + OWN_COMMITMENT_ROUTE, {}, timeout)
+    wire = wire or Wire(node_dir, timeout=timeout)
+    own = wire.post_json("tools-own-commitment", console, OWN_COMMITMENT_ROUTE, {})
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != entry["node_id"]:
@@ -809,8 +917,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None):
     doc, holds = None, False
 
     def call(stem, route, body):
-        reply, raw, err = tool(console, route, body, timeout)
-        (node_dir / f"{stem}.json").write_bytes(raw)
+        reply, raw, err = wire.tool(stem, console, route, body)
         proof.append(f"{stem}.json")
         return reply, err
 
@@ -938,10 +1045,61 @@ def no_second_console(name):
             "issue": NO_SECOND_CONSOLE_ISSUE}
 
 
-def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=None, node_consoles=None):
+NODES_FILE = "nodes.json"  # the live run's own choices, kept so judge_live replays them (loop#188)
+
+
+def kept_lines(node_dir, entry):
+    """{stem: verification line} of the node's one attempt in the proof. Each line is computed again from the kept
+    reply, the announced key (peer-key.json) and the listed key, and must be the line kept; with no reply kept, the
+    line may not claim one (as step 07's reporter_line). Raises ValueError naming what does not hold."""
+    attempts = layout.attempts(node_dir)
+    if len(attempts) != 1:
+        raise ValueError(f"the proof holds {len(attempts)} attempts for it, not one")
+    attempt, lines = attempts[0], {}
+    try:
+        said_key = json.loads((attempt / "peer-key.json").read_text(encoding="utf-8"))
+        key = said_key.get("announced_key_id") if isinstance(said_key, dict) else None
+        announced = key if isinstance(key, str) and daily_report.HEX64.match(key) else None
+    except (OSError, ValueError):
+        announced = None
+    for stem in daily_report.QUESTIONS:
+        try:
+            kept = (attempt / f"{stem}.verification").read_text(encoding="utf-8").strip()
+        except OSError:
+            raise ValueError(f"the attempt holds no {stem}.verification")
+        reply = attempt / f"{stem}.response.json"
+        if reply.is_file():
+            again = daily_report.verification_line(200, reply.read_bytes(), None, announced, entry["key_id"])
+            if again != kept:
+                raise ValueError(f"the {stem} line kept ({kept}) is not the one its reply gives ({again})")
+        elif kept.split(" ", 1)[0] in ("verified", "refusal", "no_checkpoint_yet", "no_announced_key"):
+            # not_evidence is the line of a malformed 502, which keeps no reply (as step 07's reporter_line)
+            raise ValueError(f"the {stem} line claims a reply the attempt does not hold: {kept}")
+        lines[stem] = kept
+    return lines
+
+
+def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_console=None, node_consoles=None,
+                 replay=False):
+    """(failures, not_checked, proof, lines) of the reporter backend. Live, it asks each node and keeps, under
+    `out`, everything it decides from: each node's attempt, its plugin calls (Wire: wire.json and the reply bytes)
+    and binding record, and nodes.json (the self node, whether a second console and which own consoles were given,
+    the binding time and the main commit revocations are read from). `replay` decides again from those files alone,
+    with no console and no data dir (judge_live, step 08)."""
     failures, not_checked, proof, lines = [], [], [], []
-    at = daily_report.utc_now()
-    bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
+    if replay:
+        kept = load(out / NODES_FILE)
+        self_node, second_console = kept["self_node"], kept["second_console"]
+        node_consoles = {n: n for n in kept["node_consoles"]}  # names only: the calls are replayed, none is made
+        bind_at, snap = kept["bind_at"], kept["revocations_main"]
+        if not (isinstance(bind_at, str) and (snap is None or isinstance(snap, dict))):
+            raise TypeError(f"{NODES_FILE} has the wrong shape")
+        proof.append(NODES_FILE)
+    else:
+        at = daily_report.utc_now()
+        bind_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")  # the run's one time, for every node's binding window
+        snap = None  # origin/main at bind_at, fetched once, when a binding is first read
+    owns = []
     for node in pop["nodes"]:
         name = node["name"]
         asker, via = console, "the reporter's console"
@@ -963,17 +1121,37 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             lines.append(f"{name}: not asked, no nodes/ entry")
             continue
         node_dir = out / name
-        if node_dir.exists():
-            shutil.rmtree(node_dir)
-        node_dir.mkdir(parents=True)
-        result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
-                                          timeout)
+        if replay:
+            try:
+                result = kept_lines(node_dir, entry)
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                failures.append(f"{name}: its reporter attempt does not hold ({type(e).__name__}: {e})")
+                continue
+        else:
+            if node_dir.exists():
+                shutil.rmtree(node_dir)
+            node_dir.mkdir(parents=True)
+            result = daily_report.ask_attempt(asker, entry, node_dir, list(daily_report.QUESTIONS), at, "by=ask",
+                                              timeout)
         attempt = layout.attempts(node_dir)[-1]
         proof += [str(f.relative_to(out)) for f in sorted(attempt.iterdir()) if f.is_file()]
         bad, signed = [], None
-        own = (node_consoles or {}).get(name) or (console if self_node and name == self_node else None)
+        own = (node_consoles or {}).get(name) or (console if self_node and name == self_node and not replay else None)
         if own:
-            fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker, timeout)
+            owns.append(name)
+            try:
+                wire = Wire(node_dir, replay=replay, timeout=timeout)
+            except (OSError, ValueError) as e:
+                failures.append(f"{name}: its plugin calls are not readable ({type(e).__name__}: {e})")
+                continue
+            try:
+                fail, nc, line, held, named = check_binding(name, entry["node_id"], entry["key_id"], own, asker,
+                                                            timeout, wire)
+            except (OSError, ValueError) as e:
+                if not replay:
+                    raise
+                failures.append(f"{name}: its plugin calls do not replay ({type(e).__name__}: {e})")
+                continue  # a kept file missing or unreadable is this node's failure, not the whole proof's
             settled = settled_binding(fail, named)  # before `fail` is reused for the binding record below
             if fail:
                 bad.append(fail)
@@ -982,17 +1160,28 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
             if line:
                 lines.append(line)
             if not fail and not nc:
-                fail, ncs, line, kept = live_binding_record(name, node, entry, held, bind_at, node_dir)
-                proof += kept
+                if snap is None and not replay:
+                    snap = bv.snapshot(revocations_root(), bind_at)
+                fail, ncs, line, binding_kept = live_binding_record(name, node, entry, held, bind_at, node_dir, snap,
+                                                                    replay)
+                proof += binding_kept
                 if fail:
                     bad.append(fail)
                 merge(not_checked, ncs)
                 if line:
                     lines.append(line)
-            fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled)
+            try:
+                fails, nc, files, said_tools, signed = check_node_tools(name, entry, own, node_dir, timeout, settled,
+                                                                        wire)
+            except (OSError, ValueError) as e:
+                if not replay:
+                    raise
+                failures += bad + [f"{name}: its plugin calls do not replay ({type(e).__name__}: {e})"]
+                continue
             bad += fails
             merge(not_checked, nc)
             proof += [f"{name}/{f}" for f in files]
+            proof.append(f"{name}/{WIRE_FILE}")
             lines += said_tools
             if signed is False:
                 signed = None  # the failure is recorded; the answers are judged against the entry
@@ -1029,7 +1218,23 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
                      "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
-    return failures, not_checked, proof, lines
+    if not replay:
+        (out / NODES_FILE).write_text(json.dumps({"self_node": self_node, "second_console": bool(second_console),
+                                                  "node_consoles": owns, "bind_at": bind_at, "revocations_main": snap},
+                                                 indent=2, sort_keys=True) + "\n")
+        proof.insert(0, NODES_FILE)
+    return failures, not_checked, list(dict.fromkeys(proof)), lines
+
+
+def judge_live(pop, out, started):
+    """The live (reporter) finding decided from what run_reporter kept under `out` alone: no console is asked and
+    no data dir read, so step 08 gets the same verdict from the cited proof (loop#188)."""
+    out = Path(out)
+    try:
+        failures, not_checked, proof, lines = run_reporter(pop, out, replay=True)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        failures, not_checked, proof, lines = [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"], [], [], []
+    return conclude(out, pop["population"], failures, not_checked, proof, lines, started, "reporter")
 
 
 def backend(pop):
@@ -1077,8 +1282,12 @@ def main(argv=None):
             print(f"12-join: --node-console names {', '.join(unknown)}, not nodes in the population "
                   f"({', '.join(n['name'] for n in pop['nodes'])})", file=sys.stderr)
             return 2
-        failures, not_checked, proof, lines = run_reporter(pop, a.out, a.console, self_node=a.self_node,
-                                                           second_console=a.second_console, node_consoles=node_consoles)
+        # Collect first (ask each node, keep every reply), then judge only the kept files (loop#188).
+        run_reporter(pop, a.out, a.console, self_node=a.self_node, second_console=a.second_console,
+                     node_consoles=node_consoles)
+        r = judge_live(pop, a.out, started)
+        print(f"12-join: {r['result']}: {r['detail']}", file=sys.stderr)
+        return 0
     else:
         print(f"12-join: unknown probe backend {which!r}", file=sys.stderr)
         return 2
@@ -1112,8 +1321,6 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     pinned = PINNED if which == "doctor" else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go"]
     shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
     detail = f"probe backend: {which}. " + "; ".join(shown) + "."
-    if result == "PASS":  # a PASS covers its assertion; the binding's own verification is outside it
-        detail += " " + BINDING_OUTSIDE
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
                          detail=detail,
                          not_checked=not_checked, started=started)
