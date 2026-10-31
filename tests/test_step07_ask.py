@@ -240,8 +240,14 @@ class PolicyTest(unittest.TestCase):
             self.assertEqual(step.refusal_verdict(reason), "fail")
         for reason in ("policy_declined", "not_authorized"):
             self.assertEqual(step.refusal_verdict(reason), "not_checked")
-        for reason in ("coverage_unsatisfiable", "deadline_unmet", "request_malformed", "retention_expired"):
+        for reason in ("coverage_unsatisfiable", "deadline_unmet", "request_malformed"):
             self.assertEqual(step.refusal_verdict(reason), "ok")
+        # retention_expired is right only once a retention commitment lapsed, and none is published (loop#60).
+        for profile in ("evidence-interop/0", "evidence-interop/1"):
+            self.assertEqual(step.refusal_verdict("retention_expired", profile), "not_checked")
+        entry = step.refusal_not_checked("x", "retention_expired")
+        self.assertEqual(entry["issue"], "evidence-network/loop#60")
+        self.assertIn("retention commitment", entry["why"])
         for reason in ("request_expired", "made_up", None):  # not in the spec: a breach
             self.assertEqual(step.refusal_verdict(reason), "fail")
 
@@ -640,6 +646,11 @@ class ReporterBackendTest(Tmp):
         fail, nc = step.judge_exchange_line(line, entry, "evidence-interop/1")
         self.assertIsNone(fail)
         self.assertIn("a limit of the node's own", nc["why"])
+        retained = line.replace("capacity_exceeded", "retention_expired")
+        for profile in ("evidence-interop/0", "evidence-interop/1"):
+            fail, nc = step.judge_exchange_line(retained, entry, profile)
+            self.assertIsNone(fail)
+            self.assertEqual(nc["issue"], "evidence-network/loop#60")  # never counted as answered (loop#60)
         refused = line.replace("capacity_exceeded", "not_authorized")
         fail, _ = step.judge_exchange_line(refused, entry, "evidence-interop/1")
         self.assertIn("is refused (not_authorized)", fail)

@@ -617,6 +617,8 @@ own node through a second node's console, as `loop` does), and pays nothing. Run
   (Mesh-LLM/capsules-plugin#114). One for `coverage_unsatisfiable` (the node has no
   checkpoint covering the half yet) is checked for its key and left NOT_CHECKED
   (evidence-network/loop#94).
+- A refusal for `retention_expired` reads NOT_CHECKED (evidence-network/loop#60): it is right
+  only after the node's retention commitment for the subject lapses, and no node publishes one.
 
 `pack` takes `07-ask/` with the rest of the day's findings.
 
