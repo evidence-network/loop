@@ -1,0 +1,9 @@
+{
+  "coverage": {
+    "min_freshness": 1
+  },
+  "profile": "evidence-interop/0",
+  "subject": {
+    "checkpoints": null
+  }
+}

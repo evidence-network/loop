@@ -1,0 +1,76 @@
+{
+  "stevenmih-3": [
+    {
+      "checks": {
+        "cites_halves": {
+          "detail": "both halves 40e756a16f1beca849c0c689a1cb849c6a314c2dd6bd2ddb38dc203ccd110523, ba238dadba64150f2add344e7db88139df02c42aee1cb066bcadc822b99b22db resolve by digest in the party's book, each signed by the node the Result names for it",
+          "ok": true
+        },
+        "matches_issued": {
+          "detail": "the referee holds the same Result bytes and its adjudication_issued record cites the Result and both halves",
+          "ok": true
+        },
+        "recorded_received": {
+          "detail": "record cc517a37833bbb625f6930a9261c59f0b3282a032a017e0b23f711ba2cd415c6 cites Result 4df68071dfc59899edbf6fdb23f9ae527317b351b4182cd9acad1583039a6f1d under the party's key, with its facts",
+          "ok": true
+        },
+        "referee_signed": {
+          "detail": "signed by referee 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9's announced key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26; the party asked it about this pair",
+          "ok": true
+        },
+        "result_is_adjudication": {
+          "detail": "schema 'capsule-emit-mesh/adjudication/v1', ruling 'contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94'",
+          "ok": true
+        },
+        "result_signed": {
+          "detail": "Result 4df68071dfc59899edbf6fdb23f9ae527317b351b4182cd9acad1583039a6f1d: capsule_id recomputes; signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+          "ok": true
+        }
+      },
+      "half_node_ids": [
+        "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
+        "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864"
+      ],
+      "held": 1,
+      "referee_node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "verdict": "contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
+      "verdict_capsule_id": "4df68071dfc59899edbf6fdb23f9ae527317b351b4182cd9acad1583039a6f1d"
+    },
+    {
+      "checks": {
+        "cites_halves": {
+          "detail": "both halves 3567debc1daf84c41c8b61e8e4bd0502f7e6422ee66ca99dab2656f2809b6bc1, 6b119324afa952b1cfb05da2c2625c779aa8b9c7500373beeb2357545b1bb798 resolve by digest in the party's book, each signed by the node the Result names for it",
+          "ok": true
+        },
+        "matches_issued": {
+          "detail": "the referee holds the same Result bytes and its adjudication_issued record cites the Result and both halves",
+          "ok": true
+        },
+        "recorded_received": {
+          "detail": "record a1e8326f7031b063bc79dcd12e81aa7a4beab3aa2e467090a16dfbacf85081c5 cites Result 02439259e086495920ed308624073268b0144433f02afa20cf50ba0d2984e7b7 under the party's key, with its facts",
+          "ok": true
+        },
+        "referee_signed": {
+          "detail": "signed by referee 91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9's announced key 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26; the party asked it about this pair",
+          "ok": true
+        },
+        "result_is_adjudication": {
+          "detail": "schema 'capsule-emit-mesh/adjudication/v1', ruling 'contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94'",
+          "ok": true
+        },
+        "result_signed": {
+          "detail": "Result 02439259e086495920ed308624073268b0144433f02afa20cf50ba0d2984e7b7: capsule_id recomputes; signed by 6216dcc48158cdb961a544f30201796aa3401ea58a295f359fc2000c040b9e26",
+          "ok": true
+        }
+      },
+      "half_node_ids": [
+        "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
+        "0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94"
+      ],
+      "held": 2,
+      "referee_node_id": "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9",
+      "verdict": "contradicted:0ab1b0bb93c21ccb4b7a5fff63ce05b346719658ffe9bcb989993cb0132edd94",
+      "verdict_capsule_id": "02439259e086495920ed308624073268b0144433f02afa20cf50ba0d2984e7b7"
+    }
+  ]
+}
