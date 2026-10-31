@@ -335,6 +335,21 @@ class Step05BindingCheckTest(unittest.TestCase):
         (self.dir / "nodes").mkdir()
         os.environ["LOOP_NODES_DIR"] = str(self.dir / "nodes")
         self.addCleanup(os.environ.pop, "LOOP_NODES_DIR")
+        # Revocation statements are read from main as it stood at the step's start: a scratch repository's main.
+        os.environ["LOOP_REVOCATIONS_GIT"] = str(self.dir)
+        self.addCleanup(os.environ.pop, "LOOP_REVOCATIONS_GIT")
+        self.git("init", "-q", "-b", "main")
+        self.commit("2026-10-01T00:00:00Z", "start", "--allow-empty")
+
+    def git(self, *args, date=None):
+        env = dict(os.environ, **({"GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date} if date else {}))
+        subprocess.run(["git", "-C", str(self.dir), "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-c",
+                        "commit.gpgsign=false", *args], check=True, capture_output=True, env=env)
+
+    def commit(self, date, msg, *extra):
+        if (self.dir / "nodes" / "revocations").is_dir():
+            self.git("add", "nodes/revocations")
+        self.git("commit", "-qm", msg, *extra, date=date)
 
     def check(self, case, file=True, listed=True, digest=None, key=None, times=("2026-10-30T00:00:00Z",),
               started="2026-10-31T00:00:00Z"):
@@ -354,15 +369,45 @@ class Step05BindingCheckTest(unittest.TestCase):
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "ok", detail)
         # CB-1 option A: with no file published, the run declares the empty list complete as of the step's start.
-        self.assertIn("signatures and window PASS, revocation PASS: no statement applies in the list "
-                      "evidence-network/loop step 05, run started 2026-10-31T00:00:00Z declared complete as of "
-                      f"2026-10-31T00:00:00Z under profile {step.bv.PROFILE} (list sha256 "
-                      f"{hashlib.sha256(b'[]').hexdigest()})", detail)
+        self.assertIn(self.passed(b"[]"), detail)
+
+    def passed(self, octets, started="2026-10-31T00:00:00Z"):
+        """The revocation PASS text for the list `octets` that main held at `started`."""
+        main = step.bv.main_commit(self.dir, started)
+        return (f"revocation PASS: no statement applies in the list evidence-network/loop step 05 (run started "
+                f"{started}), nodes/revocations/ at main {main} declared complete as of {started} under profile "
+                f"{step.bv.PROFILE} (list sha256 {hashlib.sha256(octets).hexdigest()}); a statement made after "
+                f"{started} is not excluded")
+
+    def test_a_revocation_on_a_branch_is_read_only_once_merged_and_one_dropped_on_a_branch_still_counts(self):
+        # Sherlock2 (loop#239): the list is main's at the step's start, never the checked-out branch's.
+        digest = self.publish_revocations("valid-same-controller")
+        self.git("checkout", "-qb", "branch")
+        (self.dir / "nodes" / "revocations" / f"{digest}.json").unlink()
+        self.commit("2026-10-20T00:00:00Z", "drop it on a branch")
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "bad", detail)  # main still holds the statement
+        self.assertIn("controller_binding_revocation FAIL", detail)
+        self.git("checkout", "-q", "main")
+        self.git("checkout", "-qb", "other")
+        (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
+        self.git("rm", "-q", f"nodes/revocations/{digest}.json")
+        self.commit("2026-10-21T00:00:00Z", "drop it on another branch")
+        self.git("checkout", "-q", "main")
+        self.git("rm", "-q", f"nodes/revocations/{digest}.json")
+        self.commit("2026-11-02T00:00:00Z", "dropped on main after the start")
+        self.assertEqual(self.check("valid-same-controller")[0], "bad")  # main at the start held it
+
+    def test_with_no_main_to_read_from_revocation_is_open(self):
+        self.git("branch", "-qm", "main", "not-main")
+        state, detail = self.check("valid-same-controller")
+        self.assertEqual(state, "open", detail)
+        self.assertIn("no main commit at or before 2026-10-31T00:00:00Z", detail)
 
     def test_a_half_issued_after_the_steps_start_leaves_revocation_open(self):
         state, detail = self.check("valid-same-controller", started="2026-10-29T00:00:00Z")
         self.assertEqual(state, "open", detail)
-        self.assertIn("revocation NOT_CHECKED: the declaration does not count (as_of is earlier than a time asked "
+        self.assertIn("revocation NOT_CHECKED: the verifier rejected the declaration (as_of is earlier than a time asked "
                       "about)", detail)
 
     # revocation statements published at nodes/revocations/<digest>.json (loop#138)
@@ -371,6 +416,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         (self.dir / "nodes" / "revocations").mkdir(exist_ok=True)
         statements = [json.loads(REVOCATIONS[case])] if statements is None else statements
         (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text(json.dumps(statements))
+        self.commit("2026-10-15T00:00:00Z", "publish", "--allow-empty")  # merged to main before the step starts
         return digest
 
     def test_a_published_revocation_before_the_halfs_time_makes_the_binding_not_apply(self):
@@ -393,9 +439,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         self.assertEqual(state, "ok", detail)
         digest = binding_digest(BINDINGS["valid-same-controller"]["binding"])
         listed = (self.dir / "nodes" / "revocations" / f"{digest}.json").read_bytes()
-        self.assertIn(f"revocation PASS: no statement applies in the list evidence-network/loop step 05, run started "
-                      f"2026-10-31T00:00:00Z declared complete as of 2026-10-31T00:00:00Z under profile "
-                      f"{step.bv.PROFILE} (list sha256 {hashlib.sha256(listed).hexdigest()})", detail)
+        self.assertIn(self.passed(listed), detail)
 
     def test_a_statement_whose_signature_does_not_verify_does_not_apply(self):
         statement = json.loads(REVOCATIONS["valid-same-controller"])
@@ -419,7 +463,7 @@ class Step05BindingCheckTest(unittest.TestCase):
                 step.bv.read_revocations(folder / name)
             self.assertIn(why, str(e.exception))
             (folder / name).unlink()
-        self.assertEqual(step.bv.revocation_list(self.dir / "nodes", digest, "2026-10-31T00:00:00Z", "t")["list"], "[]")
+        self.assertEqual(step.bv.checkout_list(self.dir / "nodes", digest), "[]")
         # a repeated member, at the top or nested in a bip340 sig, is refused rather than read as its last value
         text = json.dumps(good)
         for dup in (text.replace('"revoked_at":', '"revoked_at": "2026-01-01T00:00:00Z", "revoked_at":', 1),
@@ -430,7 +474,7 @@ class Step05BindingCheckTest(unittest.TestCase):
             self.assertIn("repeated member", str(e.exception))
         (folder / f"{digest}.json").write_text("not json")
         with self.assertRaises(ValueError):
-            step.bv.revocation_list(self.dir / "nodes", digest, "2026-10-31T00:00:00Z", "t")
+            step.bv.checkout_list(self.dir / "nodes", digest)
         import check_revocations
         self.assertEqual(len(check_revocations.check(folder)), 1)
         (folder / f"{digest}.json").write_text(json.dumps([good]))
@@ -463,6 +507,7 @@ class Step05BindingCheckTest(unittest.TestCase):
         # loop#194: a malformed nodes/revocations/<digest>.json is a FAIL with a reason, not a stopped step
         digest = self.publish_revocations("valid-same-controller", [])
         (self.dir / "nodes" / "revocations" / f"{digest}.json").write_text("not json")
+        self.commit("2026-10-16T00:00:00Z", "break")
         state, detail = self.check("valid-same-controller")
         self.assertEqual(state, "bad", detail)
         self.assertIn("the published revocation statements are unreadable", detail)
@@ -576,7 +621,7 @@ class Step05BindingCheckTest(unittest.TestCase):
             "revocation of the controller bindings that apply", step.BINDING_REVOCATION_ISSUE)])
         self.assertEqual(len(es), 3)
         # the key's role is checked by binding_check (AAC#468, loop#196), and revocation PASSes on the run's declared
-        # snapshot (CB-1 option A): a binding that applies leaves nothing; one whose declaration did not count, CB-1
+        # snapshot (CB-1 option A): a binding that applies leaves nothing; one whose declaration the verifier rejected, CB-1
         self.assertEqual(step.live_declarations({"ok": 1}, set()), [])
         self.assertEqual([e["issue"] for e in step.live_declarations({"open": 1}, set())],
                          [step.BINDING_REVOCATION_ISSUE])

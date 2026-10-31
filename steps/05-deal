@@ -78,7 +78,9 @@ for the binding at `nodes/revocations/<binding_digest>.json` (loop#138, `scripts
 verifier with it, so a binding revoked at or before either time does not apply. Under CB-1 option A (Controller
 Binding v0 §5.1, agent-action-capsule#495) the run declares that list complete (`[]` when the folder holds no file
 for the binding) as of the step's start, and the verifier reports revocation PASS when no statement in that snapshot
-applies: the loop run's statement, scoped to the snapshot. A declaration that does not count (a half or citing
+applies: the loop run's statement, scoped to the snapshot. The list is the file as main held it at the step's start
+(`origin/main`, first parent), whose commit the declaration names, so a branch cannot drop a statement from its own
+head. If the verifier rejects the declaration (a half or citing
 record issued after the step's start) leaves revocation a not_checked entry (loop#240). A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
 not_checked entry. A revocations file that cannot be read makes the binding not apply, a FAIL with that reason
@@ -346,7 +348,8 @@ LIVE_DECLARATION_WHAT = "the controller binding a node accepted a half under"
 DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a role, `delegator`
 # CB-1 (option A, agent-action-capsule#495): the run declares nodes/revocations/<digest>.json (loop#138) complete as
 # of the step's start (scripts/binding_verify.py); revocation is PASS on that snapshot, FAIL when a statement in it
-# applies, and NOT_CHECKED when the declaration does not count: a time asked about after the step's start.
+# applies, and NOT_CHECKED when the verifier rejects the declaration (a time asked about after the step's start) or
+# the clone holds no main to read the list from.
 BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
 
 
@@ -354,7 +357,7 @@ def live_declarations(counts, unread):
     """The not_checked entries for the controller binding behind current-build halves cited with a binding
     digest: `counts` is {state: n} of binding_check, `unread` the reasons a binding could not be read. A binding
     that applies with revocation PASS (ok) needs none; one that applies with revocation NOT_CHECKED (open: the
-    run's declaration did not count) is named on loop#240."""
+    verifier rejected the run's declaration) is named on loop#240."""
     out = []
     if counts.get("unread"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,
@@ -365,8 +368,9 @@ def live_declarations(counts, unread):
                            f"implement"})
     if counts.get("open"):
         out.append({"what": "revocation of the controller bindings that apply", "issue": BINDING_REVOCATION_ISSUE,
-                    "why": f"{counts['open']} cited bindings apply, with revocation NOT_CHECKED: the run's declaration "
-                           f"that nodes/{bv.REVOCATIONS}/ is complete as of the step's start did not count"})
+                    "why": f"{counts['open']} cited bindings apply, with revocation NOT_CHECKED: the verifier rejected the "
+                           f"run's declaration that nodes/{bv.REVOCATIONS}/ is complete as of the step's start, or "
+                           f"the clone holds no main to read it from"})
     return out
 
 
@@ -436,6 +440,12 @@ STRIPPED = ("capsule_id", "signature", "key_id")
 
 def cross_language():
     return tools_dir() / "01-seal" / "bin" / "cross_language"
+
+
+def revocations_root():
+    """The git repository whose main the revocation statements are read from (LOOP_REVOCATIONS_GIT, else this
+    clone): main as it stood at the step's start, never the checked-out branch."""
+    return Path(os.environ.get("LOOP_REVOCATIONS_GIT", ROOT))
 
 
 def live_tools(bin_):
@@ -617,9 +627,10 @@ def binding_check(digest, half, citing, peers, started):
     delegated_by binding the half's key must be the delegate, not the delegator (AAC#468). The revocation
     statements published for the binding (nodes/revocations/<digest>.json, loop#138) go to the verifier with it: one
     that applies at or before either time makes the binding not apply ("bad"), and so does a file that cannot be
-    read (loop#194). The run declares that list complete as of `started`, the step's start (CB-1 option A).
+    read (loop#194). The list is the file as main held it at `started`, the step's start (bv.main_list), and the run
+    declares it complete as of that time (CB-1 option A).
 
-    state: "ok" (revocation PASS on that snapshot); "open" (it applies, but the declaration did not count, so
+    state: "ok" (revocation PASS on that snapshot); "open" (it applies, but the verifier rejected the declaration, so
     revocation is NOT_CHECKED); "bad" (the binding the record names does not apply, does not name the half's key, names it as the
     delegator of a delegated_by binding, or its published revocation statements are unreadable);
     "unread"
@@ -644,7 +655,12 @@ def binding_check(digest, half, citing, peers, started):
         return "unread", "the half or the citing record carries no readable timestamp to hold the window to"
     times = sorted(set(issued))
     try:
-        listing = bv.revocation_list(nodes_dir(), digest, started, f"evidence-network/loop step 05, run started {started}")
+        commit, text = bv.main_list(revocations_root(), digest, started)
+        listing = bv.revocation_list(digest, text, started, f"evidence-network/loop step 05 (run started {started}), "
+                                                            f"nodes/{bv.REVOCATIONS}/ at main {commit}")
+        no_list = None
+    except LookupError as e:  # no main to read the merged list from: no declaration, so revocation stays open
+        listing, no_list = None, str(e)
     except ValueError as e:  # a malformed nodes/revocations/<digest>.json: fail closed, with a verdict
         return "bad", f"binding {digest} ({name}): the published revocation statements are unreadable ({e})"
     verdict, report, err, code = bv.verify(cross_language(), raw, key, times, listing)
@@ -666,6 +682,8 @@ def binding_check(digest, half, citing, peers, started):
         return "unsupported", f"binding {digest} ({name}): {', '.join(f'{k} {s}' for k, s in sorted(props.items()) if s == 'NOT_CHECKED')}"
     role = "as the delegate" if report.get("claim") == DELEGATED_BY else f"({report.get('claim')}: no role)"
     revoked, said = bv.revocation(report)
+    if no_list:
+        said += f": {no_list}"
     return "ok" if revoked == "PASS" else "open", (
         f"binding {digest} ({name}) names the half's key {key} {role} and applies at {', '.join(times)}: form, "
         f"signatures and window PASS, {said}")

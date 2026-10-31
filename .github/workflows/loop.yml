@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # main's history: steps 05 and 12 read nodes/revocations/ as main held it at a run's start, and step 08
+          # re-derives live 05 (and 03's carrier commit) from it.
+          fetch-depth: 0
       # capsulectl and capsulectl-book are built from source at their pin (steps/12-join.setup.sh).
       - uses: actions/setup-go@v5
         with:

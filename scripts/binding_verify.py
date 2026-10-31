@@ -12,7 +12,7 @@ CB-1 (option A, Controller Binding v0 §5.1, §9.4, agent-action-capsule#495): t
 folder complete for the binding as of the time it evaluates, and passes that declaration to the verifier with the
 list's exact octets. A binding the repository publishes nothing for is the empty list `[]`, declared complete. The
 verifier then reports revocation PASS when no statement in that snapshot applies at the times asked about: the
-loop run's statement, scoped to the snapshot (`list_digest`, `as_of`). A declaration that does not count (it is
+loop run's statement, scoped to the snapshot (`list_digest`, `as_of`). A declaration the verifier rejects (it is
 stale, or earlier than a time asked about) leaves revocation NOT_CHECKED, with the verifier's reason.
 
 The loop profile is stricter than CB §9.4 about its own folder: a published file that is not a revocations file
@@ -67,20 +67,60 @@ def read_revocations(path, text=None):
     return [json.dumps(s, separators=(",", ":"), sort_keys=True) for s in doc]
 
 
-def revocation_list(nodes_dir, digest, as_of, asserted_by):
-    """The `revocation_list` the loop run passes for binding `digest` (CB-1 option A): the exact octets of
-    `nodes_dir`/revocations/<digest>.json, or `[]` when the repository publishes none, and the run's declaration
-    that the list is complete as of `as_of` (the step's evaluation time, also `evaluated_at`). Raises ValueError,
-    as read_revocations does, for a published file that is not a revocations file."""
+def checkout_list(nodes_dir, digest):
+    """The exact text of `nodes_dir`/revocations/<digest>.json in this checkout, `[]` when there is none. Raises
+    ValueError, as read_revocations does, for a file that is not a revocations file. The rehearsal reads its
+    fixtures' folder this way; a live run reads main (main_list)."""
     path = Path(nodes_dir) / REVOCATIONS / f"{digest}.json"
-    if HEX64.match(str(digest)) and path.exists():
-        try:  # read once: the octets checked are the octets hashed and sent
-            text = path.read_bytes().decode("utf-8")
-        except (OSError, ValueError) as e:
-            raise ValueError(f"{path.name}: not readable ({e})")
-        read_revocations(path, text)
-    else:
-        text = "[]"
+    if not (HEX64.match(str(digest)) and path.exists()):
+        return "[]"
+    try:  # read once: the octets checked are the octets hashed and sent
+        text = path.read_bytes().decode("utf-8")
+    except (OSError, ValueError) as e:
+        raise ValueError(f"{path.name}: not readable ({e})")
+    read_revocations(path, text)
+    return text
+
+
+def main_commit(root, at):
+    """The commit main held at `at` (YYYY-MM-DDTHH:MM:SSZ): the newest on the first-parent line of origin/main,
+    else main, no later than `at`, in the repository at `root`; None when there is none."""
+    for ref in ("origin/main", "main"):
+        r = subprocess.run(["git", "-C", str(root), "rev-list", "-1", "--first-parent", f"--before={at}", ref],
+                           capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    return None
+
+
+def main_list(root, digest, at):
+    """(commit, text) of nodes/revocations/<digest>.json as main held it at `at` (main_commit): a key holder's
+    statement counts in the loop once it is merged, so a branch cannot drop one from its own head. The text is `[]`
+    when that commit holds no file for the binding. Raises LookupError when there is no such commit (no main in
+    this clone, or none that old), ValueError for a file that is not a revocations file."""
+    commit = main_commit(root, at)
+    if commit is None:
+        raise LookupError(f"this clone holds no main commit at or before {at} to read nodes/{REVOCATIONS}/ from")
+    if not HEX64.match(str(digest)):
+        return commit, "[]"
+    path = f"nodes/{REVOCATIONS}/{digest}.json"
+    if subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{commit}:{path}"], capture_output=True).returncode:
+        return commit, "[]"
+    r = subprocess.run(["git", "-C", str(root), "show", f"{commit}:{path}"], capture_output=True)
+    try:
+        if r.returncode:
+            raise ValueError(r.stderr.decode(errors="replace").strip())
+        text = r.stdout.decode("utf-8")
+    except ValueError as e:
+        raise ValueError(f"{digest}.json at main {commit[:12]}: not readable ({e})")
+    read_revocations(Path(f"{digest}.json"), text)
+    return commit, text
+
+
+def revocation_list(digest, text, as_of, asserted_by):
+    """The `revocation_list` the loop run passes for binding `digest` (CB-1 option A): the list's exact `text`
+    (checkout_list or main_list) and the run's declaration that the list is complete as of `as_of` (the step's
+    evaluation time, also `evaluated_at`)."""
     declaration = {"profile": PROFILE, "asserted_by": asserted_by, "binding": digest,
                    "list_digest": hashlib.sha256(text.encode("utf-8")).hexdigest(), "as_of": as_of,
                    "max_age": MAX_AGE}
@@ -89,14 +129,14 @@ def revocation_list(nodes_dir, digest, as_of, asserted_by):
 
 def revocation(report):
     """(state, text) of the binding's revocation in a verifier report: PASS with the snapshot it is scoped to,
-    else the state (NOT_CHECKED, FAIL) with the verifier's reason the declaration did not count, if any."""
+    else the state (NOT_CHECKED, FAIL) with the verifier's reason the verifier rejected the declaration, if any."""
     state = (report.get("properties") or {}).get("controller_binding_revocation")
     rl = report.get("revocation_list") if isinstance(report.get("revocation_list"), dict) else {}
     if state == "PASS" and rl.get("counts") is True:
         return "PASS", (f"revocation PASS: no statement applies in the list {rl.get('asserted_by')} declared "
                         f"complete as of {rl.get('as_of')} under profile {rl.get('profile')} (list sha256 "
-                        f"{rl.get('list_digest')})")
-    why = (f": the declaration does not count ({rl.get('reason')}), for the list {rl.get('asserted_by')} declared "
+                        f"{rl.get('list_digest')}); a statement made after {rl.get('as_of')} is not excluded")
+    why = (f": the verifier rejected the declaration ({rl.get('reason')}), for the list {rl.get('asserted_by')} declared "
            f"complete as of {rl.get('as_of')} under profile {rl.get('profile')}" if rl.get("counts") is False else "")
     return state, f"revocation {state}{why}"
 
