@@ -595,6 +595,32 @@ class Step02ReceiptOfflineTest(unittest.TestCase):
         self.assertFalse(c["ok"])
         self.assertIn("not the one the bundle carries", c["detail"])
 
+    def test_another_nodes_receipt_fails_lab_check(self):
+        shutil.copy(self.out / "stevenmih-2" / "witness-status.json", self.node / "witness-status.json")
+        c = self.check()
+        self.assertFalse(c["ok"])
+        self.assertIn("does not verify under witness key", c["detail"])  # lab-check's own verdict, not only openssl's
+
+    def mark_and_judge(self):
+        for p in self.out.glob("*/inputs.json"):  # the live-8 receipts, judged as a run with the offline check
+            i = json.loads(p.read_text())
+            i["receipt_check"] = self.m.RECEIPT_CHECK
+            p.write_text(json.dumps(i, indent=2, sort_keys=True) + "\n")
+        pop = json.loads((ROOT / "population" / "live" / "population.json").read_text())
+        self.m.judge_live(pop, self.out, json.loads((self.out / "finding.json").read_text())["started"])
+        return json.loads((self.out / "finding.json").read_text())
+
+    def test_a_marked_run_without_the_driver_or_openssl_is_not_checked(self):
+        from unittest import mock
+        for tool in ("driver", "openssl_ed25519"):
+            with mock.patch.object(self.m, tool, return_value=None if tool == "driver" else False):
+                f = self.mark_and_judge()
+            self.assertEqual(f["result"], "NOT_CHECKED", tool)
+            self.assertTrue(any("witness receipt's signature" in x["what"] for x in f["not_checked"]), tool)
+            for name in ("stevenmih-1", "stevenmih-2", "stevenmih-3"):
+                checks = json.loads((self.out / name / "checks.json").read_text())["checks"]
+                self.assertNotIn("witness_signature", checks)
+
     def test_08_names_an_unmarked_run_and_holds_a_marked_one(self):
         (self.tmp / "run.json").write_text(json.dumps({"population": "live", "stage": "1",
                                                        "started": "2026-10-31T00:00:00Z", "steps": ["02", "08"]}))
@@ -610,15 +636,17 @@ class Step02ReceiptOfflineTest(unittest.TestCase):
         f, entries = verify()  # live-8 as found: before the offline check, its receipts are capsulectl's reading
         self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
         self.assertIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
-        for p in self.out.glob("*/inputs.json"):  # the same receipts, judged as a run with the offline check
-            i = json.loads(p.read_text())
-            i["receipt_check"] = self.m.RECEIPT_CHECK
-            p.write_text(json.dumps(i, indent=2, sort_keys=True) + "\n")
-        pop = json.loads((ROOT / "population" / "live" / "population.json").read_text())
-        self.m.judge_live(pop, self.out, json.loads((self.out / "finding.json").read_text())["started"])
+        self.mark_and_judge()
         f, entries = verify()
         self.assertEqual(entries["02-book"]["status"], "reproduced", entries["02-book"]["problems"])
         self.assertNotIn(v.WITNESS_ISSUE, {x["issue"] for x in f["not_checked"]})
+        from unittest import mock
+        with mock_env(LOOP_STEP02_BOOK_BIN=str(self.tmp / "no-driver")):  # a marked run is never held on trust
+            _, entries = verify()
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced")
+        with mock.patch.object(v, "openssl_ed25519", return_value=False):
+            _, entries = verify()
+        self.assertEqual(entries["02-book"]["status"], "not_reproduced")
 
 
 class Step02ReceiptOpensslTest(unittest.TestCase):
@@ -627,12 +655,11 @@ class Step02ReceiptOpensslTest(unittest.TestCase):
     test witness gave, committed with their key in findings/2026-10-31-live-8/02-book; no driver is needed."""
 
     def setUp(self):
-        r = subprocess.run(["openssl", "version"], capture_output=True, text=True) if shutil.which("openssl") else None
-        if not (r and r.stdout.startswith("OpenSSL ") and int(r.stdout[8:].split(".")[0]) >= 3):
-            self.skipTest("openssl 3.0 or later is not installed")
         loader = importlib.machinery.SourceFileLoader("step02_openssl", str(ROOT / "steps" / "02-book"))
         self.m = importlib.util.module_from_spec(importlib.util.spec_from_loader("step02_openssl", loader))
         loader.exec_module(self.m)
+        if not self.m.openssl_ed25519():
+            self.skipTest("openssl 3.0 or later is not installed")
         self.key = json.loads((LIVE8_02 / "witnesses.json").read_text())["witnesses"][0]["key_id"]
         self.nodes = sorted(p.parent for p in LIVE8_02.glob("*/witness-status.json"))
 
@@ -665,6 +692,20 @@ class Step02ReceiptOpensslTest(unittest.TestCase):
     def test_another_nodes_receipt_fails(self):
         other = json.loads((self.nodes[1] / "witness-status.json").read_text())["receipt"]
         self.assertFalse(self.held(self.nodes[0], receipt=other)[0])
+
+    def test_a_receipt_not_for_a_one_entry_tree_fails(self):
+        receipt = json.loads((self.nodes[0] / "witness-status.json").read_text())["receipt"]
+        for k, v in (("TreeSize", 2), ("LeafIndex", 5)):
+            ok, detail = self.held(self.nodes[0], receipt=dict(receipt, **{k: v}))
+            self.assertFalse(ok, k)
+            self.assertIn("one-entry", detail)
+
+    def test_the_signing_body_is_written_as_cll_writes_it(self):
+        # checkpointed-local-log's json_escape: below 0x20 and from 0x7f up as lowercase \\uXXXX, a surrogate pair
+        # beyond the BMP, the usual short escapes.
+        self.assertEqual(self.m.cll_json('a"\\\n\x01\x7fé\U0001f600'),
+                         '"a\\"\\\\\\n\\u0001\\u007f\\u00e9\\ud83d\\ude00"')
+        self.assertEqual(self.m.cll_json(97), "97")
 
 
 def mock_env(**values):

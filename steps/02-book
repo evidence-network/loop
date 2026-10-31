@@ -52,8 +52,9 @@ The driver signs lab receipts with the same Rust crates, so the signature is
 also checked apart from them: this step rebuilds the receipt's signed bytes
 from bundle.json's checkpoint (its digest, the entry hash and the RFC 9162
 leaf) and openssl verifies the Ed25519 signature under the listed key. Without
-the driver or openssl 3 the receipt's signature is a not_checked entry. A run marks
-this in inputs.json (receipt_check); an older run's receipt is judged as it was. A book with no witness configured, or one whose
+the driver or openssl 3 the receipt's signature is a not_checked entry. A run
+marks this in inputs.json (receipt_check); an older run's receipt is judged as
+it was. A book with no witness configured, or one whose
 witness has not answered (capsulectl state `pending`), is NOT_CHECKED for the witness part; a delivery capsulectl
 reports `failed` (a receipt the book rejects, or a refused request) is a FAIL. A node whose
 data_dir or book_dir is not set or not readable is NOT_CHECKED, naming why (a
@@ -574,8 +575,10 @@ def judge_book(cap, out):
     where = f"node {name}: book {book_id}, sequence {appended.get('sequence')}, capsule {capsule_id}"
     if failed:
         return "FAIL", proof, f"{where}: did not hold: {'; '.join(failed)}", None
-    held = (f"{where}: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint "
-            f"status and this step's comparisons: {', '.join(checks)}.")
+    by = "capsulectl verify --bundle, capsulectl cll checkpoint status"
+    if "witness_signature" in checks:  # the receipt also rests on the step 02 driver and openssl (loop#219)
+        by += ", the step 02 driver's lab-check, openssl pkeyutl"
+    held = f"{where}: these held on the proof bytes, by {by} and this step's comparisons: {', '.join(checks)}."
     if gap:
         return "NOT_CHECKED", proof, f"{held} Witness part not checked.", gap
     return "PASS", proof, (f"{held} The receipt is from the lab test witness (lab/witness/witnesses.json), "
@@ -618,7 +621,7 @@ def receipt_signature(bin_, out, status, entries, bundle_cp):
     try:
         v = json.loads(r.stdout)
     except ValueError:
-        return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
+        v = None
     if r.returncode == 2 or not isinstance(v, dict):
         return {"ok": False, "detail": f"loop-step02-book lab-check exit {r.returncode}: {r.stderr.strip()[-200:]}"}
     stated = v.get("checkpoint") or {}
@@ -633,6 +636,11 @@ def receipt_signature(bin_, out, status, entries, bundle_cp):
 # The checkpoint record's signing body, in field order (checkpointed-local-log's CheckpointRecord::signing_body at
 # the pin); a decoded COSE checkpoint is always kind mmr_checkpoint, v 1 (DecodedCheckpointCose::to_checkpoint_record).
 SIGNING_BODY = ("key_id", "kind", "log_id", "mmr_size", "prev_root", "prev_size", "root", "timestamp", "v")
+
+
+def cll_json(v):
+    """v as CLL's signing body writes it: Python's ensure_ascii JSON, except that json_escape also escapes DEL."""
+    return json.dumps(v).replace("\x7f", "\\u007f")
 
 
 def cbor_head(major, n):
@@ -656,8 +664,14 @@ def receipt_openssl(receipt, key_id, bundle_cp):
             return False, "openssl: the receipt is not a detached COSE_Sign1"
         if cbor(protected)[0].get(1) != -8:
             return False, "openssl: the receipt's algorithm is not EdDSA"
+        # The signed payload is the leaf itself only in a one-entry tree, which is what the lab witness signs: an
+        # inclusion proof of tree size 1, leaf 0 and no path (RFC 9162 receipt, label 396).
+        proofs = msg[1][396][-1]
+        if not (len(proofs) == 1 and cbor(proofs[0])[0] == [1, 0, []]
+                and receipt.get("TreeSize") == 1 and receipt.get("LeafIndex") == 0):
+            return False, "openssl: the receipt is not a one-entry receipt (tree size 1, leaf 0, no path)"
         rec = dict(bundle_cp, kind="mmr_checkpoint", v=1)
-        body = "{" + ",".join(f"{json.dumps(k)}:{json.dumps(rec[k], ensure_ascii=False)}" for k in SIGNING_BODY) + "}"
+        body = "{" + ",".join(f"{json.dumps(k)}:{cll_json(rec[k])}" for k in SIGNING_BODY) + "}"
     except (KeyError, ValueError, IndexError, TypeError, AttributeError) as e:
         return False, f"openssl: the receipt or the bundle's checkpoint could not be read ({e})"
     entry = hashlib.sha256(hashlib.sha256(body.encode()).digest()).digest()
