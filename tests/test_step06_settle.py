@@ -12,6 +12,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -439,16 +440,21 @@ class Step06SettleTest(unittest.TestCase):
                                             amount_msat=amount, credited_msat=credited, fee_msat=payee_fee))
         return rows
 
-    def checks_dir(self, status="PASS", pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1"))):
+    def checks_dir(self, status="PASS", paired=2,
+                   pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1"))):
+        """lab.sh bundles' output: per (node, peer), the peer's bundle file and the node's check of it."""
         d = Path(self.tmp.name) / "bundles"
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir()
         ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
         for me, peer in pairs:
+            bundle = d / f"{peer}.for.{me}.json"
+            bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": [{"preimage": "SECRET-IN-BUNDLE"}]}}))
             dump(d / f"check.{ids[me]}.{ids[peer]}.json", {
-                "node_id": ids[me], "peer_node_id": ids[peer], "bundle_sha256": "b" * 64,
-                "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": 2, "unpaired": []},
-                           "disclosed_count": {"settlements": 2},
+                "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
+                "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": paired, "unpaired": []},
+                           "disclosed_count": {"settlements": paired},
                            "settlements": [{"preimage": "SECRET-IN-BUNDLE-REPORT"}]}})
         return d
 
@@ -479,10 +485,11 @@ class Step06SettleTest(unittest.TestCase):
             "counterparty_count:stevenmih-1": True, "counterparty_count:stevenmih-2": True, "public_ledger_count": None})
         self.assertIn("stevenmih-2 payer BTC decade -8", checks["band"]["detail"])  # 1,000 msat = 1 sat, per exchange
         rows = json.loads((self.out / "counterparty.json").read_text())
-        self.assertEqual({(x["node"], x["peer"], x["status"], x["bundle_sha256"]) for x in rows},
-                         {("stevenmih-1", "stevenmih-2", "PASS", "b" * 64), ("stevenmih-2", "stevenmih-1", "PASS", "b" * 64)})
+        self.assertEqual({(x["node"], x["peer"], x["status"], x["paired"]) for x in rows},
+                         {("stevenmih-1", "stevenmih-2", "PASS", 2), ("stevenmih-2", "stevenmih-1", "PASS", 2)})
+        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", x["bundle_sha256"]) for x in rows))
         out = "".join(f.read_text() for f in self.out.rglob("*") if f.is_file())
-        self.assertNotIn("SECRET-IN-BUNDLE-REPORT", out)  # only counts and the digest leave the check file
+        self.assertNotIn("SECRET-IN-BUNDLE", out)  # only counts and the digest leave the bundle and check files
         self.assertNotIn("01" * 32, out)  # nor any preimage
         self.assert_clean()
 
@@ -508,6 +515,43 @@ class Step06SettleTest(unittest.TestCase):
                 r = self.lightning(rows, self.checks_dir(status=checks))
                 self.assertEqual(r["result"], "FAIL", r["detail"])
                 self.assertIs(self.judged()[failed]["ok"], False, self.judged()[failed])
+
+    def test_lightning_does_not_pass_on_a_check_older_than_the_books(self):
+        # A third payment after lab.sh bundles: the check files still pair 2, so counterparty_count is not checked.
+        r = self.lightning(self.paid(n=3), self.checks_dir(paired=2))
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIsNone(self.judged()["counterparty_count:stevenmih-1"]["ok"])
+        self.assertIn("predates a payment", self.judged()["counterparty_count:stevenmih-1"]["detail"])
+
+    def test_lightning_does_not_pass_on_a_bundle_changed_since_its_check(self):
+        d = self.checks_dir()
+        (d / "stevenmih-2.for.stevenmih-1.json").write_text("{}")
+        r = self.lightning(self.paid(), d)
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertIn("missing or changed", self.judged()["counterparty_count:stevenmih-1"]["detail"])
+
+    def test_lightning_fails_on_any_counterparty_check_that_fails(self):
+        # A failing check for a pair that has no payment in the books still counts.
+        r = self.lightning(self.paid(), self.both_dirs())
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIs(self.judged()["counterparty_count:stevenmih-3:stevenmih-1"]["ok"], False)
+
+    def both_dirs(self):
+        """The good checks for lab-1 and lab-2, plus a failing one of lab-3's book against lab-1's bundle."""
+        d = self.checks_dir()
+        ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
+        bundle = d / "stevenmih-1.for.stevenmih-3.json"
+        bundle.write_text("{}")
+        dump(d / f"check.{ids['stevenmih-3']}.{ids['stevenmih-1']}.json", {
+            "node_id": ids["stevenmih-3"], "peer_node_id": ids["stevenmih-1"], "bundle_file": bundle.name,
+            "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            "report": {"counterparty_count": {"status": "FAIL", "paired": 0, "unpaired": [{"h": 1}]}}})
+        return d
+
+    def test_lightning_fails_a_settlement_with_no_positive_amount(self):
+        r = self.lightning(self.paid(amount=-1000, credited=-1005), self.checks_dir())
+        self.assertEqual(r["result"], "FAIL")
+        self.assertIs(self.judged()["band"]["ok"], False)
 
     def test_lightning_finality_comes_from_the_payers_preimage(self):
         rows = self.paid(n=1)

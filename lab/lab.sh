@@ -52,8 +52,9 @@
 #             counterparty's bundle into check.<node id>.<peer node id>.json, which step 06 reads. The records carry
 #             each payment's preimage, so all of it stays on the host and never goes into findings or the pack; 06
 #             publishes only the counts and each bundle's sha256. Pays nothing
-#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: it lists each
-#             node's recorded settlements and is NOT_CHECKED while the lab has no rail. Pays nothing
+#   settle    steps/06-settle on population/live, into the same findings/<date>-live/: on the Lightning rail it
+#             judges the loop#243 checks over each node's recorded settlements and the check files bundles wrote
+#             (run bundles first, after the last paid exchange). Pays nothing
 #   twins     (LAB_TWINS=1) one real step 09 Result: the requester asks the referee once (so it holds a
 #             half from it), then sends the same temperature-0 request to twin A and twin B under one
 #             x-mesh-twin-bracket; twin B's config injects a different answer (see LAB_TWINS); waits for
@@ -945,7 +946,7 @@ PY
     for b in "${NODES[@]}"; do
       [ "$a" = "$b" ] && continue
       if [ "$DRY" = 1 ]; then
-        say curl -fsS -X POST "$(console "$a")/api/plugins/capsules/tools/settlement_check" -d "{\"counterparty_bundle\": <$b.for.$a.json bundle>}"
+        say python3 POST "$(console "$a")/api/plugins/capsules/tools/settlement_check" "{\"counterparty_bundle\": <$b.for.$a.json bundle>}"
         echo "  > $dir/check.<$a node_id>.<$b node_id>.json (0600), when $b.for.$a.json is a bundle"
         continue
       fi
@@ -963,8 +964,8 @@ req = urllib.request.Request(f"{console}/api/plugins/capsules/tools/settlement_c
 report = json.load(urllib.request.urlopen(req, timeout=120))
 path = os.path.join(out, f"check.{me}.{peer}.json")
 with open(path + ".tmp", "w") as f:
-    json.dump({"node_id": me, "peer_node_id": peer, "bundle_sha256": hashlib.sha256(raw).hexdigest(),
-               "report": report}, f, indent=2, sort_keys=True)
+    json.dump({"node_id": me, "peer_node_id": peer, "bundle_file": os.path.basename(src),
+               "bundle_sha256": hashlib.sha256(raw).hexdigest(), "report": report}, f, indent=2, sort_keys=True)
 os.replace(path + ".tmp", path)
 cc = report.get("counterparty_count") or {}
 print(f"{a} against {b}'s bundle: counterparty_count {cc.get('status')}, {cc.get('paired')} paired, "

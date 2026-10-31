@@ -33,10 +33,11 @@ and payee are declared under different controllers.
 On the live population no rail is verified: the lab nodes record their
 wallets' reports of Lightning payments (capsules plugin settlement legs and
 payment.lifecycle.v1 observations in <data_dir>/ledger/capsules.jsonl), not
-the rail's own settlement objects, and the lab has no rail. The pinned
-Lightning adapter (capsules-plugin lightning-v0) reports on the node's own book
-only. The step reads what each node recorded, lists it (recorded.json per
-node), and is NOT_CHECKED on that gap (evidence-network/loop#243).
+the rail's own settlement objects. The pinned Lightning adapter
+(capsules-plugin lightning-v0) reports on the node's own book only. The step
+reads what each node recorded and lists it (recorded.json per node). A live
+population that names no rail is NOT_CHECKED on that gap; one that names the
+Lightning rail is judged as below (evidence-network/loop#243).
 
 Where a settlement observation carries the payment's preimage, the step checks
 finality itself. The host passes the preimage with mesh-llm#2744 (open; the lab
@@ -473,6 +474,8 @@ def lightning_checks(found, ids, checks_dir):
     def put(name, ok, detail):
         checks[name] = {"ok": ok, "detail": detail}
     # 1. Reference: each book's terminal settlements name a payment_hash and an exchange_id, one exchange per hash.
+    # Per book: each side seals its own exchange id for the same payment (on the lab the payer's and the payee's ids
+    # differ for one hash), so one hash under two exchanges is checked within a book, and the books join by hash.
     missing, repeated = [], []
     for name, f in sorted(found.items()):
         by_hash = {}
@@ -501,15 +504,17 @@ def lightning_checks(found, ids, checks_dir):
     for name, f in sorted(found.items()):
         sides = {}
         for o in terminal(f):
-            if isinstance(o.get("exchange_id"), str) and is_int(o.get("amount_msat")):
-                sides.setdefault((o["exchange_id"], o.get("observed_by")), {})[o.get("payment_hash")] = o["amount_msat"]
+            if not isinstance(o.get("exchange_id"), str):
+                continue
+            if not (is_int(o.get("amount_msat")) and o["amount_msat"] > 0):
+                zero.append(f"{name} settlement {o.get('capsule_id')} amount {o.get('amount_msat')!r}")
+                continue
+            sides.setdefault((o["exchange_id"], o.get("observed_by")), {})[o.get("payment_hash")] = o["amount_msat"]
         for (ex, side), amounts in sorted(sides.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
             b = band(sum(amounts.values()))
             bands.append({"node": name, "exchange_id": ex, "side": side, "band": b})
-            if b["decade"] is None:
-                zero.append(f"{name} {side} {ex}")
     put("band", False if zero else True if bands else None,
-        f"sides that settled nothing: {', '.join(zero)}" if zero else
+        f"settlements with no positive amount: {', '.join(zero)}" if zero else
         ", ".join(f"{b['node']} {b['side']} {b['band']['currency']} decade {b['band']['decade']}" for b in bands)
         if bands else "no side settled")
     # 4. A fee paid to a third party, per payment: some observation of the hash reports fee_msat > 0.
@@ -529,32 +534,54 @@ def lightning_checks(found, ids, checks_dir):
         "no payment to pair" if not cross["paired"] else
         f"{len(cross['paired'])} payments paired: the payer's amount equals the payee's credit plus fee")
     # 6. counterparty_count, from each counterparty's signed bundle, for every pair of nodes that settled together.
+    # A check counts only for the books 06 reads now: its bundle file still hashes to the digest the check recorded,
+    # and it paired as many payments as the two books pair here (else the check predates a later payment).
     rows = []
-    pairs = sorted({tuple(sorted((p["payer"], p["payee"]))) for p in cross["paired"].values()}
-                   | {tuple(sorted(why.split(" only")[0].removeprefix("recorded by ").split(", ")))
-                      for why in one_sided.values() if why.startswith("recorded by") and "," in why})
-    for a, b in pairs:
-        for me, peer in ((a, b), (b, a)):
-            what = f"counterparty_count:{me}"
-            path = checks_dir / f"check.{ids.get(me)}.{ids.get(peer)}.json" if checks_dir else None
-            try:
-                doc = json.loads(path.read_text(encoding="utf-8")) if path else None
-                cc = doc["report"]["counterparty_count"] if doc else None
-            except (OSError, ValueError, KeyError, TypeError):
-                doc, cc = None, None
-            if not isinstance(cc, dict) or doc.get("node_id") != ids.get(me) or doc.get("peer_node_id") != ids.get(peer):
-                put(what, None, f"no check of {me}'s book against {peer}'s signed bundle (run lab/lab.sh bundles)")
-                continue
-            status = cc.get("status")
-            disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
-            unpaired = len(cc.get("unpaired") or [])
-            rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"),
-                         "paired": cc.get("paired"), "unpaired": unpaired, "disclosed_settlements": disclosed,
-                         "bundle_sha256": doc.get("bundle_sha256")})
-            put(what, True if status == "PASS" else False if status == "FAIL" else None,
-                f"{me}'s {disclosed} settlements against {peer}'s signed bundle (sha256 {str(doc.get('bundle_sha256'))[:12]}): "
-                f"{status}, {cc.get('paired')} paired, {unpaired} unpaired")
-    if not pairs:
+    pair_hashes = {}
+    for p in cross["paired"].values():
+        pair_hashes.setdefault(tuple(sorted((p["payer"], p["payee"]))), 0)
+        pair_hashes[tuple(sorted((p["payer"], p["payee"])))] += 1
+    by_id = {v: k for k, v in ids.items() if v}
+    wanted = {(me, peer) for a, b in pair_hashes for me, peer in ((a, b), (b, a))}
+    present = set()
+    if checks_dir and checks_dir.is_dir():
+        for f in sorted(checks_dir.glob("check.*.*.json")):
+            parts = f.name.split(".")
+            if len(parts) == 4 and parts[1] in by_id and parts[2] in by_id:
+                present.add((by_id[parts[1]], by_id[parts[2]]))
+    for me, peer in sorted(wanted | present):
+        what = f"counterparty_count:{me}" + ("" if (me, peer) in wanted else f":{peer}")
+        path = checks_dir / f"check.{ids.get(me)}.{ids.get(peer)}.json" if checks_dir else None
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8")) if path else None
+            cc = doc["report"]["counterparty_count"] if doc else None
+        except (OSError, ValueError, KeyError, TypeError):
+            doc, cc = None, None
+        if not isinstance(cc, dict) or doc.get("node_id") != ids.get(me) or doc.get("peer_node_id") != ids.get(peer):
+            put(what, None, f"no check of {me}'s book against {peer}'s signed bundle (run lab/lab.sh bundles)")
+            continue
+        bundle_file = checks_dir / str(doc.get("bundle_file"))
+        try:
+            digest = hashlib.sha256(bundle_file.read_bytes()).hexdigest() if doc.get("bundle_file") else None
+        except OSError:
+            digest = None
+        status, paired = cc.get("status"), cc.get("paired")
+        disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
+        unpaired = len(cc.get("unpaired") or [])
+        rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"), "paired": paired,
+                     "unpaired": unpaired, "disclosed_settlements": disclosed, "bundle_sha256": doc.get("bundle_sha256")})
+        expected = pair_hashes.get(tuple(sorted((me, peer))), 0)
+        if status == "FAIL":
+            put(what, False, f"{me}'s book contradicts {peer}'s signed bundle: {unpaired} unpaired")
+        elif digest is None or digest != doc.get("bundle_sha256"):
+            put(what, None, f"{me}'s check names a bundle that is missing or changed since (run lab/lab.sh bundles)")
+        elif status != "PASS" or paired != expected:
+            put(what, None, f"{me}'s check of {peer}'s signed bundle reads {status} with {paired} paired, while the books "
+                            f"pair {expected} payments between them: the check predates a payment (run lab/lab.sh bundles)")
+        else:
+            put(what, True, f"{me}'s {disclosed} settlements against {peer}'s signed bundle (sha256 "
+                            f"{str(doc.get('bundle_sha256'))[:12]}): PASS, {paired} paired, {unpaired} unpaired")
+    if not pair_hashes:
         put("counterparty_count", None, "no two nodes settled with each other")
     checks["public_ledger_count"] = {"ok": None, "detail": "Lightning has no public ledger; the counterparty's signed "
                                      "book stands in (counterparty_count), and this gap stays named", "gap": True}
