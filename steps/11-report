@@ -82,6 +82,10 @@ _loader = importlib.machinery.SourceFileLoader("step10_judge_for_report", str(HE
 _spec = importlib.util.spec_from_loader(_loader.name, _loader)
 judge10 = importlib.util.module_from_spec(_spec)
 _loader.exec_module(judge10)
+# Step 05, for how it pairs a live exchange's two halves (exchange_key, paired_exchanges): read, never changed.
+_loader05 = importlib.machinery.SourceFileLoader("step05_deal_for_report", str(HERE / "05-deal"))
+step05 = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader05.name, _loader05))
+_loader05.exec_module(step05)
 
 SETUP_ISSUE = "evidence-network/loop: steps/11-report.setup.sh, run where 11 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs steps 08 and 10 before step 11"
@@ -237,6 +241,18 @@ def exchange_of(doc):
     return None
 
 
+def live_deals(source, hits):
+    """(deals, unpaired) of a live 05's cited host-served halves: an exchange is held on both nodes, each holding the
+    other's half, and the two are one deal (Sherlock2, loop#250). They are paired exactly as step 05 pairs them
+    (step05.exchange_key, paired_exchanges: one requested and one served half of one client_nonce on two nodes, with
+    the same output digest). Returns ({client_nonce}, [why a half pairs with none])."""
+    halves = {}
+    for r in hits:
+        node = r.split("/")[1]
+        halves.setdefault(node, []).append(step05.exchange_key(load(source / r)))
+    return step05.paired_exchanges(halves)
+
+
 def count_exchanges(source, cited, pack):
     """{"deals": {id: refs}, "exchanges": {id: refs}} from the cited records' contents; raises Refused on a bad digest."""
     found = {"deals": {}, "exchanges": {}}
@@ -258,8 +274,9 @@ def figure(fid, section, text, verdict, evidence):
     return {"id": fid, "section": section, "text": text, "verdict": verdict, "evidence": sorted(evidence)}
 
 
-def render_figures(manifest, finer, rollup, cited, pack, found):
-    """The page's figures. `evidence` holds record refs until the report Result is sealed."""
+def render_figures(manifest, finer, rollup, cited, pack, found, source=None):
+    """The page's figures. `evidence` holds record refs until the report Result is sealed. `source` is the run whose
+    files 08 lists, to hold a record to binding.json's `only` as step 10 does."""
     figures = []
     kinds = {nn: k["kind"] for nn, k in pack["kinds"].items()}
     steps = [e for e in manifest["steps"] if e["status"] == "reproduced" and e["step"] in kinds]
@@ -267,14 +284,27 @@ def render_figures(manifest, finer, rollup, cited, pack, found):
         mine = [e for e in steps if e["step"] == nn]
         # The same definition 10 judges by: a record is a primary record file (binding.json `records`), so a count means
         # deals, settlements, asks or disputes, not the bundles and proof files beside them.
-        refs = [f"{e['dir']}/{f['path']}" for e in mine for f in e.get("files", [])
-                if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
+        listed = [(e, f["path"]) for e in mine for f in e.get("files", [])
+                  if any(fnmatch.fnmatchcase(f["path"], g) for g in k["records"])]
+        if source is not None:
+            missing = [f"{e['dir']}/{p}" for e, p in listed if not (source / e["dir"] / p).is_file()]
+            if missing:
+                raise Refused(f"{', '.join(missing)}: listed by 08's manifest, not in the run")
+        refs = [f"{e['dir']}/{p}" for e, p in listed
+                if source is None or judge10.is_record(k, p, source / e["dir"] / p)]
         hit = [r for r in refs if r in cited]
         counted = any(t.get("counted") for t in k["terms"])
+        # A live 05's halves of one exchange (each node holds the other's) are one deal, never two (loop#250).
+        live = [r for r in hit if k.get("only") and any(fnmatch.fnmatchcase(r.split("/", 1)[1], g) for g in k["only"])]
+        deals, _ = live_deals(source, live) if live and source is not None else (set(), [])
+        lone = len(live) - 2 * len(deals)  # the halves in no pair (paired_exchanges' notes are per nonce, not half)
         figures.append(figure(
             f"count:{k['kind']}", "adjudications",
             f"{PLURAL[k['kind']]} {'counted as found' if counted else 'judged'}: {len(hit)} of {len(refs)} {k['kind']} "
-            f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps.",
+            f"records step 08 lists, from {sum(e['dir'] in finer for e in mine)} of {len(mine)} {k['kind']} steps"
+            + (f"; the live halves are {len(deals)} deal{'' if len(deals) == 1 else 's'}, one per exchange held on "
+               f"both nodes, each citing both halves" + (f" ({lone} half{'' if lone == 1 else 'ves'} pair{'s' if lone == 1 else ''} "
+                                                        "with no other node's half)" if lone else "") if live else "") + ".",
             "met", hit))
     for nn, k in pack["kinds"].items():
         dirs = sorted(d for d in finer if d[:2] == nn)
@@ -613,7 +643,7 @@ def report(run, out, population, pop, population_dir, proof, tmp, page=None, pre
         pack = judge10.load_pack()
     except judge10.NotChecked as e:
         raise NotChecked(*e.args)
-    figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack))
+    figures = render_figures(manifest, finer, rollup, cited, pack, count_exchanges(source, cited, pack), source)
     book, key = reporting_book(population, pop, population_dir / "step11" / "keys", tmp, capsulectl, preview)
     digests = {}
     for ref, sha in sorted(cited.items()):

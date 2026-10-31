@@ -327,7 +327,68 @@ class JudgeTest(Base):
         self.reseal_manifest(m)
         f = self.judge()
         self.assertEqual(f["result"], "FAIL", f["detail"])
-        self.assertIn("05-deal: 08 lists no deal record (deal.json)", f["detail"])
+        self.assertIn("05-deal: 08 lists no deal record (deal.json, */held-*[0-9].json)", f["detail"])
+
+    def live_05(self, settlement_leg=True):
+        """The base run's 05 as live 05 keeps it (loop#225): two nodes' held halves of one exchange (copied from
+        findings/2026-10-31-live-8), their citing and inclusion files, and, with `settlement_leg`, a settlement leg
+        a node also holds. No deal.json. Returns 08's manifest, resealed."""
+        m = self.manifest()
+        e05 = next(e for e in m["steps"] if e["dir"] == "05-deal")
+        d = self.run / "05-deal"
+        (d / "deal.json").unlink()
+        e05["files"] = [x for x in e05["files"] if x["path"] != "deal.json"]
+        live = ROOT / "findings" / "2026-10-31-live-8" / "05-deal"
+        files = {"lab-a/held-1.json": live / "stevenmih-1" / "held-1.json",
+                 "lab-a/held-1-citing.json": live / "stevenmih-1" / "held-1-citing.json",
+                 "lab-a/held-1-inclusion.json": live / "stevenmih-1" / "held-1-inclusion.json",
+                 "lab-b/held-1.json": live / "stevenmih-2" / "held-1.json"}
+        for name, src in files.items():
+            (d / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, d / name)
+        if settlement_leg:
+            leg = {**load(live / "stevenmih-1" / "held-1.json"), "action_id": "mesh/settlement/terms"}
+            dump(d / "lab-a" / "held-31.json", leg)
+        for name in sorted(str(p.relative_to(d)) for p in d.rglob("held-*.json")):
+            e05["files"].append({"path": name, "sha256": finding.sha256(d / name)})
+        self.reseal_manifest(m)
+        return m
+
+    def test_a_live_05_of_settlement_legs_only_has_no_deal_record_and_says_why(self):
+        m = self.live_05()
+        # A 05 whose held files are all settlement legs has no deal record, and says why.
+        for p in (self.run / "05-deal").rglob("held-1.json"):
+            dump(p, {**load(p), "action_id": "mesh/settlement/terms"})
+        for x in m["steps"]:
+            if x["dir"] == "05-deal":
+                for f in x["files"]:
+                    if f["path"].endswith("held-1.json"):
+                        f["sha256"] = finding.sha256(self.run / "05-deal" / f["path"])
+        self.reseal_manifest(m)
+        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertTrue(any("the 3 files matching those names are not deal records (binding.json `only`)" in x
+                            for x in problems), problems)
+
+    def test_live_05s_host_served_halves_are_its_deal_records_and_settlement_legs_are_not(self):
+        # Sherlock2 (loop#250): a held half is a deal record by what it is (a host-served capsule), never by its
+        # file name; a settlement leg held beside it is not a deal.
+        m = self.live_05()
+        records, refused, _, problems = step.select(self.run, m, *step.window_of(utc(load(
+            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        self.assertEqual(problems, [])
+        self.assertEqual(sorted(r["path"] for r in records if r["dir"] == "05-deal"),
+                         ["lab-a/held-1.json", "lab-b/held-1.json"])
+        self.assertTrue(any("05-deal/lab-a/held-31.json: not a deal record" in x for x in refused), refused)
+        kind = step.load_pack()["kinds"]["05"]
+        for name in ("a/b/held-1.json", "lab-a/held-1-2.json", "lab-a/held-x1.json", "lab-a/held-1-citing.json"):
+            self.assertFalse(step.is_record(kind, name, self.run / "05-deal" / "lab-a" / "held-1.json"), name)
+        if HAS_TOOLS:  # sealed and verified: each half cited by digest; the live halves carry model_attestation
+            f = self.judge()
+            self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+            self.assertEqual({x["issue"] for x in f["not_checked"]}, {step.GAP_ISSUE})
+            cited = {k for k in self.cited() if k.startswith("05-deal/")}
+            self.assertEqual(cited, {"05-deal/lab-a/held-1.json", "05-deal/lab-b/held-1.json"})
 
     def test_a_verdict_comes_from_the_result_08_rederived(self):
         m = self.manifest()
