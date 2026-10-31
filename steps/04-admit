@@ -670,9 +670,9 @@ def judge_live(pop, out, started):
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
-        node = nodes.get(name)
-        if node is None:
+        if name not in nodes:
             continue  # a node nodes.json does not name: the names check above says so
+        node = nodes[name]
         if not isinstance(node, dict):
             problems.append(f"node {name}: its {NODES_FILE} entry is not an object")
             continue

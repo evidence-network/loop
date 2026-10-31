@@ -214,14 +214,16 @@ class Live(unittest.TestCase):
                  "numbers repeated": {"read": "ok", "records": 9, "kept": [2, 2]},
                  "a count that is not whole": {"read": "ok", "records": True, "kept": []},
                  "kept emptied beside a decisions file": {"read": "ok", "records": 9, "kept": []},
-                 "an entry that is not an object": 5}
+                 "an entry that is not an object": 5,
+                 "a null entry": None}
         for why, node in cases.items():
             with self.subTest(why):
                 with tempfile.TemporaryDirectory() as tmp:
                     work = Path(tmp) / "04-admit"
                     shutil.copytree(out, work)
                     nodes = load(work / "nodes.json")
-                    nodes["lab-a"] = node
+                    # A null entry is planted on lab-b, so lab-a's good decisions alone would read PASS.
+                    nodes["lab-b" if node is None else "lab-a"] = node
                     (work / "nodes.json").write_text(json.dumps(nodes))
                     pop = {"population": "live", "nodes": [{"name": "lab-a"}, {"name": "lab-b"}]}
                     again = step.judge_live(pop, work, f["started"])
