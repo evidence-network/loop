@@ -1205,7 +1205,7 @@ def pin_is_current(run):
     `started`, which a reproduced 01's node-signed capsule times bound from below (sealed_times); no such 01 gives no bound.
     main is this checkout's origin/main, else main.
 
-    Residual, accepted for now (loop#193): the lower bound is circular. 01 is reproduced under the pinned nodes/ first,
+    Residual, accepted for now (loop#280): the lower bound is circular. 01 is reproduced under the pinned nodes/ first,
     so a holder of a key retired since the pin can sign capsules with old times and pass. Closing it takes a time anchor
     outside the run's own keys, such as a witness receipt."""
     try:
