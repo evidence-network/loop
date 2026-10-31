@@ -12,30 +12,22 @@
 mesh-llm Mesh-LLM/mesh-llm 2809443345ea8134db62a8b433f5bb2bb5f1d123
 mesh-llm-pr-2620 Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e
 mesh-llm-pr-2649 Mesh-LLM/mesh-llm 9c8cf6e800a71913533ef35133908fa6ff262ec8
-# The capsules plugin (the repo was Mesh-LLM/capsules). main after v0.1.5 through #112: it adds the
-# controller declaration (#77), share at completion by default (#72), the signed commitment (#75),
-# the Lightning settlement adapter (#82, for #57), the signed join/1 and leave/1 (#85), evidence
-# answers built on the evidencebook crate (#87, #89 to #94), basic admission (#100) and the referee's
-# verdict sealed on both nodes (#102); then the node's controller binding (#109) and the binding
-# ceremony in join (#121), each ask sealed before it is sent and its absence when the window closes
-# (#110), the base policy's five rows sealed with each admission decision (#116), service evidence
-# agreements (#111), a Service History (#39, #120), and a refusal checked against the policy the
-# peer's commitment pins (#112); then through #138 (d1f4edc): the operator binding carried to counterparties
-# in push bundles (#135, step 05 (c)), the effective share_record_at_completion written to the data dir
-# (#137), a citing record naming the own half of the same exchange (#138), and a deal capsule going to the
-# exchange's counterparty (#133). No release carries them yet.
-capsules Mesh-LLM/capsules-plugin d1f4edc09a9546d0c54a3bc8572251436ba47e59
+# The capsules plugin (the repo was Mesh-LLM/capsules): the 0.1.6 release. It carries everything
+# merged after v0.1.5 that the earlier pin (d1f4edc, through #138) listed, and the switch to
+# evidence-interop/1 (#162, Mesh-LLM/capsules-plugin#114): it answers both profile identifiers, asks
+# under /1 with a /0 retry, and refuses a limit of its own capacity_exceeded and a failed requester
+# authentication request_unauthenticated, so policy_declined and not_authorized are policy only.
+capsules Mesh-LLM/capsules-plugin v0.1.6
 # The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
 # matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
 # .cargo_vcs_info.json names the tag's commit, dd64efe7).
 evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.2.0
-# The evidence-request the plugin builds with at that commit: its Cargo.toml patches crates.io's 0.2.0
-# with agent-action-capsule's main at this merge commit (the interop profile's acceptance records,
-# agent-action-capsule #454), until a release carries them.
-capsules-evidence-request action-state-group/agent-action-capsule a8f7ac7f9d4b76d96796885e5eac795211c28180
-# The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), 0.0.9 in the
-# plugin's Cargo.lock at that commit; crates.io 0.0.9 is published from this tag.
-evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.9
+# The evidence-request the plugin builds with at v0.1.6: crates.io 0.3.0, published from this tag (the
+# -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
+capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.3.0
+# The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), 0.0.11 in the
+# plugin's Cargo.lock at v0.1.6; crates.io 0.0.11 is published from this tag.
+evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.11
 # The daily reporter: scripts/daily_report.py as of this commit (main after #3).
 reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # What a verifier re-checks saved answers with, offline: evidencebook, and capsulectl

@@ -900,6 +900,13 @@ class Step08Live04Test(unittest.TestCase):
         run = Path(self.tmp.name) / "old"
         shutil.copytree(LIVE2 / "04-admit", run / "04-admit")
         shutil.copytree(LIVE5 / "07-ask", run / "07-ask")
+        # A finding pins what versions.lock held when it ran. These ran under an earlier lock; this
+        # test is about their proof's shape, so their pins are set to today's lock (pinned is not proof).
+        lock = finding.pins()
+        for d in ("04-admit", "07-ask"):
+            rec = load(run / d / "finding.json")
+            rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"]}
+            dump(run / d / "finding.json", rec)
         write_run_json(run, ["04", "07", "08"], "live", stage="1")
         step.main(["--population", str(LIVE_POPULATION), "--out", str(run / "08-verify")])
         entries = {e["dir"]: e for e in load(run / "08-verify" / "verified.json")["steps"]}
