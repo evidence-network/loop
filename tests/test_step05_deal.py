@@ -849,6 +849,17 @@ class Step05DealLiveTest(unittest.TestCase):
         self.assertEqual(entries["05-deal"]["status"], "failed", f["detail"])
         self.assertIn("but origin/main held", f["detail"])
 
+    def test_08_does_not_reproduce_a_kept_commit_its_own_main_does_not_hold(self):
+        # 08's clone may be behind the run's fetch: not reproduced (fetch main's history), never a FAIL.
+        self.run_live()
+        n = json.loads((self.out / "nodes.json").read_text())
+        n["revocations_main"] = {"commit": "ab" * 20}
+        (self.out / "nodes.json").write_text(json.dumps(n))
+        self.rehash()
+        f, v, entries = self.verify08()
+        self.assertEqual(entries["05-deal"]["status"], "not_reproduced", f["detail"])
+        self.assertIn("fetch main's history", entries["05-deal"]["not_checked"]["why"])
+
     def test_08_does_not_reproduce_an_old_shape_live_05(self):
         shutil.copytree(ROOT / "findings" / "2026-10-31-live-8" / "05-deal", self.out)
         # It ran under an earlier versions.lock; this test is about its proof's shape, so its pins
