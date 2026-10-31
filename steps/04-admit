@@ -60,6 +60,14 @@ alone (allow list GO, deny list NO, an unreadable policy or target NO, the
 default the policy's), and on one node every decision about one peer under one
 policy digest has the same verdict and source.
 
+Each decision record is also checked as step 01 checks its seal, in the AAC Go
+verifier (`cross_language`, aac-go at its pin; steps/01-seal.setup.sh installs
+it): Class 1, its capsule_id recomputed, and its producer signature under the key
+the node's nodes/<node_id>.json publishes (LOOP_NODES_DIR, default nodes/). A
+record that fails any of these is a FAIL naming it; a node with no listing, a
+record with no producer signature, or no verifier installed is NOT_CHECKED,
+never a PASS (evidence-network/loop#135).
+
 No spend: nothing is paid on either population.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
@@ -67,6 +75,8 @@ step itself broke (capsulectl not installed, unreadable population).
 """
 import argparse
 import datetime as dt
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -84,14 +94,22 @@ import book_keys  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
 
+# Step 01's own checks of a capsule's bytes in a second language (aac-go `cross_language`): each ledger record
+# step 04 reads is checked the way step 01 checks its seal (evidence-network/loop#135).
+_loader = importlib.machinery.SourceFileLoader("step01_seal_for_admit", str(HERE / "01-seal"))
+seal01 = importlib.util.module_from_spec(importlib.util.spec_from_loader(_loader.name, _loader))
+_loader.exec_module(seal01)
+
 ASSERTS = ("the buyer's admission decision is exactly one of GO or NO, in the shape the capsules plugin seals; it is "
            "sealed in the buyer's book before the deal record that cites it; no deal record cites a NO")
 PINNED = ["capsulectl", "capsulectl-book"]
-LIVE_PINNED = ["capsules", "mesh-llm"]
+LIVE_PINNED = ["capsules", "mesh-llm", "aac-go"]
 ASSERTS_LIVE = ("on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the "
                 "node's own ledger, naming its source and the operator policy it read by digest; the verdict follows "
                 "from its source as the plugin decides, and each base-policy row it seals is one the plugin's rules "
-                "give from the reads it seals")
+                "give from the reads it seals; each such ledger record is Class 1 valid, its capsule_id recomputes and "
+                "its producer signature verifies, in the AAC Go verifier, under the key the node's nodes/ entry "
+                "publishes")
 PLANTS = ("ask-outcome", "limit-outcome", "unsealed", "sealed-after", "deal-after-no")
 PLANT_SCENARIO = {"ask-outcome": "go", "limit-outcome": "go", "unsealed": "go", "sealed-after": "go",
                   "deal-after-no": "no-deny-list"}
@@ -376,9 +394,6 @@ ROWS_OPEN_WHY = ("the decision cites the history card and names the peer only by
                  "reads neither the key nor the host config")
 LIVE_NOT_CHECKED = [
     {"what": ROWS_OPEN, "why": ROWS_OPEN_WHY, "issue": "evidence-network/loop#81"},
-    {"what": "each ledger record's producer signature and capsule_id",
-     "why": "the step reads the node's ledger lines as written and verifies neither",
-     "issue": "evidence-network/loop#135"},
     {"what": "the routing path enforcing the decision when it chooses a candidate",
      "why": "the routing choice cannot yet require a property of a candidate beyond its identity",
      "issue": "Mesh-LLM/mesh-llm#2061"},
@@ -386,7 +401,6 @@ LIVE_NOT_CHECKED = [
 VERDICTS = ("GO", "NO")
 LIVE_GAPS = " ".join([
     finding.outside(ROWS_OPEN, "evidence-network/loop#81"),
-    finding.outside("each ledger record's producer signature and capsule_id", "evidence-network/loop#135"),
     finding.outside("the routing path enforcing the decision when it chooses a candidate", "Mesh-LLM/mesh-llm#2061"),
 ])
 
@@ -638,6 +652,41 @@ def main_live(pop, out, started):
     return 0
 
 
+RECORD_WHAT = "each decision record's producer signature and capsule_id, in a second language"
+TOOLS_ISSUE = "evidence-network/loop: steps/01-seal.setup.sh installs aac-go where step 04 runs"
+UNVERIFIED_ISSUE = "evidence-network/loop#234"  # a record with no producer signature, or a node with no nodes/ listing
+
+
+def tool_gaps():
+    """[{what, why, issue}] for aac-go missing or not at its versions.lock pin, read as step 01 reads it; step 04 seals
+    nothing, so capsule-emit is not needed. Step 08 asks the same before it re-runs judge_live."""
+    python, verifier = seal01.tools()
+    _, missing = seal01.installed_pins(python, verifier)
+    return [dict(x, issue=TOOLS_ISSUE) for x in missing if x["what"] != "capsule-emit"]
+
+
+def record_checks(numbers, lines, listed):
+    """(problems, not_checked) of each kept decision record by the AAC Go verifier, as step 01 checks its seal:
+    Class 1, the capsule_id recomputed, and the producer signature under the key the node publishes (`listed`,
+    None when the node has no nodes/ listing). Run only once tool_gaps() is empty."""
+    verifier = seal01.tools()[1]
+    problems, unclaimed, unlisted = [], 0, 0
+    for n, raw in zip(numbers, lines):
+        outputs = {}
+        checks, capsule = seal01.id_checks(raw.encode(), verifier, outputs)
+        problems += [f"record {n}: {k} {c['detail']}" for k, c in checks.items() if not c["ok"]]
+        if capsule is None:
+            continue
+        sig = seal01.signature_check(raw.encode(), verifier, capsule.get("key_id"), listed, True)
+        if sig["state"] == "bad":
+            problems.append(f"record {n}: {sig['detail']}")
+        unclaimed += sig["state"] == "unclaimed"
+        unlisted += sig["state"] == "unlisted"
+    why = [f"{unclaimed} carry no producer signature"] * bool(unclaimed) + [
+        f"{unlisted} verify, but the node has no nodes/<node_id>.json listing to hold the key to"] * bool(unlisted)
+    return problems, ([{"what": RECORD_WHAT, "why": "; ".join(why), "issue": UNVERIFIED_ISSUE}] if why else [])
+
+
 def kept_numbers(node):
     """(record count, [record numbers]) of a node nodes.json reads as "ok", or ValueError: the count a whole number,
     the numbers whole, strictly increasing and within 1..count, as main_live writes them."""
@@ -667,6 +716,9 @@ def judge_live(pop, out, started):
     except (OSError, ValueError, TypeError) as e:
         nodes, problems = None, [f"{NODES_FILE} is not readable ({type(e).__name__}: {e})"]
     names = [e["name"] for e in pop["nodes"]]
+    node_ids = {e["name"]: e.get("node_id") for e in pop["nodes"]}
+    unverified = []  # records whose signature could not be checked or held to a key: never a PASS
+    gaps = None  # tool_gaps(), read once, and only when a node holds a record to check
     if nodes is not None and sorted(nodes) != sorted(names):
         problems.append(f"{NODES_FILE} names nodes {sorted(nodes)}, the population {sorted(names)}")
     for name in names if nodes is not None else []:
@@ -691,6 +743,17 @@ def judge_live(pop, out, started):
             problems.append(f"node {name}: its kept decisions are not readable ({type(e).__name__}: {e})")
             continue
         found, bad, rows = judge_decisions(list(zip(numbers, lines)))
+        if numbers:
+            gaps = tool_gaps() if gaps is None else gaps
+            try:
+                if gaps:
+                    raise RuntimeError("; ".join(x["why"] for x in gaps))
+                listed = seal01.listed_key(seal01.nodes_dir(), node_ids[name]) if node_ids.get(name) else None
+                sig_bad, sig_open = record_checks(numbers, lines, listed)
+                problems += [f"node {name} {b}" for b in sig_bad]
+                unverified += [dict(x, what=f"node {name}: {x['what']}") for x in sig_open]
+            except RuntimeError as e:  # the verifier is missing, off its pin, or does not run as pinned
+                unverified.append({"what": f"node {name}: {RECORD_WHAT}", "why": str(e), "issue": TOOLS_ISSUE})
         by = {v: sum(1 for _, b in found if isinstance(b, dict) and b.get("verdict") == v) for v in VERDICTS}
         details.append(f"node {name}: {len(found)} of {total} ledger records carry an admission decision "
                        f"({by['GO']} GO, {by['NO']} NO), read-only")
@@ -713,22 +776,24 @@ def judge_live(pop, out, started):
     if problems:
         return finding.write(out, result="FAIL", proof=proof, not_checked=[],
                       detail=f"{summary}. Did not hold: {'; '.join(problems)}. {NO_SPEND}", **base)
-    elif decided and not unreadable:
+    elif decided and not unreadable and not unverified:
         return finding.write(out, result="PASS", proof=proof, not_checked=[],
                       detail=f"{summary}. Each decision is GO or NO, names its source, cites the operator policy it "
                              f"read by digest (or is a NO sealed with no readable policy), carries no member beyond "
                              f"the plugin's own and names the peer by commitment only; its verdict follows from its "
                              f"source alone, the same for one peer under one policy digest; each row it seals is one "
-                             f"the base policy's rules give from what it read. The step read the ledger lines as "
-                             f"written, without verifying their signatures. {NO_SPEND} {LIVE_GAPS}", **base)
+                             f"the base policy's rules give from what it read. Each decision record is Class 1 valid, "
+                             f"its capsule_id recomputes and its producer signature verifies, in the AAC Go verifier, "
+                             f"under the key the node publishes. {NO_SPEND} {LIVE_GAPS}", **base)
     else:
         gap = {"what": "an admission decision on a lab node",
                "why": "no ledger record carries one: the host config grants the plugin no admission hook "
                   "(lab/lab.sh writes the grant), or no peer exchange has run since it did",
                "issue": "evidence-network/loop: the live lab run, which fills population/live"}
-        return finding.write(out, result="NOT_CHECKED", proof=proof, not_checked=not_checked + ([] if decided else [gap]),
+        return finding.write(out, result="NOT_CHECKED", proof=proof,
+                             not_checked=not_checked + unverified + ([] if decided else [gap]),
                       detail=f"{summary}. Not checked: "
-                             f"{'a node could not be read' if decided else 'no admission decision was found'}. "
+                             f"{'a node could not be read' if unreadable else 'a decision record could not be verified' if decided else 'no admission decision was found'}. "
                              f"{NO_SPEND}", **base)
 
 
