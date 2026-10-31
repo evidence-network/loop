@@ -3,26 +3,20 @@
 every record in the window by digest, none missing and none extra, and verify offline.
 
 Usage: 10-judge --population DIR --out RUN/10-judge
-       10-judge --population DIR --preview-open-month --run RUN --out PREVIEW/10-judge
 
 RUN is the loop run (the parent of --out). This step reads only step 08's
 manifest, RUN/08-verify/verified.json, and the files it lists for the steps it
-shows as `reproduced`. When RUN holds no 08-verify/, it judges the population's
-committed stand-in run instead (DIR/step10/run, dated in a closed month), and
-its detail says the records are that stand-in, not this run's:
+shows as `reproduced`:
 
   manifest   08's finding passes steps/finding.py's check and names
              verified.json in its proof with the sha256 the file has. The
              as-of instant is 08's finding `finished`.
-  window     12 whole closed calendar months before the as-of month (the pinned pack's window.months) plus the as-of
-             month to date, up to the as-of instant (Ethan, 2026-10-31, over Steven's 2026-10-29 closed-months
-             ruling, for now). It moves only when a month closes, for its start. A record is a primary record file (binding.json `records`) that 08 lists
-             for a reproduced step of one of the pack's kinds (05 deals, 06
-             settlements, 07 asks, 09 disputes) whose step finished in the
-             window (start <= finished <= as-of). Its bytes must still match 08's digest. A file 08 does
-             not list, and a record outside the window, is refused, not read,
-             and named in detail. A step 08 did not reproduce is outside the
-             window, with a not_checked entry.
+  window     every record of the run up to the as-of instant, with no month boundary: a record is a primary record
+             file (binding.json `records`) that 08 lists for a reproduced step of one of the pack's kinds (05
+             deals, 06 settlements, 07 asks, 09 disputes) whose step finished at or before the as-of instant. Its
+             bytes must still match 08's digest. A file 08 does not list, and a record of a step that finished
+             after the as-of instant, is refused, not read, and named in detail. A step 08 did not reproduce is
+             outside the window, with a not_checked entry.
   pack       deterministic, no model: one claim per term of the step's kind,
              citing every record of the step; the verdict is recomputed from
              the result 08 re-derived (PASS met, FAIL not_met, NOT_CHECKED
@@ -49,13 +43,6 @@ its detail says the records are that stand-in, not this run's:
                exact     every record they cite is in the window;
                rollup    the roll-up cites exactly the finer Results, each the
                          root of a VALID bundle.
-
---preview-open-month (evidence-network/loop#242) judges the open month instead: the calendar month containing 08's
-as-of instant, e.g. 2026-10-01 to 2026-11-01, with the same pinned pack and the same judge key. It is a look at records
-before their month closes, never a baseline result: the baseline window is the 12 closed months plus the as-of month to date (so the open month is also in it). It reads RUN
-(--run, which holds 08-verify/, never the stand-in) and writes only --out, which may not lie inside RUN or findings/;
-every finding it writes has a detail that starts with finding.PREVIEW, which the ecosystem gate refuses. Its
-window.json names the sha256 of the manifest it judged, so step 11 can refuse a preview of another run.
 
 PASS when every check held and every step 08 lists was reproduced; FAIL when a
 check did not hold; NOT_CHECKED when the window holds no record, a step is not
@@ -88,17 +75,14 @@ import finding  # noqa: E402
 # Who owns each kind of gap 10 leaves NOT_CHECKED.
 SETUP_ISSUE = "evidence-network/loop: steps/10-judge.setup.sh, run where 10 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs step 08 before step 10"
-# The window is the pinned pack's 12 whole closed months (Steven's 2026-10-29 ruling) plus the as-of month to date
-# (Ethan, 2026-10-31: judge October's data now; Steven may change it later).
-WINDOW_ISSUE = ("the window: the pinned inference-deals pack's 12 whole closed months (versions.lock inference-deals, "
-                "Steven's 2026-10-29 ruling) plus the as-of month to date (Ethan, 2026-10-31)")
+# The window is every record of the run up to the as-of instant (Ethan, 2026-10-31): no closed-month boundary.
+WINDOW_ISSUE = "evidence-network/loop: a run whose reproduced steps of the pack's kinds are all after 08's as-of instant"
 JUDGE_KEY_ISSUE = "evidence-network/loop#189"  # the live judge key: lab/lab.sh judge-key makes it on the lab host
 # Who holds the live judge key: said in every live detail, so a live PASS is never read as an independent judge's.
 # Steven's GO is Buzz 23c5f8fd; "same operator, disclosed" in place of "no node operator holds it" was ruled by Sherlock2
 # under Steven's delegation, Buzz 8a67299d (the lab account that runs the nodes has passwordless sudo on the lab host).
 LIVE_JUDGE = ("the judge key is held on the lab host by the lab operator account that also runs the nodes: same "
               "operator, not an independent judge")
-PREVIEW_ISSUE = "evidence-network/loop#242"  # the open-month preview; its empty month is not the closed-month window's gap
 FAILED_ISSUE = "evidence-network/loop: step 08's FAIL for the step (08-verify/verified.json)"
 # The pack's terms, tiers and window come from the pinned evidencebook-skills pack, which 10-judge.setup.sh
 # fetches; BINDING says only how the loop's rehearsal stand-ins feed them.
@@ -114,14 +98,10 @@ EVALUATOR = {"scripts/evaluators/inference_deals.py": "28544c16dafbf77c9743e0a0f
              "scripts/result_v0.py": "dcf31eaef15ea7b704d2b7546d9b50b24a96f40c",
              "scripts/rollup.py": "ba664a49e602852951473dc56e591be11c82a46e"}
 PINNED = ["capsulectl", "capsulectl-book"]
-ASSERTS = ("a deterministic pack runs over a window of 12 whole closed months plus the as-of month to date, of the run's records that step 08 "
+ASSERTS = ("a deterministic pack runs over every record of the run up to the as-of instant that step 08 "
            "reproduced; each Result it seals cites every record in the window by digest, none missing and none "
            "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
            "pinned verifier, offline, under the repository's judge key")
-PREVIEW_ASSERTS = ("a deterministic pack runs over the open calendar month of the run's records that step 08 "
-                   "reproduced; each Result it seals cites every record in the month by digest, none missing and none "
-                   "extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the "
-                   "pinned verifier, offline, under the repository's judge key")
 RESULT_TYPE = "evidence_result"
 
 
@@ -165,7 +145,7 @@ def tools_dir():
 def load_pack():
     """The pinned inference-deals pack read onto BINDING, as {pack, contract_ref, window, verdicts, kinds, pin}.
 
-    Terms, tiers and the window length are the pinned pack's own (its contract and compiled.json); the
+    Terms and tiers are the pinned pack's own (its contract and compiled.json); the
     binding names which stand-in record files feed which term. NotChecked when the pinned pack is not fetched."""
     repo, ref = pin("inference-deals")
     where = tools_dir() / "packs" / f"inference-deals-{ref}"
@@ -209,7 +189,6 @@ def load_pack():
                      "inputs": k.get("inputs", {}), "terms": terms}
     return {"pack": compiled["contract_ref"], "contract_ref": compiled["contract_ref"],
             "own_contract_ref": binding["own_contract_ref"],
-            "window": {"period": "month", "periods": compiled["window"]["months"]},
             "verdicts": binding["verdicts"], "kinds": kinds, "pin": f"{repo} {ref}"}
 
 
@@ -217,38 +196,6 @@ def tools():
     """capsulectl and its book plugin, where the setup scripts install them."""
     bin_ = tools_dir() / "bin"
     return bin_ / "capsulectl", bin_ / "capsulectl-book"
-
-
-# --- The window ---------------------------------------------------------------------------
-def window_of(as_of, periods=12):
-    """[start, end]: the `periods` whole calendar months closed before as_of's month, through as_of itself (the as-of
-    month to date). Ethan, 2026-10-31, over Steven's 2026-10-29 closed-months window. `end` is as_of, so a rerun over
-    the same records has the same window; it is inclusive."""
-    first = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
-    months = first.year * 12 + first.month - 1 - periods
-    return dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc), as_of
-
-
-def open_month_of(as_of):
-    """[start, end): the calendar month containing as_of, which has not closed. Only --preview-open-month uses it."""
-    start = dt.datetime(as_of.year, as_of.month, 1, tzinfo=dt.timezone.utc)
-    months = start.year * 12 + start.month
-    return start, dt.datetime(months // 12, months % 12 + 1, 1, tzinfo=dt.timezone.utc)
-
-
-def preview_out_problem(out, run):
-    """Why a preview may not write to `out`, or None: not into the run it reads, nor where findings or the baseline live.
-
-    The ecosystem gate reads only the findings directory it is handed (and refuses a preview finding anyway); this keeps a
-    preview from being written next to a baseline's findings in the first place."""
-    findings = Path(os.environ.get("LOOP_FINDINGS") or ROOT / "findings")
-    for base, name in ((run, "the run it reads"), (findings, "the findings directory"), (ROOT / "baseline", "baseline/")):
-        base = Path(base).resolve()
-        # samefile, not path equality: a case-insensitive file system spells one directory several ways.
-        if out == base or base in out.parents or \
-                any(p.exists() and base.exists() and os.path.samefile(p, base) for p in (out, *out.parents)):
-            return f"a preview is written outside {name} ({base}), not into it"
-    return None
 
 
 def read_manifest(run):
@@ -266,11 +213,11 @@ def read_manifest(run):
     return load(d / "verified.json"), utc(record["finished"])
 
 
-def select(run, manifest, start, end, pack):
+def select(run, manifest, as_of, pack):
     """(records, refused, not_checked, problems) over 08's manifest.
 
     A record is {dir, step, path, sha256, kind, result}: a primary record file (binding.json `records`) that 08 lists for a reproduced step of the pack's kinds
-    whose step finished in [start, end] (end is the as-of instant). Only finding.json is read before that is known, and only after its
+    whose step finished at or before `as_of`. Only finding.json is read before that is known, and only after its
     bytes match 08's digest.
     """
     records, refused, not_checked, problems = [], [], [], []
@@ -292,7 +239,7 @@ def select(run, manifest, start, end, pack):
             problems.append(f"{e['dir']}/finding.json does not match the sha256 08's manifest gives it")
             continue
         finished = utc(load(d / "finding.json")["finished"])
-        if not start <= finished <= end:
+        if finished > as_of:
             refused.append(f"{e['dir']}: {len(files)} files, finished {stamp(finished)}, outside the window")
             continue
         unlisted = sorted(str(p.relative_to(d)) for p in d.rglob("*") if p.is_file()
@@ -421,8 +368,8 @@ def load_evaluator():
 # pack's own weekly ones (Sherlock2, Buzz b1effd94).
 CHAIN_START = dt.datetime.min.replace(tzinfo=dt.timezone.utc)  # no bound: the chain is read whole
 CHAIN_END = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
-EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished: 12 whole closed months plus the as-of month "
-                    "to date (not only closed months); each chain read whole, whatever its entries' "
+EVALUATOR_BOUNDS = ("step 10's window, by each step's finding finished: every record of the run up to the as-of "
+                    "instant, no month boundary; each chain read whole, whatever its entries' "
                     "own dates; not the pack's weekly period_policy")
 
 
@@ -522,24 +469,19 @@ def claim(cid, requirement, verdict, refs, contract_ref, narrative=None):
     return c
 
 
-def result_doc(claims, pack, start, end, extra=None):
+def result_doc(claims, pack, as_of, extra=None):
     buckets = {"met": [], "not_met": [], "not_evaluable": []}
     for c in claims:
         buckets[c["verdict"]].append(c["id"])
-    doc = {"result_version": "evidence-result-v0", "generated_at": stamp(end), "claims": claims,
+    doc = {"result_version": "evidence-result-v0", "generated_at": stamp(as_of), "claims": claims,
            "aggregate": {"coverage": {"evaluated_population": len(claims), "excluded_not_applicable": 0,
                                       "unknown_count": 0}, "buckets": buckets},
-           "x-window": {"start": stamp(start), "end": stamp(end), "period": pack["window"]["period"],
-                        "periods": pack["window"]["periods"], "pack": pack["pack"]}}
-    if pack.get("preview"):
-        doc["x-window"]["preview"] = pack["preview"]
-    else:
-        doc["x-window"]["through_as_of"] = True  # the as-of month to date is in, not only closed months
+           "x-window": {"through": stamp(as_of), "pack": pack["pack"]}}
     doc.update(extra or {})
     return doc
 
 
-def judge_records(records, run, pack, start, end, not_checked):
+def judge_records(records, run, pack, as_of, not_checked):
     """{step dir: Result document} with one claim per term, each citing every record of the step."""
     docs = {}
     for d in sorted({r["dir"] for r in records}):
@@ -591,20 +533,20 @@ def judge_records(records, run, pack, start, end, not_checked):
                                         "never a judged match"))
             else:
                 claims.append(claim(cid, t["id"], verdict, refs, cref))
-        docs[d] = result_doc(claims, pack, start, end,
+        docs[d] = result_doc(claims, pack, as_of,
                              {"x-evaluator": {"inputs": len(inputs), "exchanges": len(evaluated[1]),
                                               "bounds": EVALUATOR_BOUNDS}} if evaluated else None)
     return docs
 
 
-def rollup_doc(finer, pack, start, end):
+def rollup_doc(finer, pack, as_of):
     """The roll-up: one claim per finer Result, citing its record id, with its worst verdict."""
     claims = []
     for d, (rid, doc) in sorted(finer.items()):
         verdicts = {c["verdict"] for c in doc["claims"]}
         worst = next(v for v in ("not_met", "not_evaluable", "met") if v in verdicts)
         claims.append(claim(f"window:{d}", f"{d}:all-must-have", worst, [rid], pack["own_contract_ref"]))
-    return result_doc(claims, pack, start, end)
+    return result_doc(claims, pack, as_of)
 
 
 # --- Sealing: a fresh book under the repository's judge key -------------------------------
@@ -716,7 +658,7 @@ def fill(doc, digests):
     return doc
 
 
-def seal(book, records, docs, pack, start, end, out):
+def seal(book, records, docs, pack, as_of, out):
     """Publish the records the documents cite, seal each finer Result and the roll-up, write their bundles.
 
     Returns {"finer": {step dir: record id}, "rollup": record id}.
@@ -727,7 +669,7 @@ def seal(book, records, docs, pack, start, end, out):
     finer = {}
     for d, doc in sorted(docs.items()):
         finer[d] = (book.result(fill(doc, digests), d), doc)
-    rollup = book.result(fill(rollup_doc(finer, pack, start, end), {}), "rollup")
+    rollup = book.result(fill(rollup_doc(finer, pack, as_of), {}), "rollup")
     for d, (rid, _) in finer.items():
         book.disclose(rid, out / "bundles" / f"{d}.bundle.json")
     book.disclose(rollup, out / "bundles" / "rollup.bundle.json")
@@ -839,19 +781,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True, type=Path)
     ap.add_argument("--out", required=True, type=Path)
-    ap.add_argument("--preview-open-month", action="store_true",
-                    help="judge the open month, a preview and not a baseline result; needs --run")
-    ap.add_argument("--run", type=Path, help="with --preview-open-month: the loop run holding 08-verify/ to read "
-                    "(--out is then elsewhere, outside it)")
     a = ap.parse_args(argv)
-    preview = a.preview_open_month
-    if preview != (a.run is not None):
-        ap.error("--preview-open-month and --run go together")
     started = finding.now()
     out = a.out.resolve()
-    problem = preview_out_problem(out, a.run.resolve()) if preview else None
-    if problem:
-        ap.error(problem)
     out.mkdir(parents=True, exist_ok=True)
     for p in ("finding.json", "window.json"):
         (out / p).unlink(missing_ok=True)
@@ -860,16 +792,12 @@ def main(argv=None):
     pop = load(a.population / "population.json")
     population = pop["population"]
     keys = a.population.resolve() / "step10" / "keys"
-    run = a.run.resolve() if preview else out.parent
-    # A run without 08's manifest is judged on the population's committed stand-in run, dated in a closed month.
-    # A preview is of this run's records only.
-    standin = a.population.resolve() / "step10" / "run"
-    standin = standin if not preview and not (run / "08-verify").is_dir() and (standin / "08-verify").is_dir() else None
-    source = standin or run
+    run = out.parent
+    source = run
 
     problems, not_checked, refused, records, lines, proof = [], [], [], [], [], []
     unevaluated = []  # the steps whose pack terms are applied from 08's results, not the pinned evaluator (loop#157)
-    start = end = None
+    as_of = None
     pinned = []
     pack = None
     try:
@@ -880,26 +808,15 @@ def main(argv=None):
         if manifest.get("population") != population:
             raise RuntimeError(f"08's manifest is of population {manifest.get('population')}, this run is {population}")
         pack = load_pack()
-        if preview:
-            # The same pack and key; only the window differs, and its Results say so (x-window.preview).
-            pack = dict(pack, window={"period": pack["window"]["period"], "periods": 1}, preview="open-month")
-            start, end = open_month_of(as_of)
-        else:
-            start, end = window_of(as_of, pack["window"]["periods"])
-        records, refused, not_checked, problems = select(source, manifest, start, end, pack)
-        dump(out / "window.json", {"source": "stand-in" if standin else "run", "as_of": stamp(as_of), "start": stamp(start), "end": stamp(end),
-                                   "period": pack["window"]["period"], "periods": pack["window"]["periods"],
-                                   **({"preview": "open-month", "manifest_sha256": finding.sha256(source / "08-verify" / "verified.json")}
-                                      if preview else {}),
-                                   "records": records, "refused": refused})
+        records, refused, not_checked, problems = select(source, manifest, as_of, pack)
+        dump(out / "window.json", {"source": "run", "as_of": stamp(as_of), "records": records, "refused": refused})
         proof.append("window.json")
         if problems:
             raise RuntimeError("; ".join(problems))
         if not records:
             raise NotChecked("the pack over the window",
-                             f"no record of the run is in the window {stamp(start)} to {stamp(end)}: each reproduced "
-                             "step of the pack's kinds finished outside it, or none is in the run",
-                             PREVIEW_ISSUE if preview else WINDOW_ISSUE)
+                             f"no record of the run is up to the as-of instant {stamp(as_of)}: each reproduced "
+                             "step of the pack's kinds finished after it, or none is in the run", WINDOW_ISSUE)
         signer = judge_keys(population, keys)
         problems = node_key_problems(pop, pub_hex(signer["judge"][1]))
         if problems:
@@ -911,11 +828,11 @@ def main(argv=None):
                              "steps/10-judge.setup.sh installs them")
         pinned = PINNED + ["inference-deals"]
         with tempfile.TemporaryDirectory(prefix="10-judge-") as tmp:
-            docs = judge_records(records, source, pack, start, end, not_checked)
+            docs = judge_records(records, source, pack, as_of, not_checked)
             unevaluated = sorted(d for d, doc in docs.items() if not doc.get("x-evaluator")
                                  and any(not t.get("own") for t in pack["kinds"][d[:2]]["terms"]))
             book = Book(Path(tmp) / "book", capsulectl, signer)
-            sealed = seal(book, records, docs, pack, start, end, out)
+            sealed = seal(book, records, docs, pack, as_of, out)
             problems, lines = judge(out, records, capsulectl, pub_hex(signer["judge"][1]), tmp)
         proof += [str(p.relative_to(out)) for p in sorted((out / "bundles").glob("*.json"))]
         proof += [str(p.relative_to(out)) for p in sorted((out / "verify").glob("*.json"))]
@@ -929,15 +846,9 @@ def main(argv=None):
         problems = [f"the judge did not run to the end ({type(e).__name__}: {str(e)[:300]})"]
 
     result = "FAIL" if problems else ("NOT_CHECKED" if not_checked else "PASS")
-    window = ((f"window {stamp(start)} to {stamp(end)} (the open month)" if preview else
-               f"window {stamp(start)} to {stamp(end)} ({pack['window']['periods']} whole closed months plus the "
-               "as-of month to date)")
-              if start else "no window")
+    window = f"every record up to the as-of instant {stamp(as_of)}" if as_of else "no window"
     packname = f"{pack['pack']} ({pack['pin']})" if pack else "inference-deals (not loaded)"
-    what = (f"the committed stand-in run population/{population}/step10/run (dated in a closed month), not this "
-            f"run's records" if standin else f"run {run.name}")
-    detail = ((finding.PREVIEW + ". " if preview else "")
-              + f"{what}, {window}, deterministic pack {packname} (no model): "
+    detail = (f"run {run.name}, {window}, deterministic pack {packname} (no model): "
               f"{len(records)} records in the window from {len({r['dir'] for r in records})} steps. "
               + ("; ".join(lines) + ". " if lines else "")
               + (f"Did not hold: {'; '.join(problems)}. " if problems else "")
@@ -946,7 +857,7 @@ def main(argv=None):
               + (f" On live, {LIVE_JUDGE}." if population == "live" else ""))
     if result == "PASS" and unevaluated:
         detail += " " + finding.outside(evaluator_gap(unevaluated, population, kinds=pack["kinds"]), GAP_ISSUE)
-    finding.write(out, result=result, population=population, asserts=PREVIEW_ASSERTS if preview else ASSERTS,
+    finding.write(out, result=result, population=population, asserts=ASSERTS,
                   pinned=pinned, proof=proof, detail=detail, not_checked=[] if result == "PASS" else not_checked, started=started)
     print(f"10-judge: {result}: {detail}", file=sys.stderr)
     return 0

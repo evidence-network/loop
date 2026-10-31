@@ -1,9 +1,8 @@
-"""steps/10-judge: a deterministic pack over a window of whole closed months, its Results sealed and verified offline.
+"""steps/10-judge: a deterministic pack over a window of every record up to the as-of instant, its Results sealed and verified offline.
 
 The base run is population/rehearsal/step10/run, the committed stand-in run: four stand-in step findings (05, 06,
 07, 09) dated in September 2026 and step 08's manifest showing each reproduced, with 08 finished in October 2026.
-Most tests copy it in as a run of their own (it has 08's manifest, so 10 judges it as that run); the StandIn tests
-give 10 a run without one, so it judges the population's stand-in. Sealing and verifying need
+Most tests copy it in as a run of their own (it has 08's manifest, so 10 judges it as that run). Sealing and verifying need
 the pinned capsulectl and capsulectl-book (steps/10-judge.setup.sh); without them those tests SKIP, saying so,
 and LOOP_REQUIRE_TOOLS=1 makes that an error. Each planted failure runs on a copy of the base run, and its mutant
 check shows which part of 10 catches it: with that part of 10 switched off, the plant goes through.
@@ -141,31 +140,33 @@ class Base(unittest.TestCase):
         return out
 
 
-class WindowTest(unittest.TestCase):
-    def test_twelve_closed_months_plus_the_as_of_month_to_date(self):
-        as_of = utc("2026-10-02T09:01:00Z")
-        self.assertEqual(step.window_of(as_of), (utc("2025-10-01T00:00:00Z"), as_of))
-        as_of = utc("2027-01-31T23:59:59Z")
-        self.assertEqual(step.window_of(as_of), (utc("2026-01-01T00:00:00Z"), as_of))
-
-    def test_start_moves_only_when_a_month_closes_end_is_the_as_of(self):
-        first = step.window_of(utc("2026-10-01T00:00:00Z"))
-        self.assertEqual(first[0], step.window_of(utc("2026-10-31T23:59:59Z"))[0])
-        self.assertNotEqual(first[0], step.window_of(utc("2026-11-01T00:00:00Z"))[0])
-        self.assertEqual(step.window_of(utc("2026-10-31T23:59:59Z"))[1], utc("2026-10-31T23:59:59Z"))
-
-
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
 class ManifestTest(Base):
     """What 10 reads before it seals anything; none of this needs capsulectl."""
 
-    def test_no_manifest_and_no_stand_in_is_not_checked(self):
-        # A population with no committed stand-in run (as the live one has none), and a run without 08.
-        population = Path(self.tmp.name) / "rehearsal"
-        shutil.copytree(POPULATION, population)
-        shutil.rmtree(population / "step10" / "run")
+    def test_a_step_finished_in_the_as_of_month_is_in_the_window(self):
+        # No month boundary: a record made in the month 08 ran is judged the day it is made (Ethan, 2026-10-31).
+        for i, base in enumerate(WINDOW_STEPS):
+            self.edit_step(base, finished=f"2026-10-01T10:0{i}:30Z")
+        f = self.judge()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        w = load(self.run / "10-judge" / "window.json")
+        self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
+        self.assertNotIn("start", w)
+        self.assertIn("every record up to the as-of instant", f["detail"])
+
+    def test_the_as_of_instant_itself_is_in_the_window_and_a_second_later_is_not(self):
+        as_of = load(self.run / "08-verify" / "finding.json")["finished"]
+        self.edit_step("07-ask", finished=as_of)
+        self.edit_step("09-dispute", finished="2026-10-02T09:01:01Z")
+        w = self.judge() and load(self.run / "10-judge" / "window.json")
+        dirs = {r["dir"] for r in w["records"]}
+        self.assertIn("07-ask", dirs)
+        self.assertNotIn("09-dispute", dirs)
+
+    def test_a_run_without_08_is_not_checked(self):
         shutil.rmtree(self.run / "08-verify")
-        f = self.judge(population)
+        f = self.judge()
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("08-verify/verified.json", f["not_checked"][0]["why"])
 
@@ -217,7 +218,6 @@ class PinnedPackTest(Base):
         pack = step.load_pack()
         repo, ref = step.pin("inference-deals")
         self.assertEqual(pack["pin"], f"{repo} {ref}")
-        self.assertEqual(pack["window"]["periods"], 12)
         terms = {t["id"]: t for k in pack["kinds"].values() for t in k["terms"] if not t.get("own")}
         self.assertEqual(sorted(terms), ["come_through.paid_as_agreed", "come_through.served_as_agreed",
                                          "come_through.served_named_model"])
@@ -348,8 +348,8 @@ class JudgeTest(Base):
         e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
         e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
         self.reseal_manifest(m)
-        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        records, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])
         self.assertEqual([r["path"] for r in records if r["dir"] == "09-dispute"], ["outcome.json"])
 
@@ -358,8 +358,8 @@ class JudgeTest(Base):
         m["population"] = "rehearsal"
         e09 = next(e for e in m["steps"] if e["dir"] == "09-dispute")
         e09["files"] = [x for x in e09["files"] if x["path"] != "dispute.json"]
-        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        _, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, ["09-dispute: 08 lists no dispute record (dispute.json)"])
 
     def live_05(self, settlement_leg=True):
@@ -398,8 +398,8 @@ class JudgeTest(Base):
                     if f["path"].endswith("held-1.json"):
                         f["sha256"] = finding.sha256(self.run / "05-deal" / f["path"])
         self.reseal_manifest(m)
-        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        _, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertTrue(any("the 3 files matching those names are not deal records (binding.json `only`)" in x
                             for x in problems), problems)
 
@@ -407,8 +407,8 @@ class JudgeTest(Base):
         # Sherlock2 (loop#250): a held half is a deal record by what it is (a host-served capsule), never by its
         # file name; a settlement leg held beside it is not a deal.
         m = self.live_05()
-        records, refused, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        records, refused, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])
         self.assertEqual(sorted(r["path"] for r in records if r["dir"] == "05-deal"),
                          ["lab-a/held-1.json", "lab-b/held-1.json"])
@@ -443,8 +443,8 @@ class JudgeTest(Base):
     def test_a_reproduced_live_06_is_read_from_its_per_node_recorded_json_not_failed(self):
         # loop#265 makes 08 list a live 06 as reproduced; it keeps recorded.json per node, never a ledger.jsonl.
         m = self.live_06()
-        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        records, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])
         self.assertEqual(sorted(r["path"] for r in records if r["dir"] == "06-settle"),
                          ["lab-a/recorded.json", "lab-b/recorded.json"])
@@ -461,8 +461,8 @@ class JudgeTest(Base):
         e06 = next(e for e in m["steps"] if e["dir"] == "06-settle")
         e06["files"] = [x for x in e06["files"] if not x["path"].endswith("recorded.json")]
         self.reseal_manifest(m)
-        _, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        _, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertTrue(any("06-settle: 08 lists no settlement record" in x for x in problems), problems)
 
     def with_chains(self):
@@ -482,13 +482,11 @@ class JudgeTest(Base):
 
     def october(self, m):
         """select over the stand-in's window, then the Results over October 2026, the month the chains hold."""
-        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        records, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])
         not_checked = []
-        start = dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc)
-        docs = step.judge_records(records, self.run, step.load_pack(), start, dt.datetime(2026, 11, 1, tzinfo=dt.timezone.utc),
-                                  not_checked)
+        docs = step.judge_records(records, self.run, step.load_pack(), utc("2026-10-31T00:00:00Z"), not_checked)
         return records, {c["requirement_ref"]: c for c in docs["05-deal"]["claims"]}, not_checked
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
@@ -511,17 +509,16 @@ class JudgeTest(Base):
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_chain_is_in_the_window_as_its_step_is_not_by_its_entries_dates(self):
         # Sherlock2 (Buzz b1effd94): the step is in the window by its finding's `finished`; its chain is then read whole,
-        # as its halves are, so a chain entry dated before the window's start is judged with them, never dropped.
+        # as its halves are, so a chain entry dated before the as-of is judged with them, never dropped.
         m = self.with_chains()
-        records, _, _, problems = step.select(self.run, m, *step.window_of(utc(load(
-            self.run / "08-verify" / "finding.json")["finished"])), step.load_pack())
+        records, _, _, problems = step.select(self.run, m, utc(load(
+            self.run / "08-verify" / "finding.json")["finished"]), step.load_pack())
         self.assertEqual(problems, [])
         not_checked = []
-        for start, end in ((dt.datetime(2026, 12, 1, tzinfo=dt.timezone.utc), dt.datetime(2027, 1, 1, tzinfo=dt.timezone.utc)),
-                           (dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc), dt.datetime(2026, 10, 29, tzinfo=dt.timezone.utc))):
-            # a window that starts after every entry, and one that ends inside the chain (entries stamped after its end)
-            docs = step.judge_records(records, self.run, step.load_pack(), start, end, not_checked)
-            self.assertEqual(docs["05-deal"]["x-evaluator"]["exchanges"], 6, (start, end, not_checked))
+        for as_of in (utc("2026-01-01T00:00:00Z"), utc("2026-10-29T00:00:00Z"), utc("2027-01-01T00:00:00Z")):
+            # an as-of before every chain entry, one inside the chain (entries stamped after it), and one after all
+            docs = step.judge_records(records, self.run, step.load_pack(), as_of, not_checked)
+            self.assertEqual(docs["05-deal"]["x-evaluator"]["exchanges"], 6, (as_of, not_checked))
 
     @unittest.skipUnless(HAS_EVALUATOR, NO_EVALUATOR)
     def test_a_deal_the_evaluator_finds_not_met_is_not_met(self):
@@ -575,9 +572,7 @@ class JudgeTest(Base):
     @unittest.skipUnless(HAS_EVALUATOR and HAS_TOOLS, NO_EVALUATOR)
     def test_a_live_pass_names_only_the_steps_the_evaluator_did_not_judge(self):
         self.with_chains()
-        with mock.patch.object(step, "window_of", lambda as_of, periods=12: (
-                dt.datetime(2025, 11, 1, tzinfo=dt.timezone.utc), dt.datetime(2026, 11, 1, tzinfo=dt.timezone.utc))):
-            f = self.judge()
+        f = self.judge()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn("does not run on the rehearsal stand-ins", f["detail"])  # the rehearsal population's wording
         kinds = step.load_pack()["kinds"]
@@ -774,7 +769,7 @@ class JudgeTest(Base):
             if name == "rollup":
                 stray = json.loads(json.dumps(doc["claims"][0]))
                 twin = step.result_doc([{**stray, "id": "stray", "evidence": stray["evidence"]}],
-                                       step.load_pack(), *step.window_of(utc("2026-10-02T09:01:00Z")))
+                                       step.load_pack(), utc("2026-10-02T09:01:00Z"))
                 twin["generated_at"] = "2026-10-02T00:00:00Z"
                 rid = real(book, twin, "stray")
                 doc["claims"].append({**doc["claims"][0], "id": "window:stray",
@@ -796,8 +791,8 @@ class JudgeTest(Base):
     def test_planted_a_rollup_over_a_finer_result_altered_after_sealing_fails(self):
         real = step.seal
 
-        def tamper(book, records, docs, pack, start, end, out):
-            sealed = real(book, records, docs, pack, start, end, out)
+        def tamper(book, records, docs, pack, as_of, out):
+            sealed = real(book, records, docs, pack, as_of, out)
             p = out / "bundles" / "09-dispute.bundle.json"
             b = load(p)
             b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"][0]["verdict"] = "not_met"
@@ -817,8 +812,8 @@ class JudgeTest(Base):
     def alter_rollup(self):
         real = step.seal
 
-        def tamper(book, records, docs, pack, start, end, out):
-            sealed = real(book, records, docs, pack, start, end, out)
+        def tamper(book, records, docs, pack, as_of, out):
+            sealed = real(book, records, docs, pack, as_of, out)
             p = out / "bundles" / "rollup.bundle.json"
             b = load(p)
             b["disclosures"][b["root"]]["agent_input"]["statement"]["claims"][0]["verdict"] = "not_met"
@@ -983,214 +978,33 @@ class LiveTreeTest(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
-class StandInTest(unittest.TestCase):
-    """A run without 08's manifest: 10 judges the population's committed stand-in run, and says so."""
+class FixtureTest(unittest.TestCase):
+    """The committed base run is what the real 08 gives the committed records."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(prefix="test-step10-standin-")
-        self.population = Path(self.tmp.name) / "rehearsal"
-        shutil.copytree(POPULATION, self.population)
-        self.run = Path(self.tmp.name) / "run"
-        self.run.mkdir()
+        self.tmp = tempfile.TemporaryDirectory(prefix="test-step10-fixture-")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def judge(self):
-        out = self.run / "10-judge"
-        step.main(["--population", str(self.population), "--out", str(out)])
-        f = load(out / "finding.json")
-        self.assertEqual(finding.check(self.run), [], f["detail"])
-        return f
-
-    def test_rehearsal_passes_on_the_committed_stand_in(self):
-        f = self.judge()
-        self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertIn("the committed stand-in run population/rehearsal/step10/run (dated in a closed month), not "
-                      "this run's records", f["detail"])
-        self.assertEqual(load(self.run / "10-judge" / "window.json")["source"], "stand-in")
-        manifest = load(POPULATION / "step10" / "run" / "08-verify" / "verified.json")
-        records = load(self.run / "10-judge" / "window.json")["records"]
-        self.assertEqual(len(records), len(records_of(manifest)))
-        # Counts are of deals, settlements, asks and disputes, not of the bundles and proof files beside them.
-        by_step = {}
-        for r in records:
-            by_step[r["step"]] = by_step.get(r["step"], 0) + 1
-        self.assertEqual(by_step, {"05": 1, "06": 1, "07": 6, "09": 1})
-        self.assertEqual(finding.gaps(f["detail"]), [("the pinned pack's own evaluator does not run on the rehearsal stand-ins: "
-                                                      "this step applies the pack's terms to the results 08 re-derived",
-                                                      step.GAP_ISSUE)])
-
     @unittest.skipUnless((TOOLS_DIR / "05-deal" / "bin" / "loop-step05-deal").is_file(),
                          "SKIPPED LOUDLY: step 05's driver is not installed; run steps/05-deal.setup.sh")
-    def test_the_stand_in_is_what_the_real_08_reproduces(self):
+    def test_the_base_run_is_what_the_real_08_reproduces(self):
         """08 to 10: the committed manifest is the one the real 08 gives the committed records, not a hand-written one."""
         run = Path(self.tmp.name) / "run"  # named as the committed one: the manifest carries the run's name
         run.mkdir(exist_ok=True)
-        shutil.copytree(POPULATION / "step10" / "run", run / "stand-in", dirs_exist_ok=True)
-        again = run / "stand-in"
+        shutil.copytree(POPULATION / "step10" / "run", run / "base", dirs_exist_ok=True)
+        again = run / "base"
         committed = POPULATION / "step10" / "run" / "08-verify"
         shutil.rmtree(again / "08-verify")
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         r = subprocess.run([str(ROOT / "steps" / "08-verify"), "--population", str(POPULATION),
                             "--out", str(again / "08-verify")], env=env, cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(load(again / "08-verify" / "finding.json")["result"], "NOT_CHECKED", r.stderr)  # steps of stage 1 not in the stand-in
+        self.assertEqual(load(again / "08-verify" / "finding.json")["result"], "NOT_CHECKED", r.stderr)  # steps of stage 1 not in the base run
         got = load(again / "08-verify" / "verified.json")
         want = load(committed / "verified.json")
         self.assertEqual({**got, "run": None}, {**want, "run": None})
-
-    def test_the_repository_stand_in_passes(self):
-        # The gate exactly: the repository's population, an empty run.
-        out = self.run / "10-judge"
-        step.main(["--population", str(POPULATION), "--out", str(out)])
-        self.assertEqual(load(out / "finding.json")["result"], "PASS")
-        self.assertEqual(finding.check(self.run), [])
-
-    def test_planted_a_stand_in_record_changed_fails(self):
-        (self.population / "step10" / "run" / "06-settle" / "ledger.jsonl").write_text('{"settlement": "other"}\n')
-        f = self.judge()
-        self.assertEqual(f["result"], "FAIL")
-        self.assertIn("06-settle/ledger.jsonl does not match the sha256 08's manifest gives it", f["detail"])
-
-    def test_planted_a_result_over_the_stand_in_that_omits_one_record_fails(self):
-        real = step.judge_records
-
-        def omit(*a, **k):
-            docs = real(*a, **k)
-            for c in docs["07-ask"]["claims"]:
-                c["evidence"] = [e for e in c["evidence"] if e != "07-ask/alice/asks/bob/exchange/request.json"]
-            return docs
-        with mock.patch.object(step, "judge_records", side_effect=omit):
-            f = self.judge()
-        self.assertEqual(f["result"], "FAIL")
-        self.assertIn("no Result cites 07-ask/alice/asks/bob/exchange/request.json", f["detail"])
-
-
-class PreviewTest(Base):
-    """--preview-open-month (evidence-network/loop#242): the open month, a look and never a baseline result. The
-    baseline window above is untouched; a preview reads --run, writes only --out, and marks every detail."""
-
-    def setUp(self):
-        super().setUp()
-        self.preview = Path(self.tmp.name) / "preview"
-
-    def october(self):
-        """The base run's four steps, finished in October 2026: records of the month 08 ran in."""
-        for i, base in enumerate(WINDOW_STEPS):
-            self.edit_step(base, finished=f"2026-10-01T10:0{i}:30Z")
-
-    def run_preview(self, *extra, population=POPULATION):
-        out = self.preview / "10-judge"
-        step.main(["--population", str(population), "--preview-open-month", "--run", str(self.run),
-                   "--out", str(out), *extra])
-        f = load(out / "finding.json")
-        self.assertEqual(finding.check_record(out, f), [], f["detail"])
-        return f
-
-    def test_the_open_month_is_the_as_of_month_and_the_baseline_window_does_not_move(self):
-        self.assertEqual(step.open_month_of(utc("2026-10-02T09:01:00Z")),
-                         (utc("2026-10-01T00:00:00Z"), utc("2026-11-01T00:00:00Z")))
-        self.assertEqual(step.open_month_of(utc("2026-12-31T23:59:59Z")),
-                         (utc("2026-12-01T00:00:00Z"), utc("2027-01-01T00:00:00Z")))
-        self.assertEqual(step.window_of(utc("2026-10-02T09:01:00Z")),
-                         (utc("2025-10-01T00:00:00Z"), utc("2026-10-02T09:01:00Z")))
-
-    def test_the_marker_is_the_exact_text_the_coordinator_ruled(self):
-        self.assertEqual(finding.PREVIEW, "PREVIEW: open month, not a baseline result")
-
-    def test_a_preview_finding_starts_with_the_marker_even_when_nothing_ran(self):
-        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
-            f = self.run_preview()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
-        self.assertIn("open calendar month", f["asserts"])
-
-    def test_the_gate_refuses_what_a_preview_writes(self):
-        # Even a preview of a live run, whose population the gate would take, is refused for what it is.
-        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
-            self.run_preview()
-        f = load(self.preview / "10-judge" / "finding.json")
-        f["population"] = "live"
-        dump(self.preview / "10-judge" / "finding.json", f)
-        steps, errs = gate.read_findings(self.preview)
-        self.assertTrue(any("an open-month preview, not a baseline result" in e for e in errs), errs)
-        self.assertNotIn("population is", " ".join(errs))
-
-    def test_a_preview_reads_the_run_and_writes_only_out(self):
-        with mock.patch.object(step, "load_pack", side_effect=step.NotChecked("the pinned inference-deals pack", "w")):
-            self.run_preview()
-        self.assertFalse((self.run / "10-judge").exists())
-        self.assertEqual(sorted(p.name for p in self.preview.iterdir()), ["10-judge"])
-
-    def test_a_preview_needs_a_run_and_a_run_needs_the_flag(self):
-        out = str(self.preview / "10-judge")
-        for argv in (["--preview-open-month"], ["--run", str(self.run)]):
-            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"):
-                step.main(["--population", str(POPULATION), "--out", out, *argv])
-            self.assertEqual(e.exception.code, 2)
-        self.assertFalse(self.preview.exists())
-
-    def test_a_preview_is_not_written_into_the_run_findings_or_baseline(self):
-        findings = Path(self.tmp.name) / "findings"
-        for out in (self.run / "10-judge", self.run, findings / "2026-10-31-live" / "10-judge", ROOT / "baseline" / "x"):
-            with self.assertRaises(SystemExit) as e, mock.patch.object(sys, "stderr"), \
-                    mock.patch.dict(os.environ, {"LOOP_FINDINGS": str(findings)}):
-                step.main(["--population", str(POPULATION), "--preview-open-month", "--run", str(self.run),
-                           "--out", str(out)])
-            self.assertEqual(e.exception.code, 2, out)
-        self.assertFalse((self.run / "10-judge").exists())
-        self.assertFalse(findings.exists())
-
-    def test_a_preview_never_judges_the_stand_in(self):
-        shutil.rmtree(self.run / "08-verify")
-        f = self.run_preview()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertIn("08-verify/verified.json", f["not_checked"][0]["why"])
-        self.assertTrue(f["detail"].startswith(finding.PREVIEW))
-        self.assertNotIn("stand-in", f["detail"])
-
-    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
-    def test_a_preview_judges_the_open_month_with_the_same_pack(self):
-        self.october()
-        f = self.run_preview()
-        self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertTrue(f["detail"].startswith(finding.PREVIEW + ". "), f["detail"])
-        self.assertIn("window 2026-10-01T00:00:00Z to 2026-11-01T00:00:00Z (the open month)", f["detail"])
-        out = self.preview / "10-judge"
-        w = load(out / "window.json")
-        self.assertEqual(w["manifest_sha256"], finding.sha256(self.run / "08-verify" / "verified.json"))
-        self.assertEqual((w["preview"], w["start"], w["end"], w["periods"]),
-                         ("open-month", "2026-10-01T00:00:00Z", "2026-11-01T00:00:00Z", 1))
-        self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
-        rollup = load(out / "bundles" / "rollup.bundle.json")
-        xw = rollup["disclosures"][rollup["root"]]["agent_input"]["statement"]["x-window"]
-        self.assertEqual((xw["preview"], xw["periods"], xw["pack"]),
-                         ("open-month", 1, step.load_pack()["pack"]))
-        self.assertFalse((self.run / "10-judge").exists())
-
-    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
-    def test_the_same_run_without_the_flag_judges_october_to_date_as_a_baseline(self):
-        # Ethan, 2026-10-31: the window is 12 closed months plus the as-of month to date.
-        self.october()
-        f = self.judge()
-        self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertFalse(f["detail"].startswith("PREVIEW"))
-        w = load(self.run / "10-judge" / "window.json")
-        self.assertNotIn("preview", w)
-        self.assertEqual((w["start"], w["end"]), ("2025-10-01T00:00:00Z", w["as_of"]))
-        self.assertEqual({r["dir"] for r in w["records"]}, set(WINDOW_STEPS))
-        self.assertIn("plus the as-of month to date", f["detail"])
-        self.assertEqual(f["asserts"], step.ASSERTS)
-
-    @unittest.skipUnless(HAS_TOOLS, NO_TOOLS)
-    def test_a_september_run_has_nothing_in_the_open_month(self):
-        # The base run's records finished in September; 08 ran in October, so the open month holds none of them.
-        f = self.run_preview()
-        self.assertEqual(f["result"], "NOT_CHECKED")
-        self.assertTrue(f["detail"].startswith(finding.PREVIEW))
-        self.assertEqual(load(self.preview / "10-judge" / "window.json")["records"], [])
-        self.assertEqual(f["not_checked"][0]["issue"], step.PREVIEW_ISSUE)  # not the closed-month window's gap
 
 
 if __name__ == "__main__":

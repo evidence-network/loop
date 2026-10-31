@@ -80,15 +80,12 @@ Countersigned means a second signer, holding a key the reporting operator does n
 seals under the reporting node's own key, so it countersigns nothing: the status page's "Minutes to the first
 countersigned report" row stays at its placeholder even when 11 passes.
 
-The proof is `report.json`, `result.bundle.json`, `seal.bundle.json` and `check.json`, plus
-`standin/10-judge/` on the stand-in path.
+The proof is `report.json`, `result.bundle.json`, `seal.bundle.json` and `check.json`.
 
 ## Rehearsal
 
-The reporting book is a scratch book under the TEST key in `population/rehearsal/step11/keys/`. A run with neither
-`08-verify/` nor `10-judge/` runs step 10 into `OUT/standin/10-judge`, which judges the committed stand-in run
-`population/rehearsal/step10/run`, so rehearsal 11 is PASS. Its detail says the records are that stand-in. A real run
-with 08's manifest reports on its own 10, which is NOT_CHECKED while its records are all in the open month.
+The reporting book is a scratch book under the TEST key in `population/rehearsal/step11/keys/`. A run with no
+`10-judge/` output is NOT_CHECKED; a run with 08's manifest and 10's Results reports on its own 10.
 
 ## Live
 
@@ -97,25 +94,6 @@ the transport carries no trust. Never fetch them through a peer. The reporting b
 join book (`book_dir`, with a profile named for the node), under its key in `data_dir`. A PASS says the records are
 operator-collected from the lab's own nodes, and that this proves the report, not how an operator gets bundles from
 peers. With no 08 and 10 outputs in the run, it is NOT_CHECKED with the reason. When 10 is NOT_CHECKED, 11
-carries each of 10's not_checked entries over with the issue 10 names, so a same-day live run reads NOT_CHECKED
-on the window, and a step 08 did not reproduce on 08's issue for it. 11 checks 10's Results under the committed
+carries each of 10's not_checked entries over with the issue 10 names, so a step 08 did not reproduce on 08's issue for it. 11 checks 10's Results under the committed
 live judge public key, `population/live/step10/keys/judge.pub.pem` (evidence-network/loop#189), and a live PASS
 says that key is held by the lab operator account that also runs the nodes, not by an independent judge.
-
-## Open-month preview (`--preview-open-month`)
-
-```
-steps/11-report --population population/live --preview-open-month --run findings/<date>-live \
-                --out preview/<date>-live/11-report [--page FILE]
-```
-
-Run it after `10-judge --preview-open-month` (see steps/10-judge.md) with the same `--run`, and `--out` in the same
-preview directory: 11 reads 10's open-month Results from `preview/<date>-live/10-judge` beside `--out`, and 08's
-manifest and the records from `--run`. It accepts only a preview 10 (a 10 whose detail starts with `finding.PREVIEW`)
-whose `window.json` names `--run`'s 08 manifest by sha256, never runs 10 itself and never uses the stand-in; a run without the flag refuses a preview 10. Its `report.json`
-says `preview: "open-month"`, and every finding it writes starts its `detail` with
-`PREVIEW: open month, not a baseline result`, which `scripts/ecosystem_gate.py` refuses. `--out` may not lie inside
-`--run`, `findings/` or `baseline/`. A preview seals the page only in a throwaway scratch book under freshly
-generated keys in a temporary directory, on live too (its detail says "not a node's book"): it never opens a node's
-`book_dir`, which is append-only and served to other nodes, and needs no node's `data_dir` or `book_dir`, so
-nothing of a preview reaches a node's book or a public surface. The flag is the only change: the baseline report is as before (loop#242).

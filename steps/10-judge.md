@@ -10,19 +10,16 @@ the loop run `RUN`. It seals the pack's Results and judges them on their bundles
 1. **08's manifest.** 08's `finding.json` passes `steps/finding.py`'s check and names `verified.json` in
    `proof`, with the sha256 the file has. The manifest is of this run's population. The as-of instant is 08's
    finding `finished`.
-2. **The window.** It covers the 12 whole closed calendar months before the as-of month plus the as-of month to
-   date: `[first of as-of month minus 12 months, as-of instant]`, the as-of instant being 08's finding `finished`.
-   Its start moves only when a month closes; its end is the as-of instant, so a rerun over the same records has the
-   same window. The 12 months are the pinned pack's `window.months`; the period (a calendar month) is the step's.
-   Steven's 2026-10-29 ruling was 12 whole closed months only; Ethan, 2026-10-31 ("用 10 月份数据赶紧给我 run"),
-   overrode it for now so October's records are judged the day they are made. Steven can change it later. The
-   Result's `x-window.through_as_of` and `x-evaluator.bounds` say plainly that the window covers the as-of month to
-   date, not only closed months.
+2. **The window.** Every record of the run up to the as-of instant, 08's finding `finished`: no month boundary,
+   no minimum age. A record made today is judged today. Ethan, 2026-10-31 ("用 10 月份数据赶紧给我 run"), deleted
+   the earlier rule that a record is judged only once its month has closed (a 12-whole-closed-months window),
+   and with it the open-month preview and the committed stand-in run it needed: there is one window. The
+   Result's `x-window.through` and `x-evaluator.bounds` name the actual bound.
 3. **The records.** A record is a primary record file of a reproduced step of the pack's kinds, with the sha256 08 lists for it: `deal.json` for 05 (rehearsal), and on a live run each held half, `<node>/held-<n>.json`, the counterparty capsule a node holds, when it is a host-served capsule (its `action_id`; a settlement leg held beside it is not a deal; binding.json `only`; its `-citing` and `-inclusion` files stay 08's proof; loop#250), `ledger.jsonl` for 06 on the mock rail and, on live, each node's `<node>/recorded.json` (the settlement legs and observations that node's ledger holds, which 06 keeps; a terms leg is settlement evidence under 06's kind, never a deal; Buzz 34760604), each `request.json` of an ask for 07, `dispute.json` for 09 (the referee's `outcome.json` stays 08's, beside it; `records` in `steps/10-judge.d/binding.json`). A live 09 keeps no `dispute.json` (Mesh disputes are adjudications only), so when 08 lists none its record is the referee's sealed `outcome.json` (`records_if_none`). So a count is of deals, settlements, asks and disputes, never of the bundles and proof files beside them, which stay 08's. A reproduced step of the pack's kinds in which 08 lists no such file is a FAIL.
    The kinds are 05 Deal (deals), 06 Settle (settlements), 07 Ask (asks) and 09 Dispute (disputes). The
    step's `finding.json` is read only after its bytes match 08's digest, and only for its `finished`. The
    step's records are in the window when that instant is, not when the dates inside a record's bytes say, since
-   a record's own clock is the operator's. A Result's `generated_at` is the window's end, so a rerun over the same
+   a record's own clock is the operator's. A Result's `generated_at` is the as-of instant, so a rerun over the same
    records has the same document. A record whose bytes no longer match 08's digest
    is a FAIL.
 4. **Refused, not read, named in detail:** a file 08 does not list, a step outside the window, and a step
@@ -35,7 +32,7 @@ The pack is deterministic, with no model call. It is the evidencebook-skills `in
 commit `versions.lock` pins (`inference-deals`; the repository has no release tags). `10-judge.setup.sh` fetches
 that commit's contract and `compiled.json` into `$LOOP_TOOLS/packs/inference-deals-<sha>`, and the step reads
 the terms (`come_through.paid_as_agreed`, `served_as_agreed`, `served_named_model`), their tier (all `must_have`)
-and the window length from there. A pinned pack whose terms the binding does not bind, or with a term that is not
+from there. A pinned pack whose terms the binding does not bind, or with a term that is not
 `must_have`, is NOT_CHECKED. The loop's own claims (07 asks, 09 disputes, the roll-up) carry the loop's own
 `own_contract_ref`, never the pack's. No copy of them is in this repository: `steps/10-judge.d/binding.json` only
 says which stand-in record files feed which term. When the pinned pack is not fetched, the step is NOT_CHECKED,
@@ -122,42 +119,11 @@ The proof is:
 
 ## Rehearsal
 
-A run's records are made in the month it runs, so until that month closes they are outside the window. The
-window is never shortened for that. Instead, when `RUN` holds no `08-verify/`, the step judges the population's
-committed stand-in run, `population/rehearsal/step10/run`: four stand-in findings (05, 06, 07, 09) dated
-September 2026 in their findings (the records' own bytes keep the clock of the day the stand-in was generated), and 08's manifest finished in October 2026. Its detail says the records are that committed
-stand-in, not this run's, and `window.json` names its `source` as `stand-in`. So `steps/10-judge --population
-population/rehearsal --out DIR/10-judge` on a run without 08 is PASS.
-
-Given a real run with 08's manifest, the step judges that run. While its records are all in the open month, it
-is NOT_CHECKED with that reason, cited as the pinned pack's window (12 whole closed months,
-Steven's 2026-10-29 ruling), and a step 08 did not reproduce adds its own entry under the issue
-08 names for it.
+A run is judged from its own `08-verify/` manifest. A run with none is NOT_CHECKED (nothing for 10 to read); there is no
+stand-in run to fall back on. The tests copy the committed `population/rehearsal/step10/run` (four rehearsal findings
+for 05, 06, 07 and 09 and the 08 manifest that reproduces them) as their base run. A step 08 did not reproduce adds its
+own entry under the issue 08 names for it.
 
 **Live:** 08 reproduces live step 07 (its asks, `*/attempts/*/*.request.json`), and not yet the other live
-steps (evidence-network/loop#188). A same-day live run is NOT_CHECKED on the window: its asks are judged once
-their month has closed. Past that, live 10 seals under the lab's judge key (see Sealing), and it is
+steps (evidence-network/loop#188). Live 10 seals under the lab's judge key (see Sealing), and it is
 NOT_CHECKED where that key is not on the host it runs on.
-
-## Open-month preview (`--preview-open-month`)
-
-To see 10 run on records whose month has not closed, without moving the baseline (loop#242):
-
-```
-steps/10-judge --population population/live --preview-open-month --run findings/<date>-live \
-               --out preview/<date>-live/10-judge
-```
-
-It judges the open month, the calendar month containing 08's as-of instant (for 08 finished in October 2026,
-`[2026-10-01, 2026-11-01)`), with the same pinned pack and, on live, the same judge key. `--run` is the loop run
-that holds `08-verify/`; the step reads it and never judges the stand-in or writes into it. Its Results carry
-`x-window.preview` and `periods` 1, and `window.json` carries `preview: "open-month"` and the sha256 of the 08
-manifest it judged (step 11 refuses a preview of another run). The 12-closed-month window
-above is unchanged and is still the only one a run without the flag uses (Steven's 2026-10-29 ruling).
-
-A preview is never a baseline result. Every finding it writes, whatever its result, has a `detail` that starts with
-`PREVIEW: open month, not a baseline result` (`finding.PREVIEW`), and `scripts/ecosystem_gate.py` refuses a findings
-directory holding one. `--out` may not lie inside `--run`, `findings/` (or `LOOP_FINDINGS`) or `baseline/`: write it
-to the git-ignored top-level `preview/`, or under `$LAB_DIR/preview/`. Neither `loop.sh`, the gate nor any builder of the site, the stats pages or `reports/` lists
-`preview/`; it is never committed, and the status page and the site refuse a findings directory holding a
-preview finding (`tests/test_preview_isolation.py`). Step 11 reports over it with the same flag.
