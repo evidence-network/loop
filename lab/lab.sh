@@ -3,10 +3,13 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|running|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
+#   running   confirm every lab node is up and runs the checked build: its process is MESH_LLM_BIN and one of its
+#             plugin processes is CAPSULES_BIN (by sha256 of /proc/<pid>/exe, so Linux only); exits 1 naming each
+#             failure. Starts and stops nothing
 #   tools     install every stage-1 step's pinned tools (each steps/<NN>-<name>.setup.sh): runs every
 #             setup, records each one's exit code in build.json, and exits 1 if any failed
 #   start     lab-1 makes the mesh and serves the model; lab-2 and lab-3 join it. No relay.
@@ -105,6 +108,7 @@
 #             config.toml [models.request_defaults]: LAB-ONLY FAULT INJECTION, so the pair differs under
 #             the same model hash and weights digest. No temperature, seed or sampler override. Read by start
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
+#   LAB_OUT             where loop, admit, deal, settle, dispute and ask write (default findings/<UTC date>-live)
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
 #             exchange to the other side (share_record_at_completion = counterparty), e.g. "lab-1 lab-2".
 #             A node not named keeps the plugin's default, which is on at the pinned plugin unless the
@@ -170,6 +174,8 @@ pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && retu
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
+# Where loop, admit, deal, settle, dispute and ask write the day's live findings (scripts/live_daily.sh names its own).
+OUT=${LAB_OUT:-$ROOT/findings/$TODAY-live}
 
 # In a dry run an unset path reads as its own name, so the plan still prints.
 need() { local v=$1; [ -n "${!v:-}" ] || { [ "$DRY" = 1 ] && printf -v "$v" '<%s>' "$v" && return 0; die "set $v"; }; }
@@ -682,6 +688,34 @@ cmd_stop() {
   echo "stopped ${NODES[*]} and the witness"
 }
 
+cmd_running() {
+  local n p c fails=() mesh_sha cap_sha found
+  need MESH_LLM_BIN; need CAPSULES_BIN
+  if [ "$DRY" = 1 ]; then
+    say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
+    for n in "${NODES[@]}"; do echo "  ($n: pid $(pidfile "$n") alive, /proc/<pid>/exe and a plugin child's exe compared by sha256)"; done
+    return 0
+  fi
+  mesh_sha=$(sha256sum < "$MESH_LLM_BIN" | cut -d' ' -f1) || die "cannot read MESH_LLM_BIN"
+  cap_sha=$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1) || die "cannot read CAPSULES_BIN"
+  for n in "${NODES[@]}"; do
+    if ! alive "$n"; then fails+=("$n is down"); continue; fi
+    p=$(pid_of "$n")
+    [ "$(sha256sum < "/proc/$p/exe" 2> /dev/null | cut -d' ' -f1)" = "$mesh_sha" ] \
+      || { fails+=("$n (pid $p) does not run MESH_LLM_BIN"); continue; }
+    found=0
+    for c in $(pgrep -P "$p"); do
+      [ "$(sha256sum < "/proc/$c/exe" 2> /dev/null | cut -d' ' -f1)" = "$cap_sha" ] && found=1
+    done
+    [ "$found" = 1 ] || fails+=("$n (pid $p) runs no CAPSULES_BIN plugin process")
+  done
+  if [ "${#fails[@]}" -gt 0 ]; then
+    printf 'lab.sh: running: %s\n' "${fails[@]}" >&2
+    return 1
+  fi
+  echo "running: ${NODES[*]} on mesh-llm ${mesh_sha:0:12} and capsules ${cap_sha:0:12}"
+}
+
 cmd_status() {
   local n
   for n in "${NODES[@]}"; do
@@ -704,12 +738,18 @@ cmd_exchange() {
   target=$(node_id lab-1)
   body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply with the word lab and nothing else."}],"max_tokens":8,"temperature":0}' "$MODEL_NAME")
   run mkdir -p "$LAB_DIR/exchange"
+  # Each node asks even when another's request failed (lab-2's paid one refused, say), and the command fails at the end.
+  local failed=()
   for n in lab-2 lab-3; do
-    run curl -fsS --max-time 120 -o "$LAB_DIR/exchange/$n.json" -D "$LAB_DIR/exchange/$n.headers.txt" \
+    if ! run curl -fsS --max-time 120 -o "$LAB_DIR/exchange/$n.json" -D "$LAB_DIR/exchange/$n.headers.txt" \
       -H 'content-type: application/json' -H "x-mesh-target: $target" -d "$body" \
-      "http://127.0.0.1:$(api_port "$n")/v1/chat/completions"
+      "http://127.0.0.1:$(api_port "$n")/v1/chat/completions"; then
+      failed+=("$n")
+      continue
+    fi
     [ "$DRY" = 1 ] || echo "$n -> lab-1: served by $(tr -d '\r' < "$LAB_DIR/exchange/$n.headers.txt" | awk -F': ' 'tolower($1) == "x-mesh-served-by" { print $2 }')"
   done
+  [ "${#failed[@]}" = 0 ] || die "exchange: the request from ${failed[*]} to lab-1 failed"
 }
 
 # --- join -------------------------------------------------------------------------------------
@@ -923,13 +963,13 @@ cmd_loop() {
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second_dir")" LOOP_SECOND_NODE="$second" \
     LAB_DIR="$LAB_DIR" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
     "$ROOT/loop.sh" --stage 1 --population live \
-    --out "$ROOT/findings/$TODAY-live"
+    --out "$OUT"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
 
 cmd_admit() {
   # Step 04 is not in loop.sh's stage 1 (evidence-network/loop#127), so it runs on its own, like deal.
-  local out=$ROOT/findings/$TODAY-live
+  local out=$OUT
   run env LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$(node_consoles "$ROOT/population/live/population.json")" \
     "$ROOT/steps/04-admit" --population "$ROOT/population/live" --out "$out/04-admit"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
@@ -939,7 +979,7 @@ cmd_admit() {
 cmd_deal() {
   # Step 05 is not in loop.sh's stage 1, so it runs on its own, into the day's live findings
   # beside stage 1's, and the finding contract is checked over the whole directory.
-  local out=$ROOT/findings/$TODAY-live
+  local out=$OUT
   run env LAB_DIR="$LAB_DIR" LOOP_NODE_CONSOLES="$(node_consoles "$ROOT/population/live/population.json")" \
     "$ROOT/steps/05-deal" --population "$ROOT/population/live" --out "$out/05-deal"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
@@ -1011,7 +1051,7 @@ PY
 }
 
 cmd_settle() {
-  local out=$ROOT/findings/$TODAY-live
+  local out=$OUT
   run env LAB_DIR="$LAB_DIR" "$ROOT/steps/06-settle" --population "$ROOT/population/live" --out "$out/06-settle"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
@@ -1079,7 +1119,7 @@ PY
 }
 
 cmd_dispute() {
-  local out=$ROOT/findings/$TODAY-live pop=$ROOT/population/live
+  local out=$OUT pop=$ROOT/population/live
   # A twins run has a fourth node that is not in the committed population: `LAB_TWINS=1 entries` wrote the four-node one under the lab dir.
   if [ "$TWINS" = 1 ]; then
     pop=$LAB_DIR/population-twins
@@ -1095,7 +1135,7 @@ cmd_dispute() {
 cmd_ask() {
   # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
-  local out=$ROOT/findings/$TODAY-live second second_dir self node_consoles
+  local out=$OUT second second_dir self node_consoles
   ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second_dir")" LOOP_SECOND_NODE="$second" \
     LAB_DIR="$LAB_DIR" LOOP_SECOND_DATA_DIR="$(data_of "$second_dir")" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
@@ -1118,7 +1158,7 @@ cmd_all() {
 }
 
 case "$cmd" in
-  check | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | running | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

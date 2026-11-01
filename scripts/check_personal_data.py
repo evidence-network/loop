@@ -22,7 +22,10 @@ import re
 import sys
 from pathlib import Path
 
-EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
+# The local part is at most 64 characters (RFC 5321), which keeps the scan linear: unbounded, a long base64 line (a
+# 300 kB wire.json line in step 12's proof) was tried from every position of the run, minutes per file. Only the
+# domain is judged, and a longer run still ends in a match of its last 64 characters before the @.
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]{1,64}@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
 EXAMPLE_DOMAINS = ("example.com", "example.net", "example.org")
 EXAMPLE_TLDS = (".example", ".invalid", ".test", ".localhost")
 
