@@ -141,7 +141,7 @@ class TrailingNewline(unittest.TestCase):
     def test_join_sh_checks_refuse_trailing_newline(self):
         src = (ROOT / "join.sh").read_text()
         self.assertNotIn("re.match(", src)
-        for pat in (r"^[A-Za-z0-9][A-Za-z0-9._-]*$", r"^[0-9a-f]{64}$"):
+        for pat in (r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$", r"^[0-9a-f]{64}$"):
             self.assertIn('re.fullmatch(r"%s"' % pat, src)
 
     def test_no_dollar_anchored_match_remains(self):
