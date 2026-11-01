@@ -738,12 +738,18 @@ cmd_exchange() {
   target=$(node_id lab-1)
   body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply with the word lab and nothing else."}],"max_tokens":8,"temperature":0}' "$MODEL_NAME")
   run mkdir -p "$LAB_DIR/exchange"
+  # Each node asks even when another's request failed (lab-2's paid one refused, say), and the command fails at the end.
+  local failed=()
   for n in lab-2 lab-3; do
-    run curl -fsS --max-time 120 -o "$LAB_DIR/exchange/$n.json" -D "$LAB_DIR/exchange/$n.headers.txt" \
+    if ! run curl -fsS --max-time 120 -o "$LAB_DIR/exchange/$n.json" -D "$LAB_DIR/exchange/$n.headers.txt" \
       -H 'content-type: application/json' -H "x-mesh-target: $target" -d "$body" \
-      "http://127.0.0.1:$(api_port "$n")/v1/chat/completions"
+      "http://127.0.0.1:$(api_port "$n")/v1/chat/completions"; then
+      failed+=("$n")
+      continue
+    fi
     [ "$DRY" = 1 ] || echo "$n -> lab-1: served by $(tr -d '\r' < "$LAB_DIR/exchange/$n.headers.txt" | awk -F': ' 'tolower($1) == "x-mesh-served-by" { print $2 }')"
   done
+  [ "${#failed[@]}" = 0 ] || die "exchange: the request from ${failed[*]} to lab-1 failed"
 }
 
 # --- join -------------------------------------------------------------------------------------

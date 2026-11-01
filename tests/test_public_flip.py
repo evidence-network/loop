@@ -192,6 +192,8 @@ class PersonalDataTest(unittest.TestCase):
             "415-555-0134": "phone number",
             "host 8.8.8.8:3131": "public IP address",
             "peer [2606:4700::1111]": "public IP address",
+            "x@example.com_bob@corp.io": "email address",  # a real address right after an example one
+            "a" * 100 + "@corp.io": "email address",
         }
         for line, kind in cases.items():
             with self.subTest(line=line):

@@ -13,13 +13,15 @@
 #   3. the window: this run's start, at its whole minute (the plugin stamps records to the minute), goes into
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
-#   4. one lab/lab.sh exchange: the one paid exchange (lab-2 pays lab-1 1,000 msat; lab-3 has no settlement), never
-#      retried. A refused payment leaves step 06 NOT_CHECKED with the refusal as its reason, written here
+#   4. one lab/lab.sh exchange: the one paid exchange (lab-2 pays lab-1 1,000 msat; lab-3 asks too and has no
+#      settlement), never retried. If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
+#      the HTTP status seen (loop#321)
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
 #   6. steps 04, 05, bundles, 06, 07, 09, stage 1 (01 02 03 12, then 08, which reproduces the earlier ones), 10, 11,
-#      into findings/<UTC date>-live-<N>, N the next unused for that date (a plain <date>-live counts as 1)
-#   7. steps/finding.py check, then check_no_preimages.py, check_personal_data.py and a search for the lab's invite
-#      token over the findings; any hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed
+#      into findings/<UTC date>-live-<N>, N the next unused for that date in findings/, the held runs and the packed
+#      ones (a plain <date>-live counts as 1)
+#   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
+#      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
 #      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing.
@@ -87,12 +89,14 @@ STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SINCE=${STARTED_AT:0:16}:00Z
 DAY=${STARTED_AT:0:10}
 
-# The next unused findings/<DAY>-live-<N>: one past the highest taken for the day, a plain <DAY>-live counting as 1.
+# The next unused <DAY>-live-<N>: one past the highest the day has taken in findings/, among held runs and among packed
+# runs (their records), a plain <DAY>-live counting as 1.
 next_name() {
   local d n max=0
-  for d in "$ROOT/findings/$DAY"-live*; do
+  for d in "$ROOT/findings/$DAY"-live* "$HELD_DIR/$DAY"-live* "$OUT_DIR/$DAY"-live*.json; do
     [ -e "$d" ] || continue
     d=${d##*/}
+    d=${d%.json}
     if [ "$d" = "$DAY-live" ]; then n=1
     elif [[ $d =~ ^$DAY-live-([0-9]+)$ ]]; then n=$((10#${BASH_REMATCH[1]}))
     else continue
@@ -102,12 +106,17 @@ next_name() {
   echo "$DAY-live-$((max + 1))"
 }
 
-# Another run on the lab: a lab.sh or loop.sh process (this script starts its own only after this check).
+# Another run on the lab: a process running a lab.sh or loop.sh script, from any clone, as the program or as a shell's
+# script argument (`lab/lab.sh ...`, `bash lab/lab.sh ...`); not a process that only names one (an editor, a grep).
+# This script starts its own only after this check.
 other_run() {
-  local p found=1
-  for p in $(pgrep -f -- '(^|[ /])(lab\.sh|loop\.sh)( |$)'); do
+  local p args w found=1
+  for p in $(pgrep -f -- '(lab|loop)\.sh'); do
     [ "$p" = "$$" ] && continue
-    ps -o pid=,args= -p "$p" && found=0
+    args=$(ps -o args= -p "$p") || continue
+    read -r -a w <<< "$args"
+    case "${w[0]##*/}" in bash | sh | dash | zsh) w=("${w[@]:1}") ;; esac
+    case "${w[0]:-}" in lab.sh | */lab.sh | loop.sh | */loop.sh) echo "$p $args"; found=0 ;; esac
   done
   return $found
 }
@@ -127,7 +136,7 @@ if [ "$DRY" = 1 ]; then
   4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat; a refusal leaves 06 NOT_CHECKED, no retry
   5. wait ${WAIT}s for the checkpoints
   6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, ask, dispute, loop; $STEPS/10-judge, $STEPS/11-report
-  7. steps/finding.py check; check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR)
+  7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
@@ -141,7 +150,14 @@ if ! (set -o noclobber; printf '{"pid": %d, "started": "%s"}\n' "$$" "$STARTED_A
 fi
 CHILD=""
 POP_TOUCHED=0
-kill_tree() { local c; for c in $(pgrep -P "$1"); do kill_tree "$c"; done; kill -TERM "$1" 2> /dev/null; }
+tree() { local c; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
+# Every process of the tree is stopped first, so none starts another command between the signals, then all get TERM.
+kill_tree() {
+  local all
+  all=$(tree "$1")
+  # shellcheck disable=SC2086
+  kill -STOP $all 2> /dev/null; kill -TERM $all 2> /dev/null; kill -CONT $all 2> /dev/null
+}
 cleanup() {
   [ -n "$CHILD" ] && kill_tree "$CHILD"
   [ "$POP_TOUCHED" = 1 ] && git -C "$ROOT" checkout -q -- "$POP"
@@ -164,8 +180,14 @@ MAIN=$(git -C "$ROOT" rev-parse FETCH_HEAD)
 log "run $NAME at $HEAD, window from $SINCE"
 
 # --- 2. the lab -----------------------------------------------------------------------------------------------------
-bounded "$LAB_SH" check > /dev/null || refuse 5 "lab.sh check failed (pin drift against versions.lock; see $LAB_DIR/build.json)"
-bounded "$LAB_SH" running || refuse 5 "lab.sh running failed (a node is down or runs another build)"
+bounded "$LAB_SH" check > /dev/null
+rc=$?
+[ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh check exited $rc"
+[ "$rc" = 0 ] || refuse 5 "lab.sh check failed: pin drift against versions.lock (see $LAB_DIR/build.json)"
+bounded "$LAB_SH" running
+rc=$?
+[ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh running exited $rc"
+[ "$rc" = 0 ] || refuse 5 "lab.sh running failed: a node is down or runs another build"
 
 # --- 3. the window --------------------------------------------------------------------------------------------------
 POP_TOUCHED=1
@@ -187,11 +209,11 @@ status_line() { [ -s "$1" ] && tr -d '\r' < "$1" | awk 'toupper($1) ~ /^HTTP\// 
 paid_status=$(status_line "$LAB_DIR/exchange/lab-2.headers.txt")
 case "$paid_status" in
   "HTTP/"*" 200"*) refused="" ;;
-  "") refused="lab-2's request to lab-1 got no HTTP answer (lab.sh exchange exited $exchange_rc)" ;;
-  *) refused="lab-2's paid request to lab-1 was answered '$paid_status' (lab.sh exchange exited $exchange_rc)" ;;
+  "") refused="lab-2's paid request to lab-1 got no HTTP answer (lab.sh exchange exited $exchange_rc)" ;;
+  *) refused="lab-2's paid request to lab-1 got '$paid_status' (lab.sh exchange exited $exchange_rc)" ;;
 esac
 [ -z "$refused" ] && [ "$exchange_rc" -ne 0 ] && log "lab.sh exchange exited $exchange_rc after lab-2's paid exchange; the steps judge what was recorded"
-[ -n "$refused" ] && log "no paid exchange this run: $refused; step 06 is NOT_CHECKED, no retry"
+[ -n "$refused" ] && log "$refused; step 06 is NOT_CHECKED, no retry"
 
 # --- 5. the checkpoints ---------------------------------------------------------------------------------------------
 log "waiting ${WAIT}s for the checkpoints"
@@ -214,20 +236,19 @@ PY
 settle_refused() {
   mkdir -p "$OUT/06-settle"
   python3 -B - "$ROOT" "$OUT/06-settle" "$STARTED_AT" "$SINCE" "$refused" << 'PY'
-import sys
-from importlib.machinery import SourceFileLoader
+import importlib.machinery, importlib.util, sys
 root, step_dir, started, since, refused = sys.argv[1:]
 sys.path.insert(0, root + "/steps")
 import finding
-settle = SourceFileLoader("settle", root + "/steps/06-settle").load_module()
+spec = importlib.util.spec_from_loader("settle", importlib.machinery.SourceFileLoader("settle", root + "/steps/06-settle"))
+settle = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(settle)
 finding.write(step_dir, result="NOT_CHECKED", population="live", asserts=settle.LIGHTNING_ASSERTS, pinned=[], proof=[],
-              detail=f"No paid exchange in this run's window (from {since}): {refused}. The run makes one paid "
-                     "exchange and never retries it, so there is no settlement of this run to judge; this is not a "
-                     "result of the step's code.",
+              detail=f"{refused}; this run has no settled exchange to judge in its window (from {since}). The run "
+                     "makes one paid exchange and never retries it; this is not a result of the step's code.",
               not_checked=[{"what": f"a settlement of this run's paid exchange (window from {since})",
-                            "why": f"the lab wallet made no payment: {refused}; the lab pays at most 3,000 msat per "
-                                   "payment and 9,000 msat per direction per UTC day, and the run does not retry",
-                            "issue": "evidence-network/loop#307"}],
+                            "why": f"{refused}; this run has no settled exchange to judge",
+                            "issue": "evidence-network/loop#321"}],
               started=started)
 PY
 }
@@ -246,10 +267,10 @@ bounded env LAB_DIR="$LAB_DIR" "$STEPS/10-judge" --population "$ROOT/population/
 bounded env LAB_DIR="$LAB_DIR" "$STEPS/11-report" --population "$ROOT/population/live" --out "$OUT/11-report"; ensure_finding 11-report $?
 
 # --- 7. the checks --------------------------------------------------------------------------------------------------
+# The privacy checks come first, so findings that failed nothing else are never left in the clone unscanned.
 python3 -B "$ROOT/status/findings.py" "$OUT" > /dev/null || log "status/findings.py could not write index.md"
-python3 -B "$ROOT/steps/finding.py" check "$OUT" || refuse 6 "steps/finding.py check refused $OUT"
 hold() {
-  mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && mv "$OUT" "$HELD_DIR/$NAME" \
+  mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && [ ! -e "$HELD_DIR/$NAME" ] && mv "$OUT" "$HELD_DIR/$NAME" \
     || refuse 7 "$1, and moving $OUT to $HELD_DIR failed: remove it by hand"
   refuse 7 "$1: the findings are held in $HELD_DIR/$NAME, nothing is packed"
 }
@@ -259,6 +280,7 @@ python3 -B "$ROOT/scripts/check_personal_data.py" "$OUT" > /dev/null || hold "ch
 if [ -s "$LAB_DIR/run/invite.token" ] && grep -rlqF -f "$LAB_DIR/run/invite.token" "$OUT"; then
   hold "the lab's invite token is in the findings"
 fi
+python3 -B "$ROOT/steps/finding.py" check "$OUT" || refuse 6 "steps/finding.py check refused $OUT"
 
 # --- 8. the gate ----------------------------------------------------------------------------------------------------
 gate=$(mktemp) || exit 2
@@ -272,8 +294,9 @@ if [ "$gate_rc" = 0 ]; then
 fi
 [ -n "$gate_out" ] && echo "$gate_out" >&2
 rm -f "$gate"
-# With no paid exchange, 06 NOT_CHECKED is the refusal, not a regression of the step: any other step's still counts.
-other_regressions=$(grep -E '^[a-z]+ step [0-9]{2}: ' <<< "$gate_out" | { if [ -n "$refused" ]; then grep -vE '^[a-z]+ step 06: '; else cat; fi; })
+# With no paid exchange, 06 PASS -> NOT_CHECKED is that, not a regression of the step. Anything else the gate says
+# (another step, a pin, a baseline it cannot read) still counts.
+gate_other=$(grep -v -x -e 'mesh step 06: PASS -> NOT_CHECKED' -e '' <<< "$gate_out")
 
 # --- 9. the pack ----------------------------------------------------------------------------------------------------
 mkdir -p "$OUT_DIR" || refuse 2 "cannot make $OUT_DIR"
@@ -295,6 +318,6 @@ for step, result in steps.items():
     print(step, result)
 PY
 log "done: $OUT_DIR/$NAME.tgz ($(cut -c1-12 "$OUT_DIR/$NAME.tgz.sha256")), gate check rc $gate_rc"
-if [ "$gate_rc" != 0 ] && { [ -n "$other_regressions" ] || [ -z "$gate_out" ] || [ -z "$refused" ]; }; then exit 1; fi
+if [ "$gate_rc" != 0 ] && { [ -z "$refused" ] || [ -n "$gate_other" ] || [ -z "$gate_out" ]; }; then exit 1; fi
 [ -n "$refused" ] && exit 8
 exit 0

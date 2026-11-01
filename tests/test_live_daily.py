@@ -150,6 +150,37 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(self.calls(), [])
         self.assertFalse((self.lab / "run" / "LIVE_RUN").exists())
 
+    def test_held_and_packed_runs_keep_their_n(self):
+        (self.lab / "held" / f"{self.day()}-live-1").mkdir(parents=True)
+        (self.lab / "out").mkdir()
+        (self.lab / "out" / f"{self.day()}-live-2.json").write_text("{}\n")
+        r = self.run_daily("--dry-run")
+        self.assertIn(f"findings/{self.day()}-live-3", r.stdout)
+
+    def test_a_process_that_only_names_lab_sh_is_not_a_run(self):
+        decoy = subprocess.Popen(["bash", "-c", 'exec -a "vim lab/lab.sh loop.sh" sleep 60'])
+        try:
+            r = self.run_daily()
+        finally:
+            decoy.kill()
+            decoy.wait()
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_refuses_while_a_lab_sh_runs(self):
+        busy = self.tmp / "busy" / "lab"
+        busy.mkdir(parents=True)
+        (busy / "lab.sh").write_text("sleep 60\n")
+        other = subprocess.Popen(["bash", str(busy / "lab.sh"), "exchange"])
+        try:
+            r = self.run_daily()
+        finally:
+            other.kill()
+            other.wait()
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertIn("another lab run is in progress", r.stderr)
+        self.assertEqual(self.calls(), [])
+        self.assert_untouched()
+
     def test_second_run_the_same_day_takes_n_plus_one(self):
         self.assertEqual(self.run_daily().returncode, 0)
         r = self.run_daily()
@@ -164,6 +195,8 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("402 Payment Required", f["detail"])
         self.assertIn("402 Payment Required", f["not_checked"][0]["why"])
+        self.assertEqual(f["not_checked"][0]["issue"], "evidence-network/loop#321")
+        self.assertNotIn("wallet", f["detail"] + f["not_checked"][0]["why"])  # only what was seen
         names = [c.split()[0] for c in self.calls()]
         self.assertEqual(names.count("exchange"), 1)
         self.assertNotIn("settle", names)
