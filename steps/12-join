@@ -61,7 +61,11 @@ node checkpoints and history_card/1 through the daily reporter's ask
 (scripts/daily_report.py), whose plugin verifies each answer under the key
 the node's host announces. An answer that verifies under a key other than the
 listed one, does not verify, or refuses a subject the node's signed policy
-lists as stranger-safe is a failure. The answers are matched against the
+lists as stranger-safe for a reason that withholds it (no_such_subject,
+derivation_unsupported, or one the spec does not name) is a failure; a refusal
+under policy_declined or not_authorized cannot be judged (NOT_CHECKED), and
+one that blames the request is allowed, as step 07 judges (steps/refusal.py,
+loop#61). The answers are matched against the
 node's signed commitment (loop#161): the one join returns on the node's own
 console, verified below under the listed key with its policy bytes. Its
 signed policy's stranger_safe, not the entry's, says which refusal fails;
@@ -149,6 +153,7 @@ import history_cards as hc  # noqa: E402
 import daily_report  # noqa: E402
 import finding  # noqa: E402
 import live  # noqa: E402
+import refusal  # noqa: E402
 import report_layout as layout  # noqa: E402
 
 ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
@@ -1021,6 +1026,15 @@ def judge_reporter_line(stem, line, entry, signed=None):
     if state in ("refusal", "not_evidence"):
         if state == "refusal" and name not in safe:
             return None, None
+        if state == "refusal":
+            # Judged by its reason, as step 07 judges a refusal (Mesh-LLM/capsules-plugin#112, #114). The probe's
+            # requests name no profile, so they are evidence-interop/0 ones.
+            reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
+            verdict = refusal.refusal_verdict(reason)
+            if verdict == "not_checked":
+                return None, refusal.refusal_not_checked(f"the refusal of the {name} probe", reason)
+            if verdict == "ok":
+                return None, None
         who = "the node's signed policy" if signed else "the node"
         why = (f"is refused, but {who} lists it as stranger-safe" if state == "refusal"
                else "does not verify under the announced key")
