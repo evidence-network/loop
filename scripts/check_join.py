@@ -87,9 +87,9 @@ def field_errors(doc):
     if doc["kind"] not in KINDS:
         errs.append(f"kind must be one of {', '.join(KINDS)}")
     for name in ("node_id", "key_id", "consent_sha256"):
-        if not HEX64.match(doc[name]):
+        if not HEX64.fullmatch(doc[name]):
             errs.append(f"{name} is not 64 lowercase hex")
-    if not TIMESTAMP.match(doc["at"]):
+    if not TIMESTAMP.fullmatch(doc["at"]):
         errs.append("at must be YYYY-MM-DDTHH:MM:SSZ (UTC)")
     else:
         try:
