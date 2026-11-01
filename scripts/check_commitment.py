@@ -253,7 +253,7 @@ def count_errors(doc, path=()):
             errs += count_errors(v, path + (str(i),))
     elif isinstance(doc, (int, float)) and not isinstance(doc, bool):
         errs.append(f"{'.'.join(path)}: a number; a commitment carries no counts")
-    elif isinstance(doc, str) and DIGITS.fullmatch(doc):
+    elif isinstance(doc, str) and DIGITS.fullmatch(doc.strip()):
         errs.append(f"{'.'.join(path)}: a decimal number as a string; a commitment carries no counts")
     return errs
 

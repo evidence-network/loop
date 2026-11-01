@@ -2,6 +2,10 @@
 
 Run: python3 -m unittest discover -s tests -v
 """
+import ast
+import importlib.machinery
+import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,6 +27,8 @@ import reporter_key  # noqa: E402
 import scrub_reports  # noqa: E402
 import stats_model  # noqa: E402
 
+# Prefix scans: their patterns carry no $, so a trailing newline changes nothing.
+ALLOWED = {"_COMMENT_LINE.match"}
 HEX = "a" * 64
 SHA = "b" * 40
 
@@ -42,7 +48,7 @@ class TrailingNewline(unittest.TestCase):
 
     def test_check_commitment_digits_and_key(self):
         self.assertEqual(check_commitment.count_errors("12", ("p",)), ["p: a decimal number as a string; a commitment carries no counts"])
-        self.assertEqual(check_commitment.count_errors("12\n", ("p",)), [])
+        self.assertEqual(check_commitment.count_errors("12\n", ("p",)), ["p: a decimal number as a string; a commitment carries no counts"])
         self.assertIsNone(check_commitment.card_checkpoint_key({"checkpoint_key": "AAAA\n"}))
 
     def test_check_nodes(self):
@@ -52,10 +58,8 @@ class TrailingNewline(unittest.TestCase):
         errs = check_nodes.check_entry(Path(HEX + ".json"), entry)
         self.assertTrue(any("node_id is not 64" in e for e in errs), errs)
         self.assertTrue(any("key_id is not 64" in e for e in errs), errs)
-        self.assertIsNone(check_nodes.DATE.fullmatch("2026-11-01\n"))
 
     def test_check_reports(self):
-        self.assertIsNone(check_reports.HEX64.fullmatch(HEX + "\n"))
         with tempfile.TemporaryDirectory() as t:
             r = Path(t) / "reporter.json"
             r.write_text('{"key_id": "%s\\n"}' % HEX)
@@ -68,8 +72,6 @@ class TrailingNewline(unittest.TestCase):
         for ref in (SHA + "\n", "v1.2.3\n", "abcd\n"):
             with self.subTest(ref=ref):
                 self.assertIsNotNone(check_versions_lock.check_ref(ref))
-        self.assertIsNone(check_versions_lock.NAME.fullmatch("a\n"))
-        self.assertIsNone(check_versions_lock.REPO.fullmatch("o/r\n"))
 
     def test_binding_verify_digest(self):
         with tempfile.TemporaryDirectory() as t:
@@ -88,14 +90,18 @@ class TrailingNewline(unittest.TestCase):
             (d / "self-peer-id").write_text("\n")
             with self.assertRaises(ValueError):
                 reporter_key.read_identity(d)
-        self.assertIsNone(reporter_key.HEX64.fullmatch(HEX + "\n"))
 
-    def test_layout_period_patterns(self):
-        for period in (report_layout.Daily, report_layout.Rehearsal, report_layout.OnDemand):
-            self.assertIsNone(period.pattern.fullmatch("2026-11-01\n"))
+    def test_report_layout_names(self):
+        for period, ok in ((report_layout.Daily, "2026-11-01"), (report_layout.Rehearsal, "2026-11-01T0000Z"),
+                           (report_layout.OnDemand, "2026-11-01T000000Z")):
+            with self.subTest(period.set):
+                self.assertIsNotNone(period.pattern.fullmatch(ok))
+                self.assertIsNone(period.pattern.fullmatch(ok + "\n"))
         self.assertIsNone(report_layout.ATTEMPT_NAME.fullmatch("20261101T000000Z\n"))
         self.assertIsNone(report_layout.ATTEMPT_LINE.fullmatch("at=2026-11-01T00:00:00Z by=ask\n"))
-        self.assertIsNotNone(report_layout.ATTEMPT_NAME.fullmatch("20261101T000000Z"))
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / ("20261101T000000Z\n")).mkdir()
+            self.assertEqual(report_layout.attempts(Path(t)), [])
 
     def test_scrub_reports(self):
         errs = []
@@ -112,15 +118,71 @@ class TrailingNewline(unittest.TestCase):
         self.assertTrue(stats_model._hex_or_null(HEX))
         self.assertFalse(stats_model._hex_or_null(HEX + "\n"))
         for pat, ok in ((stats_model.DATE, "2026-11-01"), (stats_model.STAMP, "2026-11-01T00:00:00Z"),
-                        (stats_model.NODE_FILE if hasattr(stats_model, "NODE_FILE") else stats_model.DAY_FILE, "2026-11-01.json")):
+                        (stats_model.DAY_FILE, "2026-11-01.json"), (stats_model.SLOT_FILE, "2026-11-01T0000Z.json"),
+                        (stats_model.RUN_FILE, "2026-11-01T000000Z.json")):
             self.assertIsNotNone(pat.fullmatch(ok))
             self.assertIsNone(pat.fullmatch(ok + "\n"))
+
+    def test_step_validators(self):
+        def load(name):
+            loader = importlib.machinery.SourceFileLoader("tn_" + name, str(ROOT / "steps" / name))
+            mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+            loader.exec_module(mod)
+            return mod
+        ask, admit = load("07-ask"), load("04-admit")
+        self.assertEqual(ask.duration("PT5M").total_seconds(), 300)
+        for bad in ("PT5M\n",):
+            with self.assertRaises(ValueError):
+                ask.duration(bad)
+        ask.utc("2026-11-01T00:00:00Z")
+        with self.assertRaises(ValueError):
+            ask.utc("2026-11-01T00:00:00Z\n")
+        self.assertTrue(admit.digest_ok({"alg": "SHA-256", "digest": HEX}))
+        self.assertFalse(admit.digest_ok({"alg": "SHA-256", "digest": HEX + "\n"}))
+
+    def test_join_sh_checks_refuse_trailing_newline(self):
+        src = (ROOT / "join.sh").read_text()
+        self.assertNotIn("re.match(", src)
+        for pat in (r"^[A-Za-z0-9][A-Za-z0-9._-]*$", r"^[0-9a-f]{64}$"):
+            self.assertIn('re.fullmatch(r"%s"' % pat, src)
+
+    def test_no_dollar_anchored_match_remains(self):
+        """The whole class: no tracked Python (incl. extensionless steps/*) calls .match/.search on a $-anchored
+        pattern. re.match with a literal is judged by its literal; a compiled pattern's .match is flagged unless
+        it is in ALLOWED (detectors and prefix scans)."""
+        files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+        bad = []
+        for f in files:
+            path = ROOT / f
+            if f.startswith(("tests/", "site/vendor/")) or not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+                tree = ast.parse(text)
+            except (UnicodeDecodeError, SyntaxError):
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "match"):
+                    continue
+                recv = node.func.value
+                if isinstance(recv, ast.Name) and recv.id == "re":
+                    lit = node.args[0] if node.args else None
+                    if isinstance(lit, ast.Constant) and isinstance(lit.value, str) and not lit.value.endswith("$"):
+                        continue
+                elif ast.unparse(node.func) in ALLOWED:
+                    continue
+                bad.append(f"{f}:{node.lineno}: {ast.unparse(node)[:80]}")
+        for src in ("join.sh",):  # Python embedded in a shell script
+            for n, line in enumerate((ROOT / src).read_text().splitlines(), 1):
+                if "re.match(" in line:
+                    bad.append(f"{src}:{n}: {line.strip()[:80]}")
+        self.assertEqual(bad, [])
 
     def test_finding_issue_ref(self):
         self.assertTrue(finding.outside("x", "o/r#1"))
         with self.assertRaises(ValueError):
             finding.outside("x", "o/r#1\n")
-        self.assertIsNone(finding.STEP_DIR.fullmatch("01-seal\n"))
 
 
 if __name__ == "__main__":

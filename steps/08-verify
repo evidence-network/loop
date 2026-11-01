@@ -1198,12 +1198,12 @@ def verify_run(run, out, pop_dir, population):
     entries = []
     own = Path(out).resolve().name.split("-", 1)[0]
     for nn in expected_steps(run) or []:
-        if nn != own and not any(finding.STEP_DIR.match(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):
+        if nn != own and not any(finding.STEP_DIR.fullmatch(f.parent.name) for f in Path(run).glob(f"{nn}-*/finding.json")):
             entries.append({"step": nn, "name": None, "dir": f"{nn}-?", "recorded": None, "rederived": None,
                             "problems": [f"run.json lists step {nn} but the run holds no {nn}-*/finding.json"],
                             "not_checked": None, "files": [], "status": "failed"})
     for d in sorted(p for p in Path(run).iterdir() if p.is_dir()):
-        if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.match(d.name):
+        if d.resolve() == Path(out).resolve() or not finding.STEP_DIR.fullmatch(d.name):
             continue
         with tempfile.TemporaryDirectory(prefix="08-verify-") as tmp:
             entries.append(verify_step(d, pop_dir, population, tmp))
