@@ -53,11 +53,11 @@ def check_operator(operator):
         return ["operator must be a non-empty string"]
     if EMAIL.search(operator):
         return ["operator looks like an email address; give a GitHub handle (no personal data)"]
-    if PHONE.match(operator) and sum(c.isdigit() for c in operator) >= 7:
+    if PHONE.fullmatch(operator) and sum(c.isdigit() for c in operator) >= 7:
         return ["operator looks like a phone number; give a GitHub handle (no personal data)"]
     if operator.startswith("@"):
         return ["operator is a GitHub handle without the leading @"]
-    if not GITHUB_HANDLE.match(operator):
+    if not GITHUB_HANDLE.fullmatch(operator):
         return ["operator is not a GitHub handle"]
     return []
 
@@ -74,9 +74,9 @@ def check_entry(path, entry):
         errs.append(f"{path.name}: unknown field(s) {', '.join(extra)}")
     node_id = entry.get("node_id")
     key_id = entry.get("key_id")
-    if "node_id" in entry and not (isinstance(node_id, str) and HEX64.match(node_id)):
+    if "node_id" in entry and not (isinstance(node_id, str) and HEX64.fullmatch(node_id)):
         errs.append(f"{path.name}: node_id is not 64 lowercase hex")
-    if "key_id" in entry and not (isinstance(key_id, str) and HEX64.match(key_id)):
+    if "key_id" in entry and not (isinstance(key_id, str) and HEX64.fullmatch(key_id)):
         errs.append(f"{path.name}: key_id is not 64 lowercase hex")
     if isinstance(node_id, str) and path.name != f"{node_id}.json":
         errs.append(f"{path.name}: file name must be <node_id>.json")
@@ -177,9 +177,9 @@ def check_left(left, listed):
             errs.append(f"{where}: a leave mark has exactly node_id and left")
             continue
         node_id, day = mark["node_id"], mark["left"]
-        if not (isinstance(node_id, str) and HEX64.match(node_id)) or path.name != f"{node_id}.json":
+        if not (isinstance(node_id, str) and HEX64.fullmatch(node_id)) or path.name != f"{node_id}.json":
             errs.append(f"{where}: file name must be <node_id>.json, node_id 64 lowercase hex")
-        if not (isinstance(day, str) and DATE.match(day) and _is_date(day)):
+        if not (isinstance(day, str) and DATE.fullmatch(day) and _is_date(day)):
             errs.append(f"{where}: left must be a YYYY-MM-DD date")
         if node_id in listed:
             errs.append(f"{where}: {node_id} is listed and marked left; remove the mark to rejoin")

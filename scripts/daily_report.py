@@ -260,7 +260,7 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
         if status == 200:
             reply = json.loads(body)
             key = reply.get("announced_key_id") if isinstance(reply, dict) else None
-            announced = key if isinstance(key, str) and HEX64.match(key) else None
+            announced = key if isinstance(key, str) and HEX64.fullmatch(key) else None
     except (OSError, ValueError) as e:
         if not (d / "peer-key.json").exists():
             write_new(d / "peer-key.json", json.dumps({"error": str(e)}) + "\n")
@@ -331,7 +331,7 @@ def load_reporter(path, data_dir):
     reporter = json.loads(Path(path).read_text(encoding="utf-8"))
     for field in ("node_id", "key_id"):
         value = reporter.get(field)
-        if not (isinstance(value, str) and HEX64.match(value)) or value == PLACEHOLDER:
+        if not (isinstance(value, str) and HEX64.fullmatch(value)) or value == PLACEHOLDER:
             raise ValueError(f"{path}: {field} is not set (run scripts/reporter_key.py on the reporter node)")
     if data_dir is not None:
         reporter_key.check_private_key(Path(data_dir))
@@ -373,7 +373,7 @@ def self_node(args, reporter, console):
 
 
 def report_days(out, period=layout.Daily):
-    return sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.match(p.name)) if out.is_dir() else []
+    return sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.fullmatch(p.name)) if out.is_dir() else []
 
 
 def mark_missed(out, today, why, period=layout.Daily):
@@ -594,7 +594,7 @@ def prove(args):
     for node_dir in sorted(p for p in day_dir.iterdir() if p.is_dir()) if day_dir.is_dir() else []:
         cp = (node_dir / "checkpoints.verification").read_text().split() or ["missing"]
         hc = (node_dir / "history_card.verification").read_text().split() or ["missing"]
-        count = next((int(t.split("=", 1)[1]) for t in cp if re.match(r"^checkpoints=\d+$", t)), 0)
+        count = next((int(t.split("=", 1)[1]) for t in cp if re.fullmatch(r"^checkpoints=\d+$", t)), 0)
         ok = cp[0] == "verified" and count >= 1 and hc[0] == "verified"
         print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; history_card/1: {hc[0]})")
         if ok:

@@ -52,7 +52,7 @@ def read_revocations(path, text=None):
     binding or of another version. Signatures and times are the verifier's to check."""
     path = Path(path)
     digest = path.name[:-len(".json")] if path.name.endswith(".json") else ""
-    if not HEX64.match(digest):
+    if not HEX64.fullmatch(digest):
         raise ValueError(f"{path.name}: not named <binding_digest>.json")
     try:
         doc = json.loads(path.read_text(encoding="utf-8") if text is None else text, object_pairs_hook=_unique)
@@ -73,7 +73,7 @@ def checkout_list(nodes_dir, digest):
     ValueError, as read_revocations does, for a file that is not a revocations file. The rehearsal reads its
     fixtures' folder this way; a live run reads main (main_list)."""
     path = Path(nodes_dir) / REVOCATIONS / f"{digest}.json"
-    if not (HEX64.match(str(digest)) and path.exists()):
+    if not (HEX64.fullmatch(str(digest)) and path.exists()):
         return "[]"
     try:  # read once: the octets checked are the octets hashed and sent
         text = path.read_bytes().decode("utf-8")
@@ -133,7 +133,7 @@ def main_list(root, digest, snap):
                           or "no main commit is recorded to read nodes/revocations/ from")
     if subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True).returncode:
         raise LookupError(f"this clone does not hold main commit {commit[:12]} to read nodes/{REVOCATIONS}/ from")
-    if not HEX64.match(str(digest)):
+    if not HEX64.fullmatch(str(digest)):
         return commit, "[]"
     path = f"nodes/{REVOCATIONS}/{digest}.json"
     if subprocess.run(["git", "-C", str(root), "cat-file", "-e", f"{commit}:{path}"], capture_output=True).returncode:

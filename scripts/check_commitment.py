@@ -253,7 +253,7 @@ def count_errors(doc, path=()):
             errs += count_errors(v, path + (str(i),))
     elif isinstance(doc, (int, float)) and not isinstance(doc, bool):
         errs.append(f"{'.'.join(path)}: a number; a commitment carries no counts")
-    elif isinstance(doc, str) and DIGITS.match(doc):
+    elif isinstance(doc, str) and DIGITS.fullmatch(doc.strip()):
         errs.append(f"{'.'.join(path)}: a decimal number as a string; a commitment carries no counts")
     return errs
 
@@ -265,7 +265,7 @@ def schema_of(doc):
 def card_checkpoint_key(card):
     """The raw 32-byte checkpoint key (hex) a /1 entry names, or None (absent or not an Ed25519 SPKI)."""
     text = card.get("checkpoint_key")
-    if not isinstance(text, str) or not re.match(r"^[A-Za-z0-9_+/-]+=*$", text):
+    if not isinstance(text, str) or not re.fullmatch(r"^[A-Za-z0-9_+/-]+=*$", text):
         return None
     try:
         der = unb64url(text.replace("+", "-").replace("/", "_").rstrip("="))

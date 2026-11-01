@@ -192,7 +192,7 @@ def tools():
 
 def utc(text):
     """An RFC 3339 UTC time as an aware datetime (nanoseconds cut to microseconds)."""
-    m = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$", str(text))
+    m = re.fullmatch(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$", str(text))
     if not m:
         raise ValueError(f"not an RFC 3339 UTC time: {text!r}")
     frac = (m.group(2) or "0")[:6].ljust(6, "0")
@@ -209,8 +209,8 @@ def now():
 
 def duration(text):
     """An answers_within duration (PnD, PTnH, PTnM, PTnS) as a timedelta."""
-    m = DURATION.match(str(text))
-    if not m or not any(m.groups()) or not check_commitment.DURATION.match(text):
+    m = DURATION.fullmatch(str(text))
+    if not m or not any(m.groups()) or not check_commitment.DURATION.fullmatch(text):
         raise ValueError(f"answers_within {text!r} is not an ISO 8601 duration")
     d, h, mi, s = (int(x or 0) for x in m.groups())
     return dt.timedelta(days=d, hours=h, minutes=mi, seconds=s)
@@ -1290,7 +1290,7 @@ def reporter_line(attempt, stem, listed):
     try:
         said_key = json.loads((attempt / "peer-key.json").read_text(encoding="utf-8"))
         key = said_key.get("announced_key_id") if isinstance(said_key, dict) else None
-        announced = key if isinstance(key, str) and daily_report.HEX64.match(key) else None
+        announced = key if isinstance(key, str) and daily_report.HEX64.fullmatch(key) else None
     except (OSError, ValueError):
         pass
     again = daily_report.verification_line(200, reply.read_bytes(), None, announced, listed)
@@ -1404,7 +1404,7 @@ def judge_reporter(pop, out):
         try:
             subject = load(node_dir / SUBJECT_FILE)
             half, why = subject["half"], subject["why"]
-            if half is not None and not (isinstance(half, str) and daily_report.HEX64.match(half)):
+            if half is not None and not (isinstance(half, str) and daily_report.HEX64.fullmatch(half)):
                 raise ValueError(f"half {half!r} is neither null nor a capsule id")
         except (OSError, ValueError, KeyError, TypeError) as e:
             failures.append(f"{name}: {SUBJECT_FILE} is not readable ({type(e).__name__}: {e})")

@@ -54,7 +54,7 @@ def read_findings(findings_dir):
     """{NN: (result, sha256 of finding.json)} for every step directory, or the errors."""
     steps, errs = {}, []
     for d in sorted(p for p in Path(findings_dir).iterdir() if p.is_dir()):
-        m = finding.STEP_DIR.match(d.name)
+        m = finding.STEP_DIR.fullmatch(d.name)
         f = d / "finding.json"
         if not m or not f.is_file():
             errs.append(f"{d.name}: not a step directory with a finding.json")

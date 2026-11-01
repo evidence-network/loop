@@ -26,11 +26,11 @@ RELEASE = re.compile(r"^(?:[A-Za-z0-9_.-]+/)*(?:[A-Za-z0-9_.]+-)*v?\d+\.\d+\.\d+
 
 def check_ref(ref):
     """None when ref is a pin; otherwise why not."""
-    if SHA.match(ref):
+    if SHA.fullmatch(ref):
         return None
-    if SHORT_SHA.match(ref) and not ref.isdigit():
+    if SHORT_SHA.fullmatch(ref) and not ref.isdigit():
         return f"{ref} is a short or uppercase SHA: give the full 40-hex commit SHA"
-    if RELEASE.match(ref):
+    if RELEASE.fullmatch(ref):
         return None
     return f"{ref} is not a full commit SHA or a released version (a branch name moves)"
 
@@ -46,12 +46,12 @@ def check(text):
             errs.append(f"line {n}: want `<name> <repository> <ref>`, got {line!r}")
             continue
         name, repo, ref = parts
-        if not NAME.match(name):
+        if not NAME.fullmatch(name):
             errs.append(f"line {n}: name {name!r} is not lowercase letters, digits and dashes")
         elif name in names:
             errs.append(f"line {n}: {name} is pinned twice")
         names.add(name)
-        if not REPO.match(repo):
+        if not REPO.fullmatch(repo):
             errs.append(f"line {n}: {name}: repository {repo!r} is not <owner>/<repo>")
         why = check_ref(ref)
         if why:

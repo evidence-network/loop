@@ -450,7 +450,7 @@ def decision_block(ln):
 
 def digest_ok(d):
     return isinstance(d, dict) and set(d) == {"alg", "digest"} and d["alg"] == "SHA-256" \
-        and isinstance(d["digest"], str) and bool(HEX64.match(d["digest"]))
+        and isinstance(d["digest"], str) and bool(HEX64.fullmatch(d["digest"]))
 
 
 def block_problems(blk):
@@ -561,7 +561,7 @@ def pack_problems(packs, price):
             # The plugin seals the profile's commitment as a bare hex string (price.rs reads()), not as {alg, digest}.
             if not (prof is None or (isinstance(prof, dict) and set(prof) == {"alg", "commitment"}
                                      and prof["alg"] == "SHA-256" and isinstance(prof["commitment"], str)
-                                     and bool(HEX64.match(prof["commitment"])))):
+                                     and bool(HEX64.fullmatch(prof["commitment"])))):
                 errs.append("the price pack read's profile is neither null nor a commitment")
         roles.append(r["role"])
     if roles not in ([], ["base"], ["price", "base"]):

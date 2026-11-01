@@ -1083,7 +1083,7 @@ def kept_lines(node_dir, entry):
     try:
         said_key = json.loads((attempt / "peer-key.json").read_text(encoding="utf-8"))
         key = said_key.get("announced_key_id") if isinstance(said_key, dict) else None
-        announced = key if isinstance(key, str) and daily_report.HEX64.match(key) else None
+        announced = key if isinstance(key, str) and daily_report.HEX64.fullmatch(key) else None
     except (OSError, ValueError):
         announced = None
     for stem in daily_report.QUESTIONS:

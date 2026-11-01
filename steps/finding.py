@@ -38,7 +38,7 @@ GAP = re.compile(re.escape(OUTSIDE) + r"(.+?): ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#
 
 def outside(what, issue):
     """One gap sentence for a PASS detail: what lies outside the assertion, and the issue that owns it."""
-    if not ISSUE_REF.match(issue):
+    if not ISSUE_REF.fullmatch(issue):
         raise ValueError(f"a gap's issue is owner/repo#N, not {issue!r}")
     return f"{OUTSIDE}{what}: {issue}."
 
@@ -74,7 +74,7 @@ def write(step_dir, *, result, population, asserts, pinned, proof, detail, not_c
     checked; a NOT_CHECKED result needs at least one.
     """
     step_dir = Path(step_dir)
-    m = STEP_DIR.match(step_dir.name)
+    m = STEP_DIR.fullmatch(step_dir.name)
     if not m:
         raise ValueError(f"{step_dir.name}: a step directory is <NN>-<name>")
     lock = pins()
@@ -103,7 +103,7 @@ def check_record(step_dir, r):
     where = Path(step_dir).name
     if sorted(r) != sorted(FIELDS):
         return [f"{where}: fields must be exactly {', '.join(FIELDS)}"]
-    m = STEP_DIR.match(where)
+    m = STEP_DIR.fullmatch(where)
     if not m or (r["step"], r["name"]) != m.groups():
         errs.append(f"{where}: step and name must match the directory")
     if r["result"] not in RESULTS:
