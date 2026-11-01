@@ -27,8 +27,6 @@ import reporter_key  # noqa: E402
 import scrub_reports  # noqa: E402
 import stats_model  # noqa: E402
 
-# Prefix scans: their patterns carry no $, so a trailing newline changes nothing.
-ALLOWED = {"_COMMENT_LINE.match"}
 HEX = "a" * 64
 SHA = "b" * 40
 
@@ -147,36 +145,62 @@ class TrailingNewline(unittest.TestCase):
             self.assertIn('re.fullmatch(r"%s"' % pat, src)
 
     def test_no_dollar_anchored_match_remains(self):
-        """The whole class: no tracked Python (incl. extensionless steps/*) calls .match/.search on a $-anchored
-        pattern. re.match with a literal is judged by its literal; a compiled pattern's .match is flagged unless
-        it is in ALLOWED (detectors and prefix scans)."""
+        """The whole class: no tracked Python (incl. extensionless steps/*) calls .match or .search on a pattern
+        whose literal ends in $. A receiver is judged by the re.compile literal assigned to its name anywhere in
+        the repo (HEX64, period.pattern, ...); re.match/re.search by their own literal; an unresolvable
+        receiver (a call result) is flagged, so a new shape fails loudly instead of slipping through."""
         files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-        bad = []
+        trees = {}
         for f in files:
             path = ROOT / f
             if f.startswith(("tests/", "site/vendor/")) or not path.is_file():
                 continue
             try:
-                text = path.read_text(encoding="utf-8")
-                tree = ast.parse(text)
+                trees[f] = ast.parse(path.read_text(encoding="utf-8"))
             except (UnicodeDecodeError, SyntaxError):
                 continue
+
+        def literal(call):
+            a0 = call.args[0] if call.args else None
+            return a0.value if isinstance(a0, ast.Constant) and isinstance(a0.value, str) else None
+
+        def is_re(call, fn):
+            return (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr == fn
+                    and isinstance(call.func.value, ast.Name) and call.func.value.id == "re")
+
+        anchored = set()  # names bound to a re.compile whose literal ends in $
+        own = {}  # file -> {name: ends in $} for the names that file binds itself (PHONE differs by file)
+        for f, tree in trees.items():
+            own[f] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and is_re(node.value, "compile"):
+                    lit = literal(node.value) or ""
+                    for t in node.targets:
+                        if isinstance(t, (ast.Name, ast.Attribute)):
+                            name = t.id if isinstance(t, ast.Name) else t.attr
+                            own[f][name] = own[f].get(name, False) or lit.endswith("$")
+                            if lit.endswith("$"):
+                                anchored.add(name)
+        bad = []
+        for f, tree in trees.items():
             for node in ast.walk(tree):
                 if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "match"):
+                        and node.func.attr in ("match", "search")):
                     continue
                 recv = node.func.value
                 if isinstance(recv, ast.Name) and recv.id == "re":
-                    lit = node.args[0] if node.args else None
-                    if isinstance(lit, ast.Constant) and isinstance(lit.value, str) and not lit.value.endswith("$"):
-                        continue
-                elif ast.unparse(node.func) in ALLOWED:
-                    continue
-                bad.append(f"{f}:{node.lineno}: {ast.unparse(node)[:80]}")
-        for src in ("join.sh",):  # Python embedded in a shell script
-            for n, line in enumerate((ROOT / src).read_text().splitlines(), 1):
-                if "re.match(" in line:
-                    bad.append(f"{src}:{n}: {line.strip()[:80]}")
+                    lit = literal(node)
+                    hit = lit is None or lit.endswith("$")
+                elif isinstance(recv, (ast.Name, ast.Attribute)):
+                    name = recv.id if isinstance(recv, ast.Name) else recv.attr
+                    hit = own[f][name] if isinstance(recv, ast.Name) and name in own[f] else name in anchored
+                else:
+                    hit = True
+                if hit:
+                    bad.append(f"{f}:{node.lineno}: {ast.unparse(node)[:80]}")
+        for n, line in enumerate((ROOT / "join.sh").read_text().splitlines(), 1):  # Python embedded in a shell script
+            if "re.match(" in line or "re.search(" in line:
+                bad.append(f"join.sh:{n}: {line.strip()[:80]}")
         self.assertEqual(bad, [])
 
     def test_finding_issue_ref(self):
