@@ -34,7 +34,7 @@ One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (d
   other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
   and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
 
-Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03, 12 and 08)
+Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03, 12, 07 and 08)
 against the rehearsal population (simulated nodes on a mock rail, no real payments) and fails
 if any step fails. The ecosystem gate keeps each step's last live result per ecosystem, with
 the pins it ran under, in [`baseline/`](baseline/README.md): a pull request that changes a pin

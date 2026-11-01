@@ -19,7 +19,7 @@
 #      settlement), never retried. If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
 #      the HTTP status seen (loop#321)
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
-#   6. steps 04, 05, bundles, 06, 07, 09, stage 1 (01 02 03 12, then 08, which reproduces the earlier ones), 10, 11,
+#   6. steps 04, 05, bundles, 06, 09, stage 1 (01 02 03 12 07, then 08, which reproduces the earlier ones), 10, 11,
 #      into findings/<UTC date>-live-<N>, N the next unused for that date in findings/, the held runs and the packed
 #      ones (a plain <date>-live counts as 1)
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
@@ -147,7 +147,7 @@ if [ "$DRY" = 1 ]; then
   3. window.from = $SINCE in $POP (restored on exit); LOOP_SEALED_SINCE=$SINCE
   4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat; a refusal leaves 06 NOT_CHECKED, no retry
   5. wait ${WAIT}s for the checkpoints
-  6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, ask, dispute, loop; $STEPS/10-judge, $STEPS/11-report
+  6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, dispute, loop; $STEPS/10-judge, $STEPS/11-report
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
@@ -277,7 +277,6 @@ if [ -z "$refused" ]; then
 else
   settle_refused || refuse 6 "cannot write step 06's NOT_CHECKED finding"
 fi
-bounded "$LAB_SH" ask; ensure_finding 07-ask $?
 bounded "$LAB_SH" dispute; ensure_finding 09-dispute $?
 bounded "$LAB_SH" loop || log "lab.sh loop exited $?"
 bounded env LAB_DIR="$LAB_DIR" "$STEPS/10-judge" --population "$ROOT/population/live" --out "$OUT/10-judge"; ensure_finding 10-judge $?

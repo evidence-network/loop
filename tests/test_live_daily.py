@@ -50,9 +50,8 @@ case "$cmd" in
   deal) w 05-deal PASS ;;
   bundles) ;;
   settle) w 06-settle PASS ;;
-  ask) w 07-ask PASS ;;
   dispute) [ -n "${STUB_NO_09:-}" ] && exit 3; w 09-dispute PASS ;;
-  loop) for s in 01-seal 02-book 03-advertise 12-join; do w $s PASS; done; w 08-verify NOT_CHECKED ;;
+  loop) for s in 01-seal 02-book 03-advertise 12-join 07-ask; do w $s PASS; done; w 08-verify NOT_CHECKED ;;
   *) echo "stub lab.sh: unexpected $cmd" >&2; exit 9 ;;
 esac
 '''
@@ -133,10 +132,10 @@ class LiveDailyTest(unittest.TestCase):
         # The window and the cutoff are the run's start for every step after the exchange; the exchange runs once.
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
-                         ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "ask", "dispute",
+                         ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "dispute",
                           "loop", "10-judge", "11-report"])
         self.assertIn(f"tools={self.lab / 'tools'}", calls[0])  # the run's own tools, first: check reads their record
-        for c in calls[3:11]:
+        for c in calls[3:10]:
             self.assertIn(f"since={since} window={since} out={out} tools=", c)
         tgz = self.lab / "out" / f"{name}.tgz"
         listing = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True, check=True).stdout.split()

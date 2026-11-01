@@ -963,7 +963,7 @@ cmd_loop() {
   local second second_dir self node_consoles
   ask_env
   run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second_dir")" LOOP_SECOND_NODE="$second" \
-    LAB_DIR="$LAB_DIR" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
+    LAB_DIR="$LAB_DIR" LOOP_SECOND_DATA_DIR="$(data_of "$second_dir")" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
     "$ROOT/loop.sh" --stage 1 --population live \
     --out "$OUT"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
@@ -1135,7 +1135,7 @@ cmd_dispute() {
 }
 
 cmd_ask() {
-  # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
+  # Step 07 is in loop.sh's stage 1 (loop#62); this reruns it alone. It asks as step 12 does (the reporter's console, and a second
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
   local out=$OUT second second_dir self node_consoles
   ask_env

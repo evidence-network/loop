@@ -677,7 +677,7 @@ files and publishes only the counts and each bundle's sha256.
 
 ### Step 07, the later ask
 
-Stage 1 does not include step 07 either. `lab/lab.sh ask` runs `steps/07-ask` on
+Stage 1 includes step 07 (loop#62); `lab/lab.sh ask` reruns it alone: it runs `steps/07-ask` on
 `population/live` into the same `findings/<date>-live/` as `07-ask/`, then checks the
 finding contract over the whole directory. It asks each node for `checkpoints`,
 `history_card/1` and an exchange request, through the reporter's console (the reporter's
@@ -719,8 +719,8 @@ clones do not change, but `$LAB_DIR/build.json` holds one `tools` record, which
 reads `"ok": false` (and `entries` refuses) until a `tools` run passes, and the
 other way round. Its `loop_tools` field names the directory that wrote it.
 Then the run does `lab.sh check` and `lab.sh running`, and makes one paid
-exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 07,
-09, stage 1 (01, 02, 03, 12, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
+exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 06,
+09, stage 1 (01, 02, 03, 12, 07, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;
 the script commits and pushes nothing. When the paid request does not succeed, step 06 is NOT_CHECKED with the
 status seen (evidence-network/loop#321), and the run exits 8 (1 if another step also regressed): packed, but the

@@ -65,7 +65,7 @@ class LoopTest(unittest.TestCase):
         f.chmod(0o755 if executable else 0o644)
 
     def all_steps(self, **how):
-        for name in ("01-seal", "02-book", "03-advertise", "12-join", "08-verify"):
+        for name in ("01-seal", "02-book", "03-advertise", "12-join", "07-ask", "08-verify"):
             if how.get(name) != "missing":
                 self.step(name, how.get(name, "pass"))
 
@@ -127,7 +127,7 @@ class LoopTest(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
                 self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
                                                          "03 advertise NOT_CHECKED", "12 join NOT_CHECKED",
-                                                         "08 verify NOT_CHECKED"])
+                                                         "07 ask NOT_CHECKED", "08 verify NOT_CHECKED"])
                 out = self.dir / "findings" / eco / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
                 run = json.loads((out / "run.json").read_text())
                 self.assertEqual((run["ecosystem"], run["population"], run["stage"]), (eco, "rehearsal", "1"))
@@ -229,7 +229,7 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
-                                                 "08 verify PASS"])
+                                                 "07 ask PASS", "08 verify PASS"])
         index = (self.out / "index.md").read_text()
         for base in ("01-seal", "02-book", "03-advertise", "12-join"):
             self.assertIn(f"]({base}/finding.json)", index)
@@ -255,7 +255,7 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--out", str(self.out))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), ["01 seal PASS", "02 book PASS", "03 advertise PASS", "12 join PASS",
-                                                 "08 verify PASS"])
+                                                 "07 ask PASS", "08 verify PASS"])
 
     def test_a_crashing_step_is_a_fail_finding_with_its_output(self):
         self.all_steps(**{"03-advertise": "crash"})
@@ -340,6 +340,10 @@ class LoopTest(unittest.TestCase):
         r = self.loop("--population", "live", "--out", str(found / f"{day}-rehearsal"))
         self.assertEqual(r.returncode, 2)
         self.assertEqual(self.finding("01-seal", found / f"{day}-rehearsal")["population"], "rehearsal")
+
+    def test_stage_1_asks_between_join_and_verify(self):
+        # Step 07 is in the stage (loop#62), after 12 has joined the nodes and before 08 re-derives it.
+        self.assertIn('STAGE_1="01 02 03 12 07 08"', LOOP.read_text())
 
     def test_steps_selects_within_the_stage_only(self):
         self.all_steps()
