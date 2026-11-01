@@ -9,8 +9,7 @@ step's judge is loaded read-only from `steps/` with `importlib`.
 
 **A self-check, not step 8.** 08 is the loop's own offline check of a run's findings. It is not step 8 of the loop,
 which needs a verifier that is not ours: an outside developer who reproduces every finding offline
-(evidence-network/evidencebook#41). Step 8 stays red until that verifier passes, whatever 08 reads (Steven's ruling,
-`buzz://message?channel=054513b2-0a66-4c1e-885e-2af75c56233c&id=343238d4df741c30171f3ba0453bd8f9a133c70abb3f0ca6d6753a0cb03ee008&thread=cb1918aa2f3df0e05c201e7a0b1f4225713ac5555247454e02e4c8f519edd654`).
+(evidence-network/evidencebook#41). Step 8 stays red until that verifier passes, whatever 08 reads.
 
 **What 08 catches.** Whoever publishes a run's bundle changing what a finding says after the run:
 
@@ -161,9 +160,10 @@ announced key is a not_checked entry on evidence-network/loop#209.
 A live step that holds keys to the repository (01, 02, 03, 04, 05, 07, 09 and 12) is re-derived with this checkout's
 `nodes/` listings and commitments, `lab/witness/witnesses.json` and the join commitments under `lab/runs/*/join/`
 (`LOOP_NODES_DIR` and `LOOP_LAB_RUNS` when set). Which of these main held, and when, is T2: 08 does not ask which
-pull request published a step, and its result does not depend on this checkout's `origin`. 03's carrier commit
-and 05's and 12's revocations commit are read from this checkout's history, so a clone that lacks them names that
-(a not_checked entry, or `not_reproduced`: fetch main's history). A key rotated since a run is read as the new one.
+pull request published a step, and its result depends on `origin` only through which main history it holds (T2).
+03's carrier commit and 05's and 12's revocations commit are read from this checkout's history, so a clone that
+lacks them, such as a shallow clone or a tarball, names that (a not_checked entry, or `not_reproduced`: fetch main's
+history). A key rotated since a run is read as the new one.
 
 Live 05 and 12 also read `nodes/revocations/` at the main commit their `nodes.json` keeps (`revocations_main`), which
 must be on this clone's `origin/main` (a commit it lacks is `not_reproduced`: fetch main's history). `nodes.json` is
@@ -173,8 +173,8 @@ commit and `origin/main`, the judge runs again on a fresh copy reading it at `or
 recorded result and not_checked (by what and issue). What this clone's `origin/main` holds is T2, so fetch first to
 apply a statement merged since. The run's own start or binding time, which no node signs, never picks the list.
 
-The other live steps are `not_reproduced` on evidence-network/loop#188: their live judges read a lab node's data
-dir or console while they decide, and their findings don't cite those bytes.
+The other live steps (10 and 11) are `not_reproduced` on evidence-network/loop#188: their live judges read a lab
+node's data dir or console while they decide, and their findings don't cite those bytes.
 
 **Not reproduced either:** a finding loop.sh wrote for a broken step (no judged result), a NOT_CHECKED finding
 of step 01 or 05 that cites no proof at all (rehearsal 01 writes one when a pinned tool is missing, and 05 when a node
