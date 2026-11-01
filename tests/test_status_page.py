@@ -337,7 +337,7 @@ class StatusPageTest(unittest.TestCase):
         self.write(1, "FAIL", population="live", date="2026-10-29")
         self.findings = mesh
         self.page()
-        self.assertEqual(self.html.count('data-ecosystem="'), 4)  # mesh and muse, rehearsal and live tables
+        self.assertEqual(self.html.count('data-ecosystem="'), 6)  # mesh, muse and goose, rehearsal and live tables
         live = self.html[self.html.index('data-population="live"'):self.html.index('id="steps"')]
         self.assertIn("2026-10-31-live-17", live)
         self.assertIn("findings/consumer-agent/2026-10-29-live/", live)
@@ -354,6 +354,19 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn("no live run yet", muse)
         self.assertIn("https://github.com/evidence-network/loop/issues/154", muse)
         self.assertEqual(muse.count("owner: <a href=\"https://github.com/evidence-network/loop/issues/154"), 2 + 24)
+
+    def test_goose_has_its_own_column_citing_loop_315_and_never_takes_a_mesh_run(self):
+        self.write(1, "PASS")
+        goose = self.findings / "goose"
+        self.findings, mesh = goose, self.findings
+        self.write(1, "NOT_CHECKED", proof=(), not_checked=[{"what": "w", "why": "y", "issue": "evidence-network/loop#315"}])
+        self.findings = mesh
+        self.page()
+        col = self.html[self.html.index('data-ecosystem="goose"'):self.html.index('id="steps"')]
+        self.assertIn("findings/goose/", col)
+        self.assertIn("https://github.com/evidence-network/loop/issues/315", col)
+        self.assertTrue((self.out / "badge-goose.svg").is_file())
+        self.assertNotIn("findings/goose/", self.html[:self.html.index('data-ecosystem="goose"')])
 
     def test_rehearsal_and_live_stay_apart(self):
         self.write(1, "PASS")

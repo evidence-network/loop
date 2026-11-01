@@ -23,7 +23,7 @@ a change that breaks something shows up as a step that stops passing. On the liv
 is that no step that passed stops passing, not that every step passes; on the rehearsal
 population every step must pass.
 
-One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross` (default `mesh`):
+One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (default `mesh`):
 
 - **Per ecosystem**: the same steps 01 to 12, run inside one ecosystem with its own fixtures
   and nodes. Today that is `mesh`: mesh nodes running the capsules plugin. `muse` has no steps
