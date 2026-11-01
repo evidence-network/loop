@@ -15,6 +15,7 @@ LOOP = ROOT / "loop.sh"
 sys.path.insert(0, str(ROOT / "steps"))
 import finding  # noqa: E402
 POPULATION = ROOT / "population"
+GOOSE_TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 
 # A fake step: writes a finding through steps/finding.py, or misbehaves as told.
 STEP = textwrap.dedent("""\
@@ -137,20 +138,62 @@ class LoopTest(unittest.TestCase):
                 self.assertEqual(subprocess.run(["python3", "-B", str(ROOT / "steps/finding.py"), "check",
                                                  str(out)]).returncode, 0)
 
-    def test_goose_says_not_checked_and_cites_what_each_step_waits_on(self):
-        r = self.loop("--ecosystem", "goose", "--strict")
+    GOOSE_OWNERS = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
+                    "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
+                    "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
+                    "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
+                    "09": "action-state-group/capsule-emit#393", "10": "evidence-network/loop#315",
+                    "11": "evidence-network/loop#315", "12": "action-state-group/capsule-emit#406"}
+    GOOSE_NAMES = {"01": "seal", "02": "book", "03": "advertise", "04": "admit", "05": "deal", "06": "settle",
+                   "07": "ask", "08": "verify", "09": "dispute", "10": "judge", "11": "report", "12": "join"}
+
+    def test_goose_without_its_tools_says_not_checked_for_all_twelve_and_cites_what_each_waits_on(self):
+        r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_TOOLS": str(self.dir / "no-tools")})
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
-                                                 "03 advertise NOT_CHECKED", "12 join NOT_CHECKED",
-                                                 "08 verify NOT_CHECKED"])
+        self.assertEqual(r.stdout.splitlines(), [f"{n} {self.GOOSE_NAMES[n]} NOT_CHECKED" for n in
+                                                 "01 02 03 04 05 06 07 09 10 11 12 08".split()])
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
-        self.assertEqual(json.loads((out / "run.json").read_text())["ecosystem"], "goose")
-        owners = {n: self.finding(d, out)["not_checked"][0]["issue"] for n, d in
-                  (("01", "01-seal"), ("02", "02-book"), ("03", "03-advertise"), ("08", "08-verify"), ("12", "12-join"))}
-        self.assertEqual(owners, {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
-                                  "03": "action-state-group/capsule-emit#406", "08": "evidence-network/loop#193",
-                                  "12": "action-state-group/capsule-emit#406"})
+        run = json.loads((out / "run.json").read_text())
+        self.assertEqual((run["ecosystem"], len(run["steps"])), ("goose", 12))
+        owners = {n: self.finding(f"{n}-{d}", out)["not_checked"][0]["issue"] for n, d in self.GOOSE_NAMES.items()}
+        # step 06 has a Goose input: without the tools it waits on them, not on the live rail
+        self.assertEqual(owners, {**self.GOOSE_OWNERS, "06": "evidence-network/loop#330"})
+        six = self.finding("06-settle", out)
+        self.assertIn("Goose tools are not installed", six["detail"])
+        self.assertNotIn("no step", six["not_checked"][0]["why"])
         self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(out)).returncode, 2)
+
+    def test_goose_run_that_fails_with_its_tools_installed_is_a_fail_with_the_log_not_a_not_checked(self):
+        tools = self.dir / "tools" / "goose"
+        (tools / "venv" / "bin").mkdir(parents=True)
+        (tools / "src" / "python" / "examples" / "goose").mkdir(parents=True)
+        (tools / "src" / "python" / "examples" / "goose" / "scripted_run.py").write_text("")
+        python = tools / "venv" / "bin" / "python"
+        python.write_text("#!/bin/sh\necho 'planted: the deal failed' >&2\nexit 1\n")
+        python.chmod(0o755)
+        r = self.loop("--ecosystem", "goose", env={"LOOP_TOOLS": str(tools.parent)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        six = self.finding("06-settle", out)
+        self.assertEqual(six["result"], "FAIL")
+        self.assertIn("planted: the deal failed", (out / "06-settle" / "goose-rehearsal.log").read_text())
+        self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
+
+    @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh")
+    def test_goose_with_its_tools_runs_step_06_and_keeps_every_row_not_checked_until_the_pay_record_is_read(self):
+        r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
+                                                               "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        results = dict(line.split()[::2] for line in r.stdout.splitlines())
+        self.assertEqual(set(results.values()), {"NOT_CHECKED"})  # 06 included: G1's pay record is not read yet
+        out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        six = self.finding("06-settle", out)
+        self.assertIn("the checks on the rail's proof bytes held", six["detail"])
+        self.assertIn("G1's pay record is not read yet", six["detail"])
+        self.assertEqual(six["not_checked"][0]["issue"], "action-state-group/capsule-emit#408")
+        self.assertIn("rail settlement tied by construction; G1 pay record not read yet", six["not_checked"][0]["why"])
+        self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
+        self.assertEqual(list(six["pinned"]), ["goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
         r = self.loop("--ecosystem", "muse", "--population", "live")

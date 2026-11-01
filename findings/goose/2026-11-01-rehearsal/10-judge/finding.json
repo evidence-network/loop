@@ -1,0 +1,19 @@
+{
+  "asserts": "step 10 holds for the goose ecosystem",
+  "detail": "The goose ecosystem has no step 10 yet; loop.sh ran nothing for it.",
+  "finished": "2026-11-01T09:01:01Z",
+  "name": "judge",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#315",
+      "what": "step 10 for the goose ecosystem",
+      "why": "no step for this ecosystem exists yet"
+    }
+  ],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-01T09:01:01Z",
+  "step": "10"
+}

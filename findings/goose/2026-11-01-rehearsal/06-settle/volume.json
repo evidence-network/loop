@@ -1,0 +1,13 @@
+{
+  "filter": "final, on a fee-paying rail, payer and payee declared under different controllers",
+  "filtered": 1,
+  "filtered_by_band": {
+    "USD:e0": 1
+  },
+  "rail": "mock",
+  "raw": 1,
+  "raw_by_band": {
+    "USD:e0": 1
+  },
+  "unit": "settlements"
+}

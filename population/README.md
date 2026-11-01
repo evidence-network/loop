@@ -77,3 +77,12 @@ runs `steps/06-settle --population population/demo --out findings/<date>-demo/06
   Agreement is not finality; the result stays NOT_CHECKED on Mesh-LLM/capsules-plugin#83.
 - `node_id`: the peer id from the node's `CAPSULES_PEER_KEYS` (Sherlock2, Buzz thread on loop#183).
 - The run's `build.json` records the binary sha256 and the plugin archive sha256.
+
+## The Goose rehearsal (generated, not committed)
+
+`scripts/goose_rehearsal.py --work DIR` runs evidencebook's G1 Goose node (two `loop_server.py` processes, a
+buyer and a seller) and writes `DIR/population/` in this directory's shape: `population.json` (the two nodes,
+their keys taken from each node's own producer key, `"rail": "mock"`, and a `goose` member naming which steps
+read it), the mock rail with one settlement for the Goose deal (`rail/`, issued by `rehearsal/rail/mock_rail.py`:
+the buyer's `loop_settle` takes that settlement's id as the payment reference), and step 06's inputs
+(`step06/`). Step 06 then judges it unchanged. The keys are generated per run and are test keys. See loop#330.

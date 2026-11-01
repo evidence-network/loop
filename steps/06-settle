@@ -200,7 +200,7 @@ def volume(objs, reports, decl, controllers):
             "filter": "final, on a fee-paying rail, payer and payee declared under different controllers"}
 
 
-def decide(out, *, population, nodes, started):
+def decide(out, *, population, nodes, started, goose=False, pinned=None):
     """Check the proof bytes in out and write the finding."""
     out = Path(out)
     checks = {}
@@ -271,7 +271,7 @@ def decide(out, *, population, nodes, started):
     payer = by_key.get(exchange.get("payer"), "an unknown key")
     payee = by_key.get(exchange.get("payee"), "an unknown key")
     if failed:
-        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
                              detail=f"{where}: did not hold: {'; '.join(failed)}", started=started)
     detail = (f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
               f"value: these held on the proof bytes: {', '.join(checks)}. Band {band}. "
@@ -280,7 +280,23 @@ def decide(out, *, population, nodes, started):
                                 "the controller declarations, which are rehearsal stand-ins", DEAL_ISSUE) + " "
               + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
                                 ADAPTER_ISSUE))
-    return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
+    if goose:
+        # The Goose rehearsal (scripts/goose_rehearsal.py). Every check on the rail held, but nothing reads G1's own pay
+        # record: the settlement is tied to the deal only by construction (the driver passed the rail's settlement id to
+        # the buyer's loop_settle), and the exchange, controller and disclosure files are the driver's (the disclosures
+        # signed by it with each node's key, their counts computed by it from the rail's ledger). So the row stays
+        # NOT_CHECKED, with the run's evidence in the proof (coordinator ruling and Sherlock2, 2026-11-01).
+        return finding.write(
+            out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
+            detail=(f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
+                    f"value: the checks on the rail's proof bytes held ({', '.join(checks)}; band {band}), but "
+                    "rail settlement is tied by construction and G1's pay record is not read yet."),
+            not_checked=[{"what": "that G1's pay record commits the rail's settlement id",
+                          "why": "rail settlement tied by construction; G1 pay record not read yet; the exchange, "
+                                 "controller and settlement-disclosure files are the rehearsal driver's",
+                          "issue": "action-state-group/capsule-emit#408"}],
+            started=started)
+    return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
                          detail=detail, started=started)
 
 
@@ -917,7 +933,8 @@ def main(argv):
         if p.is_file():
             p.unlink()
     gather(a.population, out)
-    decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started)
+    decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started,
+           goose="goose" in pop, pinned=pop.get("pinned"))
     return 0
 
 

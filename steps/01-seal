@@ -26,7 +26,9 @@ recomputes the capsule_id from them on its own. The step checks, on those bytes:
                   verifier cannot read the record).
 
 --sealed CAPSULE skips sealing and checks a capsule capsule-emit sealed earlier
-the same way (the planted-failure tests use it).
+the same way (the planted-failure tests use it). A population with a `goose` member (the
+Goose rehearsal, scripts/goose_rehearsal.py) names the capsule its node sealed and the node, which
+is the same as passing them.
 
 On the live population every node seals with its own key, keys/ under its
 data_dir (steps/live.py), each into out/<name>/. A node whose data_dir is not set
@@ -422,6 +424,9 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     population = json.loads((a.population / "population.json").read_text(encoding="utf-8"))
     pop_name = population["population"]
+    goose = population.get("goose")
+    if goose and not a.sealed:  # the Goose rehearsal: check the capsule the Goose node sealed (loop#330)
+        a.sealed, a.node = Path(goose["sealed"]["capsule"]), goose["sealed"]["node"]
     if pop_name == "live":
         return main_live(population, out, started, a.sealed)
     node, key_dir = node_key_dir(a.population, population, a.node)

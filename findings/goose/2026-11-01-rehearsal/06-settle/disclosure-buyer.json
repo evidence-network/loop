@@ -1,0 +1,13 @@
+{
+  "key_id": "a62598945edffec718bfa96b0d592f165e4fbcd0ab9fe67e07bf01b64022590d",
+  "node": "buyer",
+  "rail": "mock",
+  "settlements": 1,
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "eA3zwbyzvBuDJBa4UWlJIidWVYBzwgeZaXrJJA9YTpjcDg9DT3c9w4vRJYdVwusy9tmhfo0R8A9WAb5xL9XTCQ"
+  },
+  "through_sequence": 1,
+  "type": "settlement-disclosure/v1"
+}

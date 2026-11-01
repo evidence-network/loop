@@ -17,9 +17,12 @@
 # the job fails; a live run never does (live runs report, they do not gate).
 #
 # --ecosystem (default mesh) names what the steps run against. mesh is the loop as it has always
-# run: findings in findings/<date>-<population>/, run.json as above. muse, cross and goose have no steps
-# yet (goose is ecosystem 2: its steps arrive with its driver, under loop#315): each step gets a NOT_CHECKED finding saying so (owned by loop#150; for goose the issue each step waits on, loop#315 otherwise), written to
-# findings/<ecosystem>/<date>-<population>/ with "ecosystem" added to run.json, and nothing runs.
+# run: findings in findings/<date>-<population>/, run.json as above. muse and cross have no steps yet: each step
+# gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
+# with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
+# rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
+# it drives (today 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
+# is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
@@ -46,8 +49,12 @@ export PYTHONDONTWRITEBYTECODE=1
 export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
-declare -A NAMES=([01]=seal [02]=book [03]=advertise [08]=verify [12]=join)
+declare -A NAMES=([01]=seal [02]=book [03]=advertise [04]=admit [05]=deal [06]=settle [07]=ask [08]=verify
+                  [09]=dispute [10]=judge [11]=report [12]=join)
 STAGE_1="01 02 03 12 08"
+# The goose column covers all twelve rows (loop#315): each runs on the Goose rehearsal population when it has a Goose
+# input, else it is NOT_CHECKED naming what it waits on.
+GOOSE_STEPS="01 02 03 04 05 06 07 09 10 11 12 08"
 
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
@@ -67,7 +74,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$stage" in
-  1) steps=$STAGE_1 ;;
+  1) steps=$STAGE_1; [ "$ecosystem" = goose ] && steps=$GOOSE_STEPS ;;
   "") usage ;;
   *) die "stage $stage has no steps yet" ;;
 esac
@@ -157,6 +164,25 @@ with open(path, "w") as f:
     f.write(json.dumps(run, indent=2, sort_keys=True) + "\n")
 PY
 
+# The Goose rehearsal: G1's two nodes, run by scripts/goose_rehearsal.py when its tools are installed (steps/goose.setup.sh);
+# a step it lists (population.json "goose".steps) then runs on the population it wrote, the rest are NOT_CHECKED below.
+# The steps with a Goose input are the driver's (--steps). When the tools are not installed (exit 3) such a step is
+# NOT_CHECKED; when they are and the run failed, it is a FAIL with the run's log, never a quiet NOT_CHECKED.
+goose_steps="" goose_driven="" goose_state=none
+if [ "$ecosystem" = goose ] && [ "$population" = rehearsal ]; then
+  goose_driven=$(python3 -B "$ROOT/scripts/goose_rehearsal.py" --steps)
+  goose_work=$(mktemp -d) && trap 'rm -rf "$goose_work"' EXIT
+  goose_log=$goose_work/goose-rehearsal.log
+  python3 -B "$ROOT/scripts/goose_rehearsal.py" --work "$goose_work/work" >"$goose_log" 2>&1
+  case $? in
+    0) goose_state=ran; pop_dir=$goose_work/work/population; goose_steps=$goose_driven ;;
+    3) goose_state=no_tools ;;
+    *) goose_state=failed ;;
+  esac
+  cat "$goose_log" >&2
+  [ "$goose_state" = ran ] || echo "loop.sh: the Goose rehearsal did not run ($goose_state); the steps it drives are not run" >&2
+fi
+
 ran=()
 for nn in $steps; do
   found=()
@@ -172,24 +198,36 @@ for nn in $steps; do
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "== $base" >&2
 
-  if [ "$ecosystem" != mesh ]; then
-    python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" <<'PY'
+  if [ "$goose_state" = failed ] && [[ " $goose_driven " == *" $nn "* ]]; then
+    cp "$goose_log" "$sdir/goose-rehearsal.log"
+    fail "$sdir" "$started" "the Goose rehearsal run failed before step $nn; its log is goose-rehearsal.log" goose-rehearsal.log
+    continue
+  fi
+  goose_note=""
+  [ "$goose_state" = no_tools ] && [[ " $goose_driven " == *" $nn "* ]] && goose_note="step $nn has a Goose input, but the Goose tools are not installed on this host (steps/goose.setup.sh)"
+  if [ "$ecosystem" != mesh ] && ! { [ "$ecosystem" = goose ] && [[ " $goose_steps " == *" $nn "* ]]; }; then
+    python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" "$goose_note" <<'PY'
 import sys
-root, step_dir, started, ecosystem, nn, population = sys.argv[1:]
+root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; the rest loop#315.
+# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 07 the answerer, 09 the referee delivery; 10 and 11 loop#315.
 GOOSE = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
-         "03": "action-state-group/capsule-emit#406", "08": "evidence-network/loop#193",
-         "12": "action-state-group/capsule-emit#406"}
+         "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
+         "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
+         "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
+         "09": "action-state-group/capsule-emit#393", "12": "action-state-group/capsule-emit#406"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
+why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."
+if note:  # a step with a Goose input, on a host without the Goose tools
+    owner, why, detail = "evidence-network/loop#330", "the Goose tools are not installed", f"{note}; loop.sh ran nothing for it."
 sys.path.insert(0, root + "/steps")
 import finding
 finding.write(step_dir, result="NOT_CHECKED", population=population,
               asserts=f"step {nn} holds for the {ecosystem} ecosystem", pinned=[], proof=[],
-              detail=f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it.",
+              detail=detail,
               not_checked=[{"what": f"step {nn} for the {ecosystem} ecosystem",
-                            "why": "no step for this ecosystem exists yet",
+                            "why": why,
                             "issue": owner}],
               started=started)
 PY

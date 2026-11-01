@@ -1,0 +1,65 @@
+{
+  "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
+  "detail": "exchange deal-23560afbf2485bd3, settlement 3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: the checks on the rail's proof bytes held (ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller; band USD:e0), but rail settlement is tied by construction and G1's pay record is not read yet.",
+  "finished": "2026-11-01T09:01:01Z",
+  "name": "settle",
+  "not_checked": [
+    {
+      "issue": "action-state-group/capsule-emit#408",
+      "what": "that G1's pay record commits the rail's settlement id",
+      "why": "rail settlement tied by construction; G1 pay record not read yet; the exchange, controller and settlement-disclosure files are the rehearsal driver's"
+    }
+  ],
+  "pinned": {
+    "goose-g1": {
+      "ref": "edee7705c47dc9a0540d91315e75c722d28c3f0b",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "rail.json",
+      "sha256": "e65d70e34eebbb35e608faa342a04fc94e3ac5367b516bcb0942df6bf581bcf3"
+    },
+    {
+      "path": "ledger.jsonl",
+      "sha256": "0f65275e827e47a808571a94f17d826259f938908e04b1ec2408a269f755bdfe"
+    },
+    {
+      "path": "rail-key.pub.pem",
+      "sha256": "c31caf5d40c33885c400598639994ac9d63c80f9d67e78581d03f09ba54b67df"
+    },
+    {
+      "path": "exchange.json",
+      "sha256": "93733c67a7f621e00c8f0b38e049a61389723ef1669e5811842b149c2260b188"
+    },
+    {
+      "path": "controllers.json",
+      "sha256": "f41641ae1356b414a6df4f5b6a2afb9fceebc9f67a1ebc5cdedd630a541a838a"
+    },
+    {
+      "path": "disclosure-buyer.json",
+      "sha256": "eb25b54c0bbde8bcd535763a320cf53d94f8ee0cd59edd8b79307746a38e80e9"
+    },
+    {
+      "path": "disclosure-seller.json",
+      "sha256": "1c8f6085590af31770ee8072be6060bc13fc77729e917b78ddc8e978f509d108"
+    },
+    {
+      "path": "adapter.json",
+      "sha256": "46c81daa9cb66b5c0d5f83624be038c2a8082a9005ba3f8e22e7ab27e6362eeb"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "b441daeae9513ba87bcdb2175473e01991e16e63771050675b0748162b90b294"
+    },
+    {
+      "path": "volume.json",
+      "sha256": "e28710921427be986332aa01f366601b3410ec57503e95e27ccbc81f58d36361"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-01T09:01:01Z",
+  "step": "06"
+}
