@@ -56,7 +56,7 @@ With no published file, the detail says nothing is compared.
   statement in that snapshot applies. That PASS is the loop run's statement,
   scoped to the snapshot: a statement published later can still withdraw the
   binding. If the verifier rejects the declaration, revocation is NOT_CHECKED
-  (evidence-network/loop#240); the detail names the snapshot either way. The node key's role in its
+  (evidence-network/loop#193); the detail names the snapshot either way. The node key's role in its
   binding is checked from the verifier's report (claim and `delegator`,
   action-state-group/agent-action-capsule#468): in a `delegated_by` binding
   the node key must be the delegate, and a node key that is the `delegator`

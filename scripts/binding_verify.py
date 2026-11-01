@@ -28,7 +28,7 @@ import subprocess
 from pathlib import Path
 
 VERDICT_EXIT = {0: "ok", 1: "bad", 3: "unsupported"}
-UNSUPPORTED_METHOD_ISSUE = "evidence-network/loop#166"  # exit 3: a binding method or key type the verifier lacks
+UNSUPPORTED_METHOD_ISSUE = "evidence-network/loop#193"  # exit 3: a binding method or key type the verifier lacks
 REVOCATIONS = "revocations"  # the folder under nodes/
 REVOCATION_VERSION = "controller-binding-revocation/0"
 REVOCATION_MEMBERS = ("revocation_version", "binding", "key_id", "revoked_at", "sig")
