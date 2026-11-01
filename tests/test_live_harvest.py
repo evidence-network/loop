@@ -186,7 +186,7 @@ class HarvestTest(unittest.TestCase):
         self.assertEqual(json.loads(self.show("baseline/live.json"))["ecosystems"]["mesh"]["findings"], "findings/2026-10-01-live-1")
 
     def test_member_the_scans_skip_is_refused(self):
-        for member in (f"findings/{NAME}/tests/x.log", f"findings/{NAME}/05-deal/__pycache__/x", f"findings/{NAME}/stray.txt"):
+        for member in (f"findings/{NAME}/tests/x.log", f"findings/{NAME}/05-deal/__pycache__/x", f"findings/{NAME}/stray.txt", f"findings/{NAME}/."):
             self.make_run(extra_member=member)
             self.assertEqual(self.harvest().returncode, 6, member)
         self.assertEqual(self.gh_calls(), [])
@@ -203,10 +203,12 @@ class HarvestTest(unittest.TestCase):
 
     def test_malformed_record_is_a_refusal(self):
         run_dir = self.make_run()
-        (run_dir / f"{NAME}.json").write_text('{"exchange": 3}')
-        r = self.harvest()
-        self.assertEqual(r.returncode, 6, r.stderr)
-        self.assertIn("live_harvest:", r.stderr)
+        for bad in ('{"exchange": 3}', '{"exchange": {}, "steps": 3}', "[]", "{"):
+            (run_dir / f"{NAME}.json").write_text(bad)
+            r = self.harvest()
+            self.assertEqual(r.returncode, 6, (bad, r.stderr))
+            self.assertIn("live_harvest:", r.stderr)
+        self.assertEqual(self.gh_calls(), [])
 
     def test_a_failed_publish_leaves_no_local_branch_and_a_rerun_works(self):
         self.make_run()

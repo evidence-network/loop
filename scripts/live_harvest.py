@@ -120,7 +120,7 @@ def allowed_member(member, prefix):
     if ".." in parts or not member.startswith(prefix + "/") or SKIPPED_BY_SCANS.intersection(parts):
         return False
     rest = parts[len(Path(prefix).parts):]
-    return rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None
+    return bool(rest) and (rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None)
 
 
 def unpack(name, files, into):
@@ -183,6 +183,9 @@ def main(argv):
     except Refuse as r:
         print(f"live_harvest: {r}", file=sys.stderr)
         return r.code
+    except FileNotFoundError as e:
+        print(f"live_harvest: a needed program is missing: {e}", file=sys.stderr)
+        return 2
     except (ValueError, OSError, TypeError, KeyError, AttributeError) as e:
         print(f"live_harvest: malformed input: {e!r}", file=sys.stderr)
         return 6
@@ -200,7 +203,7 @@ def harvest(args, work, wt):
     name, files = fetch(args, files)
     full = unpack(name, files, work / "unpacked")
     record = json.loads((files / f"{name}.json").read_text())
-    if not isinstance(record, dict) or not isinstance(record.get("exchange"), dict):
+    if not (isinstance(record, dict) and isinstance(record.get("exchange"), dict) and isinstance(record.get("steps"), dict)):
         raise Refuse(6, f"{name}.json is not a run record")
     paid = record["exchange"].get("paid") is True
     digest = sha256(files / f"{name}.tgz")
