@@ -18,7 +18,7 @@
 #
 # --ecosystem (default mesh) names what the steps run against. mesh is the loop as it has always
 # run: findings in findings/<date>-<population>/, run.json as above. muse, cross and goose have no steps
-# yet (goose is ecosystem 2, loop#315; its steps arrive with its driver, loop#313): each step gets a NOT_CHECKED finding saying so (owned by loop#150), written to
+# yet (goose is ecosystem 2: its steps arrive with its driver, under loop#315): each step gets a NOT_CHECKED finding saying so (owned by loop#150; loop#315 for goose), written to
 # findings/<ecosystem>/<date>-<population>/ with "ecosystem" added to run.json, and nothing runs.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #

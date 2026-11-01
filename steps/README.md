@@ -10,7 +10,7 @@ and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
 same assertions in every ecosystem, and steps only one ecosystem needs are numbered 13
 and up. `mesh` is the loop as it has always run (`findings/<date>-<population>/`). `muse`,
 `cross` and `goose` have no steps yet: loop.sh runs nothing and writes a `NOT_CHECKED` finding per
-step (owner: loop#150) to `findings/<ecosystem>/<date>-<population>/`, with `ecosystem`
+step (owner: loop#150; loop#315 for goose) to `findings/<ecosystem>/<date>-<population>/`, with `ecosystem`
 added to `run.json`. `status/status_page.py --ecosystem NAME` builds that ecosystem's page.
 
 `loop.sh` needs bash 4 or later and `timeout` from GNU coreutils. Without

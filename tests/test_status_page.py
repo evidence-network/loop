@@ -364,7 +364,8 @@ class StatusPageTest(unittest.TestCase):
         self.page()
         col = self.html[self.html.index('data-ecosystem="goose"'):self.html.index('id="steps"')]
         self.assertIn("findings/goose/", col)
-        self.assertIn("https://github.com/evidence-network/loop/issues/315", col)
+        live = col[col.index('data-population="live"'):]
+        self.assertIn('owner: <a href="https://github.com/evidence-network/loop/issues/315"', live)  # the no-run cell, not the finding's own citation
         self.assertTrue((self.out / "badge-goose.svg").is_file())
         self.assertNotIn("findings/goose/", self.html[:self.html.index('data-ecosystem="goose"')])
 

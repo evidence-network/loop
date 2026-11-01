@@ -27,7 +27,8 @@ One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (d
 
 - **Per ecosystem**: the same steps 01 to 12, run inside one ecosystem with its own fixtures
   and nodes. Today that is `mesh`: mesh nodes running the capsules plugin. `muse` has no steps
-  yet; each of its steps reads `NOT_CHECKED`.
+  yet; each of its steps reads `NOT_CHECKED`. `goose` (ecosystem 2, loop#315) is registered the
+  same way; its steps arrive with its driver.
 - **Across ecosystems**: steps where two ecosystems meet (one side admits and deals with the
   other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
   and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
