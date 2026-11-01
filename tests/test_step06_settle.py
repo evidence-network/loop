@@ -637,6 +637,62 @@ class Step06SettleTest(unittest.TestCase):
                 self.assertNotEqual(r["result"], "PASS", r["detail"])
                 self.assertNotIn("unsettled_invoices", self.judged())
 
+    def windowed_unpaid(self, *more_provider, more_payer=()):
+        """paid() stamped one payment before and one in the 01:38Z window, the unpaid invoice in the window, and
+        the provider's extra records (and the payer's) a minute before the window."""
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        rows = self.with_unpaid_invoice(self.stamped(self.paid(), times))
+        for x in rows[1] + rows[2]:
+            x.setdefault("timestamp", times[1])
+        for i, recs in ((1, more_provider), (2, more_payer)):
+            for x in recs:
+                rows[i].append(dict(json.loads(json.dumps(x)), timestamp="2026-11-01T01:37:00Z"))
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        return self.lightning(rows, self.checks_dir(records=records), window="2026-11-01T01:38:00Z")
+
+    def test_lightning_sets_aside_an_unpaid_invoice_in_a_window_too(self):
+        # A delivery tied to a paid hash (srv-ex-1, the provider's paid exchange) is no orphan and changes nothing.
+        r = self.windowed_unpaid(self.lifecycle("delivered", "provider", "srv-ex-1"))
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertEqual(self.judged()["unsettled_invoices"]["count"], 1)
+        self.assertIn(("1 invoices agreed but unsettled as of the books read, which the books cannot prove unpaid",
+                       step.ADAPTER_ISSUE), finding.gaps(r["detail"]))
+
+    def test_lightning_keeps_judging_an_invoice_whose_exchange_settled_under_another_hash_string(self):
+        # The payer's settlement for the invoice's own exchange, before the window, names no hash or an uppercase one.
+        for name, h in (("no hash", None), ("uppercase", self.UNPAID.upper())):
+            with self.subTest(name=name):
+                obs = self.observation(None, h, cid="p-late", exchange_id="pay-unpaid", amount_msat=10)
+                if h is None:
+                    obs["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"].pop("payment_hash")
+                r = self.windowed_unpaid(more_payer=[obs])
+                self.assertNotEqual(r["result"], "PASS", r["detail"])
+                self.assertNotIn("unsettled_invoices", self.judged())
+
+    def test_lightning_an_orphan_delivery_keeps_every_invoice_judged(self):
+        # The provider recorded a delivery for an exchange none of its records ties to a payment hash, and no invoice
+        # for the unpaid hash: the delivery may be that hash's own exchange (the books share no exchange ids).
+        rows = self.with_unpaid_invoice()
+        rows[1] = [x for x in rows[1] if not x["capsule_id"].startswith("input_invoice_issued")]
+        rows[1].append(self.lifecycle("delivered", "provider", "srv-orphan"))
+        r = self.lightning(rows, self.checks_dir())
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertNotIn("unsettled_invoices", self.judged())
+        rec = json.loads((self.out / "stevenmih-1" / "recorded.json").read_text())
+        self.assertEqual(rec["orphan_deliveries"], ["srv-orphan"])
+
+    def test_lightning_a_check_with_no_digest_and_no_bundle_is_not_checked(self):
+        d = self.checks_dir()
+        ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
+        f = d / f"check.{ids['stevenmih-1']}.{ids['stevenmih-2']}.json"
+        doc = json.loads(f.read_text())
+        doc.pop("bundle_sha256")
+        dump(f, doc)
+        (d / doc["bundle_file"]).unlink()
+        r = self.lightning(self.paid(), d)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn("missing or changed", self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
+
     def test_lightning_is_not_a_pass_when_every_invoice_is_set_aside(self):
         r = self.lightning(self.with_unpaid_invoice({1: [], 2: []}), self.checks_dir(paired=0))
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])

@@ -351,6 +351,11 @@ def in_window(rec, since):
 DELIVERY_PHASES = ("delivered", "final_accounted")
 
 
+def leg_kind(leg):
+    """A settlement leg's kind (terms, payer_observed, payee_observed, delivered)."""
+    return leg.get("leg") or leg.get("kind")
+
+
 def leg_hash(leg):
     """The payment hash a settlement leg's payment_ref names, or None."""
     ref = leg.get("payment_ref")
@@ -366,12 +371,15 @@ def recorded(ledger, since=None):
     Records that are neither a leg nor an observation (padding, for one) are never counted. An observation's
     preimage is checked (preimage_check) and only the outcome kept: the preimage itself is never listed.
 
-    Three more lists serve unsettled_invoices(), each read over the whole ledger, window or not, so a window can
+    Four more lists serve unsettled_invoices(), each read over the whole ledger, window or not, so a window can
     only keep an invoice judged: "invoices", the node's *_invoice_issued observations (exchange id and payment
-    hash); "delivered_exchanges", the exchange ids it recorded as delivered or accounted; and "settled_hashes",
-    the payment hashes any of its terminal observations or legs other than a terms leg names.
+    hash); "delivered_exchanges", the exchange ids it recorded as delivered or accounted; "orphan_deliveries",
+    those of them no lifecycle record of the node ties to a payment hash; "settled_hashes", the payment hashes any
+    of its terminal observations or legs other than a terms leg names; and "settled_exchanges", the exchange ids of
+    its terminal observations, with a payment hash or not.
     """
-    legs, observed, invoices, delivered, settled, outside, undated = [], [], [], set(), set(), 0, 0
+    legs, observed, invoices, delivered, settled, tied, settled_ex = [], [], [], set(), set(), set(), set()
+    outside = undated = 0
     for line in ledger.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
@@ -382,12 +390,16 @@ def recorded(ledger, since=None):
         phase = str(block.get("phase", "")) if block else ""
         if phase in DELIVERY_PHASES and isinstance(block.get("exchange_id"), str):
             delivered.add(block["exchange_id"])
+        if block and isinstance(block.get("payment_hash"), str) and isinstance(block.get("exchange_id"), str):
+            tied.add(block["exchange_id"])
         if phase.endswith("_invoice_issued"):
             invoices.append({"exchange_id": block.get("exchange_id"), "payment_hash": block.get("payment_hash")})
         has_obs = phase.endswith("_settlement_observed")
         if has_obs and isinstance(block.get("payment_hash"), str):
             settled.add(block["payment_hash"])
-        if isinstance(leg, dict) and leg.get("leg") != "terms" and leg_hash(leg):
+        if has_obs and isinstance(block.get("exchange_id"), str):
+            settled_ex.add(block["exchange_id"])
+        if isinstance(leg, dict) and leg_kind(leg) != "terms" and leg_hash(leg):
             settled.add(leg_hash(leg))
         if not (isinstance(leg, dict) or has_obs):
             continue
@@ -399,7 +411,7 @@ def recorded(ledger, since=None):
             outside += 1
             continue
         if isinstance(leg, dict):
-            legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg.get("leg") or leg.get("kind"),
+            legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg_kind(leg),
                          "payment_ref": leg.get("payment_ref")})
         if has_obs:
             observed.append({"capsule_id": rec.get("capsule_id"), "exchange_id": block.get("exchange_id"),
@@ -409,7 +421,8 @@ def recorded(ledger, since=None):
                              "credited_msat": block.get("credited_msat"), "fee_msat": block.get("fee_msat"),
                              "preimage_check": preimage_check(block.get("preimage"), block.get("payment_hash"))})
     out = {"settlement_legs": legs, "settlement_observations": observed, "invoices": invoices,
-           "delivered_exchanges": sorted(delivered), "settled_hashes": sorted(settled)}
+           "delivered_exchanges": sorted(delivered), "orphan_deliveries": sorted(delivered - tied),
+           "settled_hashes": sorted(settled), "settled_exchanges": sorted(settled_ex)}
     if since is not None:
         out.update(window_from=since.strftime("%Y-%m-%dT%H:%M:%SZ"), outside_window=outside, undated=undated)
     return out
@@ -521,24 +534,29 @@ def unsettled_invoices(found):
     - no node records a settlement for it: no terminal observation names it, and no leg but a terms leg does;
     - on every node that names it, that node's invoice observations tie it to exactly one exchange id of its own
       (the two books seal different ids for one payment);
-    - none of those exchanges is delivered or accounted on its node.
-    All three read the whole ledger (recorded()), so a record outside the window still keeps the hash judged.
+    - none of those exchanges is delivered, accounted or settled on its node (a terminal observation under that
+      exchange keeps the hash judged whatever payment hash, if any, it names);
+    - no node holds an orphan delivery: an exchange delivered or accounted that none of its records ties to a payment
+      hash. The books do not share exchange ids, so such a delivery could be the hash's own exchange with its
+      invoice record lost; while one exists nothing is set aside (Sherlock2, Buzz 189cb0ca).
+    All of it reads the whole ledger (recorded()), so a record outside the window still keeps the hash judged.
     Every other hash stays judged: the books cannot prove a payment unpaid, so a hash any book records as settled,
     delivered or accounted keeps finality and exchange_match open until a payer's preimage proves it."""
     settled, named = set(), set()
     for f in found.values():
         named |= payment_hashes(f)
-        settled |= set(f["settled_hashes"]) | payment_hashes({**f, "settlement_legs": [
-            l for l in f["settlement_legs"] if l.get("leg") != "terms"]})
+        settled |= set(f["settled_hashes"])
+    if any(f.get("orphan_deliveries") for f in found.values()):
+        return []
     out = []
     for h in sorted(named - settled):
         ok = True
         for f in found.values():
-            exchanges = {i.get("exchange_id") for i in f.get("invoices", []) if i.get("payment_hash") == h}
+            exchanges = {i.get("exchange_id") for i in f["invoices"] if i.get("payment_hash") == h}
             if h not in payment_hashes(f) and not exchanges:
                 continue  # this node does not name the hash
             if len(exchanges) != 1 or not isinstance(next(iter(exchanges)), str) \
-                    or exchanges & set(f.get("delivered_exchanges", [])):
+                    or exchanges & set(f["delivered_exchanges"] + f["settled_exchanges"]):
                 ok = False
                 break
         if ok:
@@ -675,7 +693,8 @@ def lightning_checks(found, ids, checks_dir, since=None):
             raw = None
         digest = hashlib.sha256(raw).hexdigest() if raw is not None else None
         try:
-            held = bundle_settlements(json.loads(raw), since) if digest == doc.get("bundle_sha256") else None
+            held = bundle_settlements(json.loads(raw), since) if raw is not None and digest == doc.get("bundle_sha256") \
+                else None
         except ValueError:
             held = None
         status, paired = cc.get("status"), cc.get("paired")
