@@ -826,7 +826,12 @@ def main_live(pop, out, started):
             not_checked.append(live.not_checked(name, "data_dir"))
             details.append(f"node {name}: not checked, data_dir or its ledger not set or unreadable")
             continue
-        found = recorded(data_dir / "ledger" / "capsules.jsonl", since)
+        try:
+            found = recorded(data_dir / "ledger" / "capsules.jsonl", since)
+        except OSError as e:  # a shelf node whose `capsules chain-lines` fails
+            not_checked.append(live.not_checked(name, "data_dir"))
+            details.append(f"node {name}: not checked, its chain could not be read: {e}")
+            continue
         hashes[name] = found
         (out / name).mkdir()
         (out / name / "recorded.json").write_text(json.dumps(found, indent=2, sort_keys=True) + "\n")

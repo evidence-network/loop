@@ -70,8 +70,9 @@ def keep_copy(src, dest):
     position is the node's."""
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
     if Path(src).name == CHAIN:  # the node's chain: from `capsules chain-lines` when it is on the shelf (loop#296)
-        Path(dest).write_bytes(live.chain_bytes(Path(src).parent))
-        src = dest
+        data, n = live.redact_bytes(live.chain_bytes(Path(src).parent))
+        Path(dest).write_bytes(data)
+        return n
     return live.copy_redacted(src, dest)
 
 
@@ -208,11 +209,16 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if Path(src).is_file() or (Path(src).name == CHAIN and live.chain_present(Path(src).parent)):
-        keep_copy(src, dest)
-        n = covered(asked["reply"]) if asked["reply"] else None
-        cut = prefix(dest.read_bytes(), n) if n else None
-        if cut is not None:  # else the copy is kept whole and fails the check: fewer lines than the reply covers
-            dest.write_bytes(cut)
+        try:
+            keep_copy(src, dest)
+        except OSError as e:  # a shelf node whose chain-lines fails: no copy, and the beside-file says why
+            dest.unlink(missing_ok=True)
+            asked = {**asked, "refusal": f"{asked['refusal'] or 'no copy'}: the chain could not be read: {e}"}
+        if dest.exists():
+            n = covered(asked["reply"]) if asked["reply"] else None
+            cut = prefix(dest.read_bytes(), n) if n else None
+            if cut is not None:  # else the copy is kept whole and fails the check: fewer lines than the reply covers
+                dest.write_bytes(cut)
     Path(f"{dest}{KEPT_SUFFIX}").write_text(json.dumps(asked, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return asked
 

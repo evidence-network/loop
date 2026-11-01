@@ -76,8 +76,16 @@ def copy_redacted(src, dest):
     record kept as it parsed, re-encoded only when it held one, plus an x-loop-redacted member naming the sha256 of
     the line as the node holds it); an unparsable line that names a preimage becomes a
     stub with the sha256 of its bytes. Returns how many lines changed."""
+    data, n = redact_bytes(Path(src).read_bytes())
+    Path(dest).write_bytes(data)
+    return n
+
+
+def redact_bytes(data):
+    """(the ledger bytes `data` with copy_redacted's redaction applied, how many lines changed). Nothing is written,
+    so a chain read from the node never reaches a proof file unredacted."""
     out, n = [], 0
-    for raw in Path(src).read_bytes().split(b"\n"):
+    for raw in data.split(b"\n"):
         try:
             record = json.loads(raw) if raw.strip() else None
         except ValueError:
@@ -92,8 +100,7 @@ def copy_redacted(src, dest):
                 kept[REDACTION] = {"line_sha256": hashlib.sha256(raw).hexdigest()}
             raw = json.dumps(kept, separators=(",", ":")).encode()
         out.append(raw)
-    Path(dest).write_bytes(b"\n".join(out))
-    return n
+    return b"\n".join(out), n
 
 
 def path(node, field):
@@ -111,7 +118,17 @@ def chain_present(ledger_dir):
     """Whether the ledger dir holds a readable chain: the shelf store, or the flat capsules.jsonl of a node not yet
     migrated (capsules-plugin#208)."""
     d = Path(ledger_dir)
-    return any(os.access(d / f, os.R_OK) and (d / f).is_file() for f in (CHAIN_STORE, CHAIN_FILE))
+    if _stored(d):
+        return capsules_bin() is not None  # the shelf's chain is read only through the plugin's binary
+    return os.access(d / CHAIN_FILE, os.R_OK) and (d / CHAIN_FILE).is_file()
+
+
+def _stored(d):
+    return (d / CHAIN_STORE).is_file() and os.access(d / CHAIN_STORE, os.R_OK)
+
+
+def capsules_bin():
+    return os.environ.get(CAPSULES_BIN) or shutil.which("capsules")
 
 
 def chain_bytes(ledger_dir):
@@ -119,9 +136,9 @@ def chain_bytes(ledger_dir):
     (<data dir>/ledger): `capsules chain-lines --data-dir <data dir>` when the node is on the shelf (read-only, it
     beside a running node), else the flat file. Raises OSError when it cannot be read."""
     d = Path(ledger_dir)
-    if not (d / CHAIN_STORE).is_file():
+    if not _stored(d):
         return (d / CHAIN_FILE).read_bytes()
-    bin_ = os.environ.get(CAPSULES_BIN) or shutil.which("capsules")
+    bin_ = capsules_bin()
     if not bin_:
         raise FileNotFoundError(f"{d / CHAIN_STORE} holds the chain but no capsules binary is installed "
                                 f"(PATH, or {CAPSULES_BIN})")

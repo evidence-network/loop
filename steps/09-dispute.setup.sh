@@ -4,7 +4,8 @@
 # plugin's COSE_Sign1 envelopes with the standard library and the openssl
 # command (3.0 or later) from the runner's base image. On the live population
 # the step only reads each node's capsules ledger, in the record format of the
-# capsules pin. This checks openssl is there; it installs nothing.
+# capsules pin (for a node on the shelf, `capsules chain-lines`, the plugin's
+# binary on PATH or in LOOP_CAPSULES_BIN). This checks openssl is there; it installs nothing.
 set -euo pipefail
 command -v openssl >/dev/null || { echo "09-dispute: openssl is missing" >&2; exit 1; }
 v=$(openssl version | awk '{print $2}')
