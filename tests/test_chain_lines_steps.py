@@ -80,8 +80,23 @@ class Nodes(unittest.TestCase):
         dest = Path(self.tmp.name) / "out" / "capsules.jsonl"
         asked = ledger_proof.keep_checked(None, self.shelf / "ledger" / "capsules.jsonl", dest, "capsules.jsonl")
         self.assertFalse(dest.exists())
-        self.assertIn("could not be read", asked["refusal"])
-        self.assertEqual(json.loads(Path(f"{dest}{ledger_proof.KEPT_SUFFIX}").read_text())["refusal"], asked["refusal"])
+        self.assertIn("chain-lines failed", asked["unread"])
+        self.assertEqual(json.loads(Path(f"{dest}{ledger_proof.KEPT_SUFFIX}").read_text())["unread"], asked["unread"])
+
+    def test_a_signed_checkpoint_with_an_unread_shelf_chain_is_not_checked_not_failed(self):
+        reply = {"ledger_checkpoint": 1, "file": "capsules.jsonl", "range_proof": {"from_index": 0, "to_index": 2}}
+        http = lambda *a: (200, json.dumps(reply).encode())  # noqa: E731
+        for body, env in (("exit 1", {}), ("exit 0", {live.CAPSULES_BIN: ""})):
+            self.use(body)
+            with mock.patch.dict(os.environ, env), mock.patch("shutil.which", return_value=None if env else "x"):
+                out = Path(self.tmp.name) / "out" / "ledger"
+                shutil_rm = __import__("shutil").rmtree
+                shutil_rm(out, ignore_errors=True)
+                ledger_proof.keep_checked("http://node", self.shelf / "ledger" / "capsules.jsonl",
+                                          out / "capsules.jsonl", "capsules.jsonl", http=http)
+                errs, nc, _ = ledger_proof.judge(out, ("capsules.jsonl",), "k" * 64, "n")
+            self.assertEqual(errs, [], body)
+            self.assertIn("not read", nc[0]["why"])
 
     def test_the_preimage_never_reaches_the_proof_if_redaction_fails(self):
         self.use("printf '%s\\n' '{\"preimage\": \"" + "ab" * 32 + "\"}'")

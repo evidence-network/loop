@@ -118,12 +118,12 @@ def chain_present(ledger_dir):
     """Whether the ledger dir holds a readable chain: the shelf store, or the flat capsules.jsonl of a node not yet
     migrated (capsules-plugin#208)."""
     d = Path(ledger_dir)
-    if _stored(d):
+    if chain_stored(d):
         return capsules_bin() is not None  # the shelf's chain is read only through the plugin's binary
     return os.access(d / CHAIN_FILE, os.R_OK) and (d / CHAIN_FILE).is_file()
 
 
-def _stored(d):
+def chain_stored(d):
     return (d / CHAIN_STORE).is_file() and os.access(d / CHAIN_STORE, os.R_OK)
 
 
@@ -136,7 +136,7 @@ def chain_bytes(ledger_dir):
     (<data dir>/ledger): `capsules chain-lines --data-dir <data dir>` when the node is on the shelf (read-only, it
     beside a running node), else the flat file. Raises OSError when it cannot be read."""
     d = Path(ledger_dir)
-    if not _stored(d):
+    if not chain_stored(d):
         return (d / CHAIN_FILE).read_bytes()
     bin_ = capsules_bin()
     if not bin_:

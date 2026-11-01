@@ -208,12 +208,15 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
         {"file": file, "reply": None, "refusal": f"no console for the node ({CONSOLES})"}
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if Path(src).is_file() or (Path(src).name == CHAIN and live.chain_present(Path(src).parent)):
+    shelf = Path(src).name == CHAIN and live.chain_stored(Path(src).parent)
+    if shelf and not live.chain_present(Path(src).parent):  # the node's chain is on the shelf and no capsules binary
+        asked = {**asked, "unread": f"no capsules binary to run chain-lines (PATH, or {live.CAPSULES_BIN})"}
+    elif Path(src).is_file() or shelf:
         try:
             keep_copy(src, dest)
         except OSError as e:  # a shelf node whose chain-lines fails: no copy, and the beside-file says why
             dest.unlink(missing_ok=True)
-            asked = {**asked, "refusal": f"{asked['refusal'] or 'no copy'}: the chain could not be read: {e}"}
+            asked = {**asked, "unread": f"chain-lines failed: {e}"}
         if dest.exists():
             n = covered(asked["reply"]) if asked["reply"] else None
             cut = prefix(dest.read_bytes(), n) if n else None
@@ -246,6 +249,9 @@ def judge(ledger_dir, files, key_id, name):
         proof.append(rel(beside))
         if copy.is_file():
             proof.append(rel(copy))
+        if asked.get("unread") and not copy.is_file():  # our side could not read the node's chain: a gap, not a fault
+            open_.append((f"{f}: the node's chain was not read ({asked['unread']})", TOOLS_ISSUE))
+            continue
         if reply is None:
             # A file the step found no complete line of (or no file) has nothing to show complete; the plugin
             # refuses an ask for it too. That such a file held none is the step's reading (step 08 names it).
