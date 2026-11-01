@@ -737,7 +737,7 @@ def ledger_decisions(data_dir):
     """(total, [(record number, line)]) of the node's ledger: how many records it holds, and each line that carries
     an admission decision, numbered as the ledger counts records; None when the ledger file cannot be read."""
     try:
-        lines = (data_dir / "ledger" / "capsules.jsonl").read_text(encoding="utf-8").splitlines()
+        lines = live.chain_bytes(data_dir / "ledger").decode("utf-8").splitlines()
     except OSError:
         return None
     kept, total = [], 0

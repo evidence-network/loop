@@ -772,6 +772,14 @@ MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENC
 OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
 
 
+def chain_records(ledger_dir):
+    """The JSON object lines of a node's chain (live.chain_bytes); None when it cannot be read."""
+    try:
+        return ledger_lines(None, live.chain_bytes(ledger_dir))
+    except OSError:
+        return None
+
+
 def ledger_lines(path, raw=None):
     """The JSON object lines of a ledger file (or of `raw`, its bytes as read); None when it cannot be read."""
     pairs = ledger_numbered(path, raw)
@@ -800,7 +808,12 @@ def ask_records(ledger, raw=None, numbered=False):
     """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header); with `numbered`,
     as (capsule_id, header, line number). None when the ledger cannot be read. `raw` is the ledger's bytes when the
     caller has read them."""
-    recs = ledger_numbered(Path(ledger) / "capsules.jsonl", raw)
+    if raw is None:
+        try:
+            raw = live.chain_bytes(ledger)
+        except OSError:
+            return None
+    recs = ledger_numbered(None, raw)
     if recs is None:
         return None
     records = []
@@ -889,7 +902,7 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
         """(records, held) from one read of the ledger: `held` is its sha256 and line count, so the extract can be
         audited against the node later (loop#193)."""
         try:
-            raw = (Path(ledger) / "capsules.jsonl").read_bytes()
+            raw = live.chain_bytes(ledger)
         except OSError:
             return None, None
         return ask_records(ledger, raw, numbered=True), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
@@ -1014,9 +1027,9 @@ def exchange_subject(node, asker_data_dir):
     held = live.readable(node, "data_dir", "ledger/received-capsules.jsonl", "ledger/capsules.jsonl")
     if held is None or asker_data_dir is None:
         return None, EXCHANGE_GAP
-    sent = ledger_lines(Path(asker_data_dir) / "ledger" / "capsules.jsonl")
+    sent = chain_records(Path(asker_data_dir) / "ledger")
     got = ledger_lines(held / "ledger" / "received-capsules.jsonl")
-    chain = ledger_lines(held / "ledger" / "capsules.jsonl")
+    chain = chain_records(held / "ledger")
     if sent is None or got is None or chain is None:
         return None, EXCHANGE_GAP
     mine = {r["capsule_id"] for r in sent if isinstance(r.get("capsule_id"), str)}

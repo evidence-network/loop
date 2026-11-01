@@ -397,7 +397,7 @@ def recorded(ledger, since=None):
     """
     legs, observed, invoices, delivered, settled, tied, settled_ex, named = [], [], [], set(), set(), set(), set(), set()
     outside = undated = 0
-    for line in ledger.read_text(encoding="utf-8").splitlines():
+    for line in live.chain_bytes(ledger.parent).decode("utf-8").splitlines():
         try:
             rec = json.loads(line)
         except ValueError:

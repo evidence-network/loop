@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -100,12 +102,52 @@ def path(node, field):
     return Path(os.path.expandvars(value)) if isinstance(value, str) and value else None
 
 
+CHAIN_FILE = "capsules.jsonl"  # the node's own chain, as the loop names every copy of it
+CHAIN_STORE = "shelf.db"  # a node on the EvidenceBook shelf keeps its chain here; capsules.jsonl is archived (loop#296)
+CAPSULES_BIN = "LOOP_CAPSULES_BIN"  # the plugin's `capsules` binary, when it is not on PATH
+
+
+def chain_present(ledger_dir):
+    """Whether the ledger dir holds a readable chain: the shelf store, or the flat capsules.jsonl of a node not yet
+    migrated (capsules-plugin#208)."""
+    d = Path(ledger_dir)
+    return any(os.access(d / f, os.R_OK) and (d / f).is_file() for f in (CHAIN_STORE, CHAIN_FILE))
+
+
+def chain_bytes(ledger_dir):
+    """The node's chain, today's capsules.jsonl bytes (padding included, one line per leaf), from its ledger dir
+    (<data dir>/ledger): `capsules chain-lines --data-dir <data dir>` when the node is on the shelf (read-only, it
+    beside a running node), else the flat file. Raises OSError when it cannot be read."""
+    d = Path(ledger_dir)
+    if not (d / CHAIN_STORE).is_file():
+        return (d / CHAIN_FILE).read_bytes()
+    bin_ = os.environ.get(CAPSULES_BIN) or shutil.which("capsules")
+    if not bin_:
+        raise FileNotFoundError(f"{d / CHAIN_STORE} holds the chain but no capsules binary is installed "
+                                f"(PATH, or {CAPSULES_BIN})")
+    try:
+        run = subprocess.run([bin_, "chain-lines", "--data-dir", str(d.parent)], stdin=subprocess.DEVNULL,
+                             capture_output=True, timeout=120)
+    except subprocess.SubprocessError as e:
+        raise OSError(f"capsules chain-lines: {type(e).__name__}: {e}") from e
+    if run.returncode != 0:
+        raise OSError(f"capsules chain-lines exited {run.returncode}: {run.stderr.decode('utf-8', 'replace')[:300]}")
+    return run.stdout
+
+
 def readable(node, field, *files):
-    """The node's `field` dir when it and every file in it named here are readable, else None."""
+    """The node's `field` dir when it and every file in it named here are readable, else None. The chain
+    (ledger/capsules.jsonl) is readable when chain_present says so."""
     d = path(node, field)
     if d is None or not d.is_dir() or not os.access(d, os.R_OK | os.X_OK):
         return None
-    return d if all(os.access(d / f, os.R_OK) for f in files) else None
+    return d if all(_readable_file(d, f) for f in files) else None
+
+
+def _readable_file(d, f):
+    if f == f"ledger/{CHAIN_FILE}":
+        return chain_present(d / "ledger")
+    return os.access(d / f, os.R_OK)
 
 
 def unexpanded(node, field):
@@ -126,7 +168,7 @@ def why_not(node, field, *files):
     d = path(node, field)
     if d is not None and d.is_dir() and os.access(d, os.R_OK | os.X_OK):
         for f in files:
-            if not os.access(d / f, os.R_OK):
+            if not _readable_file(d, f):
                 return f"{field} has no readable {f}"
     return f"{field} not set or unreadable"
 

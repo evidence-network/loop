@@ -69,6 +69,9 @@ def keep_copy(src, dest):
     preimage never leaves the lab host); returns how many lines changed. The copy keeps every line, so a line's
     position is the node's."""
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    if Path(src).name == CHAIN:  # the node's chain: from `capsules chain-lines` when it is on the shelf (loop#296)
+        Path(dest).write_bytes(live.chain_bytes(Path(src).parent))
+        src = dest
     return live.copy_redacted(src, dest)
 
 
@@ -204,7 +207,7 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
         {"file": file, "reply": None, "refusal": f"no console for the node ({CONSOLES})"}
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if Path(src).is_file():
+    if Path(src).is_file() or (Path(src).name == CHAIN and live.chain_present(Path(src).parent)):
         keep_copy(src, dest)
         n = covered(asked["reply"]) if asked["reply"] else None
         cut = prefix(dest.read_bytes(), n) if n else None
