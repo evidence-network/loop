@@ -344,6 +344,7 @@ class StatusPageTest(unittest.TestCase):
         self.assertNotIn("2026-10-29-live/", self.html.replace("findings/muse/2026-10-29-live/", ""))
         self.assertTrue((self.out / "findings" / "muse" / "2026-10-29-live" / "01-seal" / "finding.json").is_file())
         self.assertTrue((self.out / "badge-muse.svg").is_file())
+        self.assertIn("2026-10-29-live/01-seal/finding.json", live)  # the red muse cell links its finding
 
     def test_an_ecosystem_with_no_run_keeps_its_column_citing_its_owner(self):
         self.write(1, "PASS")

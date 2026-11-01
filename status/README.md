@@ -13,7 +13,7 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
 ```
 
 - It reads the newest `findings/<date>-rehearsal[-N]/` and the newest
-  `findings/<date>-live[-N]/` (loop.sh's runs; the newest date, then the
+  `findings/<date>-live[-N]/` (loop.sh's and the lab's runs; the newest date, then the
   highest N) and shows them side by side; a rehearsal result is never added to
   a live one.
 - An Ecosystems section shows one column per registered ecosystem (`ECOSYSTEMS`:

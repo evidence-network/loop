@@ -50,7 +50,7 @@ RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)(?:-(\d+))?$")  # -N
 # The ecosystems the page has a column for: (name, findings subdirectory, the issue that owns a column with no
 # run). mesh is findings/ itself; loop.sh --ecosystem writes the others to findings/<ecosystem>/.
 ECOSYSTEMS = (
-    ("mesh", "", None),
+    ("mesh", "", ("loop #307", "https://github.com/evidence-network/loop/issues/307")),
     ("muse", "muse", ("loop #154", "https://github.com/evidence-network/loop/issues/154")),
 )
 
@@ -221,7 +221,7 @@ class Lock:
 
 def run_key(m):
     """Sort key of a run directory name: its date, then its number (the unnumbered run is 0)."""
-    return (m.group(1), int(m.group(3) or 0))
+    return (m.group(1), int(m.group(3) or 0), m.group(0))
 
 
 def latest_runs(findings_dir):
@@ -231,7 +231,7 @@ def latest_runs(findings_dir):
     root = Path(findings_dir)
     for d in root.iterdir() if root.is_dir() else []:
         m = RUN_DIR.match(d.name)
-        if m and d.is_dir() and run_key(m) > best.get(m.group(2), ("", -1)):
+        if m and d.is_dir() and run_key(m) > best.get(m.group(2), ("", -1, "")):
             found[m.group(2)], best[m.group(2)] = d, run_key(m)
     return found
 
@@ -721,18 +721,17 @@ number that cannot be measured yet says so, with the milestone it waits for; it 
 
 
 def eco_cell(c, step, run, owner):
-    """One compact cell of the ecosystems table: the state, and what a reader needs to follow it."""
+    """One compact cell of the ecosystems table: the state, and what a reader needs to follow it. The owner is the
+    ecosystem's own issue, shown wherever its cell has no finding of its own to cite."""
     if run.path is None:
         what = f" · owner: {link(owner[1], owner[0])}" if owner else ""
         return f'<td class="cell s-{NOT_CHECKED}"><code>{NOT_CHECKED}</code> no {e(run.population)} run yet{what}</td>'
-    extra = ""
-    if c.state == GREEN and c.proofs:
-        extra = " · " + link(c.proofs[0][1], "proof")
-    elif c.state == NOT_CHECKED:
-        issues = list(dict.fromkeys(issue_html(i["issue"]) for i in c.not_checked)) or [link(step.owner[1], step.owner[0])]
-        extra = " · " + ", ".join(issues)
-    return (f'<td class="cell s-{e(c.state)}"><code>{e(c.label)}</code> '
-            f'{"" if run.eco != "mesh" else f"""<a href="#step-{step.n:02d}">row</a>"""}{extra}</td>')
+    parts = [f"<code>{e(c.label)}</code>"]
+    parts += [link(h, label) for label, h in (c.proofs[:1] if c.state == GREEN else c.links)]
+    if c.state == NOT_CHECKED:
+        cited = list(dict.fromkeys(issue_html(i["issue"]) for i in c.not_checked))
+        parts += cited or [link(owner[1], owner[0]) if owner else link(step.owner[1], step.owner[0])]
+    return f'<td class="cell s-{e(c.state)}">{" · ".join(parts)}</td>'
 
 
 def ecosystems_html(cols):
