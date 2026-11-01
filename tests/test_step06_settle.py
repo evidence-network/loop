@@ -617,6 +617,26 @@ class Step06SettleTest(unittest.TestCase):
         self.assertNotEqual(r["result"], "PASS", r["detail"])
         self.assertNotIn("unsettled_invoices", self.judged())
 
+    def test_lightning_reads_the_set_aside_evidence_outside_the_window_too(self):
+        # The payer's terms leg and invoice are in the window; the provider's records of the same hash sit before it
+        # (a minute's skew). Its delivery, or its credited settlement, still keeps the hash judged.
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        early = "2026-11-01T01:37:00Z"
+        provider_settled = self.observation(None, self.UNPAID, role="provider", cid="s-unpaid", exchange_id="srv-unpaid",
+                                            amount_msat=10, credited_msat=5, fee_msat=5)
+        for name, more in (("delivered", self.lifecycle("delivered", "provider", "srv-unpaid")),
+                           ("credited", provider_settled)):
+            with self.subTest(name=name):
+                rows = self.with_unpaid_invoice(self.stamped(self.paid(), times))
+                more = json.loads(json.dumps(more))
+                rows[1].append(more)
+                for x in rows[1] + rows[2]:
+                    x.setdefault("timestamp", early if x in rows[1] else times[1])
+                records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+                r = self.lightning(rows, self.checks_dir(records=records), window="2026-11-01T01:38:00Z")
+                self.assertNotEqual(r["result"], "PASS", r["detail"])
+                self.assertNotIn("unsettled_invoices", self.judged())
+
     def test_lightning_is_not_a_pass_when_every_invoice_is_set_aside(self):
         r = self.lightning(self.with_unpaid_invoice({1: [], 2: []}), self.checks_dir(paired=0))
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
