@@ -66,7 +66,7 @@ def check_answer(where, d, stem, states):
 def check_attempt(where, a):
     """One attempt: ATTEMPT naming its own time, peer-key.json, the questions it asked."""
     where = f"{where}/{layout.ATTEMPTS}/{a.name}"
-    if not layout.ATTEMPT_NAME.match(a.name) or not a.is_dir():
+    if not layout.ATTEMPT_NAME.fullmatch(a.name) or not a.is_dir():
         return [f"{where}: not a <YYYYMMDDTHHMMSSZ> attempt directory"]
     errs = []
     allowed = {"ATTEMPT", "peer-key.json"}
@@ -116,7 +116,7 @@ def check_node(day, node_dir):
         ):
             errs.append(f"{where}: {stem}.response.json is not the answer of any attempt")
     node = node_dir / "NODE"
-    if not node.is_file() or not NODE_LINE.match(node.read_text(encoding="utf-8").strip()):
+    if not node.is_file() or not NODE_LINE.fullmatch(node.read_text(encoding="utf-8").strip()):
         errs.append(f"{where}: NODE must say 'discloses: ...', 'joined, no checkpoint yet' or 'joined, discloses nothing'")
     extra = sorted(p.name for p in node_dir.iterdir() if p.name not in allowed)
     if extra:
@@ -148,7 +148,7 @@ def check_day(day_dir, period=layout.Daily):
         elif period is not layout.OnDemand and run.get("set") == "ondemand":
             errs.append(f"{day}: RUN.json is an on-demand run's, not a {period.noun}'s")
         lock = run.get("versions_lock_sha256")
-        if not (isinstance(lock, str) and HEX64.match(lock)):
+        if not (isinstance(lock, str) and HEX64.fullmatch(lock)):
             errs.append(f"{day}: RUN.json versions_lock_sha256 must be the 64-hex sha256 of the versions.lock it ran under")
     except (ValueError, KeyError, TypeError) as e:
         return [f"{day}: RUN.json unreadable ({e})"]
@@ -156,12 +156,12 @@ def check_day(day_dir, period=layout.Daily):
         errs.append(f"{day}: missing README.md")
     nodes = {n for n in names if n not in DAY_FILES}
     for n in sorted(nodes):
-        if not (HEX64.match(n) and (day_dir / n).is_dir()):
+        if not (HEX64.fullmatch(n) and (day_dir / n).is_dir()):
             errs.append(f"{day}: unexpected entry {n}")
-    if sorted(n for n in nodes if HEX64.match(n)) != sorted(asked):
+    if sorted(n for n in nodes if HEX64.fullmatch(n)) != sorted(asked):
         errs.append(f"{day}: node directories do not match RUN.json asked")
     for n in sorted(nodes):
-        if HEX64.match(n) and (day_dir / n).is_dir():
+        if HEX64.fullmatch(n) and (day_dir / n).is_dir():
             errs += check_node(day, day_dir / n)
     return errs
 
@@ -169,7 +169,7 @@ def check_day(day_dir, period=layout.Daily):
 def deployed(reporter):
     """Whether reporter.json names a real reporter key, not the placeholder."""
     key = json.loads(reporter.read_text(encoding="utf-8")).get("key_id")
-    return isinstance(key, str) and HEX64.match(key) is not None and key != "0" * 64
+    return isinstance(key, str) and HEX64.fullmatch(key) is not None and key != "0" * 64
 
 
 def check(root, through=None, reporter=None, period=layout.Daily):
@@ -180,7 +180,7 @@ def check(root, through=None, reporter=None, period=layout.Daily):
     for p in sorted(root.iterdir()) if root.is_dir() else []:
         if p.name in (".gitkeep", "README.md"):
             continue
-        if not (p.is_dir() and period.pattern.match(p.name)):
+        if not (p.is_dir() and period.pattern.fullmatch(p.name)):
             errs.append(f"{p.name}: not a {form} directory")
             continue
         days.append(p.name)

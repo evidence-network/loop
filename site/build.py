@@ -743,10 +743,10 @@ def runs_of(findings):
     """Every run under findings, per population, newest first."""
     root, out = Path(findings), {p: [] for p in status_page.POPULATIONS}
     dirs = [(status_page.run_key(m), d) for d in (root.iterdir() if root.is_dir() else [])
-            if (m := status_page.RUN_DIR.match(d.name)) and d.is_dir()]
+            if (m := status_page.RUN_DIR.fullmatch(d.name)) and d.is_dir()]
     for _, d in sorted(dirs, reverse=True):
-        out[status_page.RUN_DIR.match(d.name).group(2)].append(status_page.read_run(
-            status_page.RUN_DIR.match(d.name).group(2), d))
+        out[status_page.RUN_DIR.fullmatch(d.name).group(2)].append(status_page.read_run(
+            status_page.RUN_DIR.fullmatch(d.name).group(2), d))
     return out
 
 

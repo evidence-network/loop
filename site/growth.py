@@ -146,7 +146,7 @@ def check_commitment_in(path):
 def judge_tree(tree):
     """{listed: [node ids], nodes: {id: {"ok", "reason", "cards"}}} for the nodes/ directory at `tree`."""
     nodes_dir = Path(tree) / "nodes"
-    listed = sorted(p.stem for p in nodes_dir.glob("*.json") if NODE_FILE.match(p.name))
+    listed = sorted(p.stem for p in nodes_dir.glob("*.json") if NODE_FILE.fullmatch(p.name))
     nodes = {}
     for node_id in listed:
         path = nodes_dir / "commitments" / f"{node_id}.json"

@@ -113,7 +113,7 @@ def judge(slot_dir, nodes, lock):
 
 def slots(reports):
     """[(name, slot_dir or None)] from the first slot to the newest settled one, gaps included."""
-    names = sorted(p.name for p in Path(reports).iterdir() if p.is_dir() and Rehearsal.pattern.match(p.name)) \
+    names = sorted(p.name for p in Path(reports).iterdir() if p.is_dir() and Rehearsal.pattern.fullmatch(p.name)) \
         if Path(reports).is_dir() else []
     if names:
         newest = Path(reports) / names[-1]
@@ -149,7 +149,7 @@ def check_build(path, lock_pins):
         return [f"{path}: not a build.json from lab/lab.sh check ({e})"]
     problems = [f"{path}: lab/lab.sh check failed: {f}" for f in build.get("check_failures", ["it has not run"])]
     pin = lock_pins.get("capsules")
-    want = pin if pin and SHA.match(pin) else cap.get("pin_commit") if cap.get("pin") == pin else None
+    want = pin if pin and SHA.fullmatch(pin) else cap.get("pin_commit") if cap.get("pin") == pin else None
     if not want or cap.get("source_head") != want:
         problems.append(f"{path}: capsules {cap.get('pin') or cap.get('source_head')} "
                         f"({str(cap.get('source_head'))[:12]}), versions.lock pins {pin}")

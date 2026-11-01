@@ -47,7 +47,7 @@ def check_private_key(data_dir):
 
 def read_identity(data_dir):
     node_id = (data_dir / "self-peer-id").read_text(encoding="utf-8").strip().lower()
-    if not HEX64.match(node_id):
+    if not HEX64.fullmatch(node_id):
         raise ValueError(f"{data_dir / 'self-peer-id'}: not 64 hex")
     key_id = key_from_pem((data_dir / "keys" / "node-key.pub.pem").read_text(encoding="utf-8"))
     return {"node_id": node_id, "key_id": key_id}

@@ -122,7 +122,7 @@ def names(population_dir, population):
     """A population's node name -> node id, where its population.json gives one."""
     pop = read_json(Path(population_dir) / population / "population.json") or {}
     return {n["name"]: n["node_id"] for n in pop.get("nodes", [])
-            if isinstance(n, dict) and isinstance(n.get("name"), str) and stats_model.HEX64.match(str(n.get("node_id")))}
+            if isinstance(n, dict) and isinstance(n.get("name"), str) and stats_model.HEX64.fullmatch(str(n.get("node_id")))}
 
 
 def seed(node_id):
@@ -369,7 +369,7 @@ def findings_by_day(findings_dir):
     root = Path(findings_dir)
     if root.is_dir():
         for p in sorted(root.iterdir()):
-            m = RUN_DIR.match(p.name)
+            m = RUN_DIR.fullmatch(p.name)
             if m and p.is_dir():
                 out[m.groups()] = p
     return out
@@ -438,7 +438,7 @@ def read_ondemand(path, problems):
     """One on-demand run's scrubbed file, held to the scrubbed format as stats_model holds a day file."""
     where = path.name
     n = len(problems)
-    m = ONDEMAND_FILE.match(path.name)
+    m = ONDEMAND_FILE.fullmatch(path.name)
     if not m:
         problems.append(f"{where}: not a <YYYY-MM-DD>T<HHMMSS>Z.json on-demand file")
         return None

@@ -84,7 +84,7 @@ class Rehearsal:
 
     @staticmethod
     def parse(name):
-        if not Rehearsal.pattern.match(name):
+        if not Rehearsal.pattern.fullmatch(name):
             raise ValueError(f"{name!r} is not a 10-minute slot <YYYY-MM-DD>T<HHMM>Z")
         return dt.datetime.strptime(name, "%Y-%m-%dT%H%MZ").replace(tzinfo=dt.timezone.utc)
 
@@ -113,7 +113,7 @@ class OnDemand:
 
     @staticmethod
     def parse(name):
-        if not OnDemand.pattern.match(name):
+        if not OnDemand.pattern.fullmatch(name):
             raise ValueError(f"{name!r} is not an on-demand run <YYYY-MM-DD>T<HHMMSS>Z")
         return dt.datetime.strptime(name, "%Y-%m-%dT%H%M%SZ").replace(tzinfo=dt.timezone.utc)
 
@@ -135,7 +135,7 @@ def previous(out, name, period=Daily):
     if period.continuous:
         return period.name(period.parse(name) - period.step)
     out = Path(out)
-    earlier = sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.match(p.name)
+    earlier = sorted(p.name for p in out.iterdir() if p.is_dir() and period.pattern.fullmatch(p.name)
                      and p.name < name) if out.is_dir() else []
     return earlier[-1] if earlier else None
 
@@ -160,7 +160,7 @@ def state(line):
 def attempts(node_dir):
     """A node's attempt directories, earliest first."""
     root = Path(node_dir) / ATTEMPTS
-    return sorted(p for p in root.iterdir() if p.is_dir() and ATTEMPT_NAME.match(p.name)) if root.is_dir() else []
+    return sorted(p for p in root.iterdir() if p.is_dir() and ATTEMPT_NAME.fullmatch(p.name)) if root.is_dir() else []
 
 
 def answers(node_dir):
@@ -245,7 +245,7 @@ def absence_fact(n, noun="day"):
 
 def read_attempt(attempt_dir):
     """(at, by) from an attempt's ATTEMPT line, or None when it does not parse."""
-    m = ATTEMPT_LINE.match((Path(attempt_dir) / "ATTEMPT").read_text(encoding="utf-8").strip())
+    m = ATTEMPT_LINE.fullmatch((Path(attempt_dir) / "ATTEMPT").read_text(encoding="utf-8").strip())
     return (m.group(1), m.group(2)) if m else None
 
 

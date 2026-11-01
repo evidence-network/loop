@@ -116,7 +116,7 @@ def _keys(obj, want, where, problems):
 
 
 def _hex_or_null(v):
-    return v is None or (isinstance(v, str) and HEX64.match(v))
+    return v is None or (isinstance(v, str) and HEX64.fullmatch(v))
 
 
 def read_answer(stem, q, where, problems):
@@ -134,7 +134,7 @@ def read_answer(stem, q, where, problems):
         w = f"{where}.attempts[{i}]"
         if not _keys(a, ATTEMPT_KEYS, w, problems):
             continue
-        if not (isinstance(a["at"], str) and STAMP.match(a["at"])):
+        if not (isinstance(a["at"], str) and STAMP.fullmatch(a["at"])):
             problems.append(f"{w}: at is not a UTC timestamp")
         elif a["state"] not in layout.ATTEMPT_STATES:
             problems.append(f"{w}: state {a['state']!r} is not one of {', '.join(layout.ATTEMPT_STATES)}")
@@ -148,7 +148,7 @@ def read_answer(stem, q, where, problems):
         problems.append(f"{where}: state {q['state']!r} but the attempts settle as {first!r}")
     size = q["log_size_at_checkpoint"]
     if size is not None and _keys(size, LOG_SIZE_KEYS, f"{where}.log_size_at_checkpoint", problems):
-        if not (_int(size["mmr_size"]) and isinstance(size["timestamp"], str) and STAMP.match(size["timestamp"])):
+        if not (_int(size["mmr_size"]) and isinstance(size["timestamp"], str) and STAMP.fullmatch(size["timestamp"])):
             problems.append(f"{where}.log_size_at_checkpoint: needs mmr_size=<n> and a UTC timestamp")
     records = q["records_at_checkpoint"]
     if records != (leaves(size.get("mmr_size")) if isinstance(size, dict) else None) or (
@@ -168,14 +168,14 @@ def read_node(node, where, problems):
     n = len(problems)
     if not _keys(node, NODE_KEYS, where, problems):
         return None
-    if not (isinstance(node["node_id"], str) and HEX64.match(node["node_id"])):
+    if not (isinstance(node["node_id"], str) and HEX64.fullmatch(node["node_id"])):
         problems.append(f"{where}: node_id is not 64 hex")
         return None
     where = f"{where} ({node['node_id'][:12]})"
     if not isinstance(node["node_line"], str) or not node["node_line"].strip():
         problems.append(f"{where}: node_line must be a non-empty string")
     left = node["left_on"]
-    if left is not None and not (isinstance(left, str) and DATE.match(left)):
+    if left is not None and not (isinstance(left, str) and DATE.fullmatch(left)):
         problems.append(f"{where}: left_on is not a YYYY-MM-DD date or null")
     answers = {}
     if _keys(node["questions"], set(QUESTIONS), f"{where}.questions", problems):
@@ -205,7 +205,7 @@ def read_day(path, problems, period=layout.Daily):
     where = path.name
     n = len(problems)
     pattern, form = FILES[period.set]
-    m = pattern.match(path.name)
+    m = pattern.fullmatch(path.name)
     if not m:
         problems.append(f"{where}: not a {form}")
         return None

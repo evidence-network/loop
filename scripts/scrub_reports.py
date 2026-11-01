@@ -114,7 +114,7 @@ def log_size(reply):
         if not isinstance(cp, dict):
             continue
         size, at = cp.get("mmr_size"), cp.get("timestamp")
-        if isinstance(size, int) and not isinstance(size, bool) and size >= 0 and isinstance(at, str) and ISO.match(at):
+        if isinstance(size, int) and not isinstance(size, bool) and size >= 0 and isinstance(at, str) and ISO.fullmatch(at):
             if best is None or size > best["mmr_size"]:
                 best = {"mmr_size": size, "timestamp": at}
     return best
@@ -158,7 +158,7 @@ def left_on(left_dir, node_id):
     if not path.is_file():
         return None
     left = json.loads(path.read_text(encoding="utf-8")).get("left")
-    return left if isinstance(left, str) and DATE.match(left) else None
+    return left if isinstance(left, str) and DATE.fullmatch(left) else None
 
 
 def scrub_day(reports, day_dir, left_dir, period=layout.Daily):
@@ -191,7 +191,7 @@ def scrub_day(reports, day_dir, left_dir, period=layout.Daily):
 
 def scrub(reports, out, left_dir, period=layout.Daily):
     reports, out = Path(reports), Path(out)
-    days = sorted(p for p in reports.iterdir() if p.is_dir() and period.pattern.match(p.name)) if reports.is_dir() else []
+    days = sorted(p for p in reports.iterdir() if p.is_dir() and period.pattern.fullmatch(p.name)) if reports.is_dir() else []
     written = {}
     for d in days:
         written[f"{d.name}.json"] = dump(scrub_day(reports, d, left_dir, period))
@@ -200,7 +200,7 @@ def scrub(reports, out, left_dir, period=layout.Daily):
         raise ValueError("the scrubbed set does not check:\n  " + "\n  ".join(errs))
     out.mkdir(parents=True, exist_ok=True)
     for p in out.iterdir():
-        if day_file(period).match(p.name) and p.name not in written:
+        if day_file(period).fullmatch(p.name) and p.name not in written:
             p.unlink()
     for name, text in written.items():
         path = out / name
@@ -242,7 +242,7 @@ def keys(where, obj, want, errs):
 def match(where, value, pattern, errs, nullable=False):
     if value is None and nullable:
         return
-    if not (isinstance(value, str) and pattern.match(value)):
+    if not (isinstance(value, str) and pattern.fullmatch(value)):
         errs.append(f"{where}: {value!r} is not the expected form")
 
 
@@ -314,7 +314,7 @@ def check_day(name, day, period=layout.Daily):
 
 
 def check_text(name, text, period=layout.Daily):
-    if not day_file(period).match(name):
+    if not day_file(period).fullmatch(name):
         return [{"daily": f"{name}: not <YYYY-MM-DD>.json",
                  "rehearsal": f"{name}: not a <YYYY-MM-DD>T<HHMM>Z.json 10-minute slot",
                  "ondemand": f"{name}: not a <YYYY-MM-DD>T<HHMMSS>Z.json on-demand run"}[period.set]]

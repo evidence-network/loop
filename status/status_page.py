@@ -234,7 +234,7 @@ def latest_runs(findings_dir):
     found, best = {p: None for p in POPULATIONS}, {}
     root = Path(findings_dir)
     for d in root.iterdir() if root.is_dir() else []:
-        m = RUN_DIR.match(d.name)
+        m = RUN_DIR.fullmatch(d.name)
         if m and d.is_dir() and run_key(m) > best.get(m.group(2), ("", -1, "")):
             found[m.group(2)], best[m.group(2)] = d, run_key(m)
     return found
@@ -248,7 +248,7 @@ def read_run(population, path, eco="mesh"):
     run.started = run_start(path, population)
     by_step = {}
     for d in sorted(p for p in path.iterdir() if p.is_dir()):
-        m = finding.STEP_DIR.match(d.name)
+        m = finding.STEP_DIR.fullmatch(d.name)
         if m:
             by_step.setdefault(int(m.group(1)), []).append(d)
     for n, dirs in by_step.items():
@@ -366,7 +366,7 @@ def first_answered(run, step):
         return None
     try:
         at = json.loads((d / FIRST_ANSWERED).read_text(encoding="utf-8"))["answered_at"]
-        m = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$", at)
+        m = re.fullmatch(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$", at)
         return stamp(m.group(1) + "Z") + dt.timedelta(microseconds=int((m.group(2) or "0")[:6].ljust(6, "0")))
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
@@ -748,7 +748,7 @@ def ecosystems_html(cols):
             run = runs[p]
             head = f"<strong>{e(name)}</strong><br>"
             if run.path:
-                when = RUN_DIR.match(run.name).group(1)
+                when = RUN_DIR.fullmatch(run.name).group(1)
                 badge_file = "badge.svg" if name == "mesh" else f"badge-{name}.svg"
                 head += (f"{link(f'{FINDINGS}/{run.rel}/', run.name)}<br>{e(when)} · {e(counts(rs, p))}<br>"
                          f"pins: {link(LOCK, LOCK)} · {link(badge_file, 'badge')}")

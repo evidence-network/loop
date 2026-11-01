@@ -65,7 +65,7 @@ def read_lock(path):
 
 def pinned(verifier, pins):
     """True when verifier is `binding-verifier@<pin>` and the lock pins binding-verifier at exactly pin."""
-    m = VERIFIER.match(verifier) if isinstance(verifier, str) else None
+    m = VERIFIER.fullmatch(verifier) if isinstance(verifier, str) else None
     return bool(m) and m.group(1) == BINDING_VERIFIER and pins.get(BINDING_VERIFIER) == m.group(2)
 
 
@@ -82,17 +82,17 @@ def verdict_errors(doc, pins):
     if not (isinstance(doc["controller_key_id"], str) and HEX64.fullmatch(doc["controller_key_id"])):
         errs.append(f"{SHAPE}: controller_key_id is not 64 lowercase hex")
     subjects = doc["subjects"]
-    if not (isinstance(subjects, list) and all(isinstance(s, str) and SUBJECT.match(s) for s in subjects)):
+    if not (isinstance(subjects, list) and all(isinstance(s, str) and SUBJECT.fullmatch(s) for s in subjects)):
         errs.append(f"{SHAPE}: subjects must be a list of subject ids")
     elif len(subjects) < 2 or subjects != sorted(set(subjects)):
         errs.append(f"{SHAPE}: subjects must be sorted, unique, and at least 2")
     if doc["status"] not in STATUSES:
         errs.append(f"{SHAPE}: status must be one of {', '.join(STATUSES)}")
-    if doc["verifier"] is not None and not (isinstance(doc["verifier"], str) and VERIFIER.match(doc["verifier"])):
+    if doc["verifier"] is not None and not (isinstance(doc["verifier"], str) and VERIFIER.fullmatch(doc["verifier"])):
         errs.append(f"{SHAPE}: verifier must be <name>@<pin> or null")
     if not (isinstance(doc["checked_at"], str) and TIMESTAMP.fullmatch(doc["checked_at"])):
         errs.append(f"{SHAPE}: checked_at must be YYYY-MM-DDTHH:MM:SSZ")
-    if doc["cites"] is not None and not (isinstance(doc["cites"], str) and ISSUE.match(doc["cites"])):
+    if doc["cites"] is not None and not (isinstance(doc["cites"], str) and ISSUE.fullmatch(doc["cites"])):
         errs.append(f"{SHAPE}: cites must be <owner/repo#N> or null")
     if doc["status"] == "verified" and not pinned(doc["verifier"], pins):
         errs.append(f"{UNPINNED}: a verified verdict needs {BINDING_VERIFIER} at the pin versions.lock gives it; "
