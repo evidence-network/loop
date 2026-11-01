@@ -422,12 +422,13 @@ cmd_tools() {
     results+=("$(basename "$s")" "$rc")
   done
   if [ "$DRY" = 1 ]; then echo "  > $LAB_DIR/build.json (each setup's exit code; a failed setup makes it ok:false)"; return 0; fi
-  python3 -B - "${results[@]+"${results[@]}"}" << 'PY' | record tools || die "cannot write $LAB_DIR/build.json"
+  python3 -B - "${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}" "${results[@]+"${results[@]}"}" << 'PY' | record tools || die "cannot write $LAB_DIR/build.json"
 import datetime as dt, json, sys
-args = sys.argv[1:]
+tools_dir, *args = sys.argv[1:]
 setups = [{"name": n, "exit": int(rc)} for n, rc in zip(args[::2], args[1::2])]
 print(json.dumps({
     "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "loop_tools": tools_dir,
     "setups": setups,
     "failures": [f"tools: steps/{s['name']} exited {s['exit']}" for s in setups if s["exit"]],
 }))

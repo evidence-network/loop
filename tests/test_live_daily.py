@@ -36,12 +36,12 @@ STUB_LAB = r'''#!/usr/bin/env bash
 set -u
 cmd=$1
 pop=$(python3 -c 'import json; print(json.load(open("population/live/population.json")).get("window", {}).get("from", "-"))')
-echo "$cmd since=${LOOP_SEALED_SINCE:--} window=$pop out=${LAB_OUT:--}" >> "$STUB_LOG"
+echo "$cmd since=${LOOP_SEALED_SINCE:--} window=$pop out=${LAB_OUT:--} tools=${LOOP_TOOLS:--}" >> "$STUB_LOG"
 w() { python3 -B "$STUB_ROOT/write_finding.py" "$LAB_OUT/$1" "$2"; }
 case "$cmd" in
   check) exit "${STUB_CHECK_RC:-0}" ;;
   running) exit "${STUB_RUNNING_RC:-0}" ;;
-  tools) echo "tools LOOP_TOOLS=$LOOP_TOOLS" >> "$STUB_LOG"; exit "${STUB_TOOLS_RC:-0}" ;;
+  tools) exit "${STUB_TOOLS_RC:-0}" ;;
   exchange)
     mkdir -p "$LAB_DIR/exchange"
     printf 'HTTP/1.1 %s\r\nx-mesh-served-by: x\r\n' "${STUB_PAID:-200 OK}" > "$LAB_DIR/exchange/lab-2.headers.txt"
@@ -133,11 +133,11 @@ class LiveDailyTest(unittest.TestCase):
         # The window and the cutoff are the run's start for every step after the exchange; the exchange runs once.
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
-                         ["check", "running", "tools", "tools", "exchange", "admit", "deal", "bundles", "settle", "ask", "dispute",
+                         ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "ask", "dispute",
                           "loop", "10-judge", "11-report"])
-        self.assertIn(f"LOOP_TOOLS={self.lab / 'tools'}", calls[3])
-        for c in calls[4:12]:
-            self.assertIn(f"since={since} window={since} out={out}", c)
+        self.assertIn(f"tools={self.lab / 'tools'}", calls[0])  # the run's own tools, first: check reads their record
+        for c in calls[3:11]:
+            self.assertIn(f"since={since} window={since} out={out} tools=", c)
         tgz = self.lab / "out" / f"{name}.tgz"
         listing = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True, check=True).stdout.split()
         self.assertTrue(all(p.startswith(f"findings/{name}") for p in listing), listing[:5])

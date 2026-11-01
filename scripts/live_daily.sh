@@ -9,8 +9,9 @@
 #
 #   1. take $LAB_DIR/run/LIVE_RUN (asg-lab-rebuild skips a host that has one); refuse when it exists, or when a
 #      lab.sh or loop.sh process runs; the lock is removed on every exit, a kill included (not SIGKILL)
-#   2. lab/lab.sh check and lab/lab.sh running: pin drift, or a node down or on another build, stops the run; then
-#      lab/lab.sh tools installs every step's pinned tools for this head into LIVE_TOOLS (a setup that fails stops it)
+#   2. lab/lab.sh tools installs every step's pinned tools for this head into LIVE_TOOLS, then lab/lab.sh check and
+#      lab/lab.sh running: a setup that fails, pin drift, or a node down or on another build stops the run. tools comes
+#      first because check fails on the last tools record: a day whose tools failed is retried the next day
 #   3. the window: this run's start, at its whole minute (the plugin stamps records to the minute), goes into
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
@@ -32,7 +33,7 @@
 #
 # Exit: 0 the run finished and its findings are packed; 1 the same, but the gate found a regression against
 # baseline/live.json; 2 usage or setup; 3 another run holds the lab (LIVE_RUN, lab.sh or loop.sh); 4 the clone is
-# not a clean origin/main; 5 lab.sh check or running failed; 6 finding.py check refused the findings;
+# not a clean origin/main; 5 lab.sh tools, check or running failed; 6 finding.py check refused the findings;
 # 7 a privacy check hit, findings held; 8 the run finished and is packed, but its one payment was refused, so 06 is
 # NOT_CHECKED and the baseline must not move (no other step regressed; one that did makes it 1). Every refusal
 # prints one line "live_daily: <reason>".
@@ -142,7 +143,7 @@ if [ "$DRY" = 1 ]; then
   other_run > /dev/null && echo "  NOTE: a lab.sh or loop.sh process runs: a real run would refuse (exit 3)"
   cat << EOF
   1. take $LOCK; git fetch origin main; HEAD must be origin/main with no tracked change
-  2. $LAB_SH check; $LAB_SH running; $LAB_SH tools into LOOP_TOOLS=$LOOP_TOOLS
+  2. $LAB_SH tools into LOOP_TOOLS=$LOOP_TOOLS; $LAB_SH check; $LAB_SH running
   3. window.from = $SINCE in $POP (restored on exit); LOOP_SEALED_SINCE=$SINCE
   4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat; a refusal leaves 06 NOT_CHECKED, no retry
   5. wait ${WAIT}s for the checkpoints
@@ -191,6 +192,10 @@ MAIN=$(git -C "$ROOT" rev-parse FETCH_HEAD)
 log "run $NAME at $HEAD, window from $SINCE"
 
 # --- 2. the lab -----------------------------------------------------------------------------------------------------
+mkdir -p "$LAB_DIR/logs" || refuse 2 "cannot make $LAB_DIR/logs"
+bounded "$LAB_SH" tools > "$LAB_DIR/logs/live-tools.log" 2>&1
+rc=$?
+[ "$rc" = 0 ] || refuse 5 "lab.sh tools exited $rc: a step's pinned tool did not install in $LOOP_TOOLS (see $LAB_DIR/logs/live-tools.log)"
 bounded "$LAB_SH" check > /dev/null
 rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh check exited $rc"
@@ -199,10 +204,6 @@ bounded "$LAB_SH" running
 rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh running exited $rc"
 [ "$rc" = 0 ] || refuse 5 "lab.sh running failed: a node is down or runs another build"
-mkdir -p "$LAB_DIR/logs" || refuse 2 "cannot make $LAB_DIR/logs"
-bounded "$LAB_SH" tools > "$LAB_DIR/logs/live-tools.log" 2>&1
-rc=$?
-[ "$rc" = 0 ] || refuse 5 "lab.sh tools exited $rc: a step's pinned tool did not install in $LOOP_TOOLS (see $LAB_DIR/logs/live-tools.log)"
 
 # --- 3. the window --------------------------------------------------------------------------------------------------
 POP_TOUCHED=1

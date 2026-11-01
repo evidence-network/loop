@@ -733,6 +733,7 @@ class ToolsTest(LabRoot):
         self.assertIn("12-c.setup.sh FAILED (exit 5)", r.stderr)
         build = self.build()
         self.assertIs(build["ok"], False)
+        self.assertEqual(build["tools"]["loop_tools"], self.env.get("LOOP_TOOLS") or str(Path.home() / ".cache" / "evidence-network-loop"))
         self.assertEqual(build["tools"]["setups"], [{"name": "01-a.setup.sh", "exit": 0},
                                                     {"name": "02-b.setup.sh", "exit": 3},
                                                     {"name": "12-c.setup.sh", "exit": 5},
