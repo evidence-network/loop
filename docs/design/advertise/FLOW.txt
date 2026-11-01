@@ -1,0 +1,37 @@
+ADVERTISE OVER NOSTR: FLOW (design v0, 2026-11-01)
+
+ NODE (provider, capsules plugin)                     RELAYS (mesh-llm's, untrusted)        ASKER (stranger, other ecosystem)
+ ---------------------------------                    ------------------------------        ---------------------------------
+ [01 Seal] records -> [02 Book] ledger + checkpoint
+            |
+ [03 Advertise] sign commitment/1  (key_id, ask.endpoint+bindings,
+            |    relay list, mailbox key, policy digest,
+            |    stapled history_card/1 + checkpoint, NO counts)
+            |
+   switch advertise_evidence_requests?
+     off -> nothing published (peers can still ask)
+     on  -> event{d=node_id, commitment bytes, sha256}  ----->  stored, re-served  ----->  discovers event
+            signed by the mailbox key the commitment names                                    |
+                                                                                    IGNORE event claims
+                                                                                    verify commitment sig (spki)
+                                                                                    key_id == key mesh peer proves?
+                                                                                    staple + checkpoint digests ok?
+                                                                                    newest issued_at; consistency
+                                                                                    proof vs live checkpoint
+                                                                                              |
+                                          <------------- [direct] "send me your current commitment/1"
+                                          -------------> commitment/1 (must match / be newer)
+                                                                                              |
+                                                                                    [04 Admit] policy reads the
+                                                                                    stapled card: admit or not
+                                                                                              |
+ [05 Deal] [06 Settle]  <====================== exchange + payment (two halves) ==========>  [05][06]
+ [07 Ask]  answer/refuse <------- evidence-request (mesh channel, or Nostr mailbox 4700/4701 if NAT'd) --
+                         ------- signed answer / signed refusal / deadline -> recorded absence ----->
+                                                                                    [08 Verify] offline
+
+ SAME OPERATOR, TWO ECOSYSTEMS (stapling): one commitment per key + controller binding, side by side
+   commitment(key A, mesh)  +  commitment(key B, Goose/deal)  +  binding(A,B -> controller C)  -> never merged
+
+ WITHOUT ADVERTISE: steps 01,02,05-08 all work between parties that already know each other
+ (mesh peers: endpoint is mesh:<node_id>). Advertise only changes first contact by a stranger.
