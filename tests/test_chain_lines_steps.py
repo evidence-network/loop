@@ -99,7 +99,7 @@ class Nodes(unittest.TestCase):
     def test_a_signed_checkpoint_with_an_unread_shelf_chain_is_not_checked_not_failed(self):
         reply = {"ledger_checkpoint": 1, "file": "capsules.jsonl", "range_proof": {"from_index": 0, "to_index": 2}}
         http = lambda *a: (200, json.dumps(reply).encode())  # noqa: E731
-        for body, env in (("exit 1", {}), ("exit 0", {live.CAPSULES_BIN: ""})):
+        for body, env in (("exit 1", {}), ("exit 0", {live.CAPSULES_BIN: "", "CAPSULES_BIN": ""})):
             self.use(body)
             with mock.patch.dict(os.environ, env), mock.patch("shutil.which", return_value=None if env else "x"):
                 out = Path(self.tmp.name) / "out" / "ledger"
