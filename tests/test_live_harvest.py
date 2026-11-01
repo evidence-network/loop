@@ -75,7 +75,8 @@ class HarvestTest(unittest.TestCase):
         (bin_ / "gh").write_text(GH)
         (bin_ / "gh").chmod(0o755)
         self.log = self.tmp / "gh.log"
-        self.env = dict(os.environ, PATH=f"{bin_}:{os.environ['PATH']}", STUB_LOG=str(self.log))
+        self.env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com", GIT_COMMITTER_NAME="t",
+                        GIT_COMMITTER_EMAIL="t@example.com", PATH=f"{bin_}:{os.environ['PATH']}", STUB_LOG=str(self.log))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
