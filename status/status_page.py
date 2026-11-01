@@ -315,8 +315,9 @@ def cell(step, run):
         times=(r["started"], r["finished"]),
     )
     if r["result"] == "PASS":
-        where = (f"each proof file is in the release archive {code(run.archive['asset'])} (sha256 "
-                 f"{code(run.archive['sha256'])}), which the finding pins by sha256" if run.archive
+        where = (f"the proof files are not in the repository: they are in the release archive {code(run.archive['asset'])}, "
+                 f"whose sha256 ({code(run.archive['sha256'])}) {code('proof-archive.json')} records, and the finding "
+                 f"records each file's sha256. This page has not downloaded or checked the archive" if run.archive
                  else "each proof file is here and matches its sha256")
         return Cell(p, GREEN, "PASS", f"PASS in {code(run.name)}: the finding says its assertion was checked on "
                                       f"the proof bytes, and {where}.",
