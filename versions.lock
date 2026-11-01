@@ -68,6 +68,6 @@ inference-deals action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf9
 demo-mesh-llm ethanyzhang/mesh-llm 3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301
 demo-capsules Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc
 # The Goose reference node the goose ecosystem's rehearsal runs: evidencebook's python/examples/goose (G1,
-# #265, #290; loop_seal, #300, from 98a78b3), two loop_server.py processes spoken to over MCP stdio as Goose speaks to them. Installed by
+# #265, #290; loop_seal, #300; loop_advertise, #325, from 03c9643), two loop_server.py processes spoken to over MCP stdio as Goose speaks to them. Installed by
 # steps/goose.setup.sh; scripts/goose_rehearsal.py runs it (loop#330).
-goose-g1 action-state-group/evidencebook 98a78b3d850ecf8924f8a9c494b72710b8d1366b
+goose-g1 action-state-group/evidencebook 03c9643a805cadb3c599d9159eac2d4eab828dcf

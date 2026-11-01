@@ -15,7 +15,11 @@ stapled card's stream (scripts/history_cards.py).
 
 - rehearsal: the carrier is a scratch git repository (the repository's own
   nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
-  file, so `git show` can be re-run on exactly what was fetched.
+  file, so `git show` can be re-run on exactly what was fetched. On the Goose
+  rehearsal population (scripts/goose_rehearsal.py), each node's commitment is
+  the one the node signed itself with G1's loop_advertise, published byte for
+  byte; the harness signs nothing, and the commitment must be under the node's
+  own key.
 - live: the harness never signs for a live node. A live commitment is one the
   node signed and published itself; the pinned capsules plugin signs and serves
   it (capsules-plugin PR #75, in the pin) and hands it to its operator, who
@@ -39,6 +43,7 @@ import argparse
 import base64
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -165,13 +170,46 @@ def fetch(carrier, path, ref="HEAD"):
     return r.stdout if r.returncode == 0 else None
 
 
-def rehearsal_node(population, node, carrier):
-    """Sign a rehearsal node's commitment with its TEST key and publish it. Returns (record, key_id)."""
+def node_signed(node, signed, carrier, key_id, key_dir=None, out=None, rev=None):
+    """Publish the commitment and policy the node signed itself (the Goose rehearsal: G1's loop_advertise), byte for
+    byte; the harness signs nothing. Returns (record, key_id): the key is the node's own, from its key_dir, so a
+    commitment under another key fails the check."""
+    raw = Path(signed["commitment"]).read_bytes()
+    try:
+        node_id = json.loads(raw)["node_id"]
+    except (ValueError, KeyError, TypeError):
+        node_id = None
+    if not (isinstance(node_id, str) and cc.HEX64.fullmatch(node_id)):
+        node_id = key_id  # a node_id that names no file of ours: published under the key, refused by the check
+    tree = carrier / "nodes" / "commitments"
+    (tree / "policies").mkdir(parents=True, exist_ok=True)
+    (tree / f"{node_id}.json").write_bytes(raw)
+    (tree / "policies" / f"{node_id}.json").write_bytes(Path(signed["policy"]).read_bytes())
+    if PUBLISH_HOOK:
+        PUBLISH_HOOK(carrier)
+    git(carrier, "add", "nodes")
+    git(carrier, "commit", "-q", "--allow-empty", "-m", f"advertise: commitment for {node_id}, as the node signed it")
+    rec = {"name": node["name"], "node_id": node_id, "key_id": key_id, "inputs": "signed by the node",
+           "signed_by": f"the Goose node {node['name']} itself, tool loop_advertise"
+                        + (f", goose-g1 {rev}" if rev else "") + "; never the harness",
+           "published_commit": git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}
+    if key_dir is not None and out is not None:
+        # The key the commitment must be under, kept in the proof so "under the node's own key" can be re-checked.
+        shutil.copyfile(Path(key_dir) / "node-key.pub.pem", Path(out) / f"{node['name']}.node-key.pub.pem")
+        rec["node_key_file"] = f"{node['name']}.node-key.pub.pem"
+    return rec, key_id
+
+
+def rehearsal_node(population, node, carrier, signed=None, out=None, rev=None):
+    """Sign a rehearsal node's commitment with its TEST key and publish it, or publish the one the node signed
+    (`signed`: {commitment, policy} paths). Returns (record, key_id)."""
     key_dir = Path(node["key_dir"])
     if not key_dir.is_absolute():
         key_dir = population.parent.parent / key_dir
     spki = cc.spki_from_pem((key_dir / "node-key.pub.pem").read_text(encoding="utf-8"))
     key_id = cc.key_id_of(spki)
+    if signed:
+        return node_signed(node, signed, carrier, key_id, key_dir, out, rev)
     node_id = node.get("node_id") or key_id
     settings, staple, checkpoint, source = node_inputs(population, node)
     staple = staple if staple is not None else standin_staple(key_id)
@@ -200,10 +238,11 @@ def live_node(node, carrier, ref="HEAD"):
     return rec, key_id
 
 
-def check_node(population, out, node, carrier):
+def check_node(population, out, node, carrier, signed=None, rev=None):
     """One rehearsal node's verification record, and the proof files it wrote."""
-    rec, key_id = rehearsal_node(population, node, carrier)
-    return verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), False)
+    rec, key_id = rehearsal_node(population, node, carrier, signed, out, rev)
+    rec, files = verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), False)
+    return rec, files + ([rec["node_key_file"]] if rec.get("node_key_file") else [])
 
 
 def verify_node(out, name, rec, key_id, read, live):
@@ -278,17 +317,26 @@ def main(argv=None):
         judge_live(pop, out, started)
         return 0
     records, proof = [], []
+    goose = pop.get("goose") or {}
+    signed = goose.get("commitments") or {}
+    pinned, gaps = [], []
+    if signed:  # the Goose rehearsal: the commitments are G1's, so the finding pins goose-g1 and names the revision
+        pinned = ["goose-g1"]
+        if goose.get("rev") != finding.pins()["goose-g1"][1]:
+            gaps.append({"what": "goose-g1", "why": f"installed {goose.get('rev')}, versions.lock pins "
+                         f"{finding.pins()['goose-g1'][1]}",
+                         "issue": "none: steps/goose.setup.sh has not installed the pin"})
     with tempfile.TemporaryDirectory() as tmp:
         carrier = Path(tmp) / "carrier"
         carrier.mkdir()
         git(carrier, "init", "-q")
         for node in pop["nodes"]:
-            rec, files = check_node(population, out, node, carrier)
+            rec, files = check_node(population, out, node, carrier, signed.get(node["name"]), goose.get("rev"))
             records.append(rec)
             proof += files
         git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")
         proof.append("carrier.bundle")
-    conclude(out, kind, records, proof, started)
+    conclude(out, kind, records, proof, started, pinned, gaps)
     return 0
 
 
@@ -377,7 +425,7 @@ def judge_live(pop, out, started):
     return conclude(out, "live", records, proof, started)
 
 
-def conclude(out, kind, records, proof, started):
+def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
     """verification.json and the finding, from the per-node records."""
     live = kind == "live"
     verification = {"tool": f"scripts/check_commitment.py with {tool_versions()}", "nodes": records}
@@ -390,6 +438,7 @@ def conclude(out, kind, records, proof, started):
                                                      f"harness: {LIVE_GAP}" if live else ""),
                     "issue": LIVE_ISSUE if live else "evidence-network/loop: step 12 Join (steps/12-join) publishes it"}
                    for r in records if r["result"] == "NOT_CHECKED"]
+    not_checked += list(gaps)
     checked = [r for r in records if r["result"] == "PASS"]
     # The staple's signature and the checkpoint attestation are outside the assertion: on a PASS they are
     # sentences in detail, otherwise not_checked entries. A policy digest not checked is inside it.
@@ -431,7 +480,7 @@ def conclude(out, kind, records, proof, started):
                        "history_card/1 verifier is callable from the loop", STAPLE_ISSUE))
     else:
         not_checked += outside
-    return finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=[], proof=proof,
+    return finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=list(pinned), proof=proof,
                          detail=detail, not_checked=not_checked, started=started)
 
 

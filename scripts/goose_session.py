@@ -103,6 +103,8 @@ async def run(out, rail_dir):
                 await node.call("loop_history_card", book_id=f"deal/{deal_id}",
                                 out_path=str(out / f"{node.name}-history-card.json"))
                 (out / f"{node.name}.key").write_text(key["key_id"])
+                # 03: the node's own signed commitment and policy (loop_advertise), laid out for nodes/commitments/.
+                await node.call("loop_advertise", out_dir=str(out / "commitments"))
     (out / "deal.json").write_text(json.dumps({"deal_id": deal_id, "buyer": b["key_id"], "seller": s["key_id"],
                                                "settlement_id": settlement["settlement_id"]}, sort_keys=True))
 

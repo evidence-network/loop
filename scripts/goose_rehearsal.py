@@ -8,7 +8,8 @@ loop_server.py processes, a buyer and a seller, spoken to over MCP stdio as Goos
 mesh rehearsal's mock rail paying the deal, into DIR/run and DIR/population/rail, then writes DIR/population/population.json in the mesh rehearsal's shape: each node's `key_dir`
 holds `node-key.pem` and `node-key.pub.pem`, taken from the node's own producer key, so a step checks
 a record under the key the node signed it with. A `goose` member names what the run exported and which
-steps read it (`steps`); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
+steps read it (`steps`): step 01 the capsule the buyer sealed (`sealed`), step 03 each node's own signed commitment and
+policy (`commitments`, loop_advertise); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
 
 Exit 0 once population.json is written; exit 3 when the Goose tools are not installed (steps/goose.setup.sh); exit 1
@@ -27,7 +28,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["01", "06"]
+STEPS = ["01", "03", "06"]
 NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
@@ -111,9 +112,19 @@ def main(argv=None):
         return 1
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
-    step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))
+    deal = json.loads((run / "deal.json").read_text())
+    step06_inputs(pop, work, nodes, deal)
+    # Step 03 publishes each node's commitment as the node signed it (loop_advertise), never one the harness signs.
+    commitments = {}
+    for n, key_id in zip(nodes, (deal["buyer"], deal["seller"])):
+        c, pol = run / "commitments" / f"{key_id}.json", run / "commitments" / "policies" / f"{key_id}.json"
+        if not (c.is_file() and pol.is_file()):
+            print(f"goose_rehearsal: the run wrote no commitment for {n['name']} ({c})", file=sys.stderr)
+            return 1
+        commitments[n["name"]] = {"commitment": str(c), "policy": str(pol)}
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)},
+                                             "commitments": commitments}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
 
