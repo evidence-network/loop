@@ -18,7 +18,7 @@
 #
 # --ecosystem (default mesh) names what the steps run against. mesh is the loop as it has always
 # run: findings in findings/<date>-<population>/, run.json as above. muse, cross and goose have no steps
-# yet (goose is ecosystem 2: its steps arrive with its driver, under loop#315): each step gets a NOT_CHECKED finding saying so (owned by loop#150; loop#315 for goose), written to
+# yet (goose is ecosystem 2: its steps arrive with its driver, under loop#315): each step gets a NOT_CHECKED finding saying so (owned by loop#150; for goose the issue each step waits on, loop#315 otherwise), written to
 # findings/<ecosystem>/<date>-<population>/ with "ecosystem" added to run.json, and nothing runs.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
@@ -176,9 +176,13 @@ for nn in $steps; do
     python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" <<'PY'
 import sys
 root, step_dir, started, ecosystem, nn, population = sys.argv[1:]
-# The issue that owns a step with no run yet: the ecosystem's umbrella (loop#150 for muse and cross; loop#315
-# for goose, whose steps 01-12 are the same assertions as mesh's).
-owner = "evidence-network/loop#315" if ecosystem == "goose" else "evidence-network/loop#150"
+# The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
+# the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
+# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; the rest loop#315.
+GOOSE = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
+         "03": "action-state-group/capsule-emit#406", "08": "evidence-network/loop#193",
+         "12": "action-state-group/capsule-emit#406"}
+owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 sys.path.insert(0, root + "/steps")
 import finding
 finding.write(step_dir, result="NOT_CHECKED", population=population,
