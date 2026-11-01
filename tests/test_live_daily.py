@@ -180,6 +180,13 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("exited 3", f["detail"])
 
+    def test_a_step_over_its_time_is_killed_and_a_fail(self):
+        r = self.run_daily(STUB_HANG="1", LIVE_STEP_TIMEOUT="2")
+        self.assertEqual(r.returncode, 1, r.stderr)  # 04 PASS -> FAIL against the baseline
+        f = json.loads((self.clone / "findings" / f"{self.day()}-live-1" / "04-admit" / "finding.json").read_text())
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("exited 124", f["detail"])
+
     def test_a_refusal_does_not_hide_another_regression(self):
         r = self.run_daily(STUB_PAID="402 Payment Required", STUB_NO_09="1")
         self.assertEqual(r.returncode, 1, r.stderr)

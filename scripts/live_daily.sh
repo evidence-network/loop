@@ -38,6 +38,8 @@
 #   LOOP_LIVE_ENV         a file to source first for the lab's environment (LAB_DIR, MESH_LLM_BIN, CAPSULES_BIN,
 #                         LAB_PAYMENTS, LAB_TWINS...), such as the lab operator's labenv file; optional
 #   LAB_DIR               the lab directory (lab/lab.sh); required, here or from LOOP_LIVE_ENV
+#   LIVE_STEP_TIMEOUT     seconds each lab.sh call and step 10 or 11 may take (default 3600; loop.sh still limits each
+#                         stage 1 step to LOOP_STEP_TIMEOUT); one that runs over is killed and its step is a FAIL
 #   LIVE_CHECKPOINT_WAIT  seconds to wait after the exchange (default 360: a node cuts a checkpoint 300 s after activity)
 #   LIVE_OUT_DIR          where the tgz and the run record go (default $LAB_DIR/out/live)
 #   LIVE_HELD_DIR         where findings that fail a privacy check go (default $LAB_DIR/held, mode 700)
@@ -72,11 +74,14 @@ export LAB_DIR
 LAB_SH=${LIVE_LAB_SH:-$ROOT/lab/lab.sh}
 STEPS=${LIVE_STEPS_DIR:-$ROOT/steps}
 WAIT=${LIVE_CHECKPOINT_WAIT:-360}
+STEP_TIMEOUT=${LIVE_STEP_TIMEOUT:-3600}
 OUT_DIR=${LIVE_OUT_DIR:-$LAB_DIR/out/live}
 HELD_DIR=${LIVE_HELD_DIR:-$LAB_DIR/held}
 LOCK=$LAB_DIR/run/LIVE_RUN
 POP=population/live/population.json
 [[ $WAIT =~ ^[0-9]+$ ]] || refuse 2 "LIVE_CHECKPOINT_WAIT must be a whole number of seconds"
+[[ $STEP_TIMEOUT =~ ^[1-9][0-9]*$ ]] || refuse 2 "LIVE_STEP_TIMEOUT must be a positive whole number of seconds"
+command -v timeout > /dev/null || refuse 2 "needs timeout (GNU coreutils) on PATH"
 
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SINCE=${STARTED_AT:0:16}:00Z
@@ -146,6 +151,8 @@ trap cleanup EXIT
 trap 'log "stopped by a signal"; exit 143' INT TERM HUP
 # A long command runs in the background and is waited on, so a signal stops the run at once and its tree is killed.
 waited() { "$@" & CHILD=$!; wait "$CHILD"; local rc=$?; CHILD=""; return $rc; }
+# The same, killed after STEP_TIMEOUT seconds (exit 124).
+bounded() { waited timeout -k 30 "$STEP_TIMEOUT" "$@"; }
 
 others=$(other_run) && refuse 3 "another lab run is in progress: ${others//$'\n'/; }"
 git -C "$ROOT" fetch -q origin main || refuse 4 "git fetch origin main failed"
@@ -157,8 +164,8 @@ MAIN=$(git -C "$ROOT" rev-parse FETCH_HEAD)
 log "run $NAME at $HEAD, window from $SINCE"
 
 # --- 2. the lab -----------------------------------------------------------------------------------------------------
-waited "$LAB_SH" check > /dev/null || refuse 5 "lab.sh check failed (pin drift against versions.lock; see $LAB_DIR/build.json)"
-waited "$LAB_SH" running || refuse 5 "lab.sh running failed (a node is down or runs another build)"
+bounded "$LAB_SH" check > /dev/null || refuse 5 "lab.sh check failed (pin drift against versions.lock; see $LAB_DIR/build.json)"
+bounded "$LAB_SH" running || refuse 5 "lab.sh running failed (a node is down or runs another build)"
 
 # --- 3. the window --------------------------------------------------------------------------------------------------
 POP_TOUCHED=1
@@ -174,7 +181,7 @@ mkdir -p "$OUT"
 
 # --- 4. the one paid exchange ---------------------------------------------------------------------------------------
 rm -f "$LAB_DIR/exchange/lab-2.headers.txt" "$LAB_DIR/exchange/lab-3.headers.txt"
-waited "$LAB_SH" exchange
+bounded "$LAB_SH" exchange
 exchange_rc=$?
 status_line() { [ -s "$1" ] && tr -d '\r' < "$1" | awk 'toupper($1) ~ /^HTTP\// { s = $0 } END { print s }'; }
 paid_status=$(status_line "$LAB_DIR/exchange/lab-2.headers.txt")
@@ -224,19 +231,19 @@ finding.write(step_dir, result="NOT_CHECKED", population="live", asserts=settle.
               started=started)
 PY
 }
-waited "$LAB_SH" admit; ensure_finding 04-admit $?
-waited "$LAB_SH" deal; ensure_finding 05-deal $?
+bounded "$LAB_SH" admit; ensure_finding 04-admit $?
+bounded "$LAB_SH" deal; ensure_finding 05-deal $?
 if [ -z "$refused" ]; then
-  waited "$LAB_SH" bundles || log "lab.sh bundles exited $?; step 06 judges the checks it finds"
-  waited "$LAB_SH" settle; ensure_finding 06-settle $?
+  bounded "$LAB_SH" bundles || log "lab.sh bundles exited $?; step 06 judges the checks it finds"
+  bounded "$LAB_SH" settle; ensure_finding 06-settle $?
 else
   settle_refused || refuse 6 "cannot write step 06's NOT_CHECKED finding"
 fi
-waited "$LAB_SH" ask; ensure_finding 07-ask $?
-waited "$LAB_SH" dispute; ensure_finding 09-dispute $?
-waited "$LAB_SH" loop || log "lab.sh loop exited $?"
-waited env LAB_DIR="$LAB_DIR" "$STEPS/10-judge" --population "$ROOT/population/live" --out "$OUT/10-judge"; ensure_finding 10-judge $?
-waited env LAB_DIR="$LAB_DIR" "$STEPS/11-report" --population "$ROOT/population/live" --out "$OUT/11-report"; ensure_finding 11-report $?
+bounded "$LAB_SH" ask; ensure_finding 07-ask $?
+bounded "$LAB_SH" dispute; ensure_finding 09-dispute $?
+bounded "$LAB_SH" loop || log "lab.sh loop exited $?"
+bounded env LAB_DIR="$LAB_DIR" "$STEPS/10-judge" --population "$ROOT/population/live" --out "$OUT/10-judge"; ensure_finding 10-judge $?
+bounded env LAB_DIR="$LAB_DIR" "$STEPS/11-report" --population "$ROOT/population/live" --out "$OUT/11-report"; ensure_finding 11-report $?
 
 # --- 7. the checks --------------------------------------------------------------------------------------------------
 python3 -B "$ROOT/status/findings.py" "$OUT" > /dev/null || log "status/findings.py could not write index.md"
