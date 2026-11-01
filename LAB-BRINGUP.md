@@ -697,12 +697,14 @@ own node through a second node's console, as `loop` does), and pays nothing. Run
 
 Once the lab is up, `scripts/live_daily.sh` runs the live loop once, unattended (evidence-network/loop#308). Run it
 from a dedicated clone at origin/main, which it checks. It holds `$LAB_DIR/run/LIVE_RUN` and refuses to start beside
-another live run or a running `lab.sh` or `loop.sh`. It runs `lab.sh check` and `lab.sh running`, then makes one paid
+another live run or a running `lab.sh` or `loop.sh`. A leftover `LIVE_RUN` from a killed run makes it exit 3;
+remove it only after checking that no run is live. It runs `lab.sh check` and `lab.sh running`, then makes one paid
 exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 07,
 09, stage 1 (01, 02, 03, 12, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;
 the script commits and pushes nothing. When the paid request does not succeed, step 06 is NOT_CHECKED with the
-status seen (evidence-network/loop#321), and the run exits 8: packed, but the baseline must not move. The script's
+status seen (evidence-network/loop#321), and the run exits 8 (1 if another step also regressed): packed, but the
+baseline must not move. The script's
 header lists every step, exit code and variable.
 
 ```sh

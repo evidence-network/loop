@@ -170,16 +170,17 @@ class LiveDailyTest(unittest.TestCase):
         busy = self.tmp / "busy" / "lab"
         busy.mkdir(parents=True)
         (busy / "lab.sh").write_text("sleep 60\n")
-        other = subprocess.Popen(["bash", str(busy / "lab.sh"), "exchange"])
-        try:
-            r = self.run_daily()
-        finally:
-            other.kill()
-            other.wait()
-        self.assertEqual(r.returncode, 3, r.stderr)
-        self.assertIn("another lab run is in progress", r.stderr)
-        self.assertEqual(self.calls(), [])
-        self.assert_untouched()
+        for argv in (["bash", str(busy / "lab.sh"), "exchange"], ["bash", "-x", "-o", "pipefail", str(busy / "lab.sh")]):
+            other = subprocess.Popen(argv, stderr=subprocess.DEVNULL)
+            try:
+                r = self.run_daily()
+            finally:
+                other.kill()
+                other.wait()
+            self.assertEqual(r.returncode, 3, (argv, r.stderr))
+            self.assertIn("another lab run is in progress", r.stderr)
+            self.assertEqual(self.calls(), [])
+            self.assert_untouched()
 
     def test_second_run_the_same_day_takes_n_plus_one(self):
         self.assertEqual(self.run_daily().returncode, 0)
@@ -197,6 +198,7 @@ class LiveDailyTest(unittest.TestCase):
         self.assertIn("402 Payment Required", f["not_checked"][0]["why"])
         self.assertEqual(f["not_checked"][0]["issue"], "evidence-network/loop#321")
         self.assertNotIn("wallet", f["detail"] + f["not_checked"][0]["why"])  # only what was seen
+        self.assertIn("a payment may still have settled", f["not_checked"][0]["why"])
         names = [c.split()[0] for c in self.calls()]
         self.assertEqual(names.count("exchange"), 1)
         self.assertNotIn("settle", names)

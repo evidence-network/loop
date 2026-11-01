@@ -115,7 +115,14 @@ other_run() {
     [ "$p" = "$$" ] && continue
     args=$(ps -o args= -p "$p") || continue
     read -r -a w <<< "$args"
-    case "${w[0]##*/}" in bash | sh | dash | zsh) w=("${w[@]:1}") ;; esac
+    if [[ ${w[0]##*/} =~ ^(bash|sh|dash|zsh)$ ]]; then
+      w=("${w[@]:1}")
+      # The shell's own options come before the script: -x, -eu, -o pipefail, +o posix.
+      while [[ ${w[0]:-} == [-+]* ]]; do
+        [[ ${w[0]} == [-+][oO] ]] && w=("${w[@]:1}")
+        w=("${w[@]:1}")
+      done
+    fi
     case "${w[0]:-}" in lab.sh | */lab.sh | loop.sh | */loop.sh) echo "$p $args"; found=0 ;; esac
   done
   return $found
@@ -150,13 +157,13 @@ if ! (set -o noclobber; printf '{"pid": %d, "started": "%s"}\n' "$$" "$STARTED_A
 fi
 CHILD=""
 POP_TOUCHED=0
-tree() { local c; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
-# Every process of the tree is stopped first, so none starts another command between the signals, then all get TERM.
+# Each process is stopped as it is listed, so a stopped parent cannot start another before the TERM; then all get it.
+tree() { local c; kill -STOP "$1" 2> /dev/null; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
 kill_tree() {
   local all
   all=$(tree "$1")
   # shellcheck disable=SC2086
-  kill -STOP $all 2> /dev/null; kill -TERM $all 2> /dev/null; kill -CONT $all 2> /dev/null
+  kill -TERM $all 2> /dev/null; kill -CONT $all 2> /dev/null
 }
 cleanup() {
   [ -n "$CHILD" ] && kill_tree "$CHILD"
@@ -209,7 +216,7 @@ status_line() { [ -s "$1" ] && tr -d '\r' < "$1" | awk 'toupper($1) ~ /^HTTP\// 
 paid_status=$(status_line "$LAB_DIR/exchange/lab-2.headers.txt")
 case "$paid_status" in
   "HTTP/"*" 200"*) refused="" ;;
-  "") refused="lab-2's paid request to lab-1 got no HTTP answer (lab.sh exchange exited $exchange_rc)" ;;
+  "") refused="no HTTP answer was recorded for lab-2's paid request to lab-1 (lab.sh exchange exited $exchange_rc)" ;;
   *) refused="lab-2's paid request to lab-1 got '$paid_status' (lab.sh exchange exited $exchange_rc)" ;;
 esac
 [ -z "$refused" ] && [ "$exchange_rc" -ne 0 ] && log "lab.sh exchange exited $exchange_rc after lab-2's paid exchange; the steps judge what was recorded"
@@ -244,10 +251,11 @@ spec = importlib.util.spec_from_loader("settle", importlib.machinery.SourceFileL
 settle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(settle)
 finding.write(step_dir, result="NOT_CHECKED", population="live", asserts=settle.LIGHTNING_ASSERTS, pinned=[], proof=[],
-              detail=f"{refused}; this run has no settled exchange to judge in its window (from {since}). The run "
-                     "makes one paid exchange and never retries it; this is not a result of the step's code.",
+              detail=f"{refused}; step 06 was not judged on this run's window (from {since}), and a payment may still "
+                     "have settled. The run makes one paid exchange and never retries it; this is not a result of "
+                     "the step's code.",
               not_checked=[{"what": f"a settlement of this run's paid exchange (window from {since})",
-                            "why": f"{refused}; this run has no settled exchange to judge",
+                            "why": f"{refused}; step 06 was not judged on this window, and a payment may still have settled",
                             "issue": "evidence-network/loop#321"}],
               started=started)
 PY
