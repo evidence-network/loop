@@ -17,7 +17,7 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   highest N) and shows them side by side; a rehearsal result is never added to
   a live one.
 - An Ecosystems section shows one column per registered ecosystem (`ECOSYSTEMS`:
-  `mesh` is `findings/`, `muse` is `findings/muse/`), each its newest run, with
+  `mesh` is `findings/`, `muse` is `findings/muse/`, shown on the page as `consumer-agent`), each its newest run, with
   its own badge (`badge-<ecosystem>.svg`). An ecosystem with no run keeps its
   column, `NOT_CHECKED` with the issue that owns it. Nothing is added across
   ecosystems.
