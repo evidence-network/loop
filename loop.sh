@@ -51,7 +51,8 @@ export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 # The steps of each stage, and the name a step gets when it is missing.
 declare -A NAMES=([01]=seal [02]=book [03]=advertise [04]=admit [05]=deal [06]=settle [07]=ask [08]=verify
                   [09]=dispute [10]=judge [11]=report [12]=join)
-STAGE_1="01 02 03 12 08"
+# 07 asks after 12 joins the nodes and before 08 re-derives its finding (loop#62).
+STAGE_1="01 02 03 12 07 08"
 # The goose column covers all twelve rows (loop#315): each runs on the Goose rehearsal population when it has a Goose
 # input, else it is NOT_CHECKED naming what it waits on.
 GOOSE_STEPS="01 02 03 04 05 06 07 09 10 11 12 08"

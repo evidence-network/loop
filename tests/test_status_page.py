@@ -644,10 +644,10 @@ class StatusPageTest(unittest.TestCase):
                            timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
         page = self.page()
-        for n in (1, 2, 3, 12):
+        for n in (1, 2, 3, 7, 12):
             self.assertIn("s-red", page.rows[n]["rehearsal"]["class"], n)
             self.assertIn("no step executable", page.rows[n]["rehearsal"]["quoted"])
-        self.assertIn("s-NOT_CHECKED", page.rows[7]["rehearsal"]["class"])
+        self.assertIn("s-NOT_CHECKED", page.rows[4]["rehearsal"]["class"])
         self.assertEqual(self.number("first-sealed"), ("placeholder", "not measured yet (M1)"))
 
     def test_loop_sh_writes_run_json_first_and_the_page_measures_from_it(self):
@@ -665,7 +665,7 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn("01 seal PASS", r.stdout)
         meta = json.loads((run / "run.json").read_text())
         self.assertEqual(sorted(meta), ["population", "stage", "started", "steps"])
-        self.assertEqual(meta["steps"], ["01", "02", "03", "12", "08"])
+        self.assertEqual(meta["steps"], ["01", "02", "03", "12", "07", "08"])
         self.assertEqual((meta["stage"], meta["population"]), ("1", "rehearsal"))
         seal = json.loads((run / "01-seal" / "finding.json").read_text())
         self.assertLessEqual(meta["started"], seal["started"])  # written before the first step

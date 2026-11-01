@@ -58,7 +58,7 @@ jobs:
           echo "LOOP_OUT=$out" >> "$GITHUB_ENV"
           ./loop.sh --stage 1 --population rehearsal --strict --out "$out" | tee loop-summary.txt
       # Steps 10 and 11 end to end (evidence-network/loop#206). Stage 1's run holds no record of the pack's kinds
-      # (05, 06, 07, 09), so 10 has nothing in its window and reads NOT_CHECKED, and 11 carries that over. A FAIL, a
+      # (05, 06, 09; 07 is in stage 1 now), so 10 has nothing in its window and reads NOT_CHECKED, and 11 carries that over. A FAIL, a
       # malformed finding or another result fails the job; a FAIL also goes into loop-summary.txt, so the nightly run
       # opens its issue below. Judging real records is covered by tests.test_step10_judge and tests.test_step11_report.
       - name: Run steps 10 and 11 on the rehearsal population
