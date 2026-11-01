@@ -151,7 +151,7 @@ class DirectPushTest(unittest.TestCase):
         self.assertEqual(self.check(after, via_pr="true")[0], 0)
 
     def test_an_intermediate_commit_outside_stats_data_fails_though_the_net_diff_is_inside(self):
-        # loop#280: one commit re-lists a key beside a run, the next restores both; the net diff is stats/data/ only.
+        # One commit re-lists a key beside a run, the next restores both; the net diff is stats/data/ only.
         self.repo.commit("list", {"nodes/x.json": '{"key_id": "new"}'})
         before = self.repo.git("rev-parse", "HEAD")
         self.repo.commit("forge", {"nodes/x.json": '{"key_id": "old"}', "findings/r/01-seal/capsule.json": "{}"})
@@ -174,13 +174,6 @@ class DirectPushTest(unittest.TestCase):
         code, out = self.check(self.repo.git("rev-parse", "HEAD"), before=base)
         self.assertEqual(code, 1)
         self.assertIn("merge commit", out)
-
-    def test_a_push_editing_the_anchor_exclusions_fails(self):
-        # step 08 reads anchor-exclusions.json at main's tip: only a reviewed pull request may change it.
-        after = self.repo.commit("unexclude", {"anchor-exclusions.json": '{"commits": []}'})
-        code, out = self.check(after)
-        self.assertEqual(code, 1)
-        self.assertIn("anchor-exclusions.json", out)
 
     def test_new_branch_push_checks_the_whole_tree(self):
         after = self.repo.git("rev-parse", "HEAD")

@@ -9,8 +9,7 @@ lets deploy keys bypass the pull-request rule). The reporter's raw reports go to
 here. GitHub cannot limit a deploy key to a path, so this check, run on every push to main,
 turns red when a direct push touched anything else. See scripts/apply_branch_protection.sh.
 
-Each commit of the push is checked against its first parent, not only the push's net diff: step 08
-anchors a published run at a commit on main's first-parent line (evidence-network/loop#280), so a
+Each commit of the push is checked against its first parent, not only the push's net diff: a
 commit that changes nodes/ or findings/ and a later one that restores them must not pass as a
 push that touched nothing. A merge commit in a direct push is refused outright: its first-parent
 diff can hide what its second parent brings.
@@ -68,8 +67,8 @@ def main(argv: list[str] | None = None) -> int:
     if merged:
         print(f"direct-push: {before[:12]}..{after[:12]} was pushed to main without a pull request and "
               f"brings {len(merged)} merge commit(s): {', '.join(m[:12] for m in merged)}.")
-        print("A direct push never carries a merge. Revert this push by pull request, find out which key "
-              "made it, and list its commits in anchor-exclusions.json.")
+        print("A direct push never carries a merge. Revert this push by pull request and find out which key "
+              "made it.")
         return 1
     bad = outside(changed_paths(before, after))
     if bad:
@@ -78,8 +77,7 @@ def main(argv: list[str] | None = None) -> int:
         for p in bad:
             print(" ", p)
         print("Only the stats publisher pushes directly, and only stats/data/. Revert this "
-              "push by pull request, find out which key made it, and list its commits in "
-              "anchor-exclusions.json (step 08 never anchors a run at them).")
+              "push by pull request and find out which key made it.")
         return 1
     print(f"direct-push: {before[:12]}..{after[:12]} touches only {ALLOWED_PREFIX}.")
     return 0

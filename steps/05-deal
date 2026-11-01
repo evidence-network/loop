@@ -83,8 +83,8 @@ the step fetches origin/main, takes its newest first-parent commit no later than
 (`revocations_main`) and names it in the declaration, so a branch cannot drop a statement from its own head and a
 stale clone cannot declare an old list current. If the verifier rejects the declaration (a half or citing record
 issued after the step's start), or origin/main could not be fetched or read, revocation is a not_checked entry
-(loop#240). Step 08 holds the kept commit to main outside the run (loop#281): to the step's publication on main, else
-its own clone's origin/main, and judges again with the lists there when nodes/revocations/ differs. A binding that does not apply or does
+(loop#240). Step 08 holds the kept commit to its own clone's origin/main (loop#281), and judges again with the lists
+there when nodes/revocations/ differs. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
 not_checked entry. A revocations file that cannot be read makes the binding not apply, a FAIL with that reason
 (loop#194).
