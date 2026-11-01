@@ -1,62 +1,62 @@
 {
   "verifier": "evidencebook (Rust) at action-state-group/evidencebook v0.8.1: canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion; Ed25519 seals",
-  "deal_id": "rehearsal-deal-2026-10-30T18:15:54Z",
+  "deal_id": "rehearsal-deal-2026-11-01T01:40:13Z",
   "books": [
     "rehearsal-alice-deal",
     "rehearsal-bob-deal"
   ],
   "halves": [
-    "66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b",
-    "37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13"
+    "bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709",
+    "78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21"
   ],
   "checks": [
     {
       "side": "alice",
       "check": "half_sealed",
       "ok": true,
-      "detail": "alice's half 66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b (deal_half) in book rehearsal-alice-deal, sealed by alice's key"
+      "detail": "alice's half bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709 (deal_half) in book rehearsal-alice-deal, sealed by alice's key"
     },
     {
       "side": "alice",
       "check": "half_in_book",
       "ok": true,
-      "detail": "half 66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b included under alice's checkpoint of rehearsal-alice-deal"
+      "detail": "half bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709 included under alice's checkpoint of rehearsal-alice-deal"
     },
     {
       "side": "alice",
       "check": "half_names_the_deal",
       "ok": true,
-      "detail": "deal rehearsal-deal-2026-10-30T18:15:54Z, request ddef36b9358a6ee32e50a2558f9c575631c2c976db7ee75927a6c4cd7a287482, response b711c02f51c7fb4cc15bbb0e7dbac5dd8126af882d9c9c80f68712ff95f07b67, counterparty 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9"
+      "detail": "deal rehearsal-deal-2026-11-01T01:40:13Z, request ddef36b9358a6ee32e50a2558f9c575631c2c976db7ee75927a6c4cd7a287482, response b711c02f51c7fb4cc15bbb0e7dbac5dd8126af882d9c9c80f68712ff95f07b67, counterparty 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9"
     },
     {
       "side": "bob",
       "check": "half_sealed",
       "ok": true,
-      "detail": "bob's half 37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13 (deal_half) in book rehearsal-bob-deal, sealed by bob's key"
+      "detail": "bob's half 78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21 (deal_half) in book rehearsal-bob-deal, sealed by bob's key"
     },
     {
       "side": "bob",
       "check": "half_in_book",
       "ok": true,
-      "detail": "half 37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13 included under bob's checkpoint of rehearsal-bob-deal"
+      "detail": "half 78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21 included under bob's checkpoint of rehearsal-bob-deal"
     },
     {
       "side": "bob",
       "check": "half_names_the_deal",
       "ok": true,
-      "detail": "deal rehearsal-deal-2026-10-30T18:15:54Z, request ddef36b9358a6ee32e50a2558f9c575631c2c976db7ee75927a6c4cd7a287482, response b711c02f51c7fb4cc15bbb0e7dbac5dd8126af882d9c9c80f68712ff95f07b67, counterparty 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
+      "detail": "deal rehearsal-deal-2026-11-01T01:40:13Z, request ddef36b9358a6ee32e50a2558f9c575631c2c976db7ee75927a6c4cd7a287482, response b711c02f51c7fb4cc15bbb0e7dbac5dd8126af882d9c9c80f68712ff95f07b67, counterparty 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8"
     },
     {
       "side": "alice",
       "check": "half_cites_counterparty_checkpoint",
       "ok": true,
-      "detail": "alice's half cites checkpoint 2e9959f4895fab88b993e143b1e7471f3f33ef37926dbb616baf200fb28e8496 of rehearsal-bob-deal; bob's checkpoint is 2e9959f4895fab88b993e143b1e7471f3f33ef37926dbb616baf200fb28e8496 of rehearsal-bob-deal"
+      "detail": "alice's half cites checkpoint bcf08da015ab74387c26f7e648122bf7429f637eff761fe1807db7f7be429376 of rehearsal-bob-deal; bob's checkpoint is bcf08da015ab74387c26f7e648122bf7429f637eff761fe1807db7f7be429376 of rehearsal-bob-deal"
     },
     {
       "side": "bob",
       "check": "half_cites_counterparty_checkpoint",
       "ok": true,
-      "detail": "bob's half cites checkpoint fda1a766e5fc7f1232884cb1bb0cce149ff646a6e84527eaa48fe1329364ba78 of rehearsal-alice-deal; alice's checkpoint is fda1a766e5fc7f1232884cb1bb0cce149ff646a6e84527eaa48fe1329364ba78 of rehearsal-alice-deal"
+      "detail": "bob's half cites checkpoint c450321e4f8eaf9b4e497c26b9b6f1e006ad351f968e9e1e2cfd6e7e3388098e of rehearsal-alice-deal; alice's checkpoint is c450321e4f8eaf9b4e497c26b9b6f1e006ad351f968e9e1e2cfd6e7e3388098e of rehearsal-alice-deal"
     },
     {
       "side": "both",
@@ -74,7 +74,7 @@
       "side": "alice",
       "check": "pushed_at_completion",
       "ok": true,
-      "detail": "alice pushed record 66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b under its checkpoint 04941f6bc5ab580c45b8b1d6022f0356f3b8e0b0c9ac6a5c85a0a81f670afdff (mmr_size 3); its half is 66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b"
+      "detail": "alice pushed record bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709 under its checkpoint a50ff5704d9a65ff2808a5d51b9a9186df303e7f5b7eff11b88e5d2d7e33a8e1 (mmr_size 3); its half is bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709"
     },
     {
       "side": "bob",
@@ -86,55 +86,55 @@
       "side": "bob",
       "check": "pushed_at_completion",
       "ok": true,
-      "detail": "bob pushed record 37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13 under its checkpoint 328c550f2c5a1732301dcd44fc2348840f8621f60b860e586735bc18858f3ebf (mmr_size 3); its half is 37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13"
+      "detail": "bob pushed record 78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21 under its checkpoint e6df9101fcc460a8c36331fc58d8c68d77918e4e2a2479e16c002bbf7c20d4e4 (mmr_size 3); its half is 78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21"
     },
     {
       "side": "alice",
       "check": "holds_foreign_half",
       "ok": true,
-      "detail": "alice holds bob's half as transmitted: its bytes recompute to 37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13, sealed under bob's key; the provenance names evidence key 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9 (received from bob-transport)"
+      "detail": "alice holds bob's half as transmitted: its bytes recompute to 78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21, sealed under bob's key; the provenance names evidence key 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9 (received from bob-transport)"
     },
     {
       "side": "alice",
       "check": "accepted_under_controller_declaration",
       "ok": true,
-      "detail": "alice accepted bob's half on evidence key 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9 under controller rehearsal-controller-bob: a declaration by that controller verifies and binds the key"
+      "detail": "alice accepted bob's half on evidence key 5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9 under the binding 07603e1d13ddc0c42659227ac2057b032b45470e0c5efe76d8dec2625ee1f92d anchored on 64aa89c94e6f59998fcb72109f587c41bfa3d8af617be117be4f30e004c3b24b: that binding verifies (both signatures) and names the key"
     },
     {
       "side": "alice",
       "check": "counterparty_distinct",
       "ok": true,
-      "detail": "alice's key is bound to [\"rehearsal-controller-alice\"], bob's to [\"rehearsal-controller-bob\"]"
+      "detail": "alice's key is bound to [\"98636b816ed8b45844b820f9372a2338f7e5d04323caf78a909f49c1604c219a\"], bob's to [\"64aa89c94e6f59998fcb72109f587c41bfa3d8af617be117be4f30e004c3b24b\"]"
     },
     {
       "side": "alice",
       "check": "cites_foreign_half",
       "ok": true,
-      "detail": "alice's record 82890ebf472b6c462e9d39153c9319c93895368cf9ae092bb9d8477949918b6e in rehearsal-alice-deal cites [\"37982ffcb53680be552c7caa7199819cba064c2dd6fe4de7743ebc75b131aa13\"] (counterparty_half) under bob's checkpoint 328c550f2c5a1732301dcd44fc2348840f8621f60b860e586735bc18858f3ebf, held line sha256 9cc420d40eec2b23b6b957d596d7cf5fe525f5e5cc5ef8c68a8ccadf223bb433; pushed under 328c550f2c5a1732301dcd44fc2348840f8621f60b860e586735bc18858f3ebf, held line 9cc420d40eec2b23b6b957d596d7cf5fe525f5e5cc5ef8c68a8ccadf223bb433; in alice's book: true"
+      "detail": "alice's record 5f08c8abfc91ea4175172588825e62e8b419dd582170e5b3a386ca58289a763a in rehearsal-alice-deal cites [\"78b3b2f3cc0b9389ede83de8a9e6bd2615fc4ad1aabf8654c8cca38bf2113a21\"] (counterparty_half) under bob's checkpoint e6df9101fcc460a8c36331fc58d8c68d77918e4e2a2479e16c002bbf7c20d4e4, held line sha256 ab39eebab1042644bd74d936a5842858c0e361f95e06ede0b67bcab5f5ccec4e; pushed under e6df9101fcc460a8c36331fc58d8c68d77918e4e2a2479e16c002bbf7c20d4e4, held line ab39eebab1042644bd74d936a5842858c0e361f95e06ede0b67bcab5f5ccec4e; in alice's book: true"
     },
     {
       "side": "bob",
       "check": "holds_foreign_half",
       "ok": true,
-      "detail": "bob holds alice's half as transmitted: its bytes recompute to 66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b, sealed under alice's key; the provenance names evidence key 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8 (received from alice-transport)"
+      "detail": "bob holds alice's half as transmitted: its bytes recompute to bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709, sealed under alice's key; the provenance names evidence key 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8 (received from alice-transport)"
     },
     {
       "side": "bob",
       "check": "accepted_under_controller_declaration",
       "ok": true,
-      "detail": "bob accepted alice's half on evidence key 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8 under controller rehearsal-controller-alice: a declaration by that controller verifies and binds the key"
+      "detail": "bob accepted alice's half on evidence key 5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8 under the binding e634f340e0dcfafb03493b40bd23c556593ba03169704ae3cc374092b8eea752 anchored on 98636b816ed8b45844b820f9372a2338f7e5d04323caf78a909f49c1604c219a: that binding verifies (both signatures) and names the key"
     },
     {
       "side": "bob",
       "check": "counterparty_distinct",
       "ok": true,
-      "detail": "bob's key is bound to [\"rehearsal-controller-bob\"], alice's to [\"rehearsal-controller-alice\"]"
+      "detail": "bob's key is bound to [\"64aa89c94e6f59998fcb72109f587c41bfa3d8af617be117be4f30e004c3b24b\"], alice's to [\"98636b816ed8b45844b820f9372a2338f7e5d04323caf78a909f49c1604c219a\"]"
     },
     {
       "side": "bob",
       "check": "cites_foreign_half",
       "ok": true,
-      "detail": "bob's record 9dcd299137d5893be80c689ffcb655ffe93ffa20d5293344799898f07099643c in rehearsal-bob-deal cites [\"66f55a8f070c5d0ea0e86b03d57f012584324ccc8efff0613ec7c20a6ff5732b\"] (counterparty_half) under alice's checkpoint 04941f6bc5ab580c45b8b1d6022f0356f3b8e0b0c9ac6a5c85a0a81f670afdff, held line sha256 4e356588a4a0039c4762c4e19a7ced8ef7fbf2044aee5beb6f9bf149037db46a; pushed under 04941f6bc5ab580c45b8b1d6022f0356f3b8e0b0c9ac6a5c85a0a81f670afdff, held line 4e356588a4a0039c4762c4e19a7ced8ef7fbf2044aee5beb6f9bf149037db46a; in bob's book: true"
+      "detail": "bob's record 8edafc4d688aa7b2ff269f66e9abe0f759b7fcf5aec6fe87ac5937ddd135a281 in rehearsal-bob-deal cites [\"bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709\"] (counterparty_half) under alice's checkpoint a50ff5704d9a65ff2808a5d51b9a9186df303e7f5b7eff11b88e5d2d7e33a8e1, held line sha256 d25b153c9160eec0cd4fde3cbba3a7a2503e3e93768342b07ce1c4584c098c9b; pushed under a50ff5704d9a65ff2808a5d51b9a9186df303e7f5b7eff11b88e5d2d7e33a8e1, held line d25b153c9160eec0cd4fde3cbba3a7a2503e3e93768342b07ce1c4584c098c9b; in bob's book: true"
     }
   ],
   "acceptance_not_checked": [],

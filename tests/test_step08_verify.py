@@ -402,21 +402,21 @@ class Step08Test(unittest.TestCase):
             self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
             self.assertTrue((self.run / "08-verify" / "verified.json").is_file())
 
-    def test_a_repeated_controller_id_in_05_is_refused(self):
+    def test_a_repeated_or_foreign_controller_binding_in_05_is_refused(self):
         c = step.Ctx(self.run, self.run, self.run, POPULATION, {"population": "rehearsal", "started": "x"})
-        want = {}
+        pubs, want = step.node_pubs(POPULATION), []
         for ctl in load(POPULATION / "step05" / "controllers.json")["controllers"]:
             key = step.pub_key(step.repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
-            nodes = step.node_pubs(POPULATION)
-            want[ctl["id"]] = {"controller_declaration": 1, "controller_id": ctl["id"], "controller_key": key,
-                               "evidence_keys": sorted(nodes[n] for n in ctl["nodes"])}
+            want += [{"binding_version": "controller-binding/0", "keys": sorted([key, pubs[n]])} for n in ctl["nodes"]]
         with tempfile.TemporaryDirectory() as tmp:
             c.work = Path(tmp)
-            dump(c.work / "declarations.json", list(want.values()))
+            dump(c.work / "declarations.json", want)
             self.assertEqual(step.keys_05(c), [])
-            first = dict(next(iter(want.values())), controller_key="ff" * 32)
-            dump(c.work / "declarations.json", [first, *want.values()])
-            self.assertEqual(step.keys_05(c), ["declarations.json repeats a controller id"])
+            dump(c.work / "declarations.json", [want[0], *want])
+            self.assertEqual(step.keys_05(c), ["declarations.json repeats a controller binding"])
+            other = dict(want[0], keys=sorted(["ee" * 32, want[0]["keys"][1]]))
+            dump(c.work / "declarations.json", [other, *want[1:]])
+            self.assertEqual(len(step.keys_05(c)), 2)  # one foreign, one of the repository's missing
 
     def test_a_malformed_finding_does_not_crash_08(self):
         d = self.run / "06-settle"

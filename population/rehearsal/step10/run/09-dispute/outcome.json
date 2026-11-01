@@ -9,7 +9,7 @@
         "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
       },
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     },
     {
       "all_checks_held": true,
@@ -20,7 +20,7 @@
         "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
       },
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     },
     {
       "all_checks_held": true,
@@ -31,7 +31,7 @@
         "da7eb4ab956aa960de4f5303d1141e16f1e78f5a168764d32da2ae2b200e1227": "corroborated"
       },
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     }
   ]
 }

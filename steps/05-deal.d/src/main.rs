@@ -5,7 +5,8 @@
 //!                           --deal-id ID --time RFC3339 --a-policy V --b-policy V --work DIR --out DIR
 //!                           [--declarations FILE] [--a-accept VIA] [--b-accept VIA]
 //!                           [--plant wrong-checkpoint]
-//!   loop-step05-deal declare --controller-key PEM --controller-id ID --keys HEX[,HEX] --time RFC3339
+//!   loop-step05-deal declare --controller-key PEM --evidence-key PEM --time RFC3339 --not-after RFC3339
+//!                            --nonce TEXT
 //!   loop-step05-deal verify --a-pub PEM --b-pub PEM --a-name N --b-name N --dir DIR
 //!   loop-step05-deal held   --record-id HEX --key-id HEX --checkpoint FILE --inclusion FILE
 //!
@@ -45,8 +46,8 @@
 //!
 //! `accepted_via` is how the receiver resolved the sender (#69's shape):
 //! `controller_declaration` when a declaration in --declarations (each made
-//! by `declare`, signed by a controller key) verifies and binds the sender's
-//! evidence key; else `operator_stopgap` (the population names the key). A
+//! by `declare`: a controller-binding/0 record both the controller's key and
+//! the evidence key sign) verifies and names the sender's evidence key; else `operator_stopgap` (the population names the key). A
 //! side set with --<s>-accept `operator_stopgap` or `host_announced` records
 //! that instead. The declarations are written to --out/declarations.json.
 //!
@@ -290,41 +291,80 @@ fn refusal(refused_key: &str, push_bytes: &[u8], reason: &str, time: &str) -> Va
             "request_digest": sha256_hex(push_bytes) })
 }
 
-/// A controller declaration's signed body: the controller's key binds the
-/// evidence keys it names. The rehearsal's stand-in for the declaration the
-/// capsules plugin will read (#69); its signature is Ed25519 over the record
-/// id octets of the body (evidencebook JSON-DIGEST), as a record's seal is.
-fn declaration_body(id: &str, controller: &str, keys: &[String], time: &str) -> Value {
-    json!({ "controller_declaration": 1, "controller_id": id, "controller_key": controller,
-            "evidence_keys": keys, "declared_at": time })
+/// The JCS (RFC 8785) serialization of a value whose strings are ASCII, as a
+/// controller-binding/0 record is: members sorted, no whitespace.
+fn jcs(v: &Value) -> String {
+    match v {
+        Value::Object(m) => {
+            let mut keys: Vec<&String> = m.keys().collect();
+            keys.sort();
+            let body: Vec<String> = keys.iter().map(|k| format!("{}:{}", Value::String((*k).clone()), jcs(&m[*k]))).collect();
+            format!("{{{}}}", body.join(","))
+        }
+        Value::Array(a) => format!("[{}]", a.iter().map(jcs).collect::<Vec<_>>().join(",")),
+        other => other.to_string(),
+    }
 }
 
+/// A controller-binding/0 record's signing input (CB v0 §4): the JCS octets of
+/// the record without `sigs`. Its SHA-256 is the binding digest.
+fn binding_input(b: &Value) -> Vec<u8> {
+    let mut body = b.clone();
+    if let Some(m) = body.as_object_mut() {
+        m.remove("sigs");
+    }
+    jcs(&body).into_bytes()
+}
+
+/// A declaration is a real controller-binding/0 record (`same_controller_asserted`,
+/// `dual_signature/0`, both keys Ed25519): the controller's TEST key and the
+/// node's evidence key each sign the same signing input. The record does not
+/// say which key is the controller's; the population's controllers.json does.
 fn declare(f: &Flags) -> Result<(), String> {
-    let key = signing_key(need(f, "controller-key")?)?;
-    let keys: Vec<String> = need(f, "keys")?.split(',').filter(|k| !k.is_empty()).map(str::to_string).collect();
-    let mut d = declaration_body(need(f, "controller-id")?, &key_hex(&key.verifying_key()), &keys, need(f, "time")?);
-    let (id, _) = record_id(&d)?;
-    d["signature"] = json!(hex::encode(key.sign(&id).to_bytes()));
-    println!("{}", serde_json::to_string_pretty(&d).map_err(|e| e.to_string())?);
+    let controller = signing_key(need(f, "controller-key")?)?;
+    let evidence = signing_key(need(f, "evidence-key")?)?;
+    let time = need(f, "time")?;
+    let mut pair = [(key_hex(&controller.verifying_key()), controller), (key_hex(&evidence.verifying_key()), evidence)];
+    pair.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut b = json!({ "binding_version": "controller-binding/0", "claim": "same_controller_asserted",
+                        "method": "dual_signature/0", "keys": [pair[0].0, pair[1].0], "issued_at": time,
+                        "not_before": time, "not_after": need(f, "not-after")?, "revocation": "revocation_statement/0",
+                        "nonce": need(f, "nonce")? });
+    let input = binding_input(&b);
+    b["sigs"] = json!(pair.iter().map(|(k, sk)| json!({ "key_id": k, "sig": hex::encode(sk.sign(&input).to_bytes()) })).collect::<Vec<_>>());
+    println!("{}", serde_json::to_string_pretty(&b).map_err(|e| e.to_string())?);
     Ok(())
 }
 
-/// The controller id and evidence keys of a declaration whose signature
-/// verifies under the controller key it names; None otherwise.
-fn declaration_ok(d: &Value) -> Option<(String, Vec<String>)> {
-    let keys: Vec<String> = d["evidence_keys"].as_array()?.iter().map(|k| k.as_str().map(str::to_string)).collect::<Option<_>>()?;
-    let body = declaration_body(d["controller_id"].as_str()?, d["controller_key"].as_str()?, &keys, d["declared_at"].as_str()?);
-    let (id, _) = record_id(&body).ok()?;
-    let controller: [u8; 32] = hex::decode(d["controller_key"].as_str()?).ok()?.try_into().ok()?;
-    let controller = VerifyingKey::from_bytes(&controller).ok()?;
-    let sig = Signature::from_slice(&hex::decode(d["signature"].as_str()?).ok()?).ok()?;
-    controller.verify(&id, &sig).ok()?;
-    Some((d["controller_id"].as_str()?.to_string(), keys))
+/// The binding digest and the two keys of a controller-binding/0 record whose
+/// two Ed25519 signatures verify over its signing input; None otherwise.
+fn declaration_ok(d: &Value) -> Option<(String, [String; 2])> {
+    if d["binding_version"] != "controller-binding/0" || d["claim"] != "same_controller_asserted" || d["method"] != "dual_signature/0" {
+        return None;
+    }
+    let keys = d["keys"].as_array()?;
+    let sigs = d["sigs"].as_array()?;
+    if keys.len() != 2 || sigs.len() != 2 || keys[0].as_str()? >= keys[1].as_str()? {
+        return None;
+    }
+    let input = binding_input(d);
+    for (k, s) in keys.iter().zip(sigs) {
+        if s["key_id"] != *k {
+            return None;
+        }
+        let vk: [u8; 32] = hex::decode(k.as_str()?).ok()?.try_into().ok()?;
+        let sig = Signature::from_slice(&hex::decode(s["sig"].as_str()?).ok()?).ok()?;
+        VerifyingKey::from_bytes(&vk).ok()?.verify(&input, &sig).ok()?;
+    }
+    Some((sha256_hex(&input), [keys[0].as_str()?.to_string(), keys[1].as_str()?.to_string()]))
 }
 
-/// The ids of the controllers whose verifying declarations bind `key`.
-fn controllers_of(decls: &[Value], key: &str) -> Vec<String> {
-    decls.iter().filter_map(declaration_ok).filter(|(_, keys)| keys.iter().any(|k| k == key)).map(|(id, _)| id).collect()
+/// The (anchor key, binding digest) of each verifying declaration that binds
+/// `key`: the anchor is the binding's other key, the controller's.
+fn controllers_of(decls: &[Value], key: &str) -> Vec<(String, String)> {
+    decls.iter().filter_map(declaration_ok).filter_map(|(digest, keys)| {
+        keys.iter().position(|k| k == key).map(|i| (keys[1 - i].clone(), digest))
+    }).collect()
 }
 
 /// The receiver's checks on a pushed bundle, in the plugin receiver's order:
@@ -507,14 +547,18 @@ fn deal(f: &Flags) -> Result<(), String> {
             VIA_DECLARATION => VIA_STOPGAP,
             m => m,
         };
-        let controller = if via == VIA_DECLARATION { json!(bound[0]) } else { Value::Null };
+        let (anchor, digest) = match bound.first() {
+            Some((a, d)) if via == VIA_DECLARATION => (json!(a), json!(d)),
+            _ => (Value::Null, Value::Null),
+        };
         let line = serde_json::to_string(&bundle["record"]).map_err(|e| e.to_string())?;
         let held = rx.out.join("held");
         append_line(&held.join(HELD_RECORDS), &line)?;
         append_line(
             &held.join(HELD_PROVENANCE),
             &json!({ "record_id": foreign_id, "received_from": format!("{sender_name}-transport"),
-                     "key_id": key_hex(&sender), "accepted_via": via, "controller_id": controller,
+                     "key_id": key_hex(&sender), "accepted_via": via,
+                     "controller_anchor_key_id": anchor, "controller_binding_digest": digest,
                      "via": "push", "received_at": time,
                      "signature_ok": true })
             .to_string(),
@@ -753,20 +797,23 @@ fn verify(f: &Flags) -> Result<u8, String> {
         if let Some(p) = &prov {
             let via = p["accepted_via"].as_str().unwrap_or("none");
             if via == VIA_DECLARATION {
-                let cid = p["controller_id"].as_str().unwrap_or("");
-                let ok = controllers_of(&decls, &hexes[other]).iter().any(|c| c == cid);
+                let cid = p["controller_anchor_key_id"].as_str().unwrap_or("");
+                let digest = p["controller_binding_digest"].as_str().unwrap_or("");
+                let ok = controllers_of(&decls, &hexes[other]).iter().any(|(a, d)| a == cid && d == digest);
                 c.add(name, "accepted_under_controller_declaration", ok, format!(
-                    "{name} accepted {}'s half on evidence key {} under controller {cid}: {}", names[other], hexes[other],
-                    if ok { "a declaration by that controller verifies and binds the key" } else { "no verifying declaration by that controller binds the key" }));
+                    "{name} accepted {}'s half on evidence key {} under the binding {digest} anchored on {cid}: {}", names[other], hexes[other],
+                    if ok { "that binding verifies (both signatures) and names the key" } else { "no verifying binding with that digest and anchor names the key" }));
             } else {
                 unaccepted.push(json!({ "side": name, "accepted_via": via }));
             }
         }
         // A counterparty bound to the receiver's own controller is not a
         // different counterparty.
-        let own = controllers_of(&decls, &hexes[i]);
-        let theirs = controllers_of(&decls, &hexes[other]);
-        let shared: Vec<&String> = own.iter().filter(|c| theirs.contains(c)).collect();
+        let own: Vec<String> = controllers_of(&decls, &hexes[i]).into_iter().map(|(a, _)| a).collect();
+        let theirs: Vec<String> = controllers_of(&decls, &hexes[other]).into_iter().map(|(a, _)| a).collect();
+        // A key counts under its own bindings and as itself: a binding of the two sides' own keys says they are one controller.
+        let (own_all, theirs_all) = ([own.clone(), vec![hexes[i].clone()]].concat(), [theirs.clone(), vec![hexes[other].clone()]].concat());
+        let shared: Vec<&String> = own_all.iter().filter(|c| theirs_all.contains(c)).collect();
         c.add(name, "counterparty_distinct", shared.is_empty(), format!(
             "{name}'s key is bound to {own:?}, {}'s to {theirs:?}{}", names[other],
             if shared.is_empty() { String::new() } else { format!("; both under {shared:?}, so not a different counterparty") }));
