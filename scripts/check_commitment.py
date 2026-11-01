@@ -65,8 +65,9 @@ PROFILE_1 = hc.PROFILE_1
 POLICY_PROFILE = "disclosure-policy/0"
 STAPLE_PROFILE = "evidence-interop/0"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-# A /1 card's stream: a book's log id as join.sh accepts one, a plain name (step 12 makes file names from it).
-STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# A /1 card's stream: a book's log id, plain names joined by "/" (join.sh's books have one; G1's Goose node writes
+# goose/node). Step 12 makes file paths from it: no segment can be "." or "..", or empty, so they stay in its directory.
+STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 # DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410): 32 key bytes follow.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

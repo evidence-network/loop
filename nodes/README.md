@@ -55,8 +55,9 @@ its book's log id as `stream`); commitments in the earlier
 as one card. The format is in `steps/03-advertise.md`. A card that carries no
 witness receipt is unwitnessed; today's lab books are.
 
-Each card names its **community**: `mesh-llm` or `muse`. `join.sh` writes
-`mesh-llm`, and a `/0` card reads as `mesh-llm`.
+Each card names its **community**: `mesh-llm`, `muse` or `goose`. `join.sh`
+writes `mesh-llm`, evidencebook's Goose node (`loop_advertise`) writes `goose`,
+and a `/0` card reads as `mesh-llm`.
 
 The live lab nodes' commitments are the ones their own plugin signs and serves (`commitment` tool,
 capsules-plugin#75). `lab/lab.sh commitments` writes the commitment as returned, byte for byte, with its policy

@@ -197,7 +197,7 @@ class CheckerTest(TwoBooks):
                 self.assertRefused(self.resigned(change), code)
 
     def test_a_stream_that_is_not_a_plain_log_id_is_refused_by_name(self):
-        for stream in ("../../x", "a/b", " alice-book", "-a", ""):
+        for stream in ("../../x", "a/../b", "a/./b", "a//b", "a/", "/a", "a/.b", " alice-book", "-a", ""):
             with self.subTest(stream=stream):
                 errs = self.assertRefused(self.resigned(lambda d: d["history_cards"][0].__setitem__("stream", stream)),
                                           cc.CARD_SHAPE)
@@ -216,6 +216,14 @@ class CheckerTest(TwoBooks):
         errs = self.assertRefused(self.resigned(shape_then_content), cc.CARD_COMMUNITY)
         self.assertIn("missing history_cards[0].derivation", " ".join(errs))
 
+    def test_a_stream_of_plain_names_joined_by_slashes_is_accepted(self):
+        # G1's Goose node keeps its node book as goose/node; each segment is a plain name, so step 12's per-stream
+        # file paths stay inside its directory.
+        for stream in ("goose/node", "capsules/511b5b4246cf58e7"):
+            with self.subTest(stream=stream):
+                card = dict(self.doc["history_cards"][0], stream=stream)
+                self.assertEqual(cc.card_field_errors([card]), [])
+
     def test_an_unknown_community_is_refused_by_name(self):
         for community in ("other", "Mesh-LLM", ""):
             with self.subTest(community=community):
@@ -226,7 +234,7 @@ class CheckerTest(TwoBooks):
         errs, _ = self.verify(self.resigned(lambda d: d["history_cards"][1].pop("community")))
         self.assertIn(f"{cc.CARD_SHAPE}: missing history_cards[1].community", errs)
 
-    def test_both_communities_are_accepted(self):
+    def test_every_listed_community_is_accepted(self):
         for community in hc.COMMUNITIES:
             with self.subTest(community=community):
                 doc = self.resigned(lambda d: [c.__setitem__("community", community) for c in d["history_cards"]])

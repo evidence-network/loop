@@ -38,7 +38,7 @@ from pathlib import Path
 PROFILE_0 = "evidence-commitment/0"
 PROFILE_1 = "evidence-commitment/1"
 # The communities a card may belong to (closed list). A /0 card is mesh-llm's.
-COMMUNITIES = ("mesh-llm", "muse")
+COMMUNITIES = ("mesh-llm", "muse", "goose")
 DEFAULT_COMMUNITY = "mesh-llm"
 # The receipt member naming its witness. Provisional: no receipt producer exists yet.
 RECEIPT_WITNESS = "witness"
