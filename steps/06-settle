@@ -66,11 +66,18 @@ assertion as the loop#243 ruling restates it for a rail that signs nothing
 - counterparty_count:<node>: for each pair of nodes that settled together, the
   node's settlement_check of its book against the other's checkpoint-signed
   settlement bundle, read from the population's settlement_checks dir
-  (check.<node id>.<peer node id>.json, written by lab/lab.sh bundles).
+  (check.<node id>.<peer node id>.json, written by lab/lab.sh bundles). The
+  check covers the two whole books and must PASS; then, like with like, the
+  payments of the bundle's settlement records in the window must be exactly
+  the payments the windowed books pair between the two nodes (loop#303).
+An invoice agreed but unsettled as of the books read (no book records a
+settlement, a delivery or an accounted bill for it) is set aside from finality
+and exchange_match, counted and named as a gap (unsettled_invoices, loop#303).
 checks.json and counterparty.json (the counts, the status and each bundle's
 sha256; never a bundle, a record or a preimage) are the proof. A failed check is
 a FAIL, an open one NOT_CHECKED, and all of them a PASS whose detail names the
-gap outside it: Lightning has no public ledger (loop#247).
+gaps outside it: Lightning has no public ledger (loop#247), and any unsettled
+invoices.
 
 Exit 0 once the finding is written, whatever the result; non-zero when the
 step itself broke (unreadable population, no rail files).
@@ -321,6 +328,41 @@ def preimage_check(preimage, payment_hash):
     return "verified" if hashlib.sha256(bytes.fromhex(preimage)).hexdigest() == payment_hash else "mismatch"
 
 
+def lifecycle(rec):
+    """(the capsule, its payment.lifecycle.v1 block or None) of one ledger or bundle record."""
+    rec = rec.get("capsule", rec) if isinstance(rec, dict) else {}
+    if not isinstance(rec, dict):
+        return {}, None
+    block = rec
+    for k in SETTLEMENT_BLOCK:
+        block = block.get(k) if isinstance(block, dict) else None
+    return rec, block if isinstance(block, dict) else None
+
+
+def in_window(rec, since):
+    """"in", "outside" or "undated": where a record's signed capsule timestamp falls against the window start."""
+    if since is None:
+        return "in"
+    at = utc(rec.get("timestamp"))
+    return "undated" if at is None else "outside" if at < since else "in"
+
+
+# The lifecycle phases that say an exchange was delivered or its bill accounted (mesh-llm's payment.lifecycle.v1).
+DELIVERY_PHASES = ("delivered", "final_accounted")
+
+
+def leg_kind(leg):
+    """A settlement leg's kind (terms, payer_observed, payee_observed, delivered)."""
+    return leg.get("leg") or leg.get("kind")
+
+
+def leg_hash(leg):
+    """The payment hash a settlement leg's payment_ref names, or None."""
+    ref = leg.get("payment_ref")
+    ok = isinstance(ref, dict) and ref.get("type") == "ln.payment_hash" and isinstance(ref.get("value"), str)
+    return ref["value"] if ok else None
+
+
 def recorded(ledger, since=None):
     """The settlement records in a node's capsules ledger: legs and wallet-reported lifecycle observations.
 
@@ -328,33 +370,53 @@ def recorded(ledger, since=None):
     ones, and those with no readable timestamp, are counted in "outside_window" and "undated" and not listed.
     Records that are neither a leg nor an observation (padding, for one) are never counted. An observation's
     preimage is checked (preimage_check) and only the outcome kept: the preimage itself is never listed.
+
+    More lists serve unsettled_invoices(), each read over the whole ledger, window or not, so a window can only
+    keep an invoice judged: "invoices", the node's *_invoice_issued observations (exchange id and payment hash);
+    "delivered_exchanges", the exchange ids it recorded as delivered or accounted; "orphan_deliveries", those of
+    them no lifecycle record of the node ties to a payment hash; "named_hashes", every payment hash any of its legs
+    or lifecycle records names; "settled_hashes", those its settlement observations (*_settlement_observed) or legs
+    other than a terms leg name; and "settled_exchanges", the exchange ids of its settlement observations, with a
+    payment hash or not.
     """
-    legs, observed, outside, undated = [], [], 0, 0
+    legs, observed, invoices, delivered, settled, tied, settled_ex, named = [], [], [], set(), set(), set(), set(), set()
+    outside = undated = 0
     for line in ledger.read_text(encoding="utf-8").splitlines():
         try:
             rec = json.loads(line)
         except ValueError:
             continue
-        rec = rec.get("capsule", rec) if isinstance(rec, dict) else {}
-        if not isinstance(rec, dict):
-            continue
+        rec, block = lifecycle(rec)
         leg = rec.get("settlement")
-        block = rec
-        for k in SETTLEMENT_BLOCK:
-            block = block.get(k) if isinstance(block, dict) else None
-        has_obs = isinstance(block, dict) and str(block.get("phase", "")).endswith("_settlement_observed")
+        phase = str(block.get("phase", "")) if block else ""
+        if phase in DELIVERY_PHASES and isinstance(block.get("exchange_id"), str):
+            delivered.add(block["exchange_id"])
+        if block and isinstance(block.get("payment_hash"), str):
+            named.add(block["payment_hash"])
+            if isinstance(block.get("exchange_id"), str):
+                tied.add(block["exchange_id"])
+        if isinstance(leg, dict) and leg_hash(leg):
+            named.add(leg_hash(leg))
+        if phase.endswith("_invoice_issued"):
+            invoices.append({"exchange_id": block.get("exchange_id"), "payment_hash": block.get("payment_hash")})
+        has_obs = phase.endswith("_settlement_observed")
+        if has_obs and isinstance(block.get("payment_hash"), str):
+            settled.add(block["payment_hash"])
+        if has_obs and isinstance(block.get("exchange_id"), str):
+            settled_ex.add(block["exchange_id"])
+        if isinstance(leg, dict) and leg_kind(leg) != "terms" and leg_hash(leg):
+            settled.add(leg_hash(leg))
         if not (isinstance(leg, dict) or has_obs):
             continue
-        if since is not None:
-            at = utc(rec.get("timestamp"))
-            if at is None:
-                undated += 1
-                continue
-            if at < since:
-                outside += 1
-                continue
+        where = in_window(rec, since)
+        if where == "undated":
+            undated += 1
+            continue
+        if where == "outside":
+            outside += 1
+            continue
         if isinstance(leg, dict):
-            legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg.get("leg") or leg.get("kind"),
+            legs.append({"capsule_id": rec.get("capsule_id"), "leg": leg_kind(leg),
                          "payment_ref": leg.get("payment_ref")})
         if has_obs:
             observed.append({"capsule_id": rec.get("capsule_id"), "exchange_id": block.get("exchange_id"),
@@ -363,7 +425,10 @@ def recorded(ledger, since=None):
                              "payment_hash": block.get("payment_hash"), "amount_msat": block.get("amount_msat"),
                              "credited_msat": block.get("credited_msat"), "fee_msat": block.get("fee_msat"),
                              "preimage_check": preimage_check(block.get("preimage"), block.get("payment_hash"))})
-    out = {"settlement_legs": legs, "settlement_observations": observed}
+    out = {"settlement_legs": legs, "settlement_observations": observed, "invoices": invoices,
+           "delivered_exchanges": sorted(delivered), "orphan_deliveries": sorted(delivered - tied),
+           "named_hashes": sorted(named),
+           "settled_hashes": sorted(settled), "settled_exchanges": sorted(settled_ex)}
     if since is not None:
         out.update(window_from=since.strftime("%Y-%m-%dT%H:%M:%SZ"), outside_window=outside, undated=undated)
     return out
@@ -469,14 +534,102 @@ def terminal(found):
     return [o for o in found["settlement_observations"] if str(o.get("phase", "")).endswith("_settlement_observed")]
 
 
-def lightning_checks(found, ids, checks_dir):
+def unsettled_invoices(found):
+    """The payment hashes agreed but unsettled as of the books read, which the ruled checks set aside (loop#303,
+    Sherlock2 Buzz bb0d54d9). A hash is set aside only when all hold:
+    - no node records a settlement for it: no settlement observation (*_settlement_observed) names it, and no leg
+      but a terms leg does;
+    - on every node that names it, that node's invoice observations tie it to exactly one exchange id of its own
+      (the two books seal different ids for one payment);
+    - none of those exchanges is delivered, accounted or settled on its node (a terminal observation under that
+      exchange keeps the hash judged whatever payment hash, if any, it names);
+    - no node holds an orphan delivery: an exchange delivered or accounted that none of its records ties to a payment
+      hash. The books do not share exchange ids, so such a delivery could be the hash's own exchange with its
+      invoice record lost; while one exists nothing is set aside (Sherlock2, Buzz 189cb0ca).
+    All of it reads the whole ledger (recorded()), so a record outside the window still keeps the hash judged.
+    Every other hash stays judged: the books cannot prove a payment unpaid, so a hash any book records as settled,
+    delivered or accounted keeps finality and exchange_match open until a payer's preimage proves it."""
+    settled, named = set(), set()
+    for f in found.values():
+        named |= payment_hashes(f)
+        settled |= set(f["settled_hashes"])
+    if any(f.get("orphan_deliveries") for f in found.values()):
+        return []
+    out = []
+    for h in sorted(named - settled):
+        ok = True
+        for f in found.values():
+            exchanges = {i.get("exchange_id") for i in f["invoices"] if i.get("payment_hash") == h}
+            if h not in f["named_hashes"]:
+                continue  # no record of this node names the hash, in the window or before it
+            if len(exchanges) != 1 or not isinstance(next(iter(exchanges)), str) \
+                    or exchanges & set(f["delivered_exchanges"] + f["settled_exchanges"]):
+                ok = False
+                break
+        if ok:
+            out.append(h)
+    return out
+
+
+def bundle_settlements(doc, since):
+    """(the payment hashes of the terminal settlement records in a counterparty bundle file in the window, the
+    number of its settlement records with no readable timestamp under a window); None when it holds no bundle."""
+    records = (doc.get("bundle") or {}).get("records") if isinstance(doc, dict) and doc.get("state") == "bundle" else None
+    if not isinstance(records, list):
+        return None
+    hashes, undated = set(), 0
+    for r in records:
+        rec, block = lifecycle(r)
+        if not (block and str(block.get("phase", "")).endswith("_settlement_observed")):
+            continue
+        where = in_window(rec, since)
+        undated += where == "undated"
+        if where == "in" and isinstance(block.get("payment_hash"), str):
+            hashes.add(block["payment_hash"])
+    return hashes, undated
+
+
+def counterparty_verdict(row, n, since):
+    """(ok, detail) of counterparty_count for one counterparty.json row whose books pair n payments in the window,
+    once its bundle file was read: the decision steps/08-verify takes again from the proof. A whole-book FAIL is a
+    FAIL; a whole-book status other than PASS is open; so is a bundle with settlement records the window cannot
+    place (bundle_undated), or whose settlements in the window are not the books' pairs (bundle_only: settlements
+    only the bundle holds; books_only: pairs only the books hold). A PASS holds when none is, and both sides number
+    n. Only counts are in the row, never a hash or a record."""
+    me, peer, status, paired, unpaired = row["node"], row["peer"], row["status"], row["paired"], row["unpaired"]
+    span = "in the window" if since is not None else "in all"
+    if status == "FAIL":
+        return False, f"{me}'s book contradicts {peer}'s signed bundle: {unpaired} unpaired"
+    if status != "PASS":
+        return None, (f"{me}'s check of {peer}'s signed bundle over the whole books reads {status} with {paired} paired "
+                      f"and {unpaired} unpaired")
+    if row["bundle_undated"]:
+        return None, (f"{peer}'s signed bundle holds {row['bundle_undated']} settlement records with no timestamp, "
+                      "which the window cannot place")
+    if row["bundle_only"] or row["books_only"] or row["bundle_settlements"] != n or row["books_pair"] != n:
+        return None, (f"{peer}'s signed bundle holds {row['bundle_settlements']} settlements {span}, while the books "
+                      f"pair {n} payments between them there ({row['books_only']} not in the bundle, "
+                      f"{row['bundle_only']} not paired in the books): the check predates a payment or a record sits "
+                      "on the window's edge (run lab/lab.sh bundles)")
+    return True, (f"{me}'s {row['disclosed_settlements']} settlements against {peer}'s signed bundle (sha256 "
+                  f"{str(row['bundle_sha256'])[:12]}): PASS over the whole books, {paired} paired, {unpaired} unpaired; "
+                  f"the {n} payments the books pair between them {span} are exactly the bundle's")
+
+
+def lightning_checks(found, ids, checks_dir, since=None):
     """The ruled checks over every node's records: ({name: {ok, detail}}, published counterparty rows).
 
     found: {node name: recorded()}; ids: {node name: node_id}; checks_dir: where lab.sh bundles wrote
-    check.<node id>.<peer node id>.json, or None. ok is True, False (a FAIL) or None (not checked)."""
+    check.<node id>.<peer node id>.json, or None; since: the window start, or None. ok is True, False (a FAIL) or
+    None (not checked)."""
     checks = {}
     def put(name, ok, detail):
         checks[name] = {"ok": ok, "detail": detail}
+    # 0. Invoices agreed but unsettled as of the books read leave the judged hashes (unsettled_invoices); only their
+    # terms legs name them, so dropping those legs drops them from finality and exchange_match, and from nothing else.
+    unsettled = set(unsettled_invoices(found))
+    found = {n: {**f, "settlement_legs": [l for l in f["settlement_legs"] if leg_hash(l) not in unsettled]}
+             for n, f in found.items()}
     # 1. Reference: each book's terminal settlements name a payment_hash and an exchange_id, one exchange per hash.
     # Per book: each side seals its own exchange id for the same payment (on the lab the payer's and the payee's ids
     # differ for one hash), so one hash under two exchanges is checked within a book, and the books join by hash.
@@ -540,13 +693,14 @@ def lightning_checks(found, ids, checks_dir):
         "no payment to pair" if not cross["paired"] else
         f"{len(cross['paired'])} payments paired: the payer's amount equals the payee's credit plus fee")
     # 6. counterparty_count, from each counterparty's signed bundle, for every pair of nodes that settled together.
-    # A check counts only for the books 06 reads now: its bundle file still hashes to the digest the check recorded,
-    # and it paired as many payments as the two books pair here (else the check predates a later payment).
+    # The check is the plugin's over the two whole books, so it must PASS whatever the window (a FAIL stays a FAIL),
+    # and its bundle file must still hash to the digest it recorded. Then like with like: the payments of the bundle's
+    # terminal settlement records in the window must be exactly the payments the windowed books pair between the two
+    # nodes (else the check predates a later payment, or a record sits on the window's edge).
     rows = []
     pair_hashes = {}
-    for p in cross["paired"].values():
-        pair_hashes.setdefault(tuple(sorted((p["payer"], p["payee"]))), 0)
-        pair_hashes[tuple(sorted((p["payer"], p["payee"])))] += 1
+    for h, p in cross["paired"].items():
+        pair_hashes.setdefault(tuple(sorted((p["payer"], p["payee"]))), set()).add(h)
     by_id = {v: k for k, v in ids.items() if v}
     wanted = {(me, peer) for a, b in pair_hashes for me, peer in ((a, b), (b, a))}
     present = set()
@@ -568,29 +722,44 @@ def lightning_checks(found, ids, checks_dir):
             continue
         bundle_file = checks_dir / str(doc.get("bundle_file"))
         try:
-            digest = hashlib.sha256(bundle_file.read_bytes()).hexdigest() if doc.get("bundle_file") else None
+            raw = bundle_file.read_bytes() if doc.get("bundle_file") else None
         except OSError:
-            digest = None
+            raw = None
+        digest = hashlib.sha256(raw).hexdigest() if raw is not None else None
+        try:
+            held = bundle_settlements(json.loads(raw), since) if raw is not None and digest == doc.get("bundle_sha256") \
+                else None
+        except ValueError:
+            held = None
         status, paired = cc.get("status"), cc.get("paired")
         disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
         unpaired = len(cc.get("unpaired") or [])
+        expected = pair_hashes.get(tuple(sorted((me, peer))), set())
         rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"), "paired": paired,
-                     "unpaired": unpaired, "disclosed_settlements": disclosed, "bundle_sha256": doc.get("bundle_sha256")})
-        expected = pair_hashes.get(tuple(sorted((me, peer))), 0)
+                     "unpaired": unpaired, "disclosed_settlements": disclosed, "bundle_sha256": doc.get("bundle_sha256"),
+                     "bundle_settlements": len(held[0]) if held else None, "books_pair": len(expected),
+                     "bundle_undated": held[1] if held else None,
+                     "bundle_only": len(held[0] - expected) if held else None,
+                     "books_only": len(expected - held[0]) if held else None,
+                     "window_from": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None})
         if status == "FAIL":
-            put(what, False, f"{me}'s book contradicts {peer}'s signed bundle: {unpaired} unpaired")
+            put(what, *counterparty_verdict(rows[-1], len(expected), since))
         elif digest is None or digest != doc.get("bundle_sha256"):
             put(what, None, f"{me}'s check names a bundle that is missing or changed since (run lab/lab.sh bundles)")
-        elif status != "PASS" or paired != expected:
-            put(what, None, f"{me}'s check of {peer}'s signed bundle reads {status} with {paired} paired, while the books "
-                            f"pair {expected} payments between them: the check predates a payment (run lab/lab.sh bundles)")
+        elif held is None:
+            put(what, None, f"{me}'s check names a file that holds no bundle from {peer} (run lab/lab.sh bundles)")
         else:
-            put(what, True, f"{me}'s {disclosed} settlements against {peer}'s signed bundle (sha256 "
-                            f"{str(doc.get('bundle_sha256'))[:12]}): PASS, {paired} paired, {unpaired} unpaired")
+            put(what, *counterparty_verdict(rows[-1], len(expected), since))
     if not pair_hashes:
         put("counterparty_count", None, "no two nodes settled with each other")
     checks["public_ledger_count"] = {"ok": None, "detail": "Lightning has no public ledger; the counterparty's signed "
                                      "book stands in (counterparty_count), and this gap stays named", "gap": True}
+    if unsettled:
+        checks["unsettled_invoices"] = {
+            "ok": None, "gap": True, "count": len(unsettled), "payment_hashes": sorted(unsettled),
+            "detail": f"{len(unsettled)} invoices agreed but unsettled as of the books read (no book records a "
+                      "settlement, a delivery or an accounted bill for them) are set aside, not judged: the books "
+                      "cannot prove a payment unpaid"}
     return checks, rows
 
 
@@ -598,7 +767,7 @@ def main_lightning(pop, out, started, found, proof, details, not_checked):
     """The live Lightning PASS path (loop#243): the ruled checks, checks.json and counterparty.json (counts and
     bundle digests only, never a bundle) as proof."""
     ids = {n["name"]: n.get("node_id") for n in pop["nodes"]}
-    checks, rows = lightning_checks(found, ids, live.path(pop, "settlement_checks"))
+    checks, rows = lightning_checks(found, ids, live.path(pop, "settlement_checks"), window_from(pop))
     (out / "checks.json").write_text(json.dumps(checks, indent=2, sort_keys=True) + "\n")
     (out / "counterparty.json").write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
     proof += ["checks.json", "counterparty.json"]
@@ -606,6 +775,9 @@ def main_lightning(pop, out, started, found, proof, details, not_checked):
     failed = sorted(k for k, v in judged.items() if v["ok"] is False)
     open_ = sorted(k for k, v in judged.items() if v["ok"] is None)
     details += [f"{k}: {v['detail']}" for k, v in sorted(judged.items())]
+    unsettled = checks.get("unsettled_invoices")
+    if unsettled:
+        details.append(f"unsettled_invoices: {unsettled['detail']}")
     not_checked += [{"what": f"step 06 {k} on the Lightning rail", "why": judged[k]["detail"], "issue": LIGHTNING_ISSUE}
                     for k in open_]
     result = "FAIL" if failed else "NOT_CHECKED" if not_checked else "PASS"
@@ -613,6 +785,9 @@ def main_lightning(pop, out, started, found, proof, details, not_checked):
     if result == "PASS":
         detail += " " + finding.outside("a public ledger's count of each node's settlements (Lightning has none; the "
                                         "counterparty's signed book stands in)", PUBLIC_LEDGER_ISSUE)
+        if unsettled:
+            detail += " " + finding.outside(f"{unsettled['count']} invoices agreed but unsettled as of the books read, "
+                                            "which the books cannot prove unpaid", ADAPTER_ISSUE)
     finding.write(out, result=result, population=pop["population"], asserts=LIGHTNING_ASSERTS,
                   pinned=pop.get("pinned", LIVE_PINNED), proof=proof, detail=detail, not_checked=not_checked,
                   started=started)
