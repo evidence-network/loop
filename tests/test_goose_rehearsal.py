@@ -1,5 +1,5 @@
 """The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, step 01
-judging the capsule the buyer sealed with loop_seal and step 06 judging the rail, both unchanged (01 passes; 06's rail checks
+judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 judging the rail, both unchanged (01 passes; 06's rail checks
 hold and the row stays NOT_CHECKED until G1's pay record is read). Skipped unless steps/goose.setup.sh has installed the
 Goose tools; the step 01 test also needs steps/01-seal.setup.sh's verifier.
 
@@ -45,7 +45,22 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
         self.assertEqual(doc["rail"], "mock")
-        self.assertEqual(doc["goose"]["steps"], ["01", "06"])
+        self.assertEqual(doc["goose"]["steps"], ["01", "03", "06"])
+
+    def test_step_03_passes_on_the_commitments_the_goose_nodes_signed(self):
+        out = self.work / "findings" / "03-advertise"
+        r = subprocess.run([str(ROOT / "steps/03-advertise"), "--population", str(self.pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        found = json.loads((out / "finding.json").read_text())
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        doc = json.loads((self.pop / "population.json").read_text())
+        for n in json.loads((out / "verification.json").read_text())["nodes"]:
+            # published byte for byte as loop_advertise wrote it, under the node's own key, stapling goose/node
+            self.assertEqual(n["inputs"], "signed by the node")
+            signed = doc["goose"]["commitments"][n["name"]]["commitment"]
+            self.assertEqual((out / f"{n['name']}.commitment.json").read_bytes(), Path(signed).read_bytes())
+            self.assertEqual([(c["stream"], c["community"]) for c in n["history_cards"]], [("goose/node", "goose")])
 
     @unittest.skipUnless((TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(), "run steps/01-seal.setup.sh")
     def test_step_01_passes_unchanged_on_the_capsule_the_goose_node_sealed(self):

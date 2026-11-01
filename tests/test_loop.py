@@ -139,11 +139,11 @@ class LoopTest(unittest.TestCase):
                                                  str(out)]).returncode, 0)
 
     GOOSE_OWNERS = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
-                    "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
+                    "03": "evidence-network/loop#330", "04": "action-state-group/evidencebook#302",
                     "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
                     "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
                     "09": "action-state-group/capsule-emit#393", "10": "evidence-network/loop#315",
-                    "11": "evidence-network/loop#315", "12": "action-state-group/capsule-emit#406"}
+                    "11": "evidence-network/loop#315", "12": "evidence-network/loop#315"}
     GOOSE_NAMES = {"01": "seal", "02": "book", "03": "advertise", "04": "admit", "05": "deal", "06": "settle",
                    "07": "ask", "08": "verify", "09": "dispute", "10": "judge", "11": "report", "12": "join"}
 
@@ -183,16 +183,20 @@ class LoopTest(unittest.TestCase):
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
                          "run steps/goose.setup.sh and steps/01-seal.setup.sh")
-    def test_goose_with_its_tools_passes_step_01_and_keeps_every_other_row_not_checked(self):
+    def test_goose_with_its_tools_passes_steps_01_and_03_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
         results = dict(line.split()[::2] for line in r.stdout.splitlines())
-        # 01 passes on the capsule the Goose node sealed (loop_seal); 06 holds its rail checks but G1's pay record is not read
+        # 01 passes on the capsule the Goose node sealed (loop_seal), 03 on the commitments the nodes signed
+        # (loop_advertise); 06 holds its rail checks but G1's pay record is not read
         self.assertEqual(results.pop("01"), "PASS")
+        self.assertEqual(results.pop("03"), "PASS")
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
         self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "goose-g1"])  # the Goose node sealed it
+        nodes = json.loads((out / "03-advertise" / "verification.json").read_text())["nodes"]
+        self.assertEqual({n["inputs"] for n in nodes}, {"signed by the node"})  # the harness signed neither
         six = self.finding("06-settle", out)
         self.assertIn("the checks on the rail's proof bytes held", six["detail"])
         self.assertIn("G1's pay record is not read yet", six["detail"])

@@ -15,7 +15,11 @@ stapled card's stream (scripts/history_cards.py).
 
 - rehearsal: the carrier is a scratch git repository (the repository's own
   nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
-  file, so `git show` can be re-run on exactly what was fetched.
+  file, so `git show` can be re-run on exactly what was fetched. On the Goose
+  rehearsal population (scripts/goose_rehearsal.py), each node's commitment is
+  the one the node signed itself with G1's loop_advertise, published byte for
+  byte; the harness signs nothing, and the commitment must be under the node's
+  own key.
 - live: the harness never signs for a live node. A live commitment is one the
   node signed and published itself; the pinned capsules plugin signs and serves
   it (capsules-plugin PR #75, in the pin) and hands it to its operator, who
@@ -165,13 +169,40 @@ def fetch(carrier, path, ref="HEAD"):
     return r.stdout if r.returncode == 0 else None
 
 
-def rehearsal_node(population, node, carrier):
-    """Sign a rehearsal node's commitment with its TEST key and publish it. Returns (record, key_id)."""
+def node_signed(node, signed, carrier, key_id):
+    """Publish the commitment and policy the node signed itself (the Goose rehearsal: G1's loop_advertise), byte for
+    byte; the harness signs nothing. Returns (record, key_id): the key is the node's own, from its key_dir, so a
+    commitment under another key fails the check."""
+    raw = Path(signed["commitment"]).read_bytes()
+    try:
+        node_id = json.loads(raw)["node_id"]
+    except (ValueError, KeyError, TypeError):
+        node_id = None
+    if not (isinstance(node_id, str) and cc.HEX64.fullmatch(node_id)):
+        node_id = key_id  # a node_id that names no file of ours: published under the key, refused by the check
+    tree = carrier / "nodes" / "commitments"
+    (tree / "policies").mkdir(parents=True, exist_ok=True)
+    (tree / f"{node_id}.json").write_bytes(raw)
+    (tree / "policies" / f"{node_id}.json").write_bytes(Path(signed["policy"]).read_bytes())
+    if PUBLISH_HOOK:
+        PUBLISH_HOOK(carrier)
+    git(carrier, "add", "nodes")
+    git(carrier, "commit", "-q", "--allow-empty", "-m", f"advertise: commitment for {node_id}, as the node signed it")
+    return {"name": node["name"], "node_id": node_id, "key_id": key_id, "inputs": "signed by the node",
+            "signed_by": "the node itself (the Goose node's loop_advertise), never the harness",
+            "published_commit": git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}, key_id
+
+
+def rehearsal_node(population, node, carrier, signed=None):
+    """Sign a rehearsal node's commitment with its TEST key and publish it, or publish the one the node signed
+    (`signed`: {commitment, policy} paths). Returns (record, key_id)."""
     key_dir = Path(node["key_dir"])
     if not key_dir.is_absolute():
         key_dir = population.parent.parent / key_dir
     spki = cc.spki_from_pem((key_dir / "node-key.pub.pem").read_text(encoding="utf-8"))
     key_id = cc.key_id_of(spki)
+    if signed:
+        return node_signed(node, signed, carrier, key_id)
     node_id = node.get("node_id") or key_id
     settings, staple, checkpoint, source = node_inputs(population, node)
     staple = staple if staple is not None else standin_staple(key_id)
@@ -200,9 +231,9 @@ def live_node(node, carrier, ref="HEAD"):
     return rec, key_id
 
 
-def check_node(population, out, node, carrier):
+def check_node(population, out, node, carrier, signed=None):
     """One rehearsal node's verification record, and the proof files it wrote."""
-    rec, key_id = rehearsal_node(population, node, carrier)
+    rec, key_id = rehearsal_node(population, node, carrier, signed)
     return verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), False)
 
 
@@ -282,8 +313,9 @@ def main(argv=None):
         carrier = Path(tmp) / "carrier"
         carrier.mkdir()
         git(carrier, "init", "-q")
+        signed = (pop.get("goose") or {}).get("commitments") or {}
         for node in pop["nodes"]:
-            rec, files = check_node(population, out, node, carrier)
+            rec, files = check_node(population, out, node, carrier, signed.get(node["name"]))
             records.append(rec)
             proof += files
         git(carrier, "bundle", "create", "-q", str(out / "carrier.bundle"), "--all")

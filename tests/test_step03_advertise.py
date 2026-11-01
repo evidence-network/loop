@@ -139,6 +139,90 @@ class StepTest(unittest.TestCase):
         self.assertEqual(finding.check(out.parent), [])
 
 
+def goose_commitment(key_pem, out_dir):
+    """A /1 commitment as G1's loop_advertise writes it (node book goose/node, community goose), signed by key_pem,
+    with its signed policy: {commitment, policy} paths under out_dir. TEST keys only."""
+    import hashlib
+    spki = cc.spki_from_pem(Path(str(key_pem).replace("node-key.pem", "node-key.pub.pem")).read_text())
+    key_id = cc.key_id_of(spki)
+    statement = b"goose node book checkpoint statement"
+    artifact = json.dumps({"evidence_stream": "goose/node", "history": []}, separators=(",", ":")).encode()
+    card = json.dumps({"profile": cc.STAPLE_PROFILE, "subject": {"full_history": None}, "derivation": "history_card/1",
+                       "anchor": {"digest": hashlib.sha256(statement).hexdigest()}, "responder": key_id,
+                       "artifact_digest": hashlib.sha256(artifact).hexdigest(), "artifact": cc.b64url(artifact),
+                       "issued_at": "2026-11-01T00:00:00Z", "sig": "test"}, sort_keys=True).encode()
+    policy = cc.sign({"profile": cc.POLICY_PROFILE, "key_id": key_id,
+                      "policy": {"stranger_safe": ["history_card/1"], "share_deal_half": "counterparty"}}, key_pem)
+    policy_bytes = (json.dumps(policy, indent=2, sort_keys=True) + "\n").encode()
+    b64 = lambda raw: base64.b64encode(raw).decode()
+    doc = cc.sign({
+        "profile": cc.PROFILE_1, "node_id": key_id, "key_id": key_id, "spki": b64(spki),
+        "issued_at": "2026-11-01T00:00:00Z",
+        "ask": {"endpoint": "book:goose/node", "bindings": ["evidencebook/respond"]},
+        "answers": {"subjects": ["full_history"], "derivations": ["history_card/1"]},
+        "lcap": {"policy_digest": hashlib.sha256(policy_bytes).hexdigest(), "policy_uri": f"policies/{key_id}.json",
+                 "predicate_classes": ["performed:counterparty_half"]},
+        "checkpoint": {"sha256": hashlib.sha256(statement).hexdigest(), "bytes": b64(statement)},
+        "human_gated": True, "answers_within": "PT24H",
+        "history_cards": [{"stream": "goose/node", "community": "goose", "derivation": "history_card/1",
+                           "sha256": hashlib.sha256(card).hexdigest(), "bytes": b64(card)}],
+    }, key_pem)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "commitment.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    (out_dir / "policy.json").write_bytes(policy_bytes)
+    return {"commitment": str(out_dir / "commitment.json"), "policy": str(out_dir / "policy.json")}
+
+
+@unittest.skipUnless(TOOLS, SKIP_WHY)
+class NodeSignedTest(unittest.TestCase):
+    """The Goose rehearsal (scripts/goose_rehearsal.py): a node's commitment is the one it signed, published as is."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.step = load_step()
+        shutil.copytree(FIXTURES / "population", self.tmp / "population")
+        self.pop = self.tmp / "population" / "rehearsal"
+        self.keys = self.pop / "keys"
+
+    def run_with(self, signed):
+        doc = json.loads((self.pop / "population.json").read_text())
+        doc["goose"] = {"commitments": signed}
+        (self.pop / "population.json").write_text(json.dumps(doc))
+        out = self.tmp / "findings" / "03-advertise"
+        self.assertEqual(self.step.main(["--population", str(self.pop), "--out", str(out)]), 0)
+        nodes = {n["name"]: n for n in json.loads((out / "verification.json").read_text())["nodes"]}
+        return json.loads((out / "finding.json").read_text()), nodes, out
+
+    def test_the_node_signed_commitment_is_published_byte_for_byte_and_passes(self):
+        signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed")
+        f, nodes, out = self.run_with({"alice": signed})
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual(finding.check(out.parent), [])
+        self.assertEqual(nodes["alice"]["inputs"], "signed by the node")
+        self.assertIn("never the harness", nodes["alice"]["signed_by"])
+        self.assertEqual((out / "alice.commitment.json").read_bytes(), Path(signed["commitment"]).read_bytes())
+        self.assertEqual([c["stream"] for c in nodes["alice"]["history_cards"]], ["goose/node"])
+        self.assertEqual(nodes["bob"]["inputs"], "stand-in")  # a node without one is signed by the harness as before
+
+    def test_a_commitment_under_another_key_than_the_nodes_fails(self):
+        signed = goose_commitment(self.keys / "bob" / "node-key.pem", self.tmp / "bob-signed")
+        f, nodes, out = self.run_with({"alice": signed})
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("the commitment is not under this node's key", nodes["alice"]["errors"])
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_node_signed_commitment_with_an_extra_member_fails(self):
+        signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed")
+        path = Path(signed["commitment"])
+        doc = json.loads(path.read_text())
+        doc["deals"] = "several"
+        path.write_text(json.dumps(cc.sign(doc, self.keys / "alice" / "node-key.pem")))
+        f, nodes, _ = self.run_with({"alice": signed})
+        self.assertEqual(f["result"], "FAIL")
+        self.assertIn("unknown field deals", nodes["alice"]["errors"])
+
+
 @unittest.skipUnless(TOOLS, SKIP_WHY)
 class LiveTest(unittest.TestCase):
     """Live: the harness never signs; it reads a commitment the node published, or reports NOT_CHECKED on the

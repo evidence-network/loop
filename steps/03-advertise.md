@@ -19,7 +19,11 @@ read back. The finding names the carrier.
 
 - **rehearsal**: the carrier is a scratch git repository, kept in the out
   directory as `carrier.bundle` so anyone can clone it and re-run the
-  `git show`. Rehearsal nodes are never added to this repository's list.
+  `git show`. Rehearsal nodes are never added to this repository's list. On
+  the Goose rehearsal population (`scripts/goose_rehearsal.py`), the harness
+  signs nothing: each node's commitment is the `/1` one the node signed itself
+  with evidencebook G1's `loop_advertise`, published byte for byte, and it must
+  be under the node's own key.
 - **live**: the harness never signs for a live node. A live commitment is
   signed by the node itself: the pinned capsules plugin signs and serves it
   (capsules-plugin PR #75, in the pin) and returns it to its operator, who
@@ -130,9 +134,10 @@ the same (`has_history: false`); nothing marks a clear. Rewriting or
 truncating the old log is not a clear: it fails the card's consistency check
 as before.
 
-`join.sh` writes /1, one card per book the node serves. The rehearsal
-harness of this step still signs /0 for its test nodes; a published /1
-commitment verifies here the same way.
+`join.sh` writes /1, one card per book the node serves, and so does
+evidencebook G1's Goose node (`loop_advertise`), which staples its node book
+`goose/node`. The rehearsal harness of this step still signs /0 for its mesh
+test nodes; a published /1 commitment verifies here the same way.
 
 The policy file is `{"profile": "disclosure-policy/0", "key_id", "policy":
 {...}, "sig"}`, signed the same way by the same key.
