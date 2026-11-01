@@ -623,11 +623,12 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   before a run.
 - Only lab-1 serves a model, so payments go lab-2 to lab-1 (or lab-3 to lab-1,
   which has no wallet); the wallets cannot ping-pong today.
-- The 9,000 msat per direction limit is the lab payment guard Ethan set (with 3,000 msat per
-  payment), counted by hand in lifetime msat; nothing in the loop or the lab
-  enforces it. The code limit is lab-2's wallet policy
-  `daily_budget_msat` 9,000 per UTC day (`wallet policy`). At the end of the
-  2026-11-01 probes lab-2 had sent 9,000 msat in all.
+- The lab payment guard (Ethan, 2026-11-01) is at most 3,000 msat per payment and
+  at most 9,000 msat per direction per UTC day, not lifetime. It matches lab-2's
+  wallet policy `daily_budget_msat` 9,000 (`wallet policy`), which the wallet
+  checks when a request is approved; nothing in the loop or the lab enforces the
+  per-direction count. lab-2 sent 4,000 msat on 2026-11-01 (UTC), so 5,000 msat
+  of that day's 9,000 was left after the probes.
 - `settle` with a `window.from` after a payment judges that payment alone, but
   `counterparty_count` compares each signed bundle's whole-book count with the
   windowed book, so it reads NOT_CHECKED in a window.
