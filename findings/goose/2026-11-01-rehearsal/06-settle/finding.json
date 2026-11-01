@@ -1,7 +1,7 @@
 {
   "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
-  "detail": "exchange deal-203a304f06d5b92c, settlement 2255426acf1647679e870377c475a221d21f634543a3ce80b05ee253c8e5ad02 (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: these held on the proof bytes: ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller. Band USD:e0. Volume: 1 filtered of 1 raw settlements (final, on a fee-paying rail, payer and payee declared under different controllers). Outside this step's assertion: the exchange's sealed halves, which this step reads as an unsigned stand-in, and the controller declarations, which are rehearsal stand-ins: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: a settlement object on a real rail, verified with finality by its adapter: Mesh-LLM/capsules-plugin#83. Outside this step's assertion: the settlement is tied to the Goose deal by construction (the driver passed the rail's settlement id to the buyer's loop_settle; that the pay record commits it is not read), and this step reads the exchange, controller and settlement-disclosure files the rehearsal driver wrote (the disclosures signed by the driver with each node's key), not the deal's pay record: evidence-network/loop#330.",
-  "finished": "2026-11-01T08:20:27Z",
+  "detail": "exchange deal-e6ba411fb6b13b4d, settlement 3ec4bdede7b57a4ffc69ad10cff6a2ebf072ad589677b54f1a2df42c48a21a69 (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: these held on the proof bytes: ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller. Band USD:e0. Volume: 1 filtered of 1 raw settlements (final, on a fee-paying rail, payer and payee declared under different controllers). Outside this step's assertion: the exchange's sealed halves, which this step reads as an unsigned stand-in, and the controller declarations, which are rehearsal stand-ins: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: a settlement object on a real rail, verified with finality by its adapter: Mesh-LLM/capsules-plugin#83. Outside this step's assertion: the settlement is tied to the Goose deal by construction (the driver passed the rail's settlement id to the buyer's loop_settle; that the pay record commits it is not read), and this step reads the exchange, controller and settlement-disclosure files the rehearsal driver wrote (the disclosures signed by the driver with each node's key, their counts computed by the driver from the rail's ledger), not the deal's pay record: evidence-network/loop#330.",
+  "finished": "2026-11-01T08:59:52Z",
   "name": "settle",
   "not_checked": [],
   "pinned": {
@@ -14,39 +14,39 @@
   "proof": [
     {
       "path": "rail.json",
-      "sha256": "49dcbd0efffac49e961591f3009ddf90f960b376911a7c7d158baebd8c746df0"
+      "sha256": "f53ef8cb019a66879fee64b1900a1625c1fddfddb7eacf8d297d42256c820be2"
     },
     {
       "path": "ledger.jsonl",
-      "sha256": "abdee84c4c8952a42c41bc8da1c57069784503ca499815c5138b0981ef99bdb8"
+      "sha256": "64fbdd6c979ce48636bb79b277c051460e2c7965c45671628a7e39279a797cb6"
     },
     {
       "path": "rail-key.pub.pem",
-      "sha256": "5fd410b478bfa05886b6cee9feeeb0e166dc283c0ae52500df9d533389bf716c"
+      "sha256": "ee65b7c8167f85725ef3b7ad9979c59b240a9e736b9f8aed4181f9477e0c1455"
     },
     {
       "path": "exchange.json",
-      "sha256": "a22c5cfcd0c8b7512918c9d1b758842e3dce0814aa43c6708e2d4618299dffd2"
+      "sha256": "407194564e792cd251b0fd7f5880e1da7a19ebc2bcf38fd0548eae6bfebb6d6d"
     },
     {
       "path": "controllers.json",
-      "sha256": "5d1520217921bf9aa2d44d3676dea2bcbc2d06cf0c003aee0eca4b67490a5382"
+      "sha256": "a6e847ab421a234ff23617788b3a92177963430ef34f3601efe29693ece8f678"
     },
     {
       "path": "disclosure-buyer.json",
-      "sha256": "f4d85ed090f3ae3cc0dbae0f48317b9f00477f1b8f5d8b4b61860ebd9bf70778"
+      "sha256": "6ab2601cc32b87d46c77bbba961aca9c01fa1f68d67e61b1ea4f7b938a3a8b1e"
     },
     {
       "path": "disclosure-seller.json",
-      "sha256": "693d7790ba4d452322c11041350af99c6e04f5d3a616595e591cb80ac611150f"
+      "sha256": "8ba74b62e832bb8b14f99bb63e90eceb625bee0e4bb994443362693bcfa1a713"
     },
     {
       "path": "adapter.json",
-      "sha256": "5f3d5544b7fde6968928087f9cee5ecc27058848463b62382f6eeafd22a88db2"
+      "sha256": "57b7c2e2a0ebf2847a98cf9b9dc1bd619135ab02d028cd3d05adb66e1eebe0ca"
     },
     {
       "path": "checks.json",
-      "sha256": "ee0dd3e1a67248337791b5b069957ccfe02ace9cf2c0bf17f13a3ce132fd20b8"
+      "sha256": "e17129decfdc3be2d26999cf53063ba463e34340ea21b0e1fb039e4af732251f"
     },
     {
       "path": "volume.json",
@@ -54,6 +54,6 @@
     }
   ],
   "result": "PASS",
-  "started": "2026-11-01T08:20:27Z",
+  "started": "2026-11-01T08:59:52Z",
   "step": "06"
 }

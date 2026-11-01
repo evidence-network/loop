@@ -286,7 +286,8 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
                                         "that the pay record commits it is not read), and this step reads the "
                                         "exchange, controller and settlement-disclosure files the rehearsal "
                                         "driver wrote (the disclosures signed by the driver with each node's "
-                                        "key), not the deal's pay record", "evidence-network/loop#330")
+                                        "key, their counts computed by the driver from the rail's ledger), not "
+                                        "the deal's pay record", "evidence-network/loop#330")
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
                          detail=detail, started=started)
 

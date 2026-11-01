@@ -191,6 +191,7 @@ class LoopTest(unittest.TestCase):
         detail = self.finding("06-settle", out)["detail"]
         self.assertIn("tied to the Goose deal by construction", detail)
         self.assertIn("settlement-disclosure files the rehearsal driver wrote", detail)
+        self.assertIn("counts computed by the driver from the rail's ledger", detail)
         self.assertEqual(list(self.finding("06-settle", out)["pinned"]), ["goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
