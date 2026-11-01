@@ -51,7 +51,20 @@ class GooseRehearsalTest(unittest.TestCase):
         sealed_by = json.loads((out / "checks.json").read_text())["sealed_by"]
         self.assertIn("Goose node buyer, tool loop_seal, goose-g1 ", sealed_by)
         self.assertEqual(sorted(found["pinned"]), ["aac-go", "goose-g1"])
+        self.assertIn("sealed by the Goose node", found["asserts"])
         self.assertTrue({"node-key.pub.pem", "goose-run.log"} <= {x["path"] for x in found["proof"]})
+
+    @unittest.skipUnless((TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(), "run steps/01-seal.setup.sh")
+    def test_an_explicit_sealed_capsule_is_never_labelled_as_the_goose_nodes(self):
+        planted = self.work / "planted.json"
+        planted.write_bytes((self.work / "run" / "sealed-buyer.json").read_bytes())
+        out = self.work / "findings-planted" / "01-seal"
+        r = subprocess.run([str(ROOT / "steps/01-seal"), "--population", str(self.pop), "--out", str(out),
+                            "--sealed", str(planted)], stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        found = json.loads((out / "finding.json").read_text())
+        self.assertNotIn("goose-g1", found["pinned"])
+        self.assertEqual(json.loads((out / "checks.json").read_text())["sealed_by"], "given capsule")
 
     def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())

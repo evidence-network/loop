@@ -63,6 +63,10 @@ ASSERTS = ("a capsule sealed by capsule-emit (Python) with the node's key verifi
            "AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go "
            "verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation "
            "runtime_claimed (sealed in the producer's own process) and it carries model_attestation")
+# A Goose rehearsal's finding: the same assertion, the sealer named as the Goose node (G1's loop_seal) (loop#330).
+GOOSE_ASSERTS = ASSERTS.replace("a capsule sealed by capsule-emit (Python) with the node's key",
+                                "a capsule sealed by the Goose node (evidencebook's G1, loop_seal) with the node's key", 1)
+assert GOOSE_ASSERTS != ASSERTS
 # What the step tells the producer about the model; model_attestation must carry it back.
 MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
 # Registered effect_attestation values (AAC -05). A record sealed in the producer's
@@ -430,6 +434,8 @@ def main(argv=None):
     goose = population.get("goose")
     if goose and not a.sealed:  # the Goose rehearsal: check the capsule the Goose node sealed (loop#330)
         a.sealed, a.node = Path(goose["sealed"]["capsule"]), goose["sealed"]["node"]
+    else:  # an explicit --sealed is not the Goose node's capsule, whatever the population
+        goose = None
     if pop_name == "live":
         return main_live(population, out, started, a.sealed)
     node, key_dir = node_key_dir(a.population, population, a.node)
@@ -443,14 +449,15 @@ def main(argv=None):
         seen["goose-g1"] = goose["rev"]
         if goose["rev"] != lock_version("goose-g1"):
             not_checked.append({"what": "goose-g1", "why": f"installed {goose['rev']}, versions.lock pins "
-                                f"{lock_version('goose-g1')}", "issue": SETUP})
+                                f"{lock_version('goose-g1')}",
+                                "issue": "none: steps/goose.setup.sh has not installed the pin"})
         sealed_by = f"the Goose node {node}, tool loop_seal, goose-g1 {goose['rev']}"
         shutil.copyfile(key_dir / "node-key.pub.pem", out / "node-key.pub.pem")
         shutil.copyfile(goose["log"], out / "goose-run.log")
         extra = ["node-key.pub.pem", "goose-run.log"]
 
     def write(result, proof, detail, nc=()):
-        return finding.write(out, result=result, population=pop_name, asserts=ASSERTS,
+        return finding.write(out, result=result, population=pop_name, asserts=GOOSE_ASSERTS if goose else ASSERTS,
                              pinned=GOOSE_PINNED if goose else PINNED,
                              proof=proof + extra, detail=detail, not_checked=nc, started=started)
 
