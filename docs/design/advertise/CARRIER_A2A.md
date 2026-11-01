@@ -6,7 +6,7 @@ A2A is a communication protocol. It has no directory: the card sits at `https://
 ## Advertise
 Two entries in `capabilities.extensions[]`, kept apart:
 - The evidence-request entry, exactly as AAC IP §11.4.4 fixes it, when the node answers over A2A: `uri` exactly `https://datatracker.ietf.org/doc/draft-mih-agent-evidence-request/`, `required: false`, `params` = the manifest (IP §11.4.2) and nothing else. It is a discovery object (IP §11.4.3), so the commitment pointer never goes in it.
-- A separate commitment entry: `{"uri": "<commitment extension URI, defined in AAC#541>", "description": "points to this agent's signed evidence commitment; verify the commitment, not this entry", "required": false, "params": {"commitment_uri": "...", "commitment_digest": "sha256:<hex>"}}`. This entry is the opt-in disclosure (COMMON_RULES "Not a discovery object"); a node with the switch off has none.
+- A separate commitment entry: `{"uri": "<commitment extension URI, to be defined in AAC#541>", "description": "points to this agent's signed evidence commitment; verify the commitment, not this entry", "required": false, "params": {"commitment_uri": "...", "commitment_digest": "sha256:<hex>"}}`. This entry is the opt-in disclosure (COMMON_RULES "Not a discovery object"); a node with the switch off has none.
 `required: false` on both: a client that ignores them still works.
 
 ## Find
@@ -25,5 +25,5 @@ The evidence request itself can ride A2A (the binding listed in the commitment),
 
 ## Open
 - Card hosts without `extensions[]` (NANDA host39 today) cannot carry this; such agents advertise through the index record (carrier 1) or Nostr (carrier 3).
-- The commitment extension's URI: defined in AAC#541 (an AAC spec URL; no registry). The evidence-request entry's URI is already fixed by IP §11.4.4.
+- The commitment extension's URI: to be defined in AAC#541 (an AAC spec URL; no registry). The evidence-request entry's URI is already fixed by IP §11.4.4.
 - The `ask.endpoint` value and binding token for an A2A node (card URL or service URL; the commitment's binding names, such as `capsules-evidence-request/iroh`, are not IP's tokens `evidence-request/1`, `http`, `a2a`, `mcp`): settled in evidence-network/loop#320 with AAC#541.

@@ -16,8 +16,9 @@ ADVERTISE OVER NOSTR: FLOW (design v0, 2026-11-01)
                                                                                     verify commitment sig (spki)
                                                                                     key_id signs the node's answers?
                                                                                     staple + checkpoint digests ok?
-                                                                                    newest issued_at; consistency
-                                                                                    proof vs live checkpoint
+                                                                                    newest issued_at; fresh
+                                                                                    history_card/1 chains from
+                                                                                    the held checkpoint to now
                                                                                               |
                                           <------------- [direct] "send me your current commitment"
                                           -------------> commitment (must match / be newer)

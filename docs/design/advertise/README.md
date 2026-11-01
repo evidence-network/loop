@@ -14,7 +14,7 @@ Tracking: action-state-group/agent-action-capsule#541.
 
 ## Decided (2026-11-01)
 - One signed `evidence-commitment/1`, three carriers: ARD/NANDA attestation entry, A2A card extension, Nostr addressable event. No discovery system of our own.
-- Witness required, with a simple path for nodes without one: the verifier derives an "unwitnessed" label from missing receipts (the node never sets it), and the asker pins the first checkpoint it saw (trust on first use). Admission policies may refuse unwitnessed nodes.
+- Witness required, with a simple path for nodes without one: the verifier derives an "unwitnessed" label from receipts that are missing or do not verify under a witness key it configures (the node never sets it), and the asker pins the first checkpoint it saw (trust on first use). Admission policies may refuse unwitnessed nodes.
 - One design doc per carrier (this folder).
 
 ## Recommended, not yet decided

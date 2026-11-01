@@ -24,5 +24,5 @@ Relays cap event size (limits vary by relay; unmeasured), and the checkpoint and
 
 ## Open
 - Placeholder kind number (addressable range), same no-NIP rule.
-- Asking for the current commitment over the mailbox (COMMON_RULES rule 4; the size fallback above): AAC#541.
+- Asking for the current commitment over the mailbox (COMMON_RULES rule 4; the size fallback above): to be defined in AAC#541.
 - Optional later: a tag in mesh-llm's 31990 listing pointing to this event (upstream PR, not needed).
