@@ -134,8 +134,8 @@ def capsules_bin():
 
 def chain_bytes(ledger_dir):
     """The node's chain, today's capsules.jsonl bytes (padding included, one line per leaf), from its ledger dir
-    (<data dir>/ledger): `capsules chain-lines --data-dir <data dir>` when the node is on the shelf (read-only, it
-    beside a running node), else the flat file. Raises OSError when it cannot be read."""
+    (<data dir>/ledger): `capsules chain-lines --data-dir <data dir>` when the node is on the shelf (read-only, so it
+    runs beside a running node), else the flat file. Raises OSError when it cannot be read."""
     d = Path(ledger_dir)
     if not chain_stored(d):
         return (d / CHAIN_FILE).read_bytes()

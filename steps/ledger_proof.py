@@ -251,7 +251,7 @@ def judge(ledger_dir, files, key_id, name):
         proof.append(rel(beside))
         if copy.is_file():
             proof.append(rel(copy))
-        if asked.get("unread") and not copy.is_file():  # our side could not read the node's chain: a gap, not a fault
+        if asked.get("unread") and not copy.is_file():  # not read: a missing tool, or the node's store; the reason says which
             open_.append((f"{f}: the node's chain was not read ({asked['unread']})", TOOLS_ISSUE))
             continue
         if reply is None:
