@@ -85,8 +85,8 @@ asked node holds, the asker's own chain also holds (it sent it) and the asked no
 `counterparty_half` (`exchange_subject`; the two data dirs are read, the asked node's is its `data_dir` in the population).
 It is sealed and judged like the others; a verified answer must serve records that each cite the half, and a refusal is
 judged by its reason with the asker a counterparty (a withholding or unnamed reason is a FAIL; coverage_unsatisfiable,
-which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED on loop#94). With no such half the
-ask is NOT_CHECKED on loop#94. A node cannot be asked
+which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED, as it needs a checkpoint covering the half). With no such half the
+ask is NOT_CHECKED. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
 The reporter backend collects first, then judges only what it kept (judge_reporter), so step 08 gets the same
@@ -1158,7 +1158,7 @@ def judge_exchange_line(line, entry, profile=PROFILE_V0):
     """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
     holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
     (the policy answers it), an ambiguous one is not checked, and a request-blaming one is fine, except coverage_unsatisfiable (the
-    no_checkpoint_yet line): its key is checked and the ask is left NOT_CHECKED on loop#94."""
+    no_checkpoint_yet line): its key is checked and the ask is left NOT_CHECKED."""
     if line.split(" ", 1)[0] not in ("refusal", "no_checkpoint_yet"):  # coverage_unsatisfiable reads as the latter
         return step12.judge_reporter_line(EXCHANGE, line, entry)
     if "listed_key=match" not in line.split():
