@@ -1676,7 +1676,11 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
     ids = {node["name"]: node["node_id"] for node in doc["nodes"]}
     for me, peer in (("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")):
         bundle = bundles / f"{peer}.for.{me}.json"
-        bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": []}}))
+        held = [{"capsule_id": f"b{k}", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
+            "phase": "output_settlement_observed", "observed_by": "payer",
+            "payment_hash": hashlib.sha256(bytes.fromhex(f"{k + 1:02x}" * 32)).hexdigest()}}}}
+                for k in range(n if paired is None else paired)]  # the bundle's settlements, as many as the check paired
+        bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": held}}))
         dump(bundles / f"check.{ids[me]}.{ids[peer]}.json", {
             "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
             "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
@@ -1835,6 +1839,29 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.honest(drop_node=3)
         self.assertEqual(self.recorded["result"], "NOT_CHECKED")
         self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_a_bundle_count_forged_to_match_the_books_fails(self):
+        # An honest 06 left the check open (the bundle holds 1 settlement, the books pair 2); a PASS forged into
+        # checks.json is re-derived from the row's counts as open, so 08 fails it.
+        self.honest(paired=1)
+        def forge(d):
+            checks = load(d / "checks.json")
+            k = "counterparty_count:stevenmih-1:stevenmih-2"
+            checks[k] = {"ok": True, "detail": "forged"}
+            dump(d / "checks.json", checks)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_rows_without_window_counts_are_not_reproduced_not_failed(self):
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            for r in rows:
+                for k in ("books_pair", "bundle_settlements", "window_from"):
+                    r.pop(k)
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "not_reproduced")
+        self.assertIn("carry no window counts", entries["06-settle"]["not_checked"]["why"])
 
     def test_a_checks_file_without_a_rows_check_fails_naming_it(self):
         def forge(d):

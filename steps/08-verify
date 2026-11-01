@@ -743,10 +743,13 @@ def keys_05_live(c):
 def rederive_06_live(m, c):
     """Live 06 on the Lightning rail (loop#243): its own main_lightning on the copied proof. Each node's
     recorded.json is the record 06 read from its ledger, so the ruled checks (reference, finality, band, rail_fee,
-    exchange_match) run again on them. counterparty_count is decided from counterparty.json's rows by 06's rule:
-    08 takes each row's status, bundle sha256 and disclosed count from 06 (the check files and signed bundles are
-    not in the proof) and decides again only that its paired count is the books' pair count. checks.json is written
-    again and must be the cited bytes; counterparty.json is validated as rows and carried."""
+    exchange_match) run again on them. counterparty_count is decided from counterparty.json's rows by 06's own
+    counterparty_verdict: 08 takes each row's status, bundle sha256, disclosed count and bundle settlement count from
+    06 (the check files and signed bundles are not in the proof) and decides again that the bundle's settlements and
+    the books' pairs in the window both number what the books pair here (loop#303). An open check 06 decided from the
+    bundle's bytes alone (the bundle missing, changed or holding undated or other settlements) is 06's word, never a
+    pass. checks.json is written again and must be the cited bytes; counterparty.json is validated as rows and
+    carried."""
     old_shape(c, "06", "checks.json")
     old_shape(c, "06", "counterparty.json")
     pop = load(c.pop / "population.json")
@@ -758,7 +761,12 @@ def rederive_06_live(m, c):
     if not isinstance(recorded_checks, dict):
         raise Mismatch("checks.json is not an object of checks")
     rows = load(c.bundle / "counterparty.json")
-    keys = {"bundle_sha256", "disclosed_settlements", "method", "node", "paired", "peer", "status", "unpaired"}
+    keys = {"books_pair", "bundle_settlements", "bundle_sha256", "disclosed_settlements", "method", "node", "paired",
+            "peer", "status", "unpaired", "window_from"}
+    if isinstance(rows, list) and rows and all(isinstance(r, dict) and "books_pair" not in r for r in rows):
+        raise Unreproducible("step 06: its live result re-derived from its proof bytes",
+                             "its counterparty.json rows carry no window counts: the finding predates the proof shape "
+                             "08 re-derives (loop#303)", OLD_SHAPE_ISSUE)
     pairs = {}
     for r in rows if isinstance(rows, list) else [None]:
         if not (isinstance(r, dict) and set(r) == keys and r["node"] in ids and r["peer"] in ids
@@ -770,8 +778,8 @@ def rederive_06_live(m, c):
         pairs[(r["node"], r["peer"])] = r
     judge = m.lightning_checks
 
-    def lightning_checks(found, _ids, _checks_dir):
-        checks, _ = judge(found, ids, None)  # checks 1-5; the counterparty entries are decided from the rows below
+    def lightning_checks(found, _ids, _checks_dir, since=None):
+        checks, _ = judge(found, ids, None, since)  # checks 1-5; the counterparty entries are decided from the rows
         cross = m.crosscheck(found, every_node=False)
         expected = {}
         for p in cross["paired"].values():
@@ -780,23 +788,13 @@ def rederive_06_live(m, c):
         for (me, peer), r in sorted(pairs.items()):
             what = f"counterparty_count:{me}:{peer}"
             n = expected.get(tuple(sorted((me, peer))), 0)
-            if r["status"] == "FAIL":
-                checks[what] = {"ok": False, "detail": f"{me}'s book contradicts {peer}'s signed bundle: "
-                                                       f"{r['unpaired']} unpaired"}
-            elif isinstance(recorded_checks.get(what), dict) and recorded_checks[what].get("ok") is None and str(
-                    recorded_checks[what].get("detail")).startswith(
-                    f"{me}'s check names a bundle that is missing or changed since"):
-                # The bundle's bytes are not in the proof: 06's word, and only ever an open check, never a pass.
-                checks[what] = {"ok": None, "detail": recorded_checks[what]["detail"]}
-            elif r["status"] != "PASS" or r["paired"] != n:
-                checks[what] = {"ok": None, "detail": f"{me}'s check of {peer}'s signed bundle reads {r['status']} "
-                                                      f"with {r['paired']} paired, while the books pair {n} payments "
-                                                      "between them: the check predates a payment (run lab/lab.sh "
-                                                      "bundles)"}
-            else:
-                checks[what] = {"ok": True, "detail": f"{me}'s {r['disclosed_settlements']} settlements against "
-                                                      f"{peer}'s signed bundle (sha256 {str(r['bundle_sha256'])[:12]}"
-                                                      f"): PASS, {r['paired']} paired, {r['unpaired']} unpaired"}
+            ok, detail = m.counterparty_verdict(r, n, since)
+            kept = recorded_checks.get(what)
+            if ok is not False and isinstance(kept, dict) and kept.get("ok") is None and str(kept.get("detail")).startswith(
+                    (f"{me}'s check names a", f"{peer}'s signed bundle holds")):
+                # Decided from the bundle's bytes, which are not in the proof: 06's word, only ever open, never a pass.
+                ok, detail = None, kept["detail"]
+            checks[what] = {"ok": ok, "detail": detail}
         return checks, [pairs[k] for k in sorted(pairs)]
 
     m.lightning_checks = lightning_checks
