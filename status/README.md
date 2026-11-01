@@ -12,9 +12,15 @@
 python3 -B status/status_page.py findings --lock versions.lock --out _site/status
 ```
 
-- It reads the newest `findings/<date>-rehearsal/` and the newest
-  `findings/<date>-live/` (loop.sh's runs) and shows them side by side; a
-  rehearsal result is never added to a live one.
+- It reads the newest `findings/<date>-rehearsal[-N]/` and the newest
+  `findings/<date>-live[-N]/` (loop.sh's and the lab's runs; the newest date, then the
+  highest N) and shows them side by side; a rehearsal result is never added to
+  a live one.
+- An Ecosystems section shows one column per registered ecosystem (`ECOSYSTEMS`:
+  `mesh` is `findings/`, `muse` is `findings/muse/`, shown on the page as `consumer-agent`), each its newest run, with
+  its own badge (`badge-<ecosystem>.svg`). An ecosystem with no run keeps its
+  column, `NOT_CHECKED` with the issue that owns it. Nothing is added across
+  ecosystems.
 - A cell is green only when the step's `finding.json` is `PASS` and passes
   `steps/finding.py`'s check (every proof file present, each matching its
   sha256). `FAIL`, and a finding the check refuses (`MALFORMED`), are red.
