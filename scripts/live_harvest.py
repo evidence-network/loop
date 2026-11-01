@@ -56,6 +56,12 @@ def run(*cmd, cwd=None, check=True, **kw):
     return p
 
 
+def run_key(name):
+    """(date, N) of a <date>-live-<N> name: live-10 is newer than live-9."""
+    m = NAME_RE.fullmatch(name)
+    return (name[:10], int(name.rsplit("-", 1)[1])) if m else ("", 0)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -68,7 +74,7 @@ def fetch(args, dest):
     """NAME and the directory holding NAME.tgz, NAME.tgz.sha256 and NAME.json."""
     if args.from_dir:
         src = Path(args.from_dir)
-        names = sorted(p.stem for p in src.glob("*.json"))
+        names = sorted((p.stem for p in src.glob("*.json") if NAME_RE.fullmatch(p.stem)), key=run_key)
         name = args.name or (names[-1] if names else "")
         if not name:
             raise Refuse(5, f"no run record in {src}")
@@ -81,7 +87,7 @@ def fetch(args, dest):
             ls = run("gcloud", "compute", "ssh", vm, "--zone", zone, "--command", f"ls -1 {remote}", check=False)
             if ls.returncode != 0:
                 raise Refuse(5, f"listing {remote} on {vm} failed: {ls.stderr.strip()[:200]}")
-            names = sorted(f[:-5] for f in ls.stdout.split() if NAME_RE.fullmatch(f[:-5]) and f.endswith(".json"))
+            names = sorted((f[:-5] for f in ls.stdout.split() if NAME_RE.fullmatch(f[:-5]) and f.endswith(".json")), key=run_key)
             if not names:
                 raise Refuse(5, f"no run record in {remote} on {vm}")
             name = names[-1]
@@ -101,6 +107,22 @@ def fetch(args, dest):
     return name, dest
 
 
+# The privacy scans skip paths named like these (a scanned tree's .git, tests/ ...), so nothing under them is published.
+SKIPPED_BY_SCANS = {".git", "node_modules", "__pycache__"}
+STEP_DIR = re.compile(r"\d{2}-[a-z][a-z0-9-]*")
+
+
+def allowed_member(member, prefix):
+    """prefix itself, prefix/run.json, prefix/index.md, or anything inside prefix/<NN-step>/ the scans read."""
+    if member == prefix:
+        return True
+    parts = Path(member).parts
+    if ".." in parts or not member.startswith(prefix + "/") or SKIPPED_BY_SCANS.intersection(parts):
+        return False
+    rest = parts[len(Path(prefix).parts):]
+    return rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None
+
+
 def unpack(name, files, into):
     want = files / f"{name}.tgz"
     digest = (files / f"{name}.tgz.sha256").read_text().split()
@@ -110,8 +132,9 @@ def unpack(name, files, into):
     try:
         with tarfile.open(want, "r:gz") as tar:
             for m in tar.getmembers():
-                if not (m.isfile() or m.isdir()) or not (m.name == prefix or m.name.startswith(prefix + "/")) or ".." in Path(m.name).parts:
-                    raise Refuse(6, f"{name}.tgz has a member outside {prefix}/ or that is not a file: {m.name}")
+                if not (m.isfile() or m.isdir()) or not allowed_member(m.name, prefix):
+                    raise Refuse(6, f"{name}.tgz has a member that is not findings/{name}/<NN-step>/..., run.json or index.md "
+                                    f"(or is not a plain file): {m.name}")
             tar.extractall(into, filter="data")
     except (tarfile.TarError, OSError) as e:
         raise Refuse(6, f"{name}.tgz cannot be unpacked: {e}")
@@ -121,14 +144,14 @@ def unpack(name, files, into):
     return out
 
 
-def privacy(tree, where, code):
+def privacy(tree, where, code, findings=True):
     """The checks are `code`'s (the worktree at origin/main), never the operator's clone, which may be on any branch."""
     for tool in ("check_no_preimages.py", "check_personal_data.py"):
         p = run(sys.executable, "-B", str(code / "scripts" / tool), str(tree), check=False)
         if p.returncode != 0:
             raise Refuse(7, f"{tool} flagged {where}: {(p.stdout + p.stderr).strip()[:300]}")
-    p = run(sys.executable, "-B", str(code / "steps" / "finding.py"), "check", str(tree), check=False)
-    if p.returncode != 0:
+    p = run(sys.executable, "-B", str(code / "steps" / "finding.py"), "check", str(tree), check=False) if findings else None
+    if p is not None and p.returncode != 0:
         raise Refuse(6, f"steps/finding.py check refused {where}: {p.stderr.strip()[:300]}")
 
 
@@ -136,6 +159,8 @@ def slim(full, dest, name, url, digest):
     """dest = full's finding.json files, run.json, index.md and the proof-archive.json naming the release asset."""
     dest.mkdir(parents=True)
     for step in sorted(p for p in full.iterdir() if p.is_dir()):
+        if not (step / "finding.json").is_file():
+            raise Refuse(6, f"{step.name} has no finding.json")
         (dest / step.name).mkdir()
         shutil.copy2(step / "finding.json", dest / step.name / "finding.json")
     for extra in ("run.json", "index.md"):
@@ -158,8 +183,13 @@ def main(argv):
     except Refuse as r:
         print(f"live_harvest: {r}", file=sys.stderr)
         return r.code
+    except (ValueError, OSError, TypeError, KeyError, AttributeError) as e:
+        print(f"live_harvest: malformed input: {e!r}", file=sys.stderr)
+        return 6
     finally:
         run("git", "worktree", "remove", "--force", str(wt), cwd=ROOT, check=False)
+        if getattr(args, "local_branch", None):  # made here and never pushed: a rerun must find none
+            run("git", "branch", "-D", args.local_branch, cwd=ROOT, check=False)
         shutil.rmtree(work, ignore_errors=True)
 
 
@@ -170,7 +200,9 @@ def harvest(args, work, wt):
     name, files = fetch(args, files)
     full = unpack(name, files, work / "unpacked")
     record = json.loads((files / f"{name}.json").read_text())
-    paid = bool(record.get("exchange", {}).get("paid"))
+    if not isinstance(record, dict) or not isinstance(record.get("exchange"), dict):
+        raise Refuse(6, f"{name}.json is not a run record")
+    paid = record["exchange"].get("paid") is True
     digest = sha256(files / f"{name}.tgz")
 
     run("git", "fetch", "-q", "origin", "main", cwd=ROOT)
@@ -179,6 +211,7 @@ def harvest(args, work, wt):
         raise Refuse(4, f"origin already has {branch}")
     run("git", "worktree", "add", "-q", "--detach", str(wt), "origin/main", cwd=ROOT)
     privacy(full, f"{name} as unpacked", wt)
+    privacy(files / f"{name}.json", f"{name}.json", wt, findings=False)  # it goes on the release too
     if (wt / "findings" / name).exists():
         raise Refuse(4, f"findings/{name} is already on origin/main")
     tag = f"live-{name}"
@@ -190,19 +223,30 @@ def harvest(args, work, wt):
     privacy(wt / "findings" / name, f"findings/{name} as committed", wt)
 
     # The worktree's own gate: its ROOT is the worktree, so the findings and the versions.lock are origin/main's.
-    gate = run(sys.executable, "-B", str(wt / "scripts" / "ecosystem_gate.py"), "update", "--ecosystem", "mesh", "--findings",
-               str(wt / "findings" / name), "--baseline", str(wt / "baseline" / "live.json"), check=False)
-    # A refused payment leaves step 06 NOT_CHECKED with no result of the step: the baseline stays where it was.
+    gate_cmd = [sys.executable, "-B", str(wt / "scripts" / "ecosystem_gate.py"), "update", "--ecosystem", "mesh",
+                "--findings", str(wt / "findings" / name)]
+    if paid:
+        gate = run(*gate_cmd, "--baseline", str(wt / "baseline" / "live.json"), check=False)
+        refused_only = False
+    else:
+        # No paid exchange: step 06 is NOT_CHECKED, so the baseline never moves; the gate still judges the other steps on a copy.
+        copy = work / "baseline-copy.json"
+        shutil.copy2(wt / "baseline" / "live.json", copy)
+        gate = run(*gate_cmd, "--baseline", str(copy), check=False)
+        others = [l for l in (gate.stderr + gate.stdout).splitlines() if l.strip() and l.strip() != "mesh step 06: PASS -> NOT_CHECKED"]
+        refused_only = gate.returncode != 0 and not others
     moved = gate.returncode == 0 and paid
-    if gate.returncode == 0 and not paid:
-        run("git", "checkout", "-q", "--", "baseline/live.json", cwd=wt)
-    verdict = ("the baseline moved to this run" if moved else
-               "REGRESSION: " + (gate.stderr or gate.stdout).strip() if gate.returncode != 0 else
-               "the run's payment was refused (06 NOT_CHECKED), so the baseline did not move")
+    if moved:
+        verdict = "the baseline moved to this run"
+    elif not paid and (gate.returncode == 0 or refused_only):
+        verdict = "the run's payment was refused (06 NOT_CHECKED), so the baseline did not move; no other step regressed"
+    else:
+        verdict = "REGRESSION: " + (gate.stderr or gate.stdout).strip()
 
     paths = [f"findings/{name}"] + (["baseline/live.json"] if moved else [])
     run("git", "add", "--", *paths, cwd=wt)
     run("git", "checkout", "-q", "-b", branch, cwd=wt)
+    args.local_branch = branch
     run("git", "commit", "-q", "-s", "-m", f"data: live harvest {name}", cwd=wt)
     ok = run(sys.executable, "-B", str(wt / ".github" / "harvest_allowlist.py"), "origin/main", "HEAD", cwd=wt, check=False)
     if ok.returncode != 0:
@@ -213,6 +257,7 @@ def harvest(args, work, wt):
     run("gh", "release", "create", tag, str(files / f"{name}.tgz"), str(files / f"{name}.tgz.sha256"),
         str(files / f"{name}.json"), "--repo", repo, "--title", f"Live run {name}", "--notes-file", str(notes))
     run("git", "push", "-q", "origin", branch, cwd=wt)
+    args.local_branch = None  # pushed: the branch is the PR's
     steps = ", ".join(f"{k} {v}" for k, v in sorted(record.get("steps", {}).items()))
     body = work / "body.md"
     body.write_text(

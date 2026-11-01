@@ -26,7 +26,8 @@ GH = r'''#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
 case "$1 $2" in
   "release view") [ -n "${STUB_RELEASE_EXISTS:-}" ] ;;
-  "pr create") echo "https://github.com/evidence-network/loop/pull/9999" ;;
+  "release create") [ -z "${STUB_RELEASE_FAIL:-}" ] ;;
+  "pr create") a="$*"; b=${a#*--body-file }; cp "${b%% *}" "$STUB_LOG.body"; echo "https://github.com/evidence-network/loop/pull/9999" ;;
   *) ;;
 esac
 '''
@@ -82,6 +83,7 @@ class HarvestTest(unittest.TestCase):
     def make_run(self, results=STEPS, paid=True, plant=None, extra_member=None):
         run_dir = self.tmp / "run"
         run_dir.mkdir(exist_ok=True)
+        shutil.rmtree(self.tmp / "pack", ignore_errors=True)
         full = self.tmp / "pack" / "findings" / NAME
         write_run(full, results, plant)
         tgz = run_dir / f"{NAME}.tgz"
@@ -176,10 +178,41 @@ class HarvestTest(unittest.TestCase):
         self.assertFalse(any(c.startswith("pr merge") for c in self.gh_calls()))
 
     def test_refused_payment_leaves_the_baseline(self):
-        self.make_run(paid=False)
+        self.make_run(results={**STEPS, "06-settle": "NOT_CHECKED"}, paid=False)
         r = self.harvest()
         self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn("payment was refused", Path(str(self.log) + ".body").read_text())
+        self.assertNotIn("REGRESSION", Path(str(self.log) + ".body").read_text())
         self.assertEqual(json.loads(self.show("baseline/live.json"))["ecosystems"]["mesh"]["findings"], "findings/2026-10-01-live-1")
+
+    def test_member_the_scans_skip_is_refused(self):
+        for member in (f"findings/{NAME}/tests/x.log", f"findings/{NAME}/05-deal/__pycache__/x", f"findings/{NAME}/stray.txt"):
+            self.make_run(extra_member=member)
+            self.assertEqual(self.harvest().returncode, 6, member)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_newest_run_is_by_number_not_by_string(self):
+        run_dir = self.make_run()
+        for n in (9, 10):
+            for ext in (".tgz", ".tgz.sha256", ".json"):
+                shutil.copy2(run_dir / f"{NAME}{ext}", run_dir / f"2026-11-01-live-{n}{ext}")
+        # live-10's archive holds findings/2026-11-01-live-1, not -10: refused, which names the one it picked.
+        r = self.harvest()
+        self.assertEqual(r.returncode, 6, r.stderr)
+        self.assertIn("2026-11-01-live-10", r.stderr)
+
+    def test_malformed_record_is_a_refusal(self):
+        run_dir = self.make_run()
+        (run_dir / f"{NAME}.json").write_text('{"exchange": 3}')
+        r = self.harvest()
+        self.assertEqual(r.returncode, 6, r.stderr)
+        self.assertIn("live_harvest:", r.stderr)
+
+    def test_a_failed_publish_leaves_no_local_branch_and_a_rerun_works(self):
+        self.make_run()
+        self.assertEqual(self.harvest(STUB_RELEASE_FAIL="1").returncode, 4)
+        self.assertEqual(git("branch", "--list", "live-harvest/*", cwd=self.clone), "")
+        self.assertEqual(self.harvest().returncode, 0)
 
     def test_auto_merge_only_with_the_flag(self):
         self.make_run()
