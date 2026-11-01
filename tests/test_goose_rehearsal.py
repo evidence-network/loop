@@ -1,5 +1,5 @@
 """The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, and step 06
-judging it unchanged. Skipped unless steps/goose.setup.sh has installed the Goose tools.
+judging it unchanged (its rail checks hold; the row stays NOT_CHECKED until G1's pay record is read). Skipped unless steps/goose.setup.sh has installed the Goose tools.
 
 Run: python3 -m unittest tests.test_goose_rehearsal -v
 """
@@ -36,7 +36,7 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(doc["rail"], "mock")
         self.assertEqual(doc["goose"]["steps"], ["06"])
 
-    def test_the_rail_object_is_the_deals_and_step_06_passes_unchanged(self):
+    def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())
         exchange = json.loads((self.pop / "step06" / "exchange.json").read_text())
         self.assertEqual((exchange["exchange_id"], exchange["payer"], exchange["payee"]),
@@ -46,7 +46,10 @@ class GooseRehearsalTest(unittest.TestCase):
         r = subprocess.run([str(ROOT / "steps/06-settle"), "--population", str(self.pop), "--out", str(out)],
                            stdin=subprocess.DEVNULL, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(json.loads((out / "finding.json").read_text())["result"], "PASS")
+        found = json.loads((out / "finding.json").read_text())
+        self.assertEqual(found["result"], "NOT_CHECKED")  # G1's pay record is not read yet (capsule-emit#408)
+        checks = json.loads((out / "checks.json").read_text())["checks"]
+        self.assertTrue(all(c["ok"] for c in checks.values()), checks)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,15 @@
 {
   "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
-  "detail": "exchange deal-e6ba411fb6b13b4d, settlement 3ec4bdede7b57a4ffc69ad10cff6a2ebf072ad589677b54f1a2df42c48a21a69 (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: these held on the proof bytes: ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller. Band USD:e0. Volume: 1 filtered of 1 raw settlements (final, on a fee-paying rail, payer and payee declared under different controllers). Outside this step's assertion: the exchange's sealed halves, which this step reads as an unsigned stand-in, and the controller declarations, which are rehearsal stand-ins: Mesh-LLM/capsules-plugin#49. Outside this step's assertion: a settlement object on a real rail, verified with finality by its adapter: Mesh-LLM/capsules-plugin#83. Outside this step's assertion: the settlement is tied to the Goose deal by construction (the driver passed the rail's settlement id to the buyer's loop_settle; that the pay record commits it is not read), and this step reads the exchange, controller and settlement-disclosure files the rehearsal driver wrote (the disclosures signed by the driver with each node's key, their counts computed by the driver from the rail's ledger), not the deal's pay record: evidence-network/loop#330.",
-  "finished": "2026-11-01T08:59:52Z",
+  "detail": "exchange deal-23560afbf2485bd3, settlement 3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: the checks on the rail's proof bytes held (ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller; band USD:e0), but rail settlement is tied by construction and G1's pay record is not read yet.",
+  "finished": "2026-11-01T09:01:01Z",
   "name": "settle",
-  "not_checked": [],
+  "not_checked": [
+    {
+      "issue": "action-state-group/capsule-emit#408",
+      "what": "that G1's pay record commits the rail's settlement id",
+      "why": "rail settlement tied by construction; G1 pay record not read yet; the exchange, controller and settlement-disclosure files are the rehearsal driver's"
+    }
+  ],
   "pinned": {
     "goose-g1": {
       "ref": "edee7705c47dc9a0540d91315e75c722d28c3f0b",
@@ -14,46 +20,46 @@
   "proof": [
     {
       "path": "rail.json",
-      "sha256": "f53ef8cb019a66879fee64b1900a1625c1fddfddb7eacf8d297d42256c820be2"
+      "sha256": "e65d70e34eebbb35e608faa342a04fc94e3ac5367b516bcb0942df6bf581bcf3"
     },
     {
       "path": "ledger.jsonl",
-      "sha256": "64fbdd6c979ce48636bb79b277c051460e2c7965c45671628a7e39279a797cb6"
+      "sha256": "0f65275e827e47a808571a94f17d826259f938908e04b1ec2408a269f755bdfe"
     },
     {
       "path": "rail-key.pub.pem",
-      "sha256": "ee65b7c8167f85725ef3b7ad9979c59b240a9e736b9f8aed4181f9477e0c1455"
+      "sha256": "c31caf5d40c33885c400598639994ac9d63c80f9d67e78581d03f09ba54b67df"
     },
     {
       "path": "exchange.json",
-      "sha256": "407194564e792cd251b0fd7f5880e1da7a19ebc2bcf38fd0548eae6bfebb6d6d"
+      "sha256": "93733c67a7f621e00c8f0b38e049a61389723ef1669e5811842b149c2260b188"
     },
     {
       "path": "controllers.json",
-      "sha256": "a6e847ab421a234ff23617788b3a92177963430ef34f3601efe29693ece8f678"
+      "sha256": "f41641ae1356b414a6df4f5b6a2afb9fceebc9f67a1ebc5cdedd630a541a838a"
     },
     {
       "path": "disclosure-buyer.json",
-      "sha256": "6ab2601cc32b87d46c77bbba961aca9c01fa1f68d67e61b1ea4f7b938a3a8b1e"
+      "sha256": "eb25b54c0bbde8bcd535763a320cf53d94f8ee0cd59edd8b79307746a38e80e9"
     },
     {
       "path": "disclosure-seller.json",
-      "sha256": "8ba74b62e832bb8b14f99bb63e90eceb625bee0e4bb994443362693bcfa1a713"
+      "sha256": "1c8f6085590af31770ee8072be6060bc13fc77729e917b78ddc8e978f509d108"
     },
     {
       "path": "adapter.json",
-      "sha256": "57b7c2e2a0ebf2847a98cf9b9dc1bd619135ab02d028cd3d05adb66e1eebe0ca"
+      "sha256": "46c81daa9cb66b5c0d5f83624be038c2a8082a9005ba3f8e22e7ab27e6362eeb"
     },
     {
       "path": "checks.json",
-      "sha256": "e17129decfdc3be2d26999cf53063ba463e34340ea21b0e1fb039e4af732251f"
+      "sha256": "b441daeae9513ba87bcdb2175473e01991e16e63771050675b0748162b90b294"
     },
     {
       "path": "volume.json",
       "sha256": "e28710921427be986332aa01f366601b3410ec57503e95e27ccbc81f58d36361"
     }
   ],
-  "result": "PASS",
-  "started": "2026-11-01T08:59:52Z",
+  "result": "NOT_CHECKED",
+  "started": "2026-11-01T09:01:01Z",
   "step": "06"
 }

@@ -180,19 +180,20 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh")
-    def test_goose_with_its_tools_runs_step_06_and_leaves_the_rest_not_checked(self):
+    def test_goose_with_its_tools_runs_step_06_and_keeps_every_row_not_checked_until_the_pay_record_is_read(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
         results = dict(line.split()[::2] for line in r.stdout.splitlines())
-        self.assertEqual(results["06"], "PASS")
-        self.assertEqual({v for k, v in results.items() if k != "06"}, {"NOT_CHECKED"})
+        self.assertEqual(set(results.values()), {"NOT_CHECKED"})  # 06 included: G1's pay record is not read yet
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
-        detail = self.finding("06-settle", out)["detail"]
-        self.assertIn("tied to the Goose deal by construction", detail)
-        self.assertIn("settlement-disclosure files the rehearsal driver wrote", detail)
-        self.assertIn("counts computed by the driver from the rail's ledger", detail)
-        self.assertEqual(list(self.finding("06-settle", out)["pinned"]), ["goose-g1"])
+        six = self.finding("06-settle", out)
+        self.assertIn("the checks on the rail's proof bytes held", six["detail"])
+        self.assertIn("G1's pay record is not read yet", six["detail"])
+        self.assertEqual(six["not_checked"][0]["issue"], "action-state-group/capsule-emit#408")
+        self.assertIn("rail settlement tied by construction; G1 pay record not read yet", six["not_checked"][0]["why"])
+        self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
+        self.assertEqual(list(six["pinned"]), ["goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
         r = self.loop("--ecosystem", "muse", "--population", "live")

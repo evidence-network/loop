@@ -48,13 +48,13 @@
       "status": "PASS"
     },
     {
-      "detail": "rail key 9a9a0921909908a1c2bf9a1f6878b3dac333636eef4f4ae2259f13a927c3781e",
+      "detail": "rail key d1bd6f4ec2e0baa2ad78b150802ef51024521f1d7137d88800395b9dd23a5e32",
       "method": "Ed25519 over the JCS form without sig, under the key rail.json names (openssl pkeyutl)",
       "property": "rail_signature",
       "status": "PASS"
     },
     {
-      "detail": "stated 3ec4bdede7b57a4ffc69ad10cff6a2ebf072ad589677b54f1a2df42c48a21a69, computed 3ec4bdede7b57a4ffc69ad10cff6a2ebf072ad589677b54f1a2df42c48a21a69",
+      "detail": "stated 3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e, computed 3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e",
       "method": "settlement_id = SHA-256 of the JCS form without settlement_id and sig",
       "property": "settlement_id",
       "status": "PASS"
@@ -80,6 +80,6 @@
   ],
   "settlement": {
     "line": 1,
-    "settlement_id": "3ec4bdede7b57a4ffc69ad10cff6a2ebf072ad589677b54f1a2df42c48a21a69"
+    "settlement_id": "3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e"
   }
 }
