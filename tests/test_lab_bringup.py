@@ -726,14 +726,14 @@ class ToolsTest(LabRoot):
         self.setup_script("02-b", f"echo 02 >> {ran}; exit 3")
         self.setup_script("12-c", f"echo 12 >> {ran}; exit 5")
         self.setup_script("ledger-check", f"echo lc >> {ran}")  # shared by steps, no step number
-        r = self.run_lab("tools")
+        r = self.run_lab("tools", LOOP_TOOLS=str(self.tmp / "tools"))
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertEqual(ran.read_text().split(), ["01", "02", "12", "lc"])
         self.assertIn("02-b.setup.sh FAILED (exit 3)", r.stderr)
         self.assertIn("12-c.setup.sh FAILED (exit 5)", r.stderr)
         build = self.build()
         self.assertIs(build["ok"], False)
-        self.assertEqual(build["tools"]["loop_tools"], self.env.get("LOOP_TOOLS") or str(Path.home() / ".cache" / "evidence-network-loop"))
+        self.assertEqual(build["tools"]["loop_tools"], str(self.tmp / "tools"))
         self.assertEqual(build["tools"]["setups"], [{"name": "01-a.setup.sh", "exit": 0},
                                                     {"name": "02-b.setup.sh", "exit": 3},
                                                     {"name": "12-c.setup.sh", "exit": 5},

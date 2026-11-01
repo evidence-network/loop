@@ -134,7 +134,8 @@ On the lab host: `git`, `curl`, `python3`, `openssl` 3, `tmux`, `ss`
 (iproute2), and `cargo` with the crates.io index (the ledger check is built
 from source). Then install every step's pinned tools (capsulectl and
 capsulectl-book for `join.sh`, what the steps run, and the ledger check
-steps 04 to 09 share), each checked against its release's checksums:
+steps 04, 05, 07, 08 and 09 share), each pinned by versions.lock (a release
+checksum, or a `--locked` source build):
 
 ```sh
 lab/lab.sh tools
@@ -149,11 +150,13 @@ If any setup failed, it names each one with its exit code, exits 1, and
 printed rather than starting nodes without a step's tools.
 
 `tools` also builds step 02's driver
-(`~/.cache/evidence-network-loop/02-book/bin/loop-step02-book`), which the lab
+(`${LOOP_TOOLS:-~/.cache/evidence-network-loop}/02-book/bin/loop-step02-book`), which the lab
 test witness signs its receipts with (`lab/lab.sh witness`, section 3). Run
 `lab/lab.sh tools` again after every pull that changes `steps/02-book.d/`,
 then restart the witness (`kill $(cat $LAB_DIR/run/witness.pid)`, then
-`lab/lab.sh witness`) so it signs with the new build.
+`lab/lab.sh witness`) so it signs with the new build. The daily live run's
+`tools` installs into its own directory (`LIVE_TOOLS`, below), so it never
+rebuilds the driver the witness signs with: that stays this manual step.
 
 ## 2. Three nodes on one host
 
@@ -701,7 +704,15 @@ Once the lab is up, `scripts/live_daily.sh` runs the live loop once, unattended 
 from a dedicated clone at origin/main, which it checks. It holds `$LAB_DIR/run/LIVE_RUN` and refuses to start beside
 another live run or a running `lab.sh` or `loop.sh`. A leftover `LIVE_RUN` from a killed run makes it exit 3;
 remove it only after checking that no run is live. It runs `lab.sh tools` into its own tools directory (`LIVE_TOOLS`, default
-`~/.cache/evidence-network-loop-live`), `lab.sh check` and `lab.sh running`, then makes one paid
+`~/.cache/evidence-network-loop-live`), so it needs `cargo` and the crates.io
+index too; its first run into an empty directory is a cold build, bounded by
+`LIVE_STEP_TIMEOUT`. A setup that fails stops the run with exit 5 before any
+spend, its output in `$LAB_DIR/logs/live-tools.log`. The tool binaries of other
+clones do not change, but `$LAB_DIR/build.json` holds one `tools` record, which
+`check` reads: after a day whose tools failed, the operator's next `check`
+reads `"ok": false` (and `entries` refuses) until a `tools` run passes, and the
+other way round. Its `loop_tools` field names the directory that wrote it.
+Then the run does `lab.sh check` and `lab.sh running`, and makes one paid
 exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 07,
 09, stage 1 (01, 02, 03, 12, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;

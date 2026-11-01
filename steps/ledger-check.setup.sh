@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the offline ledger check step 08 runs (loop#276): steps/ledger-check.d built --locked against the
+# Install the offline ledger check steps 04, 05, 07, 08 and 09 share (loop#276, loop#288): steps/ledger-check.d built --locked against the
 # checkpointed-local-log version versions.lock pins, the log the capsules plugin signs its ledger checkpoints with.
 #
 #   steps/ledger-check.setup.sh
