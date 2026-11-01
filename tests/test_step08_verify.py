@@ -343,7 +343,7 @@ class Step08Test(unittest.TestCase):
         (sd / "recorded.json").write_text("{}\n")
         finding.write(sd, result="NOT_CHECKED", population="live", asserts="a judgment", pinned=[],
                       proof=["recorded.json"], detail="", started=finding.now(),
-                      not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}])
+                      not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#193"}])
         out = live / "08-verify"
         step.main(["--population", str(ROOT / "population" / "live"), "--out", str(out)])
         f = load(out / "finding.json")
@@ -456,7 +456,7 @@ class Step08Test(unittest.TestCase):
             (sd / "recorded.json").write_text("{}\n")
             finding.write(sd, result="NOT_CHECKED", population="live", asserts="x", pinned=[],
                           proof=["recorded.json"], detail="", started=finding.now(),
-                          not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}])
+                          not_checked=[{"what": "x", "why": "y", "issue": "evidence-network/loop#193"}])
         write_run_json(live, ["06", "12", "08"], "live")
         shutil.rmtree(live / "12-join")
         out = live / "08-verify"
@@ -495,7 +495,7 @@ class Step08NotCheckedListTest(unittest.TestCase):
             verdict, entries = verify(run)
             self.assertEqual(entries["01-seal"]["status"], "reproduced", verdict["detail"])
             f = load(run / "01-seal" / "finding.json")
-            f["not_checked"] = [{"what": "x", "why": "y", "issue": "evidence-network/loop#188"}]
+            f["not_checked"] = [{"what": "x", "why": "y", "issue": "evidence-network/loop#193"}]
             dump(run / "01-seal" / "finding.json", f)
             verdict, entries = verify(run)
             self.assertEqual(verdict["result"], "FAIL", verdict["detail"])

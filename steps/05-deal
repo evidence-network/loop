@@ -83,7 +83,7 @@ the step fetches origin/main, takes its newest first-parent commit no later than
 (`revocations_main`) and names it in the declaration, so a branch cannot drop a statement from its own head and a
 stale clone cannot declare an old list current. If the verifier rejects the declaration (a half or citing record
 issued after the step's start), or origin/main could not be fetched or read, revocation is a not_checked entry
-(loop#240). Step 08 holds the kept commit to its own clone's origin/main (loop#281), and judges again with the lists
+(loop#193). Step 08 holds the kept commit to its own clone's origin/main (loop#281), and judges again with the lists
 there when nodes/revocations/ differs. A binding that does not apply or does
 not name the key is a FAIL; one whose bytes are missing, or have another digest (the node may have bound again), is a
 not_checked entry. A revocations file that cannot be read makes the binding not apply, a FAIL with that reason
@@ -372,7 +372,7 @@ DELEGATED_BY = "delegated_by"  # CB §3.2: the one claim type that gives a key a
 # of the step's start (scripts/binding_verify.py); revocation is PASS on that snapshot, FAIL when a statement in it
 # applies, and NOT_CHECKED when the verifier rejects the declaration (a time asked about after the step's start) or
 # the clone holds no main to read the list from.
-BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
+BINDING_REVOCATION_ISSUE = "evidence-network/loop#193"
 REVOCATIONS_KEY = "revocations_main"  # nodes.json: the main commit nodes/revocations/ is read from (bv.snapshot)
 
 
@@ -380,7 +380,7 @@ def live_declarations(counts, unread):
     """The not_checked entries for the controller binding behind current-build halves cited with a binding
     digest: `counts` is {state: n} of binding_check, `unread` the reasons a binding could not be read. A binding
     that applies with revocation PASS (ok) needs none; one that applies with revocation NOT_CHECKED (open: the
-    verifier rejected the run's declaration) is named on loop#240."""
+    verifier rejected the run's declaration) is named on loop#193."""
     out = []
     if counts.get("unread"):
         out.append({"what": LIVE_DECLARATION_WHAT, "issue": live.ISSUE,

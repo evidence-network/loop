@@ -119,7 +119,7 @@ Revocation PASS then means only that no statement in that snapshot applies:
 it is the loop run's statement, and a statement published after the snapshot
 can still withdraw the binding. If the verifier rejects the declaration (for
 example, a time asked about after it, or older than its max age), revocation
-is NOT_CHECKED (evidence-network/loop#240), and so it is when the clone holds
+is NOT_CHECKED (evidence-network/loop#193), and so it is when the clone holds
 no main to read from. The loop is stricter than CB v0 §9.4 about this
 folder: a file in it that is out of shape makes the binding not apply, rather
 than leaving revocation NOT_CHECKED, because every pull request checks the

@@ -50,7 +50,7 @@ folder holds no file for the binding) as of the time it checks the binding,
 and the verifier reports revocation PASS when no statement in that snapshot
 applies: the loop run's statement, scoped to the snapshot. A live run reads
 the list as main held it at that time. If the verifier rejects the
-declaration, revocation is a not_checked entry (loop#240); here every
+declaration, revocation is a not_checked entry (loop#193); here every
 time asked about is the declaration's own, so that is defensive only. For a Mesh
 node (`reporter`), the pinned plugin checks the record itself before its
 doctor reports it bound, and the loop checks the record the node holds in its
@@ -172,7 +172,7 @@ STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 # list is complete as of the binding's check time (CB-1 option A, agent-action-capsule#495, scripts/binding_verify.py):
 # revocation is PASS on that snapshot, FAIL when a statement in it applies, NOT_CHECKED when the declaration does not
 # count, which with as_of the one time asked about (and E) only a declaration the verifier refuses can give.
-BINDING_REVOCATION_ISSUE = "evidence-network/loop#240"
+BINDING_REVOCATION_ISSUE = "evidence-network/loop#193"
 BINDING_REVOCATION = {
     "what": "the controller binding's revocation",
     "why": f"the verifier rejected the run's declaration that nodes/{bv.REVOCATIONS}/ is complete, or the "

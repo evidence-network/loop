@@ -1100,7 +1100,7 @@ class BindingGapTest(unittest.TestCase):
     commitment (loop#161) is matched per node."""
 
     def test_the_binding_gap_is_a_declaration_that_does_not_count(self):
-        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#240")
+        self.assertEqual(step.BINDING_REVOCATION["issue"], "evidence-network/loop#193")
         self.assertFalse(hasattr(step, "LIVE_NOT_CHECKED"))
 
 

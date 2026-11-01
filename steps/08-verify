@@ -31,7 +31,7 @@ this step, with no account and no network call:
                 also judge again with nodes/revocations/ as this clone's
                 origin/main holds it (loop#281). The other live
                 steps' judges read a lab node's data dir or console, so they
-                are not_checked (evidence-network/loop#188).
+                are not_checked (evidence-network/loop#193).
 
 The finding is FAIL when any step fails integrity or reproduction, NOT_CHECKED
 when every step present held but one or more could not be reproduced, and PASS
@@ -66,11 +66,11 @@ import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
 
 # Who owns each kind of gap 08 leaves NOT_CHECKED.
-LIVE_ISSUE = "evidence-network/loop#188"  # a live step whose judge reads bytes its proof does not cite
+LIVE_ISSUE = "evidence-network/loop#193"  # a live step whose judge reads bytes its proof does not cite
 # A live step with a narrower owner than LIVE_ISSUE for why 08 cannot re-derive it yet.
 LIVE_STEP_ISSUES = {}  # a live step with a narrower owner than LIVE_ISSUE, by step number
 TWINS_ISSUE = "evidence-network/loop#209"  # the twins run's lab-4 has no nodes/ listing
-WITNESS_ISSUE = "evidence-network/loop#219"  # a live 02 receipt held only on capsulectl's status (an older run)
+WITNESS_ISSUE = "evidence-network/loop#193"  # a live 02 receipt held only on capsulectl's status (an older run)
 TRUST_ISSUE = "evidence-network/loop#193"  # what a reproduced live step still takes on its own word
 SETUP_ISSUE = "evidence-network/loop: the step's setup.sh, run where 08 runs"
 RUN_ISSUE = "evidence-network/loop: loop.sh runs the whole stage (no --steps)"

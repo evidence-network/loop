@@ -123,5 +123,5 @@ for 05, 06, 07 and 09 and the 08 manifest that reproduces them) as their base ru
 own entry under the issue 08 names for it.
 
 **Live:** 08 reproduces live step 07 (its asks, `*/attempts/*/*.request.json`), and not yet the other live
-steps (evidence-network/loop#188). Live 10 seals under the lab's judge key (see Sealing), and it is
+steps (evidence-network/loop#193). Live 10 seals under the lab's judge key (see Sealing), and it is
 NOT_CHECKED where that key is not on the host it runs on.

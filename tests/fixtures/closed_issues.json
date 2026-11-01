@@ -17,6 +17,11 @@
     "evidence-network/loop#24": "closed 2026-10-31: steps 08, 10 and 11 run on rehearsal and live; live 08 re-derives live 07 (loop#192; findings/2026-10-31-live-2); the remaining live gaps are loop#188, #189 and #193",
     "evidence-network/loop#56": "closed 2026-10-30: the lab-wallet run was replaced by one paid exchange on the demo nodes (loop#114); an at-pin lab run is still NOT_CHECKED on capsules-plugin#83",
     "evidence-network/loop#276": "closed by loop PR #282 (40772b5) and PR #291 (5907a93)",
-    "evidence-network/loop#94": "closed by loop PR #146 (0a1ca22); live-17's step 07 is PASS with the exchange answered"
+    "evidence-network/loop#94": "closed by loop PR #146 (0a1ca22); live-17's step 07 is PASS with the exchange answered",
+    "evidence-network/loop#188": "live 01-05, 09 and 12 are re-derived from their proof (live-17's 08); live 10 and 11 moved to loop#193",
+    "evidence-network/loop#219": "loop PR #229 (24ff397): 02's receipt is verified offline",
+    "evidence-network/loop#234": "moved to loop#193 (declared: it reads NOT_CHECKED, never PASS)",
+    "evidence-network/loop#240": "moved to loop#193 (declared: NOT_CHECKED, never PASS)",
+    "evidence-network/loop#166": "moved to loop#193 (the AAC verifier owns the method)"
   }
 }
