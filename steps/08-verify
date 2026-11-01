@@ -284,17 +284,23 @@ def rederive_03(m, c):
         raise Unreproducible("step 03: its judge, run again here", "openssl is not installed where 08 runs")
     src = c.tmp / "carrier.bundle"
     shutil.copyfile(c.work / "carrier.bundle", src)
-    inputs = {n["name"]: n.get("inputs") for n in load(c.work / "verification.json").get("nodes", [])}
+    recorded = {n["name"]: n for n in load(c.work / "verification.json").get("nodes", [])}
 
-    def from_bundle(population, node, carrier):
-        # In place of signing and publishing: the carrier is the bundle's, and check_node reads its HEAD.
+    def from_bundle(population, node, carrier, *_signed):
+        # In place of signing and publishing (by the harness, or as the node signed it on the Goose rehearsal): the
+        # carrier is the bundle's, and check_node reads its HEAD. Who signed is the run's record.
         if m.git(carrier, "rev-parse", "-q", "--verify", "HEAD", check=False).returncode != 0:
             m.git(carrier, "fetch", "-q", str(src), "HEAD")
             m.git(carrier, "reset", "-q", "--hard", "FETCH_HEAD")
         key_id = pub_key(repo_path(node["key_dir"]) / "node-key.pub.pem")
-        return {"name": node["name"], "node_id": node.get("node_id") or key_id, "key_id": key_id,
-                "inputs": inputs.get(node["name"]), "signed_by": "the harness, with the node's rehearsal TEST key",
-                "published_commit": m.git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}, key_id
+        was = recorded.get(node["name"], {})
+        rec = {"name": node["name"], "node_id": was.get("node_id") or node.get("node_id") or key_id, "key_id": key_id,
+               "inputs": was.get("inputs"),
+               "signed_by": was.get("signed_by") or "the harness, with the node's rehearsal TEST key",
+               "published_commit": m.git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}
+        if was.get("node_key_file"):
+            rec["node_key_file"] = was["node_key_file"]
+        return rec, key_id
 
     m.rehearsal_node = from_bundle
     m.main(["--population", str(c.pop), "--out", str(c.work)])
