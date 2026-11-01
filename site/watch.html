@@ -11,7 +11,7 @@
         --cv-card: #18202a; --cv-accent: #7cc4ff; --cv-on-accent: #0d1117; --cv-ring: #ffcc66;
         --cv-answered: #5fd38a; --cv-refused: #ffa45c; --cv-absent: #b4bcc6;
         --cv-badge: #d7b8ff; --cv-badge-fg: #1a1023; --cv-left: #6f7883;
-        --cv-com-mesh: #4fd1c5; --cv-com-agents: #9fb4ff;
+        --cv-com-mesh: #4fd1c5; --cv-com-agents: #9fb4ff; --cv-com-goose: #f0a6ca;
         --st-verified: #5fd38a; --st-partial: #3e9a62; --st-no_checkpoint_yet: #f2c14e; --st-refusal: #ffa45c;
         --st-no_announced_key: #8fa3b8; --st-not_evidence: #ff7a72; --st-absence: #7d8792; }
 @media (prefers-color-scheme: dark) {
@@ -21,7 +21,7 @@
           --cv-card: #121821; --cv-accent: #7cc4ff; --cv-on-accent: #05070b; --cv-ring: #ffcc66;
           --cv-answered: #5fd38a; --cv-refused: #ffa45c; --cv-absent: #b4bcc6;
           --cv-badge: #d7b8ff; --cv-badge-fg: #1a1023; --cv-left: #6a737e;
-          --cv-com-mesh: #4fd1c5; --cv-com-agents: #9fb4ff;
+          --cv-com-mesh: #4fd1c5; --cv-com-agents: #9fb4ff; --cv-com-goose: #f0a6ca;
           --st-verified: #5fd38a; --st-partial: #3e9a62; --st-no_checkpoint_yet: #f2c14e; --st-refusal: #ffa45c;
           --st-no_announced_key: #8fa3b8; --st-not_evidence: #ff7a72; --st-absence: #7d8792; }
 }
@@ -99,6 +99,7 @@ svg .badge { fill: var(--cv-badge); }
 svg .community { fill: none; stroke-width: 3.5; }
 svg .c-mesh-llm { stroke: var(--cv-com-mesh); }
 svg .c-personal-agents { stroke: var(--cv-com-agents); }
+svg .c-goose { stroke: var(--cv-com-goose); }
 svg .c-other { stroke: var(--cv-muted); }
 svg .community.empty { stroke-width: 1; }
 svg .traveller.o-answered { fill: var(--cv-answered); stroke: none; }
@@ -193,7 +194,7 @@ footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: .8rem
 <li><svg width="56" height="16" aria-hidden="true"><path class="ask o-refused" d="M4 8 L52 8"/></svg> ring, dashed: a signed refusal</li>
 <li><svg width="56" height="16" aria-hidden="true"><path class="ask o-absent" d="M4 8 L52 8"/></svg> ring, dotted: nothing came back</li>
 <li><svg width="56" height="16" aria-hidden="true"><circle class="badge" cx="28" cy="8" r="7"/></svg> badge: history cards stapled to the node's commitment</li>
-<li><svg width="56" height="16" aria-hidden="true"><path class="community c-mesh-llm" d="M4 5 L52 5"/><path class="community c-personal-agents" d="M4 12 L52 12"/></svg> outer rings: a community its cards cover, mesh-llm or personal agents</li>
+<li><svg width="56" height="16" aria-hidden="true"><path class="community c-mesh-llm" d="M4 3 L52 3"/><path class="community c-personal-agents" d="M4 8 L52 8"/><path class="community c-goose" d="M4 13 L52 13"/></svg> outer rings: a community its cards cover, mesh-llm, personal agents or goose, each its own colour</li>
 <li><svg width="56" height="16" aria-hidden="true"><path class="community c-personal-agents empty" d="M4 8 L52 8"/></svg> thin ring: that community's card has no history yet, a new stream or one started again</li>
 <li>"bound": nodes one controller binds, whose binding a tool pinned in the lock verifies, drawn as one dot</li>
 </ul>

@@ -13,6 +13,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -124,6 +125,19 @@ class CheckerTest(TwoBooks):
         errs = self.assertRefused(self.resigned(dup), cc.CARD_DUPLICATE)
         self.assertEqual(len([e for e in errs if e.startswith(cc.CARD_DUPLICATE)]), 1)
 
+    def test_streams_that_differ_only_in_case_are_one_stream(self):
+        # Step 12's probe/cards/<stream>.* would be one file on a case-insensitive file system.
+        def dup(d):
+            first = d["history_cards"][0]
+            d["history_cards"][:] = [dict(first, stream=first["stream"].upper()), first]
+        errs = self.assertRefused(self.resigned(dup), cc.CARD_DUPLICATE)
+        self.assertEqual(len([e for e in errs if e.startswith(cc.CARD_DUPLICATE)]), 1)
+
+    def test_join_sh_accepts_the_log_ids_the_checker_does(self):
+        # join.sh refuses a book whose log id the checker would refuse as a stream, and accepts the rest.
+        rule = re.search(r're\.fullmatch\(r"(\^\[A-Za-z0-9\][^"]*)", log_id\)', (ROOT / "join.sh").read_text()).group(1)
+        self.assertEqual(rule, cc.STREAM.pattern)
+
     def test_bytes_that_do_not_match_are_refused_by_name_on_either_card(self):
         for i in (0, 1):
             with self.subTest(card=i):
@@ -197,7 +211,7 @@ class CheckerTest(TwoBooks):
                 self.assertRefused(self.resigned(change), code)
 
     def test_a_stream_that_is_not_a_plain_log_id_is_refused_by_name(self):
-        for stream in ("../../x", "a/b", " alice-book", "-a", ""):
+        for stream in ("../../x", "a/../b", "a/./b", "a//b", "a/", "/a", "a/.b", " alice-book", "-a", ""):
             with self.subTest(stream=stream):
                 errs = self.assertRefused(self.resigned(lambda d: d["history_cards"][0].__setitem__("stream", stream)),
                                           cc.CARD_SHAPE)
@@ -216,6 +230,14 @@ class CheckerTest(TwoBooks):
         errs = self.assertRefused(self.resigned(shape_then_content), cc.CARD_COMMUNITY)
         self.assertIn("missing history_cards[0].derivation", " ".join(errs))
 
+    def test_a_stream_of_plain_names_joined_by_slashes_is_accepted(self):
+        # G1's Goose node keeps its node book as goose/node; each segment is a plain name, so step 12's per-stream
+        # file paths stay inside its directory.
+        for stream in ("goose/node", "capsules/511b5b4246cf58e7"):
+            with self.subTest(stream=stream):
+                card = dict(self.doc["history_cards"][0], stream=stream)
+                self.assertEqual(cc.card_field_errors([card]), [])
+
     def test_an_unknown_community_is_refused_by_name(self):
         for community in ("other", "Mesh-LLM", ""):
             with self.subTest(community=community):
@@ -226,7 +248,7 @@ class CheckerTest(TwoBooks):
         errs, _ = self.verify(self.resigned(lambda d: d["history_cards"][1].pop("community")))
         self.assertIn(f"{cc.CARD_SHAPE}: missing history_cards[1].community", errs)
 
-    def test_both_communities_are_accepted(self):
+    def test_every_listed_community_is_accepted(self):
         for community in hc.COMMUNITIES:
             with self.subTest(community=community):
                 doc = self.resigned(lambda d: [c.__setitem__("community", community) for c in d["history_cards"]])
@@ -361,6 +383,35 @@ class Step12Staple(unittest.TestCase):
         d = self.tmp / "node"
         shutil.copytree(src, d)
         return d
+
+    def test_every_stream_the_checker_accepts_keeps_its_probe_files_inside_the_node_directory(self):
+        # Step 12 reads probe/cards/<stream>.*; a stream of "/"-joined plain names never leaves probe/cards.
+        node, adv = self.tmp / "node", {"book_id": "join-book"}
+        cards = (node / "probe" / "cards").resolve()
+        shape = dict(stream="", community="goose", derivation="history_card/1", sha256="0" * 64, bytes="")
+        streams = ["goose/node", "deal/deal-0123456789abcdef", "capsules/511b5b4246cf58e7", "a.b/c_d/e-f",
+                   "../x", "a/../../x", "a/./b", "a//b", "/etc/passwd", "a/", "a/.."]
+        accepted = [s for s in streams if not cc.card_field_errors([dict(shape, stream=s)])]
+        self.assertEqual(accepted, streams[:4])
+        for stream in accepted:
+            with self.subTest(stream=stream):
+                for suffix in ("answer", "request", "verified"):
+                    path = (node / f"{self.step.card_probe(adv, stream)}.{suffix}.json").resolve()
+                    self.assertTrue(path.is_relative_to(cards), path)
+
+    def test_a_stream_the_checker_refuses_names_no_path_and_reads_nothing_outside_the_node(self):
+        d = self.node(TWO)
+        adv = {"book_id": "alice-book"}
+        for stream in ("../x", "a/../../x", "/etc/passwd", "a//b", None, ""):
+            with self.subTest(stream=stream):
+                self.assertIsNone(self.step.card_probe(adv, stream))
+        # A card whose kept answer sits outside the node directory, under the refused stream's path, is not read.
+        doc = json.loads((d / "commitment.json").read_text())
+        (self.tmp / "x.answer.json").write_bytes(base64.b64decode(doc["history_cards"][1]["bytes"]))
+        self.resign(d, lambda doc: doc["history_cards"][1].__setitem__("stream", "../../../x"))
+        adv = self.step.advertised(d)
+        self.assertEqual(self.step.check_staple(d, adv),
+                         ["the stapled card for stream ../../../x is not the answer the stranger kept for that book"])
 
     def test_both_profiles_hold(self):
         for src in (TWO, ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice"):

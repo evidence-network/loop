@@ -97,8 +97,8 @@ is replaced by:
 | Field | Type | Meaning |
 |---|---|---|
 | `history_cards` | list, at least one entry, sorted by `stream` | one stapled card per evidence stream |
-| `history_cards[].stream` | string | the log id of the book the card covers: a plain name (letters, digits, `.`, `_`, `-`, starting with a letter or digit) |
-| `history_cards[].community` | string | the community the stream belongs to: `mesh-llm` or `muse` (a closed list); `join.sh` writes `mesh-llm` |
+| `history_cards[].stream` | string | the log id of the book the card covers: plain names (letters, digits, `.`, `_`, `-`, each starting with a letter or digit) joined by `/`, e.g. `alice-book` or `goose/node` |
+| `history_cards[].community` | string | the community the stream belongs to: `mesh-llm`, `muse` or `goose` (a closed list); `join.sh` writes `mesh-llm`, and evidencebook's Goose node `goose` |
 | `history_cards[].checkpoint_key` | base64url, optional | the SPKI (DER) of that stream's checkpoint signer; with it, a verifier can check the card's signature |
 | `history_cards[].derivation` | string | `history_card/1` |
 | `history_cards[].bytes` | base64 | the card's `evidence-interop/0` answer, whole, as `history_card.bytes` in /0 |
@@ -107,7 +107,7 @@ is replaced by:
 Each card is checked as the /0 staple is (bytes against digest, the
 `evidence-interop/0` answer format, derivation `history_card/1`, presented by
 the commitment's own subject), and also: its `stream` is the card's own log
-id (the `evidence_stream` its result names), no stream is stapled twice, its
+id (the `evidence_stream` its result names), no stream is stapled twice (compared without case, since step 12 writes a file per stream), its
 community is on the list, and a `checkpoint_key`, where present, is an Ed25519
 SPKI. Each refusal of a card is named, for example
 `history_cards.duplicate_stream`, `history_cards.bytes_mismatch`,

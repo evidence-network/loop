@@ -147,8 +147,9 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
   counts its entries; `/0`'s single `history_card` counts 1, its stream the
   card's own `evidence_stream`. A card's witnesses are the `witness` of each
   receipt on a checkpoint of the decoded card's `history`.
-- Each community a node's cards cover is a ring round it: `mesh-llm`, or
-  `personal-agents` (a `/1` card's `community`; `/0` reads as `mesh-llm`).
+- Each community a node's cards cover is a ring round it, in its own colour:
+  `mesh-llm`, `personal-agents` or `goose` (a `/1` card's `community`; `/0`
+  reads as `mesh-llm`).
   A card with no checkpoint in its history draws its ring thin, with "no
   history since" the day its stream started (the card's `stream_started`,
   else the day it was issued): a new stream and a cleared one started again

@@ -65,8 +65,9 @@ PROFILE_1 = hc.PROFILE_1
 POLICY_PROFILE = "disclosure-policy/0"
 STAPLE_PROFILE = "evidence-interop/0"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-# A /1 card's stream: a book's log id as join.sh accepts one, a plain name (step 12 makes file names from it).
-STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# A /1 card's stream: a book's log id as join.sh accepts one, plain names joined by "/" (G1's Goose node writes
+# goose/node). Step 12 makes file paths from it: no segment can be "." or "..", or empty, so they stay in its directory.
+STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 # DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410): 32 key bytes follow.
 ED25519_SPKI = bytes.fromhex("302a300506032b6570032100")
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -293,7 +294,8 @@ def card_field_errors(cards):
         if shape:
             continue
         if not STREAM.fullmatch(c["stream"]):
-            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
+            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id: plain names (letters, digits, '.', '_', '-', "
+                        "each starting with a letter or digit) joined by '/'")
         if not HEX64.fullmatch(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
         if c["derivation"] != "history_card/1":
@@ -505,9 +507,12 @@ def staple_errors(doc):
         if card is not None and hc.card_stream(card) != stream:
             found.append((CARD_STREAM, f"{name}.stream {stream} is not the card's own log id "
                                        f"({hc.card_stream(card) or 'none named'})"))
-        if stream in seen:
-            found.append((CARD_DUPLICATE, f"{name} staples stream {stream} again (first at history_cards[{seen[stream]}])"))
-        seen.setdefault(stream, i)
+        # Compared without case: step 12 writes probe/cards/<stream>.*, and macOS and Windows file systems would
+        # put Goose/node and goose/node in one file.
+        key = stream.lower()
+        if key in seen:
+            found.append((CARD_DUPLICATE, f"{name} staples stream {stream} again (first at history_cards[{seen[key]}])"))
+        seen.setdefault(key, i)
         errs += [f"{code}: {text}" for code, text in found]
     return errs
 

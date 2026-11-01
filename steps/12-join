@@ -315,8 +315,13 @@ def advertised(node_dir, name="commitment.json"):
 
 
 def card_probe(adv, stream):
-    """Where join.sh keeps the stranger's history_card/1 request and answer for a stream (no suffix)."""
-    return "probe/history_card" if stream == adv["book_id"] else f"probe/cards/{stream}"
+    """Where join.sh keeps the stranger's history_card/1 request and answer for a stream (no suffix), or None for a
+    stream step 03's checker refuses: no path is built from it, so nothing is read or written outside probe/cards."""
+    if stream == adv["book_id"]:
+        return "probe/history_card"
+    if not (isinstance(stream, str) and check_commitment_.STREAM.fullmatch(stream)):
+        return None
+    return f"probe/cards/{stream}"
 
 
 def check_staple(node_dir, adv):
@@ -330,7 +335,8 @@ def check_staple(node_dir, adv):
         errs.append(f"the card entry for {adv['book_id']} names a checkpoint key other than the book's checkpoint's")
     for e in hc.entries(load(node_dir / "commitment.json")):
         stream = e.get("stream")
-        kept = node_dir / f"{card_probe(adv, stream)}.answer.json" if stream else None
+        probe = card_probe(adv, stream) if stream else None
+        kept = node_dir / f"{probe}.answer.json" if probe else None
         try:
             same = kept is not None and base64.b64decode(e["bytes"]) == kept.read_bytes()
         except (OSError, KeyError, TypeError, ValueError):
@@ -451,7 +457,8 @@ def verify_answers(node_dir, adv, capsulectl, work):
     # The own book's two answers under its checkpoint key; each other card under the key its entry names.
     asked = [(f"probe/{probe}", probe, adv["checkpoint_key"]) for probe in PROBES]
     asked += [(card_probe(adv, stream), f"history_card of {stream}", key)
-              for stream, key in sorted(adv["card_keys"].items()) if stream and stream != adv["book_id"] and key]
+              for stream, key in sorted(adv["card_keys"].items())
+              if stream and stream != adv["book_id"] and key and card_probe(adv, stream)]
     for base, probe, checkpoint_key in asked:
         rid = load(node_dir / f"{base}.asked.json")["record_id"]
         r = cap("book", "request", "--profile", "stranger", "--for", rid,
@@ -494,7 +501,7 @@ def judge(node_dir, capsulectl, work, at=None, said=None):
                                  if f.is_file())
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
-    for stream in sorted({x for x in adv["streams"] if x and x != adv["book_id"]}):
+    for stream in sorted({x for x in adv["streams"] if x and x != adv["book_id"] and card_probe(adv, x)}):
         if adv["card_keys"].get(stream) is None:
             not_checked.append({"what": f"the stapled history_card/1 of book {stream} verifies under the node key "
                                         "and that book's checkpoint key",
