@@ -269,7 +269,7 @@ def card_field_errors(cards):
         errs += shape
         if shape:
             continue
-        if not STREAM.match(c["stream"]):
+        if not STREAM.fullmatch(c["stream"]):
             errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
         if not HEX64.match(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
@@ -320,13 +320,13 @@ def field_errors(doc):
     for name in ("node_id", "key_id"):
         if not HEX64.match(doc[name]):
             errs.append(f"{name} is not 64 lowercase hex")
-    if not TIMESTAMP.match(doc["issued_at"]):
+    if not TIMESTAMP.fullmatch(doc["issued_at"]):
         errs.append("issued_at must be YYYY-MM-DDTHH:MM:SSZ")
     if not doc["ask"]["endpoint"].strip():
         errs.append("ask.endpoint must be non-empty")
     for name, lst in (("ask.bindings", doc["ask"]["bindings"]), ("answers.subjects", doc["answers"]["subjects"]),
                       ("answers.derivations", doc["answers"]["derivations"])):
-        if not lst or not all(isinstance(x, str) and TOKEN.match(x) for x in lst):
+        if not lst or not all(isinstance(x, str) and TOKEN.fullmatch(x) for x in lst):
             errs.append(f"{name} must be a non-empty list of names")
     if "controller_binding" in doc and not HEX64.fullmatch(doc["controller_binding"]["digest"]):
         errs.append("controller_binding.digest is not a sha256 (64 lowercase hex)")
@@ -335,9 +335,9 @@ def field_errors(doc):
     if not doc["lcap"]["policy_uri"].strip():
         errs.append("lcap.policy_uri must be non-empty")
     pcs = doc["lcap"]["predicate_classes"]
-    if not pcs or not all(isinstance(x, str) and PREDICATE_CLASS.match(x) for x in pcs):
+    if not pcs or not all(isinstance(x, str) and PREDICATE_CLASS.fullmatch(x) for x in pcs):
         errs.append("lcap.predicate_classes must be a non-empty list of <kind>:<source>")
-    if not DURATION.match(doc["answers_within"]):
+    if not DURATION.fullmatch(doc["answers_within"]):
         errs.append("answers_within must be an ISO 8601 duration (PnD, PTnH, PTnM, PTnS)")
     if doc["profile"] == PROFILE_1:
         errs += card_field_errors(doc["history_cards"])
