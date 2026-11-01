@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["06"]
+STEPS = ["01", "06"]
 NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
@@ -100,10 +100,8 @@ def main(argv=None):
         os.chmod(kd / "node-key.pem", 0o600)
         (kd / "node-key.pub.pem").write_text(pub.stdout)
         nodes.append({"name": name, "key_dir": str(kd)})
-    # Step 01 checks a capsule a node sealed: the first step of the buyer's own half of the deal.
-    half = json.loads((run / "buyer-half.json").read_text())
-    capsule = work / "sealed-buyer.json"
-    capsule.write_text(json.dumps(half["steps"][0]["capsule"], sort_keys=True))
+    # Step 01 checks the capsule the buyer sealed for a model call (loop_seal).
+    capsule = run / "sealed-buyer.json"
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))

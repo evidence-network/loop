@@ -74,6 +74,11 @@ async def run(out, rail_dir):
                              decision="GO", reason="known inference seller")
             await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
                               decision="GO", reason="paying customer")
+            # 01: the buyer seals a model call, an effect-boundary record step 01 reads. Provider and model are what
+            # the step tells the producer (steps/01-seal MODEL); model_attestation must carry them back.
+            await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
+                             prompt="rehearsal inference", completion="rehearsal completion",
+                             out_path=str(out / "sealed-buyer.json"))
             opened = await buyer.call("loop_deal_open", peer_key_id=s["key_id"], item="inference: 1k tokens",
                                       price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock",
                                       asked="buy 1k tokens of inference from the seller")

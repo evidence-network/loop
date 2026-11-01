@@ -1,0 +1,35 @@
+{
+  "checks": {
+    "capsule_id": {
+      "detail": "carried 2cda6b660e3636c67877ae85ade024fd283af243876ac37d76439a723de18573, recomputed 2cda6b660e3636c67877ae85ade024fd283af243876ac37d76439a723de18573",
+      "ok": true
+    },
+    "class1": {
+      "detail": "Class 1 ok",
+      "ok": true
+    },
+    "effect_class": {
+      "detail": "effect_attestation 'runtime_claimed': sealed in the producer's own process reads runtime_claimed",
+      "ok": true
+    },
+    "key": {
+      "detail": "key_id 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e, node public key 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e",
+      "ok": true
+    },
+    "model": {
+      "detail": "model_attestation {\"compute_attestation\": {\"agent_input_digest\": \"41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a\", \"agent_output_digest\": \"c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1\"}, \"model_id\": \"rehearsal-model\", \"provider\": \"rehearsal\"}",
+      "ok": true
+    },
+    "signature": {
+      "detail": "authored under 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e",
+      "ok": true,
+      "state": "ok"
+    }
+  },
+  "installed": {
+    "aac-go": "0.17.0",
+    "capsule-emit": "0.13.0"
+  },
+  "node": "buyer",
+  "sealed_by": "given capsule"
+}

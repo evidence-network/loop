@@ -21,7 +21,7 @@
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
 # rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
-# it drives (today 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
+# it drives (today 01 and 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
 # is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #

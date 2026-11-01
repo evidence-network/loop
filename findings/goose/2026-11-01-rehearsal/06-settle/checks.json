@@ -9,7 +9,7 @@
       "ok": true
     },
     "exchange_match": {
-      "detail": "exchange deal-23560afbf2485bd3: exchange_id, payer, payee, currency, amount_atomic, decimals match",
+      "detail": "exchange deal-1d77506050bc417e: exchange_id, payer, payee, currency, amount_atomic, decimals match",
       "ok": true
     },
     "finality": {
@@ -33,7 +33,7 @@
       "ok": true
     },
     "reference": {
-      "detail": "settlement_ref {\"rail\": \"mock\", \"settlement_id\": \"3f1a5cc824a9d32d39f8893b876e622dba113bba85acb60603a61bb1f910173e\"} names 1 ledger line(s); exchange members ['amount_atomic', 'currency', 'decimals', 'exchange_id', 'payee', 'payer', 'settlement_ref']",
+      "detail": "settlement_ref {\"rail\": \"mock\", \"settlement_id\": \"f87cf6eb7f75aa2bd73a0949448c2f9e16b084ba35e2adb8917abfc32d95fb41\"} names 1 ledger line(s); exchange members ['amount_atomic', 'currency', 'decimals', 'exchange_id', 'payee', 'payer', 'settlement_ref']",
       "ok": true
     }
   }

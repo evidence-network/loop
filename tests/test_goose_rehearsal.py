@@ -34,7 +34,15 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
         self.assertEqual(doc["rail"], "mock")
-        self.assertEqual(doc["goose"]["steps"], ["06"])
+        self.assertEqual(doc["goose"]["steps"], ["01", "06"])
+
+    def test_step_01_passes_unchanged_on_the_capsule_the_goose_node_sealed(self):
+        out = self.work / "findings" / "01-seal"
+        r = subprocess.run([str(ROOT / "steps/01-seal"), "--population", str(self.pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        found = json.loads((out / "finding.json").read_text())
+        self.assertEqual(found["result"], "PASS", found["detail"])
 
     def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())

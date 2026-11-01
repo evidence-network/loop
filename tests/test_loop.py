@@ -156,8 +156,8 @@ class LoopTest(unittest.TestCase):
         run = json.loads((out / "run.json").read_text())
         self.assertEqual((run["ecosystem"], len(run["steps"])), ("goose", 12))
         owners = {n: self.finding(f"{n}-{d}", out)["not_checked"][0]["issue"] for n, d in self.GOOSE_NAMES.items()}
-        # step 06 has a Goose input: without the tools it waits on them, not on the live rail
-        self.assertEqual(owners, {**self.GOOSE_OWNERS, "06": "evidence-network/loop#330"})
+        # steps 01 and 06 have a Goose input: without the tools they wait on them, not on G1's or the live rail's work
+        self.assertEqual(owners, {**self.GOOSE_OWNERS, "01": "evidence-network/loop#330", "06": "evidence-network/loop#330"})
         six = self.finding("06-settle", out)
         self.assertIn("Goose tools are not installed", six["detail"])
         self.assertNotIn("no step", six["not_checked"][0]["why"])
@@ -176,17 +176,21 @@ class LoopTest(unittest.TestCase):
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
         six = self.finding("06-settle", out)
         self.assertEqual(six["result"], "FAIL")
+        self.assertEqual(self.finding("01-seal", out)["result"], "FAIL")
         self.assertIn("planted: the deal failed", (out / "06-settle" / "goose-rehearsal.log").read_text())
         self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh")
-    def test_goose_with_its_tools_runs_step_06_and_keeps_every_row_not_checked_until_the_pay_record_is_read(self):
+    def test_goose_with_its_tools_passes_step_01_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
         results = dict(line.split()[::2] for line in r.stdout.splitlines())
-        self.assertEqual(set(results.values()), {"NOT_CHECKED"})  # 06 included: G1's pay record is not read yet
+        # 01 passes on the capsule the Goose node sealed (loop_seal); 06 holds its rail checks but G1's pay record is not read
+        self.assertEqual(results.pop("01"), "PASS")
+        self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "capsule-emit"])
         six = self.finding("06-settle", out)
         self.assertIn("the checks on the rail's proof bytes held", six["detail"])
         self.assertIn("G1's pay record is not read yet", six["detail"])

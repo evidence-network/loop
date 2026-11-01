@@ -29,7 +29,7 @@ One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (d
   and nodes. Today that is `mesh`: mesh nodes running the capsules plugin. `muse` has no steps
   yet; each of its steps reads `NOT_CHECKED`. `goose` (ecosystem 2, loop#315) covers all twelve rows:
   its rehearsal runs two evidencebook Goose nodes (`steps/goose.setup.sh` installs them) and the steps with a
-  Goose input run on it (today step 06); every other row reads `NOT_CHECKED` naming the issue it waits on.
+  Goose input run on it (today steps 01 and 06); every other row reads `NOT_CHECKED` naming the issue it waits on.
 - **Across ecosystems**: steps where two ecosystems meet (one side admits and deals with the
   other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
   and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
