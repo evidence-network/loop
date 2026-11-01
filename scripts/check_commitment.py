@@ -294,7 +294,8 @@ def card_field_errors(cards):
         if shape:
             continue
         if not STREAM.fullmatch(c["stream"]):
-            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
+            errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id: plain names (letters, digits, '.', '_', '-', "
+                        "each starting with a letter or digit) joined by '/'")
         if not HEX64.fullmatch(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
         if c["derivation"] != "history_card/1":

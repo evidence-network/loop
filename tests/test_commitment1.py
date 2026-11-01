@@ -385,6 +385,20 @@ class Step12Staple(unittest.TestCase):
                     path = (node / f"{self.step.card_probe(adv, stream)}.{suffix}.json").resolve()
                     self.assertTrue(path.is_relative_to(cards), path)
 
+    def test_a_stream_the_checker_refuses_names_no_path_and_reads_nothing_outside_the_node(self):
+        d = self.node(TWO)
+        adv = {"book_id": "alice-book"}
+        for stream in ("../x", "a/../../x", "/etc/passwd", "a//b", None, ""):
+            with self.subTest(stream=stream):
+                self.assertIsNone(self.step.card_probe(adv, stream))
+        # A card whose kept answer sits outside the node directory, under the refused stream's path, is not read.
+        doc = json.loads((d / "commitment.json").read_text())
+        (self.tmp / "x.answer.json").write_bytes(base64.b64decode(doc["history_cards"][1]["bytes"]))
+        self.resign(d, lambda doc: doc["history_cards"][1].__setitem__("stream", "../../../x"))
+        adv = self.step.advertised(d)
+        self.assertEqual(self.step.check_staple(d, adv),
+                         ["the stapled card for stream ../../../x is not the answer the stranger kept for that book"])
+
     def test_both_profiles_hold(self):
         for src in (TWO, ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice"):
             with self.subTest(src=src.name):
