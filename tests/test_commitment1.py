@@ -1,7 +1,8 @@
 """evidence-commitment/1: one stapled history card per book; /0 still reads, as one card.
 
-Also: communities, a cleared history read as a fresh stream, and binding verdicts (bound groups).
-Fixtures: tests/fixtures/commitment1/ (two-books/, cleared/, bound/, revoked/; made by its
+Also: communities, a cleared history read as a fresh stream, binding verdicts (bound groups), and
+the Nostr mailbox route ask.nostr.
+Fixtures: tests/fixtures/commitment1/ (two-books/, cleared/, bound/, revoked/, nostr/; made by its
 make_fixtures.py with join.sh and the pinned capsulectl), signed by TEST keys from
 tests/fixtures/step12/population.
 Run: python3 -B -m unittest tests.test_commitment1 -v
@@ -24,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIX = ROOT / "tests" / "fixtures" / "commitment1"
 TWO = FIX / "two-books"
 CLEARED = FIX / "cleared"
+NOSTR = FIX / "nostr"
 KEY = ROOT / "tests" / "fixtures" / "step12" / "population" / "keys" / "alice" / "node-key.pem"
 ZERO = sorted((ROOT / "lab" / "runs" / "2026-10-28" / "join").glob("*/commitment.json")) + \
     [ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice" / "commitment.json"]
@@ -421,16 +423,25 @@ class Step03ReadsOne(unittest.TestCase):
     """Step 03 (live: it never signs) fetches and verifies a /1 commitment, and records each card's stream."""
 
     def test_a_published_two_book_commitment_passes(self):
+        f, node = self.publish(TWO)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual([c["stream"] for c in node["history_cards"]], ["alice-book", "alice-ledger"])
+
+    def test_one_naming_its_nostr_route_passes_the_same(self):
+        self.assertEqual(self.publish(NOSTR)[0]["result"], self.publish(TWO)[0]["result"])
+
+    def publish(self, fixture):
+        """Step 03 live over a carrier holding fixture's commitment: (finding, the node's verification)."""
         step = load("step03_advertise_c1", ROOT / "steps" / "03-advertise")
-        doc = json.loads((TWO / "commitment.json").read_text())
+        doc = json.loads((fixture / "commitment.json").read_text())
         node_id = doc["node_id"]
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             repo, pop = tmp / "carrier", tmp / "population"
             (repo / "nodes" / "commitments").mkdir(parents=True)
             pop.mkdir()
-            shutil.copy(TWO / "commitment.json", repo / "nodes" / "commitments" / f"{node_id}.json")
-            shutil.copy(TWO / "disclosure-policy.json", repo / "nodes" / "commitments" / "disclosure-policy.json")
+            shutil.copy(fixture / "commitment.json", repo / "nodes" / "commitments" / f"{node_id}.json")
+            shutil.copy(fixture / "disclosure-policy.json", repo / "nodes" / "commitments" / "disclosure-policy.json")
             (repo / "nodes" / f"{node_id}.json").write_text(json.dumps({"node_id": node_id, "key_id": doc["key_id"]}))
             subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
             subprocess.run(["git", "-C", str(repo), *step.GIT_ID, "add", "nodes"], check=True)
@@ -442,8 +453,7 @@ class Step03ReadsOne(unittest.TestCase):
             f = json.loads((out / "finding.json").read_text())
             node = json.loads((out / "verification.json").read_text())["nodes"][0]
             self.assertEqual(finding.check(out.parent), [])
-        self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertEqual([c["stream"] for c in node["history_cards"]], ["alice-book", "alice-ledger"])
+        return f, node
 
 
 @unittest.skipUnless(OPENSSL, NO_OPENSSL)
@@ -469,6 +479,96 @@ class Cleared(unittest.TestCase):
         [cleared] = hc.history_cards(json.loads((CLEARED / "commitment.json").read_text()))
         self.assertEqual(set(cleared), {"stream", "community", "derivation", "sha256", "witnesses",
                                         "stream_started", "has_history"})
+
+
+@unittest.skipUnless(OPENSSL, NO_OPENSSL)
+class NostrRoute(TwoBooks):
+    """/1's optional ask.nostr {mailbox_key, relays}: verifies when well formed, each refusal named."""
+
+    def setUp(self):
+        self.doc = json.loads((NOSTR / "commitment.json").read_text())
+
+    def assertRefused(self, doc, code):
+        errs, _ = self.verify(doc)
+        self.assertTrue([e for e in errs if e.startswith(code + ":")], errs)
+        self.assertNotIn("signature does not verify under spki", errs)
+        return errs
+
+    def change(self, f):
+        return self.resigned(lambda d: f(d["ask"]["nostr"]))
+
+    def test_the_fixture_verifies_and_one_without_the_route_still_does(self):
+        self.assertEqual(set(self.doc["ask"]["nostr"]), {"mailbox_key", "relays"})
+        self.assertEqual(self.verify(self.doc), ([], []))
+        self.assertEqual(self.verify(self.resigned(lambda d: d["ask"].pop("nostr"))), ([], []))
+        self.assertNotIn("nostr", json.loads((TWO / "commitment.json").read_text())["ask"])
+
+    def test_it_is_signed_over(self):
+        doc = copy.deepcopy(self.doc)
+        doc["ask"]["nostr"]["relays"].append("wss://attacker.example")
+        self.assertIn("signature does not verify under spki", self.verify(doc)[0])
+
+    def test_the_key_and_the_relays_travel_together(self):
+        for member in ("mailbox_key", "relays"):
+            with self.subTest(missing=member):
+                errs = self.assertRefused(self.change(lambda n, m=member: n.pop(m)), cc.NOSTR_MISSING)
+                self.assertIn(f"missing ask.nostr.{member}", " ".join(errs))
+
+    def test_a_bad_mailbox_key_is_refused_by_name(self):
+        bad = ("F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9",  # uppercase
+               "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036",  # short
+               "02" + "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",  # compressed, 66 hex
+               "ff" * 32,  # not below the field prime
+               "00" * 31 + "05",  # x^3 + 7 is not a square: no point
+               "npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6unfqa")  # bech32, not hex
+        for key in bad:
+            with self.subTest(key=key):
+                self.assertRefused(self.change(lambda n, k=key: n.__setitem__("mailbox_key", k)), cc.NOSTR_KEY)
+
+    def test_a_malformed_relay_is_refused_by_name(self):
+        for url in ("ws://relay.example", "https://relay.example", "wss://", "relay.example",
+                    "wss://user:pw@relay.example", "wss://relay.example/?a=b", "wss://relay.example/#x",
+                    "wss://relay.example:99999", "wss://relay .example", "wss://relä.example", ""):
+            with self.subTest(url=url):
+                errs = self.assertRefused(self.change(lambda n, u=url: n["relays"].__setitem__(1, u)), cc.NOSTR_RELAY)
+                self.assertIn("ask.nostr.relays[1]", " ".join(errs))
+        self.assertRefused(self.change(lambda n: n["relays"].__setitem__(0, ["wss://relay.example"])), cc.NOSTR_RELAY)
+
+    def test_relays_are_non_empty_and_distinct(self):
+        self.assertRefused(self.change(lambda n: n.__setitem__("relays", [])), cc.NOSTR_EMPTY)
+        errs = self.assertRefused(self.change(lambda n: n["relays"].__setitem__(1, n["relays"][0])),
+                                  cc.NOSTR_DUPLICATE)
+        self.assertIn("ask.nostr.relays[1] repeats ask.nostr.relays[0]", " ".join(errs))
+
+    def test_a_relay_with_a_path_or_port_is_accepted(self):
+        for url in ("wss://relay.example:7447", "wss://relay.example/nostr", "wss://[2001:db8::1]"):
+            with self.subTest(url=url):
+                self.assertEqual(self.verify(self.change(lambda n, u=url: n["relays"].__setitem__(1, u))), ([], []))
+
+    def test_unknown_members_are_still_refused(self):
+        errs = self.assertRefused(self.change(lambda n: n.__setitem__("announce_key", n["mailbox_key"])),
+                                  cc.NOSTR_SHAPE)
+        self.assertIn("unknown field ask.nostr.announce_key", " ".join(errs))
+        errs, _ = self.verify(self.resigned(lambda d: d["ask"].__setitem__("relays", ["wss://relay.example"])))
+        self.assertIn("unknown field ask.relays", errs)
+        errs, _ = self.verify(self.resigned(lambda d: d.__setitem__("nostr", d["ask"].pop("nostr"))))
+        self.assertIn("unknown field nostr", errs)
+
+    def test_a_route_that_is_not_an_object_is_refused(self):
+        errs, _ = self.verify(self.resigned(lambda d: d["ask"].__setitem__("nostr", "wss://relay.example")))
+        self.assertIn("ask.nostr must be a dict", errs)
+        errs = self.assertRefused(self.change(lambda n: n.__setitem__("relays", "wss://relay.example")), cc.NOSTR_SHAPE)
+        self.assertIn("ask.nostr.relays must be a list", " ".join(errs))
+
+    def test_profile_zero_has_no_route(self):
+        path = ZERO[-1]
+        doc = json.loads(path.read_text())
+        doc["ask"]["nostr"] = dict(json.loads((NOSTR / "commitment.json").read_text())["ask"]["nostr"])
+        doc = cc.sign(doc, KEY)
+        self.assertIn("unknown field ask.nostr", cc.verify(doc, cc.file_fetcher(path.parent))[0])
+
+    def test_the_route_carries_no_count(self):
+        self.assertEqual(cc.count_errors(self.doc), [])
 
 
 class Bindings(unittest.TestCase):

@@ -137,6 +137,31 @@ commitment verifies here the same way.
 The policy file is `{"profile": "disclosure-policy/0", "key_id", "policy":
 {...}, "sig"}`, signed the same way by the same key.
 
+### evidence-commitment/1: the Nostr mailbox route
+
+A /1 commitment may also say how it is asked over Nostr, in one optional
+member of `ask`. It settles the open items N-4 and N-5 of the AAC Nostr
+mailbox binding v0 (`spec/bindings/nostr-mailbox-v0.md`), which leaves the
+relay list and the mailbox key to this profile:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ask.nostr` | object, optional | the node's Nostr mailbox route; exactly the two members below, both required. A node with no mailbox leaves it out |
+| `ask.nostr.mailbox_key` | 64 lowercase hex | the mailbox key (binding §3): a secp256k1 x-only public key (BIP-340), on the curve. Requests are addressed to it, it signs the replies, and it signs the node's Nostr announce event |
+| `ask.nostr.relays` | list of `wss://` URLs, at least one, distinct | the relays the node reads (binding §4.3, NIP-65 read relays): a requester publishes there, and the node announces there |
+
+The key and the relays travel together: either alone is no route, and is
+refused. The mailbox key is a route, not an identity: a verifier never
+compares it with `key_id`, and it proves nothing about who answers (binding
+§3); the answer's own signature does. It is learned from the commitment
+because the commitment is signed by `key_id` (binding N-5). A relay URL is
+`wss://host[:port][/path]` in printable ASCII, with no credentials, query or
+fragment. Profile /0 has no `ask.nostr`.
+
+Each refusal is named: `ask.nostr.missing_member`, `ask.nostr.bad_mailbox_key`,
+`ask.nostr.bad_relay`, `ask.nostr.duplicate_relay`, `ask.nostr.no_relays`, and
+`ask.nostr.malformed` for a wrong type or an unknown member.
+
 ## Signing
 
 The signed bytes are the commitment without `sig`, in the canonical form of
@@ -167,7 +192,8 @@ may hold sizes of its own. The commitment itself never states one.
 
 `python3 -B scripts/check_commitment.py nodes/commitments` (the `commitments`
 CI job) refuses a commitment with a missing or unknown field, a
-`controller_binding` that is not `{"digest": <64 hex>}`, a count, a bad
+`controller_binding` that is not `{"digest": <64 hex>}`, an `ask.nostr` that
+is not a mailbox key with its relays (above), a count, a bad
 signature, a policy digest that does not match the policy bytes, a policy not
 signed by the commitment's key, staple or checkpoint bytes that do not match
 their digest, a staple not presented by its subject, a /1 card whose stream is

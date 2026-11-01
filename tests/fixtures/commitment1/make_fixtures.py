@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make the evidence-commitment/1 fixtures, once. Needs openssl and the pinned capsulectl (steps/12-join.setup.sh).
 
-Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py [two-books] [cleared] [bound]   (default: all)
+Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py [two-books] [cleared] [bound] [nostr]   (default: all)
 
   two-books/   what join.sh wrote for a node serving two books: its own
                (alice-book) and a second one made here first (alice-ledger),
@@ -19,6 +19,9 @@ Usage: python3 -B tests/fixtures/commitment1/make_fixtures.py [two-books] [clear
                binding-verdict/0 of both by binding-verifier at a fake pin
                that only the fixture's versions.lock gives. They group.
   revoked/     the same pair, with a `revoked` verdict. They do not group.
+  nostr/       two-books/'s commitment with its Nostr mailbox route,
+               ask.nostr {mailbox_key, relays}, signed again. Made from
+               two-books/ alone (openssl only, no capsulectl).
 
 The nodes are alice and bob of step 12's rehearsal population: TEST keys
 (tests/fixtures/step12/population/keys/), published on purpose, never used
@@ -46,6 +49,10 @@ import check_commitment as cc  # noqa: E402
 # The binding verifier at a fake pin, given only in these fixtures' versions.lock.
 FAKE_VERIFIER = ("binding-verifier", "evidence-network/binding-verifier-fixture", "f1" * 20)
 CHECKED_AT = "2026-10-28T00:00:00Z"
+# nostr/'s route. The mailbox key is BIP-340's test vector 0 public key (secret key 3), a TEST key;
+# wss://relay.example is AAC Nostr mailbox binding v0's example relay, not a relay anyone runs.
+NOSTR_ROUTE = {"mailbox_key": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+               "relays": ["wss://relay.example", "wss://relay2.example"]}
 
 
 def capsulectl():
@@ -184,12 +191,17 @@ def make_bound(bound, revoked, tmp):
         (d / "versions.lock").write_text(lock)
 
 
+def make_nostr(out):
+    """two-books/ with ask.nostr, signed again by the node's TEST key."""
+    commitment_only(HERE / "two-books", out, lambda d: d["ask"].__setitem__("nostr", dict(NOSTR_ROUTE)))
+
+
 def main():
-    if not Path(capsulectl()).is_file():
+    sets = ["two-books", "cleared", "bound", "nostr"]
+    only = sys.argv[1:] or sets  # e.g. `bound` remakes bound/ and revoked/ only
+    if set(only) - {"nostr"} and not Path(capsulectl()).is_file():
         print(f"make_fixtures: no capsulectl at {capsulectl()}; run steps/12-join.setup.sh", file=sys.stderr)
         return 2
-    sets = ["two-books", "cleared", "bound"]
-    only = sys.argv[1:] or sets  # e.g. `bound` remakes bound/ and revoked/ only
     if set(only) - set(sets):
         print(f"make_fixtures: unknown set {', '.join(sorted(set(only) - set(sets)))}; one of {', '.join(sets)}"
               " (bound also remakes revoked)", file=sys.stderr)
@@ -204,6 +216,8 @@ def main():
             make_cleared(HERE / "cleared", tmp)
         if "bound" in only:
             make_bound(HERE / "bound", HERE / "revoked", tmp)
+        if "nostr" in only:
+            make_nostr(HERE / "nostr")
     print(f"make_fixtures: wrote {', '.join(only)}", file=sys.stderr)
     return 0
 

@@ -61,7 +61,9 @@ Each card names its **community**: `mesh-llm` or `muse`. `join.sh` writes
 The live lab nodes' commitments are the ones their own plugin signs and serves (`commitment` tool,
 capsules-plugin#75). `lab/lab.sh commitments` writes the commitment as returned, byte for byte, with its policy
 at `nodes/commitments/policies/<node_id>.json`; the harness never signs for a live node. A commitment carries
-no controller key or npub, only `controller_binding.digest` when a binding exists.
+no controller key or npub, only `controller_binding.digest` when a binding exists. A /1 commitment may name its
+Nostr mailbox route (`ask.nostr`: the mailbox key, in hex, and the relays it reads); the mailbox key is a route,
+not an identity, and is never compared with `key_id`.
 
 A card's witnesses are read from the witness receipts inside it, each naming
 its witness in a `witness` member (`RECEIPT_WITNESS` in
