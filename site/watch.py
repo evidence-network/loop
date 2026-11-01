@@ -180,7 +180,7 @@ def witnesses(result):
 
 
 # A card's community, as the page names it. A community's own product name is not shown on this public page.
-COMMUNITIES = {"mesh-llm": "mesh-llm", "muse": "personal-agents"}
+COMMUNITIES = {"mesh-llm": "mesh-llm", "muse": "personal-agents", "goose": "goose"}
 
 
 def history_cards(commitment):

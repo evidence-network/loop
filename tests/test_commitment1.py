@@ -370,6 +370,21 @@ class Step12Staple(unittest.TestCase):
         shutil.copytree(src, d)
         return d
 
+    def test_every_stream_the_checker_accepts_keeps_its_probe_files_inside_the_node_directory(self):
+        # Step 12 reads probe/cards/<stream>.*; a stream of "/"-joined plain names never leaves probe/cards.
+        node, adv = self.tmp / "node", {"book_id": "join-book"}
+        cards = (node / "probe" / "cards").resolve()
+        shape = dict(stream="", community="goose", derivation="history_card/1", sha256="0" * 64, bytes="")
+        streams = ["goose/node", "deal/deal-0123456789abcdef", "capsules/511b5b4246cf58e7", "a.b/c_d/e-f",
+                   "../x", "a/../../x", "a/./b", "a//b", "/etc/passwd", "a/", "a/.."]
+        accepted = [s for s in streams if not cc.card_field_errors([dict(shape, stream=s)])]
+        self.assertEqual(accepted, streams[:4])
+        for stream in accepted:
+            with self.subTest(stream=stream):
+                for suffix in ("answer", "request", "verified"):
+                    path = (node / f"{self.step.card_probe(adv, stream)}.{suffix}.json").resolve()
+                    self.assertTrue(path.is_relative_to(cards), path)
+
     def test_both_profiles_hold(self):
         for src in (TWO, ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice"):
             with self.subTest(src=src.name):

@@ -817,6 +817,11 @@ class WatchTest(unittest.TestCase):
         self.assertNotIn('"sha256"', json.dumps(self.data))
         self.assertEqual(watch.history_cards({}), [])
         self.assertEqual(len(watch.history_cards({"history_cards": [{"stream": "x"}, {"stream": "y"}, {"stream": "z"}]})), 3)
+        # Each community keeps its own ring: a Goose card is goose, never mesh-llm and never "other" (loop#315).
+        rings = [c["community"] for c in watch.history_cards({"history_cards": [
+            {"stream": "goose/node", "community": "goose"}, {"stream": "b", "community": "mesh-llm"},
+            {"stream": "c", "community": "muse"}]})]
+        self.assertEqual(rings, ["goose", "mesh-llm", "personal-agents"])
 
     # Community rings and bound groups
 
