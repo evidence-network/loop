@@ -1547,7 +1547,7 @@ class SignedTermsTest(unittest.TestCase):
 
     SIGNED = {"subjects": ["checkpoints", "full_history"], "derivations": ["history_card/1"],
               "stranger_safe": ["checkpoints"]}
-    REFUSED = "refusal mesh_evidence_request: refused"
+    REFUSED = "refusal reason=no_such_subject listed_key=match"
 
     def test_the_signed_policy_decides_which_refusal_fails(self):
         entry = {"disclosure": {"stranger_safe": ["checkpoints", "history_card/1"]}}
@@ -1567,14 +1567,19 @@ class SignedTermsTest(unittest.TestCase):
             self.assertIn(f"is refused, but the node's signed policy lists it as stranger-safe: refusal reason={reason}",
                           fail)
             self.assertIsNone(nc)
-        for reason in ("policy_declined", "not_authorized", "retention_expired"):
+        for reason in ("policy_declined", "not_authorized", "retention_expired", "deadline_unmet", "request_malformed",
+                       "coverage_unsatisfiable"):
             fail, nc = step.judge_reporter_line("checkpoints", line.format(reason), entry, self.SIGNED)
             self.assertIsNone(fail)
             self.assertIn(reason, nc["why"])
-            self.assertTrue(nc["what"].startswith("the refusal of the checkpoints probe"))
-        for reason in ("deadline_unmet", "request_malformed", "coverage_unsatisfiable"):
-            self.assertEqual(step.judge_reporter_line("checkpoints", line.format(reason), entry, self.SIGNED),
-                             (None, None))
+
+    def test_a_refusal_under_another_key_is_a_fail_whatever_its_reason(self):
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        for reason in ("policy_declined", "deadline_unmet"):
+            for listed in ("differs", "unknown"):
+                fail, _ = step.judge_reporter_line(
+                    "checkpoints", f"refusal reason={reason} key={'ab' * 32} listed_key={listed}", entry, self.SIGNED)
+                self.assertIn("not the listed key", fail)
 
     def test_signed_terms_need_lists_of_names(self):
         doc = {"answers": {"subjects": ["checkpoints"], "derivations": ["history_card/1"]}}

@@ -63,10 +63,11 @@ the node's host announces. An answer that verifies under a key other than the
 listed one, does not verify, or refuses a subject the node's signed policy
 lists as stranger-safe for a reason that withholds it (no_such_subject,
 derivation_unsupported, or one the spec does not name) is a failure; a refusal
-under policy_declined or not_authorized cannot be judged (NOT_CHECKED), and
-one that blames the request is allowed, as step 07 judges (steps/refusal.py,
-loop#61). The answers are matched against the
-node's signed commitment (loop#161): the one join returns on the node's own
+under policy_declined, not_authorized or retention_expired cannot be judged
+(NOT_CHECKED), and one that blames the request gives no answer to check
+(NOT_CHECKED), as step 07 judges (steps/refusal.py, loop#61); a refusal signed
+under another key than the listed one is a failure. The answers are matched
+against the node's signed commitment (loop#161): the one join returns on the node's own
 console, verified below under the listed key with its policy bytes. Its
 signed policy's stranger_safe, not the entry's, says which refusal fails;
 the nodes/ entry must list the same stranger_safe subjects, and each
@@ -1012,6 +1013,9 @@ def listed_entry(node):
     return load(nodes_dir() / f"{node.get('node_id', node['name'])}.json")
 
 
+PROBE_ISSUE = "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"
+
+
 def judge_reporter_line(stem, line, entry, signed=None):
     """(failure or None, not_checked or None) for one reporter verification line. `signed` is the node's verified
     signed terms (signed_terms): its policy's stranger_safe then decides which refusal fails, not the entry's."""
@@ -1027,20 +1031,25 @@ def judge_reporter_line(stem, line, entry, signed=None):
         if state == "refusal" and name not in safe:
             return None, None
         if state == "refusal":
-            # Judged by its reason, as step 07 judges a refusal (Mesh-LLM/capsules-plugin#112, #114). The probe's
-            # requests name no profile, so they are evidence-interop/0 ones.
+            # A refusal is signed too: under the listed key, like an artifact (as step 07 checks it). Then it is
+            # judged by its reason (Mesh-LLM/capsules-plugin#112, #114); the probe's requests name no profile, so
+            # they are evidence-interop/0 ones.
+            if "listed_key=match" not in line.split():
+                return f"the {name} refusal is signed under a key that is not the listed key: {line}", None
             reason = next((w[len("reason="):] for w in line.split() if w.startswith("reason=")), None)
             verdict = refusal.refusal_verdict(reason)
             if verdict == "not_checked":
                 return None, refusal.refusal_not_checked(f"the refusal of the {name} probe", reason)
-            if verdict == "ok":
-                return None, None
+            if verdict == "ok":  # the request is faulted, so the node gave no answer to check
+                return None, {"what": f"the {name} probe answer",
+                              "why": f"the node refused it for a reason that blames the request ({reason})",
+                              "issue": PROBE_ISSUE}
         who = "the node's signed policy" if signed else "the node"
         why = (f"is refused, but {who} lists it as stranger-safe" if state == "refusal"
                else "does not verify under the announced key")
         return f"the {name} answer {why}: {line}", None
     return None, {"what": f"the {name} probe answer", "why": f"the reporter got no verifiable answer: {line}",
-                  "issue": "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"}
+                  "issue": PROBE_ISSUE}
 
 
 def said(line):
