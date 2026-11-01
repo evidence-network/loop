@@ -107,9 +107,6 @@ BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", 
 # repository each pinned component comes from. A cited issue: exactly an `owner/repo#N`
 # reference, or a link to https://github.com/owner/repo/issues/N. Prose naming the org
 # is not an exception.
-# The ecosystem's registered name (loop.sh --ecosystem muse) in the status page's ecosystem columns is a third:
-# an identifier, not branding.
-ECOSYSTEM_NAME = re.compile(r'<strong>muse</strong>|data-ecosystem="muse"|badge-muse\.svg|findings/muse/')
 PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
 ISSUE_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
 ISSUE_REF = re.compile(r"\b[\w.-]+/[\w.-]+#\d+\b")
@@ -121,7 +118,7 @@ def branding(out):
     for page in sorted(Path(out).rglob("*.html")):
         text = page.read_text(encoding="utf-8")
         if page.relative_to(out).as_posix() == "stats/status/index.html":
-            text = ECOSYSTEM_NAME.sub("", PINS.sub("", text, count=1))
+            text = PINS.sub("", text, count=1)
         if PINS.search(text):
             hits.append((page.relative_to(out).as_posix(), "a pin table outside the status page's pins"))
         low = ISSUE_REF.sub("", ISSUE_LINK.sub("", text)).lower()

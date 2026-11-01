@@ -139,12 +139,12 @@ class StatusPageTest(unittest.TestCase):
             os.chdir(cwd)
         self.assertEqual(code, 0, err.getvalue())
         self.assertEqual(bad, 2)
-        page = (self.dir / "_site" / "status-muse" / "index.html").read_text()
-        self.assertIn("<title>Loop status (muse)</title>", page)
-        self.assertIn("<h1>Loop status (muse)</h1>", page)
-        badge = (self.dir / "_site" / "status-muse" / "badge.svg").read_text()
-        self.assertIn("loop (muse):", badge)
-        self.assertIn(">loop (muse)</text>", badge)
+        page = (self.dir / "_site" / "status-consumer-agent" / "index.html").read_text()
+        self.assertIn("<title>Loop status (consumer-agent)</title>", page)
+        self.assertIn("<h1>Loop status (consumer-agent)</h1>", page)
+        badge = (self.dir / "_site" / "status-consumer-agent" / "badge.svg").read_text()
+        self.assertIn("loop (consumer-agent):", badge)
+        self.assertIn(">loop (consumer-agent)</text>", badge)
         self.assertFalse((self.dir / "_site" / "status").exists())
 
     def build(self):
@@ -340,16 +340,17 @@ class StatusPageTest(unittest.TestCase):
         self.assertEqual(self.html.count('data-ecosystem="'), 4)  # mesh and muse, rehearsal and live tables
         live = self.html[self.html.index('data-population="live"'):self.html.index('id="steps"')]
         self.assertIn("2026-10-31-live-17", live)
-        self.assertIn("findings/muse/2026-10-29-live/", live)
-        self.assertNotIn("2026-10-29-live/", self.html.replace("findings/muse/2026-10-29-live/", ""))
-        self.assertTrue((self.out / "findings" / "muse" / "2026-10-29-live" / "01-seal" / "finding.json").is_file())
-        self.assertTrue((self.out / "badge-muse.svg").is_file())
+        self.assertIn("findings/consumer-agent/2026-10-29-live/", live)
+        self.assertNotIn("2026-10-29-live/", self.html.replace("findings/consumer-agent/2026-10-29-live/", ""))
+        self.assertTrue((self.out / "findings" / "consumer-agent" / "2026-10-29-live" / "01-seal" / "finding.json").is_file())
+        self.assertTrue((self.out / "badge-consumer-agent.svg").is_file())
+        self.assertNotIn("muse", self.html.lower())  # the public page never names the product
         self.assertIn("2026-10-29-live/01-seal/finding.json", live)  # the red muse cell links its finding
 
     def test_an_ecosystem_with_no_run_keeps_its_column_citing_its_owner(self):
         self.write(1, "PASS")
         self.page()
-        muse = self.html[self.html.index('data-ecosystem="muse"'):self.html.index('id="steps"')]
+        muse = self.html[self.html.index('data-ecosystem="consumer-agent"'):self.html.index('id="steps"')]
         self.assertIn("no live run yet", muse)
         self.assertIn("https://github.com/evidence-network/loop/issues/154", muse)
         self.assertEqual(muse.count("owner: <a href=\"https://github.com/evidence-network/loop/issues/154"), 2 + 24)

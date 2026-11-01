@@ -48,11 +48,14 @@ ORDER = (RED, NOT_CHECKED, GREEN)  # worst first
 POPULATIONS = ("rehearsal", "live")
 RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)(?:-(\d+))?$")  # -N: a later run the same day
 # The ecosystems the page has a column for: (name, findings subdirectory, the issue that owns a column with no
-# run). mesh is findings/ itself; loop.sh --ecosystem writes the others to findings/<ecosystem>/.
+# run). mesh is findings/ itself; loop.sh --ecosystem writes the others to findings/<ecosystem>/. The public
+# page never names a product: it shows `label` (and publishes under findings/<label>/, badge-<label>.svg), while the
+# id stays for --ecosystem, loop.sh and the findings layout.
 ECOSYSTEMS = (
-    ("mesh", "", ("loop #307", "https://github.com/evidence-network/loop/issues/307")),
-    ("muse", "muse", ("loop #154", "https://github.com/evidence-network/loop/issues/154")),
+    ("mesh", "", ("loop #307", "https://github.com/evidence-network/loop/issues/307"), "mesh"),
+    ("muse", "muse", ("loop #154", "https://github.com/evidence-network/loop/issues/154"), "consumer-agent"),
 )
+LABELS = {name: label for name, _, _, label in ECOSYSTEMS}
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
 VERIFY = ("loop #188", "https://github.com/evidence-network/loop/issues/188")  # 08: the live steps it can't re-derive yet
@@ -553,7 +556,7 @@ def badge(rs, eco="mesh"):
     """A flat SVG badge: "loop" beside one row per population, "<population> <counts>", each row coloured by that
     population's worst row. Two rows keep it narrow enough for a phone."""
     rows = [(f"{p} {counts(rs, p)}", BADGE_COLOURS[worst(rs, p)]) for p in POPULATIONS]
-    name = "loop" if eco == "mesh" else f"loop ({eco})"
+    name = "loop" if eco == "mesh" else f"loop ({LABELS.get(eco, eco)})"
     head = 10 + 7 * len(name)
     w = max(10 + 7 * len(text) for text, _ in rows)
     height = 20 * len(rows)
@@ -767,7 +770,7 @@ def render(rs, runs, lock, eco="mesh", cols=()):
                f'issue that owns it. Counts are never added across ecosystems or populations.</p>'
                f'{ecosystems_html(cols)}') if cols else ""
     return PAGE.format(ecosystems=section, badge_alt=e(badge_label(rs)), lock=e(LOCK),
-                       eco_suffix="" if eco == "mesh" else f" ({e(eco)})",
+                       eco_suffix="" if eco == "mesh" else f" ({e(LABELS[eco])})",
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
@@ -784,8 +787,9 @@ def build(findings_dir, lock_path, out, eco="mesh"):
         if run.path:
             shutil.copytree(run.path, out / FINDINGS / run.rel)
     others = []  # (name, owner issue, runs, rows) of every other registered ecosystem; the --ecosystem pages have none
-    for name, sub, owner in ECOSYSTEMS if eco == "mesh" else ():
+    for name, sub, owner, label in ECOSYSTEMS if eco == "mesh" else ():
         if name != "mesh":
+            name = label  # the page, its paths and its badge carry the public label only
             eruns = {p: read_run(p, d, name) for p, d in latest_runs(Path(findings_dir) / sub).items()}
             for run in eruns.values():
                 if run.path:
@@ -821,7 +825,7 @@ def main(argv):
         print(f"ecosystem is mesh, muse or cross, not {eco!r}", file=sys.stderr)
         return 2
     findings_dir = Path(args[0] if args else FINDINGS if eco == "mesh" else f"{FINDINGS}/{eco}")
-    opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{eco}")
+    opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{LABELS[eco]}")
     try:
         rs = build(findings_dir, opts["--lock"], opts["--out"], eco)
     except StatusError as err:
