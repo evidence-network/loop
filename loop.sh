@@ -21,7 +21,7 @@
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
 # rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
-# it drives (today 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
+# it drives (today 01 and 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
 # is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
@@ -211,8 +211,8 @@ import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 07 the answerer, 09 the referee delivery; 10 and 11 loop#315.
-GOOSE = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
+# loop: 01 a live Goose population (loop#330; the rehearsal passes), 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 07 the answerer, 09 the referee delivery; 10 and 11 loop#315.
+GOOSE = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
          "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
          "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
          "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",

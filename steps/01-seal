@@ -57,11 +57,16 @@ import finding  # noqa: E402
 import live  # noqa: E402
 
 PINNED = ["capsule-emit", "aac-go"]
+GOOSE_PINNED = ["goose-g1", "aac-go"]  # a Goose rehearsal: the capsule is sealed by the Goose node, not by capsule-emit here
 GO_MODULE = "github.com/action-state-group/agent-action-capsule/go"
 ASSERTS = ("a capsule sealed by capsule-emit (Python) with the node's key verifies Class 1 in the "
            "AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go "
            "verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation "
            "runtime_claimed (sealed in the producer's own process) and it carries model_attestation")
+# A Goose rehearsal's finding: the same assertion, the sealer named as the Goose node (G1's loop_seal) (loop#330).
+GOOSE_ASSERTS = ASSERTS.replace("a capsule sealed by capsule-emit (Python) with the node's key",
+                                "a capsule sealed by the Goose node (evidencebook's G1, loop_seal) with the node's key", 1)
+assert GOOSE_ASSERTS != ASSERTS
 # What the step tells the producer about the model; model_attestation must carry it back.
 MODEL = {"provider": "rehearsal", "model_id": "rehearsal-model"}
 # Registered effect_attestation values (AAC -05). A record sealed in the producer's
@@ -266,13 +271,15 @@ def signature_gap(node, detail):
     return {"what": SIGNATURE_WHAT, "why": f"node {node}: {detail}", "issue": live.NO_ISSUE_YET}
 
 
-def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None, live_node=False):
+def seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, sealed=None, node_id=None, live_node=False,
+                   sealed_by=None):
     """Seal with key_dir's key (or take `sealed`), check it, write the proof into out:
     (result, proof, detail, not_checked). A live node must have a nodes/ listing, so one without a node_id is unlisted."""
     rc = seal(out, node, key_dir, python, pop_name, sealed)
     if rc is not None:
         return seal_failed(node, rc)
-    return judge_capsule(out, node, verifier, seen, key_dir / "node-key.pub.pem", node_id, live_node, not sealed)
+    return judge_capsule(out, node, verifier, seen, key_dir / "node-key.pub.pem", node_id, live_node, not sealed,
+                         sealed_by)
 
 
 def seal(out, node, key_dir, python, pop_name, sealed=None):
@@ -299,7 +306,7 @@ def seal_failed(node, rc):
     return "FAIL", ["seal.stderr.txt"], f"node {node}: capsule-emit could not seal (exit {rc})", []
 
 
-def judge_capsule(out, node, verifier, seen, pub_pem, node_id=None, live_node=False, own_seal=True):
+def judge_capsule(out, node, verifier, seen, pub_pem, node_id=None, live_node=False, own_seal=True, sealed_by=None):
     """Check out/capsule.json under the node's key (pub_pem) and its nodes/ listing, and write verifier.json and
     checks.json: (result, proof, detail, not_checked)."""
     capsule_path = out / "capsule.json"
@@ -308,7 +315,7 @@ def judge_capsule(out, node, verifier, seen, pub_pem, node_id=None, live_node=Fa
                             listed, listing_expected=live_node, own_seal=own_seal)
     (out / "verifier.json").write_text(json.dumps(outputs, indent=2, sort_keys=True) + "\n")
     (out / "checks.json").write_text(json.dumps(
-        {"node": node, "sealed_by": "capsule-emit, in this process" if own_seal else "given capsule",
+        {"node": node, "sealed_by": sealed_by or ("capsule-emit, in this process" if own_seal else "given capsule"),
          "installed": seen, "checks": checks}, indent=2, sort_keys=True) + "\n")
     sig = checks["signature"]
     failed = [n for n, c in checks.items() if not c["ok"]]
@@ -427,6 +434,8 @@ def main(argv=None):
     goose = population.get("goose")
     if goose and not a.sealed:  # the Goose rehearsal: check the capsule the Goose node sealed (loop#330)
         a.sealed, a.node = Path(goose["sealed"]["capsule"]), goose["sealed"]["node"]
+    else:  # an explicit --sealed is not the Goose node's capsule, whatever the population
+        goose = None
     if pop_name == "live":
         return main_live(population, out, started, a.sealed)
     node, key_dir = node_key_dir(a.population, population, a.node)
@@ -434,16 +443,29 @@ def main(argv=None):
     seen, not_checked = installed_pins(python, verifier)
     if a.sealed:  # nothing is sealed here, so only the verifier must be installed
         not_checked = [n for n in not_checked if n["what"] != "capsule-emit"]
+    sealed_by, extra = None, []
+    if goose:  # the capsule is the Goose node's: say which node, tool and revision, and keep the key it verified under
+        seen["capsule-emit"] = goose["capsule_emit"]  # what the Goose venv sealed it with, not the mesh pin
+        seen["goose-g1"] = goose["rev"]
+        if goose["rev"] != lock_version("goose-g1"):
+            not_checked.append({"what": "goose-g1", "why": f"installed {goose['rev']}, versions.lock pins "
+                                f"{lock_version('goose-g1')}",
+                                "issue": "none: steps/goose.setup.sh has not installed the pin"})
+        sealed_by = f"the Goose node {node}, tool loop_seal, goose-g1 {goose['rev']}"
+        shutil.copyfile(key_dir / "node-key.pub.pem", out / "node-key.pub.pem")
+        shutil.copyfile(goose["log"], out / "goose-run.log")
+        extra = ["node-key.pub.pem", "goose-run.log"]
 
     def write(result, proof, detail, nc=()):
-        return finding.write(out, result=result, population=pop_name, asserts=ASSERTS, pinned=PINNED,
-                             proof=proof, detail=detail, not_checked=nc, started=started)
+        return finding.write(out, result=result, population=pop_name, asserts=GOOSE_ASSERTS if goose else ASSERTS,
+                             pinned=GOOSE_PINNED if goose else PINNED,
+                             proof=proof + extra, detail=detail, not_checked=nc, started=started)
 
     if not_checked:
         write("NOT_CHECKED", [], f"node {node}: a pinned tool is missing or not the pin", not_checked)
         return 0
 
-    write(*seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, a.sealed))
+    write(*seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, a.sealed, sealed_by=sealed_by))
     return 0
 
 if __name__ == "__main__":

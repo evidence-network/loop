@@ -1,19 +1,43 @@
 {
-  "asserts": "step 01 holds for the goose ecosystem",
-  "detail": "The goose ecosystem has no step 01 yet; loop.sh ran nothing for it.",
-  "finished": "2026-11-01T09:01:01Z",
+  "asserts": "a capsule sealed by the Goose node (evidencebook's G1, loop_seal) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
+  "detail": "node buyer: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 6b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab",
+  "finished": "2026-11-01T09:31:25Z",
   "name": "seal",
-  "not_checked": [
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.17.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "goose-g1": {
+      "ref": "98a78b3d850ecf8924f8a9c494b72710b8d1366b",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
     {
-      "issue": "action-state-group/evidencebook#300",
-      "what": "step 01 for the goose ecosystem",
-      "why": "no step for this ecosystem exists yet"
+      "path": "capsule.json",
+      "sha256": "dcf763fe71c73ecfac7a70d45be2d68bc49fc31b6f3626f9c14ab2896189af17"
+    },
+    {
+      "path": "verifier.json",
+      "sha256": "4730d30d605bf30a0b5d194658802a0a0656d23dbd4c729e968c91d33edf872a"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "100495a64b0e2391eab570d98fffa1b184c8c0a0dc641d354d1f39bad7f5f4b3"
+    },
+    {
+      "path": "node-key.pub.pem",
+      "sha256": "9cab039db1484fe41bf6fce60650edee75f12753fb5f0ba12f3165ac92869692"
+    },
+    {
+      "path": "goose-run.log",
+      "sha256": "7dd71879ded5aceed9acbcd02d7d01a9bbae601254c8cf45304e25ad35f1264f"
     }
   ],
-  "pinned": {},
-  "population": "rehearsal",
-  "proof": [],
-  "result": "NOT_CHECKED",
-  "started": "2026-11-01T09:01:01Z",
+  "result": "PASS",
+  "started": "2026-11-01T09:31:24Z",
   "step": "01"
 }

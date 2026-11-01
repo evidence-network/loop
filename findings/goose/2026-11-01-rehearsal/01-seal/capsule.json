@@ -1,0 +1,48 @@
+{
+  "action_id": "model-call-fd9dc7172f1f8010",
+  "action_type": "fyi",
+  "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "confirmed",
+    "ledger_mode": "standalone"
+  },
+  "canonicalization_id": "jcs",
+  "capsule_id": "c31f8bd7af40c3408e96ec2089f8c4b68f94dc1583fec53cfb5eb80687983e4d",
+  "developer": "goose-loop@v1",
+  "effect": {
+    "effect_attestation": "runtime_claimed",
+    "irreversibility_class": "two_way",
+    "request_digest": "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a",
+    "response_digest": "c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1",
+    "status": "confirmed",
+    "type": "inference_completion"
+  },
+  "evidence_record_header": {
+    "book_id": "goose/node",
+    "committed_at": "2026-11-01T09:31:23Z",
+    "epistemic_type": "producer_claim",
+    "links": [],
+    "payload_commitments": [
+      "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a"
+    ],
+    "record_type": "goose_model_call",
+    "retention_state": "AVAILABLE",
+    "seq": 3,
+    "subject_ref": "model-call-fd9dc7172f1f8010",
+    "v": 1
+  },
+  "format_version": "4",
+  "key_id": "6b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab",
+  "model_attestation": {
+    "compute_attestation": {
+      "agent_input_digest": "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a",
+      "agent_output_digest": "c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1"
+    },
+    "model_id": "rehearsal-model",
+    "provider": "rehearsal"
+  },
+  "operator": "goose-buyer",
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458206b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab0127a05820c31f8bd7af40c3408e96ec2089f8c4b68f94dc1583fec53cfb5eb80687983e4d58401c9190a3410f3dcf9263c6d67664b2c1cf3ec05ea5d54c201a62ca8ee8cc084b68915d0974cbc60e2efb8ec430215be4eb19f5b0976d6ed718eac28bbee64103",
+  "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+  "timestamp": "2026-11-01T09:31:23Z"
+}
