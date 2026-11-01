@@ -4,9 +4,9 @@ ADVERTISE OVER NOSTR: FLOW (design v0, 2026-11-01)
  ---------------------------------                    ------------------------------        ---------------------------------
  [01 Seal] records -> [02 Book] ledger + checkpoint
             |
- [03 Advertise] sign commitment/1  (key_id, ask.endpoint+bindings,
-            |    relay list, mailbox key, policy digest,
-            |    stapled history_card/1 + checkpoint, NO counts)
+ [03 Advertise] sign evidence-commitment/1 (members: steps/03-advertise.md;
+            |    key_id, how to ask incl. relay list + mailbox key, policy digest,
+            |    predicate classes, one history_card/1 per stream + checkpoint, NO counts)
             |
    switch advertise_evidence_requests?
      off -> nothing published (peers can still ask)
@@ -14,13 +14,13 @@ ADVERTISE OVER NOSTR: FLOW (design v0, 2026-11-01)
             signed by the mailbox key the commitment names                                    |
                                                                                     IGNORE event claims
                                                                                     verify commitment sig (spki)
-                                                                                    key_id == key mesh peer proves?
+                                                                                    key_id signs the node's answers?
                                                                                     staple + checkpoint digests ok?
                                                                                     newest issued_at; consistency
                                                                                     proof vs live checkpoint
                                                                                               |
-                                          <------------- [direct] "send me your current commitment/1"
-                                          -------------> commitment/1 (must match / be newer)
+                                          <------------- [direct] "send me your current commitment"
+                                          -------------> commitment (must match / be newer)
                                                                                               |
                                                                                     [04 Admit] policy reads the
                                                                                     stapled card: admit or not

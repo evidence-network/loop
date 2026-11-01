@@ -4,7 +4,7 @@ How a node says, to a stranger from another ecosystem, "ask me for evidence of w
 
 | File | What it covers |
 |---|---|
-| COMMON_RULES.md | the one artifact (`commitment/1`), the verify steps for every carrier, witness rules and the fallback for nodes without a witness |
+| COMMON_RULES.md | the one artifact (`evidence-commitment/1`), the verify steps for every carrier, witness rules and the fallback for nodes without a witness |
 | CARRIER_ARD_NANDA.md | carrier 1: ARD file and the NANDA Index / AI Catalog directories |
 | CARRIER_A2A.md | carrier 2: the A2A agent card |
 | CARRIER_NOSTR.md | carrier 3: an addressable event on Nostr relays |
@@ -13,13 +13,13 @@ How a node says, to a stranger from another ecosystem, "ask me for evidence of w
 Tracking: action-state-group/agent-action-capsule#541.
 
 ## Decided (2026-11-01)
-- One signed `commitment/1`, three carriers: ARD/NANDA attestation entry, A2A card extension, Nostr addressable event. No discovery system of our own.
+- One signed `evidence-commitment/1`, three carriers: ARD/NANDA attestation entry, A2A card extension, Nostr addressable event. No discovery system of our own.
 - Witness required, with a simple path for nodes without one: the verifier derives an "unwitnessed" label from missing receipts (the node never sets it), and the asker pins the first checkpoint it saw (trust on first use). Admission policies may refuse unwitnessed nodes.
 - One design doc per carrier (this folder).
 
 ## Recommended, not yet decided
 1. Switch on = a public announce including the stapled card; default off.
-2. Nostr is always inline, since a NAT'd agent has nowhere to host a URI; over the relay size cap the event drops the card bytes and keeps the card digest. ARD/NANDA and A2A use uri + digest.
+2. Nostr is always inline, since a NAT'd agent has nowhere to host a URI; over the relay size cap the event carries only the commitment digest (and a hosted URI if the node has one), never an edited commitment (CARRIER_NOSTR "Size"). ARD/NANDA and A2A use uri + digest.
 3. A placeholder addressable kind (30000-39999) for the announce, separate from the mailbox kinds; no NIP until a second implementation.
 
 ## Discussion record (2026-11-01)
