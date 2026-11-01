@@ -106,6 +106,9 @@ def main(argv=None):
                          text=True).stdout.strip()  # the Goose checkout the run used
     emit = subprocess.run([str(python), "-B", "-I", "-c", "import importlib.metadata as m; print(m.version('capsule-emit'))"],
                           stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()  # what sealed the capsule
+    if not rev or not emit:
+        print(f"goose_rehearsal: cannot read the Goose checkout revision ({rev!r}) or the capsule-emit version ({emit!r})", file=sys.stderr)
+        return 1
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))
