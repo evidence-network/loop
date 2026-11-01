@@ -677,6 +677,21 @@ class StatusPageTest(unittest.TestCase):
         expected = (status_page.stamp(seal["finished"]) - status_page.stamp(meta["started"])).total_seconds() / 60
         self.assertEqual(text, status_page.duration(expected))
 
+    def test_a_digest_only_live_run_is_green_and_links_its_release_archive(self):
+        d = self.write(1, "PASS", population="live", date="2026-11-01", name="seal")
+        run = d.parent
+        url = "https://example.org/releases/download/live-x/2026-11-01-live.tgz"
+        (run / "proof-archive.json").write_text(json.dumps({"asset": "2026-11-01-live.tgz", "sha256": "a" * 64, "url": url}))
+        (d / "proof.bin").unlink()
+        page = self.page()
+        c = page.rows[1]["live"]
+        self.assertIn("s-green", c["class"])
+        self.assertIn("release archive", c["own"])
+        self.assertIn(f'href="{url}"', self.html)
+        # Without a valid archive the same directory is malformed, as before.
+        (run / "proof-archive.json").unlink()
+        self.assertIn("MALFORMED", self.page().rows[1]["live"]["own"])
+
 
 if __name__ == "__main__":
     unittest.main()

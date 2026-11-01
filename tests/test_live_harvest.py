@@ -33,8 +33,11 @@ esac
 
 
 def git(*args, cwd):
-    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd, check=True,
-                          capture_output=True, text=True).stdout.strip()
+    p = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd,
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)}: {p.stderr}")
+    return p.stdout.strip()
 
 
 def write_run(out, results, plant=None):
@@ -63,9 +66,9 @@ class HarvestTest(unittest.TestCase):
         git("init", "-q", "-b", "main", cwd=src)
         git("add", ".", cwd=src)
         git("commit", "-q", "-m", "base", cwd=src)
-        git("clone", "-q", "--bare", str(src), str(self.tmp / "origin.git"), cwd=self.tmp)
+        git("clone", "-q", "--no-local", "--bare", str(src), str(self.tmp / "origin.git"), cwd=self.tmp)
         self.clone = self.tmp / "clone"
-        git("clone", "-q", str(self.tmp / "origin.git"), str(self.clone), cwd=self.tmp)
+        git("clone", "-q", "--no-local", str(self.tmp / "origin.git"), str(self.clone), cwd=self.tmp)
         bin_ = self.tmp / "bin"
         bin_.mkdir()
         (bin_ / "gh").write_text(GH)

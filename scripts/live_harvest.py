@@ -121,12 +121,13 @@ def unpack(name, files, into):
     return out
 
 
-def privacy(tree, where):
+def privacy(tree, where, code):
+    """The checks are `code`'s (the worktree at origin/main), never the operator's clone, which may be on any branch."""
     for tool in ("check_no_preimages.py", "check_personal_data.py"):
-        p = run(sys.executable, "-B", str(ROOT / "scripts" / tool), str(tree), check=False)
+        p = run(sys.executable, "-B", str(code / "scripts" / tool), str(tree), check=False)
         if p.returncode != 0:
             raise Refuse(7, f"{tool} flagged {where}: {(p.stdout + p.stderr).strip()[:300]}")
-    p = run(sys.executable, "-B", str(ROOT / "steps" / "finding.py"), "check", str(tree), check=False)
+    p = run(sys.executable, "-B", str(code / "steps" / "finding.py"), "check", str(tree), check=False)
     if p.returncode != 0:
         raise Refuse(6, f"steps/finding.py check refused {where}: {p.stderr.strip()[:300]}")
 
@@ -168,7 +169,6 @@ def harvest(args, work, wt):
     files.mkdir()
     name, files = fetch(args, files)
     full = unpack(name, files, work / "unpacked")
-    privacy(full, f"{name} as unpacked")
     record = json.loads((files / f"{name}.json").read_text())
     paid = bool(record.get("exchange", {}).get("paid"))
     digest = sha256(files / f"{name}.tgz")
@@ -178,6 +178,7 @@ def harvest(args, work, wt):
     if run("git", "ls-remote", "--heads", "origin", branch, cwd=ROOT).stdout.strip():
         raise Refuse(4, f"origin already has {branch}")
     run("git", "worktree", "add", "-q", "--detach", str(wt), "origin/main", cwd=ROOT)
+    privacy(full, f"{name} as unpacked", wt)
     if (wt / "findings" / name).exists():
         raise Refuse(4, f"findings/{name} is already on origin/main")
     tag = f"live-{name}"
@@ -186,7 +187,7 @@ def harvest(args, work, wt):
 
     url = f"https://github.com/{repo}/releases/download/{tag}/{name}.tgz"
     slim(full, wt / "findings" / name, name, url, digest)
-    privacy(wt / "findings" / name, f"findings/{name} as committed")
+    privacy(wt / "findings" / name, f"findings/{name} as committed", wt)
 
     # The worktree's own gate: its ROOT is the worktree, so the findings and the versions.lock are origin/main's.
     gate = run(sys.executable, "-B", str(wt / "scripts" / "ecosystem_gate.py"), "update", "--ecosystem", "mesh", "--findings",
