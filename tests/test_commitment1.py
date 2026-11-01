@@ -155,6 +155,20 @@ class CheckerTest(TwoBooks):
             d["history_cards"][1].update(sha256=hashlib.sha256(raw).hexdigest(), bytes=base64.b64encode(raw).decode())
         self.assertRefused(self.resigned(junk), cc.CARD_NOT_ANSWER)
 
+    def test_a_trailing_newline_is_refused_by_each_pattern(self):
+        cases = {
+            "stream": (lambda d: d["history_cards"][0].__setitem__("stream", "alice-book\n"), "stream must be a plain log id"),
+            "timestamp": (lambda d: d.__setitem__("issued_at", d["issued_at"] + "\n"), "issued_at must be"),
+            "duration": (lambda d: d.__setitem__("answers_within", "PT1H\n"), "answers_within must be"),
+            "token": (lambda d: d["answers"]["subjects"].__setitem__(0, "history\n"), "answers.subjects must be"),
+            "predicate_class": (lambda d: d["lcap"]["predicate_classes"].__setitem__(0, "kind:source\n"),
+                                "lcap.predicate_classes must be"),
+        }
+        for name, (change, msg) in cases.items():
+            with self.subTest(pattern=name):
+                errs, _ = self.verify(self.resigned(change))
+                self.assertIn(msg, " ".join(errs))
+
     def test_shape_refusals_are_named(self):
         cases = {
             cc.CARD_EMPTY: lambda d: d.__setitem__("history_cards", []),
