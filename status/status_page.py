@@ -46,7 +46,13 @@ LOCK = "versions.lock"
 GREEN, RED, NOT_CHECKED = "green", "red", "NOT_CHECKED"
 ORDER = (RED, NOT_CHECKED, GREEN)  # worst first
 POPULATIONS = ("rehearsal", "live")
-RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)$")
+RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)(?:-(\d+))?$")  # -N: a later run the same day
+# The ecosystems the page has a column for: (name, findings subdirectory, the issue that owns a column with no
+# run). mesh is findings/ itself; loop.sh --ecosystem writes the others to findings/<ecosystem>/.
+ECOSYSTEMS = (
+    ("mesh", "", None),
+    ("muse", "muse", ("loop #154", "https://github.com/evidence-network/loop/issues/154")),
+)
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
 VERIFY = ("loop #188", "https://github.com/evidence-network/loop/issues/188")  # 08: the live steps it can't re-derive yet
@@ -193,12 +199,18 @@ class Row:
 class Run:
     population: str
     path: Path | None
+    eco: str = "mesh"  # whose findings these are; non-mesh runs are copied to findings/<eco>/<run>
     findings: dict = field(default_factory=dict)  # step number -> (step dir, record, problems)
     started: str | None = None  # run.json `started`, when run.json is valid for this population
 
     @property
     def name(self):
         return self.path.name if self.path else None
+
+    @property
+    def rel(self):
+        """The run's directory under the page's findings/."""
+        return self.name if self.eco == "mesh" else f"{self.eco}/{self.name}"
 
 
 @dataclass
@@ -207,20 +219,26 @@ class Lock:
     pins: list  # (name, repository, ref)
 
 
+def run_key(m):
+    """Sort key of a run directory name: its date, then its number (the unnumbered run is 0)."""
+    return (m.group(1), int(m.group(3) or 0))
+
+
 def latest_runs(findings_dir):
-    """{population: the newest <date>-<population> directory under findings_dir, or None}."""
-    found = {p: None for p in POPULATIONS}
+    """{population: the newest run directory of it under findings_dir, or None}: the newest date, and on it
+    the highest -N (<date>-<population> is run 0)."""
+    found, best = {p: None for p in POPULATIONS}, {}
     root = Path(findings_dir)
-    for d in sorted(root.iterdir()) if root.is_dir() else []:
+    for d in root.iterdir() if root.is_dir() else []:
         m = RUN_DIR.match(d.name)
-        if m and d.is_dir():
-            found[m.group(2)] = d  # sorted by date, so the last one wins
+        if m and d.is_dir() and run_key(m) > best.get(m.group(2), ("", -1)):
+            found[m.group(2)], best[m.group(2)] = d, run_key(m)
     return found
 
 
-def read_run(population, path):
+def read_run(population, path, eco="mesh"):
     """Each step's finding in one run: (step dir, record or None, the check's problems)."""
-    run = Run(population, path)
+    run = Run(population, path, eco)
     if path is None:
         return run
     run.started = run_start(path, population)
@@ -264,7 +282,7 @@ def run_start(path, population):
 
 
 def href(run, d, name):
-    return f"{FINDINGS}/{run.name}/{d.name}/{name}"
+    return f"{FINDINGS}/{run.rel}/{d.name}/{name}"
 
 
 def cell(step, run):
@@ -620,7 +638,7 @@ def runs_html(runs):
     items = []
     for p in POPULATIONS:
         run = runs[p]
-        items.append(f"<li>{e(p)}: " + (link(f"{FINDINGS}/{run.name}/", run.name) if run.path else "no run yet") + "</li>")
+        items.append(f"<li>{e(p)}: " + (link(f"{FINDINGS}/{run.rel}/", run.name) if run.path else "no run yet") + "</li>")
     return "<ul>" + "".join(items) + "</ul>"
 
 
@@ -678,6 +696,8 @@ and {lock} only.</p>
 <p>Runs read:</p>
 {runs}
 
+{ecosystems}
+
 <h2 id="steps">The steps</h2>
 <div class="scroll"><table><thead><tr><th scope="col">Step</th><th scope="col">Asserts</th>
 <th scope="col">Rehearsal</th><th scope="col">Live</th></tr></thead>
@@ -700,8 +720,55 @@ number that cannot be measured yet says so, with the milestone it waits for; it 
 """
 
 
-def render(rs, runs, lock, eco="mesh"):
-    return PAGE.format(badge_alt=e(badge_label(rs)), lock=e(LOCK), eco_suffix="" if eco == "mesh" else f" ({e(eco)})",
+def eco_cell(c, step, run, owner):
+    """One compact cell of the ecosystems table: the state, and what a reader needs to follow it."""
+    if run.path is None:
+        what = f" · owner: {link(owner[1], owner[0])}" if owner else ""
+        return f'<td class="cell s-{NOT_CHECKED}"><code>{NOT_CHECKED}</code> no {e(run.population)} run yet{what}</td>'
+    extra = ""
+    if c.state == GREEN and c.proofs:
+        extra = " · " + link(c.proofs[0][1], "proof")
+    elif c.state == NOT_CHECKED:
+        issues = list(dict.fromkeys(issue_html(i["issue"]) for i in c.not_checked)) or [link(step.owner[1], step.owner[0])]
+        extra = " · " + ", ".join(issues)
+    return (f'<td class="cell s-{e(c.state)}"><code>{e(c.label)}</code> '
+            f'{"" if run.eco != "mesh" else f"""<a href="#step-{step.n:02d}">row</a>"""}{extra}</td>')
+
+
+def ecosystems_html(cols):
+    """One table per population: a column per registered ecosystem against the steps, each its newest run.
+    Nothing is added across ecosystems or populations."""
+    out = []
+    for p in POPULATIONS:
+        heads = []
+        for name, owner, runs, rs in cols:
+            run = runs[p]
+            head = f"<strong>{e(name)}</strong><br>"
+            if run.path:
+                when = RUN_DIR.match(run.name).group(1)
+                badge_file = "badge.svg" if name == "mesh" else f"badge-{name}.svg"
+                head += (f"{link(f'{FINDINGS}/{run.rel}/', run.name)}<br>{e(when)} · {e(counts(rs, p))}<br>"
+                         f"pins: {link(LOCK, LOCK)} · {link(badge_file, 'badge')}")
+            else:
+                head += f"no {e(p)} run yet" + (f"<br>owner: {link(owner[1], owner[0])}" if owner else "")
+            heads.append(f'<th scope="col" data-ecosystem="{e(name)}">{head}</th>')
+        body = []
+        for i, step in enumerate(shown_steps()):
+            tds = "".join(eco_cell(rs[i].cells[p], step, runs[p], owner) for _, owner, runs, rs in cols)
+            body.append(f'<tr><th scope="row"><code>{step.n:02d}</code> {e(step.name)}</th>{tds}</tr>')
+        out.append(f'<h3>{e(p).capitalize()}</h3><div class="scroll"><table class="eco" data-population="{p}">'
+                   f'<thead><tr><th scope="col">Step</th>{"".join(heads)}</tr></thead><tbody>{"".join(body)}'
+                   "</tbody></table></div>")
+    return "".join(out)
+
+
+def render(rs, runs, lock, eco="mesh", cols=()):
+    section = (f'<h2 id="ecosystems">Ecosystems</h2><p>Each registered ecosystem against the same steps, its newest '
+               f'run of each population. An ecosystem with no run keeps its column, {code(NOT_CHECKED)} with the '
+               f'issue that owns it. Counts are never added across ecosystems or populations.</p>'
+               f'{ecosystems_html(cols)}') if cols else ""
+    return PAGE.format(ecosystems=section, badge_alt=e(badge_label(rs)), lock=e(LOCK),
+                       eco_suffix="" if eco == "mesh" else f" ({e(eco)})",
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
@@ -716,16 +783,29 @@ def build(findings_dir, lock_path, out, eco="mesh"):
     out.mkdir(parents=True)
     for run in runs.values():
         if run.path:
-            shutil.copytree(run.path, out / FINDINGS / run.name)
+            shutil.copytree(run.path, out / FINDINGS / run.rel)
+    others = []  # (name, owner issue, runs, rows) of every other registered ecosystem; the --ecosystem pages have none
+    for name, sub, owner in ECOSYSTEMS if eco == "mesh" else ():
+        if name != "mesh":
+            eruns = {p: read_run(p, d, name) for p, d in latest_runs(Path(findings_dir) / sub).items()}
+            for run in eruns.values():
+                if run.path:
+                    shutil.copytree(run.path, out / FINDINGS / run.rel)
+            others.append((name, owner, eruns, rows(eruns)))
     if lock is not None:
         shutil.copyfile(lock_path, out / LOCK)
     try:
         check_rows(rs, out)
+        for _, _, _, ers in others:
+            check_rows(ers, out)
     except StatusError:
         shutil.rmtree(out)
         raise
-    (out / "index.html").write_text(render(rs, runs, lock, eco), encoding="utf-8")
+    cols = [("mesh", None, runs, rs)] + others if others else []
+    (out / "index.html").write_text(render(rs, runs, lock, eco, cols), encoding="utf-8")
     (out / "badge.svg").write_text(badge(rs, eco), encoding="utf-8")
+    for name, _, _, ers in others:
+        (out / f"badge-{name}.svg").write_text(badge(ers, name), encoding="utf-8")
     return rs
 
 

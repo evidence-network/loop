@@ -319,6 +319,40 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn('href="findings/2026-10-26-live/"', self.html)
         self.assertFalse((self.out / "findings" / "2026-10-26-rehearsal").exists())
 
+    def test_numbered_runs_are_picked_by_date_then_number_not_by_name(self):
+        for name in ("2026-10-30-live", "2026-10-31-live", "2026-10-31-live-2", "2026-10-31-live-9",
+                     "2026-10-31-live-17", "2026-10-31-rehearsal-3"):
+            (self.findings / name).mkdir(parents=True)
+        latest = status_page.latest_runs(self.findings)
+        self.assertEqual(latest["live"].name, "2026-10-31-live-17")
+        self.assertEqual(latest["rehearsal"].name, "2026-10-31-rehearsal-3")
+        (self.findings / "2026-11-01-live").mkdir()
+        self.assertEqual(status_page.latest_runs(self.findings)["live"].name, "2026-11-01-live")
+
+    def test_each_ecosystem_has_its_own_column_and_runs_never_cross(self):
+        self.write(1, "PASS", population="live", date="2026-10-31")
+        (self.findings / "2026-10-31-live").rename(self.findings / "2026-10-31-live-17")
+        muse = self.findings / "muse"
+        self.findings, mesh = muse, self.findings
+        self.write(1, "FAIL", population="live", date="2026-10-29")
+        self.findings = mesh
+        self.page()
+        self.assertEqual(self.html.count('data-ecosystem="'), 4)  # mesh and muse, rehearsal and live tables
+        live = self.html[self.html.index('data-population="live"'):self.html.index('id="steps"')]
+        self.assertIn("2026-10-31-live-17", live)
+        self.assertIn("findings/muse/2026-10-29-live/", live)
+        self.assertNotIn("2026-10-29-live/", self.html.replace("findings/muse/2026-10-29-live/", ""))
+        self.assertTrue((self.out / "findings" / "muse" / "2026-10-29-live" / "01-seal" / "finding.json").is_file())
+        self.assertTrue((self.out / "badge-muse.svg").is_file())
+
+    def test_an_ecosystem_with_no_run_keeps_its_column_citing_its_owner(self):
+        self.write(1, "PASS")
+        self.page()
+        muse = self.html[self.html.index('data-ecosystem="muse"'):self.html.index('id="steps"')]
+        self.assertIn("no live run yet", muse)
+        self.assertIn("https://github.com/evidence-network/loop/issues/154", muse)
+        self.assertEqual(muse.count("owner: <a href=\"https://github.com/evidence-network/loop/issues/154"), 2 + 24)
+
     def test_rehearsal_and_live_stay_apart(self):
         self.write(1, "PASS")
         self.write(1, "FAIL", population="live")
