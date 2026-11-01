@@ -107,7 +107,7 @@ is replaced by:
 Each card is checked as the /0 staple is (bytes against digest, the
 `evidence-interop/0` answer format, derivation `history_card/1`, presented by
 the commitment's own subject), and also: its `stream` is the card's own log
-id (the `evidence_stream` its result names), no stream is stapled twice, its
+id (the `evidence_stream` its result names), no stream is stapled twice (compared without case, since step 12 writes a file per stream), its
 community is on the list, and a `checkpoint_key`, where present, is an Ed25519
 SPKI. Each refusal of a card is named, for example
 `history_cards.duplicate_stream`, `history_cards.bytes_mismatch`,

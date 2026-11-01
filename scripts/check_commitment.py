@@ -65,7 +65,7 @@ PROFILE_1 = hc.PROFILE_1
 POLICY_PROFILE = "disclosure-policy/0"
 STAPLE_PROFILE = "evidence-interop/0"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
-# A /1 card's stream: a book's log id, plain names joined by "/" (join.sh's books have one; G1's Goose node writes
+# A /1 card's stream: a book's log id as join.sh accepts one, plain names joined by "/" (G1's Goose node writes
 # goose/node). Step 12 makes file paths from it: no segment can be "." or "..", or empty, so they stay in its directory.
 STREAM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 # DER SubjectPublicKeyInfo prefix of an Ed25519 key (RFC 8410): 32 key bytes follow.
@@ -507,9 +507,12 @@ def staple_errors(doc):
         if card is not None and hc.card_stream(card) != stream:
             found.append((CARD_STREAM, f"{name}.stream {stream} is not the card's own log id "
                                        f"({hc.card_stream(card) or 'none named'})"))
-        if stream in seen:
-            found.append((CARD_DUPLICATE, f"{name} staples stream {stream} again (first at history_cards[{seen[stream]}])"))
-        seen.setdefault(stream, i)
+        # Compared without case: step 12 writes probe/cards/<stream>.*, and macOS and Windows file systems would
+        # put Goose/node and goose/node in one file.
+        key = stream.lower()
+        if key in seen:
+            found.append((CARD_DUPLICATE, f"{name} staples stream {stream} again (first at history_cards[{seen[key]}])"))
+        seen.setdefault(key, i)
         errs += [f"{code}: {text}" for code, text in found]
     return errs
 

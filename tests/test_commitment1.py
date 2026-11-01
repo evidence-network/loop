@@ -13,6 +13,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -123,6 +124,19 @@ class CheckerTest(TwoBooks):
             d["history_cards"][1] = dict(d["history_cards"][0])
         errs = self.assertRefused(self.resigned(dup), cc.CARD_DUPLICATE)
         self.assertEqual(len([e for e in errs if e.startswith(cc.CARD_DUPLICATE)]), 1)
+
+    def test_streams_that_differ_only_in_case_are_one_stream(self):
+        # Step 12's probe/cards/<stream>.* would be one file on a case-insensitive file system.
+        def dup(d):
+            first = d["history_cards"][0]
+            d["history_cards"][:] = [dict(first, stream=first["stream"].upper()), first]
+        errs = self.assertRefused(self.resigned(dup), cc.CARD_DUPLICATE)
+        self.assertEqual(len([e for e in errs if e.startswith(cc.CARD_DUPLICATE)]), 1)
+
+    def test_join_sh_accepts_the_log_ids_the_checker_does(self):
+        # join.sh refuses a book whose log id the checker would refuse as a stream, and accepts the rest.
+        rule = re.search(r're\.fullmatch\(r"(\^\[A-Za-z0-9\][^"]*)", log_id\)', (ROOT / "join.sh").read_text()).group(1)
+        self.assertEqual(rule, cc.STREAM.pattern)
 
     def test_bytes_that_do_not_match_are_refused_by_name_on_either_card(self):
         for i in (0, 1):
