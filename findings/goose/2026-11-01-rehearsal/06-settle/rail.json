@@ -1,0 +1,11 @@
+{
+  "currency": "USD",
+  "decimals": 2,
+  "declaration": "mock-rail/v1",
+  "fee_paying": true,
+  "key_id": "e1e1de8731621bd9a86ed64e1a144ac2b981c227903608b7502ae99dfbb684ce",
+  "ledger": "ledger.jsonl",
+  "public_key": "keys/rail-key.pub.pem",
+  "rail": "mock",
+  "test_key": true
+}

@@ -46,8 +46,12 @@ export PYTHONDONTWRITEBYTECODE=1
 export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
-declare -A NAMES=([01]=seal [02]=book [03]=advertise [08]=verify [12]=join)
+declare -A NAMES=([01]=seal [02]=book [03]=advertise [04]=admit [05]=deal [06]=settle [07]=ask [08]=verify
+                  [09]=dispute [10]=judge [11]=report [12]=join)
 STAGE_1="01 02 03 12 08"
+# The goose column covers all twelve rows (loop#315): each runs on the Goose rehearsal population when it has a Goose
+# input, else it is NOT_CHECKED naming what it waits on.
+GOOSE_STEPS="01 02 03 04 05 06 07 09 10 11 12 08"
 
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
@@ -67,7 +71,7 @@ while [ $# -gt 0 ]; do
 done
 
 case "$stage" in
-  1) steps=$STAGE_1 ;;
+  1) steps=$STAGE_1; [ "$ecosystem" = goose ] && steps=$GOOSE_STEPS ;;
   "") usage ;;
   *) die "stage $stage has no steps yet" ;;
 esac
@@ -157,6 +161,19 @@ with open(path, "w") as f:
     f.write(json.dumps(run, indent=2, sort_keys=True) + "\n")
 PY
 
+# The Goose rehearsal: G1's two nodes, run by scripts/goose_rehearsal.py when its tools are installed (steps/goose.setup.sh);
+# a step it lists (population.json "goose".steps) then runs on the population it wrote, the rest are NOT_CHECKED below.
+goose_steps=""
+if [ "$ecosystem" = goose ] && [ "$population" = rehearsal ]; then
+  goose_work=$(mktemp -d) && trap 'rm -rf "$goose_work"' EXIT
+  if python3 -B "$ROOT/scripts/goose_rehearsal.py" --work "$goose_work" >&2; then
+    pop_dir=$goose_work/population
+    goose_steps=$(python3 -B -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["goose"]["steps"]))' "$pop_dir/population.json")
+  else
+    echo "loop.sh: the Goose rehearsal did not run (tools missing or the run failed); every goose step is NOT_CHECKED" >&2
+  fi
+fi
+
 ran=()
 for nn in $steps; do
   found=()
@@ -172,16 +189,18 @@ for nn in $steps; do
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "== $base" >&2
 
-  if [ "$ecosystem" != mesh ]; then
+  if [ "$ecosystem" != mesh ] && ! { [ "$ecosystem" = goose ] && [[ " $goose_steps " == *" $nn "* ]]; }; then
     python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" <<'PY'
 import sys
 root, step_dir, started, ecosystem, nn, population = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; the rest loop#315.
+# loop: 01 the effect record, 02 the book bundle, 03 and 12 the commitment publisher, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 07 the answerer, 09 the referee delivery; 10 and 11 loop#315.
 GOOSE = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
-         "03": "action-state-group/capsule-emit#406", "08": "evidence-network/loop#193",
-         "12": "action-state-group/capsule-emit#406"}
+         "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
+         "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
+         "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
+         "09": "action-state-group/capsule-emit#393", "12": "action-state-group/capsule-emit#406"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 sys.path.insert(0, root + "/steps")
 import finding

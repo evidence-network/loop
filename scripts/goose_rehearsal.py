@@ -25,7 +25,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["01", "06"]
+STEPS = ["06"]
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
 PUBLIC = ("import sys; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, "

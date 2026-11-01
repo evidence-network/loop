@@ -200,7 +200,7 @@ def volume(objs, reports, decl, controllers):
             "filter": "final, on a fee-paying rail, payer and payee declared under different controllers"}
 
 
-def decide(out, *, population, nodes, started):
+def decide(out, *, population, nodes, started, goose=False):
     """Check the proof bytes in out and write the finding."""
     out = Path(out)
     checks = {}
@@ -280,6 +280,11 @@ def decide(out, *, population, nodes, started):
                                 "the controller declarations, which are rehearsal stand-ins", DEAL_ISSUE) + " "
               + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
                                 ADAPTER_ISSUE))
+    if goose:  # the Goose rehearsal (scripts/goose_rehearsal.py): say what ties the deal to the rail's object
+        detail += " " + finding.outside("the settlement is tied to the Goose deal by construction (the buyer's "
+                                        "loop_settle took the rail's settlement id as its payment reference), and "
+                                        "this step reads the exchange and controller files the rehearsal driver "
+                                        "wrote, not the deal's pay record", "evidence-network/loop#330")
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED, proof=proof,
                          detail=detail, started=started)
 
@@ -917,7 +922,8 @@ def main(argv):
         if p.is_file():
             p.unlink()
     gather(a.population, out)
-    decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started)
+    decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started,
+           goose="goose" in pop)
     return 0
 
 

@@ -34,7 +34,7 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
         self.assertEqual(doc["rail"], "mock")
-        self.assertEqual(doc["goose"]["steps"], ["01", "06"])
+        self.assertEqual(doc["goose"]["steps"], ["06"])
 
     def test_the_rail_object_is_the_deals_and_step_06_passes_unchanged(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())

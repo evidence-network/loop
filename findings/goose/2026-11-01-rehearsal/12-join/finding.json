@@ -1,0 +1,19 @@
+{
+  "asserts": "step 12 holds for the goose ecosystem",
+  "detail": "The goose ecosystem has no step 12 yet; loop.sh ran nothing for it.",
+  "finished": "2026-11-01T08:08:05Z",
+  "name": "join",
+  "not_checked": [
+    {
+      "issue": "action-state-group/capsule-emit#406",
+      "what": "step 12 for the goose ecosystem",
+      "why": "no step for this ecosystem exists yet"
+    }
+  ],
+  "pinned": {},
+  "population": "rehearsal",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-01T08:08:05Z",
+  "step": "12"
+}
