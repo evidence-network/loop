@@ -601,22 +601,26 @@ names the one gap outside it (no public ledger, loop#247). `pack` takes
 
 What a paid exchange costs, measured live on 2026-11-01 (loop#300; lab-2 pays,
 lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
-- The loop sets no amount. `lab.sh exchange` sends one `max_tokens` 8 request; the
-  amount is the seller's (lab-1) minimum payment, which is 1,000 msat by default
-  and which `mesh-llm wallet min-payment` and `admission-deposit` take only as
-  1 to 1000 sats. A cold peer pays a 1,000 msat deposit that covers the 2 msat
-  bill, so the exchange costs 1,000 msat; a peer the seller already trusts pays
-  no deposit and one final invoice raised to the same 1,000 msat. It is not
-  2,000 msat (that figure is the Goose test's direct 2 sat payment).
+- The loop sets no amount. `lab.sh exchange` sends one `max_tokens` 8 request from
+  each of lab-2 and lab-3; only lab-2 has a wallet, so one exchange is paid. For a
+  cold peer the amount is lab-1's admission deposit for the model: its own
+  deposit, else the node-wide `admission-deposit`, else the minimum payment, and
+  never below the minimum payment. The minimum payment is 1,000 msat by default,
+  and `mesh-llm wallet min-payment` and `admission-deposit` take only 1 to 1000
+  sats. The deposit covers the 2 msat bill, so the exchange costs 1,000 msat. A
+  peer the seller already trusts pays no deposit and one final invoice raised
+  to the seller's minimum payment, also 1,000 msat. It is not 2,000 msat (that
+  figure is the Goose test's direct 2 sat payment).
 - The served model must be priced on lab-1 (`mesh-llm wallet pricing <model>`);
   an unpriced model is served free and settles nothing.
 - 10 and 100 msat (the seller's minimum set to them in its ledger) both fail: HTTP
-  402 "paid inference interrupted", lab-2's charge row (amount 10 or 100) goes to
-  `failed` with total 0. The row exists only after mesh-llm's own checks passed
-  (buyer admission and `prepare_charge`), so the failure is in the wallet's pay
-  step, not the 1,000 msat floor. A failed attempt leaves a payment hash in the
-  payer's book alone, which step 06 reads as unproven (`finality`) and unpaired
-  (`exchange_match`), so do not probe on the live lab before a run.
+  402 ("paid inference interrupted; settlement remains recoverable"), and lab-2's
+  charge row (amount 10 or 100) goes to `failed` with total 0. The row exists only
+  after mesh-llm's own checks passed (buyer admission and `prepare_charge`), so the
+  failure is in the wallet's pay step, not the 1,000 msat floor. A failed attempt
+  leaves a payment hash in the payer's book alone, which step 06 reads as unproven
+  (`finality`) and unpaired (`exchange_match`), so do not probe on the live lab
+  before a run.
 - Only lab-1 serves a model, so payments go lab-2 to lab-1 (or lab-3 to lab-1,
   which has no wallet); the wallets cannot ping-pong today.
 - The 9,000 msat per direction limit is the lab payment guard Ethan set (with 3,000 msat per
