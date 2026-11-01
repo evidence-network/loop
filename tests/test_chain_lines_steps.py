@@ -75,6 +75,19 @@ class Nodes(unittest.TestCase):
             with self.assertRaises(OSError):
                 step06.recorded(self.shelf / "ledger" / "capsules.jsonl")
 
+    def test_07_an_unread_asker_shelf_chain_is_a_gap_not_a_fault(self):
+        self.use("exit 1")
+        out, attempt = Path(self.tmp.name) / "o", Path(self.tmp.name) / "o" / "attempt"
+        attempt.mkdir(parents=True)
+        step07.keep_askers(out, {"lab-1": self.shelf / "ledger"}, [])
+        self.assertFalse((out / step07.ASKER_LEDGER / "lab-1" / "capsules.jsonl").exists())
+        (attempt / f"q{step07.CHECKPOINT_SUFFIX}").write_text(json.dumps({"asker": "lab-1", "reply": {"ledger_checkpoint": 1}}))
+        with mock.patch.object(step07.step12, "listed_entry", return_value={"key_id": "k" * 64}):
+            errs, nc = step07.judge_ledger_proof(out, {"nodes": [{"name": "lab-1"}]}, {"asker": "lab-1"}, attempt, "q",
+                                                 {}, "n", {}, None, None)
+        self.assertEqual(errs, [])
+        self.assertIn("was not read", nc[0]["why"])
+
     def test_keep_checked_keeps_no_copy_and_says_why_when_chain_lines_fails(self):
         self.use("exit 1")
         dest = Path(self.tmp.name) / "out" / "capsules.jsonl"

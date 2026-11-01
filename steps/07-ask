@@ -1129,6 +1129,7 @@ ASK_FILE = "ask.json"  # which node was asked through which console, or why it w
 SUBJECT_FILE = "exchange-subject.json"  # per node: the half the exchange ask is about, or why there is none
 COMMITMENT_DIR = "commitment"  # per node: the commitment the deadline came from, its policy, and choice.json
 OWN_NODE = "the reporter's own node and no second console"
+UNREAD_FILE = "chain-unread.txt"  # beside an asker's kept chain: why its shelf chain was not read
 ASKER_LEDGER = "asker-ledger"  # per asker: the whole ledger/capsules.jsonl the checkpoint replies cover (loop#276)
 ASKER_UNNAMED = "console"  # the asker's directory when its node is not named, so no listed key checks its replies
 CHECKPOINT_SUFFIX = ".checkpoint.json"  # per ask: the asker's ledger-checkpoint reply, or the refusal text
@@ -1222,7 +1223,9 @@ def keep_askers(out, askers, pending):
         try:
             ledger_proof.keep_copy(ledger_dir / ledger_proof.CHAIN, Path(out) / ASKER_LEDGER / name / ledger_proof.CHAIN)
             kept[name] = (Path(out) / ASKER_LEDGER / name).joinpath(ledger_proof.CHAIN).read_bytes()
-        except OSError:
+        except OSError as e:
+            if live.chain_stored(ledger_dir):  # a shelf chain our side could not read: judge_ledger_proof says so
+                (Path(out) / ASKER_LEDGER / name / UNREAD_FILE).write_text(f"{type(e).__name__}: {e}\n")
             continue
     for attempt, stem, node_id, sent_at, back, name in pending:
         try:
@@ -1545,6 +1548,11 @@ def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, 
     try:
         raw = copy.read_bytes()
     except OSError:
+        try:  # keep_askers could not read the asker's shelf chain: our side's gap, not the node's fault
+            why = (copy.parent / UNREAD_FILE).read_text().strip()
+            return gap(f"the asker's chain was not read ({why})", ledger_proof.TOOLS_ISSUE)
+        except OSError:
+            pass
         return [f"the kept copy of {asker}'s ledger ({ASKER_LEDGER}/{asker}/{ledger_proof.CHAIN}) is missing"], []
     try:
         info, why = ledger_proof.check(raw, reply, key_id, ledger_proof.CHAIN)

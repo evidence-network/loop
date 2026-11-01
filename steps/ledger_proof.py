@@ -216,7 +216,7 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
             keep_copy(src, dest)
         except OSError as e:  # a shelf node whose chain-lines fails: no copy, and the beside-file says why
             dest.unlink(missing_ok=True)
-            asked = {**asked, "unread": f"chain-lines failed: {e}"}
+            asked = {**asked, "unread": f"{'chain-lines failed' if shelf else 'the file could not be copied'}: {e}"}
         if dest.exists():
             n = covered(asked["reply"]) if asked["reply"] else None
             cut = prefix(dest.read_bytes(), n) if n else None
