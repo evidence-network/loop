@@ -672,10 +672,15 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("not the listed key", r["detail"])
 
-    def test_a_refusal_of_a_listed_stranger_safe_subject_is_a_fail(self):
-        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"})
+    def test_a_withholding_refusal_of_a_listed_stranger_safe_subject_is_a_fail(self):
+        r = self.run_live({"checkpoints": "refusal_withheld", "history_card": "verified_history_card"})
         self.assertEqual(r["result"], "FAIL")
         self.assertIn("lists it as stranger-safe", r["detail"])
+
+    def test_an_ambiguous_refusal_of_a_listed_stranger_safe_subject_is_not_checked(self):
+        r = self.run_live({"checkpoints": "refusal", "history_card": "verified_history_card"})
+        self.assertEqual(r["result"], "NOT_CHECKED")
+        self.assertTrue(any("policy_declined" in i["why"] for i in r["not_checked"]))
 
     def test_no_answer_is_not_checked_never_a_pass(self):
         r = self.run_live({"checkpoints": "absence", "history_card": "absence"})
@@ -1538,7 +1543,7 @@ class SignedTermsTest(unittest.TestCase):
 
     SIGNED = {"subjects": ["checkpoints", "full_history"], "derivations": ["history_card/1"],
               "stranger_safe": ["checkpoints"]}
-    REFUSED = "refusal mesh_evidence_request: refused"
+    REFUSED = "refusal reason=no_such_subject listed_key=match"
 
     def test_the_signed_policy_decides_which_refusal_fails(self):
         entry = {"disclosure": {"stranger_safe": ["checkpoints", "history_card/1"]}}
@@ -1548,6 +1553,29 @@ class SignedTermsTest(unittest.TestCase):
         # Without signed terms the entry decides, as before (and as step 07 calls it).
         fail, _ = step.judge_reporter_line("history_card", self.REFUSED, entry)
         self.assertIn("is refused, but the node lists it as stranger-safe", fail)
+
+    def test_a_refusal_is_judged_by_its_reason(self):
+        """The split settled on Mesh-LLM/capsules-plugin#112 and #114, as step 07 judges a refusal (loop#61)."""
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        line = "refusal reason={} key=" + "ab" * 32 + " listed_key=match"
+        for reason in ("no_such_subject", "derivation_unsupported", "made_up_reason"):
+            fail, nc = step.judge_reporter_line("checkpoints", line.format(reason), entry, self.SIGNED)
+            self.assertIn(f"is refused, but the node's signed policy lists it as stranger-safe: refusal reason={reason}",
+                          fail)
+            self.assertIsNone(nc)
+        for reason in ("policy_declined", "not_authorized", "retention_expired", "deadline_unmet", "request_malformed",
+                       "coverage_unsatisfiable"):
+            fail, nc = step.judge_reporter_line("checkpoints", line.format(reason), entry, self.SIGNED)
+            self.assertIsNone(fail)
+            self.assertIn(reason, nc["why"])
+
+    def test_a_refusal_under_another_key_is_a_fail_whatever_its_reason(self):
+        entry = {"disclosure": {"stranger_safe": ["checkpoints"]}}
+        for reason in ("policy_declined", "deadline_unmet"):
+            for listed in ("differs", "unknown"):
+                fail, _ = step.judge_reporter_line(
+                    "checkpoints", f"refusal reason={reason} key={'ab' * 32} listed_key={listed}", entry, self.SIGNED)
+                self.assertIn("not the listed key", fail)
 
     def test_signed_terms_need_lists_of_names(self):
         doc = {"answers": {"subjects": ["checkpoints"], "derivations": ["history_card/1"]}}
