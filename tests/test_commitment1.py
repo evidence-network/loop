@@ -520,7 +520,8 @@ class NostrRoute(TwoBooks):
                "02" + "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",  # compressed, 66 hex
                "ff" * 32,  # not below the field prime
                "00" * 31 + "05",  # x^3 + 7 is not a square: no point
-               "npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6unfqa")  # bech32, not hex
+               "npub1lycg5qvjtrp3qjf5f7zl382j9x6nrjz9sdhenvyxq8c3808qxmus6unfqa",  # bech32, not hex
+               "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\n")  # a trailing newline
         for key in bad:
             with self.subTest(key=key):
                 self.assertRefused(self.change(lambda n, k=key: n.__setitem__("mailbox_key", k)), cc.NOSTR_KEY)
@@ -528,7 +529,11 @@ class NostrRoute(TwoBooks):
     def test_a_malformed_relay_is_refused_by_name(self):
         for url in ("ws://relay.example", "https://relay.example", "WSS://relay.example", "wss://", "relay.example",
                     "wss://user:pw@relay.example", "wss://relay.example/?a=b", "wss://relay.example/#x",
-                    "wss://relay.example:99999", "wss://relay .example", "wss://relä.example", ""):
+                    "wss://relay.example:99999", "wss://relay .example", "wss://relä.example", "",
+                    "wss://[2001:db8::1", "wss://]x", "wss://[bad]", "wss://r.example?", "wss://r.example#",
+                    "wss://relay.example:0", "wss://relay.example:", "wss://relay.example;x", "wss://%20",
+                    "wss://RELAY.example", "wss://relay.example:443", "wss://relay.example/",
+                    "wss://[2001:DB8::1]", "wss://[2001:db8:0::1]", "wss://-relay.example"):
             with self.subTest(url=url):
                 errs = self.assertRefused(self.change(lambda n, u=url: n["relays"].__setitem__(1, u)), cc.NOSTR_RELAY)
                 self.assertIn("ask.nostr.relays[1]", " ".join(errs))
@@ -541,7 +546,8 @@ class NostrRoute(TwoBooks):
         self.assertIn("ask.nostr.relays[1] repeats ask.nostr.relays[0]", " ".join(errs))
 
     def test_a_relay_with_a_path_or_port_is_accepted(self):
-        for url in ("wss://relay.example:7447", "wss://relay.example/nostr", "wss://[2001:db8::1]"):
+        for url in ("wss://relay.example:7447", "wss://relay.example/nostr", "wss://[2001:db8::1]",
+                    "wss://relay.example/Path;v=1"):
             with self.subTest(url=url):
                 self.assertEqual(self.verify(self.change(lambda n, u=url: n["relays"].__setitem__(1, u))), ([], []))
 
@@ -555,10 +561,16 @@ class NostrRoute(TwoBooks):
         self.assertIn("unknown field nostr", errs)
 
     def test_a_route_that_is_not_an_object_is_refused(self):
-        errs, _ = self.verify(self.resigned(lambda d: d["ask"].__setitem__("nostr", "wss://relay.example")))
-        self.assertIn("ask.nostr must be a dict", errs)
+        errs = self.assertRefused(self.resigned(lambda d: d["ask"].__setitem__("nostr", "wss://relay.example")),
+                                  cc.NOSTR_SHAPE)
+        self.assertIn(f"{cc.NOSTR_SHAPE}: ask.nostr must be an object", errs)
         errs = self.assertRefused(self.change(lambda n: n.__setitem__("relays", "wss://relay.example")), cc.NOSTR_SHAPE)
         self.assertIn("ask.nostr.relays must be a list", " ".join(errs))
+
+    def test_a_route_is_named_even_beside_another_field_error(self):
+        errs, _ = self.verify(self.resigned(lambda d: (d.pop("human_gated"), d["ask"]["nostr"].pop("relays"))))
+        self.assertIn("missing human_gated", errs)
+        self.assertTrue([e for e in errs if e.startswith(cc.NOSTR_MISSING + ":")], errs)
 
     def test_profile_zero_has_no_route(self):
         path = ZERO[-1]

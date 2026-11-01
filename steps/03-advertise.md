@@ -154,9 +154,18 @@ The key and the relays travel together: either alone is no route, and is
 refused. The mailbox key is a route, not an identity: a verifier never
 compares it with `key_id`, and it proves nothing about who answers (binding
 §3); the answer's own signature does. It is learned from the commitment
-because the commitment is signed by `key_id` (binding N-5). A relay URL is
-`wss://host[:port][/path]` in printable ASCII, with no credentials, query or
-fragment. Profile /0 has no `ask.nostr`.
+because the commitment is signed by `key_id` (binding N-5). They are two plain
+members, not a NIP-19 `nprofile` in a retention commitment's `route` (the
+other place binding N-4 names): NIP-19's bech32 forms are for display and
+sharing (binding §5.3), and an absence record's `route` `nprofile` is built
+from these members. Profile /0 has no `ask.nostr`.
+
+A relay URL is written in one form, so that "distinct" compares relays, not
+spellings: `wss://host[:port][/path]`, the host a lowercase DNS name or a
+bracketed IPv6 literal in its compressed form, a port from 1 to 65535 other
+than the default 443, no path that is a bare `/`, and no credentials, query
+or fragment. `wss://RELAY.example`, `wss://relay.example:443` and
+`wss://relay.example/` are refused; write `wss://relay.example`.
 
 Each refusal is named: `ask.nostr.missing_member`, `ask.nostr.bad_mailbox_key`,
 `ask.nostr.bad_relay`, `ask.nostr.duplicate_relay`, `ask.nostr.no_relays`, and
