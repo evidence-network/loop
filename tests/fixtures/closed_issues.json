@@ -15,6 +15,8 @@
     "action-state-group/agent-action-capsule#431": "closed by agent-action-capsule go/v0.15.0 (cross_language signature, AAC#463), the aac-go pin since loop#125",
     "action-state-group/agent-action-capsule#432": "closed by agent-action-capsule PR #464 (13e4e7b), released as go/v0.15.0 (cross_language binding), the aac-go pin since loop#136",
     "evidence-network/loop#24": "closed 2026-10-31: steps 08, 10 and 11 run on rehearsal and live; live 08 re-derives live 07 (loop#192; findings/2026-10-31-live-2); the remaining live gaps are loop#188, #189 and #193",
-    "evidence-network/loop#56": "closed 2026-10-30: the lab-wallet run was replaced by one paid exchange on the demo nodes (loop#114); an at-pin lab run is still NOT_CHECKED on capsules-plugin#83"
+    "evidence-network/loop#56": "closed 2026-10-30: the lab-wallet run was replaced by one paid exchange on the demo nodes (loop#114); an at-pin lab run is still NOT_CHECKED on capsules-plugin#83",
+    "evidence-network/loop#276": "closed by loop PR #282 (40772b5) and PR #291 (5907a93)",
+    "evidence-network/loop#94": "closed by loop PR #146 (0a1ca22); live-17's step 07 is PASS with the exchange answered"
   }
 }

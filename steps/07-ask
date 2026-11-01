@@ -85,8 +85,8 @@ asked node holds, the asker's own chain also holds (it sent it) and the asked no
 `counterparty_half` (`exchange_subject`; the two data dirs are read, the asked node's is its `data_dir` in the population).
 It is sealed and judged like the others; a verified answer must serve records that each cite the half, and a refusal is
 judged by its reason with the asker a counterparty (a withholding or unnamed reason is a FAIL; coverage_unsatisfiable,
-which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED on loop#94). With no such half the
-ask is NOT_CHECKED on loop#94. A node cannot be asked
+which reads as no_checkpoint_yet, is checked for its key and left NOT_CHECKED, as it needs a checkpoint covering the half). With no such half the
+ask is NOT_CHECKED. A node cannot be asked
 through its own console: `--self-node` and `--second-console` work as in step 12.
 
 The reporter backend collects first, then judges only what it kept (judge_reporter), so step 08 gets the same
@@ -165,7 +165,7 @@ DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 # The pinned plugin seals each ask before it sends it, and its absence when the window closes (capsules-plugin
 # PR #110); the live path reads those sealed records from the asker's ledger (ask_records, judge_sealed).
 SEAL_ISSUE = "evidence-network/loop: the live lab run with the asker's data dirs set (lab.sh ask); loop#80 built the read"
-EXCHANGE_ISSUE = "evidence-network/loop#94"  # the exchange ask on a Mesh node: it needs a half step 05 left as subject
+EXCHANGE_ISSUE = "evidence-network/loop: step 07's exchange ask needs a step 05 half the asked node's chain cites"  # the exchange ask on a Mesh node: it needs a half step 05 left as subject
 LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
@@ -1158,7 +1158,7 @@ def judge_exchange_line(line, entry, profile=PROFILE_V0):
     """(failure or None, not_checked or None) for the exchange ask's reporter line. The asker is a counterparty
     holding a half the node cites, so a refusal is judged by its reason: a withholding or unnamed reason is a FAIL
     (the policy answers it), an ambiguous one is not checked, and a request-blaming one is fine, except coverage_unsatisfiable (the
-    no_checkpoint_yet line): its key is checked and the ask is left NOT_CHECKED on loop#94."""
+    no_checkpoint_yet line): its key is checked and the ask is left NOT_CHECKED."""
     if line.split(" ", 1)[0] not in ("refusal", "no_checkpoint_yet"):  # coverage_unsatisfiable reads as the latter
         return step12.judge_reporter_line(EXCHANGE, line, entry)
     if "listed_key=match" not in line.split():
@@ -1555,7 +1555,7 @@ def judge_reporter(pop, out):
     return failures, not_checked, answered, proof, lines
 
 
-LOOP_ISSUE = "evidence-network/loop#276"
+LOOP_ISSUE = "evidence-network/loop: step 07's ledger check needs the asker's listed key and loop-ledger-check (steps/ledger-check.setup.sh)"
 
 
 def predates_checkpoints(ask):

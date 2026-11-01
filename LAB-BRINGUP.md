@@ -653,11 +653,11 @@ own node through a second node's console, as `loop` does), and pays nothing. Run
 - The exchange request is about the newest half the asker pushed to the asked node after an
   `exchange`, by a node started with `LAB_SHARE_AT_COMPLETION` (the halves `deal` reads), that
   the asked node's chain cites as a counterparty half. With no such half, the exchange ask
-  reads NOT_CHECKED (evidence-network/loop#94).
+  reads NOT_CHECKED (it needs such a half).
 - An exchange refusal for `policy_declined` or `not_authorized` reads NOT_CHECKED
   (Mesh-LLM/capsules-plugin#114). One for `coverage_unsatisfiable` (the node has no
   checkpoint covering the half yet) is checked for its key and left NOT_CHECKED
-  (evidence-network/loop#94).
+  (it needs a checkpoint covering the half).
 - A refusal for `retention_expired` reads NOT_CHECKED (evidence-network/loop#60): it is right
   only after the node's retention commitment for the subject lapses, and no node publishes one.
 
