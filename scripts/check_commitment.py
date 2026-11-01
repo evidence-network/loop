@@ -294,7 +294,7 @@ def card_field_errors(cards):
             continue
         if not STREAM.fullmatch(c["stream"]):
             errs.append(f"{CARD_SHAPE}: {name}.stream must be a plain log id (letters, digits, '.', '_', '-')")
-        if not HEX64.match(c["sha256"]):
+        if not HEX64.fullmatch(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
         if c["derivation"] != "history_card/1":
             errs.append(f"{CARD_DERIVATION}: {name}.derivation must be history_card/1")
@@ -412,7 +412,7 @@ def field_errors(doc):
         return errs
 
     for name in ("node_id", "key_id"):
-        if not HEX64.match(doc[name]):
+        if not HEX64.fullmatch(doc[name]):
             errs.append(f"{name} is not 64 lowercase hex")
     if not TIMESTAMP.fullmatch(doc["issued_at"]):
         errs.append("issued_at must be YYYY-MM-DDTHH:MM:SSZ")
@@ -424,7 +424,7 @@ def field_errors(doc):
             errs.append(f"{name} must be a non-empty list of names")
     if "controller_binding" in doc and not HEX64.fullmatch(doc["controller_binding"]["digest"]):
         errs.append("controller_binding.digest is not a sha256 (64 lowercase hex)")
-    if not HEX64.match(doc["lcap"]["policy_digest"]):
+    if not HEX64.fullmatch(doc["lcap"]["policy_digest"]):
         errs.append("lcap.policy_digest is not a sha256 (64 lowercase hex)")
     if not doc["lcap"]["policy_uri"].strip():
         errs.append("lcap.policy_uri must be non-empty")

@@ -123,6 +123,15 @@ class Refusals(unittest.TestCase):
         doc["at"] = "2026-10-27T20:00:01Z"
         self.assertEqual(self.check(doc), ["signature does not verify under spki"])
 
+    def test_a_trailing_newline_is_refused_by_the_hex_and_timestamp_patterns(self):
+        for field, msg in (("node_id", "node_id is not 64 lowercase hex"), ("key_id", "key_id is not 64 lowercase hex"),
+                           ("consent_sha256", "consent_sha256 is not 64 lowercase hex"),
+                           ("at", "at must be YYYY-MM-DDTHH:MM:SSZ (UTC)")):
+            with self.subTest(field=field):
+                doc = load("good-join.json")
+                doc[field] += "\n"
+                self.assertIn(msg, self.check(resign(doc)))
+
     def test_missing_field_is_refused(self):
         doc = load("good-join.json")
         del doc["consent_sha256"]

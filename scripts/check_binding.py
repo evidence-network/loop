@@ -79,7 +79,7 @@ def verdict_errors(doc, pins):
         return errs
     if doc["profile"] != PROFILE:
         errs.append(f"{SHAPE}: profile must be {PROFILE}")
-    if not (isinstance(doc["controller_key_id"], str) and HEX64.match(doc["controller_key_id"])):
+    if not (isinstance(doc["controller_key_id"], str) and HEX64.fullmatch(doc["controller_key_id"])):
         errs.append(f"{SHAPE}: controller_key_id is not 64 lowercase hex")
     subjects = doc["subjects"]
     if not (isinstance(subjects, list) and all(isinstance(s, str) and SUBJECT.match(s) for s in subjects)):
@@ -90,7 +90,7 @@ def verdict_errors(doc, pins):
         errs.append(f"{SHAPE}: status must be one of {', '.join(STATUSES)}")
     if doc["verifier"] is not None and not (isinstance(doc["verifier"], str) and VERIFIER.match(doc["verifier"])):
         errs.append(f"{SHAPE}: verifier must be <name>@<pin> or null")
-    if not (isinstance(doc["checked_at"], str) and TIMESTAMP.match(doc["checked_at"])):
+    if not (isinstance(doc["checked_at"], str) and TIMESTAMP.fullmatch(doc["checked_at"])):
         errs.append(f"{SHAPE}: checked_at must be YYYY-MM-DDTHH:MM:SSZ")
     if doc["cites"] is not None and not (isinstance(doc["cites"], str) and ISSUE.match(doc["cites"])):
         errs.append(f"{SHAPE}: cites must be <owner/repo#N> or null")

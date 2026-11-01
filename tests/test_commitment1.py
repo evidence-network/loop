@@ -171,6 +171,20 @@ class CheckerTest(TwoBooks):
                 errs, _ = self.verify(self.resigned(change))
                 self.assertIn(msg, " ".join(errs))
 
+    def test_a_trailing_newline_is_refused_by_each_hex_digest(self):
+        cases = {
+            "card sha256": (lambda d: d["history_cards"][0].__setitem__("sha256", d["history_cards"][0]["sha256"] + "\n"),
+                            "history_cards[0].sha256 is not 64 lowercase hex"),
+            "node_id": (lambda d: d.__setitem__("node_id", d["node_id"] + "\n"), "node_id is not 64 lowercase hex"),
+            "key_id": (lambda d: d.__setitem__("key_id", d["key_id"] + "\n"), "key_id is not 64 lowercase hex"),
+            "policy_digest": (lambda d: d["lcap"].__setitem__("policy_digest", d["lcap"]["policy_digest"] + "\n"),
+                              "lcap.policy_digest is not a sha256"),
+        }
+        for name, (change, msg) in cases.items():
+            with self.subTest(pattern=name):
+                errs, _ = self.verify(self.resigned(change))
+                self.assertIn(msg, " ".join(errs))
+
     def test_shape_refusals_are_named(self):
         cases = {
             cc.CARD_EMPTY: lambda d: d.__setitem__("history_cards", []),
@@ -690,6 +704,12 @@ class Bindings(unittest.TestCase):
             with self.subTest(case=i):
                 errs = self.errors(change)
                 self.assertTrue(errs and all(e.startswith((cb.SHAPE, cb.FILE_NAME)) for e in errs), errs)
+
+    def test_a_trailing_newline_is_refused_by_the_hex_and_timestamp_patterns(self):
+        for field in ("controller_key_id", "checked_at"):
+            with self.subTest(field=field):
+                errs = self.errors(lambda v, f=field: v.__setitem__(f, v[f] + "\n"))
+                self.assertTrue(any(e.startswith(cb.SHAPE) and f"{field} " in e for e in errs), errs)
 
     def test_the_file_is_named_by_its_controller(self):
         d, lock = self.write(lambda v: None)
