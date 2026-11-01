@@ -350,14 +350,22 @@ def first_answered(run, step):
         return None
 
 
-def unsealed_ask(run, step):
-    """The ask first-answered.json names when the step ran without sealing its requests (`sealed` false, as on
-    the live backend today), else None. The cell says so, so a live number does not read as row 7 done."""
+def first_ask(run, step):
+    """(ask, sealed) from first-answered.json: the ask the first answer was to, and whether the step sealed its
+    requests (`sealed` false, as on the live backend today). (None, True) when the file names no ask. The cell
+    names the ask either way, and says so when it was not sealed, so a live number does not read as row 7 done."""
     try:
         d = json.loads((run.findings[step][0] / FIRST_ANSWERED).read_text(encoding="utf-8"))
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    return str(d.get("ask")) if d.get("sealed") is False and d.get("ask") else None
+        return (str(d["ask"]) if d.get("ask") else None), d.get("sealed") is not False
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None, True
+
+
+def ask_note(ask, sealed):
+    """What the cell says of the ask beside the number, without the parentheses: "" when none is named."""
+    if not ask:
+        return ""
+    return ask if sealed else f"{ask}, answered but not sealed before it was sent"
 
 
 def not_measured(run, step, milestone):
@@ -453,10 +461,8 @@ def number_value(number, run):
     m = minutes(run, number.step) if run.path else None
     if m is None:
         return not_measured(run, number.step, number.milestone), False
-    ask = unsealed_ask(run, number.step) if number.step == ASK_STEP else None
-    if ask:
-        return f"{duration(m)} ({ask}, answered but not sealed before it was sent)", True
-    return duration(m), True
+    note = ask_note(*first_ask(run, number.step)) if number.step == ASK_STEP else ""
+    return (f"{duration(m)} ({note})" if note else duration(m)), True
 
 
 def duration(m):

@@ -435,8 +435,8 @@ class StatusPageTest(unittest.TestCase):
         self.answered("2026-10-27T02:00:42Z", result="NOT_CHECKED", population="live",
                       not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
         self.page()
-        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
-        self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes (bob asked alice exchange)"))
+        self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s (bob asked alice exchange)"))
 
     def test_a_live_number_names_the_ask_and_says_it_was_not_sealed(self):
         self.run_json("2026-10-27T02:00:00Z", population="live")
@@ -447,7 +447,7 @@ class StatusPageTest(unittest.TestCase):
         self.page()
         self.assertEqual(self.number("first-answered", "live"),
                          ("measured", "42 s (bob asked alice exchange, answered but not sealed before it was sent)"))
-        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes (bob asked alice exchange)"))
 
     def test_first_answered_is_not_measured_without_an_answer_or_on_a_fail(self):
         self.run_json("2026-10-27T02:00:00Z")
