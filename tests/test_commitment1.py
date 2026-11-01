@@ -533,7 +533,8 @@ class NostrRoute(TwoBooks):
                     "wss://[2001:db8::1", "wss://]x", "wss://[bad]", "wss://r.example?", "wss://r.example#",
                     "wss://relay.example:0", "wss://relay.example:", "wss://relay.example;x", "wss://%20",
                     "wss://RELAY.example", "wss://relay.example:443", "wss://relay.example/",
-                    "wss://[2001:DB8::1]", "wss://[2001:db8:0::1]", "wss://-relay.example"):
+                    "wss://[2001:DB8::1]", "wss://[2001:db8:0::1]", "wss://-relay.example",
+                    "wss://relay.example\n", "wss://relay.example/nostr\n"):
             with self.subTest(url=url):
                 errs = self.assertRefused(self.change(lambda n, u=url: n["relays"].__setitem__(1, u)), cc.NOSTR_RELAY)
                 self.assertIn("ask.nostr.relays[1]", " ".join(errs))

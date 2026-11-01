@@ -327,7 +327,7 @@ def relay_error(url):
 
     One form, so that the duplicate check compares relays, not spellings: a signed list never names one relay twice.
     """
-    m = RELAY.match(url)
+    m = RELAY.fullmatch(url)
     if not m:
         return ("is not wss://host[:port][/path] with a lowercase host, and no credentials, query or fragment")
     host, port, path = m.group("host", "port", "path")
