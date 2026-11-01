@@ -128,7 +128,8 @@ def chain_stored(d):
 
 
 def capsules_bin():
-    return os.environ.get(CAPSULES_BIN) or shutil.which("capsules")
+    """The plugin binary: LOOP_CAPSULES_BIN, else CAPSULES_BIN (the lab env, lab/lab.sh), else `capsules` on PATH."""
+    return os.environ.get(CAPSULES_BIN) or os.environ.get("CAPSULES_BIN") or shutil.which("capsules")
 
 
 def chain_bytes(ledger_dir):

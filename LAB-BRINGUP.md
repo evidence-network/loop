@@ -449,7 +449,7 @@ LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=lab-3 LOOP_SECOND_CONSOLE=http
   ./loop.sh --stage 1 --population live --out findings/<date>-live
 ```
 
-`LOOP_CAPSULES_BIN` is the plugin's `capsules` binary (default: `capsules` on PATH). A node on the
+`LOOP_CAPSULES_BIN` is the plugin's `capsules` binary (default: the lab's `CAPSULES_BIN`, else `capsules` on PATH). A node on the
 EvidenceBook shelf keeps `ledger/shelf.db` and no `capsules.jsonl`; steps 04–07 and 09 read its chain
 with `capsules chain-lines --data-dir <data_dir>`, and keep the copies as `capsules.jsonl` (loop#296).
 A flat-ledger node is read from its file.

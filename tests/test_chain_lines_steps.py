@@ -68,7 +68,7 @@ class Nodes(unittest.TestCase):
         self.assertIsNone(step07.ask_records(self.shelf / "ledger"))
 
     def test_no_capsules_binary_leaves_a_shelf_chain_unreadable(self):
-        with mock.patch.dict(os.environ, {live.CAPSULES_BIN: ""}), mock.patch("shutil.which", return_value=None):
+        with mock.patch.dict(os.environ, {live.CAPSULES_BIN: "", "CAPSULES_BIN": ""}), mock.patch("shutil.which", return_value=None):
             self.assertIsNone(live.readable({"data_dir": str(self.shelf)}, "data_dir", "ledger/capsules.jsonl"))
             self.assertIn("no readable ledger/capsules.jsonl", live.why_not({"data_dir": str(self.shelf)}, "data_dir",
                                                                            "ledger/capsules.jsonl"))
