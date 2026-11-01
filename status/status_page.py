@@ -365,7 +365,7 @@ def ask_note(ask, sealed):
     """What the cell says of the ask beside the number, without the parentheses: "" when none is named."""
     if not ask:
         return ""
-    return ask if sealed else f"{ask}, answered but not sealed before it was sent"
+    return f"first answer: {ask}" if sealed else f"first answer: {ask}; the request was not sealed before it was sent"
 
 
 def not_measured(run, step, milestone):

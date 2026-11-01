@@ -47,7 +47,7 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   since nothing is countersigned yet). Step 01 uses
   the marker step's PASS finding `finished`; step 07 uses `answered_at` in the
   `first-answered.json` its finding names in `proof`, from a valid PASS or
-  NOT_CHECKED finding (never a FAIL or malformed one), and the cell names the `ask` that file gives beside the number ("answered but not sealed before it was sent" when `sealed` is false). Each is minus the run's
+  NOT_CHECKED finding (never a FAIL or malformed one), and the cell names the `ask` that file gives beside the number ("first answer: <ask>", plus "the request was not sealed before it was sent" when `sealed` is false). Each is minus the run's
   `run.json` `started` (loop.sh writes it before its first step, as the earliest start of the day's
   directory, a step `lab.sh` ran there earlier included), in seconds
   when under one minute. Admission decisions that were NO

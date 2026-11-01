@@ -438,13 +438,13 @@ class SiteTest(unittest.TestCase):
                 mock.patch.object(build, "run_minutes", return_value=1.0), \
                 mock.patch.object(status_page, "first_ask", return_value=("lab-1 history_card/1", False)):
             text = build.number_text(nb, object())
-        self.assertIn("lab-1 history_card/1, answered but not sealed before it was sent", text)
+        self.assertIn("first answer: lab-1 history_card/1; the request was not sealed before it was sent", text)
         with mock.patch.object(status_page, "number_value", return_value=("42 s", True)), \
                 mock.patch.object(status_page, "minutes", return_value=0.7), \
                 mock.patch.object(build, "run_minutes", return_value=1.0), \
                 mock.patch.object(status_page, "first_ask", return_value=("lab-1 history_card/1", True)):
             text = build.number_text(nb, object())
-        self.assertIn("(lab-1 history_card/1)", text)
+        self.assertIn("(first answer: lab-1 history_card/1)", text)
         self.assertNotIn("not sealed", text)
 
     def test_the_five_numbers_with_m2_and_m3_as_placeholders(self):
