@@ -1,7 +1,7 @@
 {
   "asserts": "step 12 holds for the goose ecosystem",
   "detail": "The goose ecosystem has no step 12 yet; loop.sh ran nothing for it.",
-  "finished": "2026-11-01T08:08:05Z",
+  "finished": "2026-11-01T08:20:28Z",
   "name": "join",
   "not_checked": [
     {
@@ -14,6 +14,6 @@
   "population": "rehearsal",
   "proof": [],
   "result": "NOT_CHECKED",
-  "started": "2026-11-01T08:08:05Z",
+  "started": "2026-11-01T08:20:28Z",
   "step": "12"
 }

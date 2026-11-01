@@ -1,12 +1,12 @@
 {
-  "key_id": "b30651fa62a833a97351b385a33b49bc94510943e865045e7782e48b937458cd",
+  "key_id": "82181f0da72d6deb8cff913006eb077851656cb143989835e2ef3116768fc75c",
   "node": "buyer",
   "rail": "mock",
   "settlements": 1,
   "sig": {
     "alg": "Ed25519",
     "canon": "jcs",
-    "value": "A5YG0EuCO58rQbXjbH8n8LHtrML7Au9zJbwXxMD-1QKK5J0uh-VdR-97wv6OxZhHjtcmLFSIxsBIGbDydZ0CCQ"
+    "value": "uNvNcOtABHL6Hk2nyG1-hJ0GJyXfTnmVtufDZk4-lyc7aPE3sqrWaTCasnhX7ZA1xu6IElB2p0RUYWzZfCO6Dw"
   },
   "through_sequence": 1,
   "type": "settlement-disclosure/v1"

@@ -11,7 +11,9 @@ a record under the key the node signed it with. A `goose` member names what the 
 steps read it (`steps`); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
 
-Exit 0 once population.json is written; exit 1 when the run did not complete or the tools are missing.
+Exit 0 once population.json is written; exit 3 when the Goose tools are not installed (steps/goose.setup.sh); exit 1
+when they are and the run did not complete (the tail of the run's log is printed). `--steps` prints the steps that
+have a Goose input and exits.
 """
 import argparse
 import json
@@ -26,6 +28,7 @@ sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
 STEPS = ["06"]
+NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
 PUBLIC = ("import sys; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, "
@@ -41,7 +44,8 @@ def step06_inputs(pop, work, nodes, deal):
 
     ledger = [json.loads(ln) for ln in (pop / "rail" / "ledger.jsonl").read_text().splitlines()]
     line = ledger[-1]
-    assert line["exchange_id"] == deal["deal_id"] and line["settlement_id"] == deal["settlement_id"]
+    if line["exchange_id"] != deal["deal_id"] or line["settlement_id"] != deal["settlement_id"]:
+        raise SystemExit("goose_rehearsal: the rail's settlement is not the deal's")
     inputs = pop / "step06"
     make_rail.dump(inputs / "exchange.json", {
         "exchange_id": line["exchange_id"], "payer": line["payer"], "payee": line["payee"],
@@ -59,21 +63,29 @@ def step06_inputs(pop, work, nodes, deal):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--work", required=True, type=Path)
+    ap.add_argument("--work", type=Path)
+    ap.add_argument("--steps", action="store_true", help="print the steps that have a Goose input")
     ap.add_argument("--tools", type=Path, default=TOOLS)
     a = ap.parse_args(argv)
+    if a.steps:
+        print(" ".join(STEPS))
+        return 0
+    if a.work is None:
+        ap.error("--work is required")
     python, src = a.tools / "venv" / "bin" / "python", a.tools / "src"
     if not python.is_file() or not (src / "python" / "examples" / "goose" / "scripted_run.py").is_file():
         print(f"goose_rehearsal: no Goose tools in {a.tools} (run steps/goose.setup.sh)", file=sys.stderr)
-        return 1
+        return NO_TOOLS
     work = a.work.resolve()
+    work.mkdir(parents=True, exist_ok=True)
     run = work / "run"
     r = subprocess.run([str(python), "-B", str(HERE / "goose_session.py"), str(run), str(work / "population" / "rail")],
                        stdin=subprocess.DEVNULL, capture_output=True, text=True,
                        env={**os.environ, "LOOP_GOOSE_SRC": str(src), "PYTHONDONTWRITEBYTECODE": "1"})
     (work / "scripted_run.log").write_text(r.stdout + r.stderr)
     if r.returncode != 0:
-        print(f"goose_rehearsal: the scripted run failed (log: {work / 'scripted_run.log'})", file=sys.stderr)
+        print("goose_rehearsal: the scripted run failed; the end of its log:\n" + "\n".join(
+            (r.stdout + r.stderr).splitlines()[-30:]), file=sys.stderr)
         return 1
     nodes = []
     for name in ("buyer", "seller"):
@@ -96,7 +108,7 @@ def main(argv=None):
     pop.mkdir(parents=True, exist_ok=True)
     step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "goose": {"run": str(run), "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
 

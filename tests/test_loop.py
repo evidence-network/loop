@@ -156,8 +156,28 @@ class LoopTest(unittest.TestCase):
         run = json.loads((out / "run.json").read_text())
         self.assertEqual((run["ecosystem"], len(run["steps"])), ("goose", 12))
         owners = {n: self.finding(f"{n}-{d}", out)["not_checked"][0]["issue"] for n, d in self.GOOSE_NAMES.items()}
-        self.assertEqual(owners, self.GOOSE_OWNERS)
+        # step 06 has a Goose input: without the tools it waits on them, not on the live rail
+        self.assertEqual(owners, {**self.GOOSE_OWNERS, "06": "evidence-network/loop#330"})
+        six = self.finding("06-settle", out)
+        self.assertIn("Goose tools are not installed", six["detail"])
+        self.assertNotIn("no step", six["not_checked"][0]["why"])
         self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(out)).returncode, 2)
+
+    def test_goose_run_that_fails_with_its_tools_installed_is_a_fail_with_the_log_not_a_not_checked(self):
+        tools = self.dir / "tools" / "goose"
+        (tools / "venv" / "bin").mkdir(parents=True)
+        (tools / "src" / "python" / "examples" / "goose").mkdir(parents=True)
+        (tools / "src" / "python" / "examples" / "goose" / "scripted_run.py").write_text("")
+        python = tools / "venv" / "bin" / "python"
+        python.write_text("#!/bin/sh\necho 'planted: the deal failed' >&2\nexit 1\n")
+        python.chmod(0o755)
+        r = self.loop("--ecosystem", "goose", env={"LOOP_TOOLS": str(tools.parent)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        six = self.finding("06-settle", out)
+        self.assertEqual(six["result"], "FAIL")
+        self.assertIn("planted: the deal failed", (out / "06-settle" / "goose-rehearsal.log").read_text())
+        self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh")
     def test_goose_with_its_tools_runs_step_06_and_leaves_the_rest_not_checked(self):
@@ -168,7 +188,10 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(results["06"], "PASS")
         self.assertEqual({v for k, v in results.items() if k != "06"}, {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
-        self.assertIn("tied to the Goose deal by construction", self.finding("06-settle", out)["detail"])
+        detail = self.finding("06-settle", out)["detail"]
+        self.assertIn("tied to the Goose deal by construction", detail)
+        self.assertIn("settlement-disclosure files the rehearsal driver wrote", detail)
+        self.assertEqual(list(self.finding("06-settle", out)["pinned"]), ["goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
         r = self.loop("--ecosystem", "muse", "--population", "live")
