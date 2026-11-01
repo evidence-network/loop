@@ -137,7 +137,7 @@ class LoopTest(unittest.TestCase):
                 self.assertEqual(subprocess.run(["python3", "-B", str(ROOT / "steps/finding.py"), "check",
                                                  str(out)]).returncode, 0)
 
-    def test_goose_says_not_checked_and_cites_loop_315_until_its_steps_exist(self):
+    def test_goose_says_not_checked_and_cites_what_each_step_waits_on(self):
         r = self.loop("--ecosystem", "goose", "--strict")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
@@ -145,7 +145,11 @@ class LoopTest(unittest.TestCase):
                                                  "08 verify NOT_CHECKED"])
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
         self.assertEqual(json.loads((out / "run.json").read_text())["ecosystem"], "goose")
-        self.assertEqual(self.finding("01-seal", out)["not_checked"][0]["issue"], "evidence-network/loop#315")
+        owners = {n: self.finding(d, out)["not_checked"][0]["issue"] for n, d in
+                  (("01", "01-seal"), ("02", "02-book"), ("03", "03-advertise"), ("08", "08-verify"), ("12", "12-join"))}
+        self.assertEqual(owners, {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
+                                  "03": "action-state-group/capsule-emit#406", "08": "evidence-network/loop#193",
+                                  "12": "action-state-group/capsule-emit#406"})
         self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(out)).returncode, 2)
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
