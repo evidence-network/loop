@@ -9,7 +9,8 @@
 #
 #   1. take $LAB_DIR/run/LIVE_RUN (asg-lab-rebuild skips a host that has one); refuse when it exists, or when a
 #      lab.sh or loop.sh process runs; the lock is removed on every exit, a kill included (not SIGKILL)
-#   2. lab/lab.sh check and lab/lab.sh running: pin drift, or a node down or on another build, stops the run
+#   2. lab/lab.sh check and lab/lab.sh running: pin drift, or a node down or on another build, stops the run; then
+#      lab/lab.sh tools installs every step's pinned tools for this head into LIVE_TOOLS (a setup that fails stops it)
 #   3. the window: this run's start, at its whole minute (the plugin stamps records to the minute), goes into
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
@@ -40,6 +41,8 @@
 #   LOOP_LIVE_ENV         a file to source first for the lab's environment (LAB_DIR, MESH_LLM_BIN, CAPSULES_BIN,
 #                         LAB_PAYMENTS, LAB_TWINS...), such as the lab operator's labenv file; optional
 #   LAB_DIR               the lab directory (lab/lab.sh); required, here or from LOOP_LIVE_ENV
+#   LIVE_TOOLS            the steps' LOOP_TOOLS: where lab.sh tools installs and the steps run them from (default
+#                         ~/.cache/evidence-network-loop-live, the daily run's own, so no other clone's tools change)
 #   LIVE_STEP_TIMEOUT     seconds each lab.sh call and step 10 or 11 may take (default 3600; loop.sh still limits each
 #                         stage 1 step to LOOP_STEP_TIMEOUT); one that runs over is killed and its step is a FAIL
 #   LIVE_CHECKPOINT_WAIT  seconds to wait after the exchange (default 360: a node cuts a checkpoint 300 s after activity)
@@ -77,6 +80,7 @@ LAB_SH=${LIVE_LAB_SH:-$ROOT/lab/lab.sh}
 STEPS=${LIVE_STEPS_DIR:-$ROOT/steps}
 WAIT=${LIVE_CHECKPOINT_WAIT:-360}
 STEP_TIMEOUT=${LIVE_STEP_TIMEOUT:-3600}
+export LOOP_TOOLS=${LIVE_TOOLS:-$HOME/.cache/evidence-network-loop-live}
 OUT_DIR=${LIVE_OUT_DIR:-$LAB_DIR/out/live}
 HELD_DIR=${LIVE_HELD_DIR:-$LAB_DIR/held}
 LOCK=$LAB_DIR/run/LIVE_RUN
@@ -138,7 +142,7 @@ if [ "$DRY" = 1 ]; then
   other_run > /dev/null && echo "  NOTE: a lab.sh or loop.sh process runs: a real run would refuse (exit 3)"
   cat << EOF
   1. take $LOCK; git fetch origin main; HEAD must be origin/main with no tracked change
-  2. $LAB_SH check; $LAB_SH running
+  2. $LAB_SH check; $LAB_SH running; $LAB_SH tools into LOOP_TOOLS=$LOOP_TOOLS
   3. window.from = $SINCE in $POP (restored on exit); LOOP_SEALED_SINCE=$SINCE
   4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat; a refusal leaves 06 NOT_CHECKED, no retry
   5. wait ${WAIT}s for the checkpoints
@@ -195,6 +199,10 @@ bounded "$LAB_SH" running
 rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh running exited $rc"
 [ "$rc" = 0 ] || refuse 5 "lab.sh running failed: a node is down or runs another build"
+mkdir -p "$LAB_DIR/logs" || refuse 2 "cannot make $LAB_DIR/logs"
+bounded "$LAB_SH" tools > "$LAB_DIR/logs/live-tools.log" 2>&1
+rc=$?
+[ "$rc" = 0 ] || refuse 5 "lab.sh tools exited $rc: a step's pinned tool did not install in $LOOP_TOOLS (see $LAB_DIR/logs/live-tools.log)"
 
 # --- 3. the window --------------------------------------------------------------------------------------------------
 POP_TOUCHED=1

@@ -41,6 +41,7 @@ w() { python3 -B "$STUB_ROOT/write_finding.py" "$LAB_OUT/$1" "$2"; }
 case "$cmd" in
   check) exit "${STUB_CHECK_RC:-0}" ;;
   running) exit "${STUB_RUNNING_RC:-0}" ;;
+  tools) echo "tools LOOP_TOOLS=$LOOP_TOOLS" >> "$STUB_LOG"; exit "${STUB_TOOLS_RC:-0}" ;;
   exchange)
     mkdir -p "$LAB_DIR/exchange"
     printf 'HTTP/1.1 %s\r\nx-mesh-served-by: x\r\n' "${STUB_PAID:-200 OK}" > "$LAB_DIR/exchange/lab-2.headers.txt"
@@ -95,7 +96,8 @@ class LiveDailyTest(unittest.TestCase):
         self.log = self.tmp / "calls.log"
         self.env = dict(os.environ, LAB_DIR=str(self.lab), LIVE_LAB_SH=str(stubs / "lab.sh"),
                         LIVE_STEPS_DIR=str(stubs / "steps"), LIVE_CHECKPOINT_WAIT="0", STUB_LOG=str(self.log),
-                        STUB_ROOT=str(stubs), LIVE_OUT_DIR=str(self.lab / "out"))
+                        STUB_ROOT=str(stubs), LIVE_OUT_DIR=str(self.lab / "out"),
+                        LIVE_TOOLS=str(self.lab / "tools"))
         self.env.pop("LOOP_LIVE_ENV", None)
 
     def tearDown(self):
@@ -131,9 +133,10 @@ class LiveDailyTest(unittest.TestCase):
         # The window and the cutoff are the run's start for every step after the exchange; the exchange runs once.
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
-                         ["check", "running", "exchange", "admit", "deal", "bundles", "settle", "ask", "dispute",
+                         ["check", "running", "tools", "tools", "exchange", "admit", "deal", "bundles", "settle", "ask", "dispute",
                           "loop", "10-judge", "11-report"])
-        for c in calls[2:10]:
+        self.assertIn(f"LOOP_TOOLS={self.lab / 'tools'}", calls[3])
+        for c in calls[4:12]:
             self.assertIn(f"since={since} window={since} out={out}", c)
         tgz = self.lab / "out" / f"{name}.tgz"
         listing = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True, check=True).stdout.split()
@@ -235,7 +238,7 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(self.calls(), [])
 
     def test_refuses_on_lab_check_or_a_node_down(self):
-        for env in ({"STUB_CHECK_RC": "1"}, {"STUB_RUNNING_RC": "1"}):
+        for env in ({"STUB_CHECK_RC": "1"}, {"STUB_RUNNING_RC": "1"}, {"STUB_TOOLS_RC": "1"}):
             self.log.unlink(missing_ok=True)
             r = self.run_daily(**env)
             self.assertEqual(r.returncode, 5, r.stderr)
