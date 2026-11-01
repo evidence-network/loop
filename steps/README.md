@@ -1,6 +1,6 @@
 # steps/: the reference loop, one step at a time
 
-`./loop.sh --stage 1 [--ecosystem mesh|muse|cross] [--population rehearsal|live] [--out DIR] [--steps 01,02,...] [--strict]`
+`./loop.sh --stage 1 [--ecosystem mesh|muse|cross|goose] [--population rehearsal|live] [--out DIR] [--steps 01,02,...] [--strict]`
 runs the stage's steps in order. With `--strict` (CI) a rehearsal run with a
 `FAIL` or `MALFORMED` step exits 3, so the job fails; a live run is reported
 and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
@@ -8,9 +8,9 @@ and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
 
 `--ecosystem` (default `mesh`) names what the steps run against; steps 01 to 12 are the
 same assertions in every ecosystem, and steps only one ecosystem needs are numbered 13
-and up. `mesh` is the loop as it has always run (`findings/<date>-<population>/`). `muse`
-and `cross` have no steps yet: loop.sh runs nothing and writes a `NOT_CHECKED` finding per
-step (owner: loop#150) to `findings/<ecosystem>/<date>-<population>/`, with `ecosystem`
+and up. `mesh` is the loop as it has always run (`findings/<date>-<population>/`). `muse`,
+`cross` and `goose` have no steps yet: loop.sh runs nothing and writes a `NOT_CHECKED` finding per
+step (owner: loop#150; loop#315 for goose) to `findings/<ecosystem>/<date>-<population>/`, with `ecosystem`
 added to `run.json`. `status/status_page.py --ecosystem NAME` builds that ecosystem's page.
 
 `loop.sh` needs bash 4 or later and `timeout` from GNU coreutils. Without

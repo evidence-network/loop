@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh: run one stage of the loop's steps, then check their findings.
 #
-#   ./loop.sh --stage 1 [--ecosystem mesh|muse|cross] [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
+#   ./loop.sh --stage 1 [--ecosystem mesh|muse|cross|goose] [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
 #
 # Each step runs as `steps/<NN>-<name> --population population/<p> --out DIR/<NN>-<name>`
 # and writes one finding.json there (see steps/README.md). A step that is missing, or
@@ -17,8 +17,8 @@
 # the job fails; a live run never does (live runs report, they do not gate).
 #
 # --ecosystem (default mesh) names what the steps run against. mesh is the loop as it has always
-# run: findings in findings/<date>-<population>/, run.json as above. muse and cross have no steps
-# yet: each step gets a NOT_CHECKED finding saying so (owned by loop#150), written to
+# run: findings in findings/<date>-<population>/, run.json as above. muse, cross and goose have no steps
+# yet (goose is ecosystem 2: its steps arrive with its driver, under loop#315): each step gets a NOT_CHECKED finding saying so (owned by loop#150; loop#315 for goose), written to
 # findings/<ecosystem>/<date>-<population>/ with "ecosystem" added to run.json, and nothing runs.
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
@@ -76,8 +76,8 @@ case "$population" in
   *) die "population is rehearsal or live, not '$population'" ;;
 esac
 case "$ecosystem" in
-  mesh|muse|cross) ;;
-  *) die "ecosystem is mesh, muse or cross, not '$ecosystem'" ;;
+  mesh|muse|cross|goose) ;;
+  *) die "ecosystem is mesh, muse, cross or goose, not '$ecosystem'" ;;
 esac
 pop_dir=$ROOT/population/$population
 [ "$ecosystem" = mesh ] && { [ -f "$pop_dir/population.json" ] || die "$pop_dir/population.json is missing"; }
@@ -176,6 +176,9 @@ for nn in $steps; do
     python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" <<'PY'
 import sys
 root, step_dir, started, ecosystem, nn, population = sys.argv[1:]
+# The issue that owns a step with no run yet: the ecosystem's umbrella (loop#150 for muse and cross; loop#315
+# for goose, whose steps 01-12 are the same assertions as mesh's).
+owner = "evidence-network/loop#315" if ecosystem == "goose" else "evidence-network/loop#150"
 sys.path.insert(0, root + "/steps")
 import finding
 finding.write(step_dir, result="NOT_CHECKED", population=population,
@@ -183,7 +186,7 @@ finding.write(step_dir, result="NOT_CHECKED", population=population,
               detail=f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it.",
               not_checked=[{"what": f"step {nn} for the {ecosystem} ecosystem",
                             "why": "no step for this ecosystem exists yet",
-                            "issue": "evidence-network/loop#150"}],
+                            "issue": owner}],
               started=started)
 PY
     continue

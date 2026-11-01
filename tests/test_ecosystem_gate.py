@@ -193,6 +193,14 @@ class GateTest(unittest.TestCase):
         self.assertEqual(len(gate.cmd_update("mesh", out, self.baseline)), 1)
         self.assertEqual(gate.cmd_update("muse", out, self.baseline), [])
 
+    def test_a_goose_run_is_its_own_baseline_entry_and_never_mesh(self):
+        out = self.run_dir("a", {"01": "PASS"})
+        (out / "run.json").write_text(json.dumps({"ecosystem": "goose", "stage": "1", "population": "live",
+                                                  "started": "t"}))
+        self.assertEqual(len(gate.cmd_update("mesh", out, self.baseline)), 1)
+        self.assertEqual(gate.cmd_update("goose", out, self.baseline), [])
+        self.assertEqual(sorted(json.loads(self.baseline.read_text())["ecosystems"]), ["goose"])
+
     def test_exit_codes(self):
         self.update("a", {"01": "PASS"})
         self.assertEqual(gate.main(["g", "verify", "--baseline", str(self.baseline)]), 0)

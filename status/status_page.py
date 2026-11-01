@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Build the loop status page and its badge from loop findings and versions.lock.
 
-Usage: status_page.py [FINDINGS] [--ecosystem mesh|muse|cross] [--lock FILE] [--out DIR]
+Usage: status_page.py [FINDINGS] [--ecosystem mesh|muse|cross|goose] [--lock FILE] [--out DIR]
        (defaults: findings, versions.lock, _site/status)
 
---ecosystem picks the runs of one ecosystem: mesh is findings/ and _site/status as always; muse and
-cross read findings/<ecosystem>/ (where loop.sh --ecosystem writes them) and build into
+--ecosystem picks the runs of one ecosystem: mesh is findings/ and _site/status as always; muse, cross and
+goose read findings/<ecosystem>/ (where loop.sh --ecosystem writes them) and build into
 _site/status-<ecosystem>. An explicit FINDINGS or --out wins.
 
 FINDINGS holds loop.sh runs, one directory each: <YYYY-MM-DD>-rehearsal/ or
@@ -54,6 +54,7 @@ RUN_DIR = re.compile(r"^(\d{4}-\d{2}-\d{2})-(rehearsal|live)(?:-(\d+))?$")  # -N
 ECOSYSTEMS = (
     ("mesh", "", ("loop #307", "https://github.com/evidence-network/loop/issues/307"), "mesh"),
     ("muse", "muse", ("loop #154", "https://github.com/evidence-network/loop/issues/154"), "consumer-agent"),
+    ("goose", "goose", ("loop #315", "https://github.com/evidence-network/loop/issues/315"), "goose"),
 )
 LABELS = {name: label for name, _, _, label in ECOSYSTEMS}
 
@@ -821,8 +822,8 @@ def main(argv):
             opts[flag] = args[i + 1]
             del args[i:i + 2]
     eco = opts["--ecosystem"]
-    if eco not in ("mesh", "muse", "cross"):
-        print(f"ecosystem is mesh, muse or cross, not {eco!r}", file=sys.stderr)
+    if eco not in ("mesh", "muse", "cross", "goose"):
+        print(f"ecosystem is mesh, muse, cross or goose, not {eco!r}", file=sys.stderr)
         return 2
     findings_dir = Path(args[0] if args else FINDINGS if eco == "mesh" else f"{FINDINGS}/{eco}")
     opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{LABELS[eco]}")

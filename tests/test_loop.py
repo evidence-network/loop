@@ -137,6 +137,17 @@ class LoopTest(unittest.TestCase):
                 self.assertEqual(subprocess.run(["python3", "-B", str(ROOT / "steps/finding.py"), "check",
                                                  str(out)]).returncode, 0)
 
+    def test_goose_says_not_checked_and_cites_loop_315_until_its_steps_exist(self):
+        r = self.loop("--ecosystem", "goose", "--strict")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines(), ["01 seal NOT_CHECKED", "02 book NOT_CHECKED",
+                                                 "03 advertise NOT_CHECKED", "12 join NOT_CHECKED",
+                                                 "08 verify NOT_CHECKED"])
+        out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        self.assertEqual(json.loads((out / "run.json").read_text())["ecosystem"], "goose")
+        self.assertEqual(self.finding("01-seal", out)["not_checked"][0]["issue"], "evidence-network/loop#315")
+        self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(out)).returncode, 2)
+
     def test_muse_runs_the_live_population_without_a_population_directory(self):
         r = self.loop("--ecosystem", "muse", "--population", "live")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -158,7 +169,7 @@ class LoopTest(unittest.TestCase):
     def test_an_unknown_ecosystem_is_a_usage_error(self):
         r = self.loop("--ecosystem", "other")
         self.assertEqual(r.returncode, 2)
-        self.assertIn("ecosystem is mesh, muse or cross", r.stderr)
+        self.assertIn("ecosystem is mesh, muse, cross or goose", r.stderr)
 
     def test_good_steps_pass_check_clean_and_are_indexed(self):
         self.all_steps()
