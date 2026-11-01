@@ -526,7 +526,7 @@ class NostrRoute(TwoBooks):
                 self.assertRefused(self.change(lambda n, k=key: n.__setitem__("mailbox_key", k)), cc.NOSTR_KEY)
 
     def test_a_malformed_relay_is_refused_by_name(self):
-        for url in ("ws://relay.example", "https://relay.example", "wss://", "relay.example",
+        for url in ("ws://relay.example", "https://relay.example", "WSS://relay.example", "wss://", "relay.example",
                     "wss://user:pw@relay.example", "wss://relay.example/?a=b", "wss://relay.example/#x",
                     "wss://relay.example:99999", "wss://relay .example", "wss://relä.example", ""):
             with self.subTest(url=url):

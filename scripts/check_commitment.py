@@ -327,7 +327,7 @@ def relay_error(url):
         u.port
     except ValueError:
         return "has a bad port"
-    if u.scheme != "wss" or not u.hostname:
+    if not url.startswith("wss://") or not u.hostname:
         return "is not a wss:// URL with a host"
     if u.username is not None or u.password is not None or u.query or u.fragment or u.params:
         return "carries credentials, a query or a fragment"
