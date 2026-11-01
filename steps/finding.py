@@ -3,6 +3,11 @@
 
 Usage: finding.py check DIR      check every <NN>-<name>/finding.json under DIR
 
+A findings directory may keep only its finding.json files and name its proof bytes by digest: a
+proof-archive.json beside them says where the tarball of the full directory is (a release asset) and its sha256.
+Proof files then may be absent, and any that is present must still match its sha256; unpack the archive
+over the directory to check every byte (loop#309).
+
 A step writes exactly one finding.json into its own directory, beside the proof
 files it names. A log line is not a finding: the result is PASS only when the
 step's assertion was checked by a verifier and held, FAIL when it was checked
@@ -20,6 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 RESULTS = ("PASS", "FAIL", "NOT_CHECKED")
 POPULATIONS = ("rehearsal", "live", "demo")
 STEP_DIR = re.compile(r"^(\d{2})-([a-z][a-z0-9-]*)$")
+ARCHIVE = "proof-archive.json"
+ARCHIVE_FIELDS = ("asset", "sha256", "url")
 FIELDS = ("step", "name", "result", "population", "asserts", "pinned", "proof", "detail",
           "not_checked", "started", "finished")
 # In a NOT_CHECKED finding, asserts and detail may not claim a check: "checked",
@@ -98,7 +105,30 @@ def write(step_dir, *, result, population, asserts, pinned, proof, detail, not_c
     return record
 
 
-def check_record(step_dir, r):
+def check_archive(findings_dir):
+    """(errors, whether findings_dir is digest-only): proof-archive.json names the tarball of the full directory."""
+    path = Path(findings_dir) / ARCHIVE
+    if not path.is_file():
+        return [], False
+    where = f"{Path(findings_dir).name}/{ARCHIVE}"
+    try:
+        a = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        return [f"{where}: not JSON ({e})"], False
+    if not isinstance(a, dict) or sorted(a) != sorted(ARCHIVE_FIELDS):
+        return [f"{where}: fields must be exactly {', '.join(ARCHIVE_FIELDS)}"], False
+    errs = []
+    name = Path(findings_dir).name + ".tgz"
+    if a["asset"] != name:
+        errs.append(f"{where}: asset must be {name}")
+    if not (isinstance(a["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", a["sha256"])):
+        errs.append(f"{where}: sha256 must be 64 lowercase hex digits")
+    if not (isinstance(a["url"], str) and a["url"].startswith("https://") and a["url"].endswith("/" + name)):
+        errs.append(f"{where}: url must be an https URL of {name}")
+    return errs, not errs
+
+
+def check_record(step_dir, r, digest_only=False):
     errs = []
     where = Path(step_dir).name
     if sorted(r) != sorted(FIELDS):
@@ -121,7 +151,8 @@ def check_record(step_dir, r):
         if Path(p["path"]).is_absolute() or p["path"].startswith("/") or ".." in Path(p["path"]).parts:
             errs.append(f"{where}: proof {p['path']} must be a relative path inside the step directory")
         elif not f.is_file():
-            errs.append(f"{where}: proof {p['path']} is not a file in the step directory")
+            if not digest_only:
+                errs.append(f"{where}: proof {p['path']} is not a file in the step directory")
         elif sha256(f) != p["sha256"]:
             errs.append(f"{where}: proof {p['path']} does not match its sha256")
     if r["result"] == "PASS" and not r["proof"]:
@@ -145,7 +176,7 @@ def check_record(step_dir, r):
 
 
 def check(findings_dir):
-    errs = []
+    errs, digest_only = check_archive(findings_dir)
     dirs = [d for d in sorted(Path(findings_dir).iterdir()) if d.is_dir()]
     if not dirs:
         return [f"{findings_dir}: no step directories"]
@@ -159,7 +190,7 @@ def check(findings_dir):
         except ValueError as e:
             errs.append(f"{d.name}: finding.json is not JSON ({e})")
             continue
-        errs += check_record(d, r) if isinstance(r, dict) else [f"{d.name}: finding.json is not an object"]
+        errs += check_record(d, r, digest_only) if isinstance(r, dict) else [f"{d.name}: finding.json is not an object"]
     return errs
 
 

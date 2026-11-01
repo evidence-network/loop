@@ -206,6 +206,7 @@ class Run:
     eco: str = "mesh"  # whose findings these are; non-mesh runs are copied to findings/<eco>/<run>
     findings: dict = field(default_factory=dict)  # step number -> (step dir, record, problems)
     started: str | None = None  # run.json `started`, when run.json is valid for this population
+    archive: dict | None = None  # proof-archive.json when the run keeps digests only; its proof bytes are the release asset
 
     @property
     def name(self):
@@ -246,6 +247,9 @@ def read_run(population, path, eco="mesh"):
     if path is None:
         return run
     run.started = run_start(path, population)
+    digest_only = finding.check_archive(path)[1]
+    if digest_only:
+        run.archive = json.loads((path / finding.ARCHIVE).read_text(encoding="utf-8"))
     by_step = {}
     for d in sorted(p for p in path.iterdir() if p.is_dir()):
         m = finding.STEP_DIR.fullmatch(d.name)
@@ -266,7 +270,7 @@ def read_run(population, path, eco="mesh"):
             run.findings[n] = (d, None, [f"{d.name}: finding.json is not an object"])
             continue
         try:
-            problems = finding.check_record(d, r)
+            problems = finding.check_record(d, r, digest_only)
         except (AttributeError, KeyError, TypeError) as err:
             problems = [f"{d.name}: finding.json is malformed ({err!r})"]
         if not problems and r["population"] != population:
@@ -305,14 +309,18 @@ def cell(step, run):
                     "counts for nothing.", said=[("the check", x) for x in problems], links=links)
     kw = dict(
         said=[("the step asserts", r["asserts"])] + ([("detail", r["detail"])] if r["detail"] else []),
-        proofs=[(x["path"], href(run, d, x["path"])) for x in r["proof"]],
+        proofs=[(x["path"], run.archive["url"] if run.archive else href(run, d, x["path"])) for x in r["proof"]],
         links=links,
         pinned=[(name, pin["ref"]) for name, pin in sorted(r["pinned"].items())],
         times=(r["started"], r["finished"]),
     )
     if r["result"] == "PASS":
+        where = (f"the proof files are not in the repository: they are in the release archive {code(run.archive['asset'])}, "
+                 f"whose sha256 ({code(run.archive['sha256'])}) {code('proof-archive.json')} records, and the finding "
+                 f"records each file's sha256. This page has not downloaded or checked the archive" if run.archive
+                 else "each proof file is here and matches its sha256")
         return Cell(p, GREEN, "PASS", f"PASS in {code(run.name)}: the finding says its assertion was checked on "
-                                      f"the proof bytes, and each proof file is here and matches its sha256.",
+                                      f"the proof bytes, and {where}.",
                     gaps=gaps(r["detail"]), **kw)
     if r["result"] == "FAIL":
         return Cell(p, RED, "FAIL", f"FAIL in {code(run.name)}: the assertion did not hold.", **kw)
@@ -533,6 +541,8 @@ def check_rows(rs, out):
             if c.state == GREEN and not c.proofs:
                 problems.append(f"step {r.step.n} {c.population}: green with no proof")
             for _, path in c.proofs + c.links:
+                if path.startswith("https://"):  # a digest-only run's proof: its release asset
+                    continue
                 if not (Path(out) / path).is_file():
                     problems.append(f"step {r.step.n} {c.population}: {path} is not in the page's files")
     if problems:

@@ -394,6 +394,9 @@ def measured(kind, run, population, ids, by_key, shown, host, rel, date, opted=N
     if not isinstance(rec, dict):
         return {"measured": False, "step": step,
                 "says": f"not measured yet: no step {step} finding for this {'slot' if population == 'rehearsal' else 'day'}"}, []
+    if run and finding.check_archive(run)[1]:  # digest-only: the proof bytes an edge is read from are in the release archive
+        return {"measured": False, "step": step, "finding": rel(d / "finding.json"),
+                "says": f"not measured here: the step {step} proof bytes are in this run's release archive, not in the repository"}, []
     if finding.check_record(d, rec) or rec.get("population") != population:
         return {"measured": False, "step": step, "finding": rel(d / "finding.json"),
                 "says": f"not measured yet: the step {step} finding does not pass the format check"}, []
