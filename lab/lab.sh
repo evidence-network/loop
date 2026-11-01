@@ -884,14 +884,22 @@ cmd_commitments() {
 # LAB_DIR: population/live names each node's data_dir and book_dir from it.
 # LOOP_SELF_NODE is the reporter's name in population/live, its operator's label (lab/pack.py
 # host_name maps a label back to its lab-N directory the same way).
-ask_env() {
-  second=lab-1
-  [ "$REPORTER" = lab-1 ] && second=lab-2
-  self=$(python3 -c 'import json, sys
+# The population/live name of lab directory $1 (the node whose data_dir names /nodes/$1/).
+population_name() {
+  python3 -c 'import json, sys
 for n in json.load(open(sys.argv[1]))["nodes"]:
     if f"/nodes/{sys.argv[2]}/" in (n.get("data_dir") or "") or n["name"] == sys.argv[2]:
-        print(n["name"]); break' "$ROOT/population/live/population.json" "$REPORTER")
+        print(n["name"]); break' "$ROOT/population/live/population.json" "$1"
+}
+
+ask_env() {
+  second_dir=lab-1
+  [ "$REPORTER" = lab-1 ] && second_dir=lab-2
+  self=$(population_name "$REPORTER")
   [ -n "$self" ] || die "the reporter $REPORTER is not a node in population/live (run lab/lab.sh entries)"
+  # Step 07 looks the asker up by population name, so LOOP_SECOND_NODE is not the lab directory.
+  second=$(population_name "$second_dir")
+  [ -n "$second" ] || die "the second node $second_dir is not a node in population/live (run lab/lab.sh entries)"
   node_consoles=$(node_consoles "$ROOT/population/live/population.json")
 }
 
@@ -910,9 +918,9 @@ print(",".join(out))' "$BASE" "$1"
 }
 
 cmd_loop() {
-  local second self node_consoles
+  local second second_dir self node_consoles
   ask_env
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" LOOP_SECOND_NODE="$second" \
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second_dir")" LOOP_SECOND_NODE="$second" \
     LAB_DIR="$LAB_DIR" LOOP_WITNESS_CA="$LAB_DIR/witness/tls-cert.pem" LOOP_NODE_CONSOLES="$node_consoles" \
     "$ROOT/loop.sh" --stage 1 --population live \
     --out "$ROOT/findings/$TODAY-live"
@@ -1087,10 +1095,10 @@ cmd_dispute() {
 cmd_ask() {
   # Step 07 is not in loop.sh's stage 1 either. It asks as step 12 does (the reporter's console, and a second
   # node's console for the reporter's own node), so it takes the same environment as cmd_loop.
-  local out=$ROOT/findings/$TODAY-live second self node_consoles
+  local out=$ROOT/findings/$TODAY-live second second_dir self node_consoles
   ask_env
-  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second")" LOOP_SECOND_NODE="$second" \
-    LAB_DIR="$LAB_DIR" LOOP_SECOND_DATA_DIR="$(data_of "$second")" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
+  run env LOOP_CONSOLE="$(console "$REPORTER")" LOOP_SELF_NODE="$self" LOOP_SECOND_CONSOLE="$(console "$second_dir")" LOOP_SECOND_NODE="$second" \
+    LAB_DIR="$LAB_DIR" LOOP_SECOND_DATA_DIR="$(data_of "$second_dir")" "$ROOT/steps/07-ask" --population "$ROOT/population/live" --out "$out/07-ask"
   run python3 -B "$ROOT/steps/finding.py" check "$out"
   [ "$DRY" = 1 ] || echo "$TODAY" > "$LAB_DIR/run/loop-date"
 }
