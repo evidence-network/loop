@@ -440,16 +440,31 @@ class Step06SettleTest(unittest.TestCase):
                                             amount_msat=amount, credited_msat=credited, fee_msat=payee_fee))
         return rows
 
+    @staticmethod
+    def paid_hash(k, first=1):
+        """The payment hash of paid()'s k-th payment (first=1), or of two_payers()' lab-3 payments (first=0x40)."""
+        return hashlib.sha256(bytes.fromhex(f"{k + first:02x}" * 32)).hexdigest()
+
+    def bundle_record(self, h, timestamp="2026-11-01T01:40:00Z", phase="output_settlement_observed"):
+        """One terminal settlement record as a counterparty bundle carries it, preimage and all."""
+        return {"capsule_id": f"b-{h[:8]}", "timestamp": timestamp, "model_attestation": {"compute_attestation": {
+            "x-mesh-settlement-v1": {"observed_by": "payer", "phase": phase, "payment_hash": h, "amount_msat": 1000,
+                                     "preimage": "SECRET-IN-BUNDLE"}}}}
+
     def checks_dir(self, status="PASS", paired=2,
-                   pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1"))):
-        """lab.sh bundles' output: per (node, peer), the peer's bundle file and the node's check of it."""
+                   pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")), records=None):
+        """lab.sh bundles' output: per (node, peer), the peer's bundle file and the node's check of it. The bundle
+        holds `records` (default: one terminal settlement per payment the pair made, paired of them, as paid() and
+        two_payers() number them)."""
         d = Path(self.tmp.name) / "bundles"
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir()
         ids = {n["name"]: n["node_id"] for n in json.loads((ROOT / "population" / "live" / "population.json").read_text())["nodes"]}
         for me, peer in pairs:
             bundle = d / f"{peer}.for.{me}.json"
-            bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": [{"preimage": "SECRET-IN-BUNDLE"}]}}))
+            first = 0x40 if "stevenmih-3" in (me, peer) else 1
+            held = records if records is not None else [self.bundle_record(self.paid_hash(k, first)) for k in range(paired)]
+            bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": held}}))
             dump(d / f"check.{ids[me]}.{ids[peer]}.json", {
                 "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
                 "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
@@ -458,7 +473,7 @@ class Step06SettleTest(unittest.TestCase):
                            "settlements": [{"preimage": "SECRET-IN-BUNDLE-REPORT"}]}})
         return d
 
-    def lightning(self, rows, checks=None):
+    def lightning(self, rows, checks=None, window=None):
         lab = Path(self.tmp.name) / "lab"
         shutil.rmtree(lab, ignore_errors=True)
         shutil.rmtree(Path(self.tmp.name) / "live", ignore_errors=True)
@@ -466,7 +481,147 @@ class Step06SettleTest(unittest.TestCase):
             (lab / f"lab-{i}" / "ledger").mkdir(parents=True)
             (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in rows.get(i, [])))
         pop = self.live_population(lab, rail="lightning", checks=str(checks) if checks else None)
+        if window:
+            doc = json.loads((pop / "population.json").read_text())
+            doc["window"] = {"from": window}
+            dump(pop / "population.json", doc)
         return self.run_step(pop, env=dict(os.environ, STEP06_LAB=str(lab)))
+
+    @staticmethod
+    def stamped(rows, times):
+        """paid()'s rows with both records of payment k (capsule ids p<k> and s<k>) stamped times[k]."""
+        for recs in rows.values():
+            for x in recs:
+                x["timestamp"] = times[int(x["capsule_id"][1:])]
+        return rows
+
+    @staticmethod
+    def lifecycle(phase, role, exchange_id, payment_hash=None, cid=None, amount=10):
+        block = {"v": 1, "observed_by": role, "channel": "payment.lifecycle.v1", "exchange_id": exchange_id,
+                 "phase": phase, "source": "host", "amount_msat": amount}
+        if payment_hash:
+            block["payment_hash"] = payment_hash
+        return {"capsule_id": cid or f"{phase}-{role}-{exchange_id}",
+                "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": block}}}
+
+    @staticmethod
+    def terms_leg(payment_hash, cid="t-unpaid"):
+        return {"capsule_id": cid, "settlement": {"leg": "terms", "sealer_role": "payer",
+                                                  "payment_ref": {"type": "ln.payment_hash", "value": payment_hash}}}
+
+    UNPAID = "0e" * 32
+
+    def with_unpaid_invoice(self, rows=None):
+        """paid() plus a 10 msat invoice lab-2 agreed and never paid (the loop#300 probe): the payer's terms leg and
+        both nodes' invoice observations, each under its own exchange id, and no settlement or delivery."""
+        rows = rows or self.paid()
+        rows[2] += [self.lifecycle("input_invoice_issued", "payer", "pay-unpaid", self.UNPAID), self.terms_leg(self.UNPAID)]
+        rows[1] += [self.lifecycle("input_invoice_issued", "provider", "srv-unpaid", self.UNPAID)]
+        return rows
+
+    def test_lightning_passes_a_window_against_whole_book_checks(self):
+        # Two payments before the window and one in it; the check (over the whole books) pairs all 3, and the bundle
+        # holds 3 settlement records, one of them in the window: like with like, 1 = 1 (loop#303).
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:20:00Z", "2026-11-01T01:40:00Z"]
+        rows = self.stamped(self.paid(n=3), times)
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        r = self.lightning(rows, self.checks_dir(paired=3, records=records), window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        self.assertIn("the 1 payments the books pair between them in the window are exactly the bundle's",
+                      self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
+        rows_out = json.loads((self.out / "counterparty.json").read_text())
+        self.assertEqual({(x["paired"], x["bundle_settlements"], x["books_pair"], x["window_from"]) for x in rows_out},
+                         {(3, 1, 1, "2026-11-01T01:38:00Z")})
+        self.assertNotIn("SECRET-IN-BUNDLE", self.files_out())
+
+    def test_lightning_a_window_does_not_pass_a_bundle_that_differs_in_it(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        window = "2026-11-01T01:38:00Z"
+        cases = {
+            # a later payment the bundle lacks: the check predates it
+            "older": [self.bundle_record(self.paid_hash(0), times[0])],
+            # a settlement in the bundle's window that the books do not pair there
+            "extra": [self.bundle_record(self.paid_hash(k), times[1]) for k in range(2)],
+            # an undated record the window cannot place
+            "undated": [self.bundle_record(self.paid_hash(0), None), self.bundle_record(self.paid_hash(1), times[1])],
+        }
+        for name, records in cases.items():
+            with self.subTest(name=name):
+                r = self.lightning(self.stamped(self.paid(), times), self.checks_dir(records=records), window=window)
+                self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+                self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
+
+    def test_lightning_a_window_never_hides_a_whole_book_failure(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        for status, result in (("FAIL", "FAIL"), ("INCONCLUSIVE", "NOT_CHECKED")):
+            with self.subTest(status=status):
+                records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+                r = self.lightning(self.stamped(self.paid(), times), self.checks_dir(status=status, records=records),
+                                   window="2026-11-01T01:38:00Z")
+                self.assertEqual(r["result"], result, r["detail"])
+
+    def test_lightning_sets_aside_an_invoice_no_book_settled_or_delivered_and_names_it(self):
+        r = self.lightning(self.with_unpaid_invoice(), self.checks_dir())
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        checks = self.judged()
+        self.assertEqual(checks["unsettled_invoices"]["count"], 1)
+        self.assertEqual(checks["unsettled_invoices"]["payment_hashes"], [self.UNPAID])
+        self.assertIn("2 of 2 payment hashes final", checks["finality"]["detail"])
+        self.assertIn(("1 invoices agreed but unsettled as of the books read, which the books cannot prove unpaid",
+                       step.ADAPTER_ISSUE), finding.gaps(r["detail"]))
+        self.assertIn("2 payments paired", checks["exchange_match"]["detail"])
+
+    def test_lightning_keeps_judging_an_invoice_any_book_records_as_settled_or_delivered(self):
+        # Each case: the unpaid invoice plus one more record; every one keeps the hash judged, so 06 stays open.
+        provider_settled = self.observation(None, self.UNPAID, role="provider", cid="s-unpaid", exchange_id="srv-unpaid",
+                                            amount_msat=10, credited_msat=5, fee_msat=5)
+        payee_leg = {"capsule_id": "l-unpaid", "settlement": {"leg": "payee_observed", "payment_ref": {
+            "type": "ln.payment_hash", "value": self.UNPAID}}}
+        cases = {
+            "provider delivered, payer silent": {1: [self.lifecycle("delivered", "provider", "srv-unpaid")]},
+            "payer accounted": {2: [self.lifecycle("final_accounted", "payer", "pay-unpaid")]},
+            "provider credited, payer silent": {1: [provider_settled]},
+            "a payee_observed leg": {1: [payee_leg]},
+            "payer settled without a preimage": {2: [self.observation(None, self.UNPAID, cid="p-unpaid",
+                                                                      exchange_id="pay-unpaid", amount_msat=10)]},
+            "a second exchange id on one node": {2: [self.lifecycle("input_invoice_issued", "payer", "pay-other",
+                                                                    self.UNPAID, cid="i2")]},
+        }
+        for name, more in cases.items():
+            with self.subTest(name=name):
+                rows = self.with_unpaid_invoice()
+                for i, recs in more.items():
+                    rows[i] += recs
+                r = self.lightning(rows, self.checks_dir())
+                self.assertNotEqual(r["result"], "PASS", r["detail"])
+                self.assertNotIn("unsettled_invoices", self.judged())
+
+    def test_lightning_keeps_judging_an_invoice_a_node_names_with_no_exchange(self):
+        rows = self.paid()
+        rows[2].append(self.terms_leg(self.UNPAID))  # the payer's terms leg, but no invoice observation to tie it
+        rows[1].append(self.lifecycle("input_invoice_issued", "provider", "srv-unpaid", self.UNPAID))
+        r = self.lightning(rows, self.checks_dir())
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIsNone(self.judged()["finality"]["ok"])
+
+    def test_lightning_a_delivery_before_the_window_still_keeps_an_invoice_judged(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        rows = self.with_unpaid_invoice(self.stamped(self.paid(), times))
+        for x in rows[1] + rows[2]:
+            x.setdefault("timestamp", times[1])  # the invoice is in the window
+        early = self.lifecycle("delivered", "provider", "srv-unpaid")
+        early["timestamp"] = "2026-11-01T00:00:00Z"
+        rows[1].append(early)
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        r = self.lightning(rows, self.checks_dir(records=records), window="2026-11-01T01:38:00Z")
+        self.assertNotEqual(r["result"], "PASS", r["detail"])
+        self.assertNotIn("unsettled_invoices", self.judged())
+
+    def test_lightning_is_not_a_pass_when_every_invoice_is_set_aside(self):
+        r = self.lightning(self.with_unpaid_invoice({1: [], 2: []}), self.checks_dir(paired=0))
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertEqual(self.judged()["unsettled_invoices"]["count"], 1)
+        self.assertIsNone(self.judged()["finality"]["ok"])
 
     def judged(self):
         return json.loads((self.out / "checks.json").read_text())
