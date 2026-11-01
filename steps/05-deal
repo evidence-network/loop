@@ -32,9 +32,14 @@ The receiver records how it resolved each push's sender, `accepted_via`
 (the shape the pinned capsules plugin records, capsules-plugin PR #77):
 `controller_declaration` when a controller declaration binds the sender's
 evidence key, else `operator_stopgap`; a node set to `host_announced` records
-that. The declarations come from `<population dir>/step05/controllers.json`,
-each signed by its controller's TEST key; their format is the rehearsal's
-stand-in, not the controller-binding/0 the plugin reads. Refusals are replies
+that. The declarations come from `<population dir>/step05/controllers.json`:
+for each node it names, a real controller-binding/0 record (`same_controller_asserted`,
+`dual_signature/0`) that the controller's TEST key and the node's evidence key both
+sign, as the plugin's join writes one. The driver checks both signatures, and the
+step runs the Go verifier (`cross_language binding`, aac-go go/v0.17.0) on each
+binding a side accepted under, at the step's start, with the empty revocation list
+declared complete (the bindings are made by this run, so nothing can have been
+published for them). Refusals are replies
 that name the refused key_id and are not sealed.
 
 The finding:
@@ -153,7 +158,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -195,13 +200,10 @@ PROOF = ["deal.json", "declarations.json", "verify.json"] + [f"{s}/{f}" for s in
 # sending a controller declaration, binding its key to its operator, is the pinned plugin's join (capsules-plugin
 # PR #121); the rehearsal's gap is no node sending one. The live lab's unbound senders are LIVE_UNBOUND_WHAT.
 ACCEPTANCE_ISSUE = "evidence-network/loop: each lab node runs the pinned plugin's join, which binds its key to its controller (capsules-plugin PR #121, in the pin)"
-# The rehearsal's declarations are the driver's stand-in format, which `cross_language binding` cannot read.
-REHEARSAL_BINDING_ISSUE = "evidence-network/loop#134"
+# The rehearsal's declarations are real controller-binding/0 records (loop#134), checked by `cross_language binding`.
 ACCEPTANCE_WHAT = "acceptance of a pushed half keyed on the sender's evidence key under a controller declaration"
 ACCEPT_MODES = ("controller_declaration", "operator_stopgap", "host_announced")
-STAND_IN = finding.outside("the controller declaration's format, which is the rehearsal's stand-in "
-                           "(steps/05-deal.d), not the controller-binding/0 the pinned capsules plugin reads, "
-                           "so the Go binding verifier cannot check it", REHEARSAL_BINDING_ISSUE)
+BINDING_DAYS = 365  # a rehearsal binding's window: issued at the step's start, good for a year
 
 
 def acceptance(vias):
@@ -270,8 +272,9 @@ def raw_public_hex(pub_pem):
 
 
 def declarations(bin_, population_dir, keys, time):
-    """The controller declarations `<population dir>/step05/controllers.json` names, each
-    signed by its controller's TEST key: [{...}], or [] when there is no such file.
+    """The controller declarations `<population dir>/step05/controllers.json` names: one controller-binding/0 record
+    per controller and node, signed by the controller's TEST key and the node's evidence key: [{...}], or [] when
+    there is no such file.
 
     controllers.json: {"controllers": [{"id", "key_dir" (controller-key.pem), "nodes": [...]}]}
     """
@@ -282,13 +285,57 @@ def declarations(bin_, population_dir, keys, time):
     for c in json.loads(p.read_text(encoding="utf-8"))["controllers"]:
         key_dir = Path(c["key_dir"])
         key_dir = key_dir if key_dir.is_absolute() else ROOT / key_dir
-        bound = ",".join(raw_public_hex(keys[n][1]) for n in c["nodes"])
-        r = run(bin_, "declare", "--controller-key", key_dir / "controller-key.pem", "--controller-id", c["id"],
-                "--keys", bound, "--time", time)
-        if r.returncode != 0:
-            raise RuntimeError(f"driver declare: {r.stderr.strip()}")
-        out.append(json.loads(r.stdout))
+        for n in c["nodes"]:
+            r = run(bin_, "declare", "--controller-key", key_dir / "controller-key.pem", "--evidence-key", keys[n][0],
+                    "--time", time, "--not-after", binding_end(time), "--nonce", f"{c['id']}/{n}")
+            if r.returncode != 0:
+                raise RuntimeError(f"driver declare: {r.stderr.strip()}")
+            out.append(json.loads(r.stdout))
     return out
+
+
+def binding_end(time):
+    """The end of a rehearsal binding's window, BINDING_DAYS after `time`."""
+    t = datetime.strptime(utc_second(time), "%Y-%m-%dT%H:%M:%SZ") + timedelta(days=BINDING_DAYS)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def binding_checks(out, started):
+    """(failed, checked): the Go verifier's verdict on each controller-binding/0 a side accepted a push under, found
+    in out/declarations.json by the digest the receiver's provenance records. `failed` are the sentences for a
+    binding that does not name the sender's key or does not apply; `checked` the count that did. The window is held
+    at `started`; the revocation list is the empty one, declared complete as of `started`."""
+    decls = json.loads((out / "declarations.json").read_text(encoding="utf-8"))
+    by_digest = {}
+    for d in decls:
+        input_ = json.dumps({k: v for k, v in d.items() if k != "sigs"}, sort_keys=True, separators=(",", ":"))
+        by_digest[hashlib.sha256(input_.encode()).hexdigest()] = d
+    failed, checked = [], 0
+    for side in SIDES:
+        p = out / side / "held" / "received-provenance.jsonl"
+        for line in (p.read_text(encoding="utf-8").splitlines() if p.is_file() else []):
+            prov = json.loads(line)
+            if prov.get("accepted_via") != "controller_declaration":
+                continue
+            digest, key = prov.get("controller_binding_digest"), prov.get("key_id")
+            raw = by_digest.get(digest)
+            if raw is None:
+                failed.append(f"{side} accepted under binding {digest}, which declarations.json does not hold")
+                continue
+            listing = bv.revocation_list(digest, "[]", started, "evidence-network/loop step 05 rehearsal "
+                                                                "(bindings made by this run)")
+            verdict, report, err, code = bv.verify(cross_language(), json.dumps(raw, separators=(",", ":")), key,
+                                                   [started], listing)
+            if verdict is None:
+                raise RuntimeError(f"cross_language binding exited {code} ({err}); "
+                                   f"run steps/01-seal.setup.sh for the pinned aac-go")
+            props = report.get("properties") or {}
+            if verdict != "ok" or report.get("binding_digest") != digest:
+                bad = ", ".join(f"{k} {s}" for k, s in sorted(props.items()) if s != "PASS") or err or "no verdict"
+                failed.append(f"{side}'s accepted binding {digest} does not apply for key {key[:16]}: {bad}")
+            else:
+                checked += 1
+    return failed, checked
 
 
 def deal(bin_, population, keys, side_settings, out, time, decls=(), plant=None):
@@ -326,6 +373,11 @@ def decide(bin_, out, *, population, keys, started):
                              proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}. {NO_SPEND}",
                              started=started)
     unaccepted = verdict.get("acceptance_not_checked") or []
+    bad_bindings, checked = binding_checks(out, started)
+    if bad_bindings:
+        return finding.write(out, result="FAIL", population=population, asserts=ASSERTS, pinned=PINNED,
+                             proof=proof, detail=f"{where}: did not hold: {'; '.join(bad_bindings)}. {NO_SPEND}",
+                             started=started)
     if unaccepted:
         vias = sorted({f"{u['accepted_via']} ({u['side']})" for u in unaccepted})
         detail = (f"{where}: evidencebook found these held on the proof bytes: {', '.join(held)}. "
@@ -334,8 +386,9 @@ def decide(bin_, out, *, population, keys, started):
                              proof=proof, detail=detail, not_checked=[acceptance(vias)], started=started)
     detail = (f"{where}: evidencebook found these held on the proof bytes, for both sides: {', '.join(held)}. "
               f"Each push was accepted on the sender's evidence key under a controller declaration (rehearsal "
-              f"TEST controller keys) that binds it, and the two keys are under different controllers. "
-              f"{NO_SPEND} {STAND_IN}")
+              f"TEST controller keys) that binds it, and the two keys are under different controllers; the "
+              f"{checked} bindings accepted under apply in a second language (cross_language binding, aac-go "
+              f"go/v0.17.0: form, both signatures and window PASS, revocation PASS on the empty list). {NO_SPEND}")
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED,
                          proof=proof, detail=detail, started=started)
 

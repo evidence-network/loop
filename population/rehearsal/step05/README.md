@@ -5,8 +5,7 @@
   capsules plugin's default.
 - `controllers.json` and `keys/controller-*/`: one rehearsal controller per
   node, each with a TEST key, published on purpose and never used live. Step 05
-  signs a controller declaration with each, binding the node keys it names. The
-  declaration's format is the rehearsal's stand-in, not the controller-binding/0
-  the pinned capsules plugin reads (capsules-plugin PR #77), so the Go
-  binding verifier (`cross_language binding`) cannot check it
+  makes a real controller-binding/0 record (`same_controller_asserted`) for each
+  node it names, signed by the controller's TEST key and the node's evidence key,
+  and the Go binding verifier (`cross_language binding`) checks it
   (evidence-network/loop#134).

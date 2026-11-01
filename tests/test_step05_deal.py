@@ -186,10 +186,11 @@ class Step05DealRehearsalTest(unittest.TestCase):
             self.assertEqual(sum(1 for x in v["checks"] if x["check"] == c and x["ok"]),
                              1 if c == "halves_of_one_exchange" else 2, c)
             self.assertIn(c, f["detail"])
-        self.assertEqual(finding.gaps(f["detail"]), [(
-            "the controller declaration's format, which is the rehearsal's stand-in (steps/05-deal.d), not the "
-            "controller-binding/0 the pinned capsules plugin reads, so the Go binding verifier cannot check it",
-            "evidence-network/loop#134")])
+        self.assertEqual(finding.gaps(f["detail"]), [])  # loop#134: the declarations are real controller-binding/0
+        self.assertIn("the 2 bindings accepted under apply in a second language", f["detail"])
+        decls = json.loads((self.out / "declarations.json").read_text())
+        self.assertEqual({d["binding_version"] for d in decls}, {"controller-binding/0"})
+        self.assertEqual({len(d["sigs"]) for d in decls}, {2})
         self.assertIn("would spend 0 USD", f["detail"])
         self.assertEqual(set(f["pinned"]), {"evidencebook", "checkpointed-local-log"})
         paths = {p["path"] for p in f["proof"]}
@@ -236,11 +237,11 @@ class Step05DealRehearsalTest(unittest.TestCase):
     def test_a_counterparty_bound_to_the_receivers_own_controller_fails(self):
         started = finding.now()
         ctl = POPULATION / "keys" / "controller-alice" / "controller-key.pem"
-        both = ",".join(step.raw_public_hex(self.keys[s][1]) for s in ("alice", "bob"))
-        r = subprocess.run([str(BIN), "declare", "--controller-key", str(ctl), "--controller-id",
-                            "rehearsal-controller-alice", "--keys", both, "--time", started],
-                           capture_output=True, text=True, check=True)
-        self.dealt(decls=[json.loads(r.stdout)])
+        decls = [json.loads(subprocess.run(
+            [str(BIN), "declare", "--controller-key", str(ctl), "--evidence-key", str(self.keys[s][0]), "--time", started,
+             "--not-after", step.binding_end(started), "--nonce", f"same-{s}"],
+            capture_output=True, text=True, check=True).stdout) for s in ("alice", "bob")]
+        self.dealt(decls=decls)
         f = self.decide(started)
         self.assertEqual(f["result"], "FAIL")
         self.assertEqual(self.failed(), {("alice", "counterparty_distinct"), ("bob", "counterparty_distinct")})
@@ -250,13 +251,30 @@ class Step05DealRehearsalTest(unittest.TestCase):
     def test_a_declaration_whose_signature_does_not_verify_fails(self):
         started = finding.now()
         decls = step.declarations(BIN, POPULATION, self.keys, started)
-        decls[0]["controller_id"] = "rehearsal-controller-other"
+        decls[0]["nonce"] = "tampered"  # both signatures covered the old nonce
         self.dealt(decls=decls)
         f = self.decide(started)
         # Bob finds no verifying declaration for Alice's key and falls back to the stopgap.
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertEqual(f["not_checked"][0]["issue"], step.ACCEPTANCE_ISSUE)
         self.assertIn("operator_stopgap (bob)", f["detail"])
+        self.assert_clean()
+
+    def test_a_binding_the_driver_accepts_but_the_go_verifier_rejects_fails(self):
+        # The driver checks both signatures only; the window is the Go verifier's (here: ended a year before the start).
+        started = finding.now()
+        ctl = POPULATION / "keys" / "controller-alice" / "controller-key.pem"
+        past = "2025-01-01T00:00:00Z"
+        decls = step.declarations(BIN, POPULATION, self.keys, started)
+        decls = [json.loads(subprocess.run(
+            [str(BIN), "declare", "--controller-key", str(ctl if s == "alice" else ctl.parent.parent / "controller-bob" / "controller-key.pem"),
+             "--evidence-key", str(self.keys[s][0]), "--time", past, "--not-after", "2025-06-01T00:00:00Z",
+             "--nonce", f"old-{s}"], capture_output=True, text=True, check=True).stdout) for s in ("alice", "bob")]
+        self.dealt(decls=decls)
+        f = self.decide(started)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertIn("does not apply", f["detail"])
+        self.assertIn("controller_binding_window", f["detail"])
         self.assert_clean()
 
     def test_a_side_that_does_not_push_fails(self):

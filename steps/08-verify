@@ -204,19 +204,20 @@ def keys_04(c):
 
 
 def keys_05(c):
-    """Each controller declaration is the repository's: its id, its controller key and the node keys it covers."""
-    want = {}
+    """Each controller declaration is the repository's: a controller-binding/0 record naming exactly the controller's
+    key and one node key it covers (loop#134); its signatures are 05's own judge's to check, which runs again."""
+    pubs = node_pubs(c.pop)
+    want = []
     for ctl in load(c.pop / "step05" / "controllers.json")["controllers"]:
         key = pub_key(repo_path(ctl["key_dir"]) / "controller-key.pub.pem")
-        want[ctl["id"]] = (key, sorted(node_pubs(c.pop)[n] for n in ctl["nodes"]))
-    got, decls = {}, load(c.work / "declarations.json")
-    for d in decls:
-        got[d.get("controller_id")] = (d.get("controller_key"), sorted(d.get("evidence_keys") or []))
-    # The driver reads every declaration, so a repeated id would let an unchecked one stand behind a checked one.
-    if len(decls) != len(got):
-        return ["declarations.json repeats a controller id"]
-    return [f"declarations.json controller {i} is {got.get(i)}, the repository's is {want.get(i)}"
-            for i in sorted(set(want) | set(got), key=str) if got.get(i) != want.get(i)]
+        want += [sorted([key, pubs[n]]) for n in ctl["nodes"]]
+    decls = load(c.work / "declarations.json")
+    got = [sorted(d.get("keys") or []) if isinstance(d, dict) else [] for d in decls]
+    # The driver reads every declaration, so a repeated pair would let an unchecked one stand behind a checked one.
+    if len(got) != len({tuple(g) for g in got}):
+        return ["declarations.json repeats a controller binding"]
+    return [f"declarations.json binding {g} is not the repository's" for g in got if g not in want] + [
+        f"the repository's controller binding {w} is not in declarations.json" for w in want if w not in got]
 
 
 def keys_06(c):
@@ -332,6 +333,7 @@ def rederive_04(m, c):
 
 def rederive_05(m, c):
     bin_ = need(m.driver(), "step 05", "the loop-step05-deal driver")
+    need(m.cross_language(), "step 05", "aac-go cross_language (the declarations' controller bindings)")
     population, keys = m.nodes(c.pop)
     return m.decide(bin_, c.work, population=population, keys=keys, started=c.started)
 
