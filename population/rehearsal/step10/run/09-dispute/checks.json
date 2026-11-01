@@ -3,7 +3,7 @@
     {
       "checks": {
         "cites_halves": {
-          "detail": "its own half 496bf05d2f45e6d491ff4d9e63ca8cd1634f44f830523dc1c9aaa0b07bb70110 resolve by digest in the party's book, each signed by the node the Result names for it",
+          "detail": "its own half 55f3ba48272c8c327188e294aa7f9fd9104f237b31fbe964944e959a22cf2925 resolve by digest in the party's book, each signed by the node the Result names for it",
           "ok": true
         },
         "matches_issued": {
@@ -11,7 +11,7 @@
           "ok": true
         },
         "recorded_received": {
-          "detail": "record 41ea4d2afe2f23e9e8309111d630136f3590611b58412c1f8a1efbc048a0d272 cites Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7 under the party's key, with its facts",
+          "detail": "record 396213e0f12ed6c11c8ed43e8f5062f938e182ac36e8538e09958d6ac58c8384 cites Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639 under the party's key, with its facts",
           "ok": true
         },
         "referee_signed": {
@@ -23,7 +23,7 @@
           "ok": true
         },
         "result_signed": {
-          "detail": "Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "detail": "Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
           "ok": true
         }
       },
@@ -34,14 +34,14 @@
       "held": 1,
       "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     }
   ],
   "bob": [
     {
       "checks": {
         "cites_halves": {
-          "detail": "its own half 300c6a7ffda119cc460f7da1fd53545388ced0337b26965bae9890b3e02a61fc resolve by digest in the party's book, each signed by the node the Result names for it",
+          "detail": "its own half 700fe7f00fb8f7ff7c5c9aca58f00c767ee4db5d69d371c8935cad93d7418a8b resolve by digest in the party's book, each signed by the node the Result names for it",
           "ok": true
         },
         "matches_issued": {
@@ -49,7 +49,7 @@
           "ok": true
         },
         "recorded_received": {
-          "detail": "record d49494ebdec0594dd698439fdadc4253c729d934351a9d05e5117f91f6a798d1 cites Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7 under the party's key, with its facts",
+          "detail": "record fb10a7f1d839f1198ed572a5f0bfc8e9c108af6ebdc417de3e8346cb198be400 cites Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639 under the party's key, with its facts",
           "ok": true
         },
         "referee_signed": {
@@ -61,7 +61,7 @@
           "ok": true
         },
         "result_signed": {
-          "detail": "Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "detail": "Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
           "ok": true
         }
       },
@@ -72,14 +72,14 @@
       "held": 1,
       "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     }
   ],
   "requester": [
     {
       "checks": {
         "cites_halves": {
-          "detail": "both halves 496bf05d2f45e6d491ff4d9e63ca8cd1634f44f830523dc1c9aaa0b07bb70110, 300c6a7ffda119cc460f7da1fd53545388ced0337b26965bae9890b3e02a61fc resolve by digest in the party's book, each signed by the node the Result names for it",
+          "detail": "both halves 55f3ba48272c8c327188e294aa7f9fd9104f237b31fbe964944e959a22cf2925, 700fe7f00fb8f7ff7c5c9aca58f00c767ee4db5d69d371c8935cad93d7418a8b resolve by digest in the party's book, each signed by the node the Result names for it",
           "ok": true
         },
         "matches_issued": {
@@ -87,7 +87,7 @@
           "ok": true
         },
         "recorded_received": {
-          "detail": "record 929de965dad2cb6b75b7e6b874bf06234e56ef6265651b75abb7044f9f95fe1c cites Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7 under the party's key, with its facts",
+          "detail": "record 46a7c452171419bc3fa3d625bade803a8830ab88c759d2b584f2da93906999a2 cites Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639 under the party's key, with its facts",
           "ok": true
         },
         "referee_signed": {
@@ -99,7 +99,7 @@
           "ok": true
         },
         "result_signed": {
-          "detail": "Result 27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
+          "detail": "Result 51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639: capsule_id recomputes; signed by 6fb0cf1ac59fd1c88d36b5400e4a54f50244a8bf1029461ea22088b21533c0a1",
           "ok": true
         }
       },
@@ -110,7 +110,7 @@
       "held": 1,
       "referee_node_id": "922b32a1a0946b0cc71ee1eaf5f15793c9eac0548d0ea193f12c8135c6c240cf",
       "verdict": "contradicted:13fc1c5db61e10f59dc64ae366f78ce51587b81f2fbb5a8f91b34c3fee5afa34",
-      "verdict_capsule_id": "27b1c3bcbd89b9fa2439ce942fa11b6ae06d9ba2f18d7290e36ffcb5b5f1bef7"
+      "verdict_capsule_id": "51fab8b38255909d562935ef41ec499b4e80c91fa3972eea3c909d13cb040639"
     }
   ]
 }

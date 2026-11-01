@@ -130,6 +130,7 @@ class Step05ExchangePairingTest(unittest.TestCase):
 
 
 @unittest.skipIf(BIN is None, NO_DRIVER)
+@unittest.skipUnless(HAS_CROSS, NO_CROSS)
 class Step05DealRehearsalTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -192,7 +193,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
         self.assertEqual({d["binding_version"] for d in decls}, {"controller-binding/0"})
         self.assertEqual({len(d["sigs"]) for d in decls}, {2})
         self.assertIn("would spend 0 USD", f["detail"])
-        self.assertEqual(set(f["pinned"]), {"evidencebook", "checkpointed-local-log"})
+        self.assertEqual(set(f["pinned"]), {"evidencebook", "checkpointed-local-log", "aac-go"})
         paths = {p["path"] for p in f["proof"]}
         for side in ("alice", "bob"):
             for p in ("half.json", "push.json", "held/received-records.jsonl", "held/received-provenance.jsonl",
@@ -260,12 +261,23 @@ class Step05DealRehearsalTest(unittest.TestCase):
         self.assertIn("operator_stopgap (bob)", f["detail"])
         self.assert_clean()
 
+    def test_a_binding_of_the_two_sides_own_keys_is_one_controller_and_fails(self):
+        started = finding.now()
+        decls = [json.loads(subprocess.run(
+            [str(BIN), "declare", "--controller-key", str(self.keys["alice"][0]), "--evidence-key", str(self.keys["bob"][0]),
+             "--time", started, "--not-after", step.binding_end(started), "--nonce", "a-and-b"],
+            capture_output=True, text=True, check=True).stdout)]
+        self.dealt(decls=decls)
+        f = self.decide(started)
+        self.assertEqual(f["result"], "FAIL", f["detail"])
+        self.assertEqual(self.failed(), {("alice", "counterparty_distinct"), ("bob", "counterparty_distinct")})
+        self.assert_clean()
+
     def test_a_binding_the_driver_accepts_but_the_go_verifier_rejects_fails(self):
         # The driver checks both signatures only; the window is the Go verifier's (here: ended a year before the start).
         started = finding.now()
         ctl = POPULATION / "keys" / "controller-alice" / "controller-key.pem"
         past = "2025-01-01T00:00:00Z"
-        decls = step.declarations(BIN, POPULATION, self.keys, started)
         decls = [json.loads(subprocess.run(
             [str(BIN), "declare", "--controller-key", str(ctl if s == "alice" else ctl.parent.parent / "controller-bob" / "controller-key.pem"),
              "--evidence-key", str(self.keys[s][0]), "--time", past, "--not-after", "2025-06-01T00:00:00Z",

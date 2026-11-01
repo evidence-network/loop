@@ -26,6 +26,10 @@
     }
   ],
   "pinned": {
+    "aac-go": {
+      "ref": "go/v0.17.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
     "capsulectl": {
       "ref": "v0.8.1",
       "repository": "action-state-group/evidencebook"
@@ -47,7 +51,7 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "147b2a5cd1ddb3b3d69f2cc312edf021a15b9adb9a230b757708093d9a95904e"
+      "sha256": "9b4a763844e472958d5e7cf6a7bd59dc5fc7cb0a7f6010c1dd0d1bbd99029720"
     }
   ],
   "result": "NOT_CHECKED",

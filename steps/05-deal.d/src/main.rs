@@ -811,7 +811,9 @@ fn verify(f: &Flags) -> Result<u8, String> {
         // different counterparty.
         let own: Vec<String> = controllers_of(&decls, &hexes[i]).into_iter().map(|(a, _)| a).collect();
         let theirs: Vec<String> = controllers_of(&decls, &hexes[other]).into_iter().map(|(a, _)| a).collect();
-        let shared: Vec<&String> = own.iter().filter(|c| theirs.contains(c)).collect();
+        // A key counts under its own bindings and as itself: a binding of the two sides' own keys says they are one controller.
+        let (own_all, theirs_all) = ([own.clone(), vec![hexes[i].clone()]].concat(), [theirs.clone(), vec![hexes[other].clone()]].concat());
+        let shared: Vec<&String> = own_all.iter().filter(|c| theirs_all.contains(c)).collect();
         c.add(name, "counterparty_distinct", shared.is_empty(), format!(
             "{name}'s key is bound to {own:?}, {}'s to {theirs:?}{}", names[other],
             if shared.is_empty() { String::new() } else { format!("; both under {shared:?}, so not a different counterparty") }));
