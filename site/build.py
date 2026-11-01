@@ -881,8 +881,8 @@ def number_text(nb, run):
     part, whole = status_page.duration(m), status_page.duration(total)
     if part.endswith(" minutes"):
         part = part.removesuffix(" minutes")  # "1.0 of the run's 3.0 minutes"
-    ask = status_page.unsealed_ask(run, nb.step) if nb.step == status_page.ASK_STEP else None
-    note = f" ({e(ask)}, answered but not sealed before it was sent)" if ask else ""
+    ask = status_page.ask_note(*status_page.first_ask(run, nb.step)) if nb.step == status_page.ASK_STEP else ""
+    note = f" ({e(ask)})" if ask else ""
     return f'<span class="count">{e(part)} of the run\'s {e(whole)}</span>{note}'
 
 

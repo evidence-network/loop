@@ -116,7 +116,7 @@ class StatusPageTest(unittest.TestCase):
         """Step 07's finding, its first-answered.json saying the first ask was answered at `at`."""
         d = self.findings / f"2026-10-27-{population}" / "07-ask"
         d.mkdir(parents=True, exist_ok=True)
-        (d / "first-answered.json").write_text(json.dumps({"answered_at": at, "ask": "bob asked alice exchange",
+        (d / "first-answered.json").write_text(json.dumps({"answered_at": at, "ask": "stevenmih-1 checkpoints",
                                                               **({} if sealed is None else {"sealed": sealed})}))
         return self.write(7, result, population=population, proof=("first-answered.json",), name="ask", **kw)
 
@@ -435,8 +435,8 @@ class StatusPageTest(unittest.TestCase):
         self.answered("2026-10-27T02:00:42Z", result="NOT_CHECKED", population="live",
                       not_checked=[{"what": "x", "why": "y", "issue": "o/r#1"}])
         self.page()
-        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
-        self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes (first answer: stevenmih-1 checkpoints)"))
+        self.assertEqual(self.number("first-answered", "live"), ("measured", "42 s (first answer: stevenmih-1 checkpoints)"))
 
     def test_a_live_number_names_the_ask_and_says_it_was_not_sealed(self):
         self.run_json("2026-10-27T02:00:00Z", population="live")
@@ -446,8 +446,8 @@ class StatusPageTest(unittest.TestCase):
         self.answered("2026-10-27T02:04:00Z", sealed=True, started="2026-10-27T02:03:00Z")
         self.page()
         self.assertEqual(self.number("first-answered", "live"),
-                         ("measured", "42 s (bob asked alice exchange, answered but not sealed before it was sent)"))
-        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes"))
+                         ("measured", "42 s (first answer: stevenmih-1 checkpoints; the request was not sealed before it was sent)"))
+        self.assertEqual(self.number("first-answered"), ("measured", "4.5 minutes (first answer: stevenmih-1 checkpoints)"))
 
     def test_first_answered_is_not_measured_without_an_answer_or_on_a_fail(self):
         self.run_json("2026-10-27T02:00:00Z")
