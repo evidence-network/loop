@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -224,6 +225,57 @@ class JudgeOnTheSignedFixture(unittest.TestCase):
             os.environ.pop("LOOP_LEDGER_CHECK_BIN") if old is None else os.environ.update(LOOP_LEDGER_CHECK_BIN=old)
         self.assertEqual(errs, [])
         self.assertIn(ledger_proof.NOT_INSTALLED, next(n["why"] for n in notes if n["issue"] == ledger_proof.TOOLS_ISSUE))
+
+
+class ChainOnTheShelf(unittest.TestCase):
+    """A node on the shelf keeps ledger/shelf.db and no capsules.jsonl: the chain is `capsules chain-lines` (loop#296)."""
+    LINES = b'{"capsule_id": "a"}\n{"padding": 1}\n'
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data = Path(self.tmp.name) / "data"
+        (self.data / "ledger").mkdir(parents=True)
+        self.bin = Path(self.tmp.name) / "capsules"
+        self.args = Path(self.tmp.name) / "args"
+
+    def fake(self, code):
+        self.bin.write_text(f"#!/bin/sh\necho \"$@\" > {self.args}\n{code}\n")
+        self.bin.chmod(0o755)
+        env = mock.patch.dict(os.environ, {live.CAPSULES_BIN: str(self.bin)})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_a_shelf_node_is_read_through_chain_lines(self):
+        (self.data / "ledger" / live.CHAIN_STORE).write_bytes(b"sqlite")
+        self.fake("printf '%s' '{\"capsule_id\": \"a\"}\n{\"padding\": 1}\n'")
+        self.assertEqual(live.chain_bytes(self.data / "ledger"), self.LINES)
+        self.assertEqual(self.args.read_text().split(), ["chain-lines", "--data-dir", str(self.data)])
+        self.assertEqual(live.readable({"data_dir": str(self.data)}, "data_dir", "ledger/capsules.jsonl"), self.data)
+
+    def test_a_flat_node_is_read_from_its_file(self):
+        (self.data / "ledger" / "capsules.jsonl").write_bytes(self.LINES)
+        self.assertEqual(live.chain_bytes(self.data / "ledger"), self.LINES)
+
+    def test_no_chain_is_not_readable(self):
+        self.assertIsNone(live.readable({"data_dir": str(self.data)}, "data_dir", "ledger/capsules.jsonl"))
+        with self.assertRaises(OSError):
+            live.chain_bytes(self.data / "ledger")
+
+    def test_a_failing_chain_lines_is_an_unreadable_chain(self):
+        (self.data / "ledger" / live.CHAIN_STORE).write_bytes(b"sqlite")
+        self.fake("echo cannot read >&2; exit 1")
+        with self.assertRaises(OSError):
+            live.chain_bytes(self.data / "ledger")
+
+    def test_the_kept_copy_is_named_capsules_jsonl_with_the_preimage_taken_out(self):
+        (self.data / "ledger" / live.CHAIN_STORE).write_bytes(b"sqlite")
+        line = json.dumps(settlement())
+        self.fake(f"printf '%s\\n' '{line}'")
+        dest = Path(self.tmp.name) / "out" / "ledger" / "capsules.jsonl"
+        ledger_proof.keep_checked(None, self.data / "ledger" / "capsules.jsonl", dest, "capsules.jsonl")
+        self.assertEqual(dest.read_bytes(), kept_line(settlement()) + b"\n")
+        self.assertNotIn(b"ab" * 32, dest.read_bytes())
 
 
 if __name__ == "__main__":

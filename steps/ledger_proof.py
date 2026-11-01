@@ -69,6 +69,10 @@ def keep_copy(src, dest):
     preimage never leaves the lab host); returns how many lines changed. The copy keeps every line, so a line's
     position is the node's."""
     Path(dest).parent.mkdir(parents=True, exist_ok=True)
+    if Path(src).name == CHAIN:  # the node's chain: from `capsules chain-lines` when it is on the shelf (loop#296)
+        data, n = live.redact_bytes(live.chain_bytes(Path(src).parent))
+        Path(dest).write_bytes(data)
+        return n
     return live.copy_redacted(src, dest)
 
 
@@ -204,12 +208,22 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
         {"file": file, "reply": None, "refusal": f"no console for the node ({CONSOLES})"}
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if Path(src).is_file():
-        keep_copy(src, dest)
-        n = covered(asked["reply"]) if asked["reply"] else None
-        cut = prefix(dest.read_bytes(), n) if n else None
-        if cut is not None:  # else the copy is kept whole and fails the check: fewer lines than the reply covers
-            dest.write_bytes(cut)
+    shelf = Path(src).name == CHAIN and live.chain_stored(Path(src).parent)
+    if shelf and not live.chain_present(Path(src).parent):  # the node's chain is on the shelf and no capsules binary
+        asked = {**asked, "unread": f"no capsules binary to run chain-lines (PATH, or {live.CAPSULES_BIN})"}
+    elif Path(src).is_file() or shelf:
+        try:
+            keep_copy(src, dest)
+        except OSError as e:
+            if not shelf:  # an unreadable flat file stops the step, as it always did (test_step05_deal)
+                raise
+            dest.unlink(missing_ok=True)  # a shelf node whose chain-lines fails: no copy, and the beside-file says why
+            asked = {**asked, "unread": f"chain-lines failed: {e}"}
+        if dest.exists():
+            n = covered(asked["reply"]) if asked["reply"] else None
+            cut = prefix(dest.read_bytes(), n) if n else None
+            if cut is not None:  # else the copy is kept whole and fails the check: fewer lines than the reply covers
+                dest.write_bytes(cut)
     Path(f"{dest}{KEPT_SUFFIX}").write_text(json.dumps(asked, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return asked
 
@@ -237,6 +251,9 @@ def judge(ledger_dir, files, key_id, name):
         proof.append(rel(beside))
         if copy.is_file():
             proof.append(rel(copy))
+        if asked.get("unread") and not copy.is_file():  # not read: a missing tool, or the node's store; the reason says which
+            open_.append((f"{f}: the node's chain was not read ({asked['unread']})", TOOLS_ISSUE))
+            continue
         if reply is None:
             # A file the step found no complete line of (or no file) has nothing to show complete; the plugin
             # refuses an ask for it too. That such a file held none is the step's reading (step 08 names it).

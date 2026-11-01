@@ -449,6 +449,12 @@ LOOP_CONSOLE=http://127.0.0.1:9813 LOOP_SELF_NODE=lab-3 LOOP_SECOND_CONSOLE=http
   ./loop.sh --stage 1 --population live --out findings/<date>-live
 ```
 
+`LOOP_CAPSULES_BIN` is the plugin's `capsules` binary (default: the lab's `CAPSULES_BIN`, else `capsules` on PATH). A node on the
+EvidenceBook shelf keeps `ledger/shelf.db` and no `capsules.jsonl`; steps 04–07 and 09 read its chain
+with `capsules chain-lines --data-dir <data_dir>`, and keep the copies as `capsules.jsonl` (loop#296).
+A flat-ledger node is read from its file. On a shelf node with no capsules binary, the steps report the
+chain as not read (NOT_CHECKED), not as a failure.
+
 `LOOP_WITNESS_CA` is the lab test witness's certificate: step 02 hands it to
 capsulectl (as `SSL_CERT_FILE`, for its own calls only) so the book can deliver
 its checkpoint over HTTPS. Run step 02 by hand with it set too; without it

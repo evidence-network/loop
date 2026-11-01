@@ -169,7 +169,7 @@ DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 # PR #110); the live path reads those sealed records from the asker's ledger (ask_records, judge_sealed).
 SEAL_ISSUE = "evidence-network/loop: the live lab run with the asker's data dirs set (lab.sh ask); loop#80 built the read"
 EXCHANGE_ISSUE = "evidence-network/loop: step 07's exchange ask needs a step 05 half the asked node's chain cites"  # the exchange ask on a Mesh node: it needs a half step 05 left as subject
-LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl) is not set or not readable"
+LEDGER_GAP = "the asker's ledger (<data_dir>/ledger/capsules.jsonl, or the shelf store read by `capsules chain-lines`) is not set or not readable"
 # The pinned plugin signs each node's commitment (capsules-plugin PR #75); keeping it under lab/runs is the lab's.
 NO_COMMITMENT_ISSUE = "evidence-network/loop: lab/lab.sh pack keeps each live node's signed commitment under lab/runs"
 # Where the lab keeps each live node's signed join commitment (lab/lab.sh pack); LOOP_LAB_RUNS when that is set.
@@ -772,6 +772,14 @@ MINIMUM_ABSENCE_WINDOW = dt.timedelta(seconds=60)  # evidencebook MINIMUM_ABSENC
 OPEN_WINDOW_WAIT = dt.timedelta(seconds=90)  # the longest the step waits for a window to close to read its absence
 
 
+def chain_records(ledger_dir):
+    """The JSON object lines of a node's chain (live.chain_bytes); None when it cannot be read."""
+    try:
+        return ledger_lines(None, live.chain_bytes(ledger_dir))
+    except OSError:
+        return None
+
+
 def ledger_lines(path, raw=None):
     """The JSON object lines of a ledger file (or of `raw`, its bytes as read); None when it cannot be read."""
     pairs = ledger_numbered(path, raw)
@@ -800,7 +808,12 @@ def ask_records(ledger, raw=None, numbered=False):
     """The ask-book records of a node's capsules ledger, in ledger order, as (capsule_id, header); with `numbered`,
     as (capsule_id, header, line number). None when the ledger cannot be read. `raw` is the ledger's bytes when the
     caller has read them."""
-    recs = ledger_numbered(Path(ledger) / "capsules.jsonl", raw)
+    if raw is None:
+        try:
+            raw = live.chain_bytes(ledger)
+        except OSError:
+            return None
+    recs = ledger_numbered(None, raw)
     if recs is None:
         return None
     records = []
@@ -889,7 +902,7 @@ def ledger_extract(ledger, node_id, request, posted, back, saw, within):
         """(records, held) from one read of the ledger: `held` is its sha256 and line count, so the extract can be
         audited against the node later (loop#193)."""
         try:
-            raw = (Path(ledger) / "capsules.jsonl").read_bytes()
+            raw = live.chain_bytes(ledger)
         except OSError:
             return None, None
         return ask_records(ledger, raw, numbered=True), {"sha256": sha256(raw), "lines": len(raw.splitlines())}
@@ -1003,7 +1016,7 @@ def judge_sealed(extract, node_id, request, posted, back, saw, within, policy_di
 EXCHANGE = "exchange"
 COUNTERPARTY_HALF = "counterparty_half"
 EXCHANGE_GAP = ("the asker's ledger and the asked node's data_dir (ledger/received-capsules.jsonl and "
-                "ledger/capsules.jsonl) must be readable to name a half the asked node holds from the asker")
+                "ledger/capsules.jsonl, or the shelf store read by `capsules chain-lines`) must be readable to name a half the asked node holds from the asker")
 
 
 def exchange_subject(node, asker_data_dir):
@@ -1014,9 +1027,9 @@ def exchange_subject(node, asker_data_dir):
     held = live.readable(node, "data_dir", "ledger/received-capsules.jsonl", "ledger/capsules.jsonl")
     if held is None or asker_data_dir is None:
         return None, EXCHANGE_GAP
-    sent = ledger_lines(Path(asker_data_dir) / "ledger" / "capsules.jsonl")
+    sent = chain_records(Path(asker_data_dir) / "ledger")
     got = ledger_lines(held / "ledger" / "received-capsules.jsonl")
-    chain = ledger_lines(held / "ledger" / "capsules.jsonl")
+    chain = chain_records(held / "ledger")
     if sent is None or got is None or chain is None:
         return None, EXCHANGE_GAP
     mine = {r["capsule_id"] for r in sent if isinstance(r.get("capsule_id"), str)}
@@ -1116,6 +1129,7 @@ ASK_FILE = "ask.json"  # which node was asked through which console, or why it w
 SUBJECT_FILE = "exchange-subject.json"  # per node: the half the exchange ask is about, or why there is none
 COMMITMENT_DIR = "commitment"  # per node: the commitment the deadline came from, its policy, and choice.json
 OWN_NODE = "the reporter's own node and no second console"
+UNREAD_FILE = "chain-unread.txt"  # beside an asker's kept chain: why its shelf chain was not read
 ASKER_LEDGER = "asker-ledger"  # per asker: the whole ledger/capsules.jsonl the checkpoint replies cover (loop#276)
 ASKER_UNNAMED = "console"  # the asker's directory when its node is not named, so no listed key checks its replies
 CHECKPOINT_SUFFIX = ".checkpoint.json"  # per ask: the asker's ledger-checkpoint reply, or the refusal text
@@ -1209,7 +1223,9 @@ def keep_askers(out, askers, pending):
         try:
             ledger_proof.keep_copy(ledger_dir / ledger_proof.CHAIN, Path(out) / ASKER_LEDGER / name / ledger_proof.CHAIN)
             kept[name] = (Path(out) / ASKER_LEDGER / name).joinpath(ledger_proof.CHAIN).read_bytes()
-        except OSError:
+        except OSError as e:
+            if live.chain_stored(ledger_dir):  # a shelf chain our side could not read: judge_ledger_proof says so
+                (Path(out) / ASKER_LEDGER / name / UNREAD_FILE).write_text(f"{type(e).__name__}: {e}\n")
             continue
     for attempt, stem, node_id, sent_at, back, name in pending:
         try:
@@ -1532,6 +1548,11 @@ def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, 
     try:
         raw = copy.read_bytes()
     except OSError:
+        try:  # keep_askers could not read the asker's shelf chain: our side's gap, not the node's fault
+            why = (copy.parent / UNREAD_FILE).read_text().strip()
+            return gap(f"the asker's chain was not read ({why})", ledger_proof.TOOLS_ISSUE)
+        except OSError:
+            pass
         return [f"the kept copy of {asker}'s ledger ({ASKER_LEDGER}/{asker}/{ledger_proof.CHAIN}) is missing"], []
     try:
         info, why = ledger_proof.check(raw, reply, key_id, ledger_proof.CHAIN)
