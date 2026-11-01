@@ -32,6 +32,15 @@ class GooseRehearsalTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    def test_the_session_seals_with_the_model_step_01_tells_its_producer(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("seal01", str(ROOT / "steps" / "01-seal"))
+        seal01 = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(seal01)
+        text = (ROOT / "scripts" / "goose_session.py").read_text()
+        self.assertIn(f'provider="{seal01.MODEL["provider"]}", model_id="{seal01.MODEL["model_id"]}"', text)
+
     def test_population_names_the_two_goose_nodes_and_the_steps_with_an_input(self):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
@@ -52,6 +61,9 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertIn("Goose node buyer, tool loop_seal, goose-g1 ", sealed_by)
         self.assertEqual(sorted(found["pinned"]), ["aac-go", "goose-g1"])
         self.assertIn("sealed by the Goose node", found["asserts"])
+        installed = json.loads((out / "checks.json").read_text())["installed"]
+        self.assertRegex(installed["capsule-emit"], r"^\d+\.\d+\.\d+")  # the Goose venv's, which is not the mesh pin
+        self.assertNotIn("capsule-emit", found["pinned"])
         self.assertTrue({"node-key.pub.pem", "goose-run.log"} <= {x["path"] for x in found["proof"]})
 
     @unittest.skipUnless((TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(), "run steps/01-seal.setup.sh")

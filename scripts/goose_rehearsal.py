@@ -104,11 +104,13 @@ def main(argv=None):
     capsule = run / "sealed-buyer.json"
     rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
                          text=True).stdout.strip()  # the Goose checkout the run used
+    emit = subprocess.run([str(python), "-B", "-I", "-c", "import importlib.metadata as m; print(m.version('capsule-emit'))"],
+                          stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()  # what sealed the capsule
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
 

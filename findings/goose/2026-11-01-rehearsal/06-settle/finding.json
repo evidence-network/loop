@@ -1,7 +1,7 @@
 {
   "asserts": "a settlement object for the exchange is on the rail, referenced by its own settlement id and not copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count",
-  "detail": "exchange deal-365b980c13e71042, settlement b6e6354408c0e7926e7f9faca801428170594674b3b2ce0940a7f06810b5ef0a (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: the checks on the rail's proof bytes held (ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller; band USD:e0), but rail settlement is tied by construction and G1's pay record is not read yet.",
-  "finished": "2026-11-01T09:30:31Z",
+  "detail": "exchange deal-336bf08ffb8301d8, settlement c0fabae96c57882c700aeadeb6e325384d76b9d7ec6d4e6daf37ce09d8c7eac4 (buyer pays seller) on the mock rail, a rehearsal rail under a TEST key that moves no value: the checks on the rail's proof bytes held (ledger, reference, adapter, finality, rail_fee, band, exchange_match, ledger_count:buyer, ledger_count:seller; band USD:e0), but rail settlement is tied by construction and G1's pay record is not read yet.",
+  "finished": "2026-11-01T09:31:25Z",
   "name": "settle",
   "not_checked": [
     {
@@ -20,39 +20,39 @@
   "proof": [
     {
       "path": "rail.json",
-      "sha256": "afa09d259936d2bd4c18ca674f728887c4670b0d0703ada59150fef6c49e7d4a"
+      "sha256": "912d39446e40e87f5804ae8ee99c1139b6635b7ff50cb126c4ae763616e57b56"
     },
     {
       "path": "ledger.jsonl",
-      "sha256": "752b7fbe349252d74099de8d1ff9564933076e82be7f85c6054a3c5779356415"
+      "sha256": "441a4881d39bb6453efc0fd5ee44821c0ca0a14a91ab5aecf65a8ec535f5b6fc"
     },
     {
       "path": "rail-key.pub.pem",
-      "sha256": "cd32c44b79583fc87a7dcda3710d4a1c09933b0893211011e051d28d0730e7af"
+      "sha256": "8188014f9e1798fe6756ab881da643d86c50f8542b8d1d4d0526e45858109973"
     },
     {
       "path": "exchange.json",
-      "sha256": "6d57b334c3bb7829051cb4f0e25bddf31cd42e51f638d213b86f74d6aa56de0e"
+      "sha256": "058d67a77057ba2e29408390f931c16ec9b0524639733b2afb1d94a8dd1eeaf0"
     },
     {
       "path": "controllers.json",
-      "sha256": "e9b23c37b5f126b7f3c9350b75aad093d35d8d4ecf6b6e22eae92856e52e0eca"
+      "sha256": "cc096feb180bca52f2a3a4af1574423201f975f87ae48f5defe44db72d88fbf3"
     },
     {
       "path": "disclosure-buyer.json",
-      "sha256": "8968910c41dfa9588619db2b0f407b50804902ea2fbe289f605810fe57308f81"
+      "sha256": "911a2bbfd5db5d8c2aaf1e4ff6adb6bc04c608ddb5799093083069b93597e7f2"
     },
     {
       "path": "disclosure-seller.json",
-      "sha256": "80c5411914e91355ad82fccbdf1054da832ba76023c088a320d9226915dc0f97"
+      "sha256": "466365cc5d3cb12b6e6589217a9ef7d974add5d24d167460af92fdb7c0ec57ee"
     },
     {
       "path": "adapter.json",
-      "sha256": "3c181a8d64827d173a43d028ce3957569d457777423a132a6559711be3574e36"
+      "sha256": "cc653f86af0bfd40a75c423aa3fe4ccf89ba30212ef522832ce06197ee47a52a"
     },
     {
       "path": "checks.json",
-      "sha256": "a91c60fc2ad1d40fd87eb5e9ebe23ef32c1d27ef814dc8aa3d54c3878dbf45e8"
+      "sha256": "6b26a3d2d77daa360e5943f19eb627250fca9dbbf850f8bec6a7a5a771d91613"
     },
     {
       "path": "volume.json",
@@ -60,6 +60,6 @@
     }
   ],
   "result": "NOT_CHECKED",
-  "started": "2026-11-01T09:30:31Z",
+  "started": "2026-11-01T09:31:25Z",
   "step": "06"
 }

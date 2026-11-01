@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried c121502f851fc237493cc2a42cf33171277cec2a4d7569bbace5f75bcdfe1d5b, recomputed c121502f851fc237493cc2a42cf33171277cec2a4d7569bbace5f75bcdfe1d5b",
+      "detail": "carried c31f8bd7af40c3408e96ec2089f8c4b68f94dc1583fec53cfb5eb80687983e4d, recomputed c31f8bd7af40c3408e96ec2089f8c4b68f94dc1583fec53cfb5eb80687983e4d",
       "ok": true
     },
     "class1": {
@@ -13,7 +13,7 @@
       "ok": true
     },
     "key": {
-      "detail": "key_id a2aaa26c3f2477d02dcc53b9fd35e631039266fe1b9aafb03056d4b3803f2394, node public key a2aaa26c3f2477d02dcc53b9fd35e631039266fe1b9aafb03056d4b3803f2394",
+      "detail": "key_id 6b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab, node public key 6b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab",
       "ok": true
     },
     "model": {
@@ -21,13 +21,14 @@
       "ok": true
     },
     "signature": {
-      "detail": "authored under a2aaa26c3f2477d02dcc53b9fd35e631039266fe1b9aafb03056d4b3803f2394",
+      "detail": "authored under 6b30bfd98dcb7d70cc05d944c27ddcb51ba7430c52ed894904ecf8764cc171ab",
       "ok": true,
       "state": "ok"
     }
   },
   "installed": {
     "aac-go": "0.17.0",
+    "capsule-emit": "0.14.1",
     "goose-g1": "98a78b3d850ecf8924f8a9c494b72710b8d1366b"
   },
   "node": "buyer",

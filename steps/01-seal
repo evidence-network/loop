@@ -445,7 +445,7 @@ def main(argv=None):
         not_checked = [n for n in not_checked if n["what"] != "capsule-emit"]
     sealed_by, extra = None, []
     if goose:  # the capsule is the Goose node's: say which node, tool and revision, and keep the key it verified under
-        seen.pop("capsule-emit", None)
+        seen["capsule-emit"] = goose["capsule_emit"]  # what the Goose venv sealed it with, not the mesh pin
         seen["goose-g1"] = goose["rev"]
         if goose["rev"] != lock_version("goose-g1"):
             not_checked.append({"what": "goose-g1", "why": f"installed {goose['rev']}, versions.lock pins "
