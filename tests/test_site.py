@@ -109,7 +109,7 @@ BRANDS = ("action state", "action-state", "actionstate", "asg", "muse", "dots", 
 # is not an exception.
 # The ecosystem's registered name (loop.sh --ecosystem muse) in the status page's ecosystem columns is a third:
 # an identifier, not branding.
-ECOSYSTEM_NAME = re.compile(r'<strong>muse</strong>|data-ecosystem="muse"|badge-muse\.svg')
+ECOSYSTEM_NAME = re.compile(r'<strong>muse</strong>|data-ecosystem="muse"|badge-muse\.svg|findings/muse/')
 PINS = re.compile(r'<h2 id="pins">.*?<table>.*?</table>', re.S)
 ISSUE_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
 ISSUE_REF = re.compile(r"\b[\w.-]+/[\w.-]+#\d+\b")
