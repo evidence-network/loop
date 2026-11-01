@@ -693,6 +693,19 @@ own node through a second node's console, as `loop` does), and pays nothing. Run
 
 `pack` takes `07-ask/` with the rest of the day's findings.
 
+### The daily live run
+
+Once the lab is up, `scripts/live_daily.sh` runs all of the above once, unattended (evidence-network/loop#308):
+from a dedicated clone at origin/main, it holds `$LAB_DIR/run/LIVE_RUN`, runs `lab.sh check` and `lab.sh running`,
+makes one paid exchange, waits for the checkpoints, and runs steps 01 to 12 into `findings/<date>-live-<N>` with the
+window from the run's start. The tarball and the run record go to `$LAB_DIR/out/live/`. Its header lists the steps,
+the exit codes and the environment.
+
+```sh
+LOOP_LIVE_ENV=<the lab's env file> scripts/live_daily.sh --dry-run
+LOOP_LIVE_ENV=<the lab's env file> scripts/live_daily.sh
+```
+
 ## 6. Pack and bring back
 
 ```sh

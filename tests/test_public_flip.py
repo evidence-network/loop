@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -226,6 +227,14 @@ class PersonalDataTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("history_card.response.json:2: email address", out)
         self.assertNotIn("link.txt", out)
+
+    def test_a_long_base64_line_is_scanned_in_linear_time(self):
+        # Step 12's wire.json holds ~300 kB lines of base64; the email pattern once took minutes on one (loop#308).
+        line = "QUJD" * 75_000
+        start = time.monotonic()
+        self.assertEqual(check_personal_data.find(line), [])
+        self.assertIn("email address", check_personal_data.find(line + " x@corp.io"))
+        self.assertLess(time.monotonic() - start, 5)
 
     def test_missing_path(self):
         self.assertEqual(quiet(check_personal_data.main, ["/nonexistent/nodes"])[0], 2)

@@ -22,7 +22,10 @@ import re
 import sys
 from pathlib import Path
 
-EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
+# The lookbehind starts a match only where a local-part run starts: without it a long base64 line (a 300 kB wire.json
+# line in step 12's proof) is tried from every position of the run, quadratic, minutes per file. finditer's matches
+# are the same, as the leftmost match always starts there.
+EMAIL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@(?P<domain>[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
 EXAMPLE_DOMAINS = ("example.com", "example.net", "example.org")
 EXAMPLE_TLDS = (".example", ".invalid", ".test", ".localhost")
 
