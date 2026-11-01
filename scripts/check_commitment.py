@@ -7,8 +7,8 @@ A commitment is one signed object saying what a node can be asked and how
 (steps/03-advertise.md is the schema). This refuses a commitment:
 
 - that is missing a required field or has an unknown one, or whose fields
-  have the wrong shape (the one optional field, controller_binding, is
-  checked when present);
+  have the wrong shape (the optional members, controller_binding and /1's
+  ask.nostr, are checked when present);
 - that carries a count (COUNT RULE below);
 - whose signature does not verify under the public key it names, over its
   RFC 8785 (JCS) canonical form without `sig`;
@@ -27,6 +27,12 @@ checkpoint signer (DER, base64url; standard base64 is read too), so a
 verifier can check that card's signature. Each /1 refusal of a card starts with its name, `history_cards.<name>:`
 (the CARD_* constants below), so a reader can tell them apart.
 
+/1 may also name its Nostr mailbox route, `ask.nostr`: exactly {mailbox_key,
+relays}, both required. mailbox_key is the AAC Nostr mailbox binding v0 §3
+mailbox key (secp256k1 x-only, 64 lowercase hex, a point on the curve);
+relays is a non-empty list of distinct wss:// URLs, the relays the node reads
+(§4.3), each in one written form (RELAY below) so that distinct means distinct relays. Each refusal starts with `ask.nostr.<name>:` (the NOSTR_* constants).
+
 COUNT RULE. A commitment says what a node can answer, never what it has done.
 It is refused when, anywhere in its own members (the opaque `bytes` of the
 checkpoint and of each staple are not its members; they are signed artifacts it
@@ -42,6 +48,7 @@ Exit 0 = clean, 1 = refused.
 """
 import base64
 import hashlib
+import ipaddress
 import json
 import re
 import subprocess
@@ -109,6 +116,22 @@ CARD_COMMUNITY = "history_cards.unknown_community"
 CARD_CHECKPOINT_KEY = "history_cards.checkpoint_key"
 COUNT_WORDS = {"count", "counts", "total", "totals", "tally", "num", "number", "quantity", "size", "n", "nb"}
 DIGITS = re.compile(r"^\d+$")
+
+# /1's optional Nostr mailbox route, ask.nostr (AAC Nostr mailbox binding v0, §3 and §4.3; its N-4 and N-5
+# leave the member to this profile). The key and the relays travel together: one is no route without the other.
+NOSTR_MEMBERS = {"mailbox_key": str, "relays": list}
+NOSTR_SHAPE = "ask.nostr.malformed"
+NOSTR_MISSING = "ask.nostr.missing_member"
+NOSTR_KEY = "ask.nostr.bad_mailbox_key"
+NOSTR_RELAY = "ask.nostr.bad_relay"
+NOSTR_DUPLICATE = "ask.nostr.duplicate_relay"
+NOSTR_EMPTY = "ask.nostr.no_relays"
+# A relay URL in its one written form: wss://, a lowercase DNS name or a bracketed IPv6 literal, an optional
+# port, an optional path. The form is checked below: no default port, no bare "/" path, the literal compressed.
+RELAY = re.compile(r"^wss://(?P<host>[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+                   r"|\[[0-9a-f:.]+\])(?::(?P<port>[1-9][0-9]{0,4}))?(?P<path>/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*)?$")
+# secp256k1's field prime: a BIP-340 x-only key is an x below it whose x^3 + 7 is a square mod it.
+SECP256K1_P = 2 ** 256 - 2 ** 32 - 977
 
 
 # --- canonical form -------------------------------------------------------
@@ -287,12 +310,79 @@ def card_field_errors(cards):
     return errs
 
 
+def is_xonly_key(text):
+    """True when text is 64 lowercase hex naming a secp256k1 point's x (BIP-340 lift_x succeeds)."""
+    if not HEX64.fullmatch(text):
+        return False
+    x = int(text, 16)
+    if x >= SECP256K1_P:
+        return False
+    c = (pow(x, 3, SECP256K1_P) + 7) % SECP256K1_P
+    y = pow(c, (SECP256K1_P + 1) // 4, SECP256K1_P)
+    return y * y % SECP256K1_P == c
+
+
+def relay_error(url):
+    """Why url is not a relay URL in its one written form (RELAY), or None.
+
+    One form, so that the duplicate check compares relays, not spellings: a signed list never names one relay twice.
+    """
+    m = RELAY.fullmatch(url)
+    if not m:
+        return ("is not wss://host[:port][/path] with a lowercase host, and no credentials, query or fragment")
+    host, port, path = m.group("host", "port", "path")
+    if host.startswith("["):
+        try:
+            literal = ipaddress.IPv6Address(host[1:-1])
+        except ValueError:
+            return "has a host that is not an IPv6 literal"
+        if f"[{literal.compressed}]" != host:
+            return f"writes its IPv6 literal other than as [{literal.compressed}]"
+    if port is not None and int(port) > 65535:
+        return "has a port above 65535"
+    if port == "443":
+        return "names the default port 443; leave it out"
+    if path == "/":
+        return "ends in a bare /; leave it out"
+    return None
+
+
+def nostr_errors(route):
+    """/1's ask.nostr: exactly {mailbox_key, relays}, both present and well formed."""
+    if not isinstance(route, dict):
+        return [f"{NOSTR_SHAPE}: ask.nostr must be an object"]
+    errs = [f"{NOSTR_MISSING}: missing ask.nostr.{m}; the mailbox key and the relays travel together"
+            for m in NOSTR_MEMBERS if m not in route]
+    errs += [f"{NOSTR_SHAPE}: ask.nostr.{m} must be a {t.__name__}"
+             for m, t in NOSTR_MEMBERS.items() if m in route and not isinstance(route[m], t)]
+    errs += [f"{NOSTR_SHAPE}: unknown field ask.nostr.{x}" for x in sorted(set(route) - set(NOSTR_MEMBERS))]
+    if errs:
+        return errs
+    if not is_xonly_key(route["mailbox_key"]):
+        errs.append(f"{NOSTR_KEY}: ask.nostr.mailbox_key is not a secp256k1 x-only key (64 lowercase hex)")
+    relays = route["relays"]
+    if not relays:
+        errs.append(f"{NOSTR_EMPTY}: ask.nostr.relays must list at least one relay")
+    seen = {}
+    for i, url in enumerate(relays):
+        why = relay_error(url) if isinstance(url, str) else "is not a string"
+        if why:
+            errs.append(f"{NOSTR_RELAY}: ask.nostr.relays[{i}] {why}")
+        elif url in seen:
+            errs.append(f"{NOSTR_DUPLICATE}: ask.nostr.relays[{i}] repeats ask.nostr.relays[{seen[url]}]")
+        else:
+            seen[url] = i
+    return errs
+
+
 def field_errors(doc):
     """Missing, unknown and malformed fields."""
     if not isinstance(doc, dict):
         return ["not a JSON object"]
     errs = []
     schema = schema_of(doc)
+    # /1's optional members of an object member, each with the function that checks it.
+    sub_optional = {"ask": {"nostr": nostr_errors}} if doc.get("profile") == PROFILE_1 else {}
     for name, shape in {**schema, **OPTIONAL}.items():
         if name not in doc:
             if name not in OPTIONAL:
@@ -308,7 +398,11 @@ def field_errors(doc):
                     errs.append(f"missing {name}.{sub}")
                 elif not isinstance(v[sub], t):
                     errs.append(f"{name}.{sub} must be a {t.__name__}")
-            errs += [f"unknown field {name}.{x}" for x in sorted(set(v) - set(shape))]
+            optional = sub_optional.get(name, {})
+            for sub, check in optional.items():
+                if sub in v:
+                    errs += check(v[sub])
+            errs += [f"unknown field {name}.{x}" for x in sorted(set(v) - set(shape) - set(optional))]
         elif not isinstance(v, shape):
             errs.append(f"{name} must be a {shape.__name__}")
     errs += [f"unknown field {x}" for x in sorted(set(doc) - set(schema) - set(OPTIONAL))]
