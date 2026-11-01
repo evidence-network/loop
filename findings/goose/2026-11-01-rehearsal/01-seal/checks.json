@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried 2cda6b660e3636c67877ae85ade024fd283af243876ac37d76439a723de18573, recomputed 2cda6b660e3636c67877ae85ade024fd283af243876ac37d76439a723de18573",
+      "detail": "carried 025eab7208835e3f21eccbb90047b3859f4b495183035082ccae0a3c98aa9fb5, recomputed 025eab7208835e3f21eccbb90047b3859f4b495183035082ccae0a3c98aa9fb5",
       "ok": true
     },
     "class1": {
@@ -13,7 +13,7 @@
       "ok": true
     },
     "key": {
-      "detail": "key_id 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e, node public key 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e",
+      "detail": "key_id ba37c553a8f3388c1afb891efe37d6b49aaf5b67e0cb8adad094fff96ac7b8e0, node public key ba37c553a8f3388c1afb891efe37d6b49aaf5b67e0cb8adad094fff96ac7b8e0",
       "ok": true
     },
     "model": {
@@ -21,15 +21,15 @@
       "ok": true
     },
     "signature": {
-      "detail": "authored under 540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e",
+      "detail": "authored under ba37c553a8f3388c1afb891efe37d6b49aaf5b67e0cb8adad094fff96ac7b8e0",
       "ok": true,
       "state": "ok"
     }
   },
   "installed": {
     "aac-go": "0.17.0",
-    "capsule-emit": "0.13.0"
+    "goose-g1": "98a78b3d850ecf8924f8a9c494b72710b8d1366b"
   },
   "node": "buyer",
-  "sealed_by": "given capsule"
+  "sealed_by": "the Goose node buyer, tool loop_seal, goose-g1 98a78b3d850ecf8924f8a9c494b72710b8d1366b"
 }

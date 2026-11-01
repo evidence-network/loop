@@ -102,11 +102,13 @@ def main(argv=None):
         nodes.append({"name": name, "key_dir": str(kd)})
     # Step 01 checks the capsule the buyer sealed for a model call (loop_seal).
     capsule = run / "sealed-buyer.json"
+    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
+                         text=True).stdout.strip()  # the Goose checkout the run used
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     step06_inputs(pop, work, nodes, json.loads((run / "deal.json").read_text()))
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "pinned": ["goose-g1"], "goose": {"run": str(run), "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
 

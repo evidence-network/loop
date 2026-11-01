@@ -1,7 +1,7 @@
 {
   "controllers": {
-    "540515f6e80926eb26d5cca4402e2f95dc9216b426aa94ec50af3a6e440a4c0e": "goose-controller-buyer",
-    "c9c228d5e83d5226ebc7fc1e5c89eda5e5269b45ca101f0880ec81d5e7eec34d": "goose-controller-seller"
+    "5eecbdf5eda84469042687d752ee1a6896d5f2a8d2894a6f108d62c1d3d1f761": "goose-controller-seller",
+    "ba37c553a8f3388c1afb891efe37d6b49aaf5b67e0cb8adad094fff96ac7b8e0": "goose-controller-buyer"
   },
   "stand_in": true
 }

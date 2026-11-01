@@ -138,7 +138,7 @@ class LoopTest(unittest.TestCase):
                 self.assertEqual(subprocess.run(["python3", "-B", str(ROOT / "steps/finding.py"), "check",
                                                  str(out)]).returncode, 0)
 
-    GOOSE_OWNERS = {"01": "action-state-group/evidencebook#300", "02": "action-state-group/evidencebook#301",
+    GOOSE_OWNERS = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
                     "03": "action-state-group/capsule-emit#406", "04": "action-state-group/evidencebook#302",
                     "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
                     "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
@@ -180,7 +180,9 @@ class LoopTest(unittest.TestCase):
         self.assertIn("planted: the deal failed", (out / "06-settle" / "goose-rehearsal.log").read_text())
         self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
 
-    @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh")
+    @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
+                         and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
+                         "run steps/goose.setup.sh and steps/01-seal.setup.sh")
     def test_goose_with_its_tools_passes_step_01_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
@@ -190,7 +192,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(results.pop("01"), "PASS")
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
-        self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "capsule-emit"])
+        self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "goose-g1"])  # the Goose node sealed it
         six = self.finding("06-settle", out)
         self.assertIn("the checks on the rail's proof bytes held", six["detail"])
         self.assertIn("G1's pay record is not read yet", six["detail"])

@@ -4,7 +4,7 @@ Population: rehearsal. Each result is the step's own finding; open finding.json 
 
 | Step | Name | Result | Finding | Proof | Notes |
 |---|---|---|---|---|---|
-| 01 | seal | PASS | [finding.json](01-seal/finding.json) | [capsule.json](01-seal/capsule.json), [verifier.json](01-seal/verifier.json), [checks.json](01-seal/checks.json) |  |
+| 01 | seal | PASS | [finding.json](01-seal/finding.json) | [capsule.json](01-seal/capsule.json), [verifier.json](01-seal/verifier.json), [checks.json](01-seal/checks.json), [node-key.pub.pem](01-seal/node-key.pub.pem), [goose-run.log](01-seal/goose-run.log) |  |
 | 02 | book | NOT_CHECKED | [finding.json](02-book/finding.json) |  | not checked: step 02 for the goose ecosystem (action-state-group/evidencebook#301) |
 | 03 | advertise | NOT_CHECKED | [finding.json](03-advertise/finding.json) |  | not checked: step 03 for the goose ecosystem (action-state-group/capsule-emit#406) |
 | 04 | admit | NOT_CHECKED | [finding.json](04-admit/finding.json) |  | not checked: step 04 for the goose ecosystem (action-state-group/evidencebook#302) |
