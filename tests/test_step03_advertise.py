@@ -185,9 +185,9 @@ class NodeSignedTest(unittest.TestCase):
         self.pop = self.tmp / "population" / "rehearsal"
         self.keys = self.pop / "keys"
 
-    def run_with(self, signed):
+    def run_with(self, signed, rev=None):
         doc = json.loads((self.pop / "population.json").read_text())
-        doc["goose"] = {"commitments": signed}
+        doc["goose"] = {"commitments": signed, "rev": rev or finding.pins()["goose-g1"][1]}
         (self.pop / "population.json").write_text(json.dumps(doc))
         out = self.tmp / "findings" / "03-advertise"
         self.assertEqual(self.step.main(["--population", str(self.pop), "--out", str(out)]), 0)
@@ -204,6 +204,19 @@ class NodeSignedTest(unittest.TestCase):
         self.assertEqual((out / "alice.commitment.json").read_bytes(), Path(signed["commitment"]).read_bytes())
         self.assertEqual([c["stream"] for c in nodes["alice"]["history_cards"]], ["goose/node"])
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")  # a node without one is signed by the harness as before
+        # The Goose rehearsal's commitments are G1's: the finding pins goose-g1, and the key they must be under is kept.
+        self.assertEqual(list(f["pinned"]), ["goose-g1"])
+        self.assertIn("alice.node-key.pub.pem", [x["path"] for x in f["proof"]])
+        self.assertEqual((out / "alice.node-key.pub.pem").read_bytes(),
+                         (self.keys / "alice" / "node-key.pub.pem").read_bytes())
+
+    def test_a_goose_checkout_other_than_the_pin_is_not_checked(self):
+        signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed")
+        f, nodes, out = self.run_with({"alice": signed}, rev="0" * 40)
+        self.assertEqual(f["result"], "NOT_CHECKED")
+        self.assertEqual([x["what"] for x in f["not_checked"] if x["what"] == "goose-g1"], ["goose-g1"])
+        self.assertIn("goose-g1 " + "0" * 40, nodes["alice"]["signed_by"])
+        self.assertEqual(finding.check(out.parent), [])
 
     def test_a_commitment_under_another_key_than_the_nodes_fails(self):
         signed = goose_commitment(self.keys / "bob" / "node-key.pem", self.tmp / "bob-signed")
@@ -211,6 +224,28 @@ class NodeSignedTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("the commitment is not under this node's key", nodes["alice"]["errors"])
         self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_hostile_or_missing_node_id_is_published_under_the_key_and_refused(self):
+        key = self.keys / "alice" / "node-key.pem"
+        key_id = cc.key_id_of(cc.spki_from_pem((self.keys / "alice" / "node-key.pub.pem").read_text()))
+        for change in (lambda d: d.__setitem__("node_id", "../../escape"), lambda d: d.pop("node_id")):
+            with self.subTest(change=change):
+                shutil.rmtree(self.tmp / "findings", ignore_errors=True)
+                signed = goose_commitment(key, self.tmp / "alice-signed")
+                path = Path(signed["commitment"])
+                doc = json.loads(path.read_text())
+                change(doc)
+                path.write_text(json.dumps(cc.sign(doc, key)))
+                f, nodes, out = self.run_with({"alice": signed})
+                self.assertEqual(f["result"], "FAIL")
+                self.assertEqual(nodes["alice"]["node_id"], key_id)
+                self.assertTrue(any("node_id" in e for e in nodes["alice"]["errors"]), nodes["alice"]["errors"])
+                repo = self.tmp / "clone"
+                shutil.rmtree(repo, ignore_errors=True)
+                subprocess.run(["git", "clone", "-q", str(out / "carrier.bundle"), str(repo)], check=True)
+                files = sorted(str(p.relative_to(repo)) for p in repo.rglob("*.json"))
+                self.assertTrue(all(p.startswith("nodes/commitments/") for p in files), files)
+                self.assertIn(f"nodes/commitments/{key_id}.json", files)
 
     def test_a_node_signed_commitment_with_an_extra_member_fails(self):
         signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed")

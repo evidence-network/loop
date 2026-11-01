@@ -197,6 +197,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "goose-g1"])  # the Goose node sealed it
         nodes = json.loads((out / "03-advertise" / "verification.json").read_text())["nodes"]
         self.assertEqual({n["inputs"] for n in nodes}, {"signed by the node"})  # the harness signed neither
+        self.assertEqual(list(self.finding("03-advertise", out)["pinned"]), ["goose-g1"])
         six = self.finding("06-settle", out)
         self.assertIn("the checks on the rail's proof bytes held", six["detail"])
         self.assertIn("G1's pay record is not read yet", six["detail"])
