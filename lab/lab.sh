@@ -10,8 +10,8 @@
 #   running   confirm every lab node is up and runs the checked build: its process is MESH_LLM_BIN and one of its
 #             plugin processes is CAPSULES_BIN (by sha256 of /proc/<pid>/exe, so Linux only); exits 1 naming each
 #             failure. Starts and stops nothing
-#   tools     install every stage-1 step's pinned tools (each steps/<NN>-<name>.setup.sh): runs every
-#             setup, records each one's exit code in build.json, and exits 1 if any failed
+#   tools     install every step's pinned tools (each steps/*.setup.sh: the steps' own and the shared ledger-check
+#             one): runs every setup, records each one's exit code in build.json, and exits 1 if any failed
 #   start     lab-1 makes the mesh and serves the model; lab-2 and lab-3 join it. No relay.
 #   status    each node: pid, ports, node id, and the plugin keys its console lists
 #   exchange  lab-2 and lab-3 each ask lab-1 for one chat completion, so every node's book has a record
@@ -412,7 +412,8 @@ PY
 # then reads ok:false until a later `tools` run installs every step's tools.
 cmd_tools() {
   local s rc results=() failed=0
-  for s in "$ROOT"/steps/[0-9][0-9]-*.setup.sh; do
+  # Every steps/*.setup.sh: each step's own (<NN>-<name>.setup.sh) and the shared ones steps call, ledger-check's.
+  for s in "$ROOT"/steps/*.setup.sh; do
     [ -e "$s" ] || continue
     if [ "$DRY" = 1 ]; then say "$s"; continue; fi
     echo "== tools: $(basename "$s")"
@@ -421,12 +422,13 @@ cmd_tools() {
     results+=("$(basename "$s")" "$rc")
   done
   if [ "$DRY" = 1 ]; then echo "  > $LAB_DIR/build.json (each setup's exit code; a failed setup makes it ok:false)"; return 0; fi
-  python3 -B - "${results[@]+"${results[@]}"}" << 'PY' | record tools || die "cannot write $LAB_DIR/build.json"
+  python3 -B - "${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}" "${results[@]+"${results[@]}"}" << 'PY' | record tools || die "cannot write $LAB_DIR/build.json"
 import datetime as dt, json, sys
-args = sys.argv[1:]
+tools_dir, *args = sys.argv[1:]
 setups = [{"name": n, "exit": int(rc)} for n, rc in zip(args[::2], args[1::2])]
 print(json.dumps({
     "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "loop_tools": tools_dir,
     "setups": setups,
     "failures": [f"tools: steps/{s['name']} exited {s['exit']}" for s in setups if s["exit"]],
 }))
