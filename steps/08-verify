@@ -746,9 +746,9 @@ def rederive_06_live(m, c):
     exchange_match) run again on them. counterparty_count is decided from counterparty.json's rows by 06's own
     counterparty_verdict: 08 takes each row's status, bundle sha256, disclosed count and bundle settlement count from
     06 (the check files and signed bundles are not in the proof) and decides again that the bundle's settlements and
-    the books' pairs in the window both number what the books pair here (loop#303). An open check 06 decided from the
-    bundle's bytes alone (the bundle missing, changed or holding undated or other settlements) is 06's word, never a
-    pass. checks.json is written again and must be the cited bytes; counterparty.json is validated as rows and
+    the books' pairs in the window both number what the books pair here, with no undated or unmatched settlement
+    counted (loop#303). An open check 06 made because it could not read the bundle (missing, changed, or no bundle)
+    is 06's word, never a pass; a row judged under another window than the population's is a mismatch. checks.json is written again and must be the cited bytes; counterparty.json is validated as rows and
     carried."""
     old_shape(c, "06", "checks.json")
     old_shape(c, "06", "counterparty.json")
@@ -761,8 +761,10 @@ def rederive_06_live(m, c):
     if not isinstance(recorded_checks, dict):
         raise Mismatch("checks.json is not an object of checks")
     rows = load(c.bundle / "counterparty.json")
-    keys = {"books_pair", "bundle_settlements", "bundle_sha256", "disclosed_settlements", "method", "node", "paired",
-            "peer", "status", "unpaired", "window_from"}
+    keys = {"books_only", "books_pair", "bundle_only", "bundle_settlements", "bundle_sha256", "bundle_undated",
+            "disclosed_settlements", "method", "node", "paired", "peer", "status", "unpaired", "window_from"}
+    since = m.window_from(pop)
+    window = since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None
     if isinstance(rows, list) and rows and all(isinstance(r, dict) and "books_pair" not in r for r in rows):
         raise Unreproducible("step 06: its live result re-derived from its proof bytes",
                              "its counterparty.json rows carry no window counts: the finding predates the proof shape "
@@ -775,6 +777,9 @@ def rederive_06_live(m, c):
                 and isinstance(r["bundle_sha256"], str)):
             raise Mismatch(f"counterparty.json holds a row that is not one check of a node's book against a peer's "
                            f"signed bundle: {json.dumps(r, sort_keys=True)[:200]}")
+        if r["window_from"] != window:
+            raise Mismatch(f"counterparty.json's row for {r['node']} against {r['peer']} was judged with the window from "
+                           f"{r['window_from']}, and the population's window is from {window}")
         pairs[(r["node"], r["peer"])] = r
     judge = m.lightning_checks
 
@@ -791,8 +796,8 @@ def rederive_06_live(m, c):
             ok, detail = m.counterparty_verdict(r, n, since)
             kept = recorded_checks.get(what)
             if ok is not False and isinstance(kept, dict) and kept.get("ok") is None and str(kept.get("detail")).startswith(
-                    (f"{me}'s check names a", f"{peer}'s signed bundle holds")):
-                # Decided from the bundle's bytes, which are not in the proof: 06's word, only ever open, never a pass.
+                    f"{me}'s check names a"):
+                # 06 could not read the bundle (missing, changed or no bundle): its word, only ever open, never a pass.
                 ok, detail = None, kept["detail"]
             checks[what] = {"ok": ok, "detail": detail}
         return checks, [pairs[k] for k in sorted(pairs)]

@@ -1660,7 +1660,8 @@ def lightning_ledgers(lab, n=2):
         (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
-def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False):
+def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False,
+           bundle_first=1):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
     out dir being dst: the proof 08 re-derives. Returns the finding."""
     import hashlib
@@ -1678,7 +1679,7 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
         bundle = bundles / f"{peer}.for.{me}.json"
         held = [{"capsule_id": f"b{k}", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
             "phase": "output_settlement_observed", "observed_by": "payer",
-            "payment_hash": hashlib.sha256(bytes.fromhex(f"{k + 1:02x}" * 32)).hexdigest()}}}}
+            "payment_hash": hashlib.sha256(bytes.fromhex(f"{k + bundle_first:02x}" * 32)).hexdigest()}}}}
                 for k in range(n if paired is None else paired)]  # the bundle's settlements, as many as the check paired
         bundle.write_text(json.dumps({"state": "bundle", "bundle": {"records": held}}))
         dump(bundles / f"check.{ids[me]}.{ids[peer]}.json", {
@@ -1698,6 +1699,11 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
     if r.returncode != 0:
         raise RuntimeError(f"06-settle exited {r.returncode}: {r.stderr[-1000:]}")
     return load(dst / "finding.json")
+
+
+def m06():
+    """steps/06-settle as a module, as 08 loads it."""
+    return step.step_module("06-settle")
 
 
 @unittest.skipUnless(HAS_BASE, NO_BASE)
@@ -1852,11 +1858,36 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.plant(forge)
         self.assertEqual(entries["06-settle"]["status"], "failed")
 
+    def test_a_pass_forged_over_a_bundle_that_holds_other_payments_fails(self):
+        # The bundle holds as many settlements as the books pair, but for other payments: honest 06 leaves the check
+        # open and the row says so (books_only, bundle_only); a PASS forged into checks.json alone is caught.
+        self.honest(bundle_first=0x30)
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        k = "counterparty_count:stevenmih-1:stevenmih-2"
+        def forge(d):
+            checks = load(d / "checks.json")
+            rows = {(r["node"], r["peer"]): r for r in load(d / "counterparty.json")}
+            row = dict(rows[("stevenmih-1", "stevenmih-2")], bundle_only=0, books_only=0)
+            checks[k] = dict(zip(("ok", "detail"), m06().counterparty_verdict(row, 2, None)))
+            dump(d / "checks.json", checks)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+
+    def test_a_row_judged_under_another_window_fails_naming_it(self):
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            rows[0]["window_from"] = "2026-11-01T01:38:00Z"
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertIn("the population's window is from None", " ".join(entries["06-settle"]["problems"]))
+
     def test_rows_without_window_counts_are_not_reproduced_not_failed(self):
         def forge(d):
             rows = load(d / "counterparty.json")
             for r in rows:
-                for k in ("books_pair", "bundle_settlements", "window_from"):
+                for k in ("books_only", "books_pair", "bundle_only", "bundle_settlements", "bundle_undated",
+                          "window_from"):
                     r.pop(k)
             dump(d / "counterparty.json", rows)
         f, entries = self.plant(forge)

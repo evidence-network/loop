@@ -590,11 +590,12 @@ def bundle_settlements(doc, since):
 
 
 def counterparty_verdict(row, n, since):
-    """(ok, detail) of counterparty_count for one counterparty.json row whose books pair n payments in the window:
-    the part of the decision the row carries, which steps/08-verify decides again from the proof. A whole-book FAIL
-    is a FAIL; a whole-book status other than PASS is open; a PASS holds when the bundle's settlements in the window
-    and the books' pairs both number n. lightning_checks() decides first what needs the bundle's bytes (its digest,
-    its undated records, the two sets being equal), which 08 cannot see."""
+    """(ok, detail) of counterparty_count for one counterparty.json row whose books pair n payments in the window,
+    once its bundle file was read: the decision steps/08-verify takes again from the proof. A whole-book FAIL is a
+    FAIL; a whole-book status other than PASS is open; so is a bundle with settlement records the window cannot
+    place (bundle_undated), or whose settlements in the window are not the books' pairs (bundle_only: settlements
+    only the bundle holds; books_only: pairs only the books hold). A PASS holds when none is, and both sides number
+    n. Only counts are in the row, never a hash or a record."""
     me, peer, status, paired, unpaired = row["node"], row["peer"], row["status"], row["paired"], row["unpaired"]
     span = "in the window" if since is not None else "in all"
     if status == "FAIL":
@@ -602,10 +603,14 @@ def counterparty_verdict(row, n, since):
     if status != "PASS":
         return None, (f"{me}'s check of {peer}'s signed bundle over the whole books reads {status} with {paired} paired "
                       f"and {unpaired} unpaired")
-    if row["bundle_settlements"] != n or row["books_pair"] != n:
+    if row["bundle_undated"]:
+        return None, (f"{peer}'s signed bundle holds {row['bundle_undated']} settlement records with no timestamp, "
+                      "which the window cannot place")
+    if row["bundle_only"] or row["books_only"] or row["bundle_settlements"] != n or row["books_pair"] != n:
         return None, (f"{peer}'s signed bundle holds {row['bundle_settlements']} settlements {span}, while the books "
-                      f"pair {n} payments between them there: the check predates a payment or a record sits on the "
-                      "window's edge (run lab/lab.sh bundles)")
+                      f"pair {n} payments between them there ({row['books_only']} not in the bundle, "
+                      f"{row['bundle_only']} not paired in the books): the check predates a payment or a record sits "
+                      "on the window's edge (run lab/lab.sh bundles)")
     return True, (f"{me}'s {row['disclosed_settlements']} settlements against {peer}'s signed bundle (sha256 "
                   f"{str(row['bundle_sha256'])[:12]}): PASS over the whole books, {paired} paired, {unpaired} unpaired; "
                   f"the {n} payments the books pair between them {span} are exactly the bundle's")
@@ -730,10 +735,12 @@ def lightning_checks(found, ids, checks_dir, since=None):
         disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
         unpaired = len(cc.get("unpaired") or [])
         expected = pair_hashes.get(tuple(sorted((me, peer))), set())
-        span = "in the window" if since is not None else "in all"
         rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"), "paired": paired,
                      "unpaired": unpaired, "disclosed_settlements": disclosed, "bundle_sha256": doc.get("bundle_sha256"),
                      "bundle_settlements": len(held[0]) if held else None, "books_pair": len(expected),
+                     "bundle_undated": held[1] if held else None,
+                     "bundle_only": len(held[0] - expected) if held else None,
+                     "books_only": len(expected - held[0]) if held else None,
                      "window_from": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None})
         if status == "FAIL":
             put(what, *counterparty_verdict(rows[-1], len(expected), since))
@@ -741,16 +748,6 @@ def lightning_checks(found, ids, checks_dir, since=None):
             put(what, None, f"{me}'s check names a bundle that is missing or changed since (run lab/lab.sh bundles)")
         elif held is None:
             put(what, None, f"{me}'s check names a file that holds no bundle from {peer} (run lab/lab.sh bundles)")
-        elif status != "PASS":
-            put(what, *counterparty_verdict(rows[-1], len(expected), since))
-        elif held[1]:
-            put(what, None, f"{peer}'s signed bundle holds {held[1]} settlement records with no timestamp, which the "
-                            "window cannot place")
-        elif held[0] != expected:
-            put(what, None, f"{peer}'s signed bundle holds {len(held[0])} settlements {span}, while the books pair "
-                            f"{len(expected)} payments between them there ({len(expected - held[0])} not in the bundle, "
-                            f"{len(held[0] - expected)} not paired in the books): the check predates a payment or a "
-                            "record sits on the window's edge (run lab/lab.sh bundles)")
         else:
             put(what, *counterparty_verdict(rows[-1], len(expected), since))
     if not pair_hashes:

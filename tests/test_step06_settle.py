@@ -693,6 +693,17 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertIn("missing or changed", self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
 
+    def test_the_row_verdict_passes_only_with_nothing_undated_or_unmatched(self):
+        row = {"node": "a", "peer": "b", "status": "PASS", "paired": 3, "unpaired": 0, "disclosed_settlements": 3,
+               "bundle_sha256": "ab" * 32, "bundle_settlements": 1, "books_pair": 1, "bundle_undated": 0,
+               "bundle_only": 0, "books_only": 0}
+        self.assertIs(step.counterparty_verdict(row, 1, None)[0], True)
+        for k, v in (("bundle_undated", 1), ("bundle_only", 1), ("books_only", 1), ("bundle_settlements", 2),
+                     ("books_pair", 0), ("status", "INCONCLUSIVE")):
+            with self.subTest(k=k):
+                self.assertIsNone(step.counterparty_verdict(dict(row, **{k: v}), 1, None)[0])
+        self.assertIs(step.counterparty_verdict(dict(row, status="FAIL"), 1, None)[0], False)
+
     def test_lightning_is_not_a_pass_when_every_invoice_is_set_aside(self):
         r = self.lightning(self.with_unpaid_invoice({1: [], 2: []}), self.checks_dir(paired=0))
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
