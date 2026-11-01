@@ -1,0 +1,30 @@
+# The daily live harvest's pull request (scripts/live_harvest.py, loop#309) is data only: see .github/harvest_allowlist.py.
+# Runs for pull requests from a live-harvest/* branch; for any other pull request the job is skipped, which passes a
+# required check. The refusal is red and keeps the pull request open for a human. Once auto-merge is enabled, add
+# harvest-allowlist to the required checks (scripts/apply_branch_protection.sh) so the arming cannot outlive a later push.
+name: harvest-allowlist
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  harvest-allowlist:
+    if: startsWith(github.head_ref, 'live-harvest/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Only findings/<date>-live-<N>/ additions and baseline/live.json
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          # The base's copy of the check, so the pull request cannot change the rule it is judged by.
+          git show "$BASE:.github/harvest_allowlist.py" > "$RUNNER_TEMP/harvest_allowlist.py"
+          python3 -B "$RUNNER_TEMP/harvest_allowlist.py" "$BASE" "$HEAD"
