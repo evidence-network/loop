@@ -365,6 +365,7 @@ def rederive_07_live(m, c):
         raise Unreproducible("step 07: its judge, run again here",
                              "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
     need(m.tools(), "step 07", "capsulectl")  # 07 verifies each reply again with the pinned capsulectl-book
+    need(m.step12.book_plugin(m.tools()), "step 07", "capsulectl-book")
     pop = load(c.pop / "population.json")
     if m.backend(pop) != "reporter":
         raise Unreproducible("step 07: its live result re-derived from its proof bytes",

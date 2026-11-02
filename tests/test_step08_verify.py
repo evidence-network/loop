@@ -612,8 +612,12 @@ def live5_07(dst):
     return rec
 
 
-@unittest.skipUnless(step.openssl_ed25519(), "SKIPPED LOUDLY: live 07's kept commitments verify with OpenSSL 3+ "
-                                            "(Ed25519 pkeyutl -rawin), not installed here")
+STEP12 = step.step_module("12-join")
+
+
+@unittest.skipUnless(step.openssl_ed25519() and STEP12.tools().is_file() and STEP12.book_plugin(STEP12.tools()).is_file(),
+                     "SKIPPED LOUDLY: live 07's kept commitments verify with OpenSSL 3+ (Ed25519 pkeyutl -rawin) and its "
+                     "replies with the pinned capsulectl and capsulectl-book (steps/12-join.setup.sh), not installed here")
 class Step08Live07Test(unittest.TestCase):
     """08 re-derives live step 07 from its proof alone, on the live run's real bytes (no console, no data dir)."""
 

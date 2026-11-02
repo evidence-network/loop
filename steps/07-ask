@@ -1447,8 +1447,9 @@ def judge_reporter(pop, out):
     """(failures, not_checked, answered, proof, lines) of the reporter backend; the replies are verified by the
     pinned capsulectl-book (verify_reply_with_book), in a scratch directory made for the call."""
     book_tool = tools()
-    if not book_tool.is_file():
-        raise SystemExit(f"07-ask: no capsulectl at {book_tool}; run steps/07-ask.setup.sh")
+    for need in (book_tool, step12.book_plugin(book_tool)):
+        if not need.is_file():
+            raise SystemExit(f"07-ask: no {need.name} at {need}; run steps/07-ask.setup.sh")
     with tempfile.TemporaryDirectory() as work:
         return judge_reporter_in(pop, out, book_tool, work)
 

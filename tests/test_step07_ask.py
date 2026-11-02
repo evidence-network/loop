@@ -546,6 +546,12 @@ class ReporterBackendTest(Tmp):
         patcher = mock.patch.object(step, "verify_reply_with_book", return_value=[])
         patcher.start()
         self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(step, "tools", return_value=Path(__file__))  # judge_reporter wants the files
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(step.step12, "book_plugin", return_value=Path(__file__))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         # A lab run's join output: the node's signed commitment (answers_within PT1M) under lab/runs.
         runs = Path(self.tmp.name) / "lab" / "runs"
         shutil.copytree(FIX / "good" / "alice" / "advertised", runs / "2026-10-28" / "join" / "lab-1")

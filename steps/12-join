@@ -480,14 +480,21 @@ def verify_answers(node_dir, adv, capsulectl, work):
     return errs
 
 
+def book_plugin(capsulectl):
+    """The capsulectl-book plugin file capsulectl runs `book` commands with (CAPSULECTL_PLUGIN_ROOTS, else beside it)."""
+    return Path(os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(Path(capsulectl).parent))) / "capsulectl-book"
+
+
 def verify_sealed_replies(asked, capsulectl, work):
     """{label: [what did not verify]} for replies to requests a tool other than the book composed and sent.
+    Step 07's live replies use it; step 12's own doctor probes go through verify_answers, whose requests the
+    stranger's book composes itself.
 
     `asked` is [(label, sealed request, reply, responder key, checkpoint key)]: the request exactly as it was
     sent (the capsules plugin's sealed one, with its audience, requester_id and requester_auth), the signed answer in
     the reply, and the keys the asked node announces. A scratch book in `work` records each request as sent
     (`book request --request F --sent`, which keeps every member and adds none), then verifies the reply against it
-    (`--for ID --response F`), so step 07's live replies and step 12's probes go through one verifier (loop#290).
+    (`--for ID --response F`) (loop#290).
     One scratch book per call: the book refuses a nonce it has recorded."""
     work = Path(work)
     home = work / "sealed-replies"
