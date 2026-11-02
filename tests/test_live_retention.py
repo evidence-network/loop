@@ -103,6 +103,31 @@ class RetentionTest(unittest.TestCase):
         p = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "live_retention.py")], capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stderr)
 
+    def test_unreadable_baseline_refuses(self):
+        make_run(self.findings, "2026-11-01-live")
+        for text in (None, "not json", "{}"):
+            base = Path(self.tmp.name) / "b.json"
+            if text is not None:
+                base.write_text(text)
+            with self.assertRaises(ValueError):
+                live_retention.plan(self.findings, base)
+        p = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "live_retention.py"), str(self.findings),
+                            "--baseline", str(Path(self.tmp.name) / "nope.json")], capture_output=True)
+        self.assertEqual(p.returncode, 2)
+
+    def test_json_output(self):
+        for n in ("2026-10-30-live", "2026-11-01-live"):
+            make_run(self.findings, n)
+        p = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "live_retention.py"), str(self.findings), "--baseline", str(ROOT / "baseline" / "live.json"), "--json"],
+                           capture_output=True, text=True)
+        self.assertEqual([(e["run"], e["action"]) for e in json.loads(p.stdout)], [("2026-11-01-live", "keep"), ("2026-10-30-live", "prune")])
+
+    def test_real_tree_keeps_newest_and_the_baseline_run(self):
+        a = {e["run"]: e["action"] for e in live_retention.plan(ROOT / "findings", ROOT / "baseline" / "live.json")}
+        newest = max(a, key=lambda n: (n[:10], int(n.rsplit("-", 1)[1]) if n[-1].isdigit() and "live-" in n else 0))
+        self.assertEqual(a[newest], "keep")
+        self.assertEqual(a[live_retention.baseline_run(ROOT / "baseline" / "live.json")], "keep")
+
     def test_missing_dir_exits_2(self):
         p = subprocess.run([sys.executable, "-B", str(ROOT / "scripts" / "live_retention.py"), str(self.findings / "nope")], capture_output=True)
         self.assertEqual(p.returncode, 2)

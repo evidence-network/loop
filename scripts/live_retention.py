@@ -14,9 +14,14 @@ The rule, per live run directory (<date>-live[-N]) under FINDINGS_DIR:
   keep   the run baseline/live.json pins as the gate's reference, so a pin change is judged against whole proof.
   hold   a run with no valid proof-archive.json: its proof bytes exist nowhere else, so nothing of it is pruned.
   prune  any other run: every file but finding.json, run.json, index.md and proof-archive.json is a prune candidate.
+         "prune" means eligible, not verified: proof-archive.json is checked for shape only. Whatever later deletes
+         must first download the asset, match its sha256 and check its members cover the listed files (including
+         files no finding hashes, such as loop-step.log); that deleter is not part of #312.
+A pruned day stays on the site's per-day list as "not measured here" until its run is hydrated (scripts/hydrate_findings.py
+hydrates only the newest), so retention trades old days' page detail for repository size.
 Rehearsal, demo and any other directory under FINDINGS_DIR are outside the rule and never listed.
 
-Exit: 0 the plan was printed; 2 usage or FINDINGS_DIR is not a directory.
+Exit: 0 the plan was printed; 2 usage, FINDINGS_DIR is not a directory, or the baseline does not pin a run.
 """
 import argparse
 import json
@@ -33,11 +38,11 @@ PROOF_ASSETS = ("run.json", "index.md", finding.ARCHIVE)
 
 
 def baseline_run(baseline):
-    """The findings directory name the baseline pins for the mesh ecosystem, or None."""
+    """The findings directory name the baseline pins for the mesh ecosystem, (ValueError when it pins none)."""
     try:
         return Path(json.loads(Path(baseline).read_text(encoding="utf-8"))["ecosystems"]["mesh"]["findings"]).name
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"{baseline} does not pin ecosystems.mesh.findings ({e!r})")
 
 
 def prunable(run):
@@ -88,7 +93,11 @@ def main(argv):
     if not Path(args.findings).is_dir():
         print(f"live_retention: {args.findings} is not a directory", file=sys.stderr)
         return 2
-    entries = plan(args.findings, args.baseline)
+    try:
+        entries = plan(args.findings, args.baseline)
+    except ValueError as e:  # an unreadable baseline must not let the gate's reference be listed for pruning
+        print(f"live_retention: {e}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(entries, indent=2, sort_keys=True))
     else:
