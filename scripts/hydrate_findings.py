@@ -16,7 +16,6 @@ Exit: 0 hydrated or nothing to do; 1 the download failed; 2 the archive does not
 import argparse
 import json
 import sys
-import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -60,19 +59,10 @@ def hydrate(findings, archive_file=None):
         got = live_harvest.sha256(tgz)
         if got != pin["sha256"]:
             raise Refuse(2, f"{pin['asset']} has sha256 {got}, but {run.name}/{finding.ARCHIVE} records {pin['sha256']}")
-        prefix = f"findings/{run.name}"
-        out = Path(tmp) / "unpacked"
         try:
-            with tarfile.open(tgz, "r:gz") as tar:
-                for m in tar.getmembers():
-                    if not (m.isfile() or m.isdir()) or not live_harvest.allowed_member(m.name, prefix):
-                        raise Refuse(3, f"{pin['asset']} has a member outside {prefix}/<NN-step>/...: {m.name}")
-                tar.extractall(out, filter="data")
-        except (tarfile.TarError, OSError) as e:
-            raise Refuse(3, f"{pin['asset']} cannot be unpacked: {e}")
-        src = out / prefix
-        if not src.is_dir():
-            raise Refuse(3, f"{pin['asset']} holds no {prefix}/")
+            src = live_harvest.extract(tgz, pin["asset"], f"findings/{run.name}", Path(tmp) / "unpacked")
+        except live_harvest.Refuse as r:
+            raise Refuse(3, str(r))
         for f in sorted(p for p in src.rglob("*") if p.is_file()):
             rel = f.relative_to(src)
             if len(rel.parts) > 1 and rel.name == "finding.json":
@@ -83,6 +73,8 @@ def hydrate(findings, archive_file=None):
     errs = finding.check(run)
     if errs:
         raise Refuse(3, f"{run.name} fails steps/finding.py check after hydration: {'; '.join(errs)[:300]}")
+    if finding.digest_only(run):
+        raise Refuse(3, f"{run.name} still lacks proof files after hydration: the archive does not hold them")
     return run
 
 

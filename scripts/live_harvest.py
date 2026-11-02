@@ -123,25 +123,29 @@ def allowed_member(member, prefix):
     return bool(rest) and (rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None)
 
 
+def extract(tgz, label, prefix, into):
+    """Unpack tgz (members only under prefix/, plain files and directories) into `into`; Refuse(6) on anything else."""
+    try:
+        with tarfile.open(tgz, "r:gz") as tar:
+            for m in tar.getmembers():
+                if not (m.isfile() or m.isdir()) or not allowed_member(m.name, prefix):
+                    raise Refuse(6, f"{label} has a member that is not {prefix}/<NN-step>/..., run.json or index.md "
+                                    f"(or is not a plain file): {m.name}")
+            tar.extractall(into, filter="data")
+    except (tarfile.TarError, OSError) as e:
+        raise Refuse(6, f"{label} cannot be unpacked: {e}")
+    out = into / prefix
+    if not out.is_dir():
+        raise Refuse(6, f"{label} holds no {prefix}/")
+    return out
+
+
 def unpack(name, files, into):
     want = files / f"{name}.tgz"
     digest = (files / f"{name}.tgz.sha256").read_text().split()
     if not digest or digest[0] != sha256(want):
         raise Refuse(5, f"{name}.tgz does not match {name}.tgz.sha256")
-    prefix = f"findings/{name}"
-    try:
-        with tarfile.open(want, "r:gz") as tar:
-            for m in tar.getmembers():
-                if not (m.isfile() or m.isdir()) or not allowed_member(m.name, prefix):
-                    raise Refuse(6, f"{name}.tgz has a member that is not findings/{name}/<NN-step>/..., run.json or index.md "
-                                    f"(or is not a plain file): {m.name}")
-            tar.extractall(into, filter="data")
-    except (tarfile.TarError, OSError) as e:
-        raise Refuse(6, f"{name}.tgz cannot be unpacked: {e}")
-    out = into / prefix
-    if not out.is_dir():
-        raise Refuse(6, f"{name}.tgz holds no {prefix}/")
-    return out
+    return extract(want, f"{name}.tgz", f"findings/{name}", into)
 
 
 def privacy(tree, where, code, findings=True):

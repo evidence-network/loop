@@ -81,6 +81,16 @@ class HydrateTest(unittest.TestCase):
         self.assertEqual(r.returncode, 3, r.stderr)
         self.assertFalse((self.findings / NAME / "04-admit" / "counts.json").exists())
 
+    def test_an_archive_missing_a_proof_file_is_refused(self):
+        (self.full / NAME / "06-settle" / "counts.json").unlink()
+        with tarfile.open(self.tgz, "w:gz") as t:
+            t.add(self.full / NAME, arcname=f"findings/{NAME}")
+        self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        r = self.hydrate()
+        self.assertEqual(r.returncode, 3, r.stderr)
+        self.assertIn("still lacks", r.stderr)
+
     def test_only_the_newest_live_run_is_hydrated(self):
         make_run(self.findings, OLD)
         for p in (self.findings / OLD).glob("*/counts.json"):

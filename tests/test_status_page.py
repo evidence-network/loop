@@ -692,6 +692,7 @@ class StatusPageTest(unittest.TestCase):
         (d / "proof.bin").write_bytes(b"proof bytes for step 1\n")
         self.assertNotIn("release archive", self.page().rows[1]["live"]["own"])
         # Without a valid archive the same directory is malformed, as before.
+        (d / "proof.bin").unlink()
         (run / "proof-archive.json").unlink()
         self.assertIn("MALFORMED", self.page().rows[1]["live"]["own"])
 
