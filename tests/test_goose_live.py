@@ -49,6 +49,13 @@ class DriverArgumentsTest(unittest.TestCase):
             (Path(lab) / "run" / "LIVE_RUN").write_text("held")
             r = goose("run", LAB_DIR=lab, LOOP_TOOLS=lab)
             self.assertEqual(r.returncode, 2)
+            self.assertIn("no aac-go verifier", r.stderr)  # loop#358: refused before step 01 could be NOT_CHECKED
+            verifier = Path(lab) / "01-seal" / "bin" / "cross_language"
+            verifier.parent.mkdir(parents=True)
+            verifier.write_text("#!/bin/sh\n")
+            verifier.chmod(0o755)
+            r = goose("run", LAB_DIR=lab, LOOP_TOOLS=lab)
+            self.assertEqual(r.returncode, 2)
             self.assertIn("LIVE_RUN exists", r.stderr)
             self.assertTrue((Path(lab) / "run" / "LIVE_RUN").is_file())  # the other run's lock is not ours to remove
 
