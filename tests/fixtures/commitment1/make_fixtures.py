@@ -89,7 +89,7 @@ def second_book(home, name, record=True):
     seed_of(KEYS / "node-key.pem", d / "node.seed")
     cap("key", "generate", "--output", str(d / "checkpoint.seed"))
     checkpoint_pub = json.loads(cap("key", "show-public", str(d / "checkpoint.seed")))["public_key"]
-    cap("profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", str(d / "book"), "--log-id", name,
+    cap("profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", str(d / "book"), "--log", "book", "--log-id", name,
         "--operator", NAME, "--trusted-key", public_of(KEYS / "node-key.pem"),
         "--signing-key-file", str(d / "node.seed"), "--checkpoint-signing-key-file", str(d / "checkpoint.seed"),
         "--checkpoint-trusted-key", checkpoint_pub)

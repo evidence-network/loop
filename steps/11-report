@@ -101,7 +101,10 @@ SCORE_KEY = re.compile(r"score|rank|rating|leaderboard", re.I)
 # so a base64 run or a longer word does not match.
 PAID_WORD = re.compile(r"(?<![A-Za-z0-9+/=])(?:enterprise|premium|upgrade|subscribe|subscription|contact sales|"
                        r"paid (?:plan|tier|product))(?![A-Za-z0-9+/=])", re.I)
-BUNDLE_SCRIPT = re.compile(r"<script[^>]*>\s*window\.__BUNDLE__ = (.*?);?\s*</script>", re.S)
+# The page embeds the bundle as a JSON script that the next script parses (`window.__BUNDLE__ =
+# JSON.parse(document.currentScript.previousElementSibling.textContent)`), as capsule-cli rc30's builder writes it.
+BUNDLE_SCRIPT = re.compile(r'<script type="application/json">((?:(?!</script>).)*)</script>\s*(?:<!--.*?-->\s*)?'
+                           r"<script>\s*window\.__BUNDLE__ = JSON\.parse\(", re.S)
 SCRIPT = re.compile(r"<script[^>]*>.*?</script>", re.S)
 
 
@@ -354,7 +357,7 @@ class Reporter:
             f.write_text(judge10.seed_hex(keys / f"{k}.pem"))
             f.chmod(0o600)
         book.cap("profile", "create", "--name", "reporter", "--type", "jsonl", "--jsonl-path", str(book.home / "store"),
-                 "--log-id", "reporter", "--operator", "loop-reporter",
+                 "--log", "book", "--log-id", "reporter", "--operator", "loop-reporter",
                  "--trusted-key", judge10.pub_hex(keys / "reporter.pub.pem"),
                  "--signing-key-file", str(book.home / "reporter.seed"),
                  "--checkpoint-signing-key-file", str(book.home / "checkpoint.seed"),
@@ -595,7 +598,7 @@ def reporting_book(population, pop, keys, tmp, capsulectl):
         raise RuntimeError(f"live node {node['name']}: the private key in its data_dir is not the public key it lists")
     checkpoint_pub = book.cap("key", "show-public", checkpoint_seed)["public_key"]
     book.cap("profile", "create", "--name", node["name"], "--type", "jsonl", "--jsonl-path", str(book_dir / "book"),
-             "--log-id", joined["log_id"], "--operator", node["name"],
+             "--log", "book", "--log-id", joined["log_id"], "--operator", node["name"],
              *[a for k in joined["trusted_keys"] for a in ("--trusted-key", k)],
              "--signing-key-file", str(seed), "--checkpoint-signing-key-file", checkpoint_seed,
              "--checkpoint-trusted-key", checkpoint_pub)

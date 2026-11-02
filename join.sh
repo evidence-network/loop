@@ -157,7 +157,7 @@ echo "join: bound node key ${node_pub:0:16}… to its controller (class $control
 seedfile "$node_key" "$home/node.seed"
 [ -f "$home/checkpoint.seed" ] || cap key generate --output "$home/checkpoint.seed" >/dev/null
 checkpoint_pub="$(cap key show-public "$home/checkpoint.seed" | python3 -c 'import json,sys; print(json.load(sys.stdin)["public_key"])')"
-cap profile create --name "$name" --type jsonl --jsonl-path "$home/book" --log-id "$book_id" \
+cap profile create --name "$name" --type jsonl --jsonl-path "$home/book" --log book --log-id "$book_id" \
   --operator "$name" --trusted-key "$node_pub" --signing-key-file "$home/node.seed" \
   --checkpoint-signing-key-file "$home/checkpoint.seed" --checkpoint-trusted-key "$checkpoint_pub" >/dev/null
 cap store init --profile "$name" >/dev/null
@@ -203,7 +203,7 @@ pub_only() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dum
 cap key generate --output "$st/signing.seed" | pub_only >"$st/signing.json"
 cap key generate --output "$st/checkpoint.seed" | pub_only >"$st/checkpoint.json"
 key_of() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["public_key"])' "$1"; }
-cap profile create --name "$name-stranger" --type jsonl --jsonl-path "$st/store" --log-id "$name-stranger" \
+cap profile create --name "$name-stranger" --type jsonl --jsonl-path "$st/store" --log book --log-id "$name-stranger" \
   --operator stranger --trusted-key "$(key_of "$st/signing.json")" --signing-key-file "$st/signing.seed" \
   --checkpoint-signing-key-file "$st/checkpoint.seed" --checkpoint-trusted-key "$(key_of "$st/checkpoint.json")" >/dev/null
 cap store init --profile "$name-stranger" >/dev/null

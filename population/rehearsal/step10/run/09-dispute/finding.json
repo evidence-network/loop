@@ -9,11 +9,11 @@
   "proof": [
     {
       "path": "alice/ledger/capsules.jsonl",
-      "sha256": "fd8405aee9cbc07a1d82f5c4a72a0d90cb7ee3c93e0c0353b3da68cf0ace6790"
+      "sha256": "34a260ebe2ac20f20c8c355e5df7c00cabe9663be98a66ee77f1e016cfdfa196"
     },
     {
       "path": "alice/ledger/received-adjudications.jsonl",
-      "sha256": "385e49a0288b3153c5f7969dd220c32db0f2ab50f3e7895d59e739697a401910"
+      "sha256": "7fc599ff370e24e77e2197068a60f615292d379e57782164c00878406ec8e295"
     },
     {
       "path": "announced.json",
@@ -21,15 +21,15 @@
     },
     {
       "path": "bob/ledger/capsules.jsonl",
-      "sha256": "fff511474a368dd7a024e829683e8d8cb23777c18a3617b96367e772f5aa58b3"
+      "sha256": "8d515e84b20af917108e260a0ce8ff2ed92e649a3b2de1755f56a79c69fb8975"
     },
     {
       "path": "bob/ledger/received-adjudications.jsonl",
-      "sha256": "385e49a0288b3153c5f7969dd220c32db0f2ab50f3e7895d59e739697a401910"
+      "sha256": "7fc599ff370e24e77e2197068a60f615292d379e57782164c00878406ec8e295"
     },
     {
       "path": "checks.json",
-      "sha256": "0f9c34eb9b0d9bf461ee93eec382d4f73823a069028c9805887cbfcfa6d1c8ed"
+      "sha256": "f54b18ee758a261b49da56fecd1db17f1d1addf5486bc79520c21cf23d28528b"
     },
     {
       "path": "dispute.json",
@@ -37,31 +37,31 @@
     },
     {
       "path": "outcome.json",
-      "sha256": "e1ddd4085cd998f34c8edcc78afe749c66bc833885495270b027755968430273"
+      "sha256": "097358dd7ade7ae6b6077d47b9b390f8cdba9f9f62b43cc7b142c69143bd3cf6"
     },
     {
       "path": "referee/ledger/capsules.jsonl",
-      "sha256": "9cd4ea49e7d45f7c1b43fcd704cb90ff1b5c09d44f5ef8334fc42219cdbe5f89"
+      "sha256": "ecd092ec5ce0b33ee081067907291ce4cb797dfe6fd7364be2bb31e270205e34"
     },
     {
       "path": "referee/ledger/issued-adjudications.jsonl",
-      "sha256": "fbac374c971a8af6b6c4cf3feea3a4a3a8af53830b474cee6d8e7da63081b453"
+      "sha256": "e29ef52ac402664eba9907e5d294d1919c2d65124136366c53844f56fc365174"
     },
     {
       "path": "requester/ledger/capsules.jsonl",
-      "sha256": "726666f071a03fd41ceb917c6190664159309b63ace2d417e89357806075b3e9"
+      "sha256": "f672899e9146f67a9c6d5030bc98753a49ff745327f55fe0e595ef896e3929a9"
     },
     {
       "path": "requester/ledger/received-adjudications.jsonl",
-      "sha256": "385e49a0288b3153c5f7969dd220c32db0f2ab50f3e7895d59e739697a401910"
+      "sha256": "7fc599ff370e24e77e2197068a60f615292d379e57782164c00878406ec8e295"
     },
     {
       "path": "requester/ledger/received-capsules.jsonl",
-      "sha256": "ad2388580d583a2c1e36ae49e57cb964cbbf9d507dc94323e7aa0a269a04f258"
+      "sha256": "dc7aa2779c8dd057a573e57d07213c8e8ea669e22e938bb0db7224f7cba74f8a"
     },
     {
       "path": "requester/ledger/requested-adjudications.jsonl",
-      "sha256": "5072fe8d12b36e58938525228c72c71a91fb24e18d916a0aa4c19ec001b2948b"
+      "sha256": "d2037e986ccbc5020e61b7a3b4bf471ac6b806a770414b7701d0d91ce66ec963"
     }
   ],
   "result": "PASS",

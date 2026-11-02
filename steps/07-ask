@@ -484,7 +484,7 @@ class Verifier:
             r = self.cap("key", "generate", "--output", str(d / f"{k}.seed"))
             keys[k] = json.loads(r.stdout)["public_key"]
         r = self.cap("profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", str(d / "store"),
-                     "--log-id", name, "--operator", "verifier", "--trusted-key", keys["signing"],
+                     "--log", "book", "--log-id", name, "--operator", "verifier", "--trusted-key", keys["signing"],
                      "--signing-key-file", str(d / "signing.seed"),
                      "--checkpoint-signing-key-file", str(d / "checkpoint.seed"),
                      "--checkpoint-trusted-key", keys["checkpoint"])

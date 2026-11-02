@@ -177,7 +177,7 @@ class Book:
         self.key = book_keys.pub_hex(key_pem)
         cp = json.loads(self.cap("key", "generate", "--output", str(self.home / "checkpoint.seed")).stdout)
         self.cap("profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", str(self.home / "store"),
-                 "--log-id", f"{name}-book", "--operator", name, "--trusted-key", self.key,
+                 "--log", "book", "--log-id", f"{name}-book", "--operator", name, "--trusted-key", self.key,
                  "--signing-key-file", str(seed), "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),
                  "--checkpoint-trusted-key", cp["public_key"])
         self.cap("store", "init", "--profile", name)

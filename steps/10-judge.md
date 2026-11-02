@@ -80,6 +80,11 @@ book trusts only the committed public key, so a key that is not its private half
 `LOOP_JUDGE_KEY` or `LAB_DIR` names, one not readable here, or one readable by group or others is NOT_CHECKED.
 A judge key that is a node's (a population `node_id`, or the `key_id` of any `nodes/` entry) is FAIL.
 
+Every book verb runs with `SOURCE_DATE_EPOCH` set to the as-of instant (the window end), so the records, Results
+and checkpoints carry that time, not the wall clock, and two runs over one 08 manifest give the same bundle digests
+(evidence-network/loop#177, evidencebook#232). The book is a reproduced scratch book: its records carry the header's
+`reproduction` marker.
+
 The lab operator account that runs the nodes can read the live judge key: on the lab host it has passwordless
 sudo, so no other account there would keep the key from it. Steven's GO is Buzz 23c5f8fd; "same operator,
 disclosed" in place of "no node operator holds it" was ruled by Sherlock2 under Steven's delegation, Buzz

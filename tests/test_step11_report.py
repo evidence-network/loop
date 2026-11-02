@@ -715,7 +715,7 @@ class LiveFixtureTest(unittest.TestCase):
         cap("key", "generate", "--output", str(self.home / "checkpoint.seed"))
         checkpoint = json.loads(cap("key", "show-public", str(self.home / "checkpoint.seed")))["public_key"]
         cap("profile", "create", "--name", "lab-a", "--type", "jsonl", "--jsonl-path", str(self.home / "book"),
-            "--log-id", "lab-a-book", "--operator", "lab-a",
+            "--log", "book", "--log-id", "lab-a-book", "--operator", "lab-a",
             "--trusted-key", step.judge10.pub_hex(keys / "node-key.pub.pem"),
             "--signing-key-file", str(self.home / "node.seed"),
             "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),

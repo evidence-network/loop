@@ -5,32 +5,32 @@
     "seq": 3,
     "record_type": "counterparty_half_citation",
     "epistemic_type": "producer_claim",
-    "committed_at": "2026-11-01T01:40:13Z",
+    "committed_at": "2026-11-02T01:12:43Z",
     "links": [
       {
         "type": "cites",
-        "target": "bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709"
+        "target": "e83488e2d2bd4ec7c9deae2b0ba6f83f6cd116012116d88a918b2e7c416e2b5d"
       }
     ],
     "counterparty_ref": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
     "correlation": {
-      "deal_id": "rehearsal-deal-2026-11-01T01:40:13Z"
+      "deal_id": "rehearsal-deal-2026-11-02T01:12:43Z"
     },
     "statement": {
       "citation_purpose": "counterparty_half",
-      "cited_record_id": "bacae6fcce16265879e595cbe26eca3c1e59efc3c52d88a78892209e9d256709",
+      "cited_record_id": "e83488e2d2bd4ec7c9deae2b0ba6f83f6cd116012116d88a918b2e7c416e2b5d",
       "cited_checkpoint": {
         "log_id": "rehearsal-alice-deal",
         "mmr_size": 3,
-        "digest": "a50ff5704d9a65ff2808a5d51b9a9186df303e7f5b7eff11b88e5d2d7e33a8e1"
+        "digest": "9587fc81ce6cbf59cd626d6686a59b0c21c08583ba2728b4cc0333ccf30faa4e"
       },
-      "held_sha256": "d25b153c9160eec0cd4fde3cbba3a7a2503e3e93768342b07ce1c4584c098c9b",
+      "held_sha256": "b543f458147381fb17d8ea41d6311672d2e53d2c4a37a13ad0f244d43aea9a2a",
       "via": "push"
     }
   },
   "seal": {
     "alg": "Ed25519",
     "key_id": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
-    "signature": "85c35a110f1091e9d8e51337af08367ec6ae6761efa7b95562c42adb1c01572740aef03afd64620dbc1b7d07c12eeb8fb1ad9ef32e33ab57d0793444abf96c07"
+    "signature": "923ab260215aab2bc50251a766eb3b913d69ed6f046c31e1e6ea0593e17455f8d81e99f360d954bebdc204a6aa192d77412df10be631560e1641ac52c35f2900"
   }
 }

@@ -18,6 +18,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -306,6 +307,20 @@ class JudgeTest(Base):
         # The Result names its bound: the as-of instant, no month boundary.
         self.assertEqual(statement["x-window"], {"through": "2026-10-02T09:01:00Z", "pack": step.load_pack()["pack"]})
         self.assertEqual(finding.gaps(f["detail"])[0][1], step.GAP_ISSUE)
+
+    def test_two_runs_over_one_manifest_give_the_same_bundles(self):
+        """The book is stamped with the window end (SOURCE_DATE_EPOCH), not the wall clock (loop#177)."""
+        out = self.run / "10-judge"
+        first = {}
+        self.assertEqual(self.judge()["result"], "PASS")
+        for p in sorted((out / "bundles").glob("*.json")):
+            first[p.name] = p.read_bytes()
+        shutil.rmtree(out)
+        time.sleep(1.1)  # a wall-clock stamp has second resolution
+        self.assertEqual(self.judge()["result"], "PASS")
+        second = {p.name: p.read_bytes() for p in sorted((out / "bundles").glob("*.json"))}
+        self.assertEqual(sorted(first), [f"{b}.bundle.json" for b in WINDOW_STEPS] + ["rollup.bundle.json"])
+        self.assertEqual(first, second)
 
     def test_term_3_reads_provider_states_without_model_attestation(self):
         self.judge()

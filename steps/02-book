@@ -428,7 +428,7 @@ def live_book(cap, name, data_dir, book_dir, profile, node_keys, out, work, time
         witness = (["--checkpoint-endpoint", profile["endpoint"], "--checkpoint-public-key", profile["public_key"]]
                    if profile["endpoint"] else [])
         cap_run("profile", "profile", "create", "--name", name, "--type", "jsonl", "--jsonl-path", book_dir / "book",
-                "--log-id", book_id, "--operator", name, "--trusted-key", node_pub, "--signing-key-file", seed,
+                "--log", "book", "--log-id", book_id, "--operator", name, "--trusted-key", node_pub, "--signing-key-file", seed,
                 "--checkpoint-signing-key-file", book_dir / "checkpoint.seed", "--checkpoint-trusted-key", cp_pub,
                 *witness)
         request = work / "request.json"

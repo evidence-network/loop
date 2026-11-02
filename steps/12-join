@@ -444,7 +444,7 @@ def verify_answers(node_dir, adv, capsulectl, work):
         return subprocess.run([str(capsulectl), *args], env=env, capture_output=True, text=True)
 
     r = cap("profile", "create", "--name", "stranger", "--type", "jsonl", "--jsonl-path", str(home / "store"),
-            "--log-id", prof["log_id"], "--operator", prof["operator"],
+            "--log", "book", "--log-id", prof["log_id"], "--operator", prof["operator"],
             "--trusted-key", load(home / "signing.json")["public_key"],
             "--signing-key-file", str(home / "signing.seed"),
             "--checkpoint-signing-key-file", str(home / "checkpoint.seed"),

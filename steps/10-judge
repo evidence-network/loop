@@ -606,8 +606,11 @@ def node_key_problems(pop, judge_key, nodes_dir=ROOT / "nodes"):
 class Book:
     """A scratch book profile under the judge key, driven through the pinned capsulectl."""
 
-    def __init__(self, home, capsulectl, keys):
+    def __init__(self, home, capsulectl, keys, at):
+        """`at` is the window end: every record, Result and checkpoint the book writes is stamped with it
+        (SOURCE_DATE_EPOCH, evidencebook#232), so two runs over one 08 manifest give the same digests (loop#177)."""
         self.home, self.capsulectl = Path(home), Path(capsulectl)
+        self.epoch = str(int(at.timestamp()))
         self.home.mkdir(parents=True, exist_ok=True)
         self.home.chmod(0o700)
         for k, (pem, _) in keys.items():
@@ -615,14 +618,14 @@ class Book:
             f.touch(mode=0o600)
             f.write_text(seed_hex(pem))
         self.cap("profile", "create", "--name", "judge", "--type", "jsonl", "--jsonl-path", str(self.home / "store"),
-                 "--log-id", "judge", "--operator", "loop-judge", "--trusted-key", pub_hex(keys["judge"][1]),
+                 "--log", "book", "--log-id", "judge", "--operator", "loop-judge", "--trusted-key", pub_hex(keys["judge"][1]),
                  "--signing-key-file", str(self.home / "judge.seed"),
                  "--checkpoint-signing-key-file", str(self.home / "checkpoint.seed"),
                  "--checkpoint-trusted-key", pub_hex(keys["checkpoint"][1]))
         self.cap("store", "init", "--profile", "judge")
 
     def cap(self, *args):
-        env = dict(os.environ, XDG_CONFIG_HOME=str(self.home / "config"),
+        env = dict(os.environ, XDG_CONFIG_HOME=str(self.home / "config"), SOURCE_DATE_EPOCH=self.epoch,
                    CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(self.capsulectl.parent)))
         r = subprocess.run([str(self.capsulectl), *args], env=env, capture_output=True, text=True, timeout=300)
         if r.returncode != 0:
@@ -833,7 +836,7 @@ def main(argv=None):
             docs = judge_records(records, source, pack, as_of, not_checked)
             unevaluated = sorted(d for d, doc in docs.items() if not doc.get("x-evaluator")
                                  and any(not t.get("own") for t in pack["kinds"][d[:2]]["terms"]))
-            book = Book(Path(tmp) / "book", capsulectl, signer)
+            book = Book(Path(tmp) / "book", capsulectl, signer, as_of)
             sealed = seal(book, records, docs, pack, as_of, out)
             problems, lines = judge(out, records, capsulectl, pub_hex(signer["judge"][1]), tmp)
         proof += [str(p.relative_to(out)) for p in sorted((out / "bundles").glob("*.json"))]
