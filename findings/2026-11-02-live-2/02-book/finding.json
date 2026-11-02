@@ -1,0 +1,151 @@
+{
+  "asserts": "the record is in the node's book at a stated position, under a signed checkpoint that verifies; the checkpoint's witness receipt verifies",
+  "detail": "node stevenmih-1: book lab-1-book, sequence 932, capsule 35f09c2de4abc81d679fc3c9566a5dff71b34c8b23ef5c7de8c6ee1667410b5a: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint status, the step 02 driver's lab-check, openssl pkeyutl and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key, witness_listed, witness_not_node, witness_not_before, witness_receipt, witness_signature. The receipt is from the lab test witness (lab/witness/witnesses.json), one organization's test witness.; node stevenmih-2: book lab-2-book, sequence 148, capsule b54c40568ec3dc0d8aff4dc572b35e16d557f0585aaecd060b386458d7650a2f: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint status, the step 02 driver's lab-check, openssl pkeyutl and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key, witness_listed, witness_not_node, witness_not_before, witness_receipt, witness_signature. The receipt is from the lab test witness (lab/witness/witnesses.json), one organization's test witness.; node stevenmih-3: book lab-3-book, sequence 148, capsule 240200739f14dd6d688008888a6647bfd87b6b655c05759a2bbf71517130cdef: these held on the proof bytes, by capsulectl verify --bundle, capsulectl cll checkpoint status, the step 02 driver's lab-check, openssl pkeyutl and this step's comparisons: bundle, membership, record, position, signer, checkpoint, node_key, witness_listed, witness_not_node, witness_not_before, witness_receipt, witness_signature. The receipt is from the lab test witness (lab/witness/witnesses.json), one organization's test witness.",
+  "finished": "2026-11-02T05:52:02Z",
+  "name": "book",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "nodes.json",
+      "sha256": "b52722dad5eeeea83e51b4d573a64b3bc421d9d1d9441b2e6437911dc0b9248b"
+    },
+    {
+      "path": "witnesses.json",
+      "sha256": "ec061f1d6d77ac73ce018632fc5ce420cda42ee17570d32b6fe4c2f69b780ad1"
+    },
+    {
+      "path": "stevenmih-1/capsule.json",
+      "sha256": "954f5cd3c91c04cf6c7ff2db4376d365c7d0e5272b625b0922b09cdcb1535d12"
+    },
+    {
+      "path": "stevenmih-1/append.json",
+      "sha256": "e2b67c20937b49fe84c10a4a546483d2549f0729268a4def348c8d2c4d6a85d4"
+    },
+    {
+      "path": "stevenmih-1/checkpoint.json",
+      "sha256": "b3d29ee6e20ddebae4d5b1f604e1e025e42904066ce72bde13ef63cffc3efb55"
+    },
+    {
+      "path": "stevenmih-1/bundle.json",
+      "sha256": "96c52e1f60821de1cc88340ee102b5c63d11772e44b52b377fdec311318e408f"
+    },
+    {
+      "path": "stevenmih-1/book-record.json",
+      "sha256": "806678fa0222c58e8d87c2f4a5d8a9b4f17092da902bb6dbb98e280b632e902f"
+    },
+    {
+      "path": "stevenmih-1/verify.json",
+      "sha256": "7e08d69eee3b1b928b66e4c61ef9df3117d1ef9c714ffa5effbb0223a716f020"
+    },
+    {
+      "path": "stevenmih-1/inputs.json",
+      "sha256": "6b811d5d38a61bfd4a47a236f1453c0ab61253b15c87be4d29fc085f0291a1da"
+    },
+    {
+      "path": "stevenmih-1/checks.json",
+      "sha256": "91c9d1655d4b8404b8b1d3f2f2cfb3c613ead10d758a5faafcfd9d4326117c44"
+    },
+    {
+      "path": "stevenmih-1/publish.json",
+      "sha256": "05bb264e68b66d391af0e99824870bbd302bc82ee3d22dc6488171bdd4ead12b"
+    },
+    {
+      "path": "stevenmih-1/witness-status.json",
+      "sha256": "05bb264e68b66d391af0e99824870bbd302bc82ee3d22dc6488171bdd4ead12b"
+    },
+    {
+      "path": "stevenmih-2/capsule.json",
+      "sha256": "d4e88510e97d928ce53b398186ad202788cc2d9b632533eb46a344645894db01"
+    },
+    {
+      "path": "stevenmih-2/append.json",
+      "sha256": "a65b8989e8ebc579a5da40c644aadc26d36f08cd7d5348c610adec942d0bfd67"
+    },
+    {
+      "path": "stevenmih-2/checkpoint.json",
+      "sha256": "15fe4a0e6f5ccefc7a50064d834232f250ae7ad24c95f32ebfef29950ce6d040"
+    },
+    {
+      "path": "stevenmih-2/bundle.json",
+      "sha256": "f4535574a699fe125ac4790aee913568753160157f89378b97dc17141a922324"
+    },
+    {
+      "path": "stevenmih-2/book-record.json",
+      "sha256": "6a320ec79f0a62f077fd528c0548175568b2dedced71cb8a4b4f8b46fa0abfd7"
+    },
+    {
+      "path": "stevenmih-2/verify.json",
+      "sha256": "a285c03e5d0bbc046a1c0442d4c49d650f98a708da532618914d65779b9fe062"
+    },
+    {
+      "path": "stevenmih-2/inputs.json",
+      "sha256": "03f6f48dedcc7ef8215455dcd0b078322198fd7cf331a011775bc02f1410e9bb"
+    },
+    {
+      "path": "stevenmih-2/checks.json",
+      "sha256": "45fa3e6c7903e72b14f7e8754d469e85f6bd918786bce47c5e3f13b1b55fc46c"
+    },
+    {
+      "path": "stevenmih-2/publish.json",
+      "sha256": "8a03fc06f30f43c8e4fe3d0fcac2cad668503d58308dc9caea91a7b48fb895f1"
+    },
+    {
+      "path": "stevenmih-2/witness-status.json",
+      "sha256": "8a03fc06f30f43c8e4fe3d0fcac2cad668503d58308dc9caea91a7b48fb895f1"
+    },
+    {
+      "path": "stevenmih-3/capsule.json",
+      "sha256": "a5f1c4be5713c02671a64f0ad79785938c4b583c0dd131595ef3fa2e55dd0758"
+    },
+    {
+      "path": "stevenmih-3/append.json",
+      "sha256": "d91d31afbe3c154fb7457609c165bab36353b5e04ea54d73d1036748250ebe89"
+    },
+    {
+      "path": "stevenmih-3/checkpoint.json",
+      "sha256": "6a6d1d00b8241b4000639f313a7f3ea4b93971dbf8dee69429d90e0ccd09fdd4"
+    },
+    {
+      "path": "stevenmih-3/bundle.json",
+      "sha256": "ac9ce00a6818c1a23b22607f6ea1012d1a46866485a991e39895ea24862d3c6c"
+    },
+    {
+      "path": "stevenmih-3/book-record.json",
+      "sha256": "4ed0c296bfbd6f6690bd3f0dead7e0c48afa5ded09bb2b835108c3a5b6177fab"
+    },
+    {
+      "path": "stevenmih-3/verify.json",
+      "sha256": "1da018da495065c19866d9c22bb9bf630edc22c60f9b052fd229be32a48eda29"
+    },
+    {
+      "path": "stevenmih-3/inputs.json",
+      "sha256": "282ccdf467afb28e7e0c9fcb94c1ee8051a6150789ec5d1ebe0e5d770862cbea"
+    },
+    {
+      "path": "stevenmih-3/checks.json",
+      "sha256": "3680f5093d8a15e53e515a15d56ba11aee607e44f6db61bc4f8397ac08586529"
+    },
+    {
+      "path": "stevenmih-3/publish.json",
+      "sha256": "c6db35754d53762ab690eaa02ac9553833c01b2889a247692186020116e02cf8"
+    },
+    {
+      "path": "stevenmih-3/witness-status.json",
+      "sha256": "c6db35754d53762ab690eaa02ac9553833c01b2889a247692186020116e02cf8"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T05:51:59Z",
+  "step": "02"
+}

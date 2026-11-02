@@ -1,0 +1,71 @@
+{
+  "asserts": "a deterministic pack runs over every record of the run up to the as-of instant that step 08 reproduced; each Result it seals cites every record in the window by digest, none missing and none extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the pinned verifier, offline, under the repository's judge key",
+  "detail": "run 2026-11-02-live-2, every record up to the as-of instant 2026-11-02T05:52:17Z, deterministic pack inference-deals@0.1.0 (action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf) (no model): 135 records in the window from 4 steps. 05-deal: 2 claim(s), 122 records cited, come_through.served_as_agreed not_evaluable, come_through.served_named_model not_evaluable; 06-settle: 1 claim(s), 3 records cited, come_through.paid_as_agreed met; 07-ask: 1 claim(s), 9 records cited, ask-answered met; 09-dispute: 1 claim(s), 1 records cited, referee-result met; roll-up 2fe36c1a656b over 4 Results. Refused, not read: 01-seal: 14 files, not a record kind of this pack; 02-book: 33 files, not a record kind of this pack; 03-advertise: 9 files, not a record kind of this pack; 04-admit: 12 files, not a record kind of this pack; 05-deal/stevenmih-1/held-31.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-34.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-36.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-42.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-45.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-51.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-54.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-56.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-57.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-59.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-62.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 12-join: 46 files, not a record kind of this pack. Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each. On live, the judge key is held on the lab host by the lab operator account that also runs the nodes: same operator, not an independent judge. Outside this step's assertion: the pinned pack's own evaluator does not run for 06-settle, whose kind binding.json gives no evaluator inputs: this step applies the pack's terms there to the results 08 re-derived: evidence-network/loop#157.",
+  "finished": "2026-11-02T05:52:30Z",
+  "name": "judge",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "inference-deals": {
+      "ref": "2bd914ef2261b60f816e84cf94b79efeefcb67bf",
+      "repository": "action-state-group/evidencebook-skills"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "window.json",
+      "sha256": "1dded7df7bd7b628ffe22832a9530d2c41049ae61f5476f3e5233a518bf5f091"
+    },
+    {
+      "path": "bundles/05-deal.bundle.json",
+      "sha256": "563a2a4e91337feae842e7ba8fd6408248c6ba360cfb071c92fbb028f04f651a"
+    },
+    {
+      "path": "bundles/06-settle.bundle.json",
+      "sha256": "0db6bb368f0577b4e2d8b3d870aedc1db81a28f22028aaa231ab77a045ce1ef4"
+    },
+    {
+      "path": "bundles/07-ask.bundle.json",
+      "sha256": "0c5a68ed233607b7d0fb83d51225fd9a826ac05eb2292aaa3f1123a8863406c1"
+    },
+    {
+      "path": "bundles/09-dispute.bundle.json",
+      "sha256": "9ed69b0a52b23bbe123a571ec41416a3d7972ceb4c4d4c681aa8afe53c040a06"
+    },
+    {
+      "path": "bundles/rollup.bundle.json",
+      "sha256": "fef489e5b59acab76d9091b507682e400832cc5056dd267c9ad5e2ae10e18917"
+    },
+    {
+      "path": "verify/05-deal.verify.json",
+      "sha256": "c3492230699fb7545576db950fc543c43976ecf7797d28e10e6c600ed84e3c7a"
+    },
+    {
+      "path": "verify/06-settle.verify.json",
+      "sha256": "b19cd85f3bb58a8980c8c3a5ba14b3f02888a0c2b30fd8c46da916fa888ba949"
+    },
+    {
+      "path": "verify/07-ask.verify.json",
+      "sha256": "952308b234d33ccb51cba00e2152bc59cf1e1a354bfcf8ca9acb904eca506c11"
+    },
+    {
+      "path": "verify/09-dispute.verify.json",
+      "sha256": "c214f8cdc145db437599938bd2058ad7aa78569351425038e7b758768f4abd16"
+    },
+    {
+      "path": "verify/rollup.verify.json",
+      "sha256": "418390abd5153c134e6525090392ce3d07078d58ac4b0473c92df7aea84e48cd"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T05:52:17Z",
+  "step": "10"
+}

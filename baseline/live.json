@@ -1,13 +1,13 @@
 {
   "ecosystems": {
     "mesh": {
-      "findings": "findings/2026-10-31-live-17",
+      "findings": "findings/2026-11-02-live-2",
       "pins": {
         "aac-go": "action-state-group/agent-action-capsule go/v0.17.0",
         "aac-rust": "action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1",
         "capsule-emit": "action-state-group/capsule-emit python/v0.13.0",
-        "capsulectl": "action-state-group/evidencebook v0.8.1",
-        "capsulectl-book": "action-state-group/evidencebook v0.8.1",
+        "capsulectl": "action-state-group/evidencebook v0.13.1",
+        "capsulectl-book": "action-state-group/evidencebook v0.13.1",
         "capsules": "Mesh-LLM/capsules-plugin v0.1.8",
         "capsules-evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.3.0",
         "checkpointed-local-log": "action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1",
@@ -16,6 +16,7 @@
         "evidence-request": "action-state-group/agent-action-capsule crates/evidence-request-v0.2.0",
         "evidencebook": "action-state-group/evidencebook v0.8.1",
         "evidencebook-crate": "action-state-group/evidencebook crates/evidencebook-v0.0.11",
+        "goose-g1": "action-state-group/evidencebook 2004193333e135ce075d8523657dde7ad9e0f152",
         "inference-deals": "action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf",
         "mesh-llm": "Mesh-LLM/mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183",
         "mesh-llm-pr-2620": "Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e",
@@ -29,51 +30,51 @@
       },
       "steps": {
         "01": {
-          "finding_sha256": "f7a970522d6112ede16db68527c87b25934c1c9c674250f0041e8b768d02be5b",
+          "finding_sha256": "877532d94661bc72bd91a0ed3b4231559d92e72d32c8276c5b3f857112ebf5fa",
           "result": "PASS"
         },
         "02": {
-          "finding_sha256": "0c28c538c77c8410dd1f589abe3ffdbf445906b5d534887694797e31573c42d8",
+          "finding_sha256": "280b4450c9e862cd02e579e68989555fd41bb86ad3da0ec8a5abb71527c3ac01",
           "result": "PASS"
         },
         "03": {
-          "finding_sha256": "4ad07c5b94c7ddc0a3c989268f5f15c3d1b941391bc13c514ed0e059a3d57747",
+          "finding_sha256": "0a0046de38c590715e819d4eff424f2fa190c16316cf7706d34242e93fbf0962",
           "result": "PASS"
         },
         "04": {
-          "finding_sha256": "e1ea57690a98b6e9901d5ad98cef1f302e4b899dcdb87a090e4bf2bfead53a57",
+          "finding_sha256": "d35349bb1d0c8efdcffe43d1bdd6f0a3baf8024a4fbf418380eebf0a7a5c17e7",
           "result": "PASS"
         },
         "05": {
-          "finding_sha256": "65a71ed18cf66412603fe7a2106363fe37c76ab8ade962e93c38097092b6dbda",
+          "finding_sha256": "64ddae4944b31cb31ceff1167064775e611913ba019a7d8ee290c6c6a3408d61",
           "result": "PASS"
         },
         "06": {
-          "finding_sha256": "89f0bad4d6f09a08e02dff235964c7f8c5b3fd0d79825c94338854127b2469c5",
+          "finding_sha256": "6cbbb5b06a9d22bf305e5f73395e892aa5588d2c70927b8892392d574d957e35",
           "result": "PASS"
         },
         "07": {
-          "finding_sha256": "1fe59ce19c621ae01f8d6e0b79e7ddbc7d6d04d507be7f0ab2af4b4b5baf648f",
+          "finding_sha256": "694bfd85e3ba21fb8bce49c994a88acf20d03331a0badcb2035d23852e89f48a",
           "result": "PASS"
         },
         "08": {
-          "finding_sha256": "6a5d8cf23531f2284c9970dc1ff5f3313672cd0ec00f85bf2a4e765d9be6bd1d",
+          "finding_sha256": "f99493f2b51fe082a8bfd6f7d165d96f3b3513638d24b1d9ea5a1e638e2e9a17",
           "result": "NOT_CHECKED"
         },
         "09": {
-          "finding_sha256": "4a578082c5f979b7a80d16161a8ad7da46952bb2606852bf53bc3718e1f1a0de",
+          "finding_sha256": "31b27565fb88c027422f6161d1849a922a7b9d79a006cb0dd209464cc76b5337",
           "result": "PASS"
         },
         "10": {
-          "finding_sha256": "b035db67faa56b8e0ab1df43266981a36827c7ac9c95ba3eca5318b85990e43c",
+          "finding_sha256": "4618493d806388a771145d24ef89b3bfee8fde07117c83a64620b2a6c948ac0f",
           "result": "PASS"
         },
         "11": {
-          "finding_sha256": "772f0e54e09a1c36bfd6004ca2178192b6ad82147de0600eb7c7f33e785186ef",
+          "finding_sha256": "c5bc3e5f03056b6cbfd17c85aaaa8d91cfd43ae36e3eaa91a793ebbe324ab59f",
           "result": "PASS"
         },
         "12": {
-          "finding_sha256": "6146975a4fba00d9c90af95877a1227d2e05cbcf5ecb98e304a1298322135d08",
+          "finding_sha256": "5081f4129c7dd56f85a4ca003ae61c9be682a6ab7a6b2959df46f47e0bb149f9",
           "result": "PASS"
         }
       }
