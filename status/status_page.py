@@ -345,6 +345,49 @@ def stamp(text):
     return dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
 
 
+STALE_AFTER_DAYS = 1  # a live run older than this many days reads as stale
+
+
+def utcnow():
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def run_age(run, now):
+    """Whole UTC days from the date in the run's directory name to now's UTC date, or None when there is no run.
+    The run directory is the only source: the date it was named for, not when its steps finished."""
+    if run.path is None:
+        return None
+    return (now.astimezone(dt.timezone.utc).date() - dt.date.fromisoformat(RUN_DIR.fullmatch(run.name).group(1))).days
+
+
+def is_stale(run, now):
+    """A live run over STALE_AFTER_DAYS old. A rehearsal run shows its age but is never called stale."""
+    age = run_age(run, now)
+    return run.population == "live" and age is not None and age > STALE_AFTER_DAYS
+
+
+def age_html(run, now):
+    """The run's date and age for a column header, in the page's own words: only what the run directory says."""
+    age = run_age(run, now)
+    if age is None:
+        return ""
+    when = RUN_DIR.fullmatch(run.name).group(1)
+    text = f"run dated {e(when)} · {age} day{'' if age == 1 else 's'} old (UTC, as of {e(now.astimezone(dt.timezone.utc).strftime('%Y-%m-%d'))})"
+    if is_stale(run, now):
+        text += (f' · <strong class="stale">stale: the newest live run is more than {STALE_AFTER_DAYS} day old, so a '
+                 "column that has stopped updating is not current</strong>")
+    return text
+
+
+def stale_banner(cols, now):
+    """A page-level notice naming each ecosystem whose newest live run is stale; empty when none is."""
+    names = [name for name, _, runs, _ in cols if is_stale(runs["live"], now)]
+    if not names:
+        return ""
+    return (f'<p class="stale" id="stale">Stale: the newest live run of {e(", ".join(names))} is more than '
+            f"{STALE_AFTER_DAYS} day old (UTC), by the date in its run directory's name.</p>")
+
+
 NO_START = "not measured: this run did not record its start time (run.json)"
 
 
@@ -664,10 +707,10 @@ PAGE = """<!doctype html>
 <title>Loop status{eco_suffix}</title>
 <style>
 :root {{ --bg: #fdfdfb; --fg: #1d1d1b; --muted: #5c5c57; --line: #d9d9d2; --code: #f0f0ea; --accent: #2b5d8a;
-        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; --gap: #a86a00; }}
+        --s-green: #e3efe3; --s-red: #f3e6e6; --s-not: #eeeee9; --gap: #a86a00; --stale: #9a3412; }}
 @media (prefers-color-scheme: dark) {{
   :root {{ --bg: #161615; --fg: #e8e8e3; --muted: #a3a39c; --line: #3a3a36; --code: #262624; --accent: #8db8e0;
-          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; --gap: #e0a640; }}
+          --s-green: #1f3021; --s-red: #3a2222; --s-not: #262624; --gap: #e0a640; --stale: #f4a261; }}
 }}
 * {{ box-sizing: border-box; }}
 body {{ margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 system-ui, sans-serif; }}
@@ -690,6 +733,7 @@ td.placeholder {{ color: var(--muted); }}
 dl {{ margin: .3rem 0; display: grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; }}
 dt {{ color: var(--muted); }} dd {{ margin: 0; }}
 td p, td ul {{ margin: .2rem 0; }}
+.stale {{ color: var(--stale); }}
 p.gap {{ border-left: 3px solid var(--gap); padding-left: .5rem; overflow-wrap: anywhere; }}
 </style>
 </head>
@@ -707,6 +751,7 @@ matching its sha256. <code>FAIL</code> or a finding that does not pass the check
 A <code>PASS</code> cell lists each gap its finding names: something outside the step's assertion, with its issue.
 Italic text is quoted from the finding. The badge counts each population's rows by state; its colour is the worst row. Built from the findings
 and {lock} only.</p>
+{stale}
 <p>Runs read:</p>
 {runs}
 
@@ -714,7 +759,7 @@ and {lock} only.</p>
 
 <h2 id="steps">The steps</h2>
 <div class="scroll"><table><thead><tr><th scope="col">Step</th><th scope="col">Asserts</th>
-<th scope="col">Rehearsal</th><th scope="col">Live</th></tr></thead>
+<th scope="col">Rehearsal<br>{age_rehearsal}</th><th scope="col"{live_stale}>Live<br>{age_live}</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
 
 <h2 id="numbers">Five numbers</h2>
@@ -748,7 +793,7 @@ def eco_cell(c, step, run, owner):
     return f'<td class="cell s-{e(c.state)}">{" · ".join(parts)}</td>'
 
 
-def ecosystems_html(cols):
+def ecosystems_html(cols, now):
     """One table per population: a column per registered ecosystem against the steps, each its newest run.
     Nothing is added across ecosystems or populations."""
     out = []
@@ -761,10 +806,12 @@ def ecosystems_html(cols):
                 when = RUN_DIR.fullmatch(run.name).group(1)
                 badge_file = "badge.svg" if name == "mesh" else f"badge-{name}.svg"
                 head += (f"{link(f'{FINDINGS}/{run.rel}/', run.name)}<br>{e(when)} · {e(counts(rs, p))}<br>"
+                         f"{age_html(run, now)}<br>"
                          f"pins: {link(LOCK, LOCK)} · {link(badge_file, 'badge')}")
             else:
                 head += f"no {e(p)} run yet" + (f"<br>owner: {link(owner[1], owner[0])}" if owner else "")
-            heads.append(f'<th scope="col" data-ecosystem="{e(name)}">{head}</th>')
+            stale = " data-stale" if is_stale(run, now) else ""
+            heads.append(f'<th scope="col" data-ecosystem="{e(name)}"{stale}>{head}</th>')
         body = []
         for i, step in enumerate(shown_steps()):
             tds = "".join(eco_cell(rs[i].cells[p], step, runs[p], owner) for _, owner, runs, rs in cols)
@@ -775,18 +822,22 @@ def ecosystems_html(cols):
     return "".join(out)
 
 
-def render(rs, runs, lock, eco="mesh", cols=()):
+def render(rs, runs, lock, eco="mesh", cols=(), now=None):
+    now = now or utcnow()
     section = (f'<h2 id="ecosystems">Ecosystems</h2><p>Each registered ecosystem against the same steps, its newest '
                f'run of each population. An ecosystem with no run keeps its column, {code(NOT_CHECKED)} with the '
                f'issue that owns it. Counts are never added across ecosystems or populations.</p>'
-               f'{ecosystems_html(cols)}') if cols else ""
-    return PAGE.format(ecosystems=section, badge_alt=e(badge_label(rs)), lock=e(LOCK),
+               f'{ecosystems_html(cols, now)}') if cols else ""
+    own = [(LABELS[eco], None, runs, rs)]
+    return PAGE.format(ecosystems=section, stale=stale_banner(cols or own, now),
+                       age_rehearsal=age_html(runs["rehearsal"], now), age_live=age_html(runs["live"], now),
+                       live_stale=" data-stale" if is_stale(runs["live"], now) else "", badge_alt=e(badge_label(rs)), lock=e(LOCK),
                        eco_suffix="" if eco == "mesh" else f" ({e(LABELS[eco])})",
                        runs=runs_html(runs), rows="".join(row_html(r) for r in rs), numbers=numbers_html(runs),
                        pins=pins_html(lock))
 
 
-def build(findings_dir, lock_path, out, eco="mesh"):
+def build(findings_dir, lock_path, out, eco="mesh", now=None):
     lock = read_lock(lock_path)
     runs = {p: read_run(p, d) for p, d in latest_runs(findings_dir).items()}
     rs = rows(runs)
@@ -816,7 +867,7 @@ def build(findings_dir, lock_path, out, eco="mesh"):
         shutil.rmtree(out)
         raise
     cols = [("mesh", None, runs, rs)] + others if others else []
-    (out / "index.html").write_text(render(rs, runs, lock, eco, cols), encoding="utf-8")
+    (out / "index.html").write_text(render(rs, runs, lock, eco, cols, now), encoding="utf-8")
     (out / "badge.svg").write_text(badge(rs, eco), encoding="utf-8")
     for name, _, _, ers in others:
         (out / f"badge-{name}.svg").write_text(badge(ers, name), encoding="utf-8")

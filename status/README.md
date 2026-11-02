@@ -21,6 +21,10 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   its own badge (`badge-<ecosystem>.svg`). An ecosystem with no run keeps its
   column, `NOT_CHECKED` with the issue that owns it. Nothing is added across
   ecosystems.
+- Each column header (the steps table and the Ecosystems tables) states its run's date and age: "run dated
+  <date> · N days old (UTC, as of <build date>)", counted in UTC dates from the run directory's name. A live
+  run more than `STALE_AFTER_DAYS` (1) days old is marked stale in its header and in a notice at the top of the page;
+  a rehearsal run shows its age but is never marked stale. `build(..., now=)` takes the clock, so tests fix it.
 - A cell is green only when the step's `finding.json` is `PASS` and passes
   `steps/finding.py`'s check (every proof file present, each matching its
   sha256). `FAIL`, and a finding the check refuses (`MALFORMED`), are red.
