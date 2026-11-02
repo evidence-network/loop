@@ -56,7 +56,10 @@ def judge(step_dir, digest_only):
         return "MALFORMED", f"finding.json is not JSON ({e})"
     if not isinstance(r, dict):
         return "MALFORMED", "finding.json is not an object"
-    errs = finding.check_record(step_dir, r, digest_only)
+    try:
+        errs = finding.check_record(step_dir, r, digest_only)
+    except (AttributeError, KeyError, TypeError) as e:
+        return "MALFORMED", f"finding.json has a field of the wrong type ({type(e).__name__}: {e})"
     if errs:
         return "MALFORMED", "; ".join(errs)[:600]
     return r["result"], str(r["detail"])[:600]
@@ -89,12 +92,13 @@ def raise_issue(label, color, description, title, body):
 def alert_run(run, run_url):
     run = Path(run)
     alerts = failing(run)
+    where = run.relative_to(ROOT) if run.is_absolute() and run.is_relative_to(ROOT) else run
     for nn, name, result, why in alerts:
         owner = OWNER.get(nn, "unknown")
         raise_issue(f"loop-step-{nn}", "B60205", f"loop step {nn} failed",
                     f"loop step {nn} ({name}) fails",
                     f"Step {nn} ({name}) is {result} on the live run {run.name}: {run_url}\n"
-                    f"The finding is {run.as_posix()}/{nn}-{name}/finding.json. {why}\n"
+                    f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why}\n"
                     f"Owning component repository: {owner}.")
     print(f"live_alerts: {run.name}: {len(alerts)} FAIL or MALFORMED step(s)")
     return len(alerts)
@@ -121,7 +125,9 @@ def alert_stale(today, run_url, findings=ROOT / "findings"):
 
 
 def changed_dirs(before, after):
-    if set(before) == {"0"}:
+    # A new branch (all zeros) or a before the clone does not hold (a force push): the last commit's own changes.
+    if set(before) == {"0"} or subprocess.run(["git", "cat-file", "-e", f"{before}^{{commit}}"], cwd=ROOT,
+                                               capture_output=True).returncode != 0:
         before = f"{after}^"
     out = subprocess.run(["git", "diff", "--name-only", before, after, "--", "findings"], cwd=ROOT, capture_output=True,
                          text=True, check=True).stdout.split()

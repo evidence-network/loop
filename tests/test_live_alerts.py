@@ -81,6 +81,15 @@ class AlertsTest(unittest.TestCase):
         live_alerts.alert_run(run, "")
         self.assertEqual(sum(x.startswith("issue create") for x in self.calls()), 2)
 
+    def test_wrong_typed_field_is_malformed_not_a_crash(self):
+        import json
+        run = self.run_dir(**{"04_admit": "PASS"})
+        f = run / "04-admit" / "finding.json"
+        r = json.loads(f.read_text())
+        r["pinned"] = []
+        f.write_text(json.dumps(r))
+        self.assertEqual([x[2] for x in live_alerts.failing(run)], ["MALFORMED"])
+
     def test_stale_dates(self):
         self.run_dir("2026-10-31-live-3", **{"04_admit": "PASS"})
         self.run_dir("2026-10-30-live-9", **{"04_admit": "PASS"})
@@ -112,9 +121,11 @@ class AlertsTest(unittest.TestCase):
         live_alerts.ROOT = self.tmp
         try:
             got = live_alerts.changed_dirs("0000000000000000000000000000000000000000", "HEAD")
+            forced = live_alerts.changed_dirs("1" * 40, "HEAD")
         finally:
             live_alerts.ROOT = old
         self.assertEqual([p.name for p in got], ["2026-11-02-live-1"])
+        self.assertEqual([p.name for p in forced], ["2026-11-02-live-1"])
 
 
 if __name__ == "__main__":
