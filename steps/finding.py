@@ -128,6 +128,21 @@ def check_archive(findings_dir):
     return errs, not errs
 
 
+def digest_only(findings_dir):
+    """True when findings_dir has a valid proof-archive.json and still lacks a proof file some finding names: not yet
+    hydrated (scripts/hydrate_findings.py unpacks the archive over it)."""
+    if not check_archive(findings_dir)[1]:
+        return False
+    for f in sorted(Path(findings_dir).glob("*/finding.json")):
+        try:
+            r = json.loads(f.read_text(encoding="utf-8"))
+            if any(not (f.parent / p["path"]).is_file() for p in r["proof"]):
+                return True
+        except (ValueError, KeyError, TypeError, OSError):
+            continue
+    return False
+
+
 def check_record(step_dir, r, digest_only=False):
     errs = []
     where = Path(step_dir).name

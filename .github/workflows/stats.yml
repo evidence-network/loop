@@ -68,6 +68,11 @@ jobs:
           done
       - name: Run stage 1 on the rehearsal population
         run: ./loop.sh --stage 1 --population rehearsal --out "findings/$(date -u +%F)-rehearsal" || echo "::warning::loop.sh exited $?"
+      # A live run harvested into main keeps only its findings and proof digests (loop#309); the proof bytes the
+      # status page and the watch page read are its release asset. Fetch the newest live run's archive, check its
+      # sha256 against proof-archive.json and unpack it over the run before building (loop#336). A mismatch fails the job.
+      - name: Hydrate the newest live run from its release archive
+        run: python3 -B scripts/hydrate_findings.py findings
       # The site from the scrubbed day files (stats/data/daily/) and the
       # findings only, into _site/stats/: the Pages URL ends /loop/stats/. A day
       # file the site cannot read fails this step, and nothing is deployed.

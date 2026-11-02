@@ -24,3 +24,9 @@ asset, compare its sha256 to `proof-archive.json`, and unpack it from the reposi
 `findings/<name>/`, then run `python3 steps/finding.py check findings/<name>`. The `harvest-allowlist` job keeps the pull
 request data only (added `findings/<date>-live-<N>/` files and `baseline/live.json`). A human merges it; `--auto-merge`
 stays off until Steven approves it, and then `harvest-allowlist` goes into the required checks.
+
+The site and status builds (`.github/workflows/stats.yml`) run `scripts/hydrate_findings.py findings` first (loop#336): for
+the newest live run, if it is digest-only, it downloads the asset named in `proof-archive.json`, refuses it unless its sha256
+matches, unpacks it over the run and runs `steps/finding.py check`. The status page then reads `volume.json` and
+`counts.json`, and the watch page its edges, from the bytes. Run it by hand before building locally; without it a harvested
+run reads "not measured here".

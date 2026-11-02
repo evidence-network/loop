@@ -688,6 +688,9 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn("s-green", c["class"])
         self.assertIn("release archive", c["own"])
         self.assertIn(f'href="{url}"', self.html)
+        # Hydrated (scripts/hydrate_findings.py put the proof back): the cell reads the proof bytes from the checkout.
+        (d / "proof.bin").write_bytes(b"proof bytes for step 1\n")
+        self.assertNotIn("release archive", self.page().rows[1]["live"]["own"])
         # Without a valid archive the same directory is malformed, as before.
         (run / "proof-archive.json").unlink()
         self.assertIn("MALFORMED", self.page().rows[1]["live"]["own"])

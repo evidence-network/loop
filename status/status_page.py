@@ -247,7 +247,7 @@ def read_run(population, path, eco="mesh"):
     if path is None:
         return run
     run.started = run_start(path, population)
-    digest_only = finding.check_archive(path)[1]
+    digest_only = finding.digest_only(path)
     if digest_only:
         run.archive = json.loads((path / finding.ARCHIVE).read_text(encoding="utf-8"))
     by_step = {}
