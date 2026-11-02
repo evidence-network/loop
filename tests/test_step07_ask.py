@@ -542,6 +542,10 @@ class ReporterBackendTest(Tmp):
         patcher = mock.patch.object(step, "verify_reply_signature", return_value=[])
         self.sig = patcher.start()
         self.addCleanup(patcher.stop)
+        # Nor are they answers a book verifies; ReplyBookTest checks the real ones through capsulectl-book.
+        patcher = mock.patch.object(step, "verify_reply_with_book", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
         # A lab run's join output: the node's signed commitment (answers_within PT1M) under lab/runs.
         runs = Path(self.tmp.name) / "lab" / "runs"
         shutil.copytree(FIX / "good" / "alice" / "advertised", runs / "2026-10-28" / "join" / "lab-1")
@@ -593,7 +597,8 @@ class ReporterBackendTest(Tmp):
         r = self.run_live(VERIFIED)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertEqual(self.issues(r), sorted([step.SEAL_ISSUE, step.EXCHANGE_ISSUE]))
-        self.assertEqual(sorted(r["pinned"]), ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"])
+        self.assertEqual(sorted(r["pinned"]), ["capsulectl", "capsulectl-book", "capsules", "mesh-llm",
+                                                 "mesh-llm-pr-2620", "reporter"])
         first = json.loads((self.out / "first-answered.json").read_text())
         self.assertTrue(first["answered_at"])
         self.assertIn(first["ask"], ("lab-1 checkpoints", "lab-1 history_card/1"))
@@ -1219,6 +1224,60 @@ class ReplySignatureTest(unittest.TestCase):
         path.write_text(json.dumps({"verification": {"state": "artifact"}}))
         self.assertIn("no signed answer", " ".join(step.verify_reply_signature(path, self.extract, self.key)))
         self.assertEqual(self.check(self.envelope(), extract={"ledger": None}), [])
+
+
+class ReplyBookTest(unittest.TestCase):
+    """loop#290: each reply of the lab's live run 2026-10-31-live-16 verifies through the pinned capsulectl-book
+    (the asker's sealed request recorded with `book request --sent`), with the verdict verify_reply_signature
+    (openssl, loop#193) gives, and a reply changed or checked under another key fails in both."""
+
+    RUN = ROOT / "findings" / "2026-10-31-live-16" / "07-ask"
+
+    def replies(self):
+        for node in sorted(d for d in self.RUN.iterdir() if d.is_dir()):
+            key = json.loads((node / "commitment" / "commitment.json").read_text())["key_id"]
+            for attempt in sorted((node / "attempts").iterdir()):
+                for reply in sorted(attempt.glob("*.response.json")):
+                    stem = reply.name[:-len(".response.json")]
+                    yield f"{node.name}/{stem}", reply, step.load(attempt / f"{stem}.ledger.json"), key
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def book(self, reply, extract, key):
+        return step.verify_reply_with_book(reply, extract, key, CAPSULECTL, self.tmp.name)
+
+    @needs_capsulectl
+    def test_every_live_reply_gets_the_openssl_verdict_from_the_book(self):
+        seen = 0
+        for label, reply, extract, key in self.replies():
+            self.assertEqual(step.verify_reply_signature(reply, extract, key), [], label)
+            self.assertEqual(self.book(reply, extract, key), [], label)
+            seen += 1
+        self.assertEqual(seen, 9)
+
+    @needs_capsulectl
+    def test_a_changed_reply_or_another_key_fails_in_the_book_as_in_openssl(self):
+        label, reply, extract, key = next(self.replies())
+        doc = step.load(reply)
+        doc["answer"]["issued_at"] = "2026-10-31T12:33:04Z"
+        changed = Path(self.tmp.name) / "changed.json"
+        changed.write_text(json.dumps(doc))
+        self.assertIn("does not verify", " ".join(step.verify_reply_signature(changed, extract, key)))
+        self.assertIn("does not verify", " ".join(self.book(changed, extract, key)))
+        self.assertIn("not the listed key", " ".join(step.verify_reply_signature(reply, extract, "ab" * 32)))
+        self.assertIn("does not verify", " ".join(self.book(reply, extract, "ab" * 32)))
+
+    @needs_capsulectl
+    def test_an_answer_for_another_request_fails_in_the_book(self):
+        (_, reply, extract, key), (_, _, other, _) = list(self.replies())[:2]
+        errs = self.book(reply, other, key)
+        self.assertTrue(errs and "does not verify" in errs[0], errs)
+
+    def test_without_one_sealed_request_there_is_nothing_to_record_as_sent(self):
+        label, reply, extract, key = next(self.replies())
+        self.assertEqual(self.book(reply, {"ledger": None}, key), [])
 
 
 class LedgerProofTest(unittest.TestCase):

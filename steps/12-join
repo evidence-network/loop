@@ -480,6 +480,68 @@ def verify_answers(node_dir, adv, capsulectl, work):
     return errs
 
 
+def verify_sealed_replies(asked, capsulectl, work):
+    """{label: [what did not verify]} for replies to requests a tool other than the book composed and sent.
+
+    `asked` is [(label, sealed request, reply, responder key, checkpoint key)]: the request exactly as it was
+    sent (the capsules plugin's sealed one, with its audience, requester_id and requester_auth), the signed answer in
+    the reply, and the keys the asked node announces. A scratch book in `work` records each request as sent
+    (`book request --request F --sent`, which keeps every member and adds none), then verifies the reply against it
+    (`--for ID --response F`), so step 07's live replies and step 12's probes go through one verifier (loop#290).
+    One scratch book per call: the book refuses a nonce it has recorded."""
+    work = Path(work)
+    home = work / "sealed-replies"
+    home.mkdir(parents=True)
+    env = dict(os.environ, XDG_CONFIG_HOME=str(home / "config"),
+               CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(Path(capsulectl).parent)))
+
+    def cap(*args):
+        return subprocess.run([str(capsulectl), *args], env=env, capture_output=True, text=True)
+
+    def last(r):
+        out = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
+        try:
+            return json.loads(out) if out else {}
+        except ValueError:
+            return {}
+
+    keys = {}
+    for name in ("signing", "checkpoint"):
+        r = cap("key", "generate", "-o", str(home / f"{name}.seed"))
+        if r.returncode != 0:
+            raise RuntimeError(f"could not make the scratch book's {name} key: {r.stderr.strip()}")
+        keys[name] = last(r)["public_key"]
+    r = cap("profile", "create", "--name", "sealed", "--type", "jsonl", "--jsonl-path", str(home / "store"),
+            "--log", "book", "--log-id", "sealed-replies", "--operator", "loop",
+            "--trusted-key", keys["signing"], "--signing-key-file", str(home / "signing.seed"),
+            "--checkpoint-signing-key-file", str(home / "checkpoint.seed"),
+            "--checkpoint-trusted-key", keys["checkpoint"])
+    if r.returncode == 0:
+        r = cap("store", "init", "--profile", "sealed")
+    if r.returncode != 0:
+        raise RuntimeError(f"could not make the scratch book: {r.stderr.strip()}")
+    found = {}
+    for i, (label, request, reply, responder_key, checkpoint_key) in enumerate(asked):
+        files = {k: home / f"{i}.{k}.json" for k in ("request", "reply", "sent")}
+        files["request"].write_text(json.dumps(request))
+        files["reply"].write_text(json.dumps(reply))
+        r = cap("book", "request", "--profile", "sealed", "--request", str(files["request"]), "--sent",
+                "--responder", str(request.get("audience", "")), "--output", str(files["sent"]))
+        rid = last(r).get("record_id")
+        if r.returncode != 0 or not rid:
+            found[label] = [f"the sealed request is not one the book records as sent: {r.stderr.strip()}"]
+            continue
+        r = cap("book", "request", "--profile", "sealed", "--for", rid, "--response", str(files["reply"]),
+                "--responder-key", responder_key, "--responder-checkpoint-key", checkpoint_key)
+        verdict = last(r)
+        if r.returncode != 0 or verdict.get("outcome") not in ("artifact", "refusal"):
+            found[label] = [f"the reply does not verify under the announced keys for the request sent: "
+                            f"{r.stderr.strip().splitlines()[0] if r.stderr.strip() else verdict}"]
+        else:
+            found[label] = []
+    return found
+
+
 def judge(node_dir, capsulectl, work, at=None, said=None):
     """(failures, not_checked, proof paths relative to node_dir) for one joined node. `at` is the time the
     binding must apply at, now by default. The binding's line (what its revocation PASS is scoped to) is added to

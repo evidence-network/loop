@@ -106,6 +106,11 @@ commitment the deadline came from, its policy and choice.json, so a later re-sig
 and ask.json (which node was asked through which console, or why not). A verification line is computed again from the reply, the announced
 key and the listed key, and must be the line kept.
 
+Each reply's signed answer is verified twice, offline, under the node's listed key: by openssl (verify_reply_signature,
+loop#193) and by the pinned capsulectl-book, which records the asker's sealed request as sent (`book request --request
+FILE --sent`) and verifies the reply against it (verify_reply_with_book, step 12's verify_sealed_replies, loop#290).
+The two give the same verdicts; either failing is a FAIL.
+
 first-answered.json names the first ask answered (a verified artifact or a
 refusal judged allowed, in time; a refusal that could only be NOT_CHECKED does not count), for the status page's minutes number.
 """
@@ -157,7 +162,7 @@ ASSERTS = ("a later exchange request is sealed in the asker's book before it is 
            "commitment's answers_within, and an answer after it counts as an absence")
 PINNED_BOOK = ["capsulectl", "capsulectl-book"]
 PINNED_GOOSE = ["capsulectl", "capsulectl-book", "goose-g1"]
-PINNED_REPORTER = ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
+PINNED_REPORTER = ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "capsulectl", "capsulectl-book"]
 # Rehearsal nodes answer within a minute: the shortest window an absence may claim
 # (evidencebook MinimumAbsenceWindow), so the late ask's absence is recorded in this run.
 REHEARSAL_ANSWERS_WITHIN = "PT1M"
@@ -1420,7 +1425,35 @@ def verify_reply_signature(reply_path, extract, listed_key):
     return errs
 
 
+def verify_reply_with_book(reply_path, extract, listed_key, capsulectl, work):
+    """Errors for one reply, from the pinned capsulectl-book (loop#290): the asker's sealed request is recorded as
+    sent (`book request --sent`, the request exactly as the plugin sent it) and the signed answer is verified
+    against it under the node's listed key, which is also the checkpoint key it announces (the verification line
+    holds the two equal). It reaches the same verdicts as verify_reply_signature, by the verifier step 12 runs.
+    With no single sealed request in the extract there is nothing to record as sent; judge_sealed names that."""
+    sealed = (extract or {}).get("requests") if isinstance(extract, dict) else None
+    if not (isinstance(sealed, list) and len(sealed) == 1):
+        return []
+    try:
+        request = sealed[0]["header"]["statement"]["request"]
+        answer = json.loads(Path(reply_path).read_text(encoding="utf-8"))["answer"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []  # verify_reply_signature reports a reply with no signed answer
+    return step12.verify_sealed_replies([("reply", request, answer, listed_key, listed_key)], capsulectl,
+                                        tempfile.mkdtemp(dir=work))["reply"]
+
+
 def judge_reporter(pop, out):
+    """(failures, not_checked, answered, proof, lines) of the reporter backend; the replies are verified by the
+    pinned capsulectl-book (verify_reply_with_book), in a scratch directory made for the call."""
+    book_tool = tools()
+    if not book_tool.is_file():
+        raise SystemExit(f"07-ask: no capsulectl at {book_tool}; run steps/07-ask.setup.sh")
+    with tempfile.TemporaryDirectory() as work:
+        return judge_reporter_in(pop, out, book_tool, work)
+
+
+def judge_reporter_in(pop, out, book_tool, book_work):
     """(failures, not_checked, answered, proof, lines) of the reporter backend, from the files run_reporter kept
     under `out` and the repository (the nodes/ listings, nodes/commitments and lab/runs) only: no console and no
     data dir is read, so step 08 gets the same verdict from the cited proof."""
@@ -1522,6 +1555,9 @@ def judge_reporter(pop, out):
                 if saw in ("verified", "refusal", "no_checkpoint_yet") and (attempt / f"{stem}.response.json").is_file():
                     failures += [f"{name}: {qname}: {e}" for e in
                                  verify_reply_signature(attempt / f"{stem}.response.json", extract, entry["key_id"])]
+                    failures += [f"{name}: {qname}: {e}" for e in
+                                 verify_reply_with_book(attempt / f"{stem}.response.json", extract, entry["key_id"],
+                                                        book_tool, book_work)]
                 if isinstance(extract, dict) and extract.get("ledger") == "read":
                     perrs, pnotes = judge_ledger_proof(out, pop, how, attempt, stem, extract, entry["node_id"],
                                                        request, sent_at, back)
