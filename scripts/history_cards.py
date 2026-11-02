@@ -42,7 +42,7 @@ COMMUNITIES = ("mesh-llm", "muse", "goose")
 DEFAULT_COMMUNITY = "mesh-llm"
 # The receipt member naming its witness. Provisional: no receipt producer exists yet.
 RECEIPT_WITNESS = "witness"
-# A book (capsulectl-book v0.8.1) holds this many log entries before its first record: the log's
+# A book (capsulectl-book v0.13.1) holds this many log entries before its first record: the log's
 # own first entry and the book's two opening entries. A checkpoint over no more covers no record.
 EMPTY_BOOK_SIZE = 3
 
