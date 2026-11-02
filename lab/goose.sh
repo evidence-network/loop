@@ -4,7 +4,7 @@
 # independent of them, so the loop's steps can judge a Goose ecosystem live. Run it on the lab host as the lab
 # operator, from a clone of this repository, in this order:
 #
-#   lab/goose.sh [--dry-run] tools|init|entries|commitments|session|run
+#   lab/goose.sh [--dry-run] tools|init|entries|commitments|session|run|pay
 #
 #   tools        install the Goose node (steps/goose.setup.sh) into $LOOP_TOOLS/goose
 #   init         start each node once on its own persistent home, $LAB_DIR/goose/homes/<name> (mode 700), so it has
@@ -22,6 +22,13 @@
 #   run          session, then ./loop.sh --stage 1 --ecosystem goose --population live into
 #                findings/goose/<UTC date>-live (LAB_OUT overrides), the steps without a Goose input NOT_CHECKED.
 #                Needs the nodes listed in nodes/ at this clone's HEAD (step 03 reads them there)
+#   pay          run, plus step 06: one real Lightning payment from lab-1's wallet to lab-2's (lab wallets standing in as the
+#                Goose nodes' controllers; the nodes hold no wallet), 1,000 msat, inside the lab payment guard (at most
+#                3,000 msat per payment and 9,000 msat per direction per UTC day, LAB-BRINGUP.md). scripts/goose_lightning.py
+#                refuses before anything is sent unless the day's log ($LAB_DIR/goose/lightning/payments.jsonl) and the
+#                payer wallet's own count leave room and neither wallet has a payment pending. Findings go to
+#                findings/goose/<UTC date>-live-pay. It restarts no node and changes no config, so there is nothing to restore
+#                but the LIVE_RUN lock, which is removed on every exit
 #
 # The relay is the lab's, in the session process: the commitments name wss://relay.loop-lab.example, which only a node
 # on this host reaches, and a node answers only while a run polls it, so the commitments' PT1M answer window holds
@@ -116,12 +123,18 @@ cmd_commitments() {
 cmd_session() {
   need_tools; need_ids
   work=$G/work/$(date -u +%Y%m%dT%H%M%SZ)
-  if [ "$DRY" = 1 ]; then echo "+ goose_live.py session --homes $G/homes --keys $G/keys --ids $G/ids.json --published nodes/commitments --work $work"; return; fi
+  if [ "$DRY" = 1 ]; then echo "+ goose_live.py session --homes $G/homes --keys $G/keys --ids $G/ids.json --published nodes/commitments --work $work${GOOSE_PAY:+ --pay --lightning-log $G/lightning/payments.jsonl}"; return; fi
   # Step 03 reads nodes/ at HEAD, so the session asks through the commitments HEAD holds, never a newer working tree.
   [ -z "$(git -C "$ROOT" status --porcelain -- nodes)" ] || die "nodes/ has uncommitted changes; commit them first"
   mkdir -p "$work"
+  pay=()
+  if [ "${GOOSE_PAY:-}" = 1 ]; then
+    pay=(--pay --payer-port "${GOOSE_PAYER_PORT:-9811}" --payee-port "${GOOSE_PAYEE_PORT:-9812}"
+         --lightning-log "$G/lightning/payments.jsonl")
+    mkdir -p "$G/lightning" && chmod 700 "$G/lightning"
+  fi
   if ! "$GOOSE_PY" -B "$ROOT/scripts/goose_live.py" session --homes "$G/homes" --keys "$G/keys" --ids "$G/ids.json" \
-      --published "$ROOT/nodes/commitments" --work "$work" < /dev/null 2>&1 | tee "$work/session.log" >&2; then
+      --published "$ROOT/nodes/commitments" --work "$work" ${pay[@]+"${pay[@]}"} < /dev/null 2>&1 | tee "$work/session.log" >&2; then
     die "the session failed; its log is $work/session.log"
   fi
   echo "$work/population"
@@ -133,7 +146,7 @@ cmd_run() {
   if [ "$DRY" = 1 ]; then
     echo "+ refuse if $lock exists or lab.sh, loop.sh or live_daily.sh runs; take $lock"
     cmd_session
-    echo "+ LOOP_GOOSE_POPULATION=<population> ./loop.sh --stage 1 --ecosystem goose --population live --out ${LAB_OUT:-findings/goose/<UTC date>-live}"
+    echo "+ LOOP_GOOSE_POPULATION=<population> ./loop.sh --stage 1 --ecosystem goose --population live --out ${LAB_OUT:-findings/goose/<UTC date>-live}" 
     return
   fi
   mkdir -p "$LAB_DIR/run"
@@ -145,7 +158,7 @@ cmd_run() {
   pop=$(cmd_session | tail -n 1)
   [ -f "$pop/population.json" ] || die "the session wrote no population"
   LOOP_GOOSE_POPULATION=$pop "$ROOT/loop.sh" --stage 1 --ecosystem goose --population live \
-    --out "${LAB_OUT:-$ROOT/findings/goose/$(date -u +%F)-live}" < /dev/null
+    --out "${LAB_OUT:-$ROOT/findings/goose/$(date -u +%F)-live${GOOSE_PAY:+-pay}}" < /dev/null
 }
 
 case "$CMD" in
@@ -155,5 +168,6 @@ case "$CMD" in
   commitments) cmd_commitments ;;
   session) cmd_session ;;
   run) cmd_run ;;
+  pay) export GOOSE_PAY=1; cmd_run ;;
   *) sed -n '7p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

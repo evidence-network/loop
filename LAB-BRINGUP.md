@@ -640,6 +640,12 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   checks when a request is approved; nothing in the loop or the lab enforces the
   per-direction count. lab-2 sent 4,000 msat on 2026-11-01 (UTC), so 5,000 msat
   of that day's 9,000 was left after the probes.
+- The Goose step 06 payment (`lab/goose.sh pay`, loop#349) runs the other way,
+  lab-1 to lab-2, 1,000 msat per run, so it spends lab-1's day, not lab-2's. It
+  refuses before sending unless this host's log
+  (`$LAB_DIR/goose/lightning/payments.jsonl`, hashes and amounts only) and lab-1's
+  own `spent_today_msat` leave room under both limits and neither wallet has a
+  payment pending, and it reserves the amount in the log before `send`.
 - `settle` with a `window.from` after a payment judges that payment alone, but
   `counterparty_count` compares each signed bundle's whole-book count with the
   windowed book, so it reads NOT_CHECKED in a window.

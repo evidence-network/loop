@@ -964,6 +964,93 @@ def main_live(pop, out, started):
     return 0
 
 
+# --- The live Goose population: one real Lightning payment, lab wallet to lab wallet (loop#349) ----
+GOOSE_LIGHTNING_ASSERTS = (
+    "the buyer's pay record commits the payment_hash of a real Lightning payment, opened by the buyer; the payment is "
+    "final by the payer's preimage (checked on the host that paid, only the outcome kept); its value band is derived "
+    "from the amount; it carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's "
+    "credit plus fee; and each node's own signed settlement disclosure equals the count of payments recorded between "
+    "the two lab wallets")
+GOOSE_LIGHTNING_ISSUE = "evidence-network/loop#349"
+GOOSE_LIGHTNING_FILES = ["buyer-half.json", "seller-half.json", "buyer-pay-opening.json", "lightning.json"]
+
+
+def main_goose_lightning(pop_dir, pop, out, started):
+    """The Goose live population's step 06 (population.json goose.lightning): G1's records and the lab wallets' outcome.
+
+    Inputs, in DIR/step06: G1's buyer and seller halves and the buyer's pay opening (as the rehearsal), each node's
+    signed disclosure (disclosure-<node name>.json), and lightning.json, which lab/goose.sh pay wrote from the two
+    lab wallets' own transaction records for the payment: {payment_hash, payer: {status, amount_msat, fee_msat,
+    preimage_check}, payee: {status, amount_msat, fee_msat}, payments_recorded}. The preimage was hashed on the host
+    that paid; only the outcome is kept, never the preimage. The Goose nodes hold no wallet: the lab wallets pay as
+    their controllers, which the finding says."""
+    inputs = Path(pop_dir) / "step06"
+    out.mkdir(parents=True, exist_ok=True)
+    for p in out.iterdir():
+        if p.is_file():
+            p.unlink()
+    for f in GOOSE_LIGHTNING_FILES + sorted(p.name for p in inputs.glob("disclosure-*.json")):
+        shutil.copyfile(inputs / f, out / f)
+    nodes = nodes_of(pop_dir)
+    by_key = {v: k for k, v in nodes.items()}
+    checks = {}
+    exchange, checks["pay_record"] = goose_exchange(out, {"decimals": BAND_ASSET_SCALE}, nodes)
+    (out / "exchange.json").write_text(json.dumps(exchange, indent=2, sort_keys=True) + "\n")
+    ln = read_json(out / "lightning.json")
+    payer, payee = ln.get("payer") or {}, ln.get("payee") or {}
+    h = ln.get("payment_hash")
+    ref = exchange.get("settlement_ref") or {}
+    checks["reference"] = check(
+        bool(exchange) and ref.get("rail") == "lightning" and isinstance(h, str) and HEX32.fullmatch(h)
+        and ref.get("settlement_id") == h,
+        f"the pay record's reference {ref.get('settlement_id')!r} on rail {ref.get('rail')!r}; the wallets' payment_hash {h!r}")
+    checks["finality"] = check(
+        payer.get("status") == "succeeded" and payee.get("status") == "succeeded"
+        and payer.get("preimage_check") == "verified",
+        f"payer wallet {payer.get('status')!r}, payee wallet {payee.get('status')!r}, the payer's preimage "
+        f"{payer.get('preimage_check')!r} (sha256(preimage) == payment_hash, checked on the paying host; no preimage kept)")
+    amount = payer.get("amount_msat")
+    ok_amount = is_int(amount) and amount > 0 and exchange.get("amount_atomic") == amount \
+        and exchange.get("currency") == BAND_CURRENCY
+    checks["band"] = check(ok_amount, f"band {json.dumps(band(amount), sort_keys=True)} from the payer's amount {amount!r} msat; "
+                                      f"the pay record states {exchange.get('amount_atomic')!r} {exchange.get('currency')!r}")
+    fee, credit = payee.get("fee_msat"), payee.get("amount_msat")
+    checks["rail_fee"] = check(is_int(fee) and fee > 0, f"the payee's wallet reports fee_msat {fee!r} on the inbound payment")
+    checks["exchange_match"] = check(is_int(amount) and is_int(credit) and is_int(fee) and amount == credit + fee,
+                                     f"the payer's amount {amount!r} msat; the payee's credit {credit!r} plus fee {fee!r}")
+    count = ln.get("payments_recorded")
+    for name in sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
+        f = out / f"disclosure-{name}.json"
+        if not f.is_file():
+            checks[f"ledger_count:{name}"] = check(False, f"{name} made no disclosure of its settlement count")
+            continue
+        d, key_id = read_json(f), nodes.get(name)
+        signed = key_id is not None and d.get("key_id") == key_id and cc.verify_sig(d, cc.ED25519_SPKI + bytes.fromhex(key_id))
+        checks[f"ledger_count:{name}"] = check(
+            signed and d.get("rail") == "lightning" and is_int(count) and d.get("settlements") == count,
+            f"{name} discloses {d.get('settlements')!r} on rail {d.get('rail')!r} (signature "
+            f"{'verifies' if signed else 'fails'}); the lab wallets recorded {count!r} payments between them")
+    (out / "checks.json").write_text(json.dumps({"checks": checks}, indent=2, sort_keys=True) + "\n")
+    proof = ["exchange.json"] + GOOSE_LIGHTNING_FILES + sorted(p.name for p in out.glob("disclosure-*.json")) + ["checks.json"]
+    failed = [f"{k} ({c['detail']})" for k, c in checks.items() if not c["ok"]]
+    where = f"exchange {exchange.get('exchange_id')}, payment_hash {h}"
+    if failed:
+        return finding.write(out, result="FAIL", population=pop["population"], asserts=GOOSE_LIGHTNING_ASSERTS,
+                             pinned=pop.get("pinned"), proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}",
+                             started=started)
+    detail = (f"{where} ({by_key.get(exchange.get('payer'))} pays {by_key.get(exchange.get('payee'))}): one real Lightning "
+              f"payment of {amount} msat from lab wallet {ln.get('payer_wallet')} to {ln.get('payee_wallet')} inside the lab "
+              f"payment guard, the lab wallets standing in as the Goose nodes' controllers (the nodes hold no wallet). "
+              f"These held: {', '.join(checks)}. Band {json.dumps(band(amount), sort_keys=True)}. "
+              + finding.outside("a public ledger's count of the payments (Lightning has none; the nodes' own signed "
+                                "disclosures are compared with the lab wallets' payment log)", PUBLIC_LEDGER_ISSUE) + " "
+              + finding.outside("the halves' capsule signatures and checkpoints, which no step verifies for Goose yet",
+                                DEAL_ISSUE) + " "
+              + "Spend: one payment, made by the run that paid (lab/goose.sh pay), never by this step.")
+    return finding.write(out, result="PASS", population=pop["population"], asserts=GOOSE_LIGHTNING_ASSERTS,
+                         pinned=pop.get("pinned"), proof=proof, detail=detail, started=started)
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)
@@ -972,6 +1059,9 @@ def main(argv):
     started = finding.now()
     pop = read_json(Path(a.population) / "population.json")
     out = Path(a.out)
+    if pop.get("goose", {}).get("lightning"):
+        main_goose_lightning(a.population, pop, out, started)
+        return 0
     # "live" is the lab's population; any other population naming "kind": "live" (demo) takes the same path.
     if pop["population"] == "live" or pop.get("kind") == "live":
         try:

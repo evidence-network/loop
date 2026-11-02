@@ -234,9 +234,9 @@ GOOSE = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebo
          "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#315"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."
-if ecosystem == "goose" and population == "live" and nn == "06":  # the live rail input is this lane's next PR
-    owner, why = "evidence-network/loop#349", "the live Lightning input for the Goose nodes is not built yet"
-    detail = f"The live Goose population has no step {nn} input yet; loop.sh ran nothing for it."
+if ecosystem == "goose" and population == "live" and nn == "06":  # only lab/goose.sh pay makes the payment
+    owner, why = "evidence-network/loop#349", "this run made no live Lightning payment (lab/goose.sh pay makes the one, inside the lab payment guard)"
+    detail = f"This live Goose run made no payment, so step {nn} has no input; loop.sh ran nothing for it."
 if note:  # a step with a Goose input, on a host without the Goose tools
     owner, why, detail = "evidence-network/loop#330", "the Goose tools are not installed", f"{note}; loop.sh ran nothing for it."
 sys.path.insert(0, root + "/steps")
