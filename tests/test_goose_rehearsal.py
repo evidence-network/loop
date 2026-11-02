@@ -224,8 +224,8 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(found["result"], "FAIL")
         self.assertFalse(checks["pay_record"]["ok"])
 
-    def test_step_06_fails_a_pay_record_whose_reference_is_another_settlements_and_halves_of_foreign_keys(self):
-        def other_reference(d):  # a consistent forgery of the opening is not possible: the rail's id differs
+    def test_step_06_fails_halves_whose_producer_keys_are_not_the_populations_nodes(self):
+        def other_reference(d):  # foreign producer keys; a reference that is not the rail's falls to reference and exchange_match
             half = json.loads((d / "buyer-half.json").read_text())
             for st in half["steps"]:
                 st["capsule"]["key_id"] = "ab" * 32
