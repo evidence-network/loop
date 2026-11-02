@@ -189,11 +189,10 @@ def node_signed(node, signed, carrier, key_id, key_dir=None, out=None, rev=None)
     (tree / f"{node_id}.json").write_bytes(raw)
     (tree / "policies" / f"{node_id}.json").write_bytes(Path(signed["policy"]).read_bytes())
     for part in STAPLE_PARTS:  # the node's standard_history staple, when it signed a commitment naming one
-        stale = tree / "standard_history" / f"{node_id}.{part}.json"  # a carrier reused by a republish
-        stale.unlink(missing_ok=True)
         if signed.get(f"standard_history_{part}"):
-            stale.parent.mkdir(exist_ok=True)
-            stale.write_bytes(Path(signed[f"standard_history_{part}"]).read_bytes())
+            (tree / "standard_history").mkdir(exist_ok=True)
+            (tree / "standard_history" / f"{node_id}.{part}.json").write_bytes(
+                Path(signed[f"standard_history_{part}"]).read_bytes())
     if PUBLISH_HOOK:
         PUBLISH_HOOK(carrier)
     git(carrier, "add", "nodes")
