@@ -170,7 +170,8 @@ that both digests match, that the reply is an `evidence-interop/0` answer, that
 the request and the answer name `standard_history/1`, that the answer is
 presented by the commitment's `key_id`, and that its `request_digest` is
 `request_sha256`. Without the bytes the commitment still passes and the result
-lists the staple as not checked. The staple's signature, anchor and nonce are
+lists the staple as not checked; one part published without the other is refused
+(`standard_history.bytes_mismatch`). The staple's signature, anchor and nonce are
 `CheckStaple`'s, not checked here. Each refusal is named:
 `standard_history.malformed`, `standard_history.derivation`,
 `standard_history.bytes_mismatch`, `standard_history.not_an_answer`,

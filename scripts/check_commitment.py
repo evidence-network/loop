@@ -119,6 +119,8 @@ STD_BYTES = "standard_history.bytes_mismatch"
 STD_NOT_ANSWER = "standard_history.not_an_answer"
 STD_NOT_SUBJECT = "standard_history.not_its_subject"
 STD_REQUEST = "standard_history.request_mismatch"
+# The note verify() returns when the staple bytes are not supplied; callers match on it, so it is written once.
+STD_NOT_SUPPLIED = "standard_history staple bytes not supplied"
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
 
 # The named refusals of a /1 card.
@@ -621,9 +623,12 @@ def verify(doc, fetch_policy, fetch_staple=None):
     notes = []
     if "standard_history" in doc:
         staple = [fetch_staple(part) if fetch_staple else None for part in ("request", "reply")]
-        if None in staple:
-            notes.append("standard_history staple bytes not supplied; the staple is not checked (evidencebook "
-                         "CheckStaple), only the member's shape")
+        if staple.count(None) == 1:
+            errs.append(f"{STD_BYTES}: only the staple's {'request' if staple[0] is not None else 'reply'} is "
+                        "published; both parts are needed")
+        elif None in staple:
+            notes.append(f"{STD_NOT_SUPPLIED}; the staple is not checked (evidencebook CheckStaple), only the "
+                         "member's shape")
         else:
             errs += standard_errors(doc, *staple)
     policy_bytes = fetch_policy(doc["lcap"]["policy_uri"])

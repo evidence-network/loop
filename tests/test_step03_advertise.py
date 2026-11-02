@@ -263,22 +263,46 @@ class NodeSignedTest(unittest.TestCase):
         self.assertIn("the bytes were not published", f["detail"])
         self.assertEqual(finding.check(out.parent), [])
 
+    def test_one_published_part_without_the_other_is_refused_by_name(self):
+        for standard in (lambda req, rep: (req, None), lambda req, rep: (None, rep)):
+            errs = self.refusals(standard)
+            self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_BYTES])
+            self.assertIn("both parts are needed", errs[0])
+
+    def test_a_republish_without_bytes_removes_the_old_ones(self):
+        signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed", lambda r, p: (r, p))
+        self.run_with({"alice": signed})
+        again = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed", lambda r, p: (None, None))
+        f, nodes, out = self.run_with({"alice": again})
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertFalse(nodes["alice"]["standard_history"]["bytes_checked"])
+
+    def test_the_cli_reads_the_staple_beside_the_commitment(self):
+        signed = goose_commitment(ALICE_KEY, self.tmp / "cli", lambda req, rep: (req, rep))
+        doc = json.loads(Path(signed["commitment"]).read_text())
+        beside = self.tmp / "carrier"
+        (beside / "standard_history").mkdir(parents=True)
+        (beside / "policies").mkdir()
+        shutil.copy(signed["commitment"], beside / f"{doc['node_id']}.json")
+        shutil.copy(signed["policy"], beside / "policies" / f"{doc['node_id']}.json")
+        for part in ("request", "reply"):
+            shutil.copy(signed[f"standard_history_{part}"], beside / "standard_history" / f"{doc['node_id']}.{part}.json")
+        self.assertEqual(cc.check_file(beside / f"{doc['node_id']}.json"), ([], []))
+        (beside / "standard_history" / f"{doc['node_id']}.reply.json").write_bytes(b"{}")
+        errs, _ = cc.check_file(beside / f"{doc['node_id']}.json")
+        self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_BYTES])
+
     def test_standard_history_bytes_that_do_not_match_the_digest_are_refused_by_name(self):
         errs = self.refusals(lambda req, rep: (req, rep + b" "))
         self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_BYTES])
 
     def test_a_standard_card_presented_by_another_key_is_refused_by_name(self):
-        def other(req, rep):
-            doc = dict(json.loads(rep), responder="b" * 64)
-            return req, json.dumps(doc, sort_keys=True).encode()
-        self.assertTrue(self.refusals(lambda req, rep: other(req, rep)))  # digest of the original no longer matches
         key_id = alice_node_id()
         request, reply = staple_parts(key_id)
-        doc = {"standard_history": {"derivation": "standard_history/1", "request_sha256": "0" * 64,
-                                    "reply_sha256": "0" * 64}, "key_id": key_id}
         reply_other = json.dumps(dict(json.loads(reply), responder="b" * 64), sort_keys=True).encode()
-        doc["standard_history"]["request_sha256"] = hashlib.sha256(request).hexdigest()
-        doc["standard_history"]["reply_sha256"] = hashlib.sha256(reply_other).hexdigest()
+        doc = {"key_id": key_id, "standard_history": {"derivation": "standard_history/1",
+                                                      "request_sha256": hashlib.sha256(request).hexdigest(),
+                                                      "reply_sha256": hashlib.sha256(reply_other).hexdigest()}}
         errs = cc.standard_errors(doc, request, reply_other)
         self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_NOT_SUBJECT])
 

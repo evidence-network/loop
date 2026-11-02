@@ -189,10 +189,11 @@ def node_signed(node, signed, carrier, key_id, key_dir=None, out=None, rev=None)
     (tree / f"{node_id}.json").write_bytes(raw)
     (tree / "policies" / f"{node_id}.json").write_bytes(Path(signed["policy"]).read_bytes())
     for part in STAPLE_PARTS:  # the node's standard_history staple, when it signed a commitment naming one
+        stale = tree / "standard_history" / f"{node_id}.{part}.json"  # a carrier reused by a republish
+        stale.unlink(missing_ok=True)
         if signed.get(f"standard_history_{part}"):
-            (tree / "standard_history").mkdir(exist_ok=True)
-            (tree / "standard_history" / f"{node_id}.{part}.json").write_bytes(
-                Path(signed[f"standard_history_{part}"]).read_bytes())
+            stale.parent.mkdir(exist_ok=True)
+            stale.write_bytes(Path(signed[f"standard_history_{part}"]).read_bytes())
     if PUBLISH_HOOK:
         PUBLISH_HOOK(carrier)
     git(carrier, "add", "nodes")
@@ -304,7 +305,7 @@ def verify_node(out, name, rec, key_id, read, live):
         rec["policy_digest"] = doc["lcap"]["policy_digest"]
         rec["history_cards"] = hc.history_cards(doc)
         if "standard_history" in doc:
-            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith("standard_history") for n in notes)}
+            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes)}
     return rec, proofs
 
 
@@ -478,7 +479,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                                    + "; the staple's signature is evidencebook's CheckStaple, not run here",
                             "issue": STAPLE_ISSUE})
         for n in r["notes"]:
-            if n.startswith("standard_history"):
+            if n.startswith(cc.STD_NOT_SUPPLIED):
                 continue
             not_checked.append({"what": f"{r['name']}: the policy digest", "why": n,
                                 "issue": "evidence-network/loop: the step fetches policies from the carrier only"})
@@ -505,12 +506,17 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                        "history_card/1 verifier is callable from the loop", STAPLE_ISSUE))
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
+            with_bytes = [r["name"] for r in stapled if r["standard_history"]["bytes_checked"]]
+            shape_only = [r["name"] for r in stapled if not r["standard_history"]["bytes_checked"]]
+            coverage = []
+            if with_bytes:
+                coverage.append("the digests, the answer's responder and its request were checked from the published "
+                                f"bytes ({', '.join(with_bytes)})")
+            if shape_only:
+                coverage.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
             detail += " " + finding.outside(
                 f"the standard_history/1 staple of {', '.join(r['name'] for r in stapled)}: its signature is "
-                "evidencebook's CheckStaple, not run here; "
-                + ("the digests, the answer's responder and its request were checked from the published bytes"
-                   if all(r["standard_history"]["bytes_checked"] for r in stapled)
-                   else "the bytes were not published, so only the member's shape was checked"), STAPLE_ISSUE)
+                "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STAPLE_ISSUE)
     else:
         not_checked += outside
     return finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=list(pinned), proof=proof,
