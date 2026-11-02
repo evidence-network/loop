@@ -36,9 +36,16 @@ import finding  # noqa: E402
 BASELINE = ROOT / "baseline" / "live.json"
 
 
-def lock_pins(lock=ROOT / "versions.lock"):
-    """versions.lock as {name: "repository ref"}: the pin set a baseline records."""
-    return {n: f"{repo} {ref}" for n, (repo, ref) in finding.pins(lock).items()}
+# A pin only one ecosystem's column runs: moving it moves no other ecosystem's baseline (the Goose node is not run
+# for mesh, so a goose-g1 bump must not turn the mesh gate red; evidence-network/loop#349).
+PIN_OWNER = {"goose-g1": "goose"}
+
+
+def lock_pins(lock=ROOT / "versions.lock", eco=None):
+    """versions.lock as {name: "repository ref"}: the pin set a baseline records. With `eco`, the pins another
+    ecosystem alone owns are left out."""
+    return {n: f"{repo} {ref}" for n, (repo, ref) in finding.pins(lock).items()
+            if eco is None or PIN_OWNER.get(n, eco) == eco}
 
 
 def load(path):
@@ -126,7 +133,8 @@ def cmd_verify(baseline):
         have = {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()}
         if have != entry["steps"]:
             errs.append(f"{eco}: steps differ from the findings in {entry['findings']}")
-        moved = moved_pins(entry["pins"], lock_pins())
+        recorded = {n: pin for n, pin in entry["pins"].items() if PIN_OWNER.get(n, eco) == eco}
+        moved = moved_pins(recorded, lock_pins(eco=eco))
         if moved:
             errs.append(f"{eco}: versions.lock moved {', '.join(moved)}, so the baseline must be taken from a "
                         "live run under the new pins (update --findings DIR)")
@@ -152,7 +160,7 @@ def cmd_update(eco, findings_dir, baseline):
         return errs
     entry = {
         "findings": str(Path(findings_dir).resolve().relative_to(ROOT.resolve())),
-        "pins": lock_pins(),
+        "pins": lock_pins(eco=eco),
         "steps": {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()},
     }
     doc = load(baseline) if Path(baseline).is_file() else {"ecosystems": {}, "not_checked_is_regression": True}
