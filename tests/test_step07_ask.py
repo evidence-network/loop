@@ -82,6 +82,25 @@ class Tmp(unittest.TestCase):
         return failures, answered, r
 
 
+class GooseLiveLimitTest(Tmp):
+    def commitment(self, node, doc):
+        d = self.out / node / "advertised"
+        d.mkdir(parents=True)
+        (d / "commitment.json").write_text(doc if isinstance(doc, str) else json.dumps(doc))
+
+    def test_it_names_the_relay_and_window_the_commitments_carry(self):
+        good = {"answers_within": "PT1M", "ask": {"nostr": {"relays": ["wss://relay.example"]}}}
+        self.commitment("a", good)
+        text = step.goose_live_limit(self.out)
+        self.assertIn("(wss://relay.example) is the lab's, reachable only from the lab host", text)
+        self.assertIn("(PT1M) holds during a run only", text)
+
+    def test_a_bad_commitment_adds_nothing_and_does_not_raise(self):
+        self.commitment("a", "not json")
+        self.commitment("b", {"answers_within": "PT1M"})
+        self.assertEqual(step.goose_live_limit(self.out), "")
+
+
 class BookBackendTest(Tmp):
     @needs_capsulectl
     def test_rehearsal_population_asks_and_passes(self):

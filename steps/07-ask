@@ -723,9 +723,14 @@ def goose_live_limit(out):
     run only. The relays and window are read from the commitments the asks were judged against."""
     relays, windows = set(), set()
     for path in sorted(Path(out).glob("*/advertised/commitment.json")):
-        doc = load(path)
-        relays.update(doc["ask"]["nostr"]["relays"])
-        windows.add(doc["answers_within"])
+        try:  # a commitment judged bad is already a failure; it must not stop the finding being written
+            doc = load(path)
+            relays.update(doc["ask"]["nostr"]["relays"])
+            windows.add(doc["answers_within"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    if not relays or not windows:
+        return ""
     return (f" The commitments' relay ({', '.join(sorted(relays))}) is the lab's, reachable only from the lab host, and "
             f"the answer window ({', '.join(sorted(windows))}) holds during a run only.")
 
