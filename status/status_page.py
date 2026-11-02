@@ -346,6 +346,7 @@ def stamp(text):
 
 
 STALE_AFTER_DAYS = 1  # a live run older than this many days reads as stale
+DAYS = "day" if STALE_AFTER_DAYS == 1 else "days"
 
 
 def utcnow():
@@ -374,7 +375,7 @@ def age_html(run, now):
     when = RUN_DIR.fullmatch(run.name).group(1)
     text = f"run dated {e(when)} · {age} day{'' if age == 1 else 's'} old (UTC, as of {e(now.astimezone(dt.timezone.utc).strftime('%Y-%m-%d'))})"
     if is_stale(run, now):
-        text += (f' · <strong class="stale">stale: the newest live run is more than {STALE_AFTER_DAYS} day old, so a '
+        text += (f' · <strong class="stale">stale: the newest live run is more than {STALE_AFTER_DAYS} {DAYS} old, so a '
                  "column that has stopped updating is not current</strong>")
     return text
 
@@ -385,7 +386,7 @@ def stale_banner(cols, now):
     if not names:
         return ""
     return (f'<p class="stale" id="stale">Stale: the newest live run of {e(", ".join(names))} is more than '
-            f"{STALE_AFTER_DAYS} day old (UTC), by the date in its run directory's name.</p>")
+            f"{STALE_AFTER_DAYS} {DAYS} old (UTC), by the date in its run directory's name.</p>")
 
 
 NO_START = "not measured: this run did not record its start time (run.json)"
@@ -803,9 +804,8 @@ def ecosystems_html(cols, now):
             run = runs[p]
             head = f"<strong>{e(name)}</strong><br>"
             if run.path:
-                when = RUN_DIR.fullmatch(run.name).group(1)
                 badge_file = "badge.svg" if name == "mesh" else f"badge-{name}.svg"
-                head += (f"{link(f'{FINDINGS}/{run.rel}/', run.name)}<br>{e(when)} · {e(counts(rs, p))}<br>"
+                head += (f"{link(f'{FINDINGS}/{run.rel}/', run.name)}<br>{e(counts(rs, p))}<br>"
                          f"{age_html(run, now)}<br>"
                          f"pins: {link(LOCK, LOCK)} · {link(badge_file, 'badge')}")
             else:

@@ -398,6 +398,26 @@ class StatusPageTest(unittest.TestCase):
         self.assertIn("2 days old", self.built_at("2026-11-03T00:00:00+00:00"))
         self.assertIn("1 day old", self.built_at("2026-11-01T20:00:00-06:00"))  # 2026-11-02 02:00 UTC
 
+    def test_two_days_old_is_already_stale(self):
+        self.write(1, "PASS", population="live", date="2026-10-31")
+        page = self.built_at("2026-11-02T00:00:00+00:00")
+        self.assertIn("2 days old", page)
+        self.assertIn('id="stale"', page)
+        self.assertIn("data-stale", page)
+
+    def test_a_single_ecosystem_page_has_the_banner_under_its_label_only(self):
+        import datetime as dt
+        d = self.findings / "muse"
+        self.findings, mesh = d, self.findings
+        self.write(1, "PASS", population="live", date="2026-10-28")
+        self.findings = mesh
+        status_page.build(d, ROOT / "versions.lock", self.out, "muse", now=dt.datetime(2026, 11, 2, tzinfo=dt.timezone.utc))
+        page = (self.out / "index.html").read_text()
+        banner = page[page.index('id="stale"'):]
+        banner = banner[:banner.index("</p>")]
+        self.assertIn("live run of consumer-agent is more than 1 day old", banner)
+        self.assertNotIn("muse", page.lower())
+
     def test_a_stale_rehearsal_run_shows_its_age_but_is_not_stale(self):
         self.write(1, "PASS", population="rehearsal", date="2026-10-01")
         page = self.built_at("2026-11-02T00:00:00+00:00")
