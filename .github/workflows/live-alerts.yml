@@ -1,0 +1,54 @@
+# Alerts for the daily live run (evidence-network/loop#310, scripts/live_alerts.py). When a push to main adds or changes a
+# findings/*-live-* directory, each step that is FAIL or MALFORMED opens (or comments on) one loop-step-NN issue, as loop.yml's
+# nightly rehearsal job does; a step that is only NOT_CHECKED opens nothing. Every night one loop-live-stale issue is opened
+# (or commented on) when the newest live findings date is more than 1 day old, which covers a sleeping Mac and a failed run.
+# Issues are never closed here. Only GITHUB_TOKEN is used.
+name: live-alerts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "findings/*-live*/**"
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  step-alerts:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: One issue per FAIL or MALFORMED live step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 -B scripts/live_alerts.py changed "${{ github.event.before }}" "${{ github.sha }}"
+
+  stale:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: One issue when the newest live run is more than a day old
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 -B scripts/live_alerts.py stale
