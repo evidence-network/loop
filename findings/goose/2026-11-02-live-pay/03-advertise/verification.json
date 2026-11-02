@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "carrier": "git repository HEAD:nodes/commitments/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json",
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "goose",
+          "derivation": "history_card/1",
+          "has_history": false,
+          "sha256": "e4111f69d60083dfc71b7b3a349c209ec1869b0ffc08c6049fa7da1231a867d6",
+          "stream": "goose/node",
+          "stream_started": "2026-11-02",
+          "witnesses": []
+        }
+      ],
+      "key_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+      "name": "goose-1",
+      "node_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+      "notes": [],
+      "policy_digest": "2d90d220b8fa82d6c57b05cc3287734dd9c2afccbdf2940eb7937151bb497705",
+      "result": "PASS",
+      "sha256": "29cc944a020a3e6d87aa1d1a3f69e16c1eaa84682faecf1c3dfcca4a63d0afbd",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
+      "signed_by": "the node (never the harness)"
+    },
+    {
+      "carrier": "git repository HEAD:nodes/commitments/33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e.json",
+      "errors": [],
+      "history_cards": [
+        {
+          "community": "goose",
+          "derivation": "history_card/1",
+          "has_history": false,
+          "sha256": "2c9cfd75b0de9bfdac0c17c3f22430dfc89a785398c153a951e2b20aa4390b26",
+          "stream": "goose/node",
+          "stream_started": "2026-11-02",
+          "witnesses": []
+        }
+      ],
+      "key_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+      "name": "goose-2",
+      "node_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+      "notes": [],
+      "policy_digest": "739ebf2277de1621e555715467850c742646297a4240d4ce5a9c0831fdd1f38f",
+      "result": "PASS",
+      "sha256": "2343459080ef93de489606db4b2c6c3ec7f94c02f8f923fda7212cbe02af7eaf",
+      "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
+      "signed_by": "the node (never the harness)"
+    }
+  ],
+  "tool": "scripts/check_commitment.py with OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0"
+}

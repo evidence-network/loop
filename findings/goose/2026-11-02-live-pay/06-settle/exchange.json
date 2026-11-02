@@ -1,0 +1,12 @@
+{
+  "amount_atomic": 1000,
+  "currency": "BTC",
+  "decimals": 11,
+  "exchange_id": "deal-af9f5041eb6bb95d",
+  "payee": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "payer": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+  "settlement_ref": {
+    "rail": "lightning",
+    "settlement_id": "79081c90481a4c1176831542228a9fc43b43e3469482b9f5e74e15a07afd1ef6"
+  }
+}

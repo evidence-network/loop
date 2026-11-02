@@ -1,0 +1,21 @@
+{
+  "head": "ab531e8b82946df5ed5fe15554c3a73dd03d1574",
+  "nodes": {
+    "goose-1": {
+      "key_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+      "node_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+      "paths": {
+        "nodes/commitments/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json": true,
+        "nodes/commitments/policies/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json": true
+      }
+    },
+    "goose-2": {
+      "key_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+      "node_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+      "paths": {
+        "nodes/commitments/33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e.json": true,
+        "nodes/commitments/policies/33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e.json": true
+      }
+    }
+  }
+}

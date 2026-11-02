@@ -1,0 +1,143 @@
+{
+  "asserts": "a later exchange request is sealed in the asker's book before it is sent, and is answered with a signed artifact or a signed refusal under the asked node's listed key, or recorded as an absence; a refusal is not of a subject the asked node's advertised policy answers; the deadline is the commitment's answers_within, and an answer after it counts as an absence",
+  "detail": "ask backend: goose. goose-1 asked goose-2: exchange refusal, exchange_late recorded_absence, history_card artifact; goose-2 asked goose-1: exchange refusal, exchange_late recorded_absence, history_card artifact. The commitments' relay (wss://relay.loop-lab.example) is the lab's, reachable only from the lab host, and the answer window (PT1M) holds during a run only.",
+  "finished": "2026-11-02T18:00:28Z",
+  "name": "ask",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "first-answered.json",
+      "sha256": "e4d8963a796c187d467e7dbe9a4c34bac8d5694770b3374e168ba2bf449640d4"
+    },
+    {
+      "path": "goose-1/asks/goose-2/carrier.jsonl",
+      "sha256": "29f3bf4cbda742f94debc296868030a77c34f967060d95ed4b807b073bcb9e49"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/answer.json",
+      "sha256": "5d5147693b4e3293428c866acaa1014d49361ae3a75206e31c38798a5d361a57"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "41c94a320a50e7f4427667ae37977a45f4901906af9694039e4b3f25b8a6feba"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/outcome.bundle.json",
+      "sha256": "31c7690cbc9ae6b4e77f43fcfbf5d6793d711c7d7e6003135688a8b94b037e17"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/request.json",
+      "sha256": "d1729ce55cc007db510c65fcf7c2f984c80b213c90dc21e527ed5b4cb5062f7d"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/answer.json",
+      "sha256": "57f68bfe49f8bbaf809423ff683d39830a8d8d822c5c8bc39405c7f56950c04f"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "41c94a320a50e7f4427667ae37977a45f4901906af9694039e4b3f25b8a6feba"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/outcome.bundle.json",
+      "sha256": "ae464679dd11fef120b5bfd9bc9e74f90c0548aa146f46f48697480fc052a1cd"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/request.json",
+      "sha256": "13165ecea9f6f1d2f6c0f2f5c4d4ead069f59e245559aa44d4406155c31771da"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/answer.json",
+      "sha256": "0f1bf3dcbe5da954e630e6a530c54f2f04bef4f61454d3e6fcbbafecd33df6a9"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "41c94a320a50e7f4427667ae37977a45f4901906af9694039e4b3f25b8a6feba"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/outcome.bundle.json",
+      "sha256": "99d4674bce238da91cab74f36b7fd9c10a73208f45120f7a053926a3a2c1af6a"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/request.json",
+      "sha256": "fccec3bbd4f08e3d601787e34852f0abad363ff77c6755fcd279c7aec161df81"
+    },
+    {
+      "path": "goose-2/advertised/commitment.json",
+      "sha256": "2343459080ef93de489606db4b2c6c3ec7f94c02f8f923fda7212cbe02af7eaf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/carrier.jsonl",
+      "sha256": "028f19639c59170575877f51a53b73d2bc88b4bee15b3a60ad34df62812cf3cf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/answer.json",
+      "sha256": "dd91f34762c6d5f22176dc23d231dd1d01e80e7bf91b4b0933dca907308c3b6a"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "db7003859396bca7ebb9140dce0c2061b98c2061ce978ab1ae1d754f41133471"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/outcome.bundle.json",
+      "sha256": "9da6717d3c27220d0f647042c4d2f9b57ee93ae0b75660876b01bb06249c71d2"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/request.json",
+      "sha256": "befb73e89ba6325262d3c3a7ec0c61e64d6348e7440b19a5d3623a233967d7be"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/answer.json",
+      "sha256": "851091c383a5eb6eb665ed0dcd7c265291c710da2314dbd7591799631afabba4"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "db7003859396bca7ebb9140dce0c2061b98c2061ce978ab1ae1d754f41133471"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/outcome.bundle.json",
+      "sha256": "1358335073cd1ae474758e75748931e496101f24638a75d312f3ef8bc0ea30ba"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/request.json",
+      "sha256": "3af5800e7d72b67289f4d3d9e19da114c64318f502fc8baea501f8207f367ac6"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/answer.json",
+      "sha256": "a3bfbeddc61489d4e7f71ce16249e2e998fd8f9cba5e5a8fad0161ce9cfc8fc3"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "db7003859396bca7ebb9140dce0c2061b98c2061ce978ab1ae1d754f41133471"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/outcome.bundle.json",
+      "sha256": "a5570e8b77c41544b17c32a716df44009ecb07afad18202df5d25b423064bb65"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/request.json",
+      "sha256": "45e4009a7a1da117bf6a5bf4a49ebee61c8c299721b380fb5b579d71ea571dca"
+    },
+    {
+      "path": "goose-1/advertised/commitment.json",
+      "sha256": "29cc944a020a3e6d87aa1d1a3f69e16c1eaa84682faecf1c3dfcca4a63d0afbd"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T18:00:27Z",
+  "step": "07"
+}

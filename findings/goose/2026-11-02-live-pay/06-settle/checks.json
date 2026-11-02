@@ -1,0 +1,36 @@
+{
+  "checks": {
+    "band": {
+      "detail": "band {\"currency\": \"BTC\", \"decade\": -8} from the payer's amount 1000 msat; the pay record states 1000 'BTC'",
+      "ok": true
+    },
+    "exchange_match": {
+      "detail": "the payer's amount 1000 msat; the payee's credit 995 plus fee 5",
+      "ok": true
+    },
+    "finality": {
+      "detail": "payer wallet 'succeeded', payee wallet 'succeeded', the payer's preimage 'verified' (sha256(preimage) == payment_hash, checked on the paying host; no preimage kept)",
+      "ok": true
+    },
+    "ledger_count:goose-1": {
+      "detail": "goose-1 discloses 1 on rail 'lightning' (signature verifies); the lab wallets recorded 1 payments between them",
+      "ok": true
+    },
+    "ledger_count:goose-2": {
+      "detail": "goose-2 discloses 1 on rail 'lightning' (signature verifies); the lab wallets recorded 1 payments between them",
+      "ok": true
+    },
+    "pay_record": {
+      "detail": "the buyer's pay record (seq 5) commits settlement id 79081c90481a4c1176831542228a9fc43b43e3469482b9f5e74e15a07afd1ef6 on rail lightning, opened by buyer-pay-opening.json",
+      "ok": true
+    },
+    "rail_fee": {
+      "detail": "the payee's wallet reports fee_msat 5 on the inbound payment",
+      "ok": true
+    },
+    "reference": {
+      "detail": "the pay record's reference '79081c90481a4c1176831542228a9fc43b43e3469482b9f5e74e15a07afd1ef6' on rail 'lightning'; the wallets' payment_hash '79081c90481a4c1176831542228a9fc43b43e3469482b9f5e74e15a07afd1ef6'",
+      "ok": true
+    }
+  }
+}

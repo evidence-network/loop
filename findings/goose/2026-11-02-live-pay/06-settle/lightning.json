@@ -1,0 +1,23 @@
+{
+  "deal_id": "deal-af9f5041eb6bb95d",
+  "guard": {
+    "per_direction_per_day_msat": 9000,
+    "per_payment_msat": 3000
+  },
+  "payee": {
+    "amount_msat": 995,
+    "fee_msat": 5,
+    "status": "succeeded"
+  },
+  "payee_wallet": "lab-2",
+  "payer": {
+    "amount_msat": 1000,
+    "fee_msat": 0,
+    "preimage_check": "verified",
+    "status": "succeeded"
+  },
+  "payer_wallet": "lab-1",
+  "payment_hash": "79081c90481a4c1176831542228a9fc43b43e3469482b9f5e74e15a07afd1ef6",
+  "payments_recorded": 1,
+  "rail": "lightning"
+}

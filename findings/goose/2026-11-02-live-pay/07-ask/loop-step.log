@@ -1,0 +1,1 @@
+07-ask: PASS: ask backend: goose. goose-1 asked goose-2: exchange refusal, exchange_late recorded_absence, history_card artifact; goose-2 asked goose-1: exchange refusal, exchange_late recorded_absence, history_card artifact. The commitments' relay (wss://relay.loop-lab.example) is the lab's, reachable only from the lab host, and the answer window (PT1M) holds during a run only.

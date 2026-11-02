@@ -1,0 +1,13 @@
+{
+  "key_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "node": "goose-1",
+  "rail": "lightning",
+  "settlements": 1,
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "rTJAEMMezm7rsd2XKJw61PzG3hHbf4dNWoVkE9XLzr5IdWbtJEiupia6R32rOWB1k8pNgZtPCME7S7z4bGgkAA"
+  },
+  "through_sequence": 0,
+  "type": "settlement-disclosure/v1"
+}

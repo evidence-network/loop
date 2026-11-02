@@ -1,0 +1,38 @@
+{
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
+  "detail": "goose-1: PASS via git repository HEAD:nodes/commitments/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json; goose-2: PASS via git repository HEAD:nodes/commitments/33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e.json. Runner tools: OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0 (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (goose-1, goose-2) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (goose-1, goose-2) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
+  "finished": "2026-11-02T18:00:26Z",
+  "name": "advertise",
+  "not_checked": [],
+  "pinned": {},
+  "population": "live",
+  "proof": [
+    {
+      "path": "carrier.json",
+      "sha256": "71fc44893f8fd5d62766f3b49dc54570420f1f3d0d6816e2246a5a019e770456"
+    },
+    {
+      "path": "goose-1.commitment.json",
+      "sha256": "29cc944a020a3e6d87aa1d1a3f69e16c1eaa84682faecf1c3dfcca4a63d0afbd"
+    },
+    {
+      "path": "goose-1.policy.json",
+      "sha256": "2d90d220b8fa82d6c57b05cc3287734dd9c2afccbdf2940eb7937151bb497705"
+    },
+    {
+      "path": "goose-2.commitment.json",
+      "sha256": "2343459080ef93de489606db4b2c6c3ec7f94c02f8f923fda7212cbe02af7eaf"
+    },
+    {
+      "path": "goose-2.policy.json",
+      "sha256": "739ebf2277de1621e555715467850c742646297a4240d4ce5a9c0831fdd1f38f"
+    },
+    {
+      "path": "verification.json",
+      "sha256": "b34c21fcfe98a50173be1c7b255a43a772e9b76ba1e3b7b437717a6b2e87e545"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T18:00:26Z",
+  "step": "03"
+}
