@@ -68,6 +68,8 @@ no controller key or npub, only `controller_binding.digest` when a binding exist
 Nostr mailbox route (`ask.nostr`: the mailbox key, in hex, and the relays it reads); the mailbox key is a route,
 not an identity, and is never compared with `key_id`.
 
+A lab Goose node's relay is reachable only from the lab host until a public relay is listed.
+
 A card's witnesses are read from the witness receipts inside it, each naming
 its witness in a `witness` member (`RECEIPT_WITNESS` in
 `scripts/history_cards.py`). That name is **provisional** until a receipt
