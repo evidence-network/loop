@@ -201,7 +201,8 @@ class LoopTest(unittest.TestCase):
         self.assertEqual({n["inputs"] for n in nodes}, {"signed by the node"})  # the harness signed neither
         self.assertEqual(list(self.finding("03-advertise", out)["pinned"]), ["goose-g1"])
         six = self.finding("06-settle", out)
-        self.assertIn("the exchange read from G1's pay record and each node's own signed disclosure", six["detail"])
+        self.assertIn("the exchange read from G1's pay record", six["detail"])
+        self.assertIn("each node's own signed disclosure", six["detail"])
         self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
         self.assertIn("buyer-pay-opening.json", [x["path"] for x in six["proof"]])
         self.assertEqual(list(six["pinned"]), ["goose-g1"])

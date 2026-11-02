@@ -224,6 +224,28 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(found["result"], "FAIL")
         self.assertFalse(checks["pay_record"]["ok"])
 
+    def test_step_06_fails_a_pay_record_whose_reference_is_another_settlements_and_halves_of_foreign_keys(self):
+        def other_reference(d):  # a consistent forgery of the opening is not possible: the rail's id differs
+            half = json.loads((d / "buyer-half.json").read_text())
+            for st in half["steps"]:
+                st["capsule"]["key_id"] = "ab" * 32
+            (d / "buyer-half.json").write_text(json.dumps(half))
+        found, checks, _ = self.judge06(self.tampered_population(other_reference))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertFalse(checks["pay_record"]["ok"])
+        self.assertIn("two distinct nodes", checks["pay_record"]["detail"])
+
+    def test_step_06_fails_a_pay_payload_its_header_does_not_commit(self):
+        def edit(d):
+            half = json.loads((d / "buyer-half.json").read_text())
+            for st in half["steps"]:
+                if st["payload"].get("body", {}).get("action") == "pay" and "reference_commitment" in st["payload"]["body"]:
+                    st["payload"]["body"]["amount_minor"] += 1
+            (d / "buyer-half.json").write_text(json.dumps(half))
+        found, checks, _ = self.judge06(self.tampered_population(edit))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertIn("not the one its header commits", checks["pay_record"]["detail"])
+
     def test_step_06_fails_a_node_disclosure_whose_count_or_signature_is_not_the_nodes_own(self):
         def edit(d):
             doc = json.loads((d / "disclosure-seller.json").read_text())

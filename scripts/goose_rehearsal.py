@@ -39,7 +39,7 @@ PUBLIC = ("import sys; from cryptography.hazmat.primitives.serialization import 
           ".public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode())")
 
 
-def step06_inputs(pop, work, nodes, deal):
+def step06_inputs(pop, work, deal):
     """Step 06's rehearsal inputs for the deal: what G1 itself wrote (the nodes' final halves, the buyer's opening of its
     pay record's reference commitment, each node's signed settlement disclosure) and the controllers (stand-ins, as in
     the mesh rehearsal). The step derives the exchange from G1's records; the driver writes none."""
@@ -118,7 +118,7 @@ def main(argv=None):
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     deal = json.loads((run / "deal.json").read_text())
-    step06_inputs(pop, work, nodes, deal)
+    step06_inputs(pop, work, deal)
     # Step 03 publishes each node's commitment as the node signed it (loop_advertise), never one the harness signs.
     commitments = {}
     for n, key_id in zip(nodes, (deal["buyer"], deal["seller"])):
