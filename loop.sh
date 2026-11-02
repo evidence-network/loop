@@ -212,11 +212,11 @@ import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01 and 03 a live Goose population (loop#330; the rehearsal runs them), 02 the book bundle, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 09 the referee delivery; 10, 11 and 12 loop#315 (G1's loop_join returns the commitment).
+# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 the book bundle, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 09 the referee delivery; 10, 11 and 12 loop#315 (G1's loop_join returns the commitment).
 GOOSE = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
          "03": "evidence-network/loop#330", "04": "action-state-group/evidencebook#302",
          "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
-         "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
+         "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
          "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#315"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."

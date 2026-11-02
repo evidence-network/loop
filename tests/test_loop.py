@@ -141,7 +141,7 @@ class LoopTest(unittest.TestCase):
     GOOSE_OWNERS = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
                     "03": "evidence-network/loop#330", "04": "action-state-group/evidencebook#302",
                     "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
-                    "07": "action-state-group/capsule-emit#407", "08": "evidence-network/loop#193",
+                    "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
                     "09": "action-state-group/capsule-emit#393", "10": "evidence-network/loop#315",
                     "11": "evidence-network/loop#315", "12": "evidence-network/loop#315"}
     GOOSE_NAMES = {"01": "seal", "02": "book", "03": "advertise", "04": "admit", "05": "deal", "06": "settle",

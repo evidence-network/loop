@@ -151,13 +151,29 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertIn("the reply was delivered by the deadline", found["detail"])
 
     def test_step_07_fails_a_request_whose_deadline_is_not_the_commitments_answers_within(self):
-        def stretch(asks):
-            path = asks / "buyer/asks/seller/history_card/request.json"
-            request = json.loads(path.read_text())
-            request["deadline"] = "2099-01-01T00:00:00Z"
-            path.write_text(json.dumps(request, sort_keys=True, separators=(",", ":")))
-        found = self._judged(stretch)
-        self.assertEqual(found["result"], "FAIL")
+        """Judged against a commitment that advertises another answers_within, so only the deadline check can fail."""
+        import importlib.machinery
+        import importlib.util
+        import shutil
+        import datetime as dt
+        loader = importlib.machinery.SourceFileLoader("ask07", str(ROOT / "steps" / "07-ask"))
+        ask07 = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(ask07)
+        work = Path(tempfile.mkdtemp(dir=self.work))
+        shutil.copytree(self.work / "asks", work / "asks", ignore=shutil.ignore_patterns("run"))
+        real = ask07.advertisement
+
+        def other_window(adv_dir, name="commitment.json"):
+            adv, errs = real(adv_dir, name)
+            adv["within"], adv["answers_within"] = dt.timedelta(minutes=5), "PT5M"
+            return adv, errs
+
+        ask07.advertisement = other_window
+        keys = json.loads((work / "asks" / "nodes.json").read_text())
+        failures, _, _, _ = ask07.judge_run(work / "asks", {n: v["key_id"] for n, v in keys.items()},
+                                            ask07.tools(), work / "tmp", mailbox=True)
+        self.assertTrue(failures)
+        self.assertTrue(all("is not the commitment's answers_within" in f for f in failures), failures)
 
     def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())

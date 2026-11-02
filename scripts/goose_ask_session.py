@@ -113,7 +113,8 @@ class Goose:
 
 
 async def run(out, relay):
-    out.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
+    out.mkdir(parents=True)
     relay_map = json.dumps({ADVERTISED_RELAY: relay.address})
 
     def params(name):

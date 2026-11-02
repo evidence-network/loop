@@ -562,6 +562,7 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
                             f"answers_within ({adv['answers_within']}) after it was sealed at {req_h['committed_at']}")
             if not sent_at <= deadline:
                 errs.append(f"{name}: the request was sent at {sent[0]['at']}, after its own deadline")
+    basis = "the request's own deadline" if mailbox else "sent"
     st = out_h.get("statement", {})
     if st.get("request_digest") != sha256(request_bytes):
         errs.append(f"{name}: the outcome is for another request")
@@ -575,7 +576,7 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
                         f"{adv['node_key'][:16]} and its advertised checkpoint key")
         if recorded_at > deadline:
             errs.append(f"{name}: the answer was counted as answered at {out_h['committed_at']}, after the "
-                        f"deadline {stamp(deadline)} (sent plus answers_within {adv['answers_within']})")
+                        f"deadline {stamp(deadline)} ({basis} plus answers_within {adv['answers_within']})")
         reply = ask_dir / "answer.json"
         payloads = bundle.get("extensions", {}).get("evidencebook/payloads", {})
         kept = (out_h.get("payload_commitments") or [None])[0]
