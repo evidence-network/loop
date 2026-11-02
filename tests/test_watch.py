@@ -805,8 +805,9 @@ class WatchTest(unittest.TestCase):
             cards = watch.history_cards(c)
             self.assertEqual(len(cards), 1, nid_)
             self.assertEqual(cards[0]["derivation"], "history_card/1")
-            self.assertEqual((cards[0]["community"], cards[0]["history"]), ("mesh-llm", True))
-            self.assertRegex(cards[0]["stream"], r"^capsules/[0-9a-f]{16}$")  # the plugin's stream name
+            goose = by_id[nid_]["ask_route"] == "nostr"  # a Goose node (loop#349): its own community and stream name
+            self.assertEqual((cards[0]["community"], cards[0]["history"]), ("goose" if goose else "mesh-llm", True))
+            self.assertRegex(cards[0]["stream"], r"^goose/node$" if goose else r"^capsules/[0-9a-f]{16}$")  # the stream name
             self.assertEqual(cards[0]["witnesses"], [])  # the lab books are unwitnessed
 
     def test_n_the_card_list_names_only_stream_derivation_and_witnesses(self):
