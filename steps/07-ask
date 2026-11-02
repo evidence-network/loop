@@ -717,6 +717,19 @@ def run_goose(pop, out, tmp):
     return failures, not_checked, answered, proof, lines
 
 
+def goose_live_limit(out):
+    """The limit of a live Goose ask, for the finding's detail (loop#354): the commitments' relay is the lab's, in the
+    session process, so a node answers only while a run polls it and the commitments' answers_within holds during a
+    run only. The relays and window are read from the commitments the asks were judged against."""
+    relays, windows = set(), set()
+    for path in sorted(Path(out).glob("*/advertised/commitment.json")):
+        doc = load(path)
+        relays.update(doc["ask"]["nostr"]["relays"])
+        windows.add(doc["answers_within"])
+    return (f" The commitments' relay ({', '.join(sorted(relays))}) is the lab's, reachable only from the lab host, and "
+            f"the answer window ({', '.join(sorted(windows))}) holds during a run only.")
+
+
 # --- Backend "reporter": Mesh nodes, asked through the daily reporter ---------
 def commitment_time(doc):
     """A commitment's issued_at as an aware datetime, or None when it is not a UTC `...Z` timestamp."""
@@ -1700,6 +1713,8 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     detail = f"ask backend: {which}. " + "; ".join(failures or lines) + "."
+    if which == "goose" and population == "live":
+        detail += goose_live_limit(out)
     pinned = {"book": PINNED_BOOK, "goose": PINNED_GOOSE}.get(which, PINNED_REPORTER)
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
                          detail=detail, not_checked=not_checked, started=started)

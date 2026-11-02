@@ -137,7 +137,10 @@ class SessionTest(unittest.TestCase):
         r = subprocess.run([str(ROOT / "steps/07-ask"), "--population", str(pop_dir), "--out", str(out7)],
                            stdin=subprocess.DEVNULL, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr[-1500:])
-        self.assertEqual(json.loads((out7 / "finding.json").read_text())["result"], "PASS")
+        found7 = json.loads((out7 / "finding.json").read_text())
+        self.assertEqual(found7["result"], "PASS")
+        self.assertIn("wss://relay.loop-lab.example) is the lab's, reachable only from the lab host", found7["detail"])
+        self.assertIn("(PT1M) holds during a run only", found7["detail"])
         # step 01 holds the sealing node to the key nodes/<node_id>.json lists
         if not (TOOLS / "01-seal").is_dir():
             self.skipTest("run steps/01-seal.setup.sh for the step 01 half")
@@ -152,3 +155,5 @@ class SessionTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr[-1500:])
             found = json.loads((out1 / "finding.json").read_text())
             self.assertEqual(found["result"], want, found["detail"])
+            if want == "PASS":
+                self.assertIn("placeholder model (rehearsal/rehearsal-model), not a real inference", found["detail"])

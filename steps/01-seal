@@ -323,7 +323,9 @@ def judge_capsule(out, node, verifier, seen, pub_pem, node_id=None, live_node=Fa
     detail = (f"node {node}: " + ("; ".join(f"{n}: {checks[n]['detail']}" for n in failed) if failed else
               "Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, "
               "model_attestation present, key_id is the node's key; "
-              + (f"producer signature {sig['detail']}" if not gaps else f"producer signature not checked ({sig['detail']})")))
+              + (f"producer signature {sig['detail']}" if not gaps else f"producer signature not checked ({sig['detail']})")
+              + (f"; the sealed call is the step's placeholder model ({MODEL['provider']}/{MODEL['model_id']}), "
+                 "not a real inference" if sealed_by and sealed_by.startswith("the Goose node") else "")))
     result = "FAIL" if failed else "NOT_CHECKED" if gaps else "PASS"
     return result, ["capsule.json", "verifier.json", "checks.json"], detail, gaps
 
