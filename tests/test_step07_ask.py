@@ -612,6 +612,19 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(timing["answers_within"], "PT1M")
         self.assertFalse(timing["late"])
 
+    def test_without_capsulectl_the_book_check_is_not_checked_and_the_run_does_not_stop(self):
+        with mock.patch.object(step, "tools", return_value=Path(self.tmp.name) / "no-capsulectl"):
+            r = self.run_live(VERIFIED)
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        self.assertIn(step.BOOK_ISSUE, self.issues(r))
+        self.assertIn(step.BOOK_MISSING, [i["why"] for i in r["not_checked"]])
+
+    def test_a_reply_the_book_refuses_is_a_fail(self):
+        with mock.patch.object(step, "verify_reply_with_book", return_value=["the reply does not verify"]):
+            r = self.run_live(VERIFIED)
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIn("the reply does not verify", r["detail"])
+
     def test_an_answer_after_answers_within_is_not_counted_as_answered(self):
         late = step.now() + dt.timedelta(minutes=5)
         with mock.patch.object(step, "now", return_value=late):

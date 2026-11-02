@@ -160,6 +160,8 @@ ASSERTS = ("a later exchange request is sealed in the asker's book before it is 
            "signed artifact or a signed refusal under the asked node's listed key, or recorded as an absence; "
            "a refusal is not of a subject the asked node's advertised policy answers; the deadline is the "
            "commitment's answers_within, and an answer after it counts as an absence")
+BOOK_ISSUE = "evidence-network/loop#290"
+BOOK_MISSING = "capsulectl or capsulectl-book is not installed where 07 ran (steps/07-ask.setup.sh), so the reply was checked by openssl only"
 PINNED_BOOK = ["capsulectl", "capsulectl-book"]
 PINNED_GOOSE = ["capsulectl", "capsulectl-book", "goose-g1"]
 PINNED_REPORTER = ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "capsulectl", "capsulectl-book"]
@@ -1445,11 +1447,11 @@ def verify_reply_with_book(reply_path, extract, listed_key, capsulectl, work):
 
 def judge_reporter(pop, out):
     """(failures, not_checked, answered, proof, lines) of the reporter backend; the replies are verified by the
-    pinned capsulectl-book (verify_reply_with_book), in a scratch directory made for the call."""
+    pinned capsulectl-book (verify_reply_with_book), in a scratch directory made for the call. Without the tools
+    that check is NOT_CHECKED; 08 needs them, so it does not re-derive such a run."""
     book_tool = tools()
-    for need in (book_tool, step12.book_plugin(book_tool)):
-        if not need.is_file():
-            raise SystemExit(f"07-ask: no {need.name} at {need}; run steps/07-ask.setup.sh")
+    if not (book_tool.is_file() and step12.book_plugin(book_tool).is_file()):
+        book_tool = None  # each reply is then NOT_CHECKED through the book (the openssl check still holds)
     with tempfile.TemporaryDirectory() as work:
         return judge_reporter_in(pop, out, book_tool, work)
 
@@ -1556,9 +1558,13 @@ def judge_reporter_in(pop, out, book_tool, book_work):
                 if saw in ("verified", "refusal", "no_checkpoint_yet") and (attempt / f"{stem}.response.json").is_file():
                     failures += [f"{name}: {qname}: {e}" for e in
                                  verify_reply_signature(attempt / f"{stem}.response.json", extract, entry["key_id"])]
-                    failures += [f"{name}: {qname}: {e}" for e in
-                                 verify_reply_with_book(attempt / f"{stem}.response.json", extract, entry["key_id"],
-                                                        book_tool, book_work)]
+                    if book_tool is None:
+                        merge(not_checked, [{"what": f"{name}: {qname}: the reply through the pinned capsulectl-book",
+                                             "why": BOOK_MISSING, "issue": BOOK_ISSUE}])
+                    else:
+                        failures += [f"{name}: {qname}: {e}" for e in
+                                     verify_reply_with_book(attempt / f"{stem}.response.json", extract,
+                                                            entry["key_id"], book_tool, book_work)]
                 if isinstance(extract, dict) and extract.get("ledger") == "read":
                     perrs, pnotes = judge_ledger_proof(out, pop, how, attempt, stem, extract, entry["node_id"],
                                                        request, sent_at, back)
