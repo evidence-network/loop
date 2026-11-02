@@ -70,4 +70,4 @@ demo-capsules Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc
 # The Goose reference node the goose ecosystem's rehearsal runs: evidencebook's python/examples/goose (G1,
 # #265, #290; loop_seal, #300; loop_advertise, #325; the mailbox answerer, #339 and #340; the close that cites the counterparty's checkpoint, #303/#351; settlement count and pay opening, capsule-emit#408), two loop_server.py processes spoken to over MCP stdio as Goose speaks to them. Installed by
 # steps/goose.setup.sh; scripts/goose_rehearsal.py runs it (loop#330).
-goose-g1 action-state-group/evidencebook df8126c188101b7fca25879e45ebb8310c3dee81
+goose-g1 action-state-group/evidencebook a255d824eecd64e1269aa22f581b748f099d3805
