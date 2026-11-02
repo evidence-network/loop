@@ -70,13 +70,22 @@ async def with_nodes(homes, work, relay_map=None):
         return await work(nodes)
 
 
-async def pay_deal(nodes, ids, step06, pay_one):
+def checkpoint_key_id(published, node_id):
+    """A node's checkpoint key id, read from the commitment it published (history_cards[0].checkpoint_key, base64url of
+    the Ed25519 SPKI): no join, which would seal one more record in a lab node."""
+    import base64
+    doc = json.loads((Path(published) / f"{node_id}.json").read_text())
+    raw = doc["history_cards"][0]["checkpoint_key"]
+    return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))[-32:].hex()
+
+
+async def pay_deal(nodes, ids, step06, pay_one, settled):
     """One deal goose-2 buys from goose-1 over a real Lightning payment: G1's calls as goose_session.py makes them, except
     the rail. `pay_one()` (goose_lightning.pay on the lab wallets) pays once both sides hold the agreed terms and returns
     the record step 06 reads; the buyer's loop_settle commits its payment_hash and loop_pay_opening opens it. Writes
     DIR (step06): the halves, the opening, each node's signed settlement disclosure and lightning.json."""
     buyer, seller = nodes["goose-2"], nodes["goose-1"]
-    b, s = ids["goose-2"], ids["goose-1"]
+    b, s = ids["goose-2"], ids["goose-1"]  # each: key_id, checkpoint_key_id
     step06.mkdir(parents=True, exist_ok=True)
     await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
                      decision="GO", reason="known inference seller")
@@ -101,6 +110,7 @@ async def pay_deal(nodes, ids, step06, pay_one):
     await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
     await seller.call("loop_deal_close", deal_id=deal_id, status="received")
     await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(step06 / "buyer-pay-opening.json"))
+    record["payments_recorded"] = settled(record["payment_hash"], deal_id)  # both books hold the deal now
     for node in (buyer, seller):  # the rail has no ledger sequence: 0
         await node.call("loop_settlement_disclosure", rail="lightning", through_sequence=0,
                         out_path=str(step06 / f"disclosure-{node.name}.json"))
@@ -132,8 +142,7 @@ def cmd_init(a):
         for name, g in nodes.items():
             if "record_id" not in ids.get(name, {}):
                 j = await g.call("loop_join")
-                ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"],
-                             "checkpoint_key_id": j["checkpoint_key_id"]}  # G1's node id is its signing key's id
+                ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"]}  # G1's node id is its signing key's id
     asyncio.run(with_nodes(a.homes, work))
     for name in NAMES:
         kd = Path(a.keys) / name
@@ -188,17 +197,12 @@ def cmd_session(a):
         payer, payee = gl.Wallet(a.payer_port, a.payer_name), gl.Wallet(a.payee_port, a.payee_name)
         log = Path(a.lightning_log)
         gl.preflight(payer, payee, gl.AMOUNT_MSAT, log)  # refuse before the nodes start the deal
-        node_ids = json.loads(Path(a.ids).read_text())
+        node_ids = {n: {**d, "checkpoint_key_id": checkpoint_key_id(a.published, d["key_id"])}
+                    for n, d in json.loads(Path(a.ids).read_text()).items()}
 
         async def deal(nodes):
-            missing = [n for n in nodes if "checkpoint_key_id" not in node_ids[n]]
-            for n in missing:  # an ids.json from before this PR: one more join record gives the checkpoint key
-                node_ids[n]["checkpoint_key_id"] = (await nodes[n].call("loop_join"))["checkpoint_key_id"]
-            if missing:
-                tmp = Path(a.ids).with_suffix(".new")
-                tmp.write_text(json.dumps(node_ids, indent=2, sort_keys=True) + "\n")
-                os.replace(tmp, a.ids)
-            return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log))
+            return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log),
+                                  lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"))
         asyncio.run(with_nodes(a.homes, deal))
         steps.append("06")
         lightning = {"payer": payer.name, "payee": payee.name, "file": "step06/lightning.json"}

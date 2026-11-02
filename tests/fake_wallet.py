@@ -8,8 +8,9 @@ import threading
 
 
 class FakeLab:
-    def __init__(self, spendable=9873, spent_today=0, send_result="succeeded", fee=5, pending=False):
+    def __init__(self, spendable=9873, spent_today=0, send_result="succeeded", fee=5, pending=False, send_http=None):
         self.spendable, self.spent_today, self.send_result, self.fee, self.pending = spendable, spent_today, send_result, fee, pending
+        self.send_http = send_http
         self.txs = {"lab-1": [], "lab-2": []}
         self.invoices = {}
         self.sent = 0
@@ -41,6 +42,8 @@ class FakeLab:
                     lab.invoices[h] = (pre.hex(), cmd["amount_msat"], who)
                     body = {"bolt11": "lnbc" + h[:40] + "x" * 30, "payment_hash": h, "amount_msat": cmd["amount_msat"],
                             "payee": "02" + "ab" * 32, "expires_at_ms": 4102444800000}
+                elif c == "send" and lab.send_http:
+                    code, body = lab.send_http, {"error": "boom"}
                 elif c == "send":
                     h = next((h for h, v in lab.invoices.items() if cmd["invoice"] == "lnbc" + h[:40] + "x" * 30), None)
                     if h is None:

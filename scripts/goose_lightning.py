@@ -62,7 +62,9 @@ class Wallet:
             with OPENER.open(req, timeout=timeout) as r:
                 return json.loads(r.read() or b"null")
         except urllib.error.HTTPError as e:
-            raise Refused(f"{self.name} wallet refused {command}: HTTP {e.code} {clean(e.read()[:300].decode('utf-8', 'replace'))}")
+            detail = clean(e.read()[:300].decode("utf-8", "replace"))
+            e.close()
+            raise Refused(f"{self.name} wallet refused {command}: HTTP {e.code} {detail}")
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise Unknown(f"no answer from {self.name}'s wallet to {command} ({type(e).__name__})")
 
@@ -129,6 +131,19 @@ def preflight(payer, payee, amount_msat, log, now=None):
     return spendable
 
 
+def mark_settled(log, payment_hash, deal_id, direction):
+    """The Goose deal for a succeeded payment is closed on both nodes: mark its entry, and return how many payments in
+    this direction have a settled deal (what each node's disclosure counts). A payment whose deal never closed stays
+    `succeeded`: it counts against the cap, not here, and the next step 06 FAILs on the mismatch until it is looked at."""
+    with locked(log):
+        entries = read_log(log)
+        for e in entries:
+            if e["payment_hash"] == payment_hash:
+                e["status"], e["deal_id"] = "settled", deal_id
+        rewrite_log(log, entries)
+    return sum(1 for e in entries if e["status"] == "settled" and e["direction"] == direction)
+
+
 def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
     """One payment payer -> payee. Returns the record step 06 reads (lightning.json), without the preimage.
 
@@ -159,9 +174,10 @@ def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
 
     try:
         payer.call("send", invoice=inv["bolt11"], amount_msat=None, max_fee_msat=MAX_FEE_MSAT, timeout=wait)
-    except Refused:
-        settle_entry("failed")  # the wallet refused before sending
-        raise
+    except (Refused, Unknown):
+        # An error on `send` does not prove nothing went out (the wallet can fail after its pay step started, loop#300):
+        # the reservation stays unless the payer's own transaction row says failed.
+        pass
     deadline = time.monotonic() + wait
     out = inb = None
     while time.monotonic() < deadline:
@@ -173,16 +189,16 @@ def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
             break
         time.sleep(1)
     else:
-        raise Unknown(f"payment {h} has no terminal status on both wallets after {wait} s; its reservation stays")
+        raise Unknown(f"payment {h} has no terminal status on both wallets after {wait} s (payer row: "
+                      f"{out.get('status') if out else 'none'}); its reservation stays")
     pre = out.get("preimage")
     check = ("verified" if isinstance(pre, str) and HEX64.fullmatch(pre) and hashlib.sha256(bytes.fromhex(pre)).hexdigest() == h
              else "mismatch" if isinstance(pre, str) else None)
     del pre
     settle_entry("succeeded")
-    done = [e for e in read_log(log) if e["status"] == "succeeded"]
     return {"rail": "lightning", "payment_hash": h, "payer_wallet": payer.name, "payee_wallet": payee.name,
             "payer": {"status": out["status"], "amount_msat": out["amount_msat"], "fee_msat": out["fee_msat"],
                       "preimage_check": check},
             "payee": {"status": inb["status"], "amount_msat": inb["amount_msat"], "fee_msat": inb["fee_msat"]},
-            "payments_recorded": len(done), "guard": {"per_payment_msat": MAX_PAYMENT_MSAT,
+            "guard": {"per_payment_msat": MAX_PAYMENT_MSAT,
                                                        "per_direction_per_day_msat": MAX_DIRECTION_MSAT}}

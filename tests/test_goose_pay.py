@@ -38,7 +38,9 @@ class GuardTest(unittest.TestCase):
             pre = lab.invoices[rec["payment_hash"]][0]
         self.assertEqual(rec["payer"], {"status": "succeeded", "amount_msat": 1000, "fee_msat": 0, "preimage_check": "verified"})
         self.assertEqual(rec["payee"], {"status": "succeeded", "amount_msat": 995, "fee_msat": 5})
-        self.assertEqual(rec["payments_recorded"], 1)
+        self.assertNotIn("payments_recorded", rec)  # the count comes after the Goose deal closes
+        self.assertEqual(gl.mark_settled(self.log, rec["payment_hash"], "deal-x", "lab-1>lab-2"), 1)
+        self.assertEqual(gl.read_log(self.log)[0]["status"], "settled")
         self.assertNotIn(pre, json.dumps(rec) + self.log.read_text())
 
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
@@ -79,6 +81,14 @@ class GuardTest(unittest.TestCase):
             with self.assertRaises(gl.Unknown):
                 gl.pay(*self.wallets(lab), self.log, wait=2)
         self.assertEqual(gl.reserved_today(gl.read_log(self.log), "lab-1>lab-2", gl.utc_day()), 1000)
+
+    def test_an_http_error_on_send_keeps_the_reservation(self):
+        for code in (500, 402):
+            with FakeLab(send_http=code) as lab:
+                log = Path(self.tmp.name) / f"{code}.jsonl"
+                with self.assertRaises(gl.Unknown):
+                    gl.pay(*self.wallets(lab), log, wait=2)
+            self.assertEqual(gl.reserved_today(gl.read_log(log), "lab-1>lab-2", gl.utc_day()), 1000)
 
     def test_errors_never_carry_an_invoice_or_a_hash(self):
         text = gl.clean("bad lnbc10n1pabcdefghijklmnopqrstuvwxyz and " + "a" * 64)
