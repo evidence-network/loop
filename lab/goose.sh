@@ -6,7 +6,8 @@
 #
 #   lab/goose.sh [--dry-run] tools|init|entries|commitments|session|run|pay
 #
-#   tools        install the Goose node (steps/goose.setup.sh) into $LOOP_TOOLS/goose
+#   tools        install the Goose node (steps/goose.setup.sh) into $LOOP_TOOLS/goose, and step 01's pinned aac-go
+#                verifier (steps/01-seal.setup.sh) into $LOOP_TOOLS/01-seal, which run and pay refuse to start without
 #   init         start each node once on its own persistent home, $LAB_DIR/goose/homes/<name> (mode 700), so it has
 #                its keys; write its public key under $LAB_DIR/goose/keys/<name>/ and the two ids to
 #                $LAB_DIR/goose/ids.json. Keys already there are kept: a node's producer key is its identity, the
@@ -66,9 +67,10 @@ run() {
   if [ "$DRY" = 1 ]; then echo "+ $*"; else "$@" < /dev/null; fi
 }
 need_tools() { [ "$DRY" = 1 ] || [ -x "$GOOSE_PY" ] || die "no Goose tools in $TOOLS/goose; run lab/goose.sh tools"; }
+need_verifier() { [ "$DRY" = 1 ] || [ -x "$TOOLS/01-seal/bin/cross_language" ] || die "no aac-go verifier in $TOOLS/01-seal (step 01 would be NOT_CHECKED); run lab/goose.sh tools"; }
 need_ids() { [ "$DRY" = 1 ] || [ -f "$G/ids.json" ] || die "no $G/ids.json; run lab/goose.sh init"; }
 
-cmd_tools() { run "$ROOT/steps/goose.setup.sh"; }
+cmd_tools() { run "$ROOT/steps/goose.setup.sh"; run "$ROOT/steps/01-seal.setup.sh"; }
 
 cmd_init() {
   need_tools
@@ -141,7 +143,7 @@ cmd_session() {
 }
 
 cmd_run() {
-  need_tools; need_ids
+  need_tools; need_verifier; need_ids
   lock=$LAB_DIR/run/LIVE_RUN
   if [ "$DRY" = 1 ]; then
     echo "+ refuse if $lock exists or lab.sh, loop.sh or live_daily.sh runs; take $lock"
