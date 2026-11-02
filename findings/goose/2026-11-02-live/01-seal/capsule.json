@@ -1,0 +1,48 @@
+{
+  "action_id": "model-call-ee1a522fad3f81e1",
+  "action_type": "fyi",
+  "assurance": {
+    "attestation_mode": "self_attested",
+    "effect_mode": "confirmed",
+    "ledger_mode": "standalone"
+  },
+  "canonicalization_id": "jcs",
+  "capsule_id": "2a62e8ef5121f0a261364b2831107c640f5afa66b91b1c424b885f62b4b6b411",
+  "developer": "goose-loop@v1",
+  "effect": {
+    "effect_attestation": "runtime_claimed",
+    "irreversibility_class": "two_way",
+    "request_digest": "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a",
+    "response_digest": "c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1",
+    "status": "confirmed",
+    "type": "inference_completion"
+  },
+  "evidence_record_header": {
+    "book_id": "goose/node",
+    "committed_at": "2026-11-02T16:23:22Z",
+    "epistemic_type": "producer_claim",
+    "links": [],
+    "payload_commitments": [
+      "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a"
+    ],
+    "record_type": "goose_model_call",
+    "retention_state": "AVAILABLE",
+    "seq": 17,
+    "subject_ref": "model-call-ee1a522fad3f81e1",
+    "v": 1
+  },
+  "format_version": "4",
+  "key_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
+  "model_attestation": {
+    "compute_attestation": {
+      "agent_input_digest": "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a",
+      "agent_output_digest": "c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1"
+    },
+    "model_id": "rehearsal-model",
+    "provider": "rehearsal"
+  },
+  "operator": "goose-2",
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d696404582033711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e0127a058202a62e8ef5121f0a261364b2831107c640f5afa66b91b1c424b885f62b4b6b411584000b333e1e4f229549d9ef3cbfa405a985c83564f79cb3406f56077df1ce38795f6a6420303680cf78e3209da054078eba17d60d60139906460f6d364cdfcfe01",
+  "spec_version": "draft-mih-scitt-agent-action-capsule-05",
+  "timestamp": "2026-11-02T16:23:22Z"
+}

@@ -1,0 +1,143 @@
+{
+  "asserts": "a later exchange request is sealed in the asker's book before it is sent, and is answered with a signed artifact or a signed refusal under the asked node's listed key, or recorded as an absence; a refusal is not of a subject the asked node's advertised policy answers; the deadline is the commitment's answers_within, and an answer after it counts as an absence",
+  "detail": "ask backend: goose. goose-1 asked goose-2: exchange refusal, exchange_late recorded_absence, history_card artifact; goose-2 asked goose-1: exchange refusal, exchange_late recorded_absence, history_card artifact.",
+  "finished": "2026-11-02T16:24:31Z",
+  "name": "ask",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "first-answered.json",
+      "sha256": "b74d05b407617e32734f8d1db4196b8c52c45993fcc1e4d3604239435df8e3ab"
+    },
+    {
+      "path": "goose-1/asks/goose-2/carrier.jsonl",
+      "sha256": "ab3e742d50ec3f74e15bcac347ca8de49f6e690158336fe2a900d98a5921c566"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/answer.json",
+      "sha256": "7f95bae23b6175a48ca01cc5068d2a33dad76aee844a293de670c41ce8a248f5"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "31b0bcf47d4cc5becfcc7ec247e2366b501a6bc3d6bc00f2c33c7e6a749c9432"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/outcome.bundle.json",
+      "sha256": "c9a0a91a4f6884c1a557a8ee08ca70ca2adc751d4a63770b72306096edceacb6"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange/request.json",
+      "sha256": "ad298ba8d10a4ef67f351ca331e31344d35849c5582d9f2d75dda9767290531d"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/answer.json",
+      "sha256": "6b5cb5e1f4834848089a582abdceab2a0df3b3bd4b9992cab33018bc8ce98b68"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "31b0bcf47d4cc5becfcc7ec247e2366b501a6bc3d6bc00f2c33c7e6a749c9432"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/outcome.bundle.json",
+      "sha256": "a114a8819e41a93cfa4c6cc43da58bdef962219a4cc9395aae60ed18e0d4b182"
+    },
+    {
+      "path": "goose-1/asks/goose-2/exchange_late/request.json",
+      "sha256": "490e7d9957813a47dfc7de7b98499b2119a8c7b3e2c1a11c67693c42594ca73a"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/answer.json",
+      "sha256": "dc2a84efc63aedc1f6c5f5a1bd3797dfc744e3dd695de501ba6c0bb28f0bd4f0"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "31b0bcf47d4cc5becfcc7ec247e2366b501a6bc3d6bc00f2c33c7e6a749c9432"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/outcome.bundle.json",
+      "sha256": "a43ec2e6c5ba728880ec86b8bbbb51b355d710012c8140b9242a11b5627d9165"
+    },
+    {
+      "path": "goose-1/asks/goose-2/history_card/request.json",
+      "sha256": "bf785b51d60f13f8f908dfc7f58d70f103fff27cee01a966bb8c7b79b8e90814"
+    },
+    {
+      "path": "goose-2/advertised/commitment.json",
+      "sha256": "2343459080ef93de489606db4b2c6c3ec7f94c02f8f923fda7212cbe02af7eaf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/carrier.jsonl",
+      "sha256": "7f267c567fb1ed88060f59b67a9732d572ae3ccd6796539fa9f669f65c3b40ef"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/answer.json",
+      "sha256": "be7e71192c08c26b28ccbb4a1d8ac0154f5858f0313220ab2f58485acbb9c105"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "387b86b208bd60fddbf97d1a9ff4490ebade90a1e5e29cf6e5f6440a82f5aebf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/outcome.bundle.json",
+      "sha256": "eb58f3e5a1c169d988d35f79ede9345b2f6913146a5b4257220ce873b48550dc"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange/request.json",
+      "sha256": "d6aa2027cc44360caceb8c2ff1efdd3839a3db3cdd43080c102d9be33c179762"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/answer.json",
+      "sha256": "5e42fdd8202bc33f1f9b63ad50db01d61555f3d170df848be68514db4c607773"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "387b86b208bd60fddbf97d1a9ff4490ebade90a1e5e29cf6e5f6440a82f5aebf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/outcome.bundle.json",
+      "sha256": "c60645cb0330f1ddac325490cd30cec1ec9db8911caf07ed2ef2b99f1b45f408"
+    },
+    {
+      "path": "goose-2/asks/goose-1/exchange_late/request.json",
+      "sha256": "9961fb5300ed0de9d69f0edd04a0b40fa25ec2c282bd28278e786940b3c68bff"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/answer.json",
+      "sha256": "30289d5c8d513525885ef9af67b17ace93f51428023ad1fcc48a4f123d702882"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "387b86b208bd60fddbf97d1a9ff4490ebade90a1e5e29cf6e5f6440a82f5aebf"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/outcome.bundle.json",
+      "sha256": "8d09d672f425449d671f75b669806bac06f1c6251f25085973856c0acca27f2f"
+    },
+    {
+      "path": "goose-2/asks/goose-1/history_card/request.json",
+      "sha256": "381c6de60322962dc1aff8466bbd982ec9869d2522d7768c98e710bbb5e4cae9"
+    },
+    {
+      "path": "goose-1/advertised/commitment.json",
+      "sha256": "29cc944a020a3e6d87aa1d1a3f69e16c1eaa84682faecf1c3dfcca4a63d0afbd"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-02T16:24:30Z",
+  "step": "07"
+}
