@@ -64,6 +64,7 @@ class EntryRulesTest(unittest.TestCase):
     def test_the_lab_nodes_opt_in_to_pair_edges(self):
         # Steven's ruling on loop#77: his three lab node entries set pair_edges "public".
         entries = [json.loads(p.read_text()) for p in sorted((ROOT / "nodes").glob("*.json"))]
+        entries = [e for e in entries if e["ask_route"] == "mesh"]  # the Goose nodes (nostr) do not opt in
         self.assertEqual(len(entries), 3)
         self.assertEqual({e["operator"] for e in entries}, {"StevenMih"})
         self.assertEqual([e["disclosure"].get("pair_edges") for e in entries], ["public"] * 3)

@@ -53,6 +53,17 @@ class DriverArgumentsTest(unittest.TestCase):
             self.assertTrue((Path(lab) / "run" / "LIVE_RUN").is_file())  # the other run's lock is not ours to remove
 
 
+class ReporterListTest(unittest.TestCase):
+    def test_the_rehearsal_confidence_list_leaves_out_nodes_the_mesh_reporter_does_not_ask(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import rehearsal_confidence as confidence
+        with tempfile.TemporaryDirectory() as d:
+            for node, route in (("a" * 64, "mesh"), ("b" * 64, "nostr")):
+                (Path(d) / f"{node}.json").write_text(json.dumps({"node_id": node, "ask_route": route}))
+            self.assertEqual(sorted(confidence.listed(d)), ["a" * 64])
+
+
 class LoopShGooseLiveTest(unittest.TestCase):
     def test_loop_sh_needs_the_population_the_driver_wrote(self):
         with tempfile.TemporaryDirectory() as out:
@@ -95,3 +106,49 @@ class SessionTest(unittest.TestCase):
         again = goose("init", LAB_DIR=str(self.lab), LOOP_TOOLS=str(TOOLS))
         self.assertEqual(again.returncode, 0, again.stderr)
         self.assertEqual(json.loads((self.lab / "goose" / "ids.json").read_text()), self.ids)
+
+    def drive(self, *args):
+        py = TOOLS / "goose" / "venv" / "bin" / "python"
+        r = subprocess.run([str(py), "-B", str(ROOT / "scripts" / "goose_live.py"), *args], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True,
+                           env={**os.environ, "LOOP_GOOSE_SRC": str(TOOLS / "goose" / "src")})
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        return r
+
+    def test_a_session_joins_nobody_again_and_judges_01_and_07_with_the_listed_key(self):
+        lab = self.lab / "goose"
+        pub = self.lab / "published"
+        self.drive("advertise", "--homes", str(lab / "homes"), "--out", str(pub))
+        work = self.lab / "work"
+        self.drive("session", "--homes", str(lab / "homes"), "--keys", str(lab / "keys"), "--ids", str(lab / "ids.json"),
+                   "--published", str(pub), "--work", str(work))
+        pop_dir = work / "population"
+        (work / "session.log").write_text("the log lab/goose.sh tees\n")
+        pop = json.loads((pop_dir / "population.json").read_text())
+        self.assertEqual(pop["population"], "live")
+        self.assertEqual([n["node_id"] for n in pop["nodes"]], [self.ids[n]["node_id"] for n in ("goose-1", "goose-2")])
+        self.assertEqual(pop["goose"]["steps"], ["01", "03", "07"])
+        # the asks used the first join record, not a new one
+        nodes = json.loads((work / "asks" / "nodes.json").read_text())
+        for name, d in nodes.items():
+            self.assertEqual(d["first_record"], self.ids[name]["record_id"])
+        # step 07 judges the asks
+        out7 = self.lab / "07-ask"
+        r = subprocess.run([str(ROOT / "steps/07-ask"), "--population", str(pop_dir), "--out", str(out7)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+        self.assertEqual(json.loads((out7 / "finding.json").read_text())["result"], "PASS")
+        # step 01 holds the sealing node to the key nodes/<node_id>.json lists
+        if not (TOOLS / "01-seal").is_dir():
+            self.skipTest("run steps/01-seal.setup.sh for the step 01 half")
+        for listed_key, want in ((self.ids["goose-2"]["key_id"], "PASS"), ("0" * 64, "FAIL")):
+            nd = self.lab / f"nodes-{want}"
+            nd.mkdir()
+            (nd / f"{self.ids['goose-2']['node_id']}.json").write_text(json.dumps({"key_id": listed_key}))
+            out1 = self.lab / want.lower() / "01-seal"
+            r = subprocess.run([str(ROOT / "steps/01-seal"), "--population", str(pop_dir), "--out", str(out1)],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               env={**os.environ, "LOOP_NODES_DIR": str(nd)})
+            self.assertEqual(r.returncode, 0, r.stderr[-1500:])
+            found = json.loads((out1 / "finding.json").read_text())
+            self.assertEqual(found["result"], want, found["detail"])

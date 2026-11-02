@@ -21,8 +21,10 @@
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
 # rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
-# it drives (today 01 and 06) runs on the population it wrote, FAIL with the run's log when that run fails; every other row
-# is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools.
+# it drives (today 01, 03, 06 and 07) runs on the population it wrote, FAIL with the run's log when that run fails; every
+# other row is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools. With
+# --population live, lab/goose.sh run (loop#349) writes the population (LOOP_GOOSE_POPULATION): the nodes listed in
+# nodes/ and the steps it gives a Goose input (today 01, 03 and 07).
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
@@ -88,6 +90,8 @@ case "$ecosystem" in
   *) die "ecosystem is mesh, muse, cross or goose, not '$ecosystem'" ;;
 esac
 pop_dir=$ROOT/population/$population
+[ "$ecosystem" = goose ] && [ "$population" = live ] && [ ! -f "${LOOP_GOOSE_POPULATION:-}/population.json" ] \
+  && die "--ecosystem goose --population live needs LOOP_GOOSE_POPULATION, the population lab/goose.sh run wrote"
 [ "$ecosystem" = mesh ] && { [ -f "$pop_dir/population.json" ] || die "$pop_dir/population.json is missing"; }
 
 if [ -n "$only" ]; then
@@ -230,6 +234,9 @@ GOOSE = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebo
          "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#315"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."
+if ecosystem == "goose" and population == "live" and nn == "06":  # the live rail input is this lane's next PR
+    owner, why = "evidence-network/loop#349", "the live Lightning input for the Goose nodes is not built yet"
+    detail = f"The live Goose population has no step {nn} input yet; loop.sh ran nothing for it."
 if note:  # a step with a Goose input, on a host without the Goose tools
     owner, why, detail = "evidence-network/loop#330", "the Goose tools are not installed", f"{note}; loop.sh ran nothing for it."
 sys.path.insert(0, root + "/steps")

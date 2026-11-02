@@ -3,9 +3,9 @@
 
 Usage (in the Goose venv, which has `mcp`, `websockets` and `cryptography`; lab/goose.sh runs it):
 
-  goose_live.py init       --homes DIR --keys DIR     join each node (a new key on first use) and write its public key
+  goose_live.py init       --homes DIR --keys DIR --ids FILE   join each node not in FILE (a new key on first use), write its public key
   goose_live.py advertise  --homes DIR --out DIR      each node's own signed commitment and policy (loop_advertise)
-  goose_live.py session    --homes DIR --published DIR --work DIR
+  goose_live.py session    --homes DIR --keys DIR --ids FILE --published DIR --work DIR
                            seal a model call, ask through the published commitments, write the population
 
 The two nodes are G1's loop_server.py processes (evidencebook python/examples/goose at the goose-g1 pin), spoken to over
@@ -30,16 +30,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+from goose_ask_session import Goose  # noqa: E402
+from goose_rehearsal import PUBLIC  # noqa: E402
 NAMES = ("goose-1", "goose-2")  # goose-1 sells, goose-2 buys
 # The relay the commitments name: step 03 requires a wss:// URL; no node outside the lab host can reach this one.
 RELAY = "wss://relay.loop-lab.example"
 ANSWERS_WITHIN = "PT1M"  # the shortest window an absence may claim; the nodes answer only while a run polls them
 POLL_INTERVAL = 30
 STEPS = ["01", "03", "07"]  # the steps this driver gives a Goose input (06 waits on the live rail, loop#349)
-# The public half of a node's producer key, SPKI PEM, from its PKCS#8 PEM.
-PUBLIC = ("import sys; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, "
-          "load_pem_private_key as k; sys.stdout.write(k(open(sys.argv[1],'rb').read(), None).public_key()"
-          ".public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode())")
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose" if "LOOP_GOOSE_SRC" in os.environ else None
 
 
@@ -53,21 +51,6 @@ def servers(homes, relay_map=None):
             env["GOOSE_RELAY_MAP"] = relay_map
         out[name] = StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
     return out
-
-
-class Goose:
-    """One node's MCP session, as Goose holds it."""
-
-    def __init__(self, session, name):
-        self.session, self.name = session, name
-
-    async def call(self, tool, **arguments):
-        result = await self.session.call_tool(tool, arguments)
-        out = json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
-        if not out.get("ok"):
-            raise SystemExit(f"{self.name} {tool}: {out.get('error')}")
-        print(f"{self.name:7} {tool:22} ok", file=sys.stderr)
-        return out
 
 
 async def with_nodes(homes, work, relay_map=None):
@@ -94,15 +77,20 @@ def public_key(producer_key):
 
 
 def cmd_init(a):
+    """Join each node that has no identity in --ids yet (a node joined once keeps its first join record), write every
+    node's public key, and print the ids: {name: {node_id, key_id, record_id}}."""
+    ids = json.loads(Path(a.ids).read_text()) if Path(a.ids).is_file() else {}
+
     async def work(nodes):
-        return {name: await g.call("loop_join") for name, g in nodes.items()}
-    joined = asyncio.run(with_nodes(a.homes, work))
-    ids = {}
-    for name, j in joined.items():
+        for name, g in nodes.items():
+            if "record_id" not in ids.get(name, {}):
+                j = await g.call("loop_join")
+                ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"]}  # G1's node id is its signing key's id
+    asyncio.run(with_nodes(a.homes, work))
+    for name in NAMES:
         kd = Path(a.keys) / name
         kd.mkdir(parents=True, exist_ok=True)
         (kd / "node-key.pub.pem").write_text(public_key(Path(a.homes) / name / "producer.key"))
-        ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"]}  # G1's node id is its signing key's id
     print(json.dumps(ids, indent=2, sort_keys=True))
 
 
@@ -130,7 +118,10 @@ def cmd_session(a):
     run = work / "asks"
     relay = asks.Relay()
     try:
-        asyncio.run(asks.run(run, relay, names=NAMES, homes=a.homes, published=a.published, relay_name=RELAY))
+        joined = {n: {"key_id": d["key_id"], "record_id": d["record_id"]} for n, d in
+                  json.loads(Path(a.ids).read_text()).items()}
+        asyncio.run(asks.run(run, relay, names=NAMES, homes=a.homes, published=a.published, relay_name=RELAY,
+                             joined=joined))
     finally:
         relay.close()
     src = Path(os.environ["LOOP_GOOSE_SRC"])
@@ -159,11 +150,13 @@ def main(argv=None):
         p.add_argument("--homes", type=Path, required=True)
         if name == "init":
             p.add_argument("--keys", type=Path, required=True)
+            p.add_argument("--ids", type=Path, required=True)
         elif name == "advertise":
             p.add_argument("--out", type=Path, required=True)
         else:
             p.add_argument("--published", type=Path, required=True)
             p.add_argument("--keys", type=Path, required=True)
+            p.add_argument("--ids", type=Path, required=True)
             p.add_argument("--work", type=Path, required=True)
     a = ap.parse_args(argv)
     if SRC is None:

@@ -108,15 +108,17 @@ class Goose:
         out = json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
         if not out.get("ok"):
             raise SystemExit(f"{self.name} {tool}: {out.get('error')}")
-        print(f"{self.name:6} {tool:22} ok")
+        print(f"{self.name:6} {tool:22} ok", file=sys.stderr)
         return out
 
 
-async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=ADVERTISED_RELAY):
+async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=ADVERTISED_RELAY, joined=None):
     """Two nodes ask each other. By default (the rehearsal) each starts in a fresh home under out/run and advertises
     now. The live lab passes `homes` (the persistent GOOSE_HOME root, a directory per name) and `published` (the
     directory holding the commitments the nodes already published, nodes/commitments/): the nodes keep their keys, and
-    ask through the commitment each published, advertising nothing new. `relay_name` is the relay those name."""
+    ask through the commitment each published, advertising nothing new. `relay_name` is the relay those name. `joined`
+    ({name: {key_id, record_id}}, from the nodes' first join) stops the run joining them again, so a persistent node's
+    book holds one join record, not one per run."""
     shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
     out.mkdir(parents=True)
     relay_map = json.dumps({relay_name: relay.address})
@@ -131,7 +133,7 @@ async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=AD
             await bs.initialize()
             await ss.initialize()
             nodes = {names[0]: Goose(bs, names[0]), names[1]: Goose(ss, names[1])}
-            joined = {name: await g.call("loop_join") for name, g in nodes.items()}
+            joined = joined or {name: await g.call("loop_join") for name, g in nodes.items()}
             for name, g in nodes.items():
                 adv = out / name / "advertised"
                 node_id = joined[name]["key_id"]

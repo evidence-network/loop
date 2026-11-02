@@ -69,11 +69,12 @@ def pins(path):
 
 
 def listed(nodes_dir):
-    """{node_id: entry} for each node in nodes/."""
+    """{node_id: entry} for each node in nodes/ the mesh reporter asks (ask_route mesh; a Goose node is asked another way)."""
     out = {}
     for p in sorted(Path(nodes_dir).glob("*.json")):
         e = json.loads(p.read_text(encoding="utf-8"))
-        out[e["node_id"]] = e
+        if e.get("ask_route", "mesh") == "mesh":
+            out[e["node_id"]] = e
     return out
 
 

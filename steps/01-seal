@@ -465,7 +465,11 @@ def main(argv=None):
         write("NOT_CHECKED", [], f"node {node}: a pinned tool is missing or not the pin", not_checked)
         return 0
 
-    write(*seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, a.sealed, sealed_by=sealed_by))
+    # A live Goose node's key is the key nodes/<node_id>.json lists, as for a mesh node.
+    listed_id = next((n.get("node_id") for n in population["nodes"] if n["name"] == node), None) \
+        if goose and pop_name == "live" else None
+    write(*seal_and_check(out, node, key_dir, python, verifier, seen, pop_name, a.sealed, node_id=listed_id,
+                          live_node=bool(listed_id), sealed_by=sealed_by))
     return 0
 
 if __name__ == "__main__":

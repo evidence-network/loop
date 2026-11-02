@@ -42,7 +42,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 DRY=0
 if [ "${1:-}" = "--dry-run" ]; then DRY=1; shift; fi
 CMD=${1:-}
-[ "$#" -eq 1 ] || { sed -n '5p' "$0" | sed 's/^#   //' >&2; exit 2; }
+[ "$#" -eq 1 ] || { sed -n '7p' "$0" | sed 's/^#   //' >&2; exit 2; }
 
 die() { echo "goose.sh: $*" >&2; exit 2; }
 [ -n "${LAB_DIR:-}" ] || die "set LAB_DIR"
@@ -65,11 +65,12 @@ cmd_tools() { run "$ROOT/steps/goose.setup.sh"; }
 
 cmd_init() {
   need_tools
-  if [ "$DRY" = 1 ]; then echo "+ goose_live.py init --homes $G/homes --keys $G/keys > $G/ids.json"; return; fi
+  if [ "$DRY" = 1 ]; then echo "+ goose_live.py init --homes $G/homes --keys $G/keys --ids $G/ids.json > $G/ids.json"; return; fi
   mkdir -p "$G" && chmod 700 "$G"
   mkdir -p "$G/homes" && chmod 700 "$G/homes"
-  "$GOOSE_PY" -B "$ROOT/scripts/goose_live.py" init --homes "$G/homes" --keys "$G/keys" < /dev/null > "$G/ids.json.new" \
-    && mv "$G/ids.json.new" "$G/ids.json"
+  "$GOOSE_PY" -B "$ROOT/scripts/goose_live.py" init --homes "$G/homes" --keys "$G/keys" --ids "$G/ids.json" \
+    < /dev/null > "$G/ids.json.new" || { rm -f "$G/ids.json.new"; die "init failed"; }
+  mv "$G/ids.json.new" "$G/ids.json"
   python3 -B -c 'import json,sys; [print(n, d["node_id"]) for n, d in sorted(json.load(open(sys.argv[1])).items())]' "$G/ids.json"
 }
 
@@ -115,11 +116,14 @@ cmd_commitments() {
 cmd_session() {
   need_tools; need_ids
   work=$G/work/$(date -u +%Y%m%dT%H%M%SZ)
-  if [ "$DRY" = 1 ]; then echo "+ goose_live.py session --homes $G/homes --keys $G/keys --published nodes/commitments --work $work"; return; fi
+  if [ "$DRY" = 1 ]; then echo "+ goose_live.py session --homes $G/homes --keys $G/keys --ids $G/ids.json --published nodes/commitments --work $work"; return; fi
+  # Step 03 reads nodes/ at HEAD, so the session asks through the commitments HEAD holds, never a newer working tree.
+  [ -z "$(git -C "$ROOT" status --porcelain -- nodes)" ] || die "nodes/ has uncommitted changes; commit them first"
   mkdir -p "$work"
-  "$GOOSE_PY" -B "$ROOT/scripts/goose_live.py" session --homes "$G/homes" --keys "$G/keys" \
-    --published "$ROOT/nodes/commitments" --work "$work" < /dev/null 2>&1 | tee "$work/session.log" >&2
-  [ "${PIPESTATUS[0]}" -eq 0 ] || die "the session failed; its log is $work/session.log"
+  if ! "$GOOSE_PY" -B "$ROOT/scripts/goose_live.py" session --homes "$G/homes" --keys "$G/keys" --ids "$G/ids.json" \
+      --published "$ROOT/nodes/commitments" --work "$work" < /dev/null 2>&1 | tee "$work/session.log" >&2; then
+    die "the session failed; its log is $work/session.log"
+  fi
   echo "$work/population"
 }
 
@@ -132,11 +136,14 @@ cmd_run() {
     echo "+ LOOP_GOOSE_POPULATION=<population> ./loop.sh --stage 1 --ecosystem goose --population live --out ${LAB_OUT:-findings/goose/<UTC date>-live}"
     return
   fi
-  if pgrep -f "lab/lab.sh|[/ ]loop.sh|live_daily.sh" > /dev/null; then die "a lab.sh, loop.sh or live_daily.sh process runs"; fi
   mkdir -p "$LAB_DIR/run"
   ( set -o noclobber; echo "goose.sh $$ $(date -u +%FT%TZ)" > "$lock" ) 2> /dev/null || die "$lock exists: another run holds the lab"
+  # Ours from here: removed on every exit, and a signal also stops the children (the session, loop.sh).
   trap 'rm -f "$lock"' EXIT
+  trap 'pkill -P $$ 2> /dev/null || true; exit 143' INT TERM
+  if pgrep -f '(^|[/ ])(lab|loop|live_daily)\.sh( |$)' > /dev/null; then die "a lab.sh, loop.sh or live_daily.sh process runs"; fi
   pop=$(cmd_session | tail -n 1)
+  [ -f "$pop/population.json" ] || die "the session wrote no population"
   LOOP_GOOSE_POPULATION=$pop "$ROOT/loop.sh" --stage 1 --ecosystem goose --population live \
     --out "${LAB_OUT:-$ROOT/findings/goose/$(date -u +%F)-live}" < /dev/null
 }
@@ -148,5 +155,5 @@ case "$CMD" in
   commitments) cmd_commitments ;;
   session) cmd_session ;;
   run) cmd_run ;;
-  *) sed -n '5p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
+  *) sed -n '7p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac
