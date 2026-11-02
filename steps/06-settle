@@ -30,6 +30,15 @@ raw settlement counts over the ledger (the status page's number): raw counts
 the final settlements; filtered keeps those on a fee-paying rail whose payer
 and payee are declared under different controllers.
 
+On the Goose rehearsal population (`"goose"` in population.json) the exchange is not a file the driver writes: the step
+derives it from G1's own records, DIR/step06/buyer-half.json and seller-half.json (the nodes' final deal halves,
+`goose-deal-half/1`) and buyer-pay-opening.json (`loop_pay_opening`). The buyer's `pay` record must commit the rail's
+settlement id (the opening's text, under the header's `deal_local` commitment, names it, and its nonce recomputes the
+payload's `reference_commitment`); the exchange's id, payer, payee, currency and amount are then the halves' and the
+pay record's, and the existing checks compare them with the rail's object. The disclosures are the nodes' own
+(`loop_settlement_disclosure`, each signed with the node's key), not the driver's. This step does not verify the
+halves' capsule signatures or checkpoints (step 05's component work).
+
 On the live population no rail is verified: the lab nodes record their
 wallets' reports of Lightning payments (capsules plugin settlement legs and
 payment.lifecycle.v1 observations in <data_dir>/ledger/capsules.jsonl), not
@@ -149,14 +158,50 @@ def nodes_of(population_dir):
     return out
 
 
-def gather(population_dir, out):
+GOOSE_INPUTS = ["controllers.json", "buyer-half.json", "seller-half.json", "buyer-pay-opening.json"]
+
+
+def goose_exchange(out, decl):
+    """(exchange, check): the exchange derived from G1's halves and the buyer's pay opening (a Goose population),
+    or ({}, a failed check) when the pay record does not commit a reference the opening opens."""
+    try:
+        buyer, seller = read_json(out / "buyer-half.json"), read_json(out / "seller-half.json")
+        opening = read_json(out / "buyer-pay-opening.json")
+        pays = [s for s in buyer["steps"] if s["payload"].get("body", {}).get("action") == "pay"
+                and "reference_commitment" in s["payload"]["body"]]
+        if len(pays) != 1:
+            return {}, check(False, f"the buyer's half holds {len(pays)} pay records, not 1")
+        pay = pays[0]
+        body, header = pay["payload"]["body"], pay["capsule"]["evidence_record_header"]
+        digest = lambda o: hashlib.sha256(cc.canonical(o)).hexdigest()
+        if digest(pay["payload"]) not in header["payload_commitments"]:
+            return {}, check(False, "the pay payload is not the one its header commits")
+        if opening["field"] != "deal_local" or digest(opening["opening"]) != header["field_commitments"]["deal_local"]:
+            return {}, check(False, "the opening is not the opening of the pay record's local event commitment")
+        local = json.loads(opening["opening"]["text"])
+        reference, nonce = local["act"]["reference"], local["nonces"]["reference"]
+        if digest({"nonce": nonce, "text": reference}) != body["reference_commitment"]:
+            return {}, check(False, "the opened reference does not match the pay record's reference_commitment")
+        if opening["deal_id"] != buyer["deal_id"] or seller["deal_id"] != buyer["deal_id"]:
+            return {}, check(False, "the halves and the opening are not one deal")
+        exchange = {"exchange_id": buyer["deal_id"], "payer": pay["capsule"]["key_id"],
+                    "payee": seller["steps"][0]["capsule"]["key_id"], "currency": body["currency"],
+                    "amount_atomic": body["amount_minor"], "decimals": decl.get("decimals"),
+                    "settlement_ref": {"rail": body["rail"], "settlement_id": reference}}
+        return exchange, check(True, f"the buyer's pay record (seq {header['seq']}) commits settlement id "
+                                     f"{reference} on rail {body['rail']}, opened by buyer-pay-opening.json")
+    except (KeyError, IndexError, TypeError, ValueError, OSError) as e:
+        return {}, check(False, f"G1's halves or the pay opening cannot be read ({type(e).__name__}: {e})")
+
+
+def gather(population_dir, out, goose=False):
     """Copy the rail's and the step's inputs into out: the proof bytes the step decides on."""
     rail_dir, inputs = Path(population_dir) / "rail", Path(population_dir) / "step06"
     decl = read_json(rail_dir / "rail.json")
     for f in RAIL_FILES:
         shutil.copyfile(rail_dir / f, out / f)
     shutil.copyfile(rail_dir / decl["public_key"], out / "rail-key.pub.pem")
-    for f in INPUTS + sorted(p.name for p in inputs.glob("disclosure-*.json")):
+    for f in (GOOSE_INPUTS if goose else INPUTS) + sorted(p.name for p in inputs.glob("disclosure-*.json")):
         shutil.copyfile(inputs / f, out / f)
 
 
@@ -209,6 +254,9 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
     reports, checks["ledger"] = ledger_checks(lines, decl, spki)
     objs = [json.loads(ln) if checks["ledger"]["ok"] else {} for ln in lines]
 
+    if goose:
+        exchange, checks["pay_record"] = goose_exchange(out, decl)
+        (out / "exchange.json").write_text(json.dumps(exchange, indent=2, sort_keys=True) + "\n")
     exchange = read_json(out / "exchange.json")
     ref = exchange.get("settlement_ref")
     hits = [i for i, o in enumerate(objs) if isinstance(ref, dict) and o.get("settlement_id") == ref.get("settlement_id")]
@@ -261,7 +309,7 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
     controllers = read_json(out / "controllers.json").get("controllers", {})
     vol = volume(objs, reports, decl, controllers) if checks["ledger"]["ok"] else None
     (out / "checks.json").write_text(json.dumps({"checks": checks}, indent=2, sort_keys=True) + "\n")
-    proof = RAIL_FILES + ["rail-key.pub.pem"] + INPUTS + sorted(p.name for p in out.glob("disclosure-*.json")) + \
+    proof = RAIL_FILES + ["rail-key.pub.pem"] + (INPUTS + GOOSE_INPUTS[1:] if goose else INPUTS) + sorted(p.name for p in out.glob("disclosure-*.json")) + \
         ["adapter.json", "checks.json"]
     if vol is not None:
         (out / "volume.json").write_text(json.dumps(vol, indent=2, sort_keys=True) + "\n")
@@ -281,21 +329,17 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
               + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
                                 ADAPTER_ISSUE))
     if goose:
-        # The Goose rehearsal (scripts/goose_rehearsal.py). Every check on the rail held, but nothing reads G1's own pay
-        # record: the settlement is tied to the deal only by construction (the driver passed the rail's settlement id to
-        # the buyer's loop_settle), and the exchange, controller and disclosure files are the driver's (the disclosures
-        # signed by it with each node's key, their counts computed by it from the rail's ledger). So the row stays
-        # NOT_CHECKED, with the run's evidence in the proof (coordinator ruling and Sherlock2, 2026-11-01).
-        return finding.write(
-            out, result="NOT_CHECKED", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
-            detail=(f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
-                    f"value: the checks on the rail's proof bytes held ({', '.join(checks)}; band {band}), but "
-                    "rail settlement is tied by construction and G1's pay record is not read yet."),
-            not_checked=[{"what": "that G1's pay record commits the rail's settlement id",
-                          "why": "rail settlement tied by construction; G1 pay record not read yet; the exchange, "
-                                 "controller and settlement-disclosure files are the rehearsal driver's",
-                          "issue": "action-state-group/capsule-emit#408"}],
-            started=started)
+        # The Goose rehearsal (scripts/goose_rehearsal.py): the exchange is derived from G1's own records and the
+        # disclosures are the nodes' own (see the docstring), so the checks above judge G1's pay record against the
+        # rail's object. Only the controller declarations are rehearsal stand-ins, as in the mesh rehearsal.
+        detail = (f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
+                  f"value: these held, the exchange read from G1's pay record and each node's own signed disclosure, "
+                  f"the rest on the rail's proof bytes: {', '.join(checks)}. Band {band}. "
+                  f"Volume: {vol['filtered']} filtered of {vol['raw']} raw settlements ({vol['filter']}). "
+                  + finding.outside("the halves' capsule signatures and checkpoints, which step 05 reads, and the "
+                                    "controller declarations, which are rehearsal stand-ins", DEAL_ISSUE) + " "
+                  + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
+                                    ADAPTER_ISSUE))
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
                          detail=detail, started=started)
 
@@ -937,7 +981,7 @@ def main(argv):
     for p in out.iterdir():
         if p.is_file():
             p.unlink()
-    gather(a.population, out)
+    gather(a.population, out, goose="goose" in pop)
     decide(out, population=pop["population"], nodes=nodes_of(a.population), started=started,
            goose="goose" in pop, pinned=pop.get("pinned"))
     return 0

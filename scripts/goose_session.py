@@ -7,8 +7,9 @@ The same calls as evidencebook's python/examples/goose/scripted_run.py (two loop
 seller, spoken to over MCP stdio as Goose speaks to them), with one difference: after the seller has answered the
 buyer's half, the mock rail (population/rehearsal/rail/mock_rail.py) issues the settlement object for the deal, and
 the buyer's `loop_settle` takes that object's settlement_id as the payment reference it observed. The rail is the
-one the mesh rehearsal's step 06 reads; the deal's pay record commits the reference, so the deal and the rail's
-object are tied by the id. Nothing moves; the rail key is a TEST key made for the run.
+one the mesh rehearsal's step 06 reads; the deal's pay record commits the reference, and the buyer's
+`loop_pay_opening` opens it for step 06, which ties the deal and the rail's object by the id. Each node's own
+`loop_settlement_disclosure` gives step 06 its count. Nothing moves; the rail key is a TEST key made for the run.
 """
 import asyncio
 import json
@@ -90,8 +91,20 @@ async def run(out, rail_dir):
             await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-half.json"))
             settlement = issue_settlement(rail_dir, deal_id, b["key_id"], s["key_id"])
             await buyer.call("loop_settle", deal_id=deal_id, payment_ref=settlement["settlement_id"])
+            # The exchange ends: each side asks for the other's half and shares its own; the close cites the
+            # checkpoint of the half each holds.
+            for me in (buyer, seller):
+                await me.call("loop_deal_end_exchange", deal_id=deal_id, out_path=str(out / f"{me.name}-exchange-half.json"))
+            for me, peer in ((buyer, seller), (seller, buyer)):
+                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
             await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
             await seller.call("loop_deal_close", deal_id=deal_id, status="received")
+            # 06: the buyer opens its pay record's reference commitment, and each node signs its own count of the
+            # settlements on the rail (the rail's one ledger line is sequence 1).
+            await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(out / "buyer-pay-opening.json"))
+            for node in (buyer, seller):
+                await node.call("loop_settlement_disclosure", rail="mock", through_sequence=settlement["sequence"],
+                                out_path=str(out / f"{node.name}-settlement-disclosure.json"))
             for me, peer in ((buyer, seller), (seller, buyer)):
                 path = str(out / f"{me.name}-final-half.json")
                 await me.call("loop_deal_push", deal_id=deal_id, out_path=path)

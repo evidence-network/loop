@@ -20,6 +20,7 @@ have a Goose input and exits.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -39,28 +40,21 @@ PUBLIC = ("import sys; from cryptography.hazmat.primitives.serialization import 
 
 
 def step06_inputs(pop, work, nodes, deal):
-    """Step 06's rehearsal inputs for the deal: the exchange (the deal's terms and the rail's settlement by reference),
-    the controllers (stand-ins, as in the mesh rehearsal) and each node's signed settlement disclosure."""
-    import check_commitment as cc
+    """Step 06's rehearsal inputs for the deal: what G1 itself wrote (the nodes' final halves, the buyer's opening of its
+    pay record's reference commitment, each node's signed settlement disclosure) and the controllers (stand-ins, as in
+    the mesh rehearsal). The step derives the exchange from G1's records; the driver writes none."""
     import make_rail
 
-    ledger = [json.loads(ln) for ln in (pop / "rail" / "ledger.jsonl").read_text().splitlines()]
-    line = ledger[-1]
-    if line["exchange_id"] != deal["deal_id"] or line["settlement_id"] != deal["settlement_id"]:
-        raise SystemExit("goose_rehearsal: the rail's settlement is not the deal's")
+    run = work / "run"
     inputs = pop / "step06"
-    make_rail.dump(inputs / "exchange.json", {
-        "exchange_id": line["exchange_id"], "payer": line["payer"], "payee": line["payee"],
-        "currency": line["currency"], "amount_atomic": line["amount_atomic"], "decimals": line["decimals"],
-        "settlement_ref": {"rail": "mock", "settlement_id": line["settlement_id"]}})
+    inputs.mkdir(parents=True, exist_ok=True)
+    for src, name in (("buyer-final-half.json", "buyer-half.json"), ("seller-final-half.json", "seller-half.json"),
+                      ("buyer-pay-opening.json", "buyer-pay-opening.json"),
+                      ("buyer-settlement-disclosure.json", "disclosure-buyer.json"),
+                      ("seller-settlement-disclosure.json", "disclosure-seller.json")):
+        shutil.copyfile(run / src, inputs / name)
     make_rail.dump(inputs / "controllers.json", {"stand_in": True, "controllers": {
         deal["buyer"]: "goose-controller-buyer", deal["seller"]: "goose-controller-seller"}})
-    for n in nodes:
-        key_id = deal["buyer"] if n["name"] == "buyer" else deal["seller"]
-        settled = sum(1 for o in ledger if key_id in (o["payer"], o["payee"]))
-        make_rail.dump(inputs / f"disclosure-{n['name']}.json", cc.sign(
-            {"type": "settlement-disclosure/v1", "node": n["name"], "key_id": key_id, "rail": "mock",
-             "through_sequence": len(ledger), "settlements": settled}, Path(n["key_dir"]) / "node-key.pem"))
 
 
 def main(argv=None):

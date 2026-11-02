@@ -183,15 +183,16 @@ class LoopTest(unittest.TestCase):
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
                          "run steps/goose.setup.sh and steps/01-seal.setup.sh")
-    def test_goose_with_its_tools_passes_steps_01_03_and_07_and_keeps_every_other_row_not_checked(self):
+    def test_goose_with_its_tools_passes_steps_01_03_06_and_07_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
         results = dict(line.split()[::2] for line in r.stdout.splitlines())
         # 01 passes on the capsule the Goose node sealed (loop_seal), 03 on the commitments the nodes signed
-        # (loop_advertise); 06 holds its rail checks but G1's pay record is not read
+        # (loop_advertise); 06 reads G1's pay record and the nodes' own disclosures against the mock rail
         self.assertEqual(results.pop("01"), "PASS")
         self.assertEqual(results.pop("03"), "PASS")
+        self.assertEqual(results.pop("06"), "PASS")  # on the buyer's pay record and each node's own signed count
         self.assertEqual(results.pop("07"), "PASS")  # on the asks the nodes answered by polling their mailboxes
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
@@ -200,11 +201,9 @@ class LoopTest(unittest.TestCase):
         self.assertEqual({n["inputs"] for n in nodes}, {"signed by the node"})  # the harness signed neither
         self.assertEqual(list(self.finding("03-advertise", out)["pinned"]), ["goose-g1"])
         six = self.finding("06-settle", out)
-        self.assertIn("the checks on the rail's proof bytes held", six["detail"])
-        self.assertIn("G1's pay record is not read yet", six["detail"])
-        self.assertEqual(six["not_checked"][0]["issue"], "action-state-group/capsule-emit#408")
-        self.assertIn("rail settlement tied by construction; G1 pay record not read yet", six["not_checked"][0]["why"])
+        self.assertIn("the exchange read from G1's pay record and each node's own signed disclosure", six["detail"])
         self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
+        self.assertIn("buyer-pay-opening.json", [x["path"] for x in six["proof"]])
         self.assertEqual(list(six["pinned"]), ["goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):

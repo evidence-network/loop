@@ -1,6 +1,5 @@
 """The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, step 01
-judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 judging the rail, both unchanged (01 passes; 06's rail checks
-hold and the row stays NOT_CHECKED until G1's pay record is read). Skipped unless steps/goose.setup.sh has installed the
+judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 03, 06 and 07 pass). Skipped unless steps/goose.setup.sh has installed the
 Goose tools; the step 01 test also needs steps/01-seal.setup.sh's verifier.
 
 Run: python3 -m unittest tests.test_goose_rehearsal -v
@@ -175,20 +174,65 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertTrue(failures)
         self.assertTrue(all("is not the commitment's answers_within" in f for f in failures), failures)
 
-    def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
+    def judge06(self, pop):
+        out = Path(tempfile.mkdtemp(dir=self.work)) / "06-settle"
+        r = subprocess.run([str(ROOT / "steps/06-settle"), "--population", str(pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads((out / "finding.json").read_text()), json.loads((out / "checks.json").read_text())["checks"], out
+
+    def tampered_population(self, edit):
+        """A copy of the rehearsal population whose step06 inputs `edit(step06_dir)` changes."""
+        import shutil
+        pop = Path(tempfile.mkdtemp(dir=self.work)) / "population"
+        shutil.copytree(self.pop, pop)
+        edit(pop / "step06")
+        return pop
+
+    def test_step_06_passes_on_the_exchange_read_from_g1s_pay_record_and_the_nodes_own_disclosures(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())
-        exchange = json.loads((self.pop / "step06" / "exchange.json").read_text())
+        found, checks, out = self.judge06(self.pop)
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        self.assertTrue(all(c["ok"] for c in checks.values()), checks)
+        self.assertIn("pay_record", checks)
+        # no exchange or disclosure file is the driver's: the step derived the exchange from G1's halves
+        self.assertFalse((self.pop / "step06" / "exchange.json").exists())
+        exchange = json.loads((out / "exchange.json").read_text())
         self.assertEqual((exchange["exchange_id"], exchange["payer"], exchange["payee"]),
                          (deal["deal_id"], deal["buyer"], deal["seller"]))
         self.assertEqual(exchange["settlement_ref"]["settlement_id"], deal["settlement_id"])
-        out = self.work / "findings" / "06-settle"
-        r = subprocess.run([str(ROOT / "steps/06-settle"), "--population", str(self.pop), "--out", str(out)],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        found = json.loads((out / "finding.json").read_text())
-        self.assertEqual(found["result"], "NOT_CHECKED")  # G1's pay record is not read yet (capsule-emit#408)
-        checks = json.loads((out / "checks.json").read_text())["checks"]
-        self.assertTrue(all(c["ok"] for c in checks.values()), checks)
+        for n in ("buyer", "seller"):
+            self.assertEqual(json.loads((self.pop / "step06" / f"disclosure-{n}.json").read_text())["node"], f"goose-{n}")
+
+    def test_step_06_fails_when_the_opened_reference_is_not_the_one_the_pay_record_commits(self):
+        def edit(d):
+            doc = json.loads((d / "buyer-pay-opening.json").read_text())
+            local = json.loads(doc["opening"]["text"])
+            local["act"]["reference"] = "0" * 64
+            doc["opening"]["text"] = json.dumps(local, sort_keys=True, separators=(",", ":"))
+            (d / "buyer-pay-opening.json").write_text(json.dumps(doc))
+        found, checks, _ = self.judge06(self.tampered_population(edit))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertFalse(checks["pay_record"]["ok"])
+
+    def test_step_06_fails_when_the_pay_record_names_another_settlement_than_the_rails(self):
+        def edit(d):  # the buyer's half no longer holds a pay record
+            half = json.loads((d / "buyer-half.json").read_text())
+            half["steps"] = [s for s in half["steps"] if s["payload"].get("body", {}).get("action") != "pay"]
+            (d / "buyer-half.json").write_text(json.dumps(half))
+        found, checks, _ = self.judge06(self.tampered_population(edit))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertFalse(checks["pay_record"]["ok"])
+
+    def test_step_06_fails_a_node_disclosure_whose_count_or_signature_is_not_the_nodes_own(self):
+        def edit(d):
+            doc = json.loads((d / "disclosure-seller.json").read_text())
+            doc["settlements"] = 2  # signed for 1: the signature no longer verifies
+            (d / "disclosure-seller.json").write_text(json.dumps(doc))
+        found, checks, _ = self.judge06(self.tampered_population(edit))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertFalse(checks["ledger_count:seller"]["ok"])
+        self.assertTrue(checks["ledger_count:buyer"]["ok"])
 
 
 if __name__ == "__main__":
