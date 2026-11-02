@@ -725,8 +725,11 @@ def goose_live_limit(out):
     for path in sorted(Path(out).glob("*/advertised/commitment.json")):
         try:  # a commitment judged bad is already a failure; it must not stop the finding being written
             doc = load(path)
-            relays.update(doc["ask"]["nostr"]["relays"])
-            windows.add(doc["answers_within"])
+            urls, window = doc["ask"]["nostr"]["relays"], doc["answers_within"]
+            if not (isinstance(urls, list) and all(isinstance(u, str) for u in urls) and isinstance(window, str)):
+                continue
+            relays.update(urls)
+            windows.add(window)
         except (OSError, ValueError, KeyError, TypeError):
             continue
     if not relays or not windows:

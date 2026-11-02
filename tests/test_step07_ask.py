@@ -98,6 +98,8 @@ class GooseLiveLimitTest(Tmp):
     def test_a_bad_commitment_adds_nothing_and_does_not_raise(self):
         self.commitment("a", "not json")
         self.commitment("b", {"answers_within": "PT1M"})
+        self.commitment("c", {"answers_within": 60, "ask": {"nostr": {"relays": ["wss://r"]}}})
+        self.commitment("d", {"answers_within": "PT1M", "ask": {"nostr": {"relays": "wss://r"}}})
         self.assertEqual(step.goose_live_limit(self.out), "")
 
 
