@@ -375,8 +375,7 @@ def age_html(run, now):
     when = RUN_DIR.fullmatch(run.name).group(1)
     text = f"run dated {e(when)} · {age} day{'' if age == 1 else 's'} old (UTC, as of {e(now.astimezone(dt.timezone.utc).strftime('%Y-%m-%d'))})"
     if is_stale(run, now):
-        text += (f' · <strong class="stale">stale: the newest live run is more than {STALE_AFTER_DAYS} {DAYS} old, so a '
-                 "column that has stopped updating is not current</strong>")
+        text += (f' · <strong class="stale">stale: more than {STALE_AFTER_DAYS} {DAYS} old, not current</strong>')
     return text
 
 
