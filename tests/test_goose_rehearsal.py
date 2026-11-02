@@ -45,7 +45,7 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
         self.assertEqual(doc["rail"], "mock")
-        self.assertEqual(doc["goose"]["steps"], ["01", "03", "06"])
+        self.assertEqual(doc["goose"]["steps"], ["01", "03", "06", "07"])
 
     def test_step_03_passes_on_the_commitments_the_goose_nodes_signed(self):
         out = self.work / "findings" / "03-advertise"
@@ -92,6 +92,72 @@ class GooseRehearsalTest(unittest.TestCase):
         found = json.loads((out / "finding.json").read_text())
         self.assertNotIn("goose-g1", found["pinned"])
         self.assertEqual(json.loads((out / "checks.json").read_text())["sealed_by"], "given capsule")
+
+    def test_step_07_passes_on_asks_the_goose_nodes_answer_by_polling_their_mailboxes(self):
+        out = self.work / "findings" / "07-ask"
+        r = subprocess.run([str(ROOT / "steps/07-ask"), "--population", str(self.pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        found = json.loads((out / "finding.json").read_text())
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        self.assertIn("ask backend: goose", found["detail"])
+        self.assertIn("goose-g1", found["pinned"])
+        # both nodes asked each other all three asks: a signed refusal (a stranger on a mailbox), a signed
+        # artifact, and an absence whose late reply the asker kept
+        for asker, asked in (("buyer", "seller"), ("seller", "buyer")):
+            self.assertIn(f"{asker} asked {asked}: exchange refusal, exchange_late recorded_absence, "
+                          "history_card artifact", found["detail"])
+        asks = self.work / "asks"
+        for who in ("buyer", "seller"):
+            node_dir = next((asks / "run" / who).glob("shelf.db"))
+            self.assertTrue(node_dir.is_file())
+
+    def _judged(self, mutate):
+        """Step 07 on a copy of the asks with `mutate(copy)` applied: the finding."""
+        import shutil
+        work = Path(tempfile.mkdtemp(dir=self.work))
+        pop = work / "population"
+        shutil.copytree(self.work / "asks", work / "asks", ignore=shutil.ignore_patterns("run"))
+        doc = json.loads((self.pop / "population.json").read_text())
+        doc["goose"]["asks"] = {"run": str(work / "asks")}
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        mutate(work / "asks")
+        out = work / "findings" / "07-ask"
+        r = subprocess.run([str(ROOT / "steps/07-ask"), "--population", str(pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads((out / "finding.json").read_text())
+
+    def test_step_07_fails_a_reply_that_is_not_the_one_the_response_record_keeps(self):
+        def swap(asks):
+            (asks / "buyer/asks/seller/history_card/answer.json").write_bytes(
+                (asks / "buyer/asks/seller/exchange/answer.json").read_bytes())
+        found = self._judged(swap)
+        self.assertEqual(found["result"], "FAIL")
+        self.assertIn("the reply bytes are not the ones the response record keeps", found["detail"])
+
+    def test_step_07_fails_an_absence_when_a_reply_was_delivered_by_the_deadline(self):
+        def early(asks):
+            log = asks / "seller/asks/buyer/carrier.jsonl"
+            events = [json.loads(line) for line in log.read_text().splitlines()]
+            sent = next(e for e in events if e["ask"] == "exchange_late" and e["event"] == "sent")
+            for e in events:
+                if e["ask"] == "exchange_late" and e["event"] == "delivered":
+                    e["at"] = sent["at"]
+            log.write_text("".join(json.dumps(e, sort_keys=True) + "\n" for e in events))
+        found = self._judged(early)
+        self.assertEqual(found["result"], "FAIL")
+        self.assertIn("the reply was delivered by the deadline", found["detail"])
+
+    def test_step_07_fails_a_request_whose_deadline_is_not_the_commitments_answers_within(self):
+        def stretch(asks):
+            path = asks / "buyer/asks/seller/history_card/request.json"
+            request = json.loads(path.read_text())
+            request["deadline"] = "2099-01-01T00:00:00Z"
+            path.write_text(json.dumps(request, sort_keys=True, separators=(",", ":")))
+        found = self._judged(stretch)
+        self.assertEqual(found["result"], "FAIL")
 
     def test_the_rail_object_is_the_deals_and_step_06_holds_its_rail_checks_but_stays_not_checked(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())

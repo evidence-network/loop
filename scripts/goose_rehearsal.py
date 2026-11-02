@@ -9,7 +9,8 @@ mesh rehearsal's mock rail paying the deal, into DIR/run and DIR/population/rail
 holds `node-key.pem` and `node-key.pub.pem`, taken from the node's own producer key, so a step checks
 a record under the key the node signed it with. A `goose` member names what the run exported and which
 steps read it (`steps`): step 01 the capsule the buyer sealed (`sealed`), step 03 each node's own signed commitment and
-policy (`commitments`, loop_advertise); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
+policy (`commitments`, loop_advertise), step 07 the asks the two nodes made of each other through the mailboxes their
+commitments advertise (`asks`, scripts/goose_ask_session.py: each node polls its own mailbox and answers, never serves); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
 
 Exit 0 once population.json is written; exit 3 when the Goose tools are not installed (steps/goose.setup.sh); exit 1
@@ -28,7 +29,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["01", "03", "06"]
+STEPS = ["01", "03", "06", "07"]
 NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
@@ -88,6 +89,16 @@ def main(argv=None):
         print("goose_rehearsal: the scripted run failed; the end of its log:\n" + "\n".join(
             (r.stdout + r.stderr).splitlines()[-30:]), file=sys.stderr)
         return 1
+    # Step 07: the two nodes ask each other through their advertised mailboxes (a second pair of nodes, its own homes).
+    asks = work / "asks"
+    r = subprocess.run([str(python), "-B", str(HERE / "goose_ask_session.py"), str(asks)], stdin=subprocess.DEVNULL,
+                       capture_output=True, text=True,
+                       env={**os.environ, "LOOP_GOOSE_SRC": str(src), "PYTHONDONTWRITEBYTECODE": "1"})
+    (work / "ask_session.log").write_text(r.stdout + r.stderr)
+    if r.returncode != 0:
+        print("goose_rehearsal: the ask session failed; the end of its log:\n" + "\n".join(
+            (r.stdout + r.stderr).splitlines()[-30:]), file=sys.stderr)
+        return 1
     nodes = []
     for name in ("buyer", "seller"):
         key = run / name / "producer.key"
@@ -124,7 +135,8 @@ def main(argv=None):
         commitments[n["name"]] = {"commitment": str(c), "policy": str(pol)}
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
            "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)},
-                                             "commitments": commitments}}
+                                             "commitments": commitments,
+                                             "asks": {"run": str(asks), "log": str(work / "ask_session.log")}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
 

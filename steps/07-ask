@@ -59,6 +59,15 @@ it cites. The judge checks, on those bytes:
     stranger-safe refusal is checked); the `reporter` backend judges it, on a
     step 05 half.
 
+`goose` (the Goose rehearsal, population.json `goose.asks`): two evidencebook Goose nodes, which host no server, advertise
+a Nostr mailbox in their signed commitments (`ask.nostr`, binding nostr-mailbox-v0) and ask each other through it
+(scripts/goose_ask_session.py): the asked node polls its mailbox and answers from its own book. The carrier is the
+session's relay, which logs when it received each event. The same three asks are made, with these differences, all in
+`judge_ask(..., mailbox=True)`: the asker is a stranger on a mailbox, so the policy answers it only what it answers a
+stranger (the `exchange` ask is refused with a signed refusal, `history_card/1` answered); the request carries its own
+`deadline`, which must be the commitment's `answers_within` after it was sealed, and is the window; each outcome bundle is
+G1's `loop_book_bundle` with `disclose`.
+
 `reporter` (Mesh plugin nodes): asks each node checkpoints, history_card/1 and an
 exchange request (below) through the daily reporter's ask (scripts/daily_report.py), judged as step 12
 judges it (scripts and steps/12-join reused: the answer verifies under the
@@ -147,6 +156,7 @@ ASSERTS = ("a later exchange request is sealed in the asker's book before it is 
            "a refusal is not of a subject the asked node's advertised policy answers; the deadline is the "
            "commitment's answers_within, and an answer after it counts as an absence")
 PINNED_BOOK = ["capsulectl", "capsulectl-book"]
+PINNED_GOOSE = ["capsulectl", "capsulectl-book", "goose-g1"]
 PINNED_REPORTER = ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter"]
 # Rehearsal nodes answer within a minute: the shortest window an absence may claim
 # (evidencebook MinimumAbsenceWindow), so the late ask's absence is recorded in this run.
@@ -500,8 +510,12 @@ def disclosed(bundle, capsule_id):
     return (bundle.get("disclosures", {}).get(capsule_id) or {}).get("agent_input")
 
 
-def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=None):
-    """(errors, answered_at or None) for one ask, on its proof bytes; parts it cannot judge go to `not_checked`."""
+def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=None, mailbox=False):
+    """(errors, answered_at or None) for one ask, on its proof bytes; parts it cannot judge go to `not_checked`.
+
+    `mailbox` (the goose backend): the ask went over a Nostr mailbox. Its request carries its own `deadline`, which is
+    the window (binding nostr-mailbox-v0 section 5.3), and it must be the commitment's answers_within after the request
+    was sealed; the asker is a stranger there, so the advertised policy answers it only what it answers a stranger."""
     ask_dir = Path(ask_dir)
     name = ask_dir.name
     errs = []
@@ -537,6 +551,17 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
         errs.append(f"{name}: the request was sealed at {req_h['committed_at']}, not before it was sent at "
                     f"{sent[0]['at']}")
     deadline = sent_at + adv["within"]
+    if mailbox:
+        try:
+            deadline = utc(request.get("deadline"))
+        except ValueError:
+            errs.append(f"{name}: the request carries no deadline in its own bytes")
+        else:
+            if abs((deadline - sealed_at) - adv["within"]) > dt.timedelta(seconds=2):
+                errs.append(f"{name}: the request's deadline {request.get('deadline')} is not the commitment's "
+                            f"answers_within ({adv['answers_within']}) after it was sealed at {req_h['committed_at']}")
+            if not sent_at <= deadline:
+                errs.append(f"{name}: the request was sent at {sent[0]['at']}, after its own deadline")
     st = out_h.get("statement", {})
     if st.get("request_digest") != sha256(request_bytes):
         errs.append(f"{name}: the outcome is for another request")
@@ -562,7 +587,7 @@ def judge_ask(ask_dir, adv, asker_key, events, verdict, verifier, not_checked=No
             if outcome != st.get("outcome"):
                 errs.append(f"{name}: the reply does not verify again under the listed key: "
                             f"{refused or outcome}")
-        if st.get("outcome") == "refusal" and policy_answers(request, adv):
+        if st.get("outcome") == "refusal" and policy_answers(request, adv, requester_authenticated=not mailbox):
             what = "stranger-safe" if stranger_safe(request, adv) else "answered to this asker"
             verdict_r = refusal_verdict(st.get("reason"), request_profile(request))
             if verdict_r == "fail":
@@ -599,7 +624,7 @@ def asked(request):
     return "+".join([*request.get("subject", {}), *([request["derivation"]] if "derivation" in request else [])])
 
 
-def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work, not_checked=None):
+def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work, not_checked=None, mailbox=False):
     """(errors, [(answered_at, ask)], proof paths relative to pair_dir, line) for one asker's asks of one node."""
     pair_dir = Path(pair_dir)
     adv, errs = advertisement(adv_dir)
@@ -620,7 +645,8 @@ def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work, not_checked=None)
         if verrs:
             errs += [f"{name}: {e}" for e in verrs]
             continue
-        e, at = judge_ask(d, adv, asker_key, [x for x in events if x["ask"] == name], verdict, verifier, not_checked)
+        e, at = judge_ask(d, adv, asker_key, [x for x in events if x["ask"] == name], verdict, verifier, not_checked,
+                          mailbox)
         errs += e
         if at is not None:
             answered.append((at, name))
@@ -629,7 +655,7 @@ def judge_pair(pair_dir, adv_dir, asker_key, capsulectl, work, not_checked=None)
     return errs, answered, proof, ", ".join(outcomes)
 
 
-def judge_run(out, nodes_keys, capsulectl, tmp, not_checked=None):
+def judge_run(out, nodes_keys, capsulectl, tmp, not_checked=None, mailbox=False):
     """Judge every <asker>/asks/<asked>/ under out. Returns (failures, answered, proof, lines)."""
     out = Path(out)
     failures, answered, proof, lines = [], [], [], []
@@ -640,7 +666,7 @@ def judge_run(out, nodes_keys, capsulectl, tmp, not_checked=None):
             asked_name = pair_dir.name
             adv_dir = out / asked_name / "advertised"
             errs, ans, p, line = judge_pair(pair_dir, adv_dir, key, capsulectl,
-                                            Path(tmp) / f"verify-{asker}-{asked_name}", not_checked)
+                                            Path(tmp) / f"verify-{asker}-{asked_name}", not_checked, mailbox)
             failures += [f"{asker} asked {asked_name}: {e}" for e in errs]
             answered += [(at, f"{asker} asked {asked_name} {name}") for at, name in ans]
             proof += [f"{asker}/asks/{asked_name}/{x}" for x in p]
@@ -661,6 +687,25 @@ def run_book(pop, out, tmp):
     run_asks([(out, asker, asked, asks) for asker in nodes for asked in nodes if asker is not asked])
     not_checked = []
     failures, answered, proof, lines = judge_run(out, {n.name: n.key for n in nodes}, capsulectl, tmp, not_checked)
+    return failures, not_checked, answered, proof, lines
+
+
+# --- Backend "goose": Goose nodes, asked through the Nostr mailbox their commitments advertise ----------
+def run_goose(pop, out, tmp):
+    """Judge the asks scripts/goose_ask_session.py made between the rehearsal's two Goose nodes: each node polled
+    its own mailbox and answered from its book, never served. The session's proof tree is copied under `out`
+    (as the book backend writes it) and judged on those bytes with the same checks, the mailbox variants set."""
+    capsulectl = tools()
+    if not capsulectl.is_file():
+        raise SystemExit(f"07-ask: no capsulectl at {capsulectl}; run steps/07-ask.setup.sh")
+    run = Path(pop["goose"]["asks"]["run"])
+    nodes = load(run / "nodes.json")
+    for name in nodes:
+        shutil.rmtree(Path(out) / name, ignore_errors=True)
+        shutil.copytree(run / name, Path(out) / name)
+    not_checked = []
+    failures, answered, proof, lines = judge_run(out, {n: v["key_id"] for n, v in nodes.items()}, capsulectl, tmp,
+                                                 not_checked, mailbox=True)
     return failures, not_checked, answered, proof, lines
 
 
@@ -1581,7 +1626,8 @@ def judge_ledger_proof(out, pop, how, attempt, stem, extract, node_id, request, 
 
 
 def backend(pop):
-    return pop.get("ask") or ("reporter" if pop["population"] == "live" else "book")
+    return pop.get("ask") or ("goose" if (pop.get("goose") or {}).get("asks") else
+                              "reporter" if pop["population"] == "live" else "book")
 
 
 def sealed_all(out):
@@ -1610,7 +1656,7 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     detail = f"ask backend: {which}. " + "; ".join(failures or lines) + "."
-    pinned = PINNED_BOOK if which == "book" else PINNED_REPORTER
+    pinned = {"book": PINNED_BOOK, "goose": PINNED_GOOSE}.get(which, PINNED_REPORTER)
     return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
                          detail=detail, not_checked=not_checked, started=started)
 
@@ -1641,6 +1687,9 @@ def main(argv=None):
     if which == "book":
         with tempfile.TemporaryDirectory(prefix="07-ask-") as tmp:
             failures, not_checked, answered, proof, lines = run_book(pop, a.out, tmp)
+    elif which == "goose":
+        with tempfile.TemporaryDirectory(prefix="07-ask-") as tmp:
+            failures, not_checked, answered, proof, lines = run_goose(pop, a.out, tmp)
     elif which == "reporter":
         if a.self_node and a.self_node not in [n["name"] for n in pop["nodes"]]:
             print(f"07-ask: --self-node {a.self_node!r} is not a node in the population "

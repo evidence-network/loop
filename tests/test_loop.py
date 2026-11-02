@@ -156,8 +156,8 @@ class LoopTest(unittest.TestCase):
         run = json.loads((out / "run.json").read_text())
         self.assertEqual((run["ecosystem"], len(run["steps"])), ("goose", 12))
         owners = {n: self.finding(f"{n}-{d}", out)["not_checked"][0]["issue"] for n, d in self.GOOSE_NAMES.items()}
-        # steps 01 and 06 have a Goose input: without the tools they wait on them, not on G1's or the live rail's work
-        self.assertEqual(owners, {**self.GOOSE_OWNERS, "01": "evidence-network/loop#330", "06": "evidence-network/loop#330"})
+        # steps 01, 06 and 07 have a Goose input: without the tools they wait on them, not on G1's or the live rail's work
+        self.assertEqual(owners, {**self.GOOSE_OWNERS, "01": "evidence-network/loop#330", "06": "evidence-network/loop#330", "07": "evidence-network/loop#330"})
         six = self.finding("06-settle", out)
         self.assertIn("Goose tools are not installed", six["detail"])
         self.assertNotIn("no step", six["not_checked"][0]["why"])
@@ -183,7 +183,7 @@ class LoopTest(unittest.TestCase):
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
                          "run steps/goose.setup.sh and steps/01-seal.setup.sh")
-    def test_goose_with_its_tools_passes_steps_01_and_03_and_keeps_every_other_row_not_checked(self):
+    def test_goose_with_its_tools_passes_steps_01_03_and_07_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -192,6 +192,7 @@ class LoopTest(unittest.TestCase):
         # (loop_advertise); 06 holds its rail checks but G1's pay record is not read
         self.assertEqual(results.pop("01"), "PASS")
         self.assertEqual(results.pop("03"), "PASS")
+        self.assertEqual(results.pop("07"), "PASS")  # on the asks the nodes answered by polling their mailboxes
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
         self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "goose-g1"])  # the Goose node sealed it
