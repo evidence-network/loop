@@ -1,0 +1,56 @@
+{
+  "answers": {
+    "derivations": [
+      "history_card/1"
+    ],
+    "subjects": [
+      "checkpoints",
+      "full_history"
+    ]
+  },
+  "answers_within": "PT1M",
+  "ask": {
+    "bindings": [
+      "evidencebook/respond"
+    ],
+    "endpoint": "nostr:mailbox",
+    "nostr": {
+      "mailbox_key": "d28675affb83f6f0b1ffd66604ff49740070d5142fabc4212fa4d4a46ac35cdf",
+      "relays": [
+        "wss://relay.loop-lab.example"
+      ]
+    }
+  },
+  "checkpoint": {
+    "bytes": "0oRYZKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCA5Xj3jCwDGf/GBuiihKV40kSY0qaPmW6Tk01Bjc2rnfQ+iAWpnb29zZS9ub2RlAmxnb29zZS9ub2RlIzGgWI+mZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUBaWlzc3VlZF9hdHgYMjAyNi0xMS0wMlQwNzoyNDoyOC40MDNaaXByZXZfc2l6ZQBqY29tbWl0bWVudFgjgVgg+SY6AB36UGrdYnTWVnZoHqTbDpy2OhlhJAOUucCYPoJvcHJldl9jb21taXRtZW50QFhAdup2EEZHZCOdh0S2QalPcIKfb+aYxCVzAykysy7204W03Im8rADGJaAq1tEJIaEJ3MmAfEQZ5GIWlD4am6lSDA==",
+    "sha256": "0995c8c63d6a119be3b36bf76628e586ebe679d69325d015636bf3a1b374e0f2"
+  },
+  "history_cards": [
+    {
+      "bytes": "eyJhbmNob3IiOnsiZGlnZXN0IjoiMDk5NWM4YzYzZDZhMTE5YmUzYjM2YmY3NjYyOGU1ODZlYmU2NzlkNjkzMjVkMDE1NjM2YmYzYTFiMzc0ZTBmMiJ9LCJhcnRpZmFjdCI6ImV5SmhibU5vYjNJaU9pSXdPVGsxWXpoak5qTmtObUV4TVRsaVpUTmlNelppWmpjMk5qSTRaVFU0Tm1WaVpUWTNPV1EyT1RNeU5XUXdNVFUyTXpaaVpqTmhNV0l6TnpSbE1HWXlJaXdpWkdWeWFYWmhkR2x2YmlJNkltaHBjM1J2Y25sZlkyRnlaQzh4SWl3aVpYWnBaR1Z1WTJWZmMzUnlaV0Z0SWpvaVoyOXZjMlV2Ym05a1pTSXNJbWhwYzNSdmNua2lPbHQ3SW1Ob1pXTnJjRzlwYm5RaU9pSmtNamcwTlRnMk5HRTBNREV5TnpBek56Z3haall4TnpBM01EWmpOamsyTXpZeE56UTJPVFptTm1VeVpqWXpObU0yWXpKa05qTTJPRFkxTmpNMllqY3dObVkyT1RabE56UXlZall6TmpJMlpqY3lNRFExT0RJd016azFaVE5rWlRNd1lqQXdZelkzWm1ZeE9ERmlZVEk0WVRFeU9UVmxNelE1TVRJMk16UmhPV0V6WlRZMVltRTBaVFJrTXpVd05qTTNNelpoWlRjM1pEQm1ZVEl3TVRaaE5qYzJaalptTnpNMk5USm1ObVUyWmpZME5qVXdNalpqTmpjMlpqWm1Oek0yTlRKbU5tVTJaalkwTmpVeU16TXhZVEExT0RobVlUWTJORFppTmprMlpUWTBObVUyTXpaak5tTXlaRFl6TmpnMk5UWXpObUkzTURabU5qazJaVGMwTmpnMll6Wm1OamMxWmpjek5qazNZVFkxTURFMk9UWTVOek0zTXpjMU5qVTJORFZtTmpFM05EYzRNVGd6TWpNd016SXpOakprTXpFek1USmtNekF6TWpVME16QXpOek5oTXpJek5ETmhNekl6T0RKbE16UXpNRE16TldFMk9UY3dOekkyTlRjMk5XWTNNelk1TjJFMk5UQXdObUUyTXpabU5tUTJaRFk1TnpRMlpEWTFObVUzTkRVNE1qTTRNVFU0TWpCbU9USTJNMkV3TURGa1ptRTFNRFpoWkdRMk1qYzBaRFkxTmpjMk5qZ3haV0UwWkdJd1pUbGpZall6WVRFNU5qRXlOREF6T1RSaU9XTXdPVGd6WlRneU5tWTNNRGN5TmpVM05qVm1Oak0yWmpaa05tUTJPVGMwTm1RMk5UWmxOelEwTURVNE5EQTNObVZoTnpZeE1EUTJORGMyTkRJek9XUTROelEwWWpZME1XRTVOR1kzTURneU9XWTJabVUyT1Roak5ESTFOek13TXpJNU16SmlNekpsWmpaa016ZzFZalJrWXpnNVltTmhZekF3WXpZeU5XRXdNbUZrTm1ReE1Ea3lNV0V4TURsa1kyTTVPREEzWXpRME1UbGxORFl5TVRZNU5ETmxNV0U1WW1FNU5USXdZeUlzSW1OdmJuTnBjM1JsYm1ONVgyWnliMjFmY0hKbGRtbHZkWE1pT201MWJHeDlYU3dpYzNWaWFtVmpkQ0k2ZXlKamFHVmphM0J2YVc1MGN5STZiblZzYkgxOSIsImFydGlmYWN0X2RpZ2VzdCI6IjBhMTg0MWRmNjI3YmUwNzI1OGRmYmIxM2Y4YzdkNmU1ZDlkZDY3MDRiZTMyNjk4YWUyMTU3MDhmMGJlZjk5ZjEiLCJkZXJpdmF0aW9uIjoiaGlzdG9yeV9jYXJkLzEiLCJpc3N1ZWRfYXQiOiIyMDI2LTExLTAyVDA3OjI0OjMxWiIsInByb2ZpbGUiOiJldmlkZW5jZS1pbnRlcm9wLzAiLCJyZXF1ZXN0X2RpZ2VzdCI6IjAwMDk4NDhiMTkwNWVlNGZmZGMwODFiOWMwZjFhN2IxOTNhNjgyYzhkM2UxNmU5OWIyMjIzZmFlNjY1Y2MwMjQiLCJyZXNwb25kZXIiOiJiNWY2ZTQ4ZThmZTJkYjMwNDIyYTJiNmY1Y2UwN2JlNGVkZmNjYTdkYjZjNjU5NzI3MTMwMjZhOGExNTVmNDNhIiwic2lnIjoiM2MwZjM4MDY1MTY3MmJiMzQ4NGE3MTVjODVjZGU5ZjgzNjU2ZTczOTAzODIzYTlhMzg1NTAxODBlOGYyN2U4YTBhYWI0OGRmMmM4YzA4NDM5ZTNiODVhOThlMmYzY2E4ZGQzMGI0OTgzOTlmNzA4OWRhMjc3YjcwNGEwM2ZlMGUiLCJzdWJqZWN0Ijp7ImNoZWNrcG9pbnRzIjpudWxsfX0=",
+      "checkpoint_key": "MCowBQYDK2VwAyEAOV494wsAxn_xgboooSleNJEmNKmj5luk5NNQY3Nq530",
+      "community": "goose",
+      "derivation": "history_card/1",
+      "sha256": "e4111f69d60083dfc71b7b3a349c209ec1869b0ffc08c6049fa7da1231a867d6",
+      "stream": "goose/node"
+    }
+  ],
+  "human_gated": true,
+  "issued_at": "2026-11-02T07:24:31Z",
+  "key_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "lcap": {
+    "policy_digest": "2d90d220b8fa82d6c57b05cc3287734dd9c2afccbdf2940eb7937151bb497705",
+    "policy_uri": "policies/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json",
+    "predicate_classes": [
+      "performed:counterparty_half"
+    ]
+  },
+  "node_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "profile": "evidence-commitment/1",
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "it6-0wPe_OCASNnrCRfOT5FNSZbJtwGanXohg6qU3TEvaZTSmkPd9TCCUshmJIqztHxWn_kniq5czKjpK6A-DQ"
+  },
+  "spki": "MCowBQYDK2VwAyEAtfbkjo/i2zBCKitvXOB75O38yn22xllycTAmqKFV9Do="
+}

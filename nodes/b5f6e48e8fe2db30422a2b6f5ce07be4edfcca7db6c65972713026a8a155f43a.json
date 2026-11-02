@@ -1,0 +1,17 @@
+{
+  "ask_route": "nostr",
+  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
+  "disclosure": {
+    "policy": "counterparties",
+    "stranger_safe": [
+      "checkpoints",
+      "history_card/1"
+    ]
+  },
+  "host_build": "goose-g1 a255d824eecd64e1269aa22f581b748f099d3805 (evidencebook python/examples/goose, run by lab/goose.sh on the loop lab host)",
+  "key_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "mesh": "lab",
+  "node_id": "b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a",
+  "operator": "ethanyzhang",
+  "plugin_version": "loop_server.py of goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; the Goose node goose-1"
+}
