@@ -142,6 +142,40 @@ test nodes; a published /1 commitment verifies here the same way.
 The policy file is `{"profile": "disclosure-policy/0", "key_id", "policy":
 {...}, "sig"}`, signed the same way by the same key.
 
+### evidence-commitment/1: the standard card staple
+
+A /1 commitment may name the holder's standard-card staple (Steven's 2026-11-01
+staple ruling, evidencebook#275: the standard card is shown only when the other
+side asks, and a staple never carries more). The staple is evidencebook's
+`Book.Staple` of `standard_history/1`: the holder's own evidence request and the
+signed envelope its book answered with. The commitment names it by digest and
+never carries it:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `standard_history` | object, optional | exactly the three members below, all required. A node that does not staple a standard card leaves it out. Profile /0 has none |
+| `standard_history.derivation` | string | `standard_history/1` |
+| `standard_history.request_sha256` | 64 hex | sha256 of the staple's request bytes |
+| `standard_history.reply_sha256` | 64 hex | sha256 of the staple's reply bytes (the signed envelope) |
+
+The count rule holds: the members are strings, and the card itself is not in the
+commitment. A reader that is sent or fetches the two byte strings runs
+evidencebook's `CheckStaple` with the commitment's `key_id` as the holder.
+
+This step always checks the shape and the digests' form. When the staple bytes
+are published beside the commitment (`nodes/commitments/standard_history/<node_id>.request.json`
+and `.reply.json`; the Goose rehearsal passes them as `standard_history_request`
+and `standard_history_reply` next to a node's signed commitment) it also checks
+that both digests match, that the reply is an `evidence-interop/0` answer, that
+the request and the answer name `standard_history/1`, that the answer is
+presented by the commitment's `key_id`, and that its `request_digest` is
+`request_sha256`. Without the bytes the commitment still passes and the result
+lists the staple as not checked. The staple's signature, anchor and nonce are
+`CheckStaple`'s, not checked here. Each refusal is named:
+`standard_history.malformed`, `standard_history.derivation`,
+`standard_history.bytes_mismatch`, `standard_history.not_an_answer`,
+`standard_history.not_its_subject` and `standard_history.request_mismatch`.
+
 ### evidence-commitment/1: the Nostr mailbox route
 
 A /1 commitment may also say how it is asked over Nostr, in one optional

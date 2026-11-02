@@ -33,6 +33,14 @@ mailbox key (secp256k1 x-only, 64 lowercase hex, a point on the curve);
 relays is a non-empty list of distinct wss:// URLs, the relays the node reads
 (§4.3), each in one written form (RELAY below) so that distinct means distinct relays. Each refusal starts with `ask.nostr.<name>:` (the NOSTR_* constants).
 
+/1 may also name the holder's standard-card staple, `standard_history`: exactly {derivation, request_sha256,
+reply_sha256}, the derivation `standard_history/1` and the sha256 of the staple's two parts (evidencebook
+Book.Staple: the holder's own request and the signed envelope its book answered with). Only digests: the card is
+shown when the other side asks, so the commitment never carries it. Where the staple bytes are supplied
+(`standard_history/<node_id>.request.json` and `.reply.json` beside the commitment), their digests must match and the
+reply must be an evidence-interop/0 answer to that request, presented by key_id. The staple's own signature is
+evidencebook's CheckStaple. Each refusal starts with `standard_history.<name>:` (the STD_* constants).
+
 COUNT RULE. A commitment says what a node can answer, never what it has done.
 It is refused when, anywhere in its own members (the opaque `bytes` of the
 checkpoint and of each staple are not its members; they are signed artifacts it
@@ -100,6 +108,17 @@ SCHEMA_1 = {("history_cards" if k == "history_card" else k): (list if k == "hist
             for k, v in SCHEMA.items()}
 CARD_MEMBERS = {"stream": str, "community": str, "derivation": str, "sha256": str, "bytes": str}
 CARD_OPTIONAL = {"checkpoint_key": str}
+# /1's optional standard_history: the holder's standard_history/1 staple (evidencebook Book.Staple: the holder's own
+# request and its signed reply) named by the digest of each, never carried: it is shown only when the other side asks.
+STANDARD_MEMBERS = {"derivation": str, "request_sha256": str, "reply_sha256": str}
+STANDARD_DERIVATION = "standard_history/1"
+# The named refusals of standard_history.
+STD_SHAPE = "standard_history.malformed"
+STD_DERIVATION = "standard_history.derivation"
+STD_BYTES = "standard_history.bytes_mismatch"
+STD_NOT_ANSWER = "standard_history.not_an_answer"
+STD_NOT_SUBJECT = "standard_history.not_its_subject"
+STD_REQUEST = "standard_history.request_mismatch"
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
 
 # The named refusals of a /1 card.
@@ -377,21 +396,41 @@ def nostr_errors(route):
     return errs
 
 
+def standard_field_errors(member):
+    """The shape of /1's standard_history: exactly {derivation, request_sha256, reply_sha256}, the digests 64 hex."""
+    if not isinstance(member, dict):
+        return [f"{STD_SHAPE}: standard_history must be an object"]
+    errs = [f"{STD_SHAPE}: missing standard_history.{m}" for m in STANDARD_MEMBERS if m not in member]
+    errs += [f"{STD_SHAPE}: standard_history.{m} must be a str" for m in STANDARD_MEMBERS
+             if m in member and not isinstance(member[m], str)]
+    errs += [f"{STD_SHAPE}: unknown field standard_history.{x}" for x in sorted(set(member) - set(STANDARD_MEMBERS))]
+    if errs:
+        return errs
+    if member["derivation"] != STANDARD_DERIVATION:
+        errs.append(f"{STD_DERIVATION}: standard_history.derivation must be {STANDARD_DERIVATION}")
+    errs += [f"{STD_SHAPE}: standard_history.{m} is not a sha256 (64 lowercase hex)"
+             for m in ("request_sha256", "reply_sha256") if not HEX64.fullmatch(member[m])]
+    return errs
+
+
 def field_errors(doc):
     """Missing, unknown and malformed fields."""
     if not isinstance(doc, dict):
         return ["not a JSON object"]
     errs = []
     schema = schema_of(doc)
+    optional_members = {**OPTIONAL, **({"standard_history": dict} if doc.get("profile") == PROFILE_1 else {})}
     # /1's optional members of an object member, each with the function that checks it.
     sub_optional = {"ask": {"nostr": nostr_errors}} if doc.get("profile") == PROFILE_1 else {}
-    for name, shape in {**schema, **OPTIONAL}.items():
+    for name, shape in {**schema, **optional_members}.items():
         if name not in doc:
-            if name not in OPTIONAL:
+            if name not in optional_members:
                 errs.append(f"missing {name}")
             continue
         v = doc[name]
-        if isinstance(shape, dict):
+        if name == "standard_history":
+            errs += standard_field_errors(v)
+        elif isinstance(shape, dict):
             if not isinstance(v, dict):
                 errs.append(f"{name} must be an object")
                 continue
@@ -407,7 +446,7 @@ def field_errors(doc):
             errs += [f"unknown field {name}.{x}" for x in sorted(set(v) - set(shape) - set(optional))]
         elif not isinstance(v, shape):
             errs.append(f"{name} must be a {shape.__name__}")
-    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(schema) - set(OPTIONAL))]
+    errs += [f"unknown field {x}" for x in sorted(set(doc) - set(schema) - set(optional_members))]
     if doc.get("profile") not in (PROFILE, PROFILE_1):
         errs.append(f"profile must be {PROFILE} or {PROFILE_1}")
     if errs:
@@ -517,6 +556,33 @@ def staple_errors(doc):
     return errs
 
 
+def standard_errors(doc, request, reply):
+    """The staple bytes against the standard_history member: digests, and that the reply answers the request.
+
+    The staple's signature, anchor and nonce are evidencebook's CheckStaple, not checked here (no pinned verifier).
+    """
+    member, key_id = doc["standard_history"], doc["key_id"]
+    errs = []
+    for name, raw in (("request", request), ("reply", reply)):
+        if hashlib.sha256(raw).hexdigest() != member[f"{name}_sha256"]:
+            errs.append(f"{STD_BYTES}: the staple's {name} bytes do not match standard_history.{name}_sha256")
+    if errs:
+        return errs
+    try:
+        asked, answered = json.loads(request), json.loads(reply)
+    except ValueError:
+        return [f"{STD_NOT_ANSWER}: the staple's request and reply are not JSON"]
+    if not isinstance(asked, dict) or not isinstance(answered, dict) or answered.get("profile") != STAPLE_PROFILE:
+        return [f"{STD_NOT_ANSWER}: the staple's reply is not an {STAPLE_PROFILE} answer to a JSON request"]
+    if asked.get("derivation") != STANDARD_DERIVATION or answered.get("derivation") != STANDARD_DERIVATION:
+        errs.append(f"{STD_DERIVATION}: the staple's request and answer must both name {STANDARD_DERIVATION}")
+    if answered.get("responder") != key_id:
+        errs.append(f"{STD_NOT_SUBJECT}: the staple is not presented by its subject: its responder is not key_id")
+    if answered.get("request_digest") != member["request_sha256"]:
+        errs.append(f"{STD_REQUEST}: the staple's answer responds to another request than standard_history.request_sha256")
+    return errs
+
+
 def checkpoint_errors(doc):
     return _decoded(doc["checkpoint"], "checkpoint")[1]
 
@@ -537,8 +603,9 @@ def policy_errors(doc, policy_bytes, spki_der):
     return []
 
 
-def verify(doc, fetch_policy):
+def verify(doc, fetch_policy, fetch_staple=None):
     """Every check on a parsed commitment. fetch_policy(uri) returns the bytes, or None if it cannot fetch.
+    fetch_staple(part) returns the standard_history staple's "request" or "reply" bytes, or None if it has none.
 
     Returns (errors, notes): errors refuse it; notes say what was not checked.
     """
@@ -552,6 +619,13 @@ def verify(doc, fetch_policy):
         errs.append("signature does not verify under spki")
     errs += checkpoint_errors(doc) + staple_errors(doc)
     notes = []
+    if "standard_history" in doc:
+        staple = [fetch_staple(part) if fetch_staple else None for part in ("request", "reply")]
+        if None in staple:
+            notes.append("standard_history staple bytes not supplied; the staple is not checked (evidencebook "
+                         "CheckStaple), only the member's shape")
+        else:
+            errs += standard_errors(doc, *staple)
     policy_bytes = fetch_policy(doc["lcap"]["policy_uri"])
     if policy_bytes is None:
         notes.append(f"policy at {doc['lcap']['policy_uri']} not fetched; its digest is not checked")
@@ -577,12 +651,26 @@ def file_fetcher(base_dir):
     return fetch
 
 
+def staple_fetcher(base_dir, doc):
+    """The standard_history staple parts beside a commitment, standard_history/<node_id>.<part>.json; None if absent."""
+    node_id = doc.get("node_id") if isinstance(doc, dict) else None
+
+    def fetch(part):
+        if not (isinstance(node_id, str) and HEX64.fullmatch(node_id)):
+            return None
+        try:
+            return (Path(base_dir) / "standard_history" / f"{node_id}.{part}.json").read_bytes()
+        except OSError:
+            return None
+    return fetch
+
+
 def check_file(path):
     try:
         doc = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         return [f"not valid JSON ({e})"], []
-    errs, notes = verify(doc, file_fetcher(Path(path).parent))
+    errs, notes = verify(doc, file_fetcher(Path(path).parent), staple_fetcher(Path(path).parent, doc))
     if isinstance(doc, dict) and isinstance(doc.get("node_id"), str) and Path(path).name != f"{doc['node_id']}.json":
         errs.append("file name must be <node_id>.json")
     return errs, notes

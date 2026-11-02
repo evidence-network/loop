@@ -4,6 +4,7 @@ Fixtures: tests/fixtures/step03/ (made by its make_fixtures.py). The keys there 
 Run: python3 -B -m unittest tests.test_step03_advertise -v
 """
 import base64
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -139,10 +140,23 @@ class StepTest(unittest.TestCase):
         self.assertEqual(finding.check(out.parent), [])
 
 
-def goose_commitment(key_pem, out_dir):
+def staple_parts(key_id):
+    """A standard_history/1 staple as evidencebook's Book.Staple builds it: (request bytes, reply bytes)."""
+    request = json.dumps({"derivation": "standard_history/1", "subject": {"full_history": None},
+                          "nonce": "00" * 16, "profile": "evidence-interop/0"}, sort_keys=True).encode()
+    artifact = b'{"standard_history":"test"}'
+    reply = json.dumps({"profile": cc.STAPLE_PROFILE, "derivation": "standard_history/1", "responder": key_id,
+                        "request_digest": hashlib.sha256(request).hexdigest(), "artifact": cc.b64url(artifact),
+                        "artifact_digest": hashlib.sha256(artifact).hexdigest(), "sig": "test"},
+                       sort_keys=True).encode()
+    return request, reply
+
+
+def goose_commitment(key_pem, out_dir, standard=None):
     """A /1 commitment as G1's loop_advertise writes it (node book goose/node, community goose), signed by key_pem,
-    with its signed policy: {commitment, policy} paths under out_dir. TEST keys only."""
-    import hashlib
+    with its signed policy: {commitment, policy} paths under out_dir. TEST keys only. `standard` is a function
+    (request, reply) -> (request, reply) applied to the staple parts after the member's digests are taken from
+    the originals: the commitment then names a standard_history staple and the paths carry the (altered) bytes."""
     spki = cc.spki_from_pem(Path(str(key_pem).replace("node-key.pem", "node-key.pub.pem")).read_text())
     key_id = cc.key_id_of(spki)
     statement = b"goose node book checkpoint statement"
@@ -155,6 +169,19 @@ def goose_commitment(key_pem, out_dir):
                       "policy": {"stranger_safe": ["history_card/1"], "share_deal_half": "counterparty"}}, key_pem)
     policy_bytes = (json.dumps(policy, indent=2, sort_keys=True) + "\n").encode()
     b64 = lambda raw: base64.b64encode(raw).decode()
+    member = {}
+    paths = {}
+    if standard is not None:
+        request, reply = staple_parts(key_id)
+        member = {"standard_history": {"derivation": "standard_history/1",
+                                       "request_sha256": hashlib.sha256(request).hexdigest(),
+                                       "reply_sha256": hashlib.sha256(reply).hexdigest()}}
+        request, reply = standard(request, reply)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for part, raw in (("request", request), ("reply", reply)):
+            if raw is not None:
+                (out_dir / f"standard_history.{part}.json").write_bytes(raw)
+                paths[f"standard_history_{part}"] = str(out_dir / f"standard_history.{part}.json")
     doc = cc.sign({
         "profile": cc.PROFILE_1, "node_id": key_id, "key_id": key_id, "spki": b64(spki),
         "issued_at": "2026-11-01T00:00:00Z",
@@ -166,11 +193,12 @@ def goose_commitment(key_pem, out_dir):
         "human_gated": True, "answers_within": "PT24H",
         "history_cards": [{"stream": "goose/node", "community": "goose", "derivation": "history_card/1",
                            "sha256": hashlib.sha256(card).hexdigest(), "bytes": b64(card)}],
+        **member,
     }, key_pem)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "commitment.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     (out_dir / "policy.json").write_bytes(policy_bytes)
-    return {"commitment": str(out_dir / "commitment.json"), "policy": str(out_dir / "policy.json")}
+    return {"commitment": str(out_dir / "commitment.json"), "policy": str(out_dir / "policy.json"), **paths}
 
 
 @unittest.skipUnless(TOOLS, SKIP_WHY)
@@ -209,6 +237,80 @@ class NodeSignedTest(unittest.TestCase):
         self.assertIn("alice.node-key.pub.pem", [x["path"] for x in f["proof"]])
         self.assertEqual((out / "alice.node-key.pub.pem").read_bytes(),
                          (self.keys / "alice" / "node-key.pub.pem").read_bytes())
+
+    def staple_run(self, standard):
+        signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed", standard)
+        return self.run_with({"alice": signed})
+
+    def refusals(self, standard):
+        f, nodes, _ = self.staple_run(standard)
+        self.assertEqual(f["result"], "FAIL")
+        return nodes["alice"]["errors"]
+
+    def test_a_standard_history_staple_is_checked_when_its_bytes_are_published(self):
+        f, nodes, out = self.staple_run(lambda req, rep: (req, rep))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual(nodes["alice"]["errors"], [])
+        self.assertTrue(nodes["alice"]["standard_history"]["bytes_checked"])
+        self.assertIn("checked from the published bytes", f["detail"])
+        self.assertEqual(finding.check(out.parent), [])
+        self.assertTrue((out / "alice.standard_history.reply.json").is_file())
+
+    def test_a_standard_history_without_bytes_passes_and_says_the_staple_is_not_checked(self):
+        f, nodes, out = self.staple_run(lambda req, rep: (None, None))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertFalse(nodes["alice"]["standard_history"]["bytes_checked"])
+        self.assertIn("the bytes were not published", f["detail"])
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_standard_history_bytes_that_do_not_match_the_digest_are_refused_by_name(self):
+        errs = self.refusals(lambda req, rep: (req, rep + b" "))
+        self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_BYTES])
+
+    def test_a_standard_card_presented_by_another_key_is_refused_by_name(self):
+        def other(req, rep):
+            doc = dict(json.loads(rep), responder="b" * 64)
+            return req, json.dumps(doc, sort_keys=True).encode()
+        self.assertTrue(self.refusals(lambda req, rep: other(req, rep)))  # digest of the original no longer matches
+        key_id = alice_node_id()
+        request, reply = staple_parts(key_id)
+        doc = {"standard_history": {"derivation": "standard_history/1", "request_sha256": "0" * 64,
+                                    "reply_sha256": "0" * 64}, "key_id": key_id}
+        reply_other = json.dumps(dict(json.loads(reply), responder="b" * 64), sort_keys=True).encode()
+        doc["standard_history"]["request_sha256"] = hashlib.sha256(request).hexdigest()
+        doc["standard_history"]["reply_sha256"] = hashlib.sha256(reply_other).hexdigest()
+        errs = cc.standard_errors(doc, request, reply_other)
+        self.assertEqual([e.split(":")[0] for e in errs], [cc.STD_NOT_SUBJECT])
+
+    def test_the_derivation_the_request_and_the_answer_name_must_be_the_standard_card(self):
+        key_id = alice_node_id()
+        request, reply = staple_parts(key_id)
+        wrong_request = json.dumps(dict(json.loads(request), derivation="history_card/1")).encode()
+        wrong_reply = json.dumps(dict(json.loads(reply), derivation="history_card/1")).encode()
+        for asked, answered in ((wrong_request, reply), (request, wrong_reply)):
+            doc = {"key_id": key_id, "standard_history": {"derivation": "standard_history/1",
+                                                          "request_sha256": hashlib.sha256(asked).hexdigest(),
+                                                          "reply_sha256": hashlib.sha256(answered).hexdigest()}}
+            errs = cc.standard_errors(doc, asked, answered)
+            self.assertIn(cc.STD_DERIVATION, [e.split(":")[0] for e in errs])
+
+    def test_an_answer_to_another_request_is_refused_by_name(self):
+        key_id = alice_node_id()
+        request, reply = staple_parts(key_id)
+        other = json.dumps(dict(json.loads(request), nonce="11" * 16), sort_keys=True).encode()
+        doc = {"key_id": key_id, "standard_history": {"derivation": "standard_history/1",
+                                                      "request_sha256": hashlib.sha256(other).hexdigest(),
+                                                      "reply_sha256": hashlib.sha256(reply).hexdigest()}}
+        self.assertEqual([e.split(":")[0] for e in cc.standard_errors(doc, other, reply)], [cc.STD_REQUEST])
+
+    def test_a_reply_that_is_not_an_answer_is_refused_by_name(self):
+        key_id = alice_node_id()
+        request = staple_parts(key_id)[0]
+        for reply in (b"not json", b"[]", json.dumps({"profile": "other/0"}).encode()):
+            doc = {"key_id": key_id, "standard_history": {"derivation": "standard_history/1",
+                                                          "request_sha256": hashlib.sha256(request).hexdigest(),
+                                                          "reply_sha256": hashlib.sha256(reply).hexdigest()}}
+            self.assertEqual([e.split(":")[0] for e in cc.standard_errors(doc, request, reply)], [cc.STD_NOT_ANSWER])
 
     def test_a_goose_checkout_other_than_the_pin_is_not_checked(self):
         signed = goose_commitment(self.keys / "alice" / "node-key.pem", self.tmp / "alice-signed")
@@ -516,6 +618,49 @@ class CountRuleTest(unittest.TestCase):
         self.assertEqual(cc.canonical({"b": [1, True, None], "a": "é\n"}), '{"a":"é\\n","b":[1,true,null]}'.encode())
         with self.assertRaises(ValueError):
             cc.canonical({"a": 1.5})
+
+
+@unittest.skipUnless(TOOLS, SKIP_WHY)
+class StandardHistoryShapeTest(unittest.TestCase):
+    """The member's shape is refused by name; /0 has no such member; the count rule holds."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        signed = goose_commitment(ALICE_KEY, self.tmp, lambda req, rep: (None, None))
+        self.doc = json.loads(Path(signed["commitment"]).read_text())
+
+    def refused(self, change, profile=None):
+        doc = json.loads(json.dumps(self.doc))
+        change(doc)
+        if profile:
+            doc["profile"] = profile
+        errs, _ = cc.verify(cc.sign(doc, ALICE_KEY), lambda uri: None)
+        return errs
+
+    def test_the_member_verifies(self):
+        self.assertEqual(self.refused(lambda d: None), [])
+
+    def test_each_refusal_is_named(self):
+        cases = {
+            "derivation": (lambda d: d["standard_history"].__setitem__("derivation", "history_card/1"), cc.STD_DERIVATION),
+            "digest": (lambda d: d["standard_history"].__setitem__("reply_sha256", "xyz"), cc.STD_SHAPE),
+            "missing": (lambda d: d["standard_history"].pop("request_sha256"), cc.STD_SHAPE),
+            "extra": (lambda d: d["standard_history"].__setitem__("bytes", "AA=="), cc.STD_SHAPE),
+            "not an object": (lambda d: d.__setitem__("standard_history", "x"), cc.STD_SHAPE),
+        }
+        for name, (change, code) in cases.items():
+            with self.subTest(name):
+                errs = self.refused(change)
+                self.assertTrue([e for e in errs if e.startswith(code + ":")], errs)
+
+    def test_a_zero_commitment_has_no_standard_history(self):
+        errs = self.refused(lambda d: None, profile=cc.PROFILE)
+        self.assertIn("unknown field standard_history", errs)
+
+    def test_a_count_named_member_beside_it_is_still_refused(self):
+        errs = self.refused(lambda d: d["standard_history"].__setitem__("card_count", "x"))
+        self.assertTrue([e for e in errs if "card_count" in e], errs)
 
 
 if __name__ == "__main__":
