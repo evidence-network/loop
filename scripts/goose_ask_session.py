@@ -112,32 +112,42 @@ class Goose:
         return out
 
 
-async def run(out, relay):
+async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=ADVERTISED_RELAY):
+    """Two nodes ask each other. By default (the rehearsal) each starts in a fresh home under out/run and advertises
+    now. The live lab passes `homes` (the persistent GOOSE_HOME root, a directory per name) and `published` (the
+    directory holding the commitments the nodes already published, nodes/commitments/): the nodes keep their keys, and
+    ask through the commitment each published, advertising nothing new. `relay_name` is the relay those name."""
     shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
     out.mkdir(parents=True)
-    relay_map = json.dumps({ADVERTISED_RELAY: relay.address})
+    relay_map = json.dumps({relay_name: relay.address})
 
     def params(name):
-        env = {**os.environ, "GOOSE_HOME": str(out / "run" / name), "GOOSE_OPERATOR": f"goose-{name}",
-               "GOOSE_RELAY_MAP": relay_map}
+        home = Path(homes) / name if homes else out / "run" / name
+        env = {**os.environ, "GOOSE_HOME": str(home), "GOOSE_OPERATOR": f"goose-{name}", "GOOSE_RELAY_MAP": relay_map}
         return StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
 
-    async with stdio_client(params("buyer")) as (br, bw), stdio_client(params("seller")) as (sr, sw):
+    async with stdio_client(params(names[0])) as (br, bw), stdio_client(params(names[1])) as (sr, sw):
         async with ClientSession(br, bw) as bs, ClientSession(sr, sw) as ss:
             await bs.initialize()
             await ss.initialize()
-            nodes = {"buyer": Goose(bs, "buyer"), "seller": Goose(ss, "seller")}
+            nodes = {names[0]: Goose(bs, names[0]), names[1]: Goose(ss, names[1])}
             joined = {name: await g.call("loop_join") for name, g in nodes.items()}
             for name, g in nodes.items():
                 adv = out / name / "advertised"
-                await g.call("loop_advertise", out_dir=str(adv), relays=ADVERTISED_RELAY, answers_within=ANSWERS_WITHIN,
-                             poll_interval=POLL_INTERVAL)
                 node_id = joined[name]["key_id"]
+                if published:
+                    adv.mkdir(parents=True)
+                    shutil.copyfile(Path(published) / f"{node_id}.json", adv / f"{node_id}.json")
+                    (adv / "policies").mkdir()
+                    shutil.copyfile(Path(published) / "policies" / f"{node_id}.json", adv / "policies" / f"{node_id}.json")
+                else:
+                    await g.call("loop_advertise", out_dir=str(adv), relays=relay_name, answers_within=ANSWERS_WITHIN,
+                                 poll_interval=POLL_INTERVAL)
                 shutil.copyfile(adv / f"{node_id}.json", adv / "commitment.json")
             (out / "nodes.json").write_text(json.dumps(
                 {n: {"key_id": j["key_id"], "first_record": j["record_id"]} for n, j in joined.items()},
                 indent=2, sort_keys=True) + "\n")
-            pairs = [(a, b) for a in NAMES for b in NAMES if a != b]
+            pairs = [(a, b) for a in names for b in names if a != b]
             sent = {}  # (asker, asked, ask) -> the ask tool's answer
 
             async def ask(asker, asked, name):

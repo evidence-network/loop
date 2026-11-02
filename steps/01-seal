@@ -436,7 +436,7 @@ def main(argv=None):
         a.sealed, a.node = Path(goose["sealed"]["capsule"]), goose["sealed"]["node"]
     else:  # an explicit --sealed is not the Goose node's capsule, whatever the population
         goose = None
-    if pop_name == "live":
+    if pop_name == "live" and not goose:  # a live Goose population is judged on the capsule its node sealed
         return main_live(population, out, started, a.sealed)
     node, key_dir = node_key_dir(a.population, population, a.node)
     python, verifier = tools()

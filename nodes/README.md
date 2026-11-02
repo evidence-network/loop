@@ -37,7 +37,9 @@ Open a pull request adding `nodes/<node_id>.json`:
   "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay."
   ```
 
-- `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`.
+- `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`. `ask_route: nostr` means: ask through the
+  Nostr mailbox the node's commitment names (`ask.nostr`); a Goose node hosts no server, so it answers the asks it finds
+  by polling that mailbox. The daily reporter asks `mesh` entries only.
 - `disclosure.policy: counterparties` means records are answered only to the counterparty of that exchange; `checkpoints` and `history_card/1` are answered to anyone.
 - `disclosure.pair_edges` (optional): `public` lets the /watch/ page draw this node's pair edges, which say who it dealt with, where the other node's entry opts in too. With it absent, the page draws none for the node and only counts them. The only value is `public`; the consent statement above names these edges (evidence-network/loop#77).
 

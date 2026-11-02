@@ -1,0 +1,97 @@
+"""The Goose lab driver (lab/goose.sh, scripts/goose_live.py, evidence-network/loop#349): what it refuses and prints
+without Goose tools, and, where steps/goose.setup.sh has installed them, one session on persistent homes judged live.
+
+Run: python3 -m unittest tests.test_goose_live -v
+"""
+import json
+import os
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+GOOSE_SH = ROOT / "lab" / "goose.sh"
+TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop"))
+
+
+def goose(*args, **env):
+    e = {k: v for k, v in os.environ.items() if not k.startswith(("LAB_", "LOOP_GOOSE"))}
+    e.update(env)
+    return subprocess.run([str(GOOSE_SH), *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, env=e)
+
+
+class DriverArgumentsTest(unittest.TestCase):
+    def test_it_needs_a_lab_dir_and_a_known_command(self):
+        r = goose("run")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("set LAB_DIR", r.stderr)
+        with tempfile.TemporaryDirectory() as lab:
+            self.assertEqual(goose("fly", LAB_DIR=lab).returncode, 2)
+
+    def test_dry_run_prints_the_plan_and_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as lab:
+            r = goose("--dry-run", "run", LAB_DIR=lab, LOOP_TOOLS=lab)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("goose_live.py session", r.stdout)
+            self.assertIn("--ecosystem goose --population live", r.stdout)
+            self.assertEqual(sorted(p.name for p in Path(lab).iterdir()), [])
+
+    def test_run_refuses_while_the_lab_is_held(self):
+        with tempfile.TemporaryDirectory() as lab:
+            python = Path(lab) / "goose" / "venv" / "bin" / "python"
+            python.parent.mkdir(parents=True)
+            python.write_text("#!/bin/sh\n")
+            python.chmod(0o755)
+            (Path(lab) / "goose").mkdir(exist_ok=True)
+            (Path(lab) / "goose" / "ids.json").write_text("{}")
+            (Path(lab) / "run").mkdir()
+            (Path(lab) / "run" / "LIVE_RUN").write_text("held")
+            r = goose("run", LAB_DIR=lab, LOOP_TOOLS=lab)
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("LIVE_RUN exists", r.stderr)
+            self.assertTrue((Path(lab) / "run" / "LIVE_RUN").is_file())  # the other run's lock is not ours to remove
+
+
+class LoopShGooseLiveTest(unittest.TestCase):
+    def test_loop_sh_needs_the_population_the_driver_wrote(self):
+        with tempfile.TemporaryDirectory() as out:
+            r = subprocess.run([str(ROOT / "loop.sh"), "--stage", "1", "--ecosystem", "goose", "--population", "live",
+                                "--out", out], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               env={k: v for k, v in os.environ.items() if k != "LOOP_GOOSE_POPULATION"})
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("LOOP_GOOSE_POPULATION", r.stderr)
+
+
+@unittest.skipUnless((TOOLS / "goose" / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh to install the Goose tools")
+class SessionTest(unittest.TestCase):
+    """init and session on scratch homes; no node of the repository's nodes/ is listed, so only what the session
+    wrote is read."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.lab = Path(cls.tmp.name)
+        env = {"LAB_DIR": str(cls.lab), "LOOP_TOOLS": str(TOOLS)}
+        cls.init = goose("init", **env)
+        assert cls.init.returncode == 0, cls.init.stderr
+        cls.ids = json.loads((cls.lab / "goose" / "ids.json").read_text())
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_init_keeps_the_keys_private_and_prints_only_public_ids(self):
+        self.assertEqual(sorted(self.ids), ["goose-1", "goose-2"])
+        for name, d in self.ids.items():
+            self.assertRegex(d["node_id"], r"^[0-9a-f]{64}$")
+            self.assertTrue((self.lab / "goose" / "keys" / name / "node-key.pub.pem").is_file())
+            self.assertFalse((self.lab / "goose" / "keys" / name / "node-key.pem").exists())
+            self.assertEqual(oct((self.lab / "goose" / "homes" / name / "producer.key").stat().st_mode & 0o777), "0o600")
+        self.assertNotIn("PRIVATE", self.init.stdout + self.init.stderr)
+        self.assertEqual(oct((self.lab / "goose" / "homes").stat().st_mode & 0o777), "0o700")
+
+    def test_init_again_keeps_the_identities(self):
+        again = goose("init", LAB_DIR=str(self.lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(json.loads((self.lab / "goose" / "ids.json").read_text()), self.ids)

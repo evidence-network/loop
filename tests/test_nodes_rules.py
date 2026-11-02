@@ -41,6 +41,11 @@ class EntryRulesTest(unittest.TestCase):
         (self.nodes / f"{'a' * 64}.json").write_text(json.dumps(e))
         return errors(self.nodes)
 
+    def test_ask_route_is_mesh_or_nostr_and_nothing_else(self):
+        self.assertEqual(self.check(ask_route="mesh"), [])
+        self.assertEqual(self.check(ask_route="nostr"), [])  # a Goose node, asked through its commitment's mailbox
+        self.assertTrue(any("ask_route must be one of mesh, nostr" in e for e in self.check(ask_route="smoke")))
+
     def test_an_entry_opts_in_to_pair_edges_only_while_the_consent_names_them(self):
         # loop#77: public pair edges on /watch/ need a consent that names them; the statement does since Steven's ruling.
         self.assertTrue(check_nodes.CONSENT_NAMES_PAIR_EDGES)
@@ -125,6 +130,24 @@ class LeaveTest(unittest.TestCase):
     def mark_left(self, n, day):
         (self.nodes / "left").mkdir(exist_ok=True)
         (self.nodes / "left" / f"{tr.node_id(n)}.json").write_text(json.dumps({"node_id": tr.node_id(n), "left": day}))
+
+    def test_the_mesh_reporter_asks_mesh_entries_only(self):
+        """A Goose node is listed with ask_route nostr; the reporter asks over the mesh, so it leaves that node out."""
+        out = self.dir / "reports" / "daily"
+        reporter = self.dir / "reporter.json"
+        reporter.write_text(json.dumps(tr.REPORTER))
+        for n, route in ((1, "mesh"), (2, "nostr")):
+            e = tr.entry(tr.node_id(n), tr.key_id(n))
+            e["ask_route"] = route
+            (self.nodes / f"{e['node_id']}.json").write_text(json.dumps(e))
+        self.assertEqual(errors(self.nodes), [])
+        self.console = tr.FakeConsole({tr.node_id(n): BOTH for n in (1, 2)}, {tr.node_id(n): tr.key_id(n) for n in (1, 2)})
+        argv = ["daily_report.py", "run", "--date", "2026-10-28", "--console", self.console.url, "--nodes", str(self.nodes),
+                "--out", str(out), "--reporter", str(reporter), "--timeout", "0.5"]
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(tr.daily_report.main(argv), 0)
+        self.assertEqual({b["peer_id"] for _, b in self.console.asked}, {tr.node_id(1)})
+        self.assertEqual(json.loads((out / "2026-10-28" / "RUN.json").read_text())["asked"], [tr.node_id(1)])
 
     def test_a_removed_node_is_not_asked_from_the_next_run_and_its_past_reports_stay(self):
         out = self.dir / "reports" / "daily"

@@ -473,6 +473,8 @@ def run(args, now, sleep):
     reporter_up(console, reporter, timeout)
 
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
+    # The reporter asks over the mesh: a node listed with another ask_route (nostr, a Goose node) is asked another way.
+    entries = [e for e in entries if e["ask_route"] == "mesh"]
     # The reporter's own node is asked only through a second console, never its own.
     entries = [e for e in entries if e["node_id"] != reporter["node_id"] or second]
     via = {reporter["node_id"]: second} if second else {}
@@ -566,7 +568,8 @@ def ask(args, now):
     listed = {}
     for p in sorted(Path(args.nodes).glob("*.json")):
         e = json.loads(p.read_text(encoding="utf-8"))
-        listed[e["node_id"]] = e
+        if e["ask_route"] == "mesh":  # the reporter asks mesh nodes only
+            listed[e["node_id"]] = e
     missing = [n for n in targets if n not in listed]
     if missing:
         raise ValueError(f"not on the commitment list any more: {', '.join(missing)}")

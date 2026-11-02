@@ -42,7 +42,9 @@ CONSENT_NAMES_PAIR_EDGES = True
 GITHUB_HANDLE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 PHONE = re.compile(r"^\+?[\d\s().-]{7,}$")
-ASK_ROUTES = ("mesh",)
+# "mesh": asked over the lab mesh by node_id. "nostr": asked through the Nostr mailbox the node's commitment names
+# (ask.nostr), the route of a Goose node, which hosts no server (evidence-network/loop#349).
+ASK_ROUTES = ("mesh", "nostr")
 POLICIES = ("counterparties",)
 STRANGER_SAFE = ("checkpoints", "history_card/1")
 

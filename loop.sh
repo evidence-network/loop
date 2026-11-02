@@ -184,6 +184,16 @@ if [ "$ecosystem" = goose ] && [ "$population" = rehearsal ]; then
   [ "$goose_state" = ran ] || echo "loop.sh: the Goose rehearsal did not run ($goose_state); the steps it drives are not run" >&2
 fi
 
+# The Goose lab (lab/goose.sh run, loop#349): the population it wrote names the nodes listed in nodes/ and the steps
+# it gives a Goose input; the others are NOT_CHECKED below, naming what they wait on.
+if [ "$ecosystem" = goose ] && [ "$population" = live ]; then
+  pop_dir=${LOOP_GOOSE_POPULATION:-}
+  [ -f "$pop_dir/population.json" ] || die "--ecosystem goose --population live needs LOOP_GOOSE_POPULATION, the population lab/goose.sh run wrote"
+  goose_steps=$(python3 -B -c 'import json, sys; print(" ".join(json.load(open(sys.argv[1]))["goose"]["steps"]))' "$pop_dir/population.json") \
+    || die "cannot read the steps $pop_dir/population.json gives a Goose input"
+  goose_driven=$goose_steps goose_state=ran
+fi
+
 ran=()
 for nn in $steps; do
   found=()
