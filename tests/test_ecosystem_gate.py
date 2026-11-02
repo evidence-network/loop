@@ -230,6 +230,13 @@ class GateTest(unittest.TestCase):
         doc["ecosystems"]["mesh"]["pins"]["goose-g1"] = "action-state-group/evidencebook old"
         gate.write(self.baseline, doc)
         self.assertEqual(gate.cmd_verify(self.baseline), [])
+        # and an update that no longer records it is not "the pin set changed" against that older baseline
+        new = self.dir / "new.json"
+        gate.write(new, json.loads(self.baseline.read_text()))
+        doc2 = json.loads(new.read_text())
+        del doc2["ecosystems"]["mesh"]["pins"]["goose-g1"]
+        gate.write(new, doc2)
+        self.assertEqual(gate.cmd_check(self.baseline, new), [])
 
     def test_pin_comments_are_not_pins(self):
         other = self.dir / "versions.lock"

@@ -48,6 +48,11 @@ def lock_pins(lock=ROOT / "versions.lock", eco=None):
             if eco is None or PIN_OWNER.get(n, eco) == eco}
 
 
+def own_pins(pins, eco):
+    """The recorded pins that count for `eco`: those no other ecosystem alone owns (an older baseline recorded all)."""
+    return {n: pin for n, pin in pins.items() if PIN_OWNER.get(n, eco) == eco}
+
+
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -107,7 +112,7 @@ def cmd_check(old_path, new_path):
             errs.append(f"{eco}: ecosystem dropped from the baseline")
             continue
         n = new["ecosystems"][eco]
-        if n["pins"] != entry["pins"] and n["findings"] == entry["findings"]:
+        if own_pins(n["pins"], eco) != own_pins(entry["pins"], eco) and n["findings"] == entry["findings"]:
             errs.append(f"{eco}: the pin set changed but the baseline still comes from {entry['findings']}")
         errs += [f"{eco} {e}" for e in compare(entry["steps"], new["ecosystems"][eco]["steps"], flag)]
     return errs
@@ -133,8 +138,7 @@ def cmd_verify(baseline):
         have = {nn: {"result": r, "finding_sha256": s} for nn, (r, s) in steps.items()}
         if have != entry["steps"]:
             errs.append(f"{eco}: steps differ from the findings in {entry['findings']}")
-        recorded = {n: pin for n, pin in entry["pins"].items() if PIN_OWNER.get(n, eco) == eco}
-        moved = moved_pins(recorded, lock_pins(eco=eco))
+        moved = moved_pins(own_pins(entry["pins"], eco), lock_pins(eco=eco))
         if moved:
             errs.append(f"{eco}: versions.lock moved {', '.join(moved)}, so the baseline must be taken from a "
                         "live run under the new pins (update --findings DIR)")
