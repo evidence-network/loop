@@ -158,9 +158,30 @@ def ondemand():
     ], 3)))
 
 
-def card(stream, receipts=(), history=True, started="2026-10-01"):
+def cbor(v):
+    """A little CBOR, enough for a checkpoint statement: unsigned ints, byte and text strings, maps."""
+    def head(major, n):
+        return bytes([major << 5 | n]) if n < 24 else bytes([major << 5 | 24, n]) if n < 256 else bytes([major << 5 | 25]) + n.to_bytes(2, "big")
+    if isinstance(v, int):
+        return head(0, v)
+    if isinstance(v, bytes):
+        return head(2, len(v)) + v
+    if isinstance(v, str):
+        return head(3, len(v.encode())) + v.encode()
+    return head(5, len(v)) + b"".join(cbor(k) + cbor(x) for k, x in v.items())
+
+
+def statement(issued_at, log_size):
+    """A checkpoint statement as hex COSE_Sign1 [protected, {}, payload, signature]; the signature is a placeholder,
+    for the page reads the payload and checks nothing."""
+    payload = cbor({"kind": "cll-checkpoint", "log_size": log_size, "issued_at": issued_at})
+    return (b"\x84" + cbor(b"") + b"\xa0" + cbor(payload) + cbor(b"\x00" * 64)).hex()
+
+
+def card(stream, receipts=(), history=True, started="2026-10-01", cuts=((None, 63),)):
     """A history card's answer bytes, as the commitment staples them: only what the page reads is real."""
-    hist = [{"checkpoint": "00", "consistency_from_previous": None} | ({"receipts": list(receipts)} if receipts else {})]
+    hist = [{"checkpoint": statement(at or f"{started}T06:00:00Z", size), "consistency_from_previous": None}
+            | ({"receipts": list(receipts)} if receipts and i == 0 else {}) for i, (at, size) in enumerate(cuts)]
     art = json.dumps({"derivation": "history_card/1", "evidence_stream": stream, "history": hist if history else [],
                       "stream_started": started}, sort_keys=True)
     return json.dumps({"artifact": base64.urlsafe_b64encode(art.encode()).decode().rstrip("="),
@@ -173,21 +194,55 @@ def staple(stream, community, b):
             "sha256": hashlib.sha256(b).hexdigest(), "bytes": base64.b64encode(b).decode()}
 
 
+POLICY = {"advertise_evidence_requests": "off", "share_adjudications": "off", "share_exchange_corroboration": "off",
+          "share_history_segments": "counterparties", "share_record_at_completion": "counterparty",
+          "share_standard_history": "off", "stranger_safe": ["checkpoints", "history_card/1"]}
+
+
+def policy(n, **over):
+    """A node's advertised disclosure-policy/0, as nodes/commitments/policies/<node id>.json holds it (unsigned here:
+    the page reads, it does not verify)."""
+    dump(HERE / "nodes" / "commitments" / "policies" / f"{nid(n)}.json",
+         {"profile": "disclosure-policy/0", "key_id": kid(n), "policy": POLICY | over})
+
+
 def commitments():
+    policy(1)
+    policy(2, share_standard_history="on", share_exchange_corroboration="on", share_history_segments="peers")
+    # node-four advertises an older policy, without the members the History view needs: no page for it.
+    dump(HERE / "nodes" / "commitments" / "policies" / f"{nid(4)}.json", {
+        "profile": "disclosure-policy/0", "key_id": kid(4),
+        "policy": {"adjudications": "deliver_to_subjects", "history_segments": "counterparties",
+                   "record_at_completion": "counterparty"}})
+    goose()
     root = HERE / "commitments" / "2026-10-28" / "join"
     one = card("node-one-book")
     dump(root / "node-one" / "commitment.json", {
-        "profile": "evidence-commitment/0", "node_id": kid(1), "key_id": kid(1), "ask": {"endpoint": "book:node-one-book"},
+        "profile": "evidence-commitment/0", "node_id": kid(1), "key_id": kid(1), "issued_at": "2026-10-28T06:30:00Z", "ask": {"endpoint": "book:node-one-book"},
         "history_card": {"derivation": "history_card/1", "sha256": hashlib.sha256(one).hexdigest(),
                          "bytes": base64.b64encode(one).decode()}})
     # node-two: two streams, one witnessed; its personal-agents stream was cleared and started again, no history yet.
     dump(root / "node-two" / "commitment.json", {
-        "profile": "evidence-commitment/1", "node_id": kid(2), "key_id": kid(2), "ask": {"endpoint": "book:node-two-book-a"},
+        "profile": "evidence-commitment/1", "node_id": kid(2), "key_id": kid(2), "issued_at": "2026-10-28T06:31:00Z", "ask": {"endpoint": "book:node-two-book-a"},
         "history_cards": [staple("node-two-book-a", "mesh-llm", card("node-two-book-a", [{"witness": "witness-one", "sig": "00"}])),
                           staple("node-two-book-b", "muse", card("node-two-book-b", history=False, started="2026-10-20"))]})
     dump(root / "node-four" / "commitment.json", {
-        "profile": "evidence-commitment/1", "node_id": kid(4), "key_id": kid(4), "ask": {"endpoint": "book:node-four-agent"},
+        "profile": "evidence-commitment/1", "node_id": kid(4), "key_id": kid(4), "issued_at": "2026-10-28T06:32:00Z", "ask": {"endpoint": "book:node-four-agent"},
         "history_cards": [staple("node-four-agent", "muse", card("node-four-agent"))]})
+
+
+def goose():
+    """goose/: a Goose node's commitment (evidence-commitment/1, one goose stream with two checkpoints, no witness) and
+    its advertised policy, for the History page's golden test (tests/test_watch.py, evidence-network/loop#360)."""
+    g = HERE / "goose"
+    cuts = (("2026-11-03T12:00:03Z", 61), ("2026-11-03T18:07:12Z", 127))
+    dump(g / "commitment.json", {
+        "profile": "evidence-commitment/1", "node_id": "5" * 64, "key_id": "5" * 64, "issued_at": "2026-11-03T18:09:41Z",
+        "ask": {"endpoint": "book:goose-node"},
+        "history_cards": [staple("goose/node", "goose", card("goose/node", started="2026-11-03", cuts=cuts))]})
+    dump(g / "policy.json", {"profile": "disclosure-policy/0", "key_id": "5" * 64,
+                             "policy": POLICY | {"share_standard_history": "on", "share_exchange_corroboration": "on",
+                                                 "share_adjudications": "deliver_to_subjects"}})
 
 
 CONTROLLER = "c" * 64

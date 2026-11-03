@@ -32,6 +32,7 @@ on-demand run and the nodes' commitments).
 
 Run: python3 -B -m unittest discover -s tests -p test_watch.py -v
 """
+import base64
 import contextlib
 import filecmp
 import hashlib
@@ -66,6 +67,8 @@ SVG_NS = "http://www.w3.org/2000/svg"
 D3_URLS = {SVG_NS, "http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/xlink", "http://www.w3.org/2000/xmlns/",
            "http://www.w3.org/XML/1998/namespace", "https://d3js.org"}
 D3 = ROOT / "site" / "vendor" / "d3-7.9.0"
+CV = ROOT / "site" / "vendor" / "capsule-viewer-0.14.0"
+CV_SHA256 = "c7a9bce903e0b99dd5618c893a7d0cf3576ad8d3ff2dd72635209c9ce30346d7"
 D3_SHA256 = "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539"
 NODE = shutil.which("node") or os.path.expanduser("~/.local/opt/node-v22.23.3/bin/node")
 MONEY = re.compile(r"amount|band|msat|currency|price|fee\b|usd|usdc|sats?\b|payment", re.I)
@@ -218,8 +221,11 @@ class WatchTest(unittest.TestCase):
 
     def test_the_page_and_its_files_are_written_under_watch(self):
         got = sorted(p.relative_to(self.out / "watch").as_posix() for p in (self.out / "watch").rglob("*") if p.is_file())
-        self.assertEqual(got, ["data.json", "index.html", "vendor/d3-7.9.0/LICENSE", "vendor/d3-7.9.0/d3.min.js",
-                               "watch-layout.js", "watch.js"])
+        v = "vendor/capsule-viewer-0.14.0/"
+        self.assertEqual(got, ["data.json", f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
+                               f"history/{nid(2)}/node-two-book-b.html", "index.html", v + "LICENSE",
+                               v + "LICENSE-BSD-3-Clause", v + "history-view.iife.js", "vendor/d3-7.9.0/LICENSE",
+                               "vendor/d3-7.9.0/d3.min.js", "watch-layout.js", "watch.js"])
         for f in ("watch.js", "watch-layout.js"):
             self.assertEqual((self.out / "watch" / f).read_bytes(), (ROOT / "site" / f).read_bytes())
 
@@ -733,7 +739,7 @@ class WatchTest(unittest.TestCase):
 
     def test_e_no_external_url_in_the_page_or_its_files(self):
         for p in (self.out / "watch").rglob("*"):
-            if not p.is_file():
+            if not p.is_file() or p.name.startswith("LICENSE"):  # a licence names its own terms' URLs
                 continue
             text = p.read_text(encoding="utf-8")
             urls = set(re.findall(r"https?://[^\s\"'<>)]+", text))
@@ -783,18 +789,20 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(two["commitment"], "commitments/2026-10-28/join/node-two/commitment.json")
         self.assertEqual(two["history_cards"], [
             {"derivation": "history_card/1", "stream": "node-two-book-a", "community": "mesh-llm",
-             "witnesses": ["witness-one"], "history": True, "since": None},
+             "witnesses": ["witness-one"], "history": True, "since": None,
+             "page": f"history/{nid(2)}/node-two-book-a.html"},
             {"derivation": "history_card/1", "stream": "node-two-book-b", "community": "personal-agents",
-             "witnesses": [], "history": False, "since": "2026-10-20"}])
+             "witnesses": [], "history": False, "since": "2026-10-20",
+             "page": f"history/{nid(2)}/node-two-book-b.html"}])
         self.assertEqual(self.data["nodes"][nid(1)]["history_cards"],  # evidence-commitment/0: one card, mesh-llm
                          [{"derivation": "history_card/1", "stream": "node-one-book", "community": "mesh-llm",
-                           "witnesses": [], "history": True, "since": None}])
+                           "witnesses": [], "history": True, "since": None,
+                           "page": f"history/{nid(1)}/node-one-book.html"}])
         self.assertEqual((self.data["nodes"][nid(3)]["commitment"], self.data["nodes"][nid(3)]["history_cards"]), (None, []))
         # The badge is the list's length; the card lists each stream and its witnesses, or "unwitnessed".
         self.assertIn("return k + ((data.nodes[m] || {}).history_cards || []).length;", self.js)
         self.assertIn('String(cards)', self.js)
         self.assertIn('"stream " + (c.stream ? cut(c.stream)', self.js)
-        self.assertIn('"unwitnessed"', self.js)
 
     def test_n_a_real_node_reads_1_from_its_evidence_commitment_0(self):
         by_id, by_key = watch.listing(ROOT / "nodes")
@@ -810,10 +818,106 @@ class WatchTest(unittest.TestCase):
             self.assertRegex(cards[0]["stream"], r"^goose/node$" if goose else r"^capsules/[0-9a-f]{16}$")  # the stream name
             self.assertEqual(cards[0]["witnesses"], [])  # the lab books are unwitnessed
 
+    # (p) History pages: the shared capsule-viewer History view draws each stream (evidence-network/loop#360)
+
+    def test_p_the_old_card_renderer_is_gone_and_the_panel_links_the_pages(self):
+        self.assertNotIn("witnessed by", self.js)
+        self.assertNotIn("unwitnessed", self.js)
+        self.assertIn('html("a", "", "History page")', self.js)
+
+    def test_p_a_page_per_stream_whose_policy_says_what_the_view_needs(self):
+        out = self.out / "watch"
+        self.assertEqual(sorted(p.relative_to(out).as_posix() for p in (out / "history").rglob("*.html")),
+                         [f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
+                          f"history/{nid(2)}/node-two-book-b.html"])
+        # node four advertises an older policy: no page, and the panel says so; no page for a node with no commitment.
+        self.assertEqual([c.get("page") for c in self.data["nodes"][nid(4)]["history_cards"]], [None])
+        self.assertEqual(self.data["nodes"][nid(3)]["history_cards"], [])
+        self.assertIn("no History page: its advertised policy does not say what it shares", self.js)
+
+    def test_p_the_page_embeds_the_pinned_view_and_the_input(self):
+        page = (self.out / "watch" / "history" / nid(2) / "node-two-book-a.html").read_text(encoding="utf-8")
+        scripts = re.findall(r"<script([^>]*)>", page)
+        self.assertEqual(scripts, [' type="application/json" id="history-input"',
+                                   ' src="../../vendor/capsule-viewer-0.14.0/history-view.iife.js"', ""])
+        doc = json.loads(re.search(r'id="history-input">(.*?)</script>', page, re.S).group(1))
+        self.assertEqual(doc["sharing"], {"standard_history": True, "history_segments": "peers",
+                                          "record_at_completion": "counterparty", "adjudications": "off",
+                                          "exchange_corroboration": True})
+        self.assertEqual(doc["holder"], {"node": nid(2), "stream": "node-two-book-a"})
+        self.assertEqual([r["log_size"] for r in doc["rows"]], [63])
+        # Nothing is verified here: every slot says so, and no witness is passed on from the card's receipts.
+        for r in doc["rows"]:
+            self.assertEqual((r["signature"], r["witness"], r["second_signature"]),
+                             ("not_run", {"state": "not_checked"}, {"state": "not_checked"}))
+        self.assertNotIn("witness-one", page)
+        css = (CV / "history-view.css").read_text(encoding="utf-8")
+        self.assertIn(f"<style>{css}</style>", page)
+
+    def test_p_the_viewer_files_are_vendored_at_their_pinned_sha256(self):
+        iife = (CV / "history-view.iife.js").read_bytes()
+        self.assertEqual(hashlib.sha256(iife).hexdigest(), CV_SHA256)
+        self.assertEqual((CV / "history-view.iife.js.sha256").read_text().split()[0], CV_SHA256)  # the package's own
+        for f in ("LICENSE", "LICENSE-BSD-3-Clause", "history-view.iife.js"):
+            self.assertEqual((self.out / "watch" / watch.VIEWER / f).read_bytes(), (CV / f).read_bytes())
+
+    def test_p_a_stylesheet_equal_to_the_one_in_the_vendored_script(self):
+        css = self.node_viewer("process.stdout.write(H.historyViewStyles)")
+        self.assertEqual(css, (CV / "history-view.css").read_text(encoding="utf-8"))
+
+    def node_viewer(self, script, *args):
+        if not os.access(NODE, os.X_OK):
+            raise unittest.SkipTest("SKIPPED LOUDLY: no node binary to run the vendored History view")
+        pre = ("const H = new Function(require('fs').readFileSync(process.argv[1], 'utf8') + ';return HistoryView;')();"
+               "const arg = process.argv[2] && JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8'));")
+        r = subprocess.run([NODE, "-e", pre + script, str(CV / "history-view.iife.js"), *map(str, args)],
+                           capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        return r.stdout
+
+    def test_p_a_goose_page_matches_its_golden(self):
+        g = FIX / "goose"
+        commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
+        (rel, doc), = [(r, d) for _, r, d in watch.history_pages("5" * 64, commitment, policy)]
+        self.assertEqual(rel, f"history/{'5' * 64}/goose-node.html")
+        golden = ROOT / "tests" / "fixtures" / "watch-history" / "goose"
+        self.assertEqual(json.dumps(doc, sort_keys=True, indent=1) + "\n", (golden / "input.json").read_text())
+        self.assertEqual(watch.history_page(doc), (golden / "page.html").read_text())
+        # What the vendored view draws from that input, as a static page (the script draws the same DOM).
+        shown = self.node_viewer("process.stdout.write(H.historyViewHtml(arg))", golden / "input.json")
+        self.assertEqual(shown, (golden / "rendered.html").read_text())
+        low = shown.lower()  # the view's own words on a neutral page: no product name, none of the banned terms
+        for b in test_site.BRANDS:
+            self.assertIsNone(re.search(rf"\b{re.escape(b)}\b", low), b)
+        for text in ("goose/node log", "2 checkpoints", "127 entries", "What this node shares", "What this does not show",
+                     "Second signature", "Not checked here"):
+            self.assertIn(text, shown)
+
+    def test_p_refusals_draw_no_page(self):
+        g = FIX / "goose"
+        commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
+        self.assertEqual(len(watch.history_pages("5" * 64, commitment, policy)), 1)
+        for bad in (None, {}, {"profile": "disclosure-policy/0", "policy": {}},
+                    {**policy, "policy": {**policy["policy"], "share_history_segments": "everyone"}},
+                    {**policy, "policy": {k: v for k, v in policy["policy"].items() if k != "share_standard_history"}}):
+            self.assertEqual(watch.history_pages("5" * 64, commitment, bad), [])
+        self.assertEqual(watch.history_pages("5" * 64, {k: v for k, v in commitment.items() if k != "issued_at"}, policy), [])
+
+    def test_p_a_card_whose_checkpoints_cannot_be_read_is_unreadable(self):
+        g = FIX / "goose"
+        commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
+        card = json.loads(base64.b64decode(commitment["history_cards"][0]["bytes"]))
+        art = json.loads(base64.urlsafe_b64decode(card["artifact"] + "=="))
+        art["history"][0]["checkpoint"] = "00"
+        card["artifact"] = base64.urlsafe_b64encode(json.dumps(art).encode()).decode().rstrip("=")
+        commitment["history_cards"][0]["bytes"] = base64.b64encode(json.dumps(card).encode()).decode()
+        (_, _, doc), = watch.history_pages("5" * 64, commitment, policy)
+        self.assertEqual((doc["outcome"], doc["rows"]), ({"kind": "unreadable"}, []))
+
     def test_n_the_card_list_names_only_stream_derivation_and_witnesses(self):
         for n in self.data["nodes"].values():
             for c in n["history_cards"]:
-                self.assertEqual(set(c), {"stream", "derivation", "community", "witnesses", "history", "since"})
+                self.assertEqual(set(c) - {"page"}, {"stream", "derivation", "community", "witnesses", "history", "since"})
         self.assertNotIn('"bytes"', json.dumps(self.data))
         self.assertNotIn('"sha256"', json.dumps(self.data))
         self.assertEqual(watch.history_cards({}), [])
@@ -973,12 +1077,14 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(test_site.branding(self.out), [])
         # Every file, the vendored d3 included; its LICENSE carries its own copyright notice, as the ISC licence asks.
         for p in (self.out / "watch").rglob("*"):
-            if not p.is_file() or p.name == "LICENSE":
+            if not p.is_file() or p.name.startswith("LICENSE"):  # d3's and the viewer's licences carry their notices
                 continue
             low = p.read_text(encoding="utf-8").lower()
             for b in test_site.BRANDS:
                 if p.name == "d3.min.js" and b == "copyright":
                     continue  # its banner comment: "Copyright 2010-2023 Mike Bostock"
+                if p.name == "history-view.iife.js":
+                    continue  # its wording pack's provenance names the product words' source; never drawn (below)
                 self.assertIsNone(re.search(rf"\b{re.escape(b)}\b", low), (p.name, b))
             # The public leak-lint rule (.github/leak_lint.py BRACKET_ID): [ + three or more hyphenated segments + ].
             self.assertIsNone(re.search(r"\[[a-z0-9]{2,}(?:-[a-z0-9]{2,}){2,}\]", low), p.name)

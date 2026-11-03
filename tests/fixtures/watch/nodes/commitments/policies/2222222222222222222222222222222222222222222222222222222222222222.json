@@ -1,0 +1,16 @@
+{
+  "key_id": "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a",
+  "policy": {
+    "advertise_evidence_requests": "off",
+    "share_adjudications": "off",
+    "share_exchange_corroboration": "on",
+    "share_history_segments": "peers",
+    "share_record_at_completion": "counterparty",
+    "share_standard_history": "on",
+    "stranger_safe": [
+      "checkpoints",
+      "history_card/1"
+    ]
+  },
+  "profile": "disclosure-policy/0"
+}
