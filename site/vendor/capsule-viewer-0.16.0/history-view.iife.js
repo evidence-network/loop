@@ -146,8 +146,14 @@ var HistoryView = (() => {
       "shares.twins.on": "When two copies of a model answer differently, this node sends the question and both answers to a referee.",
       "shares.twins.unstated": "Whether this node sends differing answers to a referee: this node's settings don't say.",
       "shares.witnesses": "Signed checkpoints go to the witnesses named here: {witnesses}",
-      "shares.witnesses.none": "No witnesses named.",
+      "shares.witnesses.none": "No witnesses named in this node's settings now. A row's time-stamp may come from an earlier setting.",
       "shares.witnesses.unstated": "Which witnesses get its checkpoints: this node's settings don't say.",
+      "shares.standard.unstated": "Whether the Service History goes to anyone: this node's settings don't say.",
+      "shares.segments.unstated": "Whether the other side of an exchange can ask for its record: this node's settings don't say.",
+      "shares.corroboration.unstated": "Whether this node tells a node that asks by an exchange's id if it holds its half: this node's settings don't say.",
+      "shares.completion.unstated": "Whether the sealed record is sent when an exchange completes: this node's settings don't say.",
+      "shares.adjudications.unstated": "Whether verdicts this node reaches go to the nodes judged: this node's settings don't say.",
+      "shares.never.unstated": "Whether a record goes to someone who doesn't prove who they are: this node's settings don't say.",
       "shares.never": "Never: a record to anyone who doesn't prove who they are.",
       "shares.as_of": "As this node was set when this page was built, {at}.",
       "seal.title": "Locked as it happened.",
@@ -156,6 +162,7 @@ var HistoryView = (() => {
       "seal.unchecked": "This page did not check how these records were locked.",
       "seal.second.label": "Second signature",
       "seal.second.rows": "See each row",
+      "seal.second.some_failed": "{k} of {n} didn't verify; see each row",
       "seal.directory": "Signers are looked up at {directory} on every read, so that site can see each time you look.",
       "checked.heading": "How this was checked",
       "checked.where.page": "These checks ran in this browser when the page opened ({by}).",
@@ -382,7 +389,7 @@ var HistoryView = (() => {
     const out = {};
     if (!e) return out;
     for (const [k, text] of Object.entries(e)) {
-      const base = BASE[k];
+      const base = Object.hasOwn(BASE, k) ? BASE[k] : void 0;
       const s = r.string(text, `overlay.entries.${k}`);
       if (base === void 0 || s === void 0) continue;
       if (placeholders(base).join(",") !== placeholders(s).join(","))
@@ -735,51 +742,37 @@ var HistoryView = (() => {
         "adjudicate_differing_twins",
         "witnesses"
       ];
-      const so = r.object(o["sharing"], "input.sharing", keys, keys.slice(0, 5));
+      const so = r.object(o["sharing"], "input.sharing", keys, []);
       if (so) {
         let witnesses;
         if ("witnesses" in so) {
           witnesses = [];
           if (Array.isArray(so["witnesses"]))
             for (const [i, w] of so["witnesses"].entries()) {
-              const s2 = r.string(w, `input.sharing.witnesses[${i}]`, 300);
-              if (s2 !== void 0) witnesses.push(s2);
+              const s = r.string(w, `input.sharing.witnesses[${i}]`, 300);
+              if (s !== void 0) witnesses.push(s);
             }
           else r.refuse("input.sharing.witnesses", "is not a list");
         }
-        const twins = "adjudicate_differing_twins" in so ? r.bool(
-          so["adjudicate_differing_twins"],
-          "input.sharing.adjudicate_differing_twins"
-        ) : void 0;
-        const s = {
-          standard_history: r.bool(
-            so["standard_history"],
-            "input.sharing.standard_history"
-          ),
-          history_segments: r.oneOf(
-            so["history_segments"],
-            "input.sharing.history_segments",
-            ["off", "counterparties", "peers"]
-          ),
-          record_at_completion: r.oneOf(
-            so["record_at_completion"],
-            "input.sharing.record_at_completion",
-            ["counterparty", "off"]
-          ),
-          adjudications: r.oneOf(
-            so["adjudications"],
-            "input.sharing.adjudications",
-            ["deliver_to_subjects", "off"]
-          ),
-          exchange_corroboration: r.bool(
-            so["exchange_corroboration"],
-            "input.sharing.exchange_corroboration"
-          )
+        const stated = {};
+        let wrong = false;
+        const take = (k, parse) => {
+          if (!(k in so)) return;
+          const v = parse();
+          if (v === void 0) wrong = true;
+          else stated[k] = v;
         };
-        if (Object.values(s).every((x) => x !== void 0))
+        const on = (k) => take(k, () => r.bool(so[k], `input.sharing.${k}`));
+        const one = (k, values) => take(k, () => r.oneOf(so[k], `input.sharing.${k}`, values));
+        on("standard_history");
+        one("history_segments", ["off", "counterparties", "peers"]);
+        one("record_at_completion", ["counterparty", "off"]);
+        one("adjudications", ["deliver_to_subjects", "off"]);
+        on("exchange_corroboration");
+        on("adjudicate_differing_twins");
+        if (!wrong)
           sharing = {
-            ...s,
-            ...twins !== void 0 ? { adjudicate_differing_twins: twins } : {},
+            ...stated,
             ...witnesses !== void 0 ? { witnesses } : {}
           };
       }
@@ -1101,31 +1094,43 @@ var HistoryView = (() => {
     let shares = null;
     if (sharing) {
       const lines = [say("shares.summary")];
-      lines.push(
-        say(
-          sharing.standard_history ? "shares.standard.on" : "shares.standard.off"
-        )
-      );
+      if (sharing.standard_history === void 0)
+        lines.push(say("shares.standard.unstated"));
+      else
+        lines.push(
+          say(
+            sharing.standard_history ? "shares.standard.on" : "shares.standard.off"
+          )
+        );
       if (sharing.history_segments === "counterparties")
         lines.push(say("shares.segments.counterparties"));
       else if (sharing.history_segments === "peers")
         lines.push(say("shares.segments.peers"));
-      else
+      else if (sharing.history_segments === "off")
         lines.push(
           sharing.record_at_completion === "counterparty" ? `${say("shares.segments.off")} ${say("shares.segments.off.sealed")}` : say("shares.segments.off")
         );
-      if (sharing.exchange_corroboration)
+      else lines.push(say("shares.segments.unstated"));
+      if (sharing.exchange_corroboration === void 0)
+        lines.push(say("shares.corroboration.unstated"));
+      else if (sharing.exchange_corroboration)
         lines.push(say("shares.corroboration.on"));
-      lines.push(
-        say(
-          sharing.record_at_completion === "counterparty" ? "shares.completion.on" : "shares.completion.off"
-        )
-      );
-      lines.push(
-        say(
-          sharing.adjudications === "deliver_to_subjects" ? "shares.adjudications.on" : "shares.adjudications.off"
-        )
-      );
+      if (sharing.record_at_completion === void 0)
+        lines.push(say("shares.completion.unstated"));
+      else
+        lines.push(
+          say(
+            sharing.record_at_completion === "counterparty" ? "shares.completion.on" : "shares.completion.off"
+          )
+        );
+      if (sharing.adjudications === void 0)
+        lines.push(say("shares.adjudications.unstated"));
+      else
+        lines.push(
+          say(
+            sharing.adjudications === "deliver_to_subjects" ? "shares.adjudications.on" : "shares.adjudications.off"
+          )
+        );
       if (sharing.adjudicate_differing_twins === void 0)
         lines.push(say("shares.twins.unstated"));
       else if (sharing.adjudicate_differing_twins)
@@ -1136,7 +1141,11 @@ var HistoryView = (() => {
         lines.push(
           sharing.witnesses.length > 0 ? say("shares.witnesses", { witnesses: sharing.witnesses.join(", ") }) : say("shares.witnesses.none")
         );
-      lines.push(say("shares.never"));
+      lines.push(
+        say(
+          sharing.history_segments === void 0 ? "shares.never.unstated" : "shares.never"
+        )
+      );
       shares = el(
         "section",
         { class: "cvh-shares", "data-history": "shares" },
@@ -1153,7 +1162,14 @@ var HistoryView = (() => {
     {
       const states = drawRows ? rows.map((x) => x.second.state) : [];
       const sealState = secondFailed || states.some((s) => s === "failed") ? "failed" : states.length === 0 || states.some((s) => s === "not_checked") ? "not_checked" : states.every((s) => s === "none") ? "none" : "mixed";
-      const sealLine = sealState === "failed" ? say("slot.failed") : sealState === "none" ? say("slot.second.none") : sealState === "not_checked" ? say("slot.unchecked") : say("seal.second.rows");
+      const failedRows = states.filter((s) => s === "failed").length;
+      const signedRows = states.filter(
+        (s) => s === "failed" || s === "passed"
+      ).length;
+      const sealLine = sealState === "failed" ? failedRows > 0 && failedRows < signedRows ? say("seal.second.some_failed", {
+        k: String(failedRows),
+        n: String(signedRows)
+      }) : say("slot.failed") : sealState === "none" ? say("slot.second.none") : sealState === "not_checked" ? say("slot.unchecked") : say("seal.second.rows");
       seal = el(
         "section",
         { class: "cvh-seal", "data-history": "seal" },

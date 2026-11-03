@@ -67,8 +67,8 @@ SVG_NS = "http://www.w3.org/2000/svg"
 D3_URLS = {SVG_NS, "http://www.w3.org/1999/xhtml", "http://www.w3.org/1999/xlink", "http://www.w3.org/2000/xmlns/",
            "http://www.w3.org/XML/1998/namespace", "https://d3js.org"}
 D3 = ROOT / "site" / "vendor" / "d3-7.9.0"
-CV = ROOT / "site" / "vendor" / "capsule-viewer-0.14.0"
-CV_SHA256 = "c7a9bce903e0b99dd5618c893a7d0cf3576ad8d3ff2dd72635209c9ce30346d7"
+CV = ROOT / "site" / "vendor" / "capsule-viewer-0.16.0"
+CV_SHA256 = "2efee644452238b67989f477d64a13d80fa41917ed549d4dd970fac71d01ce1d"
 D3_SHA256 = "f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539"
 NODE = shutil.which("node") or os.path.expanduser("~/.local/opt/node-v22.23.3/bin/node")
 MONEY = re.compile(r"amount|band|msat|currency|price|fee\b|usd|usdc|sats?\b|payment", re.I)
@@ -221,9 +221,10 @@ class WatchTest(unittest.TestCase):
 
     def test_the_page_and_its_files_are_written_under_watch(self):
         got = sorted(p.relative_to(self.out / "watch").as_posix() for p in (self.out / "watch").rglob("*") if p.is_file())
-        v = "vendor/capsule-viewer-0.14.0/"
+        v = "vendor/capsule-viewer-0.16.0/"
         self.assertEqual(got, ["data.json", f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
-                               f"history/{nid(2)}/node-two-book-b.html", "index.html", v + "LICENSE",
+                               f"history/{nid(2)}/node-two-book-b.html", f"history/{nid(4)}/node-four-agent.html", "index.html",
+                               v + "LICENSE",
                                v + "LICENSE-BSD-3-Clause", v + "history-view.iife.js", "vendor/d3-7.9.0/LICENSE",
                                "vendor/d3-7.9.0/d3.min.js", "watch-layout.js", "watch.js"])
         for f in ("watch.js", "watch-layout.js"):
@@ -828,19 +829,20 @@ class WatchTest(unittest.TestCase):
         out = self.out / "watch"
         self.assertEqual(sorted(p.relative_to(out).as_posix() for p in (out / "history").rglob("*.html")),
                          [f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
-                          f"history/{nid(2)}/node-two-book-b.html"])
-        # node four advertises an older policy: no page, and the panel says so; no page for a node with no commitment.
+                          f"history/{nid(2)}/node-two-book-b.html", f"history/{nid(4)}/node-four-agent.html"])
+        # node four advertises an older policy naming none of the sharing settings: a page whose block says the
+        # node's settings don't say; a node with no commitment has no card.
         self.assertEqual([(c.get("page"), c.get("no_page")) for c in self.data["nodes"][nid(4)]["history_cards"]],
-                         [(None, "policy")])
+                         [(f"history/{nid(4)}/node-four-agent.html", None)])
         self.assertEqual(self.data["nodes"][nid(3)]["history_cards"], [])
-        self.assertIn("its policy doesn't say all it shares", self.js)
+        self.assertIn("its advertised policy can't be read", self.js)
         self.assertIn("its commitment has no issue time", self.js)
 
     def test_p_the_page_embeds_the_pinned_view_and_the_input(self):
         page = (self.out / "watch" / "history" / nid(2) / "node-two-book-a.html").read_text(encoding="utf-8")
         scripts = re.findall(r"<script([^>]*)>", page)
         self.assertEqual(scripts, [' type="application/json" id="history-input"',
-                                   ' src="../../vendor/capsule-viewer-0.14.0/history-view.iife.js"', ""])
+                                   ' src="../../vendor/capsule-viewer-0.16.0/history-view.iife.js"', ""])
         doc = json.loads(re.search(r'id="history-input">(.*?)</script>', page, re.S).group(1))
         self.assertEqual(doc["sharing"], {"standard_history": True, "history_segments": "peers",
                                           "record_at_completion": "counterparty", "adjudications": "off",
@@ -918,10 +920,15 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(len(watch.history_pages("5" * 64, commitment, policy)), 1)
         why = lambda c, p: [(r, w) for _, r, _, w in watch.history_pages("5" * 64, c, p)]  # noqa: E731
         self.assertEqual(why(commitment, None), [(None, "nopolicy")])
-        for bad in ({}, {"profile": "disclosure-policy/0", "policy": {}},
-                    {**policy, "policy": {**policy["policy"], "share_history_segments": "everyone"}},
-                    {**policy, "policy": {k: v for k, v in policy["policy"].items() if k != "share_standard_history"}}):
+        for bad in ({}, {"profile": "other/0", "policy": {}}, {"profile": "disclosure-policy/0", "policy": []}):
             self.assertEqual(why(commitment, bad), [(None, "policy")])
+        # What a policy says is passed on, and only that: a Goose node's says none of it; a value the view does not
+        # know is left out rather than drawn as the nearest line.
+        pick = lambda p: watch.sharing({"profile": "disclosure-policy/0", "policy": p})  # noqa: E731
+        self.assertEqual(pick(policy["policy"]), {})
+        self.assertEqual(pick({"share_history_segments": "everyone", "share_standard_history": "on",
+                               "share_adjudications": "off"}),
+                         {"standard_history": True, "adjudications": "off"})
         self.assertEqual(why({k: v for k, v in commitment.items() if k != "issued_at"}, policy), [(None, "issued_at")])
         nameless = json.loads(json.dumps(commitment))
         nameless["history_cards"][0]["stream"] = None

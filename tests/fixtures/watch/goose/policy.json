@@ -1,12 +1,7 @@
 {
   "key_id": "5555555555555555555555555555555555555555555555555555555555555555",
   "policy": {
-    "advertise_evidence_requests": "off",
-    "share_adjudications": "deliver_to_subjects",
-    "share_exchange_corroboration": "on",
-    "share_history_segments": "counterparties",
-    "share_record_at_completion": "counterparty",
-    "share_standard_history": "on",
+    "share_deal_half": "counterparty",
     "stranger_safe": [
       "checkpoints",
       "history_card/1"

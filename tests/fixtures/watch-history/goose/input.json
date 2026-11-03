@@ -51,13 +51,7 @@
    }
   }
  ],
- "sharing": {
-  "adjudications": "deliver_to_subjects",
-  "exchange_corroboration": true,
-  "history_segments": "counterparties",
-  "record_at_completion": "counterparty",
-  "standard_history": true
- },
+ "sharing": {},
  "surface": "neutral",
  "view": "history-view/v0"
 }

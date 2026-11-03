@@ -321,7 +321,7 @@
 
   function cut(s) { return s.length > 16 ? s.slice(0, 12) + "..." : s; }
   // Why a stapled card has no History page (watch.py `no_page`).
-  var NO_PAGE = { nopolicy: "it advertises no policy", policy: "its policy doesn't say all it shares", stream: "the card names no stream",
+  var NO_PAGE = { nopolicy: "it advertises no policy", policy: "its advertised policy can't be read", stream: "the card names no stream",
                   issued_at: "its commitment has no issue time" };
   // Each card: its stream, community and witnesses, then the link to its History page (the shared capsule-viewer
   // History view draws it) or why there is none.

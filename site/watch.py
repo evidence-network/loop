@@ -9,7 +9,7 @@ Usage: watch.py [--daily DIR] [--rehearsal DIR] [--ondemand DIR] [--findings DIR
 Writes DIR/watch/index.html, data.json, watch.js, watch-layout.js, the
 vendored d3 (vendor/d3-7.9.0/) and, for each node stream whose advertised policy
 says everything the shared capsule-viewer History view needs, its page
-(history/<node_id>/<stream>.html, drawn by the vendored vendor/capsule-viewer-0.14.0/),
+(history/<node_id>/<stream>.html, drawn by the vendored vendor/capsule-viewer-0.16.0/),
 served at <pages root>/watch/. Run it after
 site/build.py, which empties DIR.
 
@@ -60,7 +60,7 @@ PAGE = "watch"
 FORMAT = "watch/2"
 D3 = "vendor/d3-7.9.0"
 # The shared History view (capsule-viewer, evidence-network/loop#360): its script and stylesheet, as released.
-VIEWER = "vendor/capsule-viewer-0.14.0"
+VIEWER = "vendor/capsule-viewer-0.16.0"
 HISTORY_DIR = "history"
 POLICY_PROFILE = "disclosure-policy/0"
 # The graph's own size, in SVG units: the layout and the seeds are inside it.
@@ -232,6 +232,7 @@ def history_cards(commitment):
 # --- History pages: the shared capsule-viewer History view, one page per node and stream ----------------------
 
 # A node's advertised disclosure-policy/0 member -> the History view's `sharing` member, and what each may be.
+# The view (0.16.0) takes each member optionally.
 SHARES = (("share_standard_history", "standard_history", {"on": True, "off": False}),
           ("share_history_segments", "history_segments", {"off": "off", "counterparties": "counterparties", "peers": "peers"}),
           ("share_record_at_completion", "record_at_completion", {"counterparty": "counterparty", "off": "off"}),
@@ -240,18 +241,19 @@ SHARES = (("share_standard_history", "standard_history", {"on": True, "off": Fal
 
 
 def sharing(policy_doc):
-    """The View's `sharing` from a node's advertised disclosure-policy/0, or None when it does not say every
-    member the view requires or says one the view does not know. Nothing is assumed for what it leaves out:
-    `adjudicate_differing_twins` and `witnesses` are not advertised and are left absent, which the view allows."""
+    """The View's `sharing` from a node's advertised disclosure-policy/0, or None when it is not one.
+
+    Only what the policy says is passed on: a member it leaves out, or gives a value the view does not know, is left
+    out too, and the view then says the node's settings don't say (a Goose node advertises none of the five; a mesh
+    node all of them). `adjudicate_differing_twins` and `witnesses` are never advertised and are left absent."""
     policy = policy_doc.get("policy") if isinstance(policy_doc, dict) else None
     if not (isinstance(policy_doc, dict) and policy_doc.get("profile") == POLICY_PROFILE and isinstance(policy, dict)):
         return None
     out = {}
     for src, dst, allowed in SHARES:
         v = policy.get(src)
-        if not isinstance(v, str) or v not in allowed:
-            return None
-        out[dst] = allowed[v]
+        if isinstance(v, str) and v in allowed:
+            out[dst] = allowed[v]
     return out
 
 
@@ -309,7 +311,7 @@ def history_pages(node_id, commitment, policy_doc):
     """[(card index, relative page path or None, input or None, why not)] for each stapled card, in the order
     `history_cards` lists them: the page path and input when it can be drawn, else why it cannot ("stream": the card
     names no stream, "issued_at": the commitment has no issue time, "nopolicy": the node has no advertised policy
-    file, "policy": its advertised policy does not say everything the view needs)."""
+    file, "policy": its advertised policy is not a disclosure-policy/0)."""
     entries, one = staples(commitment)
     taken, out = set(), []
     for i, c in enumerate(entries):
