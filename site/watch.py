@@ -7,9 +7,9 @@ Usage: watch.py [--daily DIR] [--rehearsal DIR] [--ondemand DIR] [--findings DIR
         lab/runs, no bindings, no lock, _site)
 
 Writes DIR/watch/index.html, data.json, watch.js, watch-layout.js, the
-vendored d3 (vendor/d3-7.9.0/) and, for each node stream whose advertised policy
-says everything the shared capsule-viewer History view needs, its page
-(history/<node_id>/<stream>.html, drawn by the vendored vendor/capsule-viewer-0.16.0/),
+vendored d3 (vendor/d3-7.9.0/) and, for each stapled node stream whose node advertises a
+disclosure-policy/0, its page (history/<node_id>/<stream>.html, drawn by the vendored
+vendor/capsule-viewer-0.16.0/ History view),
 served at <pages root>/watch/. Run it after
 site/build.py, which empties DIR.
 
