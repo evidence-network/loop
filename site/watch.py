@@ -9,7 +9,7 @@ Usage: watch.py [--daily DIR] [--rehearsal DIR] [--ondemand DIR] [--findings DIR
 Writes DIR/watch/index.html, data.json, watch.js, watch-layout.js, the
 vendored d3 (vendor/d3-7.9.0/) and, for each stapled node stream whose node advertises a
 disclosure-policy/0, its page (history/<node_id>/<stream>.html, drawn by the vendored
-vendor/capsule-viewer-0.16.0/ History view),
+vendor/capsule-viewer-0.17.0/ History view),
 served at <pages root>/watch/. Run it after
 site/build.py, which empties DIR.
 
@@ -60,7 +60,7 @@ PAGE = "watch"
 FORMAT = "watch/2"
 D3 = "vendor/d3-7.9.0"
 # The shared History view (capsule-viewer, evidence-network/loop#360): its script and stylesheet, as released.
-VIEWER = "vendor/capsule-viewer-0.16.0"
+VIEWER = "vendor/capsule-viewer-0.17.0"
 HISTORY_DIR = "history"
 POLICY_PROFILE = "disclosure-policy/0"
 # The graph's own size, in SVG units: the layout and the seeds are inside it.
@@ -232,20 +232,21 @@ def history_cards(commitment):
 # --- History pages: the shared capsule-viewer History view, one page per node and stream ----------------------
 
 # A node's advertised disclosure-policy/0 member -> the History view's `sharing` member, and what each may be.
-# The view (0.16.0) takes each member optionally.
+# The view (0.17.0) takes each member optionally.
 SHARES = (("share_standard_history", "standard_history", {"on": True, "off": False}),
           ("share_history_segments", "history_segments", {"off": "off", "counterparties": "counterparties", "peers": "peers"}),
           ("share_record_at_completion", "record_at_completion", {"counterparty": "counterparty", "off": "off"}),
           ("share_adjudications", "adjudications", {"deliver_to_subjects": "deliver_to_subjects", "off": "off"}),
-          ("share_exchange_corroboration", "exchange_corroboration", {"on": True, "off": False}))
+          ("share_exchange_corroboration", "exchange_corroboration", {"on": True, "off": False}),
+          ("share_deal_half", "share_deal_half", {"counterparty": "counterparty"}))
 
 
 def sharing(policy_doc):
     """The View's `sharing` from a node's advertised disclosure-policy/0, or None when it is not one.
 
     Only what the policy says is passed on: a member it leaves out, or gives a value the view does not know, is left
-    out too, and the view then says the node's settings don't say (a Goose node advertises none of the five; a mesh
-    node all of them). `adjudicate_differing_twins` and `witnesses` are never advertised and are left absent."""
+    out too, and the view then says the node's settings don't say (a mesh node advertises the five History settings,
+    a Goose node `share_deal_half` and `stranger_safe`). `adjudicate_differing_twins` and `witnesses` are never advertised and are left absent."""
     policy = policy_doc.get("policy") if isinstance(policy_doc, dict) else None
     if not (isinstance(policy_doc, dict) and policy_doc.get("profile") == POLICY_PROFILE and isinstance(policy, dict)):
         return None
@@ -254,6 +255,9 @@ def sharing(policy_doc):
         v = policy.get(src)
         if isinstance(v, str) and v in allowed:
             out[dst] = allowed[v]
+    safe = policy.get("stranger_safe")  # what a stranger may ask for: names the view draws as the node's own words
+    if isinstance(safe, list) and all(isinstance(x, str) and 0 < len(x) <= 80 for x in safe):
+        out["stranger_safe"] = safe
     return out
 
 

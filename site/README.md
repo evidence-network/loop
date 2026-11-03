@@ -142,10 +142,10 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
   `disclosure-policy/0`, read at build time and not tied to the commitment's date) has its own History page,
   `history/<node_id>/<stream>.html`, linked from the node's panel as the card's `page`. The page draws the card's
   checkpoints (cut time, entries, a SHA-256 anchor of the statement) through the vendored view
-  (`vendor/capsule-viewer-0.16.0/`) and, under "What this node shares", only what the policy says
+  (`vendor/capsule-viewer-0.17.0/`) and, under "What this node shares", only what the policy says
   (`share_standard_history`, `share_history_segments`, `share_record_at_completion`, `share_adjudications`,
-  `share_exchange_corroboration`; a mesh node advertises all five, a Goose node none), the view saying "this node's
-  settings don't say" for the rest. Nothing is verified in the build, so every signature, time-stamp and
+  `share_exchange_corroboration`, `share_deal_half`, `stranger_safe`; a mesh node advertises the first five, a Goose
+  node the last two), the view saying "this node's settings don't say" for the rest. Nothing is verified in the build, so every signature, time-stamp and
   second-signature slot reads "not checked here". A card without a page says why in the panel (`no_page`).
 - A node's badge is the number of history cards stapled to its commitment;
   its card lists each one's stream (log id) and the witnesses whose receipts
