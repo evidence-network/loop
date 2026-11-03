@@ -236,7 +236,7 @@ def goose():
         "profile": "evidence-commitment/1", "node_id": "5" * 64, "key_id": "5" * 64, "issued_at": "2026-11-03T18:09:41Z",
         "ask": {"endpoint": "book:goose-node"},
         "history_cards": [staple("goose/node", "goose", card("goose/node", started="2026-11-03", cuts=cuts))]})
-    # A Goose node advertises a deal half and what a stranger may ask, and none of the History view's sharing settings.
+    # A Goose node advertises a deal half and what a stranger may ask, the two sharing settings it advertises.
     dump(g / "policy.json", {"profile": "disclosure-policy/0", "key_id": "5" * 64,
                              "policy": {"share_deal_half": "counterparty", "stranger_safe": ["history_card/1"]}})
 

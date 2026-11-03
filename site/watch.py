@@ -256,7 +256,9 @@ def sharing(policy_doc):
         if isinstance(v, str) and v in allowed:
             out[dst] = allowed[v]
     safe = policy.get("stranger_safe")  # what a stranger may ask for: names the view draws as the node's own words
-    if isinstance(safe, list) and all(isinstance(x, str) and 0 < len(x) <= 80 for x in safe):
+    # The view counts UTF-16 units (JavaScript's length), not code points: measure the same way, or one long entry
+    # would make it refuse the whole page.
+    if isinstance(safe, list) and all(isinstance(x, str) and 0 < len(x.encode("utf-16-le")) // 2 <= 80 for x in safe):
         out["stranger_safe"] = safe
     return out
 

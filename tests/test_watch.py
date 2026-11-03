@@ -922,11 +922,13 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(why(commitment, None), [(None, "nopolicy")])
         for bad in ({}, {"profile": "other/0", "policy": {}}, {"profile": "disclosure-policy/0", "policy": []}):
             self.assertEqual(why(commitment, bad), [(None, "policy")])
-        # What a policy says is passed on, and only that: a Goose node's says none of it; a value the view does not
+        # What a policy says is passed on, and only that: a Goose node's says only its deal half and stranger-safe list; a value the view does not
         # know is left out rather than drawn as the nearest line.
         pick = lambda p: watch.sharing({"profile": "disclosure-policy/0", "policy": p})  # noqa: E731
         self.assertEqual(pick(policy["policy"]), {"share_deal_half": "counterparty", "stranger_safe": ["history_card/1"]})
-        self.assertEqual(pick({"stranger_safe": ["", "x"], "share_deal_half": "everyone"}), {})  # not drawn as the nearest
+        self.assertEqual(pick({"stranger_safe": ["", "x"], "share_deal_half": "everyone"}), {})
+        self.assertEqual(pick({"stranger_safe": ["\U0001F600" * 41]}), {})  # 82 UTF-16 units: the view would refuse it
+        self.assertEqual(pick({"stranger_safe": ["\U0001F600" * 40]}), {"stranger_safe": ["\U0001F600" * 40]})  # not drawn as the nearest
         self.assertEqual(pick({"share_history_segments": "everyone", "share_standard_history": "on",
                                "share_adjudications": "off"}),
                          {"standard_history": True, "adjudications": "off"})
