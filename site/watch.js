@@ -320,17 +320,23 @@
   function row(dl, k, v) { dl.appendChild(html("dt", "", k)); dl.appendChild(html("dd", "", v)); }
 
   function cut(s) { return s.length > 16 ? s.slice(0, 12) + "..." : s; }
-  // One link per stream whose History page was written (the shared capsule-viewer History view draws it).
+  // Why a stapled card has no History page (watch.py `no_page`).
+  var NO_PAGE = { policy: "its policy doesn't say all it shares", stream: "the card names no stream",
+                  issued_at: "its commitment has no issue time" };
+  // Each card: its stream, community and witnesses, then the link to its History page (the shared capsule-viewer
+  // History view draws it) or why there is none.
   function cardList(cards) {
     var ul = html("ul", "cards");
     cards.forEach(function (c) {
-      var li = html("li", "", "stream " + (c.stream ? cut(c.stream) : "not named") + " (" + c.community + "): ");
+      var li = html("li", "", "stream " + (c.stream ? cut(c.stream) : "not named") + " (" + c.community + "): " +
+        (c.history ? "" : "no history since " + (c.since || "its start") + "; ") +
+        (c.witnesses.length ? "witnessed by " + c.witnesses.map(cut).join(", ") : "unwitnessed") + "; ");
       if (c.page) {
         var a = html("a", "", "History page");
         a.setAttribute("href", c.page);
         li.appendChild(a);
       } else {
-        li.appendChild(document.createTextNode("no History page: its advertised policy does not say what it shares"));
+        li.appendChild(document.createTextNode("no History page yet: " + (NO_PAGE[c.no_page] || NO_PAGE.policy)));
       }
       ul.appendChild(li);
     });

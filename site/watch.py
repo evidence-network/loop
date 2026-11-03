@@ -192,6 +192,12 @@ def witnesses(result):
 COMMUNITIES = {"mesh-llm": "mesh-llm", "muse": "personal-agents", "goose": "goose"}
 
 
+def staples(commitment):
+    """(the stapled card entries as the page reads them, whether it is a single /0 `history_card`)."""
+    got = commitment.get("history_cards", commitment.get("history_card"))
+    return (got if isinstance(got, list) else [got] if isinstance(got, dict) else []), not isinstance(got, list)
+
+
 def history_cards(commitment):
     """The history cards stapled to a commitment: each its stream, community, witnesses and whether it has history.
 
@@ -203,9 +209,7 @@ def history_cards(commitment):
     stream is new or a cleared one started again: `since` is the day the
     stream started (the card's `stream_started`, else the day it was issued).
     Nothing of a card but these."""
-    got = commitment.get("history_cards", commitment.get("history_card"))
-    one = not isinstance(got, list)
-    entries = got if isinstance(got, list) else [got] if isinstance(got, dict) else []
+    entries, one = staples(commitment)
     out = []
     for c in entries:
         if not isinstance(c, dict):
@@ -252,20 +256,24 @@ def sharing(policy_doc):
 
 
 def history_input(node_id, stream, answer, policy_doc, built_at):
-    """The `history-view/v0` input for one stream of a node, or None when its page cannot be written.
+    """(the `history-view/v0` input for one stream of a node, None) or (None, why no page can be written).
 
     Built from what the card itself says, with nothing verified here: each checkpoint of the card's history is a
     row (its issued_at, its log_size, its anchor the SHA-256 of the checkpoint statement), every signature,
     witness and second-signature slot unchecked. A card whose checkpoints cannot be read is `unreadable`."""
+    if not isinstance(stream, str) or not stream:
+        return None, "stream"
+    if not isinstance(built_at, str):
+        return None, "issued_at"
     share = sharing(policy_doc)
-    if share is None or not isinstance(stream, str) or not isinstance(built_at, str):
-        return None
+    if share is None:
+        return None, "policy"
     rows, readable = [], True
-    for entry, payload in zip(hc._history(answer), hc.card_checkpoints(answer)):
+    for statement, payload in hc.card_statements(answer):
         issued, size = (payload or {}).get("issued_at"), (payload or {}).get("log_size")
         try:
-            anchor = hashlib.sha256(bytes.fromhex(entry["checkpoint"])).hexdigest()
-        except (KeyError, ValueError, TypeError):
+            anchor = hashlib.sha256(bytes.fromhex(statement)).hexdigest()
+        except (ValueError, TypeError):
             anchor = None
         if not (isinstance(issued, str) and isinstance(size, int) and not isinstance(size, bool) and anchor):
             readable = False
@@ -280,8 +288,8 @@ def history_input(node_id, stream, answer, policy_doc, built_at):
                       {"id": "checkpoint_chain", "status": "not_run"}],
            "sharing": share}
     if not readable:
-        return doc | {"outcome": {"kind": "unreadable"}, "rows": []}
-    return doc | {"rows": rows}
+        return doc | {"outcome": {"kind": "unreadable"}, "rows": []}, None
+    return doc | {"rows": rows}, None
 
 
 def slug(stream, taken):
@@ -296,27 +304,37 @@ def slug(stream, taken):
 
 
 def history_pages(node_id, commitment, policy_doc):
-    """[(card index, relative page path, input)] for each stapled card of a commitment that can be drawn."""
+    """[(card index, relative page path or None, input or None, why not)] for each stapled card, in the order
+    `history_cards` lists them: the page path and input when it can be drawn, else why it cannot ("stream": the card
+    names no stream, "issued_at": the commitment has no issue time, "policy": the advertised policy does not say
+    everything the view needs, or there is none)."""
+    entries, one = staples(commitment)
     taken, out = set(), []
-    for i, entry in enumerate(hc.entries(commitment)):
-        stream = entry.get("stream")
-        if not isinstance(stream, str) or not stream:
+    for i, c in enumerate(entries):
+        if not isinstance(c, dict):
             continue
-        doc = history_input(node_id, stream, hc.card_answer(entry), policy_doc, commitment.get("issued_at"))
-        if doc is not None:
-            out.append((i, f"{HISTORY_DIR}/{node_id}/{slug(stream, taken)}.html", doc))
+        answer = hc.card_answer(c)
+        stream = c.get("stream")
+        if not isinstance(stream, str):
+            stream = (hc.card_result(answer) or {}).get("evidence_stream") if answer else None
+        doc, why = history_input(node_id, stream, answer, policy_doc, commitment.get("issued_at"))
+        out.append((len(out), f"{HISTORY_DIR}/{node_id}/{slug(stream, taken)}.html" if doc else None, doc, why))
     return out
+
+
+HISTORY_CSS = (HERE / VIEWER / "history-view.css").read_text(encoding="utf-8")
 
 
 def history_page(doc):
     """The static page for one input: the view's stylesheet inline, its script as vendored, the input as JSON."""
-    css = (HERE / VIEWER / "history-view.css").read_text(encoding="utf-8")
-    blob = json.dumps(doc, sort_keys=True, separators=(",", ":")).replace("</", "<\\/")
-    title = f"History - node {doc['holder']['node'][:12]}, {doc['holder']['stream']}"
+    blob = json.dumps(doc, sort_keys=True, separators=(",", ":"))
+    # Inside a script block "<" and "&" must not start a tag, a comment or an entity: a stream name is the node's own.
+    blob = blob.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    title = f"History · node {doc['holder']['node'][:12]} · {doc['holder']['stream']}"
     return ("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            f"<title>{e(title)}</title><style>{css}</style></head><body>\n"
-            "<div id=\"history\"><noscript>This page needs script to draw the history.</noscript></div>\n"
+            f"<title>{e(title)}</title><style>{HISTORY_CSS}</style></head><body>\n"
+            "<p><a href=\"../../index.html\">Back to the watch page</a></p>\n<div id=\"history\"><noscript>This page needs script to draw the history.</noscript></div>\n"
             f"<script type=\"application/json\" id=\"history-input\">{blob}</script>\n"
             f"<script src=\"../../{VIEWER}/history-view.iife.js\"></script>\n"
             "<script>HistoryView.renderHistoryView(JSON.parse(document.getElementById(\"history-input\").textContent), "
@@ -774,9 +792,9 @@ def export(daily, rehearsal, findings, nodes_dir, population_dir, commitments_di
         path, c = held.get(nid, (None, {}))
         cards = history_cards(c)
         policy = read_json(Path(nodes_dir) / "commitments" / "policies" / f"{nid}.json")
-        for i, page, doc in history_pages(nid, c, policy):
-            cards[i]["page"] = page
-            if pages is not None:
+        for i, page, doc, why in history_pages(nid, c, policy):
+            cards[i]["page" if page else "no_page"] = page or why
+            if pages is not None and page:
                 pages[page] = doc
         nodes[nid] = n | {"seed": seed(nid), "commitment": path, "history_cards": cards, "binding": None}
     groups, notes = bindings(bindings_dir, lock, by_id, by_key, rel)

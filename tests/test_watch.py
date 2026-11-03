@@ -820,9 +820,8 @@ class WatchTest(unittest.TestCase):
 
     # (p) History pages: the shared capsule-viewer History view draws each stream (evidence-network/loop#360)
 
-    def test_p_the_old_card_renderer_is_gone_and_the_panel_links_the_pages(self):
-        self.assertNotIn("witnessed by", self.js)
-        self.assertNotIn("unwitnessed", self.js)
+    def test_p_the_panel_links_the_pages_and_says_why_when_there_is_none(self):
+        self.assertIn('"unwitnessed"', self.js)  # the witness clause stays beside the link
         self.assertIn('html("a", "", "History page")', self.js)
 
     def test_p_a_page_per_stream_whose_policy_says_what_the_view_needs(self):
@@ -831,9 +830,11 @@ class WatchTest(unittest.TestCase):
                          [f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
                           f"history/{nid(2)}/node-two-book-b.html"])
         # node four advertises an older policy: no page, and the panel says so; no page for a node with no commitment.
-        self.assertEqual([c.get("page") for c in self.data["nodes"][nid(4)]["history_cards"]], [None])
+        self.assertEqual([(c.get("page"), c.get("no_page")) for c in self.data["nodes"][nid(4)]["history_cards"]],
+                         [(None, "policy")])
         self.assertEqual(self.data["nodes"][nid(3)]["history_cards"], [])
-        self.assertIn("no History page: its advertised policy does not say what it shares", self.js)
+        self.assertIn("its policy doesn't say all it shares", self.js)
+        self.assertIn("its commitment has no issue time", self.js)
 
     def test_p_the_page_embeds_the_pinned_view_and_the_input(self):
         page = (self.out / "watch" / "history" / nid(2) / "node-two-book-a.html").read_text(encoding="utf-8")
@@ -851,6 +852,7 @@ class WatchTest(unittest.TestCase):
             self.assertEqual((r["signature"], r["witness"], r["second_signature"]),
                              ("not_run", {"state": "not_checked"}, {"state": "not_checked"}))
         self.assertNotIn("witness-one", page)
+        self.assertIn('<a href="../../index.html">Back to the watch page</a>', page)
         css = (CV / "history-view.css").read_text(encoding="utf-8")
         self.assertIn(f"<style>{css}</style>", page)
 
@@ -878,7 +880,7 @@ class WatchTest(unittest.TestCase):
     def test_p_a_goose_page_matches_its_golden(self):
         g = FIX / "goose"
         commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
-        (rel, doc), = [(r, d) for _, r, d in watch.history_pages("5" * 64, commitment, policy)]
+        (rel, doc), = [(r, d) for _, r, d, _ in watch.history_pages("5" * 64, commitment, policy)]
         self.assertEqual(rel, f"history/{'5' * 64}/goose-node.html")
         golden = ROOT / "tests" / "fixtures" / "watch-history" / "goose"
         self.assertEqual(json.dumps(doc, sort_keys=True, indent=1) + "\n", (golden / "input.json").read_text())
@@ -893,15 +895,37 @@ class WatchTest(unittest.TestCase):
                      "Second signature", "Not checked here"):
             self.assertIn(text, shown)
 
+    def test_p_a_stream_name_cannot_end_the_scripts_block(self):
+        doc = {"holder": {"node": "5" * 64, "stream": "x<!--<script></script><b>&"}, "rows": []}
+        page = watch.history_page(doc)
+        blob = re.search(r'id="history-input">(.*?)</script>', page, re.S).group(1)
+        for ch in "<>&":
+            self.assertNotIn(ch, blob)
+        self.assertEqual(json.loads(blob), doc)
+        self.assertEqual(len(re.findall(r"<script", page)), 3)
+
+    def test_p_cards_are_paired_with_pages_in_the_order_history_cards_lists_them(self):
+        g = FIX / "goose"
+        commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
+        commitment["history_cards"].insert(0, 7)  # not a card: both skip it
+        self.assertEqual([c["stream"] for c in watch.history_cards(commitment)], ["goose/node"])
+        self.assertEqual([(i, r) for i, r, _, _ in watch.history_pages("5" * 64, commitment, policy)],
+                         [(0, f"history/{'5' * 64}/goose-node.html")])
+
     def test_p_refusals_draw_no_page(self):
         g = FIX / "goose"
         commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
         self.assertEqual(len(watch.history_pages("5" * 64, commitment, policy)), 1)
+        why = lambda c, p: [(r, w) for _, r, _, w in watch.history_pages("5" * 64, c, p)]  # noqa: E731
         for bad in (None, {}, {"profile": "disclosure-policy/0", "policy": {}},
                     {**policy, "policy": {**policy["policy"], "share_history_segments": "everyone"}},
                     {**policy, "policy": {k: v for k, v in policy["policy"].items() if k != "share_standard_history"}}):
-            self.assertEqual(watch.history_pages("5" * 64, commitment, bad), [])
-        self.assertEqual(watch.history_pages("5" * 64, {k: v for k, v in commitment.items() if k != "issued_at"}, policy), [])
+            self.assertEqual(why(commitment, bad), [(None, "policy")])
+        self.assertEqual(why({k: v for k, v in commitment.items() if k != "issued_at"}, policy), [(None, "issued_at")])
+        nameless = json.loads(json.dumps(commitment))
+        nameless["history_cards"][0]["stream"] = None
+        nameless["history_cards"][0]["bytes"] = ""  # and no card to name one
+        self.assertEqual(why(nameless, policy), [(None, "stream")])
 
     def test_p_a_card_whose_checkpoints_cannot_be_read_is_unreadable(self):
         g = FIX / "goose"
@@ -911,13 +935,13 @@ class WatchTest(unittest.TestCase):
         art["history"][0]["checkpoint"] = "00"
         card["artifact"] = base64.urlsafe_b64encode(json.dumps(art).encode()).decode().rstrip("=")
         commitment["history_cards"][0]["bytes"] = base64.b64encode(json.dumps(card).encode()).decode()
-        (_, _, doc), = watch.history_pages("5" * 64, commitment, policy)
+        (_, _, doc, _), = watch.history_pages("5" * 64, commitment, policy)
         self.assertEqual((doc["outcome"], doc["rows"]), ({"kind": "unreadable"}, []))
 
-    def test_n_the_card_list_names_only_stream_derivation_and_witnesses(self):
+    def test_n_the_card_list_names_only_stream_derivation_witnesses_and_its_page(self):
         for n in self.data["nodes"].values():
             for c in n["history_cards"]:
-                self.assertEqual(set(c) - {"page"}, {"stream", "derivation", "community", "witnesses", "history", "since"})
+                self.assertEqual(set(c) - {"page", "no_page"}, {"stream", "derivation", "community", "witnesses", "history", "since"})
         self.assertNotIn('"bytes"', json.dumps(self.data))
         self.assertNotIn('"sha256"', json.dumps(self.data))
         self.assertEqual(watch.history_cards({}), [])

@@ -179,6 +179,12 @@ def card_checkpoints(answer):
             for e in _history(answer)]
 
 
+def card_statements(answer):
+    """[(statement hex or None, payload or None)] for each checkpoint the card lists, in order."""
+    return [(e["checkpoint"] if isinstance(e.get("checkpoint"), str) else None, p)
+            for e, p in zip(_history(answer), card_checkpoints(answer))]
+
+
 def card_started(answer):
     """YYYY-MM-DD of the stream's first checkpoint, or None."""
     first = next(iter(card_checkpoints(answer)), None)

@@ -148,7 +148,8 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
   and the panel says so (capsule-viewer#257).
 - A node's badge is the number of history cards stapled to its commitment;
   its card lists each one's stream (log id) and the witnesses whose receipts
-  the card carries, or "unwitnessed". The commitment is read where it is
+  the card carries, or "unwitnessed", then the link to its History page, or why
+  it has none (`no_page` in the export: `policy`, `stream` or `issued_at`). The commitment is read where it is
   committed: `nodes/commitments/<node_id>.json` when there is one (the carrier
   step 03 reads), else the join's `lab/runs/<date>/join/<name>/commitment.json`
   whose `key_id` is the node's. `evidence-commitment/1`'s `history_cards` list
