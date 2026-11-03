@@ -223,8 +223,7 @@ class WatchTest(unittest.TestCase):
         got = sorted(p.relative_to(self.out / "watch").as_posix() for p in (self.out / "watch").rglob("*") if p.is_file())
         v = "vendor/capsule-viewer-0.16.0/"
         self.assertEqual(got, ["data.json", f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
-                               f"history/{nid(2)}/node-two-book-b.html", f"history/{nid(4)}/node-four-agent.html", "index.html",
-                               v + "LICENSE",
+                               f"history/{nid(2)}/node-two-book-b.html", "index.html", v + "LICENSE",
                                v + "LICENSE-BSD-3-Clause", v + "history-view.iife.js", "vendor/d3-7.9.0/LICENSE",
                                "vendor/d3-7.9.0/d3.min.js", "watch-layout.js", "watch.js"])
         for f in ("watch.js", "watch-layout.js"):
@@ -829,13 +828,13 @@ class WatchTest(unittest.TestCase):
         out = self.out / "watch"
         self.assertEqual(sorted(p.relative_to(out).as_posix() for p in (out / "history").rglob("*.html")),
                          [f"history/{nid(1)}/node-one-book.html", f"history/{nid(2)}/node-two-book-a.html",
-                          f"history/{nid(2)}/node-two-book-b.html", f"history/{nid(4)}/node-four-agent.html"])
-        # node four advertises an older policy naming none of the sharing settings: a page whose block says the
-        # node's settings don't say; a node with no commitment has no card.
+                          f"history/{nid(2)}/node-two-book-b.html"])
+        # node four has no policy file: no page, and the panel says why; a node with no commitment has no card.
         self.assertEqual([(c.get("page"), c.get("no_page")) for c in self.data["nodes"][nid(4)]["history_cards"]],
-                         [(f"history/{nid(4)}/node-four-agent.html", None)])
+                         [(None, "nopolicy")])
         self.assertEqual(self.data["nodes"][nid(3)]["history_cards"], [])
         self.assertIn("its advertised policy can't be read", self.js)
+        self.assertIn("it advertises no policy", self.js)
         self.assertIn("its commitment has no issue time", self.js)
 
     def test_p_the_page_embeds_the_pinned_view_and_the_input(self):

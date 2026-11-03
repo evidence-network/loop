@@ -209,12 +209,7 @@ def policy(n, **over):
 def commitments():
     policy(1)
     policy(2, share_standard_history="on", share_exchange_corroboration="on", share_history_segments="peers")
-    # node-four advertises an older policy that names none of the sharing settings the view draws: its page says the
-    # node's settings don't say.
-    dump(HERE / "nodes" / "commitments" / "policies" / f"{nid(4)}.json", {
-        "profile": "disclosure-policy/0", "key_id": kid(4),
-        "policy": {"adjudications": "deliver_to_subjects", "history_segments": "counterparties",
-                   "record_at_completion": "counterparty"}})
+    # node-four advertises no policy file at all: its card has no page, and the panel says why.
     goose()
     root = HERE / "commitments" / "2026-10-28" / "join"
     one = card("node-one-book")
@@ -243,7 +238,7 @@ def goose():
         "history_cards": [staple("goose/node", "goose", card("goose/node", started="2026-11-03", cuts=cuts))]})
     # A Goose node advertises a deal half and what a stranger may ask, and none of the History view's sharing settings.
     dump(g / "policy.json", {"profile": "disclosure-policy/0", "key_id": "5" * 64,
-                             "policy": {"share_deal_half": "counterparty", "stranger_safe": ["checkpoints", "history_card/1"]}})
+                             "policy": {"share_deal_half": "counterparty", "stranger_safe": ["history_card/1"]}})
 
 
 CONTROLLER = "c" * 64

@@ -3,7 +3,6 @@
   "policy": {
     "share_deal_half": "counterparty",
     "stranger_safe": [
-      "checkpoints",
       "history_card/1"
     ]
   },
