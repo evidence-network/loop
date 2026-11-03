@@ -917,7 +917,8 @@ class WatchTest(unittest.TestCase):
         commitment, policy = json.loads((g / "commitment.json").read_text()), json.loads((g / "policy.json").read_text())
         self.assertEqual(len(watch.history_pages("5" * 64, commitment, policy)), 1)
         why = lambda c, p: [(r, w) for _, r, _, w in watch.history_pages("5" * 64, c, p)]  # noqa: E731
-        for bad in (None, {}, {"profile": "disclosure-policy/0", "policy": {}},
+        self.assertEqual(why(commitment, None), [(None, "nopolicy")])
+        for bad in ({}, {"profile": "disclosure-policy/0", "policy": {}},
                     {**policy, "policy": {**policy["policy"], "share_history_segments": "everyone"}},
                     {**policy, "policy": {k: v for k, v in policy["policy"].items() if k != "share_standard_history"}}):
             self.assertEqual(why(commitment, bad), [(None, "policy")])

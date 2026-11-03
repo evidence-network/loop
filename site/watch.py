@@ -265,6 +265,8 @@ def history_input(node_id, stream, answer, policy_doc, built_at):
         return None, "stream"
     if not isinstance(built_at, str):
         return None, "issued_at"
+    if not isinstance(policy_doc, dict):
+        return None, "nopolicy"
     share = sharing(policy_doc)
     if share is None:
         return None, "policy"
@@ -306,8 +308,8 @@ def slug(stream, taken):
 def history_pages(node_id, commitment, policy_doc):
     """[(card index, relative page path or None, input or None, why not)] for each stapled card, in the order
     `history_cards` lists them: the page path and input when it can be drawn, else why it cannot ("stream": the card
-    names no stream, "issued_at": the commitment has no issue time, "policy": the advertised policy does not say
-    everything the view needs, or there is none)."""
+    names no stream, "issued_at": the commitment has no issue time, "nopolicy": the node has no advertised policy
+    file, "policy": its advertised policy does not say everything the view needs)."""
     entries, one = staples(commitment)
     taken, out = set(), []
     for i, c in enumerate(entries):

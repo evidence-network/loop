@@ -138,9 +138,10 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
   from `nodes/<node_id>.json`, its history cards, the day files it is in, its
   state and asks, `records_at_checkpoint`, and the node the reporter runs on.
   No amount or band.
-- Each stapled card whose node advertises everything the shared capsule-viewer History view needs about what it
-  shares (`nodes/commitments/policies/<node_id>.json`: `share_standard_history`, `share_history_segments`,
-  `share_record_at_completion`, `share_adjudications`, `share_exchange_corroboration`) has its own History page,
+- Each stapled card whose node's current advertised policy says everything the shared
+  capsule-viewer History view needs about what it shares has its own History page (the policy is the node's file,
+  `nodes/commitments/policies/<node_id>.json`, read at build time and not tied to the commitment's date: `share_standard_history`, `share_history_segments`,
+  `share_record_at_completion`, `share_adjudications`, `share_exchange_corroboration`),
   `history/<node_id>/<stream>.html`, linked from the node's panel as the card's `page`. The page draws the card's
   checkpoints (cut time, entries, a SHA-256 anchor of the statement) through the vendored view
   (`vendor/capsule-viewer-0.14.0/`); nothing is verified in the build, so every signature, time-stamp and second-signature
@@ -149,7 +150,7 @@ python3 -B site/watch.py --daily stats/data/daily --rehearsal stats/data/rehears
 - A node's badge is the number of history cards stapled to its commitment;
   its card lists each one's stream (log id) and the witnesses whose receipts
   the card carries, or "unwitnessed", then the link to its History page, or why
-  it has none (`no_page` in the export: `policy`, `stream` or `issued_at`). The commitment is read where it is
+  it has none (`no_page` in the export: `nopolicy`, `policy`, `stream` or `issued_at`). The commitment is read where it is
   committed: `nodes/commitments/<node_id>.json` when there is one (the carrier
   step 03 reads), else the join's `lab/runs/<date>/join/<name>/commitment.json`
   whose `key_id` is the node's. `evidence-commitment/1`'s `history_cards` list
