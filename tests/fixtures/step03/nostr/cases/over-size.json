@@ -1,0 +1,61 @@
+{
+  "read_at": "2026-11-05T12:00:00Z",
+  "relays": {
+    "wss://relay.example": [
+      {
+        "content": "",
+        "created_at": 1793836800,
+        "id": "6f4a7987e585c14fbc5779c329a92b60fb7dda134be8f2b4ad22323a540728db",
+        "kind": 34700,
+        "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "sig": "ee141adcaac3d64358aa023191c2e83145ace6298b14b52b06b3be232b16a964e233f2ff9580eeed7e4d97299a499a5eb3daa00fda164547ad889f7f4f2e4f26",
+        "tags": [
+          [
+            "d",
+            "3ec96d967474798400434e1554b8344f0d4a17601be6711a99cdbd7b20d81a0e"
+          ],
+          [
+            "t",
+            "evidence-commitment"
+          ],
+          [
+            "x",
+            "97dc87bbfe8c80c3c8b0c0dbdadc2a217bf055b76089547b2ea42caef606497a"
+          ],
+          [
+            "r",
+            "https://node.example/commitment.json"
+          ]
+        ]
+      }
+    ],
+    "wss://relay2.example": [
+      {
+        "content": "",
+        "created_at": 1793836800,
+        "id": "6f4a7987e585c14fbc5779c329a92b60fb7dda134be8f2b4ad22323a540728db",
+        "kind": 34700,
+        "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+        "sig": "ee141adcaac3d64358aa023191c2e83145ace6298b14b52b06b3be232b16a964e233f2ff9580eeed7e4d97299a499a5eb3daa00fda164547ad889f7f4f2e4f26",
+        "tags": [
+          [
+            "d",
+            "3ec96d967474798400434e1554b8344f0d4a17601be6711a99cdbd7b20d81a0e"
+          ],
+          [
+            "t",
+            "evidence-commitment"
+          ],
+          [
+            "x",
+            "97dc87bbfe8c80c3c8b0c0dbdadc2a217bf055b76089547b2ea42caef606497a"
+          ],
+          [
+            "r",
+            "https://node.example/commitment.json"
+          ]
+        ]
+      }
+    ]
+  }
+}

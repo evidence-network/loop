@@ -32,6 +32,11 @@ stapled card's stream (scripts/history_cards.py).
   beside it) and then judges only those files (judge_live), so step 08 runs the
   same judge on the proof (loop#188).
 
+Second carrier (loop#305): a rehearsal node with advertise/<name>/nostr.json (recorded relay responses) is also
+read back from its Nostr announce event; the event's octets must equal the git carrier's bytes
+(scripts/nostr_carrier.py, steps/03-advertise.md "The second carrier: Nostr"). A node without one is reported
+"not advertised on nostr", not failed. The live read-back waits on Mesh-LLM/capsules-plugin#212.
+
 Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
 node gets stand-ins, named as such in the finding. The staple's signature and
@@ -53,6 +58,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
+import nostr_carrier  # noqa: E402
 import history_cards as hc  # noqa: E402
 import finding  # noqa: E402
 from live import NO_ISSUE_YET  # noqa: E402
@@ -61,6 +67,10 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
            "count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the "
            "signed policy's bytes")
+# Added when a node was also read back from Nostr (nostr_carrier.py, rehearsal recordings).
+ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
+                 "exactly the git carrier's commitment bytes (the newest valid announce event by the commitment's "
+                 "mailbox key)")
 # No released verifier for a stapled history_card/1 that the loop can call.
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
@@ -198,8 +208,8 @@ def node_signed(node, signed, carrier, key_id, key_dir=None, out=None, rev=None)
     git(carrier, "add", "nodes")
     git(carrier, "commit", "-q", "--allow-empty", "-m", f"advertise: commitment for {node_id}, as the node signed it")
     rec = {"name": node["name"], "node_id": node_id, "key_id": key_id, "inputs": "signed by the node",
-           "signed_by": f"the Goose node {node['name']} itself, tool loop_advertise"
-                        + (f", goose-g1 {rev}" if rev else "") + "; never the harness",
+           "signed_by": signed.get("by") or (f"the Goose node {node['name']} itself, tool loop_advertise"
+                                              + (f", goose-g1 {rev}" if rev else "") + "; never the harness"),
            "published_commit": git(carrier, "rev-parse", "HEAD").stdout.decode().strip()}
     if key_dir is not None and out is not None:
         # The key the commitment must be under, kept in the proof so "under the node's own key" can be re-checked.
@@ -247,11 +257,77 @@ def live_node(node, carrier, ref="HEAD"):
     return rec, key_id
 
 
+def recorded_signed(population, node):
+    """advertise/<name>/signed/{commitment,policy}.json: a commitment signed beforehand, published byte for byte."""
+    d = population / "advertise" / node["name"] / "signed"
+    if (d / "commitment.json").is_file() and (d / "policy.json").is_file():
+        return {"commitment": d / "commitment.json", "policy": d / "policy.json",
+                "by": f"{node['name']}'s rehearsal TEST key, beforehand (recorded); never the harness at run time"}
+    return None
+
+
 def check_node(population, out, node, carrier, signed=None, rev=None):
     """One rehearsal node's verification record, and the proof files it wrote."""
-    rec, key_id = rehearsal_node(population, node, carrier, signed, out, rev)
-    rec, files = verify_node(out, node["name"], rec, key_id, lambda path: fetch(carrier, path), False)
-    return rec, files + ([rec["node_key_file"]] if rec.get("node_key_file") else [])
+    rec, key_id = rehearsal_node(population, node, carrier, signed or recorded_signed(population, node), out, rev)
+    read = lambda path: fetch(carrier, path)  # noqa: E731
+    rec, files = verify_node(out, node["name"], rec, key_id, read, False)
+    files += [rec["node_key_file"]] if rec.get("node_key_file") else []
+    return nostr_node(population, out, node["name"], rec, key_id, read, files)
+
+
+NOSTR_FILE = "nostr.json"  # advertise/<name>/nostr.json: what a REQ returned from each relay (nostr_carrier)
+
+
+def octets_checker(key_id, read):
+    """The step 03 check of commitment octets from another carrier: (document or None, errors), policy and staples
+    read from the git carrier, the commitment under the node's key."""
+    def check(octets):
+        try:
+            doc = json.loads(octets)
+        except ValueError as e:
+            return None, [f"not JSON ({e})"]
+        if not isinstance(doc, dict):
+            return None, ["not a JSON object"]
+
+        def fetch_policy(uri):
+            if "://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]:
+                return None
+            got = read(f"nodes/commitments/{uri}")
+            return got if got is not None else b""
+        errs, _ = cc.verify(doc, fetch_policy, lambda part: read(f"nodes/commitments/standard_history/{doc.get('node_id')}.{part}.json"))
+        if doc.get("key_id") != key_id:
+            errs.append("the commitment is not under this node's key")
+        return doc, errs
+    return check
+
+
+def nostr_node(population, out, node_name, rec, key_id, read, files):
+    """The second carrier: a node with recorded relay responses is read back from Nostr and its bytes must equal the
+    git carrier's. No recording means the node is not advertising there: a note, never a failure."""
+    recorded = population / "advertise" / node_name / NOSTR_FILE
+    if not recorded.is_file():
+        rec["nostr"] = {"result": "NOT_ADVERTISED", "note": "not advertised on nostr"}
+        return rec, files
+    (out / f"{node_name}.{NOSTR_FILE}").write_bytes(recorded.read_bytes())
+    files = files + [f"{node_name}.{NOSTR_FILE}"]
+    if rec["result"] != "PASS":
+        rec["nostr"] = {"result": "NOT_CHECKED", "note": "the git carrier did not pass, so there are no bytes to compare"}
+        return rec, files
+    try:
+        recording = json.loads(recorded.read_text(encoding="utf-8"))
+    except ValueError as e:
+        recording = None
+        rec["nostr"] = {"result": "FAIL", "reasons": [f"nostr.recording: {NOSTR_FILE} is not JSON ({e})"], "events": {}}
+    if recording is not None:
+        rec["nostr"] = nostr_carrier.read_back(recording, read(f"nodes/commitments/{rec['node_id']}.json"),
+                                               rec["node_id"], octets_checker(key_id, read))
+    if rec["nostr"]["result"] == "FAIL":
+        rec["result"] = "FAIL"
+        rec["errors"] = list(rec["errors"]) + rec["nostr"]["reasons"]
+    elif rec["nostr"]["result"] == "NOT_CHECKED":
+        rec["result"] = "NOT_CHECKED"
+        rec["errors"] = list(rec["errors"]) + rec["nostr"]["reasons"]
+    return rec, files
 
 
 def verify_node(out, name, rec, key_id, read, live):
@@ -488,8 +564,11 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
         result = "PASS"
     else:
         result = "NOT_CHECKED"
+    nostr_read = any(r.get("nostr", {}).get("result") in ("PASS", "FAIL") for r in records)
     detail = "; ".join(
         f"{r['name']}: {r['result']} via {r['carrier']}"
+        + (" and nostr" if r.get("nostr", {}).get("result") == "PASS" else "")
+        + (", not advertised on nostr" if r.get("nostr", {}).get("result") == "NOT_ADVERTISED" else "")
         + (f" ({'; '.join(r['errors'])})" if r["errors"] else "")
         + (f", inputs {r['inputs']}" if "inputs" in r else "")
         for r in records)
@@ -518,8 +597,8 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                 "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STAPLE_ISSUE)
     else:
         not_checked += outside
-    return finding.write(out, result=result, population=kind, asserts=ASSERTS, pinned=list(pinned), proof=proof,
-                         detail=detail, not_checked=not_checked, started=started)
+    return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else ""),
+                         pinned=list(pinned), proof=proof, detail=detail, not_checked=not_checked, started=started)
 
 
 if __name__ == "__main__":

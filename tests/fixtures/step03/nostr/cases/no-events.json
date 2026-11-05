@@ -1,0 +1,7 @@
+{
+  "read_at": "2026-11-05T12:00:00Z",
+  "relays": {
+    "wss://relay.example": [],
+    "wss://relay2.example": []
+  }
+}

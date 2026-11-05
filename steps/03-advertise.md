@@ -55,6 +55,52 @@ Per-node inputs are read from `DIR/advertise/<name>/` (`commitment.json`
 with the settings below, `history_card.json`, `checkpoint.json`). A
 rehearsal node without them gets stand-ins, and the finding says so.
 
+## The second carrier: Nostr
+
+A node that advertises its commitment on Nostr (the switch is off by default)
+publishes it as an addressable announce event: kind `34700`, a placeholder
+with no NIP of ours (AAC evidence-commitment carriers v0 §5.3), signed by the
+mailbox key its commitment names in `ask.nostr`, with the commitment octets in
+base64url as `content`. The step reads the event back and compares its octets
+with the git carrier's bytes.
+
+**Rehearsal** reads recorded relay responses, so CI needs no relay:
+`advertise/<name>/nostr.json` is `{"read_at": <UTC time>, "relays": {<wss URL>:
+[<event>, ...]}}`, what a `REQ {"kinds":[34700], "#d":[<node_id>]}` returned.
+`advertise/<name>/signed/{commitment,policy}.json`, when present, is a
+commitment signed beforehand and published byte for byte (the harness signs
+nothing at run time). The recording is kept in the proof as `<name>.nostr.json`.
+The live read-back against a real producer waits on
+Mesh-LLM/capsules-plugin#212; the live population reads no relay yet.
+
+A node with no `nostr.json` is reported `not advertised on nostr`, a note in
+its verification record and never a failure. For a node with one, the node
+passes only when the newest valid announce event's octets are byte for byte
+the git carrier's, and both pass the checks above. The verifier trusts only the
+octets: each event is read for them and the octets are verified on their own
+(AAC §6 V0 to V4). Failures carry a named reason in the record's `errors`:
+
+| Reason | When |
+|---|---|
+| `nostr.no_events` | no relay returned an event for this node |
+| `nostr.event_form` | not kind 34700, a malformed tag or field, or a `d` tag that is not this node's id |
+| `nostr.event_id`, `nostr.event_signature` | the NIP-01 id or the BIP-340 signature does not verify (a forged event) |
+| `nostr.digest_mismatch` | the `x` tag is not the sha256 of the octets |
+| `nostr.octets_form`, `nostr.octets_invalid` | the octets are not a commitment, or fail this step's checks (an edited commitment fails its Ed25519 signature) |
+| `nostr.no_mailbox_route` | the git commitment names no `ask.nostr`, so no event can be the node's |
+| `nostr.not_announced` | every valid event is by another key than the commitment's `ask.nostr.mailbox_key`: relayed, not announced |
+| `nostr.relays_conflict` | relays hold different commitments with the same `issued_at`; both versions are reported |
+| `nostr.bytes_differ` | the current announced commitment is not the git carrier's bytes |
+| `nostr.over_size` (NOT_CHECKED) | an event carries no octets (an `r` tag); fetching them is not done here |
+
+An event that fails by itself (forged, edited, relayed by another key,
+future-dated) is listed under `events.rejected` or `events.relayed` and does
+not fail a node that also has a good announce event: relays are open, so
+anyone can post such events. An older commitment beside a newer one is listed
+under `events.superseded`; the newer is read back. Relay timestamps are not
+evidence; the commitment's `issued_at` decides, and one dated after the
+recording's `read_at` plus five minutes takes no part.
+
 ## Fields
 
 Two profiles verify. `evidence-commitment/0` staples one history card;
