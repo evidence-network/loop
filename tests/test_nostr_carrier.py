@@ -47,7 +47,7 @@ class NostrCarrier(unittest.TestCase):
         self.pop = self.tmp / "step03" / "population" / "nostr"
 
     def run_case(self, case=None, recording=None):
-        """Run step 03 on the population with the named case's recording as alice's (or none), return (finding, alice)."""
+        """Run step 03 on the population with the named case's recording as alice's (or none): (finding, alice, bob, out)."""
         target = self.pop / "advertise" / "alice" / "nostr.json"
         if recording is not None:
             target.write_text(json.dumps(recording))
@@ -104,7 +104,7 @@ class NostrCarrier(unittest.TestCase):
 
     def test_key_other_than_the_announced_mailbox_key_is_relayed_not_announced(self):
         alice = self.assert_fails("relayed-only", "nostr.not_announced")
-        self.assertEqual(len(alice["nostr"]["events"]["relayed"]), 2)
+        self.assertEqual(alice["nostr"]["events"]["relayed"][0]["relays"], ["wss://relay.example", "wss://relay2.example"])
 
     def test_older_beside_newer_newer_wins_and_older_is_flagged(self):
         f, alice, bob, out = self.run_case("older-beside-newer")
@@ -161,6 +161,64 @@ class NostrCarrier(unittest.TestCase):
             f, alice, bob, out = self.run_case()
             self.assertEqual(alice["result"], "FAIL", text)
             self.assertTrue(any(e.startswith("nostr.recording:") for e in alice["errors"]), alice["errors"])
+
+    def test_a_newer_commitment_with_another_policy_makes_the_git_copy_stale(self):
+        # Another commitment's policy is not on the git carrier: its digest is not matched to bytes, so it still ranks.
+        self.assert_fails("newer-policy-changed", "nostr.bytes_differ")
+
+    def test_an_older_commitment_with_another_policy_is_flagged_superseded(self):
+        f, alice, bob, out = self.run_case("older-policy-changed")
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual([a["issued_at"] for a in alice["nostr"]["events"]["superseded"]], ["2026-11-04T00:00:00Z"])
+        self.assertEqual(alice["nostr"]["events"]["rejected"], [])
+
+    def test_a_commitment_the_node_signed_counts_in_v4_whoever_posted_it(self):
+        self.assert_fails("relayed-newer", "nostr.bytes_differ")
+        self.assert_fails("relayed-conflict", "nostr.relays_conflict")
+
+    def test_a_commitment_for_another_node_id_is_refused_even_under_this_d(self):
+        f, alice, bob, out = self.run_case("other-node-inside")
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual([r["reason"] for r in alice["nostr"]["events"]["rejected"]], ["nostr.octets_invalid"])
+
+    def test_a_lone_surrogate_in_a_tag_rejects_that_event_only(self):
+        f, alice, bob, out = self.run_case("surrogate-tag")
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual([r["reason"] for r in alice["nostr"]["events"]["rejected"]], ["nostr.event_form"])
+
+    def test_octets_that_are_not_a_commitment_are_refused_by_name(self):
+        self.assert_fails("not-a-commitment", "nostr.octets_form")
+
+    def test_an_unread_event_by_the_nodes_key_naming_the_git_digest_leaves_a_stale_inline_one_unproven(self):
+        f, alice, bob, out = self.run_case("older-and-over-size")
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+
+    def test_every_commitment_dated_after_the_read_fails_future_dated(self):
+        self.assert_fails("only-future-dated", "nostr.future_dated")
+
+    def test_a_read_at_that_is_not_a_utc_second_is_not_checked_not_passed(self):
+        rec = json.loads((CASES / "good.json").read_text())
+        rec["read_at"] = "2026-11-05T12:00:00.5Z"
+        f, alice, bob, out = self.run_case(recording=rec)
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
+        self.assertTrue(any(e.startswith("nostr.recording:") for e in alice["errors"]))
+
+    def test_a_deeply_nested_recording_fails_by_name_instead_of_crashing(self):
+        (self.pop / "advertise" / "alice" / "nostr.json").write_text("[" * 300000)
+        f, alice, bob, out = self.run_case()
+        self.assertTrue(any(e.startswith("nostr.recording:") for e in alice["errors"]), alice["errors"])
+
+    def test_a_recording_beside_a_git_carrier_that_failed_is_not_checked(self):
+        def corrupt(carrier):
+            for f in (carrier / "nodes" / "commitments").glob("*.json"):
+                f.write_text("not json")
+        self.step.PUBLISH_HOOK = corrupt
+        shutil.copyfile(CASES / "good.json", self.pop / "advertise" / "alice" / "nostr.json")
+        out = self.tmp / "out-gitfail" / "03-advertise"
+        self.step.main(["--population", str(self.pop), "--out", str(out)])
+        alice = {n["name"]: n for n in json.loads((out / "verification.json").read_text())["nodes"]}["alice"]
+        self.assertEqual(alice["result"], "FAIL")
+        self.assertEqual(alice["nostr"]["result"], "NOT_CHECKED")
 
     def test_no_event_on_any_relay_fails(self):
         self.assert_fails("no-events", "nostr.no_events")

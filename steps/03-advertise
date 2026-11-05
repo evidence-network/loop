@@ -278,23 +278,20 @@ def check_node(population, out, node, carrier, signed=None, rev=None):
 NOSTR_FILE = "nostr.json"  # advertise/<name>/nostr.json: what a REQ returned from each relay (nostr_carrier)
 
 
-def octets_checker(key_id, read):
-    """The step 03 check of commitment octets from another carrier: (document or None, errors), policy and staples
-    read from the git carrier, the commitment under the node's key."""
+def octets_checker(key_id):
+    """The step 03 check of commitment octets from another carrier: (document or None, errors), the commitment
+    under the node's key."""
     def check(octets):
         try:
             doc = json.loads(octets)
-        except ValueError as e:
-            return None, [f"not JSON ({e})"]
+        except (ValueError, RecursionError) as e:
+            return None, [f"not JSON ({type(e).__name__})"]
         if not isinstance(doc, dict):
             return None, ["not a JSON object"]
 
-        def fetch_policy(uri):
-            if "://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]:
-                return None
-            got = read(f"nodes/commitments/{uri}")
-            return got if got is not None else b""
-        errs, _ = cc.verify(doc, fetch_policy, lambda part: read(f"nodes/commitments/standard_history/{doc.get('node_id')}.{part}.json"))
+        # The policy and staples are checked on the git bytes (verify_node); another commitment may change them, so
+        # here only its own fields, signature and digests count, and the policy digest is not matched to bytes.
+        errs, _ = cc.verify(doc, lambda uri: None, lambda part: None)
         if doc.get("key_id") != key_id:
             errs.append("the commitment is not under this node's key")
         return doc, errs
@@ -316,13 +313,13 @@ def nostr_node(population, out, node_name, rec, key_id, read, files):
     try:
         recording = json.loads(recorded.read_text(encoding="utf-8"))
         why = None if isinstance(recording, dict) else f"{NOSTR_FILE} is not a JSON object"
-    except ValueError as e:
-        why = f"{NOSTR_FILE} is not JSON ({e})"
+    except (ValueError, RecursionError) as e:
+        why = f"{NOSTR_FILE} is not JSON ({type(e).__name__})"
     if why:
         rec["nostr"] = {"result": "FAIL", "reasons": [f"nostr.recording: {why}"], "events": {}}
     else:
         rec["nostr"] = nostr_carrier.read_back(recording, read(f"nodes/commitments/{rec['node_id']}.json"),
-                                               rec["node_id"], octets_checker(key_id, read))
+                                               rec["node_id"], octets_checker(key_id))
     if rec["nostr"]["result"] == "FAIL":
         rec["result"] = "FAIL"
         rec["errors"] = list(rec["errors"]) + rec["nostr"]["reasons"]

@@ -49,12 +49,14 @@ def dump(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def commitment(issued_at, node_id, **change):
+def commitment(issued_at, node_id, change=None, **members):  # members replace top-level fields, but not node_id
+
     doc = json.loads((SOURCE / "commitment.json").read_text())
     doc["lcap"]["policy_uri"] = f"policies/{node_id}.json"
     doc["issued_at"] = issued_at
-    for path, value in change.items():
-        doc[path] = value
+    doc.update(members)
+    if change:
+        change(doc)
     signed = cc.sign(doc, ALICE_KEY)
     return (json.dumps(signed, indent=2, sort_keys=True) + "\n").encode()
 
@@ -106,9 +108,29 @@ def main():
     empty = event(newer, node_id=node_id, content="", tags=[["d", node_id], ["t", "evidence-commitment"],
                                                            ["x", hashlib.sha256(newer).hexdigest()],
                                                            ["r", "https://node.example/commitment.json"]])
+    new_policy = lambda d: d["lcap"].__setitem__("policy_digest", "ab" * 32)  # noqa: E731
+    newer_policy = commitment("2026-11-05T06:00:00Z", node_id, new_policy)
+    older_policy = commitment(OLDER, node_id, new_policy)
+    other_node = commitment(NEWER, node_id, lambda d: d.__setitem__("node_id", "cd" * 32))
+    surrogate = dict(good, tags=good["tags"] + [["foo", "\ud800"]])
     bad_tag = event(newer, node_id=node_id, tags=[["d", 123], ["t", "evidence-commitment"], ["x", {}]])
     bad_content = event(newer, node_id=node_id, content="A")  # validly signed, not base64url octets
     cases = {
+        "newer-policy-changed": recording({RELAYS[0]: [event(newer_policy, node_id=node_id)], RELAYS[1]: [good]}),
+        "older-policy-changed": recording({RELAYS[0]: [event(older_policy, node_id=node_id)], RELAYS[1]: [good]}),
+        "relayed-newer": recording({RELAYS[0]: [event(rotated, secret=OTHER_SECRET, node_id=node_id)],
+                                    RELAYS[1]: [good]}),
+        "relayed-conflict": recording({RELAYS[0]: [event(other, secret=OTHER_SECRET, node_id=node_id)],
+                                       RELAYS[1]: [good]}),
+        "other-node-inside": recording({RELAYS[0]: [event(other_node, node_id=node_id)], RELAYS[1]: [good]}),
+        "surrogate-tag": recording({RELAYS[0]: [surrogate], RELAYS[1]: [good]}),
+        "not-a-commitment": recording(both(event(b"not json", node_id=node_id))),
+        "older-and-over-size": recording({RELAYS[0]: [event(older, node_id=node_id)],
+                                          RELAYS[1]: [event(newer, node_id=node_id, content="", tags=[
+                                              ["d", node_id], ["t", "evidence-commitment"],
+                                              ["x", hashlib.sha256(newer).hexdigest()],
+                                              ["r", "https://node.example/commitment.json"]])]}),
+        "only-future-dated": recording(both(event(future, node_id=node_id))),
         "good": recording(both(good)),
         "forged-signature": recording(both(forged_sig)),
         "forged-id": recording(both(forged_id)),

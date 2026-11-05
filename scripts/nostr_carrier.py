@@ -13,15 +13,23 @@ A recording is what a REQ returned from each relay, kept as JSON so a rehearsal 
 read_back(recording, git_bytes, node_id, verify_octets) -> dict:
     result   PASS, FAIL or NOT_CHECKED
     reasons  one named reason per failure, "nostr.<name>: why"
-    events   what each relay's events came to: rejected (named reason), relayed, announced, superseded
+    events   what each relay's events came to: rejected (named reason), announced (by the mailbox key the event's
+             own commitment names), relayed (any other author, same octets), superseded (older than the current
+             commitment), unread (no octets inline: an r tag)
     sha256   of the octets read back, when they are the git carrier's bytes (PASS)
 
-Named reasons: nostr.no_events, nostr.event_form, nostr.event_id, nostr.event_signature,
-nostr.digest_mismatch, nostr.octets_form, nostr.octets_invalid (the octets fail the step 03 checks),
-nostr.no_mailbox_route (the git commitment names no ask.nostr), nostr.not_announced (only events by
-other keys: relayed), nostr.relays_conflict (same issued_at, different octets), nostr.bytes_differ
-(the current octets are not the git carrier's bytes). A superseded older commitment is flagged, not
-failed. A node whose recording is absent is "not advertised on nostr" (the step decides that).
+Every commitment that verifies is ranked, whoever posted it (V4: arrival order and carrier never decide); the
+author only labels it announced or relayed (§5.3). The newest valid commitment must be announced and must be the
+git carrier's bytes.
+
+Named reasons: nostr.no_events, nostr.event_form, nostr.event_id, nostr.event_signature, nostr.digest_mismatch,
+nostr.octets_form, nostr.octets_invalid (the octets fail the checks: signature, fields, key, node_id; the policy
+and staples are checked on the git bytes), nostr.future_dated (every commitment is dated after the read),
+nostr.no_mailbox_route (the git commitment names no ask.nostr), nostr.not_announced (the current commitment has
+only relayed events), nostr.relays_conflict (same issued_at, different octets), nostr.bytes_differ (the current
+commitment is not the git carrier's bytes), nostr.over_size (NOT_CHECKED), nostr.recording (read_at missing or
+malformed: NOT_CHECKED). A superseded older commitment is flagged, not failed. A node whose recording is absent
+is "not advertised on nostr" (the step decides that).
 """
 import base64
 import datetime
@@ -69,7 +77,11 @@ def event_error(event):
             return "nostr.event_form", f"needs exactly one well formed {name} tag"
     if len(tag_values(event, "r")) > 1:
         return "nostr.event_form", "has more than one r tag"
-    if ns.event_id(event).hex() != event["id"]:
+    try:
+        digest = ns.event_id(event).hex()
+    except UnicodeError:  # a tag or content string no UTF-8 encoding can hold (a lone surrogate)
+        return "nostr.event_form", "a string in the event cannot be encoded as UTF-8"
+    if digest != event["id"]:
         return "nostr.event_id", "id is not the NIP-01 hash of the event"
     if not ns.schnorr_verify(bytes.fromhex(event["id"]), bytes.fromhex(event["pubkey"]), bytes.fromhex(event["sig"])):
         return "nostr.event_signature", "the BIP-340 signature does not verify under pubkey"
@@ -97,6 +109,7 @@ def read_back(recording, git_bytes, node_id, verify_octets):
     """
     events = {"rejected": [], "relayed": [], "announced": [], "superseded": [], "unread": []}
     out = {"result": "FAIL", "reasons": [], "events": events}
+    git_digest = hashlib.sha256(git_bytes).hexdigest()
     relays = recording.get("relays") if isinstance(recording, dict) else None
     if not isinstance(relays, dict) or not any(isinstance(v, list) and v for v in relays.values()):
         out["reasons"].append("nostr.no_events: no relay returned an announce event for this node")
@@ -105,33 +118,36 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         read_at = datetime.datetime.strptime(recording["read_at"], TIME).replace(tzinfo=datetime.timezone.utc)
     except (ValueError, KeyError, TypeError):
         out["result"] = "NOT_CHECKED"
-        out["reasons"].append("nostr.recording: read_at is missing, so a future-dated commitment cannot be told")
+        out["reasons"].append("nostr.recording: read_at is missing or not YYYY-MM-DDTHH:MM:SSZ, so a future-dated "
+                              "commitment cannot be told")
         return out
 
     try:
-        (json.loads(git_bytes).get("ask") or {}).get("nostr")["mailbox_key"]
-    except (ValueError, KeyError, TypeError, AttributeError):
+        git_key = json.loads(git_bytes)["ask"]["nostr"]["mailbox_key"]
+    except (ValueError, KeyError, TypeError, RecursionError):
         out["reasons"].append("nostr.no_mailbox_route: the git carrier's commitment names no ask.nostr, so no "
                               "event can be the node's announcement")
         return out
 
-    valid = []  # (relay, event, octets, doc)
+    by_octets = {}  # octets -> {"doc", "announced": [relays], "relayed": [relays]}
     for relay, found in sorted(relays.items()):
         for event in found if isinstance(found, list) else []:
             bad = event_error(event)
             if bad is None and tag_values(event, "d") != [node_id]:
                 bad = "nostr.event_form", "its d tag is not this node's id"
+            octets = None
             if bad is None:
                 try:
                     octets = octets_of(event)
                 except ValueError:  # binascii.Error is a ValueError: content is not base64url octets
-                    octets, bad = b"", ("nostr.event_form", "content is not base64url octets")
-                if bad is None and octets is None:
-                    events["unread"].append({"relay": relay, "id": event["id"]})
-                    continue
-            if bad is None:
-                if hashlib.sha256(octets).hexdigest() != tag_values(event, "x")[0]:
-                    bad = "nostr.digest_mismatch", "the x tag is not the sha256 of the octets"
+                    bad = "nostr.event_form", "content is not base64url octets"
+            if bad is None and octets is None:
+                # No octets inline (an r tag). Only the node's own key can have posted the one that matters.
+                (events["unread"] if event["pubkey"] == git_key else events["relayed"]).append(
+                    {"relay": relay, "id": event["id"], "pubkey": event["pubkey"], "x": tag_values(event, "x")[0]})
+                continue
+            if bad is None and hashlib.sha256(octets).hexdigest() != tag_values(event, "x")[0]:
+                bad = "nostr.digest_mismatch", "the x tag is not the sha256 of the octets"
             if bad:
                 events["rejected"].append({"relay": relay, "id": event.get("id") if isinstance(event, dict) else None,
                                            "reason": bad[0], "why": bad[1]})
@@ -140,68 +156,77 @@ def read_back(recording, git_bytes, node_id, verify_octets):
             if doc is None:
                 events["rejected"].append({"relay": relay, "id": event["id"], "reason": "nostr.octets_form",
                                            "why": "; ".join(errs)})
-            elif errs:
+            elif errs or doc.get("node_id") != node_id:
                 events["rejected"].append({"relay": relay, "id": event["id"], "reason": "nostr.octets_invalid",
-                                           "why": "; ".join(errs)})
-            elif event["pubkey"] != ((doc.get("ask") or {}).get("nostr") or {}).get("mailbox_key"):
-                # §5.3 Attribution: the commitment the event carries names its own mailbox key.
-                events["relayed"].append({"relay": relay, "id": event["id"], "pubkey": event["pubkey"],
-                                          "sha256": hashlib.sha256(octets).hexdigest()})
+                                           "why": "; ".join(errs) or "the commitment's node_id is not the event's d"})
             else:
-                valid.append((relay, event, octets, doc))
+                # §5.3 Attribution: the commitment the event carries names its own mailbox key.
+                own = event["pubkey"] == ((doc.get("ask") or {}).get("nostr") or {}).get("mailbox_key")
+                v = by_octets.setdefault(octets, {"doc": doc, "announced": [], "relayed": []})
+                v["announced" if own else "relayed"].append(relay)
 
-    if not valid:
-        if events["relayed"]:
-            out["reasons"].append("nostr.not_announced: every valid event is by a key other than the mailbox key "
-                                  "its own commitment names (relayed, not announced): "
-                                  + ", ".join(sorted({e["pubkey"] for e in events["relayed"]})))
-        if events["rejected"]:
-            out["reasons"] += sorted({f"{r['reason']}: {r['relay']}: {r['why']}" for r in events["rejected"]})
+    def unread_reason():
+        return (f"nostr.over_size: {events['unread'][0]['relay']} holds an event by the node's mailbox key with no "
+                "octets (an r tag); fetching them is not done here")
+
+    if not by_octets:
+        out["reasons"] += sorted({f"{r['reason']}: {r['relay']}: {r['why']}" for r in events["rejected"]})
         if events["unread"] and not out["reasons"]:
             out["result"] = "NOT_CHECKED"  # nothing else decides the node: the octets sit behind an r tag
-            out["reasons"].append(f"nostr.over_size: {events['unread'][0]['relay']} holds an event with no octets "
-                                  "(an r tag); fetching them is not done here")
+            out["reasons"].append(unread_reason())
+        elif events["relayed"] and not out["reasons"]:
+            out["reasons"].append("nostr.not_announced: no event by the node's mailbox key carries octets")
         elif not out["reasons"]:
             out["reasons"].append("nostr.no_events: no relay returned an announce event for this node")
         return out
 
-    by_octets = {}
-    for relay, event, octets, doc in valid:
-        by_octets.setdefault(octets, {"doc": doc, "relays": []})["relays"].append(relay)
-    for octets, v in by_octets.items():
-        v["sha256"] = hashlib.sha256(octets).hexdigest()
+    for v in by_octets.values():
+        v["sha256"] = hashlib.sha256(next(o for o, w in by_octets.items() if w is v)).hexdigest()
         v["issued_at"] = _issued_at(v["doc"])
-        events["announced"].append({"sha256": v["sha256"], "issued_at": v["doc"]["issued_at"],
-                                    "relays": sorted(v["relays"])})
-    events["announced"].sort(key=lambda a: (a["issued_at"], a["sha256"]))
-
     # V4: a commitment dated after the read plus the skew takes no part; the latest issued_at is current.
     live = {o: v for o, v in by_octets.items() if v["issued_at"] is not None and v["issued_at"] <= read_at + SKEW}
     for o, v in by_octets.items():
         if o not in live:
-            events["rejected"].append({"relay": v["relays"][0], "id": None, "reason": "nostr.future_dated",
+            events["rejected"].append({"relay": (v["announced"] + v["relayed"])[0], "id": None,
+                                       "reason": "nostr.future_dated",
                                        "why": f"issued_at {v['doc']['issued_at']} is after the read plus the skew"})
     if not live:
-        out["reasons"].append("nostr.future_dated: every announced commitment is dated after the read")
+        out["reasons"].append("nostr.future_dated: every commitment is dated after the read")
         return out
     latest = max(v["issued_at"] for v in live.values())
     tied = [o for o, v in live.items() if v["issued_at"] == latest]
+    for v in live.values():
+        entry = {"sha256": v["sha256"], "issued_at": v["doc"]["issued_at"]}
+        if v["announced"]:
+            events["announced"].append({**entry, "relays": sorted(v["announced"])})
+        if v["relayed"]:
+            events["relayed"].append({**entry, "relays": sorted(v["relayed"])})
+    events["announced"].sort(key=lambda a: (a["issued_at"], a["sha256"]))
     if len(tied) > 1:
         out["reasons"].append("nostr.relays_conflict: relays hold different commitments with the same issued_at "
                               f"{live[tied[0]]['doc']['issued_at']}: "
-                              + ", ".join(f"{live[o]['sha256']} on {','.join(sorted(live[o]['relays']))}"
+                              + ", ".join(f"{live[o]['sha256']} on {','.join(sorted(live[o]['announced'] + live[o]['relayed']))}"
                                           for o in sorted(tied, key=lambda o: live[o]['sha256'])))
         return out
     current = tied[0]
     events["superseded"] = sorted(
-        ({"sha256": v["sha256"], "issued_at": v["doc"]["issued_at"], "relays": sorted(v["relays"])}
+        ({"sha256": v["sha256"], "issued_at": v["doc"]["issued_at"], "relays": sorted(v["announced"] + v["relayed"])}
          for o, v in live.items() if o != current), key=lambda a: a["sha256"])
+    cur = live[current]
     if current != git_bytes:
-        out["reasons"].append(f"nostr.bytes_differ: the current announced commitment {live[current]['sha256']} "
-                              f"(issued_at {live[current]['doc']['issued_at']}) is not the git carrier's bytes "
-                              f"{hashlib.sha256(git_bytes).hexdigest()}")
+        if any(u["x"] == git_digest for u in events["unread"]):
+            # The node's own event with no inline octets names the git digest: it may be the git bytes, so unproven.
+            out["result"] = "NOT_CHECKED"
+            out["reasons"].append(unread_reason())
+            return out
+        out["reasons"].append(f"nostr.bytes_differ: the current commitment {cur['sha256']} "
+                              f"(issued_at {cur['doc']['issued_at']}) is not the git carrier's bytes {git_digest}")
+        return out
+    if not cur["announced"]:
+        out["reasons"].append("nostr.not_announced: the current commitment is only relayed, by keys other than the "
+                              f"mailbox key its own commitment names ({', '.join(sorted(cur['relayed']))})")
         return out
     out["result"] = "PASS"
-    out["sha256"] = live[current]["sha256"]
-    out["relays"] = sorted(live[current]["relays"])
+    out["sha256"] = cur["sha256"]
+    out["relays"] = sorted(cur["announced"])
     return out
