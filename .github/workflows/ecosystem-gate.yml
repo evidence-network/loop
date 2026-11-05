@@ -30,8 +30,9 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -e
-          # A dispatched run has no pull request: the base is the merge base with main.
-          BASE=${PR_BASE:-$(git merge-base origin/main HEAD)}
+          # A dispatched run has no pull request: the base is main's tip, as for a pull request (not the merge base:
+          # a step main turned PASS since the branch was cut must still not go back to FAIL).
+          BASE=${PR_BASE:-$(git rev-parse origin/main)}
           if git cat-file -e "$BASE:baseline/live.json" 2>/dev/null; then
             git show "$BASE:baseline/live.json" > "$RUNNER_TEMP/old.json"
             python3 -B scripts/ecosystem_gate.py check --old "$RUNNER_TEMP/old.json" --new baseline/live.json

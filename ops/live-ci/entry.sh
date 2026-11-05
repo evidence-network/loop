@@ -9,9 +9,11 @@
 # seed, key, macaroon, peer-key, join or invite file. Its settings come from /etc/loop-live-ci/conf (root-owned):
 #   LIVE_HOME  the lab user's home       LIVE_ENV  the lab env file live_daily.sh sources       LAB_DIR  the lab directory
 #
-#   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day (11), the exchange call sites of
-#           live_daily.sh unchanged (12), dry run (13), then the real run in its own process group; exit 0
-#   status  20 running, 0 finished (prints rc=), 21 died without a result, 22 killed at the time limit
+#   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day, one start at a time (11), the
+#           exchange call sites of live_daily.sh unchanged (12), then the real run in its own process group; exit 0.
+#           The day's marker is written before any code from main runs; live_daily.sh itself refuses a busy lab (exit 3)
+#   status  20 running, 0 finished (prints rc=<live_daily.sh's exit code>), 21 died without a result, 22 killed at the
+#           time limit (TERM to the run's process group, KILL after 60 s)
 #   stage   for a packed run (rc 0, 1 or 8) installs its .tgz, .tgz.sha256 and .json into /tmp/loop-live-out-<name>
 #           and prints name=<name>; exit 23 when nothing was packed
 # Output is printed to a public log: paths are shortened and only the script's own "live_daily:" lines are shown.
@@ -30,7 +32,11 @@ clean() { sed -e "s#$LIVE_HOME#~#g" -e "s#$LAB_DIR#\$LAB_DIR#g"; }
 reasons() { grep -a '^live_daily:' "$1" 2> /dev/null | tail -5 | clean; }
 
 start() {
-  local day pid reason p
+  local day pid p
+  # One start at a time (mkdir is atomic); a lock older than 10 minutes is a killed start's.
+  find "$STATE/lock.d" -maxdepth 0 -mmin +10 -exec rmdir {} + 2> /dev/null
+  mkdir "$STATE/lock.d" 2> /dev/null || { echo "refused: another start is in progress"; exit 11; }
+  trap 'rmdir "$STATE/lock.d" 2> /dev/null' EXIT
   day=$(date -u +%F)
   find /tmp -maxdepth 1 -name 'loop-live-out-*' -user "$(id -un)" -mtime +1 -exec rm -rf {} + 2> /dev/null
   skip() { echo "skipped: $1"; exit 10; }
@@ -50,8 +56,6 @@ start() {
   [ -z "$(git status --porcelain)" ] || { echo "clone is not clean"; exit 1; }
   # A tripwire, not the payment ceiling (that is the node side): the script that came from main still makes exactly one exchange call.
   [ "$(grep -cE '"\$LAB_SH" +exchange' scripts/live_daily.sh)" = 1 ] || { echo "refused: live_daily.sh has changed its exchange calls"; exit 12; }
-  reason=$(LOOP_LIVE_ENV=$LIVE_ENV scripts/live_daily.sh --dry-run 2>&1 < /dev/null) || { echo "dry run failed: $(echo "$reason" | tail -1 | clean)"; exit 13; }
-
   rm -f "$STATE/rc" "$STATE/pid"
   echo "$day" > "$STATE/day"
   touch "$STATE/started-$day"
@@ -71,10 +75,11 @@ status() {
   fi
   pid=$(cat "$STATE/pid" 2> /dev/null) || { echo "no pid"; exit 21; }
   if kill -0 "$pid" 2> /dev/null; then
-    age=$(($(date +%s) - $(stat -c %Y "$STATE/pid")))
+    age=$(($(date +%s) - $(stat -c %Y "$STATE/pid" 2> /dev/null || stat -f %m "$STATE/pid")))
     [ "$age" -le "$MAX_SECONDS" ] && { echo "running ${age}s"; exit 20; }
     kill -TERM -- "-$pid" 2> /dev/null # the whole group, so the script's own handler removes LIVE_RUN
-    for _ in $(seq 12); do kill -0 "$pid" 2> /dev/null || break; sleep 5; done
+    for _ in $(seq 12); do pgrep -g "$pid" > /dev/null || break; sleep 5; done
+    pgrep -g "$pid" > /dev/null && { kill -KILL -- "-$pid" 2> /dev/null; sleep 2; }
     echo "timed out at 3 h; group gone: $(pgrep -g "$pid" > /dev/null && echo no || echo yes); LIVE_RUN gone: $([ -e "$LAB_DIR/run/LIVE_RUN" ] && echo no || echo yes)"
     reasons "$STATE/log"
     exit 22

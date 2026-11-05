@@ -12,6 +12,11 @@ on:
   schedule:
     - cron: "0 13 * * *"
   workflow_dispatch:
+    inputs:
+      harvest_only:
+        description: "Do not start a run: harvest today's finished run (after a failed harvest)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -31,54 +36,56 @@ jobs:
       issues: write # the loop-live-failed issue
       actions: write # dispatching the required checks on the findings branch
       id-token: write # the OIDC token for the cloud exchange
+    # Environment secrets, not variables: a secret is masked in every log line, step headers included, so the host,
+    # project, zone and user of a public repository's logs never show.
     env:
-      GH_TOKEN: ${{ github.token }}
-      LIVE_VM: ${{ vars.LIVE_VM }}
-      LIVE_PROJECT: ${{ vars.LIVE_PROJECT }}
-      LIVE_ZONE: ${{ vars.LIVE_ZONE }}
-      LIVE_LAB_USER: ${{ vars.LIVE_LAB_USER }}
+      LIVE_VM: ${{ secrets.LIVE_VM }}
+      LIVE_PROJECT: ${{ secrets.LIVE_PROJECT }}
+      LIVE_ZONE: ${{ secrets.LIVE_ZONE }}
+      LIVE_LAB_USER: ${{ secrets.LIVE_LAB_USER }}
+      HARVEST_ONLY: ${{ inputs.harvest_only }}
       LIVE_STATE: init
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Skip rule, dry run, start
         run: source ops/live-ci/ci.sh && start_run
       # The access token lives an hour and a run up to three: authenticate again before each wait.
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'waiting'
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Wait (1)
         if: env.LIVE_STATE == 'waiting'
         run: source ops/live-ci/ci.sh && wait_run 50
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'waiting'
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Wait (2)
         if: env.LIVE_STATE == 'waiting'
         run: source ops/live-ci/ci.sh && wait_run 50
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'waiting'
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Wait (3)
         if: env.LIVE_STATE == 'waiting'
         run: source ops/live-ci/ci.sh && wait_run 50
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'waiting'
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Wait (4)
         if: env.LIVE_STATE == 'waiting'
         run: source ops/live-ci/ci.sh && wait_run 50
@@ -88,13 +95,17 @@ jobs:
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'done'
         with:
-          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
-          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+          workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
+          service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       - name: Harvest into a findings pull request
         if: env.LIVE_STATE == 'done'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: source ops/live-ci/ci.sh && harvest
       - name: Make the failure visible
-        if: failure() || env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
+        if: failure() || cancelled() || env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: source ops/live-ci/ci.sh && report_failure "${LIVE_STATE}"
       - name: Fail the run when the live run did
         if: env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
