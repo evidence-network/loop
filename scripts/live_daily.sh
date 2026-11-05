@@ -220,7 +220,7 @@ rc=$?
 bounded "$LAB_SH" running
 rc=$?
 [ "$rc" = 0 ] || [ "$rc" = 1 ] || refuse 5 "lab.sh running exited $rc"
-[ "$rc" = 0 ] || refuse 5 "lab.sh running failed: a node is down or runs another build"
+[ "$rc" = 0 ] || refuse 5 "lab.sh running failed: a node or the test witness is down, or a node runs another build (see its stderr)"
 
 # --- 3. the window --------------------------------------------------------------------------------------------------
 POP_TOUCHED=1

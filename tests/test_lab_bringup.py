@@ -753,6 +753,21 @@ class ToolsTest(LabRoot):
         self.assertEqual(self.run_lab("tools").returncode, 0)
         self.assertEqual(self.build()["failures"], ["lab/lab.sh check has not run"])
 
+    def test_running_names_a_dead_witness_only_when_the_lab_has_one(self):
+        # loop#372: the witness is no node, so a restart left it down and step 02 read NOT_CHECKED for days.
+        (self.lab / "run").mkdir(parents=True)
+        r = self.run_lab("running")
+        self.assertNotIn("witness", r.stderr)  # no run/witness.sh: no witness to ask for
+        (self.lab / "run" / "witness.sh").write_text("#!/bin/sh\n")
+        r = self.run_lab("running")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("the test witness is down", r.stderr)
+        self.assertIn("lab/lab.sh witness", r.stderr)
+        sleeper = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(sleeper.kill)
+        (self.lab / "run" / "witness.pid").write_text(f"{sleeper.pid}\n")
+        self.assertNotIn("witness", self.run_lab("running").stderr)
+
 
 @unittest.skipUnless(shutil.which("tmux"), "tmux is not installed: lab.sh start cannot be run")
 class StartTest(LabRoot):
@@ -1177,7 +1192,7 @@ class PackTest(LabFixture):
             (j / "commitment.json").write_text('{"node": "%s"}\n' % name)
             (j / "probe" / "checkpoints.answer.json").write_text("{}\n")
             (j / "probe" / "stranger" / "signing.seed").write_text("00" * 32 + "\n")
-        (self.lab / "run").mkdir()
+        (self.lab / "run").mkdir(parents=True)
         (self.lab / "run" / "invite.token").write_text("invite-token-value-for-the-test\n")
         self.out = self.lab / "out" / f"loop-lab-{DAY}.tgz"
 
