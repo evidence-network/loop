@@ -20,7 +20,10 @@ read_back(recording, git_bytes, node_id, verify_octets) -> dict:
 
 Every commitment that verifies is ranked, whoever posted it (V4: arrival order and carrier never decide); the
 author only labels it announced or relayed (§5.3). The newest valid commitment must be announced and must be the
-git carrier's bytes.
+git carrier's bytes. An event by the node's own key with no octets inline (an r tag) can only be fetched later:
+it leaves the node NOT_CHECKED when it could change the outcome (its digest is one we hold no commitment for, or
+it names the git bytes while a stale inline one is current), and it counts as the node's announcement of the git
+bytes when an outsider posted the same octets. Outsiders' junk never turns that NOT_CHECKED into a FAIL.
 
 Named reasons: nostr.no_events, nostr.event_form, nostr.event_id, nostr.event_signature, nostr.digest_mismatch,
 nostr.octets_form, nostr.octets_invalid (the octets fail the checks: signature, fields, key, node_id; the policy
@@ -195,6 +198,10 @@ def read_back(recording, git_bytes, node_id, verify_octets):
                                        "reason": "nostr.future_dated",
                                        "why": f"issued_at {v['doc']['issued_at']} is after the read plus the skew"})
     if not live:
+        if events["unread"]:  # the node's own r-tag event may name what is current: unproven, not failed
+            out["result"] = "NOT_CHECKED"
+            out["reasons"].append(unread_reason())
+            return out
         out["reasons"].append("nostr.future_dated: every commitment is dated after the read")
         return out
     latest = max(v["issued_at"] for v in live.values())
@@ -220,7 +227,7 @@ def read_back(recording, git_bytes, node_id, verify_octets):
     named_by_unread = any(u["x"] == git_digest for u in events["unread"])  # the node's own r-tag event names the git bytes
     if current != git_bytes:
         git_at = _issued_at(git_doc)
-        if named_by_unread and git_at is not None and git_at >= cur["issued_at"]:
+        if named_by_unread and git_at is not None and cur["issued_at"] <= git_at <= newest_allowed:
             # The git bytes may be what the node announced behind an r tag, and they are not older than the inline one.
             out["result"] = "NOT_CHECKED"
             out["reasons"].append(unread_reason())
@@ -228,14 +235,14 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         out["reasons"].append(f"nostr.bytes_differ: the current commitment {cur['sha256']} "
                               f"(issued_at {cur['doc']['issued_at']}) is not the git carrier's bytes {git_digest}")
         return out
-    if not cur["announced"] and not named_by_unread:
-        out["reasons"].append("nostr.not_announced: the current commitment is only relayed, by keys other than the "
-                              f"mailbox key its own commitment names ({', '.join(sorted(cur['relayed']))})")
-        return out
     if any(u["x"] not in {v["sha256"] for v in live.values()} for u in events["unread"]):
         # An event by the node's key with octets we cannot read names a commitment we hold none of: it may be newer.
         out["result"] = "NOT_CHECKED"
         out["reasons"].append(unread_reason())
+        return out
+    if not cur["announced"] and not named_by_unread:
+        out["reasons"].append("nostr.not_announced: the current commitment is only relayed, by keys other than the "
+                              f"mailbox key its own commitment names ({', '.join(sorted(cur['relayed']))})")
         return out
     out["result"] = "PASS"
     out["sha256"] = cur["sha256"]

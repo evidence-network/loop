@@ -101,7 +101,7 @@ the record's `errors`:
 | `nostr.not_announced` | the current commitment has only relayed events: another key than the one its own commitment names |
 | `nostr.relays_conflict` | the newest commitments have the same `issued_at` and different octets; both versions are reported |
 | `nostr.bytes_differ` | the current commitment is not the git carrier's bytes (a newer commitment, even under a rotated mailbox key or another policy, makes the git copy stale) |
-| `nostr.over_size` (NOT_CHECKED) | the only events by the node's key carry no octets (an `r` tag), or one names the git digest while a stale inline one is current; fetching them is not done here |
+| `nostr.over_size` (NOT_CHECKED) | an event by the node's own key carries no octets (an `r` tag) and could change the outcome: its digest is one no inline commitment has, or it names the git bytes while a stale inline commitment is current (never when the git bytes are older than the read allows). Fetching them is not done here; an outsider's events never turn this into a FAIL. The same event beside an outsider's copy of the git bytes counts as the node's announcement of them |
 | `nostr.recording` | `nostr.json` is not a JSON object (FAIL), or `read_at` is missing or not `YYYY-MM-DDTHH:MM:SSZ` (NOT_CHECKED) |
 
 An event that fails by itself (forged, edited, malformed, a commitment for

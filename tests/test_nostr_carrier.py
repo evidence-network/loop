@@ -227,6 +227,9 @@ class NostrCarrier(unittest.TestCase):
         for case, result in (("git-copy-plus-unread-other", "NOT_CHECKED"),  # it may be a newer commitment
                              ("outsider-copy-plus-unread-git", "PASS"),  # the node's own event names the git digest
                              ("forged-plus-unread", "NOT_CHECKED"),  # an outsider's forgery cannot make it a FAIL
+                             ("outsider-copy-plus-unread-other", "NOT_CHECKED"),  # not a FAIL for the outsider's copy
+                             ("future-copy-plus-unread-git", "NOT_CHECKED"),  # a future-dated copy takes no part
+                             ("git-future-dated-plus-unread-git", "FAIL"),  # future-dated git bytes cannot be current
                              ("newer-inline-plus-unread-git", "FAIL")):  # git is older than the inline commitment
             f, alice, bob, out = self.run_case(case)
             self.assertEqual(f["result"], result, (case, f["detail"]))
