@@ -74,8 +74,15 @@ harvest() {
   git config user.name "github-actions[bot]"
   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
   rc=0
-  LIVE_HARVEST_VM=$LIVE_VM LIVE_HARVEST_ZONE=$LIVE_ZONE LIVE_HARVEST_REMOTE_DIR=/tmp/loop-live-out-$name \
-    python3 -B scripts/live_harvest.py --name "$name" < /dev/null || rc=$?
+  out=$(LIVE_HARVEST_VM=$LIVE_VM LIVE_HARVEST_ZONE=$LIVE_ZONE LIVE_HARVEST_REMOTE_DIR=/tmp/loop-live-out-$name \
+    python3 -B scripts/live_harvest.py --name "$name" < /dev/null 2>&1) || rc=$?
+  echo "$out"
+  # A harvest-only retry after the branch was pushed: the pull request exists; only the checks may be missing.
+  if [ "$rc" = 4 ] && grep -q "origin already has live-harvest/$name" <<< "$out"; then
+    echo "::notice::the findings branch exists; dispatching its checks again"
+    dispatch_checks "live-harvest/$name" || { setstate harvest-failed; return 1; }
+    return 0
+  fi
   echo "harvest_rc=$rc" >> "$GITHUB_ENV"
   # exit 0: PR open and the baseline moved; 1: PR open, baseline unmoved (a regression or a refused payment)
   if [ "$rc" = 0 ] || [ "$rc" = 1 ]; then dispatch_checks "live-harvest/$name" || { setstate harvest-failed; return 1; }; fi

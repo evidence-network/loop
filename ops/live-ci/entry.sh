@@ -33,10 +33,15 @@ reasons() { grep -a '^live_daily:' "$1" 2> /dev/null | tail -5 | clean; }
 
 start() {
   local day pid p
-  # One start at a time (mkdir is atomic); a lock older than 10 minutes is a killed start's.
-  find "$STATE/lock.d" -maxdepth 0 -mmin +10 -exec rmdir {} + 2> /dev/null
-  mkdir "$STATE/lock.d" 2> /dev/null || { echo "refused: another start is in progress"; exit 11; }
-  trap 'rmdir "$STATE/lock.d" 2> /dev/null' EXIT
+  # One start at a time: mkdir is atomic and the lock names its owner, so only a dead owner's lock is reclaimed and only
+  # the owner removes it.
+  if ! mkdir "$STATE/lock.d" 2> /dev/null; then
+    kill -0 "$(cat "$STATE/lock.d/pid" 2> /dev/null)" 2> /dev/null && { echo "refused: another start is in progress"; exit 11; }
+    rm -rf "$STATE/lock.d"
+    mkdir "$STATE/lock.d" 2> /dev/null || { echo "refused: another start is in progress"; exit 11; }
+  fi
+  echo $$ > "$STATE/lock.d/pid"
+  trap '[ "$(cat "$STATE/lock.d/pid" 2> /dev/null)" = "$$" ] && rm -rf "$STATE/lock.d"' EXIT
   day=$(date -u +%F)
   find /tmp -maxdepth 1 -name 'loop-live-out-*' -user "$(id -un)" -mtime +1 -exec rm -rf {} + 2> /dev/null
   skip() { echo "skipped: $1"; exit 10; }
@@ -52,7 +57,7 @@ start() {
   [ -e "$STATE/started-$day" ] && { echo "refused: a run already started on $day (UTC); no retry"; exit 11; }
 
   cd "$CLONE" || { echo "no dedicated clone"; exit 1; }
-  git fetch -q origin && git checkout -q main && git merge -q --ff-only origin/main || { echo "clone is not at origin/main"; exit 1; }
+  timeout 120 git fetch -q origin && git checkout -q main && git merge -q --ff-only origin/main || { echo "clone is not at origin/main"; exit 1; }
   [ -z "$(git status --porcelain)" ] || { echo "clone is not clean"; exit 1; }
   # A tripwire, not the payment ceiling (that is the node side): the script that came from main still makes exactly one exchange call.
   [ "$(grep -cE '"\$LAB_SH" +exchange' scripts/live_daily.sh)" = 1 ] || { echo "refused: live_daily.sh has changed its exchange calls"; exit 12; }

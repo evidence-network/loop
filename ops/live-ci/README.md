@@ -38,5 +38,7 @@ creates it unprotected) secrets: `LIVE_VM`, `LIVE_PROJECT`, `LIVE_ZONE`, `LIVE_L
 A run that cannot start, dies, ends without a pack (`live_daily.sh` exit 2 and 4 to 7), fails to stage or harvest, or
 passes 3 hours (killed on the host) opens or comments on one `loop-live-failed` issue and fails the workflow; a cancelled
 workflow does too. A skip (the lab is busy or being rebuilt, or today's start already taken) ends green with a notice. If
-only the harvest failed, dispatch the workflow with `harvest_only` to harvest today's finished run. A day with no findings
+only the harvest failed, dispatch the workflow with `harvest_only`: it harvests today's finished run, or, when the
+findings branch is already pushed, dispatches the checks again. A failure between publishing the `live-<name>` release and
+pushing the branch leaves a release that `live_harvest.py` refuses to overwrite; remove it by hand first. A day with no findings
 on `main` is caught by `live-alerts.yml`'s `loop-live-stale` issue.
