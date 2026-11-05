@@ -9,8 +9,8 @@
 #             on every outcome, and exits 1 naming each failure
 #   running   confirm every lab node is up and runs the checked build: its process is MESH_LLM_BIN and one of its
 #             plugin processes is CAPSULES_BIN (by sha256 of /proc/<pid>/exe, so Linux only); exits 1 naming each
-#             failure. When the lab has a test witness (run/witness.sh exists), it must be alive too: the live
-#             run's paid exchange is not started without it (loop#372). Starts and stops nothing
+#             failure. When the lab has a test witness (run/witness.sh exists), it must be alive and serving its
+#             port too: the live run's paid exchange is not started without it (loop#372). Starts and stops nothing
 #   tools     install every step's pinned tools (each steps/*.setup.sh: the steps' own and the shared ledger-check
 #             one): runs every setup, records each one's exit code in build.json, and exits 1 if any failed
 #   start     lab-1 makes the mesh and serves the model; lab-2 and lab-3 join it. No relay.
@@ -714,8 +714,9 @@ cmd_running() {
     [ "$found" = 1 ] || fails+=("$n (pid $p) runs no CAPSULES_BIN plugin process")
   done
   # The witness is no node, so `start` and a node restart never bring it back; a lab that had one must say when it is gone.
-  if [ -e "$LAB_DIR/run/witness.sh" ] && ! alive witness; then
-    fails+=("the test witness is down (no live process in $(pidfile witness)): run lab/lab.sh witness")
+  # A pid file outlives a crash or a reboot and its pid can be reused, so the port it serves is checked too.
+  if [ -e "$LAB_DIR/run/witness.sh" ] && { ! alive witness || port_free "$(witness_port)"; }; then
+    fails+=("the test witness is down (no live process in $(pidfile witness) serving port $(witness_port)): run lab/lab.sh witness")
   fi
   if [ "${#fails[@]}" -gt 0 ]; then
     printf 'lab.sh: running: %s\n' "${fails[@]}" >&2

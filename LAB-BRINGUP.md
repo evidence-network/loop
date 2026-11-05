@@ -724,7 +724,7 @@ clones do not change, but `$LAB_DIR/build.json` holds one `tools` record, which
 `check` reads: after a day whose tools failed, the operator's next `check`
 reads `"ok": false` (and `entries` refuses) until a `tools` run passes, and the
 other way round. Its `loop_tools` field names the directory that wrote it.
-Then the run does `lab.sh check` and `lab.sh running`, and makes one paid
+Then the run does `lab.sh check` and `lab.sh running` (every node up on the checked build, and the test witness serving its port when the lab has one: `lab.sh stop` kills the witness and `start` does not bring it back, so run `lab/lab.sh witness` after a restart or the run exits 5 before it spends), and makes one paid
 exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 06,
 09, stage 1 (01, 02, 03, 12, 07, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;

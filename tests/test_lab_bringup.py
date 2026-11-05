@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
@@ -766,7 +767,16 @@ class ToolsTest(LabRoot):
         sleeper = subprocess.Popen(["sleep", "30"])
         self.addCleanup(sleeper.kill)
         (self.lab / "run" / "witness.pid").write_text(f"{sleeper.pid}\n")
-        self.assertNotIn("witness", self.run_lab("running").stderr)
+        base = 20000 + os.getpid() % 20000
+        # A live pid that is not serving the witness port (a reused pid, a wedged process) is still a dead witness.
+        r = self.run_lab("running", LAB_PORT_BASE=str(base))
+        self.assertIn("the test witness is down", r.stderr)
+        if not shutil.which("ss"):  # lab.sh reads listeners with ss (Linux, like the rest of `running`)
+            return
+        with socket.socket() as srv:
+            srv.bind(("127.0.0.1", base + 30))
+            srv.listen(1)
+            self.assertNotIn("witness", self.run_lab("running", LAB_PORT_BASE=str(base)).stderr)
 
 
 @unittest.skipUnless(shutil.which("tmux"), "tmux is not installed: lab.sh start cannot be run")
@@ -1192,7 +1202,7 @@ class PackTest(LabFixture):
             (j / "commitment.json").write_text('{"node": "%s"}\n' % name)
             (j / "probe" / "checkpoints.answer.json").write_text("{}\n")
             (j / "probe" / "stranger" / "signing.seed").write_text("00" * 32 + "\n")
-        (self.lab / "run").mkdir(parents=True)
+        (self.lab / "run").mkdir()
         (self.lab / "run" / "invite.token").write_text("invite-token-value-for-the-test\n")
         self.out = self.lab / "out" / f"loop-lab-{DAY}.tgz"
 
