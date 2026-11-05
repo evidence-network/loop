@@ -1,0 +1,43 @@
+{
+  "asserts": "each paid exchange's settlement is referenced by the payment_hash its payer sealed with the exchange id, no hash under two exchanges, and is final by preimage (sha256 of the payer's preimage equals the payment_hash); one value band per side per exchange, from the capsules adapter's band(); each payment carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's settlements with a counterparty equal that counterparty's checkpoint-signed settlement bundle (counterparty_count)",
+  "detail": "node stevenmih-1: window from 2026-11-05T06:15:00Z: 22 settlement records before it and 0 without a timestamp left out; node stevenmih-1: 1 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; node stevenmih-2: window from 2026-11-05T06:15:00Z: 46 settlement records before it and 0 without a timestamp left out; node stevenmih-2: 3 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; node stevenmih-3: window from 2026-11-05T06:15:00Z: 4 settlement records before it and 0 without a timestamp left out; node stevenmih-3: 1 settlement legs and 0 wallet-reported settlement observations recorded, 0 with a preimage that hashes to its payment_hash; band: stevenmih-1 provider BTC decade -8, stevenmih-2 payer BTC decade -8; counterparty_count:stevenmih-1:stevenmih-2: stevenmih-1's 12 settlements against stevenmih-2's signed bundle (sha256 5d3a97ccadcd): PASS over the whole books, 12 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-2:stevenmih-1: stevenmih-2's 12 settlements against stevenmih-1's signed bundle (sha256 4b3e622dc653): PASS over the whole books, 12 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; exchange_match: 1 payments paired: the payer's amount equals the payee's credit plus fee; finality: 1 of 1 payment hashes final by the payer's preimage; rail_fee: each of 1 payments carries a wallet provider's fee (fee_msat > 0); reference: 1 payments, each referenced by one payment_hash under one exchange in each book; unsettled_invoices: 1 invoices agreed but unsettled as of the books read (no book records a settlement, a delivery or an accounted bill for them) are set aside, not judged: the books cannot prove a payment unpaid. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays). Outside this step's assertion: a public ledger's count of each node's settlements (Lightning has none; the counterparty's signed book stands in): evidence-network/loop#247. Outside this step's assertion: 1 invoices agreed but unsettled as of the books read, which the books cannot prove unpaid: Mesh-LLM/capsules-plugin#83.",
+  "finished": "2026-11-05T06:21:50Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "v0.1.8",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/recorded.json",
+      "sha256": "699f727013babf2a7dc044eb64164550688cd711465d01e6f49f8b5f5d22bd20"
+    },
+    {
+      "path": "stevenmih-2/recorded.json",
+      "sha256": "7ff258321f3073c6fbbd6537a53e1ca4a0c5efbd1688ee4423c86ca831660abe"
+    },
+    {
+      "path": "stevenmih-3/recorded.json",
+      "sha256": "342a2c08fc6c536b9c8b72613ceb7ada12cfbf78d77f8f9956d2efcde619a752"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "19fe251bb8d910a0e750ed92790069df18afeeeaa2848d5dc01c1c5f6ea9c18e"
+    },
+    {
+      "path": "counterparty.json",
+      "sha256": "1d7f6da2870a6ee4cdd705b01455731180e4bfea186d714d68f01f224c41dcfc"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-05T06:21:49Z",
+  "step": "06"
+}
