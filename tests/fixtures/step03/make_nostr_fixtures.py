@@ -36,6 +36,7 @@ SOURCE = ROOT / "tests" / "fixtures" / "commitment1" / "nostr"
 RELAYS = ("wss://relay.example", "wss://relay2.example")
 MAILBOX_SECRET = 3  # BIP-340 test vector 0: f9308a01...36f9, the mailbox key commitment1/nostr/ names
 OTHER_SECRET = 5
+THIRD_SECRET = 7
 READ_AT = "2026-11-05T12:00:00Z"
 NEWER, OLDER, FUTURE = "2026-11-05T00:00:00Z", "2026-11-04T00:00:00Z", "2026-12-31T00:00:00Z"
 
@@ -113,13 +114,22 @@ def main():
     older_policy = commitment(OLDER, node_id, new_policy)
     other_node = commitment(NEWER, node_id, lambda d: d.__setitem__("node_id", "cd" * 32))
     surrogate = dict(good, tags=good["tags"] + [["foo", "\ud800"]])
+    unread = lambda x: event(newer, node_id=node_id, content="", tags=[  # noqa: E731
+        ["d", node_id], ["t", "evidence-commitment"], ["x", x], ["r", "https://node.example/commitment.json"]])
     bad_tag = event(newer, node_id=node_id, tags=[["d", 123], ["t", "evidence-commitment"], ["x", {}]])
     bad_content = event(newer, node_id=node_id, content="A")  # validly signed, not base64url octets
     cases = {
         "newer-policy-changed": recording({RELAYS[0]: [event(newer_policy, node_id=node_id)], RELAYS[1]: [good]}),
         "older-policy-changed": recording({RELAYS[0]: [event(older_policy, node_id=node_id)], RELAYS[1]: [good]}),
-        "relayed-newer": recording({RELAYS[0]: [event(rotated, secret=OTHER_SECRET, node_id=node_id)],
+        # Declares OTHER_SECRET's key as its mailbox but is posted by THIRD_SECRET's: relayed, and the newest.
+        "relayed-newer": recording({RELAYS[0]: [event(rotated, secret=THIRD_SECRET, node_id=node_id)],
                                     RELAYS[1]: [good]}),
+        "git-copy-plus-unread-other": recording({RELAYS[0]: [good], RELAYS[1]: [unread("ef" * 32)]}),
+        "outsider-copy-plus-unread-git": recording({RELAYS[0]: [event(newer, secret=OTHER_SECRET, node_id=node_id)],
+                                                    RELAYS[1]: [unread(hashlib.sha256(newer).hexdigest())]}),
+        "forged-plus-unread": recording({RELAYS[0]: [forged_sig], RELAYS[1]: [unread(hashlib.sha256(newer).hexdigest())]}),
+        "newer-inline-plus-unread-git": recording({RELAYS[0]: [event(newer_policy, node_id=node_id)],
+                                                   RELAYS[1]: [unread(hashlib.sha256(newer).hexdigest())]}),
         "relayed-conflict": recording({RELAYS[0]: [event(other, secret=OTHER_SECRET, node_id=node_id)],
                                        RELAYS[1]: [good]}),
         "other-node-inside": recording({RELAYS[0]: [event(other_node, node_id=node_id)], RELAYS[1]: [good]}),

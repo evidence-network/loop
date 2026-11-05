@@ -173,7 +173,10 @@ class NostrCarrier(unittest.TestCase):
         self.assertEqual(alice["nostr"]["events"]["rejected"], [])
 
     def test_a_commitment_the_node_signed_counts_in_v4_whoever_posted_it(self):
-        self.assert_fails("relayed-newer", "nostr.bytes_differ")
+        alice = self.assert_fails("relayed-newer", "nostr.bytes_differ")
+        events = alice["nostr"]["events"]
+        self.assertEqual([r["issued_at"] for r in events["relayed"]], ["2026-11-05T06:00:00Z"])
+        self.assertEqual([r["issued_at"] for r in events["superseded"]], ["2026-11-05T00:00:00Z"])
         self.assert_fails("relayed-conflict", "nostr.relays_conflict")
 
     def test_a_commitment_for_another_node_id_is_refused_even_under_this_d(self):
@@ -219,6 +222,33 @@ class NostrCarrier(unittest.TestCase):
         alice = {n["name"]: n for n in json.loads((out / "verification.json").read_text())["nodes"]}["alice"]
         self.assertEqual(alice["result"], "FAIL")
         self.assertEqual(alice["nostr"]["result"], "NOT_CHECKED")
+
+    def test_an_unread_event_by_the_nodes_key_decides_only_what_it_can(self):
+        for case, result in (("git-copy-plus-unread-other", "NOT_CHECKED"),  # it may be a newer commitment
+                             ("outsider-copy-plus-unread-git", "PASS"),  # the node's own event names the git digest
+                             ("forged-plus-unread", "NOT_CHECKED"),  # an outsider's forgery cannot make it a FAIL
+                             ("newer-inline-plus-unread-git", "FAIL")):  # git is older than the inline commitment
+            f, alice, bob, out = self.run_case(case)
+            self.assertEqual(f["result"], result, (case, f["detail"]))
+
+    def test_hostile_octets_are_refused_by_the_checker_not_raised(self):
+        check = self.step.octets_checker("00" * 32)
+        self.assertEqual(check(b"[" * 300000)[0], None)
+        good = json.loads((self.pop / "advertise" / "alice" / "signed" / "commitment.json").read_text())
+        deep = json.loads(json.dumps(good))
+        deep["history_cards"][0]["bytes"] = __import__("base64").b64encode(b"[" * 300000).decode()
+        wrong_type = json.loads(json.dumps(good))
+        wrong_type["history_cards"][0]["bytes"] = __import__("base64").b64encode(
+            json.dumps({"artifact": 5}).encode()).decode()
+        for doc in (deep, wrong_type):
+            doc_back, errs = check(json.dumps(doc).encode())  # returns, whichever way it refuses
+            self.assertTrue(errs, errs)
+
+    def test_a_read_at_past_the_last_representable_time_is_not_checked(self):
+        rec = json.loads((CASES / "good.json").read_text())
+        rec["read_at"] = "9999-12-31T23:59:59Z"
+        f, alice, bob, out = self.run_case(recording=rec)
+        self.assertEqual(f["result"], "NOT_CHECKED", f["detail"])
 
     def test_no_event_on_any_relay_fails(self):
         self.assert_fails("no-events", "nostr.no_events")

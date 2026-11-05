@@ -69,8 +69,8 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "signed policy's bytes")
 # Added when a node was also read back from Nostr (nostr_carrier.py, rehearsal recordings).
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
-                 "exactly the git carrier's commitment bytes (the newest valid announce event by the commitment's "
-                 "mailbox key)")
+                 "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
+                 "by the node)")
 # No released verifier for a stapled history_card/1 that the loop can call.
 STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
@@ -291,7 +291,10 @@ def octets_checker(key_id):
 
         # The policy and staples are checked on the git bytes (verify_node); another commitment may change them, so
         # here only its own fields, signature and digests count, and the policy digest is not matched to bytes.
-        errs, _ = cc.verify(doc, lambda uri: None, lambda part: None)
+        try:
+            errs, _ = cc.verify(doc, lambda uri: None, lambda part: None)
+        except (RecursionError, TypeError, ValueError, KeyError, AttributeError) as e:  # hostile nesting or types
+            return None, [f"the checker could not read it ({type(e).__name__})"]
         if doc.get("key_id") != key_id:
             errs.append("the commitment is not under this node's key")
         return doc, errs

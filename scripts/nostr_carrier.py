@@ -116,14 +116,16 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         return out
     try:
         read_at = datetime.datetime.strptime(recording["read_at"], TIME).replace(tzinfo=datetime.timezone.utc)
-    except (ValueError, KeyError, TypeError):
+        newest_allowed = read_at + SKEW
+    except (ValueError, KeyError, TypeError, OverflowError):
         out["result"] = "NOT_CHECKED"
         out["reasons"].append("nostr.recording: read_at is missing or not YYYY-MM-DDTHH:MM:SSZ, so a future-dated "
                               "commitment cannot be told")
         return out
 
     try:
-        git_key = json.loads(git_bytes)["ask"]["nostr"]["mailbox_key"]
+        git_doc = json.loads(git_bytes)
+        git_key = git_doc["ask"]["nostr"]["mailbox_key"]
     except (ValueError, KeyError, TypeError, RecursionError):
         out["reasons"].append("nostr.no_mailbox_route: the git carrier's commitment names no ask.nostr, so no "
                               "event can be the node's announcement")
@@ -170,11 +172,13 @@ def read_back(recording, git_bytes, node_id, verify_octets):
                 "octets (an r tag); fetching them is not done here")
 
     if not by_octets:
-        out["reasons"] += sorted({f"{r['reason']}: {r['relay']}: {r['why']}" for r in events["rejected"]})
-        if events["unread"] and not out["reasons"]:
-            out["result"] = "NOT_CHECKED"  # nothing else decides the node: the octets sit behind an r tag
+        if events["unread"]:
+            # The node's own announcement sits behind an r tag, which an outsider's junk cannot change.
+            out["result"] = "NOT_CHECKED"
             out["reasons"].append(unread_reason())
-        elif events["relayed"] and not out["reasons"]:
+            return out
+        out["reasons"] += sorted({f"{r['reason']}: {r['relay']}: {r['why']}" for r in events["rejected"]})
+        if events["relayed"] and not out["reasons"]:
             out["reasons"].append("nostr.not_announced: no event by the node's mailbox key carries octets")
         elif not out["reasons"]:
             out["reasons"].append("nostr.no_events: no relay returned an announce event for this node")
@@ -184,7 +188,7 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         v["sha256"] = hashlib.sha256(next(o for o, w in by_octets.items() if w is v)).hexdigest()
         v["issued_at"] = _issued_at(v["doc"])
     # V4: a commitment dated after the read plus the skew takes no part; the latest issued_at is current.
-    live = {o: v for o, v in by_octets.items() if v["issued_at"] is not None and v["issued_at"] <= read_at + SKEW}
+    live = {o: v for o, v in by_octets.items() if v["issued_at"] is not None and v["issued_at"] <= newest_allowed}
     for o, v in by_octets.items():
         if o not in live:
             events["rejected"].append({"relay": (v["announced"] + v["relayed"])[0], "id": None,
@@ -213,20 +217,27 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         ({"sha256": v["sha256"], "issued_at": v["doc"]["issued_at"], "relays": sorted(v["announced"] + v["relayed"])}
          for o, v in live.items() if o != current), key=lambda a: a["sha256"])
     cur = live[current]
+    named_by_unread = any(u["x"] == git_digest for u in events["unread"])  # the node's own r-tag event names the git bytes
     if current != git_bytes:
-        if any(u["x"] == git_digest for u in events["unread"]):
-            # The node's own event with no inline octets names the git digest: it may be the git bytes, so unproven.
+        git_at = _issued_at(git_doc)
+        if named_by_unread and git_at is not None and git_at >= cur["issued_at"]:
+            # The git bytes may be what the node announced behind an r tag, and they are not older than the inline one.
             out["result"] = "NOT_CHECKED"
             out["reasons"].append(unread_reason())
             return out
         out["reasons"].append(f"nostr.bytes_differ: the current commitment {cur['sha256']} "
                               f"(issued_at {cur['doc']['issued_at']}) is not the git carrier's bytes {git_digest}")
         return out
-    if not cur["announced"]:
+    if not cur["announced"] and not named_by_unread:
         out["reasons"].append("nostr.not_announced: the current commitment is only relayed, by keys other than the "
                               f"mailbox key its own commitment names ({', '.join(sorted(cur['relayed']))})")
         return out
+    if any(u["x"] not in {v["sha256"] for v in live.values()} for u in events["unread"]):
+        # An event by the node's key with octets we cannot read names a commitment we hold none of: it may be newer.
+        out["result"] = "NOT_CHECKED"
+        out["reasons"].append(unread_reason())
+        return out
     out["result"] = "PASS"
     out["sha256"] = cur["sha256"]
-    out["relays"] = sorted(cur["announced"])
+    out["relays"] = sorted(cur["announced"] or cur["relayed"])
     return out
