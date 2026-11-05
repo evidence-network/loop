@@ -114,14 +114,22 @@ class LiveDailyTest(unittest.TestCase):
 
     def assert_untouched(self):
         self.assertFalse((self.lab / "run" / "LIVE_RUN").exists())
-        self.assertEqual(git("status", "--porcelain", "--untracked-files=no", cwd=self.clone), "")
+        # Untracked files count: a run leaves no findings in the clone, or the next run's clone is dirty.
+        self.assertEqual(git("status", "--porcelain", cwd=self.clone), "")
+
+    def packed(self, name):
+        """The run's findings directory, unpacked from its tgz into a fresh directory."""
+        dest = Path(tempfile.mkdtemp(dir=self.tmp))
+        subprocess.run(["tar", "xzf", str(self.lab / "out" / f"{name}.tgz"), "-C", str(dest)], check=True)
+        return dest / "findings" / name
 
     def test_run_writes_findings_pack_and_record(self):
         r = self.run_daily()
         self.assertEqual(r.returncode, 0, r.stderr)
         name = f"{self.day()}-live-1"
         out = self.clone / "findings" / name
-        self.assertEqual(len(list(out.glob("*/finding.json"))), 12)
+        self.assertEqual(len(list(self.packed(name).glob("*/finding.json"))), 12)
+        self.assertFalse(out.exists())
         record = json.loads((self.lab / "out" / f"{name}.json").read_text())
         self.assertTrue(record["exchange"]["paid"])
         self.assertEqual(record["steps"]["06-settle"], "PASS")
@@ -188,12 +196,12 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(self.run_daily().returncode, 0)
         r = self.run_daily()
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue((self.clone / "findings" / f"{self.day()}-live-2" / "06-settle" / "finding.json").is_file())
+        self.assertTrue((self.packed(f"{self.day()}-live-2") / "06-settle" / "finding.json").is_file())
 
     def test_refused_payment_is_06_not_checked_with_the_reason_and_no_retry(self):
         r = self.run_daily(STUB_PAID="402 Payment Required")
         self.assertEqual(r.returncode, 8, r.stderr)  # packed; the gate's 06 PASS -> NOT_CHECKED is the refusal
-        out = self.clone / "findings" / f"{self.day()}-live-1"
+        out = self.packed(f"{self.day()}-live-1")
         f = json.loads((out / "06-settle" / "finding.json").read_text())
         self.assertEqual(f["result"], "NOT_CHECKED")
         self.assertIn("402 Payment Required", f["detail"])
@@ -213,14 +221,14 @@ class LiveDailyTest(unittest.TestCase):
         r = self.run_daily(STUB_NO_09="1")
         self.assertEqual(r.returncode, 1, r.stderr)  # the gate: 09 PASS -> FAIL against baseline/live.json
         self.assertIn("step 09: PASS -> FAIL", r.stderr)
-        f = json.loads((self.clone / "findings" / f"{self.day()}-live-1" / "09-dispute" / "finding.json").read_text())
+        f = json.loads((self.packed(f"{self.day()}-live-1") / "09-dispute" / "finding.json").read_text())
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("exited 3", f["detail"])
 
     def test_a_step_over_its_time_is_killed_and_a_fail(self):
         r = self.run_daily(STUB_HANG="1", LIVE_STEP_TIMEOUT="2")
         self.assertEqual(r.returncode, 1, r.stderr)  # 04 PASS -> FAIL against the baseline
-        f = json.loads((self.clone / "findings" / f"{self.day()}-live-1" / "04-admit" / "finding.json").read_text())
+        f = json.loads((self.packed(f"{self.day()}-live-1") / "04-admit" / "finding.json").read_text())
         self.assertEqual(f["result"], "FAIL")
         self.assertIn("exited 124", f["detail"])
 
@@ -286,6 +294,18 @@ class LiveDailyTest(unittest.TestCase):
         p.wait(timeout=30)
         self.assertEqual(p.returncode, 143)
         self.assert_untouched()
+
+    def test_a_run_that_stops_before_packing_leaves_its_findings_outside_the_clone(self):
+        step = Path(self.env["LIVE_STEPS_DIR"]) / "11-report"
+        step.write_text(STUB_STEP + 'echo "{" > "$out/finding.json"\n')  # finding.py check refuses a malformed finding
+        r = self.run_daily()
+        self.assertEqual(r.returncode, 6, r.stderr)
+        name = f"{self.day()}-live-1"
+        self.assertTrue((self.lab / "out" / "unpacked" / name / "10-judge" / "finding.json").is_file())
+        self.assertFalse((self.lab / "out" / f"{name}.tgz").exists())
+        self.assert_untouched()
+        # Its N stays taken, and the next run starts from the clean clone.
+        self.assertIn(f"findings/{self.day()}-live-2", self.run_daily("--dry-run").stdout)
 
     def test_dry_run_changes_nothing(self):
         r = self.run_daily("--dry-run")

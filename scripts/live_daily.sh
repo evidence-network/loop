@@ -26,7 +26,9 @@
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
-#      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing.
+#      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing. The findings
+#      directory does not stay in the clone (the tgz holds it): a run that stopped before packing leaves it in
+#      $LIVE_OUT_DIR/unpacked/<name>, which keeps its N taken, so the next run starts from a clean tree.
 #
 # --dry-run prints the plan, the name it would take and the checks it would make, and changes nothing (no lock,
 # no fetch, no exchange).
@@ -98,7 +100,7 @@ DAY=${STARTED_AT:0:10}
 # runs (their records), a plain <DAY>-live counting as 1.
 next_name() {
   local d n max=0
-  for d in "$ROOT/findings/$DAY"-live* "$HELD_DIR/$DAY"-live* "$OUT_DIR/$DAY"-live*.json; do
+  for d in "$ROOT/findings/$DAY"-live* "$HELD_DIR/$DAY"-live* "$OUT_DIR/unpacked/$DAY"-live* "$OUT_DIR/$DAY"-live*.json; do
     [ -e "$d" ] || continue
     d=${d##*/}
     d=${d%.json}
@@ -162,6 +164,7 @@ if ! (set -o noclobber; printf '{"pid": %d, "started": "%s"}\n' "$$" "$STARTED_A
 fi
 CHILD=""
 POP_TOUCHED=0
+OWN_OUT=0
 # Each process is stopped as it is listed, so a stopped parent cannot start another before the TERM; then all get it.
 tree() { local c; kill -STOP "$1" 2> /dev/null; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
 kill_tree() {
@@ -170,8 +173,17 @@ kill_tree() {
   # shellcheck disable=SC2086
   kill -TERM $all 2> /dev/null; kill -CONT $all 2> /dev/null
 }
+# The run leaves no findings in the clone, so the next run starts from a clean tree: a packed run's copy is in its tgz;
+# one that stopped before packing goes to $OUT_DIR/unpacked/$NAME (its N stays taken, see next_name).
+leave_clone() {
+  [ "$OWN_OUT" = 1 ] && [ -d "$OUT" ] || return 0
+  if [ -f "$OUT_DIR/$NAME.tgz" ]; then rm -rf "$OUT"
+  else mkdir -p "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/$NAME" ] && mv "$OUT" "$OUT_DIR/unpacked/$NAME"
+  fi || log "could not move $OUT out of the clone: remove it by hand before the next run"
+}
 cleanup() {
   [ -n "$CHILD" ] && kill_tree "$CHILD"
+  leave_clone
   [ "$POP_TOUCHED" = 1 ] && git -C "$ROOT" checkout -q -- "$POP"
   rm -f "$LOCK"
 }
@@ -189,6 +201,7 @@ MAIN=$(git -C "$ROOT" rev-parse FETCH_HEAD)
 [ "$HEAD" = "$MAIN" ] || refuse 4 "HEAD $HEAD is not origin/main $MAIN: update the clone first"
 [ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ] || refuse 4 "the clone has tracked changes"
 [ ! -e "$OUT" ] || refuse 4 "$OUT exists"
+OWN_OUT=1
 log "run $NAME at $HEAD, window from $SINCE"
 
 # --- 2. the lab -----------------------------------------------------------------------------------------------------
