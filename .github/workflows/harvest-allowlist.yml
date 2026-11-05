@@ -6,13 +6,15 @@ name: harvest-allowlist
 
 on:
   pull_request:
+  # Dispatched on the harvest branch by live-daily.yml (a GITHUB_TOKEN pull request starts no pull_request run).
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   harvest-allowlist:
-    if: startsWith(github.head_ref, 'live-harvest/')
+    if: startsWith(github.head_ref || github.ref_name, 'live-harvest/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,10 +23,13 @@ jobs:
           persist-credentials: false
       - name: Only findings/<date>-live-<N>/ additions and baseline/live.json
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -e
+          # A dispatched run has no pull request: the range is the merge base with main up to the branch head.
+          BASE=${PR_BASE:-$(git merge-base origin/main HEAD)}
+          HEAD=${PR_HEAD:-$(git rev-parse HEAD)}
           # The base's copy of the check, so the pull request cannot change the rule it is judged by.
           git show "$BASE:.github/harvest_allowlist.py" > "$RUNNER_TEMP/harvest_allowlist.py"
           python3 -B "$RUNNER_TEMP/harvest_allowlist.py" "$BASE" "$HEAD"

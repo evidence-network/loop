@@ -2,6 +2,8 @@ name: stats
 
 on:
   pull_request:
+  # Dispatched on the live harvest branch by live-daily.yml (a GITHUB_TOKEN pull request starts no pull_request run).
+  workflow_dispatch:
   push:
     branches: [main]
   # Rebuilds the site after the nightly loop run (loop.yml, 02:00 UTC).

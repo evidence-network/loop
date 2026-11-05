@@ -4,6 +4,8 @@ name: ecosystem-gate
 
 on:
   pull_request:
+  # Dispatched on the live harvest branch by live-daily.yml (a GITHUB_TOKEN pull request starts no pull_request run).
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -23,10 +25,14 @@ jobs:
       - name: The baseline matches its committed findings and the current pins
         run: python3 -B scripts/ecosystem_gate.py verify
       - name: No step goes green to red against the base branch
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'push'
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -e
-          if git cat-file -e "${{ github.event.pull_request.base.sha }}:baseline/live.json" 2>/dev/null; then
-            git show "${{ github.event.pull_request.base.sha }}:baseline/live.json" > "$RUNNER_TEMP/old.json"
+          # A dispatched run has no pull request: the base is the merge base with main.
+          BASE=${PR_BASE:-$(git merge-base origin/main HEAD)}
+          if git cat-file -e "$BASE:baseline/live.json" 2>/dev/null; then
+            git show "$BASE:baseline/live.json" > "$RUNNER_TEMP/old.json"
             python3 -B scripts/ecosystem_gate.py check --old "$RUNNER_TEMP/old.json" --new baseline/live.json
           fi

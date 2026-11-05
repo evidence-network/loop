@@ -1,0 +1,101 @@
+# The daily live run (evidence-network/loop#368, replacing the Claude scheduled task of loop#314): start
+# scripts/live_daily.sh on the lab host, harvest its findings with scripts/live_harvest.py into a data-only pull request
+# opened with GITHUB_TOKEN, and fail visibly. See ops/live-ci/README.md for the trust model.
+#
+# Fork exposure: this workflow runs on `schedule` and `workflow_dispatch` only (never pull_request, pull_request_target
+# or push), only from main, and its one job sits in the `live-lab` environment, which accepts deployments from main
+# alone. Cloud access is a short-lived OIDC exchange pinned to this repository, main and that environment; no secret,
+# no key and no self-hosted runner is involved, and a fork pull request cannot start the job or obtain the token.
+name: live-daily
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: live-daily
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: live-lab
+    permissions:
+      contents: write # the findings branch and the live-<name> release
+      pull-requests: write
+      issues: write # the loop-live-failed issue
+      actions: write # dispatching the required checks on the findings branch
+      id-token: write # the OIDC token for the cloud exchange
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LIVE_VM: ${{ vars.LIVE_VM }}
+      LIVE_PROJECT: ${{ vars.LIVE_PROJECT }}
+      LIVE_ZONE: ${{ vars.LIVE_ZONE }}
+      LIVE_LAB_USER: ${{ vars.LIVE_LAB_USER }}
+      LIVE_STATE: init
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Skip rule, dry run, start
+        run: source ops/live-ci/ci.sh && start_run
+      # The access token lives an hour and a run up to three: authenticate again before each wait.
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.LIVE_STATE == 'waiting'
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Wait (1)
+        if: env.LIVE_STATE == 'waiting'
+        run: source ops/live-ci/ci.sh && wait_run 50
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.LIVE_STATE == 'waiting'
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Wait (2)
+        if: env.LIVE_STATE == 'waiting'
+        run: source ops/live-ci/ci.sh && wait_run 50
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.LIVE_STATE == 'waiting'
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Wait (3)
+        if: env.LIVE_STATE == 'waiting'
+        run: source ops/live-ci/ci.sh && wait_run 50
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.LIVE_STATE == 'waiting'
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Wait (4)
+        if: env.LIVE_STATE == 'waiting'
+        run: source ops/live-ci/ci.sh && wait_run 50
+      - name: Out of time
+        if: env.LIVE_STATE == 'waiting'
+        run: echo "LIVE_STATE=timeout" >> "$GITHUB_ENV"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        if: env.LIVE_STATE == 'done'
+        with:
+          workload_identity_provider: ${{ vars.LIVE_WIF_PROVIDER }}
+          service_account: ${{ vars.LIVE_SERVICE_ACCOUNT }}
+      - name: Harvest into a findings pull request
+        if: env.LIVE_STATE == 'done'
+        run: source ops/live-ci/ci.sh && harvest
+      - name: Make the failure visible
+        if: failure() || env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
+        run: source ops/live-ci/ci.sh && report_failure "${LIVE_STATE}"
+      - name: Fail the run when the live run did
+        if: env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
+        run: exit 1

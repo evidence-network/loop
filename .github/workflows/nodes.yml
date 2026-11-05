@@ -2,6 +2,9 @@ name: nodes
 
 on:
   pull_request:
+  # The daily live harvest's pull request is opened with GITHUB_TOKEN, which starts no pull_request workflow;
+  # live-daily.yml dispatches this one on the harvest branch so its check attaches to the pull request's head.
+  workflow_dispatch:
   push:
     branches: [main]
 

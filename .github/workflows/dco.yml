@@ -5,6 +5,9 @@ name: dco
 
 on:
   pull_request:
+  # Dispatched on the live harvest branch by live-daily.yml (a GITHUB_TOKEN pull request starts no pull_request run).
+  # The range is then the merge base with main up to the branch head: the range a pull request from it would show.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,4 +21,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Every commit is signed off
-        run: python3 .github/dco.py "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          BASE=${PR_BASE:-$(git merge-base origin/main HEAD)}
+          HEAD_SHA=${PR_HEAD:-$(git rev-parse HEAD)}
+          python3 .github/dco.py "$BASE" "$HEAD_SHA"
