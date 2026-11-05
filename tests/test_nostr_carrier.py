@@ -235,11 +235,12 @@ class NostrCarrier(unittest.TestCase):
         check = self.step.octets_checker("00" * 32)
         self.assertEqual(check(b"[" * 300000)[0], None)
         good = json.loads((self.pop / "advertise" / "alice" / "signed" / "commitment.json").read_text())
-        deep = json.loads(json.dumps(good))
-        deep["history_cards"][0]["bytes"] = __import__("base64").b64encode(b"[" * 300000).decode()
-        wrong_type = json.loads(json.dumps(good))
-        wrong_type["history_cards"][0]["bytes"] = __import__("base64").b64encode(
-            json.dumps({"artifact": 5}).encode()).decode()
+        def with_card(raw):  # digest kept right so the checker goes on to read the card
+            doc = json.loads(json.dumps(good))
+            doc["history_cards"][0]["bytes"] = __import__("base64").b64encode(raw).decode()
+            doc["history_cards"][0]["sha256"] = __import__("hashlib").sha256(raw).hexdigest()
+            return doc
+        deep, wrong_type = with_card(b"[" * 300000), with_card(json.dumps({"artifact": 5}).encode())
         for doc in (deep, wrong_type):
             doc_back, errs = check(json.dumps(doc).encode())  # returns, whichever way it refuses
             self.assertTrue(errs, errs)
