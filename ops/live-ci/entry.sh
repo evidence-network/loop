@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # The only thing the daily live workflow (.github/workflows/live-daily.yml) may run on the lab host, as the lab user:
 #
-#   sudo -n -u <lab user> /opt/loop-live-ci/entry.sh start|status|stage
+#   sudo -n -u <lab user> /usr/local/sbin/loop-live-ci-entry start|status|stage
 #
 # Installed by the lab operator, owned by root, mode 0755 in a root-owned directory, and named by exact subcommand in
 # sudoers (ops/live-ci/README.md); it is not fetched from this repository at run time, so a merged change here
 # reaches the lab only when the operator reinstalls it. It takes no argument but the subcommand and reads no wallet,
 # seed, key, macaroon, peer-key, join or invite file. Its settings come from /etc/loop-live-ci/conf (root-owned):
 #   LIVE_HOME  the lab user's home       LIVE_ENV  the lab env file live_daily.sh sources       LAB_DIR  the lab directory
+#   LIVE_CI_USER  the OS Login user of the workflow's service account (the only reader of the staged files)
 #
 #   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day, one start at a time (11), the
 #           exchange call sites of live_daily.sh unchanged (12), then the real run in its own process group; exit 0.
@@ -16,20 +17,20 @@
 #           time limit (TERM to the run's process group, KILL after 60 s)
 #   stage   for a packed run (rc 0, 1 or 8) installs its .tgz, .tgz.sha256 and .json into /tmp/loop-live-out-<name>
 #           and prints name=<name>; exit 23 when nothing was packed
-# Output is printed to a public log: paths are shortened and only the script's own "live_daily:" lines are shown.
+# Output goes to a public Actions log, so it carries only states and exit codes; the run's own log stays on the host.
 set -uo pipefail
 CONF=/etc/loop-live-ci/conf
 [ -r "$CONF" ] || { echo "entry: no $CONF" >&2; exit 2; }
 # shellcheck disable=SC1090
 . "$CONF"
-: "${LIVE_HOME:?}" "${LIVE_ENV:?}" "${LAB_DIR:?}"
+: "${LIVE_HOME:?}" "${LIVE_ENV:?}" "${LAB_DIR:?}" "${LIVE_CI_USER:?}"
 MAX_SECONDS=$((3 * 3600))
 CLONE=$LIVE_HOME/loop-live
 STATE=$LIVE_HOME/.loop-live-ci
 umask 022
 mkdir -p "$STATE"
 clean() { sed -e "s#$LIVE_HOME#~#g" -e "s#$LAB_DIR#\$LAB_DIR#g"; }
-reasons() { grep -a '^live_daily:' "$1" 2> /dev/null | tail -5 | clean; }
+reasons() { :; } # the run's log is not printed: read it on the host
 
 start() {
   local day pid p
@@ -101,8 +102,11 @@ stage() {
   name=$(sed -n 's#^live_daily: done: .*/\([0-9]\{4\}-[0-9][0-9]-[0-9][0-9]-live-[1-9][0-9]*\)\.tgz .*#\1#p' "$STATE/log" | tail -1)
   [ -n "$name" ] || { echo "no packed name in the log"; exit 23; }
   out=/tmp/loop-live-out-$name
-  install -d -m 755 "$out"
-  for e in .tgz .tgz.sha256 .json; do install -m 644 "$LAB_DIR/out/live/$name$e" "$out/$name$e" || exit 23; done
+  # Raw run files are pre-allowlist: readable by the lab user and the workflow's login only.
+  install -d -m 700 "$out" && setfacl -m "u:$LIVE_CI_USER:rx" "$out" || exit 23
+  for e in .tgz .tgz.sha256 .json; do
+    install -m 600 "$LAB_DIR/out/live/$name$e" "$out/$name$e" && setfacl -m "u:$LIVE_CI_USER:r" "$out/$name$e" || exit 23
+  done
   echo "name=$name rc=$rc"
 }
 

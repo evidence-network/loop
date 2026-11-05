@@ -85,7 +85,7 @@ class EntrySh(unittest.TestCase):
         for c in (["init", "-q", "-b", "main"], ["add", "."], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"],
                   ["remote", "add", "origin", str(clone)], ["fetch", "-q", "origin"]):
             subprocess.run(["git", "-C", str(clone), *c], check=True, capture_output=True)
-        (d / "conf").write_text(f"LIVE_HOME={self.home}\nLIVE_ENV={d}/env.sh\nLAB_DIR={self.lab}\n")
+        (d / "conf").write_text(f"LIVE_HOME={self.home}\nLIVE_ENV={d}/env.sh\nLAB_DIR={self.lab}\nLIVE_CI_USER=ci\n")
         (d / "env.sh").write_text("")
         self.entry = d / "entry.sh"
         self.entry.write_text(ENTRY.read_text().replace("/etc/loop-live-ci/conf", str(d / "conf")))

@@ -62,6 +62,11 @@ def run_key(name):
     return (name[:10], int(name.rsplit("-", 1)[1])) if m else ("", 0)
 
 
+def iap():
+    """`--tunnel-through-iap` when LIVE_HARVEST_IAP is set (the Actions run reaches the host only through IAP)."""
+    return ["--tunnel-through-iap"] if os.environ.get("LIVE_HARVEST_IAP") else []
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -84,7 +89,7 @@ def fetch(args, dest):
             raise Refuse(2, "set LIVE_HARVEST_VM, LIVE_HARVEST_ZONE and LIVE_HARVEST_REMOTE_DIR (or use --from-dir)")
         name = args.name
         if not name:
-            ls = run("gcloud", "compute", "ssh", vm, "--zone", zone, "--command", f"ls -1 {remote}", check=False)
+            ls = run("gcloud", "compute", "ssh", vm, "--zone", zone, *iap(), "--command", f"ls -1 {remote}", check=False)
             if ls.returncode != 0:
                 raise Refuse(5, f"listing {remote} on {vm} failed: {ls.stderr.strip()[:200]}")
             names = sorted((f[:-5] for f in ls.stdout.split() if NAME_RE.fullmatch(f[:-5]) and f.endswith(".json")), key=run_key)
@@ -94,7 +99,7 @@ def fetch(args, dest):
         if not NAME_RE.fullmatch(name):
             raise Refuse(2, f"{name!r} is not a <date>-live-<N> run name")
         for ext in (".tgz", ".tgz.sha256", ".json"):
-            p = run("gcloud", "compute", "scp", "--zone", zone, f"{vm}:{remote}/{name}{ext}", str(dest / (name + ext)), check=False)
+            p = run("gcloud", "compute", "scp", "--zone", zone, *iap(), f"{vm}:{remote}/{name}{ext}", str(dest / (name + ext)), check=False)
             if p.returncode != 0:
                 raise Refuse(5, f"fetching {name}{ext} failed: {p.stderr.strip()[:200]}")
         return name, dest

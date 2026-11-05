@@ -13,7 +13,7 @@ not part of the loop.
   `live-lab` environment and the `schedule`/`workflow_dispatch` events, and maps to one service account that may log in
   to the payer host without sudo.
 - On the host, that login may run exactly three commands as the lab user (sudoers lists them with their argument):
-  `/opt/loop-live-ci/entry.sh start`, `status`, `stage`. `entry.sh` is root-owned, installed by the operator and not
+  `/usr/local/sbin/loop-live-ci-entry start`, `status`, `stage`. `entry.sh` is root-owned, installed by the operator and not
   fetched from this repository at run time. It reads no wallet, seed, key, macaroon, peer-key, join or invite file.
 - A change merged to `main` runs as the lab user at the next start, as it did when a person started the run: review of
   `scripts/`, `lab/`, `steps/` and `.github/` is the control, and the repository ruleset should require it. On the host,
@@ -31,7 +31,8 @@ not part of the loop.
 Environment `live-lab` (create it first, with deployment branches limited to `main`; a job naming a missing environment
 creates it unprotected) secrets: `LIVE_VM`, `LIVE_PROJECT`, `LIVE_ZONE`, `LIVE_LAB_USER`, `LIVE_WIF_PROVIDER`,
 `LIVE_SERVICE_ACCOUNT`. Repository setting: Actions may create pull requests. The host needs `entry.sh` and
-`/etc/loop-live-ci/conf` (`LIVE_HOME`, `LIVE_ENV`, `LAB_DIR`) installed by the operator.
+`/etc/loop-live-ci/conf` (`LIVE_HOME`, `LIVE_ENV`, `LAB_DIR`, `LIVE_CI_USER`). Access is through IAP only (port 22 open to
+Google's IAP range, never to the runners' addresses); staged raw files are readable by the lab user and the CI login only installed by the operator.
 
 ## Failures
 

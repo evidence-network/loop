@@ -13,8 +13,8 @@ export CLOUDSDK_CORE_PROJECT=$LIVE_PROJECT CLOUDSDK_CORE_DISABLE_PROMPTS=1
 setstate() { echo "LIVE_STATE=$1" >> "$GITHUB_ENV"; LIVE_STATE=$1; }
 
 vm() { # SUBCOMMAND: start | status | stage
-  timeout 150 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --quiet --verbosity=error --strict-host-key-checking=no --ssh-flag=-q \
-    --command "sudo -n -u $LIVE_LAB_USER /opt/loop-live-ci/entry.sh $1" < /dev/null
+  timeout 150 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --quiet --verbosity=error --strict-host-key-checking=no --ssh-flag=-q \
+    --command "sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
 }
 
 start_run() {
@@ -74,7 +74,7 @@ harvest() {
   git config user.name "github-actions[bot]"
   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
   rc=0
-  out=$(LIVE_HARVEST_VM=$LIVE_VM LIVE_HARVEST_ZONE=$LIVE_ZONE LIVE_HARVEST_REMOTE_DIR=/tmp/loop-live-out-$name \
+  out=$(LIVE_HARVEST_IAP=1 LIVE_HARVEST_VM=$LIVE_VM LIVE_HARVEST_ZONE=$LIVE_ZONE LIVE_HARVEST_REMOTE_DIR=/tmp/loop-live-out-$name \
     python3 -B scripts/live_harvest.py --name "$name" < /dev/null 2>&1) || rc=$?
   echo "$out"
   # A harvest-only retry after the branch was pushed: the pull request exists; only the checks may be missing.
