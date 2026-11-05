@@ -1,0 +1,71 @@
+{
+  "asserts": "a deterministic pack runs over every record of the run up to the as-of instant that step 08 reproduced; each Result it seals cites every record in the window by digest, none missing and none extra; a roll-up Result cites exactly the finer Results; and each Result's bundle is VALID under the pinned verifier, offline, under the repository's judge key",
+  "detail": "run 2026-11-05-live-2, every record up to the as-of instant 2026-11-05T13:12:44Z, deterministic pack inference-deals@0.1.0 (action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf) (no model): 139 records in the window from 4 steps. 05-deal: 2 claim(s), 126 records cited, come_through.served_as_agreed not_evaluable, come_through.served_named_model not_evaluable; 06-settle: 1 claim(s), 3 records cited, come_through.paid_as_agreed met; 07-ask: 1 claim(s), 9 records cited, ask-answered met; 09-dispute: 1 claim(s), 1 records cited, referee-result met; roll-up d49d087fc8ed over 4 Results. Refused, not read: 01-seal: 14 files, not a record kind of this pack; 02-book: 33 files, not a record kind of this pack; 03-advertise: 9 files, not a record kind of this pack; 04-admit: 12 files, not a record kind of this pack; 05-deal/stevenmih-1/held-31.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-34.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-36.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-42.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-45.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-51.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-54.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-56.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-57.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-59.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-62.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-64.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 05-deal/stevenmih-1/held-66.json: not a deal record (binding.json `only`: a held half is a deal record only when it is a host-served capsule; a node also holds settlement legs (mesh/settlement/terms), which are not deals); 12-join: 46 files, not a record kind of this pack. Records are the primary record files of each kind that step 08's manifest lists, cited by sha256 through one capsule each. On live, the judge key is held on the lab host by the lab operator account that also runs the nodes: same operator, not an independent judge. Outside this step's assertion: the pinned pack's own evaluator does not run for 06-settle, whose kind binding.json gives no evaluator inputs: this step applies the pack's terms there to the results 08 re-derived: evidence-network/loop#157.",
+  "finished": "2026-11-05T13:12:58Z",
+  "name": "judge",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "inference-deals": {
+      "ref": "2bd914ef2261b60f816e84cf94b79efeefcb67bf",
+      "repository": "action-state-group/evidencebook-skills"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "window.json",
+      "sha256": "ea1d8eabf772819c802a74f3b742e77658d9dd228c9f2b1f9bf9bf59ac03bb28"
+    },
+    {
+      "path": "bundles/05-deal.bundle.json",
+      "sha256": "15b1293809fed9c0ea5ff6ddf239958f1042e73db95e6d071a53a2f7e3e76502"
+    },
+    {
+      "path": "bundles/06-settle.bundle.json",
+      "sha256": "86636e726ae3955aa18726e5b3940ea4cc539912e7d7a70b4939b0a3213dbc2b"
+    },
+    {
+      "path": "bundles/07-ask.bundle.json",
+      "sha256": "827d7ae1603bcb48868f5dcfc4636db7a0f3a40136b1b7ae9d3869b09c5439bd"
+    },
+    {
+      "path": "bundles/09-dispute.bundle.json",
+      "sha256": "22abdae945704475c3cbcce8a2bd286fa549ffa00c34377d68f466d3e8de4fee"
+    },
+    {
+      "path": "bundles/rollup.bundle.json",
+      "sha256": "e4ed495f5ee7ce7d8b46a6b7c031d6afa291b7e177eb16f48e867431108c51d9"
+    },
+    {
+      "path": "verify/05-deal.verify.json",
+      "sha256": "3d6ee8764f6c82a50df9e0d14f4af2260771c4704ba584d065ddb2e7b6679e31"
+    },
+    {
+      "path": "verify/06-settle.verify.json",
+      "sha256": "e236d0db07d3dd1eb43a4e3182959be2915810446d86938f786c87b2ad8f6395"
+    },
+    {
+      "path": "verify/07-ask.verify.json",
+      "sha256": "25fdaaf6a7f9165ca8c927279b63a0bef73c16a04f397ef07d47b384b0d10bc2"
+    },
+    {
+      "path": "verify/09-dispute.verify.json",
+      "sha256": "4f905c001ed1e6c8b6c894712afb5e935a2cd857b4384dfa384611a499374d66"
+    },
+    {
+      "path": "verify/rollup.verify.json",
+      "sha256": "60b946da1f5174b91344a0e1dde4b832593833bc4a1aa027d9e9e035ebe2c10a"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-05T13:12:44Z",
+  "step": "10"
+}
