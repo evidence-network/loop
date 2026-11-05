@@ -98,6 +98,16 @@ def main():
     edited = copy.deepcopy(json.loads(newer))
     edited["answers_within"] = "PT2H"  # a member changed, sig kept: the Ed25519 signature no longer fits
     edited_octets = (json.dumps(edited, indent=2, sort_keys=True) + "\n").encode()
+    other_pub = ns.pubkey(OTHER_SECRET.to_bytes(32, "big")).hex()
+    rotated = commitment("2026-11-05T06:00:00Z", node_id)
+    rotated_doc = json.loads(rotated)
+    rotated_doc["ask"]["nostr"]["mailbox_key"] = other_pub  # the node moved to a new mailbox key
+    rotated = (json.dumps(cc.sign(rotated_doc, ALICE_KEY), indent=2, sort_keys=True) + "\n").encode()
+    empty = event(newer, node_id=node_id, content="", tags=[["d", node_id], ["t", "evidence-commitment"],
+                                                           ["x", hashlib.sha256(newer).hexdigest()],
+                                                           ["r", "https://node.example/commitment.json"]])
+    bad_tag = event(newer, node_id=node_id, tags=[["d", 123], ["t", "evidence-commitment"], ["x", {}]])
+    bad_content = event(newer, node_id=node_id, content="A")  # validly signed, not base64url octets
     cases = {
         "good": recording(both(good)),
         "forged-signature": recording(both(forged_sig)),
@@ -117,6 +127,13 @@ def main():
                                                 ["x", hashlib.sha256(newer).hexdigest()],
                                                 ["r", "https://node.example/commitment.json"]]))),
         "no-events": recording({}),
+        "key-rotated": recording({r: [event(rotated, secret=OTHER_SECRET, node_id=node_id), good] if r == RELAYS[0]
+                                  else [good] for r in RELAYS}),
+        "key-rotated-only": recording(both(event(rotated, secret=OTHER_SECRET, node_id=node_id))),
+        "malformed-beside-good": recording({RELAYS[0]: [bad_tag, bad_content], RELAYS[1]: [good]}),
+        "conflict-with-over-size": dict(recording({RELAYS[0]: [good], RELAYS[1]: [event(other, node_id=node_id)]}),
+                                         relays={**recording({RELAYS[0]: [good], RELAYS[1]: [event(other, node_id=node_id)]})["relays"],
+                                                 "wss://relay3.example": [empty]}),
     }
     for name, rec in cases.items():
         dump(CASES / f"{name}.json", rec)

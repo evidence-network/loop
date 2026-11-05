@@ -88,10 +88,11 @@ octets: each event is read for them and the octets are verified on their own
 | `nostr.digest_mismatch` | the `x` tag is not the sha256 of the octets |
 | `nostr.octets_form`, `nostr.octets_invalid` | the octets are not a commitment, or fail this step's checks (an edited commitment fails its Ed25519 signature) |
 | `nostr.no_mailbox_route` | the git commitment names no `ask.nostr`, so no event can be the node's |
-| `nostr.not_announced` | every valid event is by another key than the commitment's `ask.nostr.mailbox_key`: relayed, not announced |
+| `nostr.not_announced` | every valid event is by another key than the `ask.nostr.mailbox_key` its own commitment names: relayed, not announced |
 | `nostr.relays_conflict` | relays hold different commitments with the same `issued_at`; both versions are reported |
-| `nostr.bytes_differ` | the current announced commitment is not the git carrier's bytes |
-| `nostr.over_size` (NOT_CHECKED) | an event carries no octets (an `r` tag); fetching them is not done here |
+| `nostr.bytes_differ` | the current announced commitment is not the git carrier's bytes (a newer commitment, even under a rotated mailbox key, makes the git copy stale) |
+| `nostr.over_size` (NOT_CHECKED) | the only events carry no octets (an `r` tag) and nothing else decides the node; fetching them is not done here |
+| `nostr.recording` | `nostr.json` is not a JSON object, or has no `read_at` (NOT_CHECKED) |
 
 An event that fails by itself (forged, edited, relayed by another key,
 future-dated) is listed under `events.rejected` or `events.relayed` and does

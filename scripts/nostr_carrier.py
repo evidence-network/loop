@@ -45,7 +45,8 @@ TIME = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def tag_values(event, name):
-    return [t[1] if len(t) > 1 else None for t in event["tags"] if isinstance(t, list) and t and t[0] == name]
+    return [t[1] if len(t) > 1 and isinstance(t[1], str) else None
+            for t in event["tags"] if isinstance(t, list) and t and t[0] == name]
 
 
 def event_error(event):
@@ -79,7 +80,7 @@ def octets_of(event):
     """The commitment octets the event carries inline, or None (empty content: Size, §5.3)."""
     if not event["content"]:
         return None
-    return base64.urlsafe_b64decode(event["content"] + "=" * (-len(event["content"]) % 4))
+    return base64.urlsafe_b64decode(event["content"] + "=" * (-len(event["content"]) % 4))  # may raise binascii.Error
 
 
 def _issued_at(doc):
@@ -94,7 +95,7 @@ def read_back(recording, git_bytes, node_id, verify_octets):
 
     `verify_octets(octets)` is the step 03 check of a commitment (V2, V3, key): it returns (document, errors).
     """
-    events = {"rejected": [], "relayed": [], "announced": [], "superseded": []}
+    events = {"rejected": [], "relayed": [], "announced": [], "superseded": [], "unread": []}
     out = {"result": "FAIL", "reasons": [], "events": events}
     relays = recording.get("relays") if isinstance(recording, dict) else None
     if not isinstance(relays, dict) or not any(isinstance(v, list) and v for v in relays.values()):
@@ -108,8 +109,7 @@ def read_back(recording, git_bytes, node_id, verify_octets):
         return out
 
     try:
-        git_route = (json.loads(git_bytes).get("ask") or {}).get("nostr")
-        mailbox_key = git_route["mailbox_key"]
+        (json.loads(git_bytes).get("ask") or {}).get("nostr")["mailbox_key"]
     except (ValueError, KeyError, TypeError, AttributeError):
         out["reasons"].append("nostr.no_mailbox_route: the git carrier's commitment names no ask.nostr, so no "
                               "event can be the node's announcement")
@@ -122,12 +122,14 @@ def read_back(recording, git_bytes, node_id, verify_octets):
             if bad is None and tag_values(event, "d") != [node_id]:
                 bad = "nostr.event_form", "its d tag is not this node's id"
             if bad is None:
-                octets = octets_of(event)
-                if octets is None:
-                    out["result"] = "NOT_CHECKED"
-                    out["reasons"].append(f"nostr.over_size: {relay} holds an event with no octets (an r tag); "
-                                          "fetching them is not done here")
+                try:
+                    octets = octets_of(event)
+                except ValueError:  # binascii.Error is a ValueError: content is not base64url octets
+                    octets, bad = b"", ("nostr.event_form", "content is not base64url octets")
+                if bad is None and octets is None:
+                    events["unread"].append({"relay": relay, "id": event["id"]})
                     continue
+            if bad is None:
                 if hashlib.sha256(octets).hexdigest() != tag_values(event, "x")[0]:
                     bad = "nostr.digest_mismatch", "the x tag is not the sha256 of the octets"
             if bad:
@@ -141,22 +143,25 @@ def read_back(recording, git_bytes, node_id, verify_octets):
             elif errs:
                 events["rejected"].append({"relay": relay, "id": event["id"], "reason": "nostr.octets_invalid",
                                            "why": "; ".join(errs)})
-            elif event["pubkey"] != mailbox_key:
+            elif event["pubkey"] != ((doc.get("ask") or {}).get("nostr") or {}).get("mailbox_key"):
+                # §5.3 Attribution: the commitment the event carries names its own mailbox key.
                 events["relayed"].append({"relay": relay, "id": event["id"], "pubkey": event["pubkey"],
                                           "sha256": hashlib.sha256(octets).hexdigest()})
             else:
                 valid.append((relay, event, octets, doc))
 
     if not valid:
-        if events["relayed"] and not events["rejected"]:
-            out["reasons"].append("nostr.not_announced: only events by keys other than the commitment's "
-                                  f"mailbox key {mailbox_key} (relayed, not announced)")
-        elif events["relayed"]:
-            out["reasons"].append("nostr.not_announced: no valid event by the commitment's mailbox key "
-                                  f"{mailbox_key}")
+        if events["relayed"]:
+            out["reasons"].append("nostr.not_announced: every valid event is by a key other than the mailbox key "
+                                  "its own commitment names (relayed, not announced): "
+                                  + ", ".join(sorted({e["pubkey"] for e in events["relayed"]})))
         if events["rejected"]:
             out["reasons"] += sorted({f"{r['reason']}: {r['relay']}: {r['why']}" for r in events["rejected"]})
-        if not out["reasons"]:
+        if events["unread"] and not out["reasons"]:
+            out["result"] = "NOT_CHECKED"  # nothing else decides the node: the octets sit behind an r tag
+            out["reasons"].append(f"nostr.over_size: {events['unread'][0]['relay']} holds an event with no octets "
+                                  "(an r tag); fetching them is not done here")
+        elif not out["reasons"]:
             out["reasons"].append("nostr.no_events: no relay returned an announce event for this node")
         return out
 

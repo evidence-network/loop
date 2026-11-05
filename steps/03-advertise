@@ -315,10 +315,12 @@ def nostr_node(population, out, node_name, rec, key_id, read, files):
         return rec, files
     try:
         recording = json.loads(recorded.read_text(encoding="utf-8"))
+        why = None if isinstance(recording, dict) else f"{NOSTR_FILE} is not a JSON object"
     except ValueError as e:
-        recording = None
-        rec["nostr"] = {"result": "FAIL", "reasons": [f"nostr.recording: {NOSTR_FILE} is not JSON ({e})"], "events": {}}
-    if recording is not None:
+        why = f"{NOSTR_FILE} is not JSON ({e})"
+    if why:
+        rec["nostr"] = {"result": "FAIL", "reasons": [f"nostr.recording: {why}"], "events": {}}
+    else:
         rec["nostr"] = nostr_carrier.read_back(recording, read(f"nodes/commitments/{rec['node_id']}.json"),
                                                rec["node_id"], octets_checker(key_id, read))
     if rec["nostr"]["result"] == "FAIL":

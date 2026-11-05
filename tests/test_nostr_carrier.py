@@ -140,6 +140,28 @@ class NostrCarrier(unittest.TestCase):
     def test_event_for_another_node_is_refused(self):
         self.assert_fails("wrong-d", "nostr.event_form")
 
+    def test_a_newer_commitment_with_a_rotated_mailbox_key_is_not_missed(self):
+        # The event is attributed by the mailbox key its own commitment names (§5.3), so the rotated commitment is
+        # announced, is the newest, and is not the git carrier's bytes.
+        self.assert_fails("key-rotated", "nostr.bytes_differ")
+        self.assert_fails("key-rotated-only", "nostr.bytes_differ")
+
+    def test_malformed_events_are_rejected_one_by_one(self):
+        f, alice, bob, out = self.run_case("malformed-beside-good")
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertEqual([r["reason"] for r in alice["nostr"]["events"]["rejected"]], ["nostr.event_form"] * 2)
+
+    def test_an_event_without_octets_does_not_turn_a_failure_into_not_checked(self):
+        alice = self.assert_fails("conflict-with-over-size", "nostr.relays_conflict")
+        self.assertEqual(len(alice["nostr"]["events"]["unread"]), 1)
+
+    def test_a_recording_that_is_not_an_object_fails_by_name(self):
+        for text in ("null", "[]", "{"):
+            (self.pop / "advertise" / "alice" / "nostr.json").write_text(text)
+            f, alice, bob, out = self.run_case()
+            self.assertEqual(alice["result"], "FAIL", text)
+            self.assertTrue(any(e.startswith("nostr.recording:") for e in alice["errors"]), alice["errors"])
+
     def test_no_event_on_any_relay_fails(self):
         self.assert_fails("no-events", "nostr.no_events")
 
