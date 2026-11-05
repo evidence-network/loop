@@ -160,6 +160,12 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(self.calls(), [])
         self.assertFalse((self.lab / "run" / "LIVE_RUN").exists())
 
+    def test_a_tgz_without_its_record_keeps_its_n(self):
+        (self.lab / "out").mkdir()
+        (self.lab / "out" / f"{self.day()}-live-2.tgz").write_text("x")
+        r = self.run_daily("--dry-run")
+        self.assertIn(f"findings/{self.day()}-live-3", r.stdout)
+
     def test_held_and_packed_runs_keep_their_n(self):
         (self.lab / "held" / f"{self.day()}-live-1").mkdir(parents=True)
         (self.lab / "out").mkdir()
@@ -303,6 +309,7 @@ class LiveDailyTest(unittest.TestCase):
         name = f"{self.day()}-live-1"
         self.assertTrue((self.lab / "out" / "unpacked" / name / "10-judge" / "finding.json").is_file())
         self.assertFalse((self.lab / "out" / f"{name}.tgz").exists())
+        self.assertEqual((self.lab / "out" / "unpacked").stat().st_mode & 0o777, 0o700)  # may be unscanned
         self.assert_untouched()
         # Its N stays taken, and the next run starts from the clean clone.
         self.assertIn(f"findings/{self.day()}-live-2", self.run_daily("--dry-run").stdout)

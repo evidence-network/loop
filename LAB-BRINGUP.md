@@ -728,7 +728,8 @@ Then the run does `lab.sh check` and `lab.sh running`, and makes one paid
 exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 06,
 09, stage 1 (01, 02, 03, 12, 07, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;
-the script commits and pushes nothing. When the paid request does not succeed, step 06 is NOT_CHECKED with the
+the script commits and pushes nothing, and leaves no findings in the clone (the tarball holds them; a run that
+stopped before packing leaves them in `$LAB_DIR/out/live/unpacked/<name>`). When the paid request does not succeed, step 06 is NOT_CHECKED with the
 status seen (evidence-network/loop#321), and the run exits 8 (1 if another step also regressed): packed, but the
 baseline must not move. The script's
 header lists every step, exit code and variable.

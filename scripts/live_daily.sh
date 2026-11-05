@@ -20,8 +20,8 @@
 #      the HTTP status seen (loop#321)
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
 #   6. steps 04, 05, bundles, 06, 09, stage 1 (01 02 03 12 07, then 08, which reproduces the earlier ones), 10, 11,
-#      into findings/<UTC date>-live-<N>, N the next unused for that date in findings/, the held runs and the packed
-#      ones (a plain <date>-live counts as 1)
+#      into findings/<UTC date>-live-<N>, N the next unused for that date in findings/, the held runs, the unpacked
+#      ones (see 9) and the packed ones (a plain <date>-live counts as 1)
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
@@ -49,7 +49,8 @@
 #   LIVE_STEP_TIMEOUT     seconds each lab.sh call and step 10 or 11 may take (default 3600; loop.sh still limits each
 #                         stage 1 step to LOOP_STEP_TIMEOUT); one that runs over is killed and its step is a FAIL
 #   LIVE_CHECKPOINT_WAIT  seconds to wait after the exchange (default 360: a node cuts a checkpoint 300 s after activity)
-#   LIVE_OUT_DIR          where the tgz and the run record go (default $LAB_DIR/out/live)
+#   LIVE_OUT_DIR          where the tgz and the run record go, and unpacked/ (mode 700) for findings of a run that
+#                         stopped before packing (default $LAB_DIR/out/live)
 #   LIVE_HELD_DIR         where findings that fail a privacy check go (default $LAB_DIR/held, mode 700)
 #   LIVE_LAB_SH           the lab.sh to run (default lab/lab.sh here; tests use a stand-in)
 #   LIVE_STEPS_DIR        where steps 10 and 11 are (default steps/ here; tests use stand-ins)
@@ -96,14 +97,15 @@ STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SINCE=${STARTED_AT:0:16}:00Z
 DAY=${STARTED_AT:0:10}
 
-# The next unused <DAY>-live-<N>: one past the highest the day has taken in findings/, among held runs and among packed
-# runs (their records), a plain <DAY>-live counting as 1.
+# The next unused <DAY>-live-<N>: one past the highest the day has taken in findings/, among held runs, runs left in
+# $OUT_DIR/unpacked and packed runs (their tgz or record), a plain <DAY>-live counting as 1.
 next_name() {
   local d n max=0
-  for d in "$ROOT/findings/$DAY"-live* "$HELD_DIR/$DAY"-live* "$OUT_DIR/unpacked/$DAY"-live* "$OUT_DIR/$DAY"-live*.json; do
+  for d in "$ROOT/findings/$DAY"-live* "$HELD_DIR/$DAY"-live* "$OUT_DIR/unpacked/$DAY"-live* "$OUT_DIR/$DAY"-live*.json "$OUT_DIR/$DAY"-live*.tgz; do
     [ -e "$d" ] || continue
     d=${d##*/}
     d=${d%.json}
+    d=${d%.tgz}
     if [ "$d" = "$DAY-live" ]; then n=1
     elif [[ $d =~ ^$DAY-live-([0-9]+)$ ]]; then n=$((10#${BASH_REMATCH[1]}))
     else continue
@@ -174,11 +176,13 @@ kill_tree() {
   kill -TERM $all 2> /dev/null; kill -CONT $all 2> /dev/null
 }
 # The run leaves no findings in the clone, so the next run starts from a clean tree: a packed run's copy is in its tgz;
-# one that stopped before packing goes to $OUT_DIR/unpacked/$NAME (its N stays taken, see next_name).
+# one that stopped before packing goes to $OUT_DIR/unpacked/$NAME (mode 700, since it may not have been scanned yet;
+# its N stays taken, see next_name).
 leave_clone() {
   [ "$OWN_OUT" = 1 ] && [ -d "$OUT" ] || return 0
   if [ -f "$OUT_DIR/$NAME.tgz" ]; then rm -rf "$OUT"
-  else mkdir -p "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/$NAME" ] && mv "$OUT" "$OUT_DIR/unpacked/$NAME"
+  else mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/$NAME" ] \
+    && mv "$OUT" "$OUT_DIR/unpacked/$NAME" && log "the findings stay unpacked in $OUT_DIR/unpacked/$NAME"
   fi || log "could not move $OUT out of the clone: remove it by hand before the next run"
 }
 cleanup() {
@@ -296,7 +300,7 @@ bounded env LAB_DIR="$LAB_DIR" "$STEPS/10-judge" --population "$ROOT/population/
 bounded env LAB_DIR="$LAB_DIR" "$STEPS/11-report" --population "$ROOT/population/live" --out "$OUT/11-report"; ensure_finding 11-report $?
 
 # --- 7. the checks --------------------------------------------------------------------------------------------------
-# The privacy checks come first, so findings that failed nothing else are never left in the clone unscanned.
+# The privacy checks come first, so findings that failed nothing else are never left unscanned.
 python3 -B "$ROOT/status/findings.py" "$OUT" > /dev/null || log "status/findings.py could not write index.md"
 hold() {
   mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && [ ! -e "$HELD_DIR/$NAME" ] && mv "$OUT" "$HELD_DIR/$NAME" \
