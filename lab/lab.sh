@@ -697,7 +697,7 @@ cmd_running() {
   if [ "$DRY" = 1 ]; then
     say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
     for n in "${NODES[@]}"; do echo "  ($n: pid $(pidfile "$n") alive, /proc/<pid>/exe and a plugin child's exe compared by sha256)"; done
-    echo "  (if $LAB_DIR/run/witness.sh exists: pid $(pidfile witness) alive)"
+    echo "  (if $LAB_DIR/run/witness.sh exists: pid $(pidfile witness) alive and port $(witness_port) listening)"
     return 0
   fi
   mesh_sha=$(sha256sum < "$MESH_LLM_BIN" | cut -d' ' -f1) || die "cannot read MESH_LLM_BIN"
@@ -841,7 +841,11 @@ cmd_witness() {
     run env XDG_CONFIG_HOME="$(home_of "$n")/join-book/config" "$(capsulectl_bin)" profile update --profile "$n" \
       --checkpoint-endpoint "https://127.0.0.1:$(witness_port)" --checkpoint-public-key "$pub"
   done
-  if [ "$DRY" = 0 ] && alive witness; then echo "witness already running (pid $(pid_of witness))"; return 0; fi
+  # A live pid that serves no port (a reused pid, a wedged process) is not a running witness: start a new one, whose
+  # launcher overwrites the pid file, and signal nothing.
+  if [ "$DRY" = 0 ] && alive witness && ! port_free "$(witness_port)"; then
+    echo "witness already running (pid $(pid_of witness))"; return 0
+  fi
   [ "$DRY" = 1 ] || port_free "$(witness_port)" || die "port $(witness_port) is in use: pick another LAB_PORT_BASE"
   local body
   body=$(
