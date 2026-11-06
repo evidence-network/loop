@@ -20,12 +20,13 @@ vm() { # SUBCOMMAND: start | status | stage
 # Only fixed keywords from a failed call reach the public log, never its text: that keeps names, host output and
 # workflow commands (`::add-mask::`) out of it, and no secret can be cut in half by a truncation.
 unreachable_reason() {
-  grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|Permission denied|publickey|serviceAccountUser|osLogin|tunnelResourceAccessor|tunnelInstances|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
+  grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|USER_PROJECT_DENIED|SERVICE_DISABLED|serviceusage|accessNotConfigured|Insufficient|oslogin|Permission denied|publickey|serviceAccountUser|osLogin|tunnelResourceAccessor|tunnelInstances|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
 }
 
 # One-shot check of which gcloud step the CI account is refused at; prints ok/fail per step, never their output.
 probe_access() {
-  local n=0 t
+  local n=0 t out
+  out=$(mktemp)
   for t in instances project os-login ssh; do
     n=$((n + 1))
     case $t in
@@ -33,8 +34,9 @@ probe_access() {
       project) timeout 60 gcloud compute project-info describe ;;
       os-login) timeout 60 gcloud compute os-login describe-profile ;;
       ssh) timeout 60 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --dry-run ;;
-    esac < /dev/null > /dev/null 2>&1 && echo "::notice::access probe $n: ok" || echo "::warning::access probe $n: fail"
+    esac < /dev/null > "$out" 2>&1 && echo "::notice::access probe $n: ok" || echo "::warning::access probe $n: fail: $(unreachable_reason "$(cat "$out")")"
   done
+  rm -f "$out"
 }
 
 start_run() {
