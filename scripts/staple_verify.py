@@ -13,7 +13,7 @@ capsulectl reports a result per staple property. A commitment staples the reply 
 history never "answers a request" and capsulectl's overall verdict stays NOT_ACCEPTED (exit 3); the loop
 reads the properties instead:
 
-- every property in SIGNATURE_PROPERTIES PASS: the staple's signatures, digest, anchors and responder verify;
+- every property in SIGNATURE_PROPERTIES PASS, each card judged under its own entry's checkpoint key: the staple's signatures, digest, anchors and responder verify;
 - any property FAIL: a failure;
 - a property that is not PASS and not FAIL (a key not given, a form capsulectl cannot evaluate, no binary):
   not checked, with capsulectl's own words as the reason.
@@ -34,8 +34,11 @@ import history_cards as hc  # noqa: E402
 
 SIGNATURE_PROPERTIES = (
     "card_digest", "card_form", "checkpoint_anchor", "checkpoint_consistency", "checkpoint_key",
-    "checkpoint_signature", "commitment_anchor", "commitment_signature", "envelope_signature",
-    "responder_trust", "stream_match", "subject_scope")
+    "checkpoint_signature", "commitment_signature", "envelope_signature", "responder_trust", "stream_match",
+    "subject_scope")
+# commitment_anchor is left out as capsule-cli's own `find` leaves it out: the commitment's top-level checkpoint is
+# read for its digest only (ECC §6 V3), so a card anchored at another checkpoint, as a second book's always is, is
+# not a failure.
 OUTSIDE = ("caller_invariance", "request_binding")
 SETUP = "steps/capsule-cli.setup.sh"
 TIMEOUT = 60
@@ -73,20 +76,34 @@ def verify(commitment_path, node_key_id, binary_path=None):
         entries = hc.entries(doc)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         return unchecked(f"the commitment could not be read for capsule-cli ({e})")
-    cmd = [str(exe), "verify", "--history", str(commitment_path), "--counterparty-key", node_key_id]
-    for key in sorted({k for k in (cc.card_checkpoint_key(e) for e in entries) if k}):
-        cmd += ["--checkpoint-key", key]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
-        report = json.loads(r.stdout)
-    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
-        return unchecked(f"capsule-cli verify --history gave no report ({type(e).__name__}: {e})")
-    if not isinstance(report, dict) or report.get("kind") != "history_card/1":
-        why = report.get("reason") or "; ".join(report.get("findings") or []) if isinstance(report, dict) else ""
-        return {**unchecked(f"capsule-cli does not evaluate this commitment's cards as history_card/1 ({why or r.stderr.strip()})"),
-                "report": report}
-    errors, missing, outside = [], [], set()
-    for staple in report.get("staples") or []:
+    if not entries:
+        return unchecked("the commitment staples no history_card/1")
+    # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
+    # accepts a card signed by any key it is given, so a union would let one entry's key vouch for another's card.
+    by_key = {}
+    for e in entries:
+        by_key.setdefault(cc.card_checkpoint_key(e), []).append(e.get("stream"))
+    staples, toplevel = [], []
+    for key, streams in sorted(by_key.items(), key=lambda kv: kv[0] or ""):
+        cmd = [str(exe), "verify", "--history", str(commitment_path), "--counterparty-key", node_key_id]
+        if key:
+            cmd += ["--checkpoint-key", key]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+            report = json.loads(r.stdout)
+        except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+            return unchecked(f"capsule-cli verify --history gave no report ({type(e).__name__}: {e})")
+        if not isinstance(report, dict) or report.get("kind") != "history_card/1":
+            why = (report.get("reason") or "; ".join(report.get("findings") or [])) if isinstance(report, dict) else ""
+            return {**unchecked(f"capsule-cli does not evaluate this commitment's cards as history_card/1 "
+                                f"({why or r.stderr.strip()})"), "report": report}
+        # A single run covers every card; with several, each card is taken from the run holding its own key.
+        staples += [x for x in report.get("staples") or [] if len(by_key) == 1 or x.get("stream") in streams]
+        toplevel += [f for f in report.get("findings") or [] if not f.startswith("staples[") and "FAIL" in f]
+    report = {"kind": "history_card/1", "staples": staples, "findings": toplevel,
+              "capsule_cli_runs": len(by_key)}
+    errors, missing, outside = list(toplevel), [], set()
+    for staple in staples:
         props, name = staple.get("properties") or {}, staple.get("stream")
         for prop in SIGNATURE_PROPERTIES:
             state = props.get(prop)
@@ -97,9 +114,8 @@ def verify(commitment_path, node_key_id, binary_path=None):
                 missing.append(f"history_card/1 of {name}: {prop} {state or 'absent'}"
                                + (" (no checkpoint_key on its entry, or no key given)" if prop == "checkpoint_key" else ""))
         outside.update(p for p in OUTSIDE if props.get(p) != "PASS")
-    if not report.get("staples"):
+    if not staples:
         missing.append("capsule-cli reported no staple")
-    errors += [f for f in report.get("findings") or [] if not f.startswith("staples[") and "FAIL" in f]
     state = "FAIL" if errors else "NOT_CHECKED" if missing else "PASS"
     return {"state": state, "errors": errors, "not_checked": missing, "outside": sorted(outside), "report": report}
 

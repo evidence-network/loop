@@ -33,7 +33,7 @@ join.sh wrote:
 Every stapled card is also run through the pinned capsule-cli (versions.lock's `capsule-cli`, a pre-release like
 every capsule-cli release; steps/capsule-cli.setup.sh): `capsulectl verify --history` on the commitment, under the
 node key and each card entry's checkpoint_key (scripts/staple_verify.py). A failing property (digest, envelope or
-checkpoint signature, anchors, responder) fails the node; one that cannot run (no binary installed, an entry
+checkpoint signature, the card's checkpoint anchor, responder) fails the node; one that cannot run (no binary installed, an entry
 without a checkpoint_key) is a not_checked entry. Caller invariance and request binding are not part of it. The
 report is kept as staple-verify.json beside the commitment.
 

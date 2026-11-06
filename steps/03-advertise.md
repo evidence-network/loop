@@ -48,7 +48,7 @@ stapled `history_card/1` is also run through the pinned capsule-cli
 `steps/capsule-cli.setup.sh`; versions.lock's `capsule-cli`, a pre-release like
 every capsule-cli release) under the node key from the carrier and the
 `checkpoint_key` each card entry names. A failing property (digest, envelope or
-checkpoint signature, anchors, responder) fails the node. When every property
+checkpoint signature, the card's checkpoint anchor, responder) fails the node. When every property
 passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
 request, and no second caller's answer is held). A rehearsal stand-in staple,

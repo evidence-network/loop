@@ -599,7 +599,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
             detail += (f" The stapled history_card/1 of {', '.join(verified)} verifies with capsule-cli "
                        f"{sv_.pinned_version()} (a pre-release; every capsule-cli release is one) `verify --history`, under "
                        "the node key and the checkpoint key each card entry names: digest, envelope and checkpoint "
-                       "signatures, anchors and responder. Caller invariance and request binding are not part of it (a "
+                       "signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a "
                        "commitment carries no request, and no second caller's answer is held).")
         for r in checked:
             if r["staple_verify"]["state"] != "PASS":

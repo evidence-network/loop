@@ -54,6 +54,22 @@ class MappingTest(unittest.TestCase):
         self.assertEqual(argv[argv.index("--checkpoint-key") + 1],
                          "e47a24402b214b9c4eb7819a25f3abc7aa19f8a7911ee884fe94f3f3510c4b31")
 
+    def test_each_card_is_judged_under_its_own_entrys_key_only(self):
+        doc = commitment()
+        other = dict(doc["history_cards"][0], stream="goose/other",
+                     checkpoint_key=doc["history_cards"][0]["checkpoint_key"][:-3] + "AAA")
+        nokey = {k: v for k, v in doc["history_cards"][0].items() if k != "checkpoint_key"}
+        doc["history_cards"] = sorted(doc["history_cards"] + [other, dict(nokey, stream="goose/keyless")],
+                                      key=lambda c: c["stream"])
+        self.path.write_text(json.dumps(doc))
+        got = staple_verify.verify(self.path, doc["key_id"], STUB)
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(len(calls), 3)  # keyless, goose/node's key, goose/other's key
+        self.assertEqual(sorted(c.count("--checkpoint-key") for c in calls), [0, 1, 1])
+        self.assertEqual(got["report"]["capsule_cli_runs"], 3)
+        self.assertEqual(sorted(s["stream"] for s in got["report"]["staples"]),
+                         ["goose/keyless", "goose/node", "goose/other"])
+
     def test_a_failing_property_is_a_failure(self):
         os.environ["STUB_MODE"] = "fail"
         got = staple_verify.verify(self.path, commitment()["key_id"], STUB)

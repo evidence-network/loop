@@ -184,6 +184,23 @@ class DoctorBackendTest(Tmp):
             self.assertIn(f"{node}/probe/history_card.answer.json", [p["path"] for p in r["proof"]])
         self.assertEqual(finding.check(self.out.parent), [])
 
+    REAL_CAPSULE_CLI = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache/evidence-network-loop")) / \
+        "capsule-cli/bin/capsulectl"
+
+    @needs_capsulectl
+    @unittest.skipUnless(REAL_CAPSULE_CLI.is_file() or os.environ.get("LOOP_REQUIRE_TOOLS"),
+                         "run steps/capsule-cli.setup.sh")
+    def test_the_commitments_join_sh_writes_verify_with_the_real_capsule_cli(self):
+        # The step tests use a stub; this is the one run of join.sh's real commitment and cards through the pinned binary.
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(self.REAL_CAPSULE_CLI)}):
+            self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        r = json.loads((self.out / "finding.json").read_text())
+        self.assertEqual((r["result"], r["not_checked"]), ("PASS", []), r["detail"])
+        for node in ("alice", "bob"):
+            report = json.loads((self.out / node / "staple-verify.json").read_text())
+            self.assertTrue(report["staples"] and all(
+                x["properties"]["envelope_signature"] == "PASS" for x in report["staples"]), node)
+
     def reproduce(self, mutate=None):
         """Step 08's way: only the cited proof files copied to a fresh dir, then decide() on them."""
         r = json.loads((self.out / "finding.json").read_text())
