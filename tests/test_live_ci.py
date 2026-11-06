@@ -76,6 +76,33 @@ class CiSh(unittest.TestCase):
             self.assertIn(f"workflow run {wf}.yml --ref live-harvest/x", log)
         self.assertEqual(self.run_ci("dispatch_checks live-harvest/x", 0, "")[0], 0)
 
+    def test_harvest_uses_the_app_token_for_git_and_pr_and_the_job_token_for_dispatch(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            bin_ = d / "bin"
+            bin_.mkdir()
+            log = d / "calls.log"
+            (bin_ / "gcloud").write_text("#!/bin/sh\necho 'name=2026-11-06-live-9 x'\nexit 0\n")
+            (bin_ / "timeout").write_text("#!/bin/sh\nshift\nexec \"$@\"\n")
+            (bin_ / "git").write_text("#!/bin/sh\nexit 0\n")
+            (bin_ / "python3").write_text('#!/bin/sh\necho "harvest GH_TOKEN=$GH_TOKEN HEADER=$GIT_CONFIG_VALUE_0 KEY=$GIT_CONFIG_KEY_0" >> "$CALLS"\nexit 0\n')
+            (bin_ / "gh").write_text('#!/bin/sh\necho "gh GH_TOKEN=$GH_TOKEN $*" >> "$CALLS"\nexit 0\n')
+            for f in bin_.iterdir():
+                f.chmod(0o755)
+            env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "env"), "CALLS": str(log),
+                   "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u",
+                   "GH_TOKEN": "app-token", "WORKFLOW_TOKEN": "job-token"}
+            p = subprocess.run(["bash", "-c", f"source {CI} && harvest"], env=env, capture_output=True, text=True, cwd=d)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            calls = log.read_text()
+            import base64
+            header = "AUTHORIZATION: basic " + base64.b64encode(b"x-access-token:app-token").decode()
+            self.assertIn(f"harvest GH_TOKEN=app-token HEADER={header} KEY=http.https://github.com/.extraheader", calls)
+            self.assertEqual(calls.count("gh GH_TOKEN=job-token workflow run"), 9)
+            self.assertNotIn("gh GH_TOKEN=app-token", calls)
+            self.assertIn(f"::add-mask::{header.split()[-1]}", p.stdout)
+            self.assertNotIn("app-token", (d / "env").read_text() if (d / "env").exists() else "")
+
     def test_every_dispatched_workflow_is_dispatchable(self):
         for line in CI.read_text().splitlines():
             if "for wf in" in line:

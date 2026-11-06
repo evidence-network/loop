@@ -25,10 +25,14 @@ not part of the loop.
   is no fallback to `GITHUB_TOKEN`: without the secrets the harvest fails visibly). A `GITHUB_TOKEN` pull request starts no
   `pull_request` or `pull_request_target` workflow, so the ruleset's required checks (`leak-lint` first) never ran on it
   (loop#395); a pull request opened by an App does. The App holds `contents: write` and `pull requests: write` (plus the
-  implicit read-only `metadata`), installed on this repository only, and the token is scoped to it. If the workflow were
-  compromised, the token could push new branches and open or edit pull requests here for about an hour, and create releases;
-  it cannot push `main` (the ruleset requires a pull request and checks), change workflows' secrets, settings or rulesets,
-  reach other repositories, or run workflows. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),
+  implicit read-only `metadata`), installed on this repository only, and the token is scoped to it. Three cases if the workflow
+  were compromised (anyone who can merge to `main` can change it, so the reviewed-merge rule for `.github/` matters):
+  (1) the token alone leaks: it expires in an hour and can push new branches, open and edit pull requests, and create
+  releases here; it cannot push `main` (the ruleset requires a pull request and checks), dispatch workflows, or change
+  secrets, settings or rulesets; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
+  App's settings (revoke and replace it at once); (3) the runner itself is taken over: it has both, plus the `live-lab`
+  secrets and the cloud login of the CI account. A pull request opened by the App starts this repository's `pull_request`
+  and `pull_request_target` workflows, by design. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),
   `actions: write` (dispatching the checks) and the OIDC token. A fork or non-main run cannot mint it: the secrets live in the
   `live-lab` environment, which accepts deployments from `main` only, and the workflow runs on `schedule` and
   `workflow_dispatch` from `main` only. `harvest-app-check.yml` (manual, main only) proves the App without a live run. The job still
