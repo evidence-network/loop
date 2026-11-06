@@ -613,11 +613,14 @@ names the one gap outside it (no public ledger, loop#247). `pack` takes
 What a paid exchange costs, measured live on 2026-11-01 (loop#300; lab-2 pays,
 lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
 - The loop sets no amount. `lab.sh exchange` sends one `max_tokens` 8 request from
-  each of lab-2 and lab-3; both have a wallet, and an exchange is paid only while the asker's wallet holds the charge. lab-3's
-  holds only what lab-2 sent it (2,000 msat on 2026-11-06, of which 1,900 arrived after
-  an LSP fee of 100 msat), and lab-3 spends 1,000 msat a day and sells nothing, so it
-  needs a top-up every day or two (loop#384). With less than 1,000 msat its charge row goes
-  to `failed` and lab-1 answers 402. For a
+  each of lab-2 and lab-3; both have a wallet, and an exchange is paid only
+  while the asker's wallet holds the charge. lab-3 sells nothing (only lab-1 serves), so
+  at the end of each daily run `scripts/lab_circulate.py` has lab-1 return 1,500 msat to
+  lab-3 when lab-3 holds under 1,000 msat, through the guarded lab-to-lab payment
+  (`goose_lightning.py`, counted in the Goose payment log; 1,400 arrive after the receive
+  fee seen on 2026-11-06, which took 100 of 2,000). With less than 1,000 msat lab-3's
+  charge row goes to `failed` and lab-1 answers 402 (loop#384); the run record shows each
+  asker's status (`exchange.askers`) and the top-up (`circulate`). For a
   cold peer the amount is lab-1's admission deposit for the model: its own
   deposit, else the node-wide `admission-deposit`, else the minimum payment, and
   never below the minimum payment. The minimum payment is 1,000 msat by default,

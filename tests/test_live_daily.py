@@ -45,6 +45,7 @@ case "$cmd" in
   exchange)
     mkdir -p "$LAB_DIR/exchange"
     printf 'HTTP/1.1 %s\r\nx-mesh-served-by: x\r\n' "${STUB_PAID:-200 OK}" > "$LAB_DIR/exchange/lab-2.headers.txt"
+    printf 'HTTP/1.1 402 Payment Required\r\n' > "$LAB_DIR/exchange/lab-3.headers.txt"
     case "${STUB_PAID:-200 OK}" in 200*) ;; *) exit 22 ;; esac ;;
   admit) [ -n "${STUB_HANG:-}" ] && sleep 60; w 04-admit PASS ;;
   deal) w 05-deal PASS ;;
@@ -90,13 +91,16 @@ class LiveDailyTest(unittest.TestCase):
         (stubs / "lab.sh").write_text(STUB_LAB)
         for s in ("10-judge", "11-report"):
             (stubs / "steps" / s).write_text(STUB_STEP)
+        (stubs / "circulate").write_text('#!/usr/bin/env bash\necho "circulate" >> "$STUB_LOG"\n'
+                                         'echo \'{"action": "sent", "amount_msat": 1500}\'\n')
+        (stubs / "circulate").chmod(0o755)
         for f in [stubs / "lab.sh", stubs / "steps" / "10-judge", stubs / "steps" / "11-report"]:
             f.chmod(0o755)
         self.log = self.tmp / "calls.log"
         self.env = dict(os.environ, LAB_DIR=str(self.lab), LIVE_LAB_SH=str(stubs / "lab.sh"),
                         LIVE_STEPS_DIR=str(stubs / "steps"), LIVE_CHECKPOINT_WAIT="0", STUB_LOG=str(self.log),
                         STUB_ROOT=str(stubs), LIVE_OUT_DIR=str(self.lab / "out"),
-                        LIVE_TOOLS=str(self.lab / "tools"))
+                        LIVE_TOOLS=str(self.lab / "tools"), LIVE_CIRCULATE=str(stubs / "circulate"))
         self.env.pop("LOOP_LIVE_ENV", None)
 
     def tearDown(self):
@@ -132,6 +136,10 @@ class LiveDailyTest(unittest.TestCase):
         self.assertFalse(out.exists())
         record = json.loads((self.lab / "out" / f"{name}.json").read_text())
         self.assertTrue(record["exchange"]["paid"])
+        # Each asker's status is recorded, lab-3's 402 included, and the top-up runs once after the steps (loop#384).
+        self.assertEqual(record["exchange"]["askers"], {"lab-2": "HTTP/1.1 200 OK", "lab-3": "HTTP/1.1 402 Payment Required"})
+        self.assertEqual(record["circulate"], {"action": "sent", "amount_msat": 1500})
+        self.assertEqual(self.calls().count("circulate"), 1)
         self.assertEqual(record["steps"]["06-settle"], "PASS")
         self.assertEqual(record["steps"]["08-verify"], "NOT_CHECKED")
         self.assertEqual(record["head"], git("rev-parse", "HEAD", cwd=self.clone))
@@ -141,7 +149,7 @@ class LiveDailyTest(unittest.TestCase):
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
                          ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "dispute",
-                          "loop", "10-judge", "11-report"])
+                          "loop", "10-judge", "11-report", "circulate"])
         self.assertIn(f"tools={self.lab / 'tools'}", calls[0])  # the run's own tools, first: check reads their record
         for c in calls[3:10]:
             self.assertIn(f"since={since} window={since} out={out} tools=", c)

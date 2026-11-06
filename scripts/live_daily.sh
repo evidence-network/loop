@@ -18,6 +18,7 @@
 #   4. one lab/lab.sh exchange, never retried (lab-2 pays lab-1 1,000 msat; lab-3 asks too and pays 1,000 msat
 #      from what lab-2 sent it; with under 1,000 msat it gets 402, loop#384). If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
 #      the HTTP status seen (loop#321)
+#      Each asker's status goes into the run record (exchange.askers), lab-3's included.
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
 #   6. steps 04, 05, bundles, 06, 09, stage 1 (01 02 03 12 07, then 08, which reproduces the earlier ones), 10, 11,
 #      into findings/<UTC date>-live-<N>, N the next unused for that date in findings/, the held runs, the unpacked
@@ -25,6 +26,9 @@
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
+#   8b. scripts/lab_circulate.py: when lab-3's wallet holds less than its next 1,000 msat charge, lab-1 returns 1,500 msat
+#      to it through the guarded lab-to-lab payment (loop#384); the outcome goes into the record (circulate), and a
+#      refusal changes nothing else
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
 #      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing. The findings
 #      directory does not stay in the clone (the tgz holds it): a run that stopped before packing leaves it in
@@ -53,6 +57,7 @@
 #                         stopped before packing (default $LAB_DIR/out/live)
 #   LIVE_HELD_DIR         where findings that fail a privacy check go (default $LAB_DIR/held, mode 700)
 #   LIVE_LAB_SH           the lab.sh to run (default lab/lab.sh here; tests use a stand-in)
+#   LIVE_CIRCULATE        the executable step 8b runs (default scripts/lab_circulate.py; tests use a stand-in)
 #   LIVE_STEPS_DIR        where steps 10 and 11 are (default steps/ here; tests use stand-ins)
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
@@ -82,6 +87,7 @@ LAB_DIR=${LAB_DIR%/}
 export LAB_DIR
 LAB_SH=${LIVE_LAB_SH:-$ROOT/lab/lab.sh}
 STEPS=${LIVE_STEPS_DIR:-$ROOT/steps}
+CIRCULATE=${LIVE_CIRCULATE:-$ROOT/scripts/lab_circulate.py}
 WAIT=${LIVE_CHECKPOINT_WAIT:-360}
 STEP_TIMEOUT=${LIVE_STEP_TIMEOUT:-3600}
 export LOOP_TOOLS=${LIVE_TOOLS:-$HOME/.cache/evidence-network-loop-live}
@@ -154,6 +160,7 @@ if [ "$DRY" = 1 ]; then
   6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, dispute, loop; $STEPS/10-judge, $STEPS/11-report
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
+  8b. scripts/lab_circulate.py: lab-1 returns 1,500 msat to lab-3 when lab-3 holds under 1,000 msat
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
   exit 0
@@ -247,6 +254,9 @@ case "$paid_status" in
 esac
 [ -z "$refused" ] && [ "$exchange_rc" -ne 0 ] && log "lab.sh exchange exited $exchange_rc after lab-2's paid exchange; the steps judge what was recorded"
 [ -n "$refused" ] && log "$refused; step 06 is NOT_CHECKED, no retry"
+# lab-3 asks too and pays from what lab-1 sends back (step 8b); under 1,000 msat it gets 402. Recorded, never judged.
+lab3_status=$(status_line "$LAB_DIR/exchange/lab-3.headers.txt")
+log "lab-3's request to lab-1 got '${lab3_status:-no HTTP answer}'"
 
 # --- 5. the checkpoints ---------------------------------------------------------------------------------------------
 log "waiting ${WAIT}s for the checkpoints"
@@ -331,20 +341,29 @@ rm -f "$gate"
 # (another step, a pin, a baseline it cannot read) still counts.
 gate_other=$(grep -v -x -e 'mesh step 06: PASS -> NOT_CHECKED' -e '' <<< "$gate_out")
 
+# --- 8b. lab-3's next charge ----------------------------------------------------------------------------------------
+# After every step has read the books: a payment now falls before the next run's window. Its outcome is recorded and
+# never changes the run's exit code (loop#384).
+circulate=$(bounded env LAB_DIR="$LAB_DIR" "$CIRCULATE" < /dev/null 2> /dev/null | tail -n 1)
+case "$circulate" in "{"*"}") ;; *) circulate='{"action": "none", "reason": "lab_circulate.py printed no report"}' ;; esac
+log "lab-3 top-up: $circulate"
+
 # --- 9. the pack ----------------------------------------------------------------------------------------------------
 mkdir -p "$OUT_DIR" || refuse 2 "cannot make $OUT_DIR"
 tar czf "$OUT_DIR/$NAME.tgz.tmp" -C "$ROOT" "findings/$NAME" && mv "$OUT_DIR/$NAME.tgz.tmp" "$OUT_DIR/$NAME.tgz" \
   || refuse 2 "cannot write $OUT_DIR/$NAME.tgz"
 (cd "$OUT_DIR" && sha256 "$NAME.tgz" > "$NAME.tgz.sha256") || refuse 2 "cannot hash $NAME.tgz"
-python3 -B - "$OUT" "$OUT_DIR/$NAME.json" "$NAME" "$HEAD" "$STARTED_AT" "$SINCE" "$refused" "$paid_status" "$gate_rc" << 'PY'
+python3 -B - "$OUT" "$OUT_DIR/$NAME.json" "$NAME" "$HEAD" "$STARTED_AT" "$SINCE" "$refused" "$paid_status" "$gate_rc" "$lab3_status" "$circulate" << 'PY'
 import json, sys
 from pathlib import Path
-out, path, name, head, started, since, refused, status, gate_rc = sys.argv[1:]
+out, path, name, head, started, since, refused, status, gate_rc, lab3_status, circulate = sys.argv[1:]
 steps = {}
 for f in sorted(Path(out).glob("*/finding.json")):
     steps[f.parent.name] = json.loads(f.read_text())["result"]
 run = {"name": name, "head": head, "started": started, "window_from": since,
-       "exchange": {"paid": not refused, "status": status or None, "refused": refused or None},
+       "exchange": {"paid": not refused, "status": status or None, "refused": refused or None,
+                    "askers": {"lab-2": status or None, "lab-3": lab3_status or None}},
+       "circulate": json.loads(circulate),
        "steps": steps, "gate_check_rc": int(gate_rc)}
 Path(path).write_text(json.dumps(run, indent=2, sort_keys=True) + "\n")
 for step, result in steps.items():
