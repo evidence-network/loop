@@ -22,9 +22,9 @@ not part of the loop.
   no longer exactly one. The payment ceiling itself is node side, outside this repository.
 - The pull request is opened with a GitHub App installation token (`actions/create-github-app-token`, pinned by commit,
   minted in the harvest step only, from the environment secrets `HARVEST_APP_CLIENT_ID` and `HARVEST_APP_PRIVATE_KEY`; there
-  is no fallback to `GITHUB_TOKEN`: without the secrets the harvest fails visibly). A `GITHUB_TOKEN` pull request starts no
-  `pull_request` or `pull_request_target` workflow, so the ruleset's required checks (`leak-lint` first) never ran on it
-  (loop#395); a pull request opened by an App does. The App holds `contents: write` and `pull requests: write` (plus the
+  is no fallback to `GITHUB_TOKEN`: without the secrets the harvest fails visibly). A `GITHUB_TOKEN` pull request cannot run
+  the ruleset's required checks by itself: its `pull_request` runs wait for approval (`action_required`) and
+  `pull_request_target` never starts, so `leak-lint` was missing (loop#395); a pull request opened by an App starts them. The App holds `contents: write` and `pull requests: write` (plus the
   implicit read-only `metadata`), installed on this repository only, and the token is scoped to it. Three cases if the workflow
   were compromised (anyone who can merge to `main` can change it, so the reviewed-merge rule for `.github/` matters):
   (1) the token alone leaks: it expires in an hour and can push new branches, open and edit pull requests, and create
@@ -32,9 +32,10 @@ not part of the loop.
   pull request once the six required checks pass (the ruleset needs 0 approvals; `GITHUB_TOKEN` could do the same
   before), so a change to `ops/live-ci/` or `.github/` can reach `main` and run with the key and cloud login at the next
   start; it can also push a branch whose same-repository `pull_request` runs read the repository secrets those workflows use
-  (`LEAK_LINT_TERMS`; this was true of `GITHUB_TOKEN` too). What enforces "a human merges" is an owner setting: the main
-  ruleset requiring at least one approving review (an App cannot approve its own pull request) and the repository setting
-  "Allow GitHub Actions to create and approve pull requests" off, which the App makes unnecessary; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
+  (`LEAK_LINT_TERMS`; this was true of `GITHUB_TOKEN` too). What requires a human approval before the App's pull request can merge is an owner setting:
+  the main ruleset requiring at least one approving review (an App cannot approve its own pull request) and the repository
+  setting "Allow GitHub Actions to create and approve pull requests" off, which the App makes unnecessary. The App keeps
+  its write permissions, and a script flag (`--auto-merge` off) only keeps this workflow from merging; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
   App's settings (revoke and replace it at once); (3) the runner itself is taken over: it has both, plus the `live-lab`
   secrets and the cloud login of the CI account. A pull request opened by the App starts this repository's `pull_request`
   and `pull_request_target` workflows, by design. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),

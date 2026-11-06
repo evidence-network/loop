@@ -1,7 +1,7 @@
 # The daily live run (evidence-network/loop#368, replacing the Claude scheduled task of loop#314): start
 # scripts/live_daily.sh on the lab host, harvest its findings with scripts/live_harvest.py into a data-only pull request
-# opened with a GitHub App installation token (minted in the harvest step only; a GITHUB_TOKEN pull request starts no
-# pull_request or pull_request_target run, so its required checks never ran, loop#395), and fail visibly. See ops/live-ci/README.md for the trust model.
+# opened with a GitHub App installation token (minted in the harvest step only; a GITHUB_TOKEN pull request cannot run its
+# required checks by itself: pull_request runs wait for approval and pull_request_target never starts, loop#395), and fail visibly. See ops/live-ci/README.md for the trust model.
 #
 # Fork exposure: this workflow runs on `schedule` and `workflow_dispatch` only (never pull_request, pull_request_target
 # or push), only from main, and its one job sits in the `live-lab` environment, which accepts deployments from main
