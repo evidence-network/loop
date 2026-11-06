@@ -5,8 +5,9 @@
 #
 # Fork exposure: this workflow runs on `schedule` and `workflow_dispatch` only (never pull_request, pull_request_target
 # or push), only from main, and its one job sits in the `live-lab` environment, which accepts deployments from main
-# alone. Cloud access is a short-lived OIDC exchange pinned to this repository, main and that environment; no credential
-# or key is stored (the environment secrets hold only infrastructure names) and no self-hosted runner is involved, and a fork pull request cannot start the job or obtain the token.
+# alone. Cloud access is a short-lived OIDC exchange pinned to this repository, main and that environment; no cloud
+# key is stored (the environment secrets hold infrastructure names and the harvest GitHub App's id and private key, which
+# only the harvest step reads) and no self-hosted runner is involved, and a fork pull request cannot start the job or obtain the token.
 name: live-daily
 
 on:
@@ -112,7 +113,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Harvest into a findings pull request
-        if: env.LIVE_STATE == 'done'
+        if: ${{ !cancelled() && env.LIVE_STATE == 'done' }} # runs after a failed mint too, so ci.sh reports it
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           WORKFLOW_TOKEN: ${{ github.token }} # dispatching the checks stays with the job's own token

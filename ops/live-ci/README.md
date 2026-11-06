@@ -8,7 +8,7 @@ not part of the loop.
 ## Trust model
 
 - The workflow starts only from `schedule` and `workflow_dispatch` on `main`, in the `live-lab` environment (deployments
-  from `main` only). A fork pull request cannot start it and gets no OIDC token. No self-hosted runner, no stored key.
+  from `main` only). A fork pull request cannot start it and gets no OIDC token. No self-hosted runner, no stored cloud key (the one stored private key is the harvest GitHub App's, below).
 - Cloud access is Workload Identity Federation: the provider accepts only this repository (by name and id), `main`, the
   `live-lab` environment and the `schedule`/`workflow_dispatch` events, and maps to one service account that may log in
   to the payer host without sudo.
@@ -28,8 +28,10 @@ not part of the loop.
   implicit read-only `metadata`), installed on this repository only, and the token is scoped to it. Three cases if the workflow
   were compromised (anyone who can merge to `main` can change it, so the reviewed-merge rule for `.github/` matters):
   (1) the token alone leaks: it expires in an hour and can push new branches, open and edit pull requests, and create
-  releases here; it cannot push `main` (the ruleset requires a pull request and checks), dispatch workflows, or change
-  secrets, settings or rulesets; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
+  releases here; it cannot push `main` directly, dispatch workflows, or change secrets, settings or rulesets, but it can merge its own
+  pull request once the six required checks pass (the ruleset needs 0 approvals; `GITHUB_TOKEN` could do the same
+  before), so a change to `ops/live-ci/` or `.github/` can reach `main` and run with the key and cloud login at the next
+  start: the reviewed-merge rule for those paths (an owner setting) is what enforces "a human merges"; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
   App's settings (revoke and replace it at once); (3) the runner itself is taken over: it has both, plus the `live-lab`
   secrets and the cloud login of the CI account. A pull request opened by the App starts this repository's `pull_request`
   and `pull_request_target` workflows, by design. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),

@@ -83,8 +83,8 @@ wait_run() {
   return 0
 }
 
-# The pull request is opened with GITHUB_TOKEN, which starts no pull_request workflow: start each required check by
-# dispatch on the harvest branch, so it reports on the pull request's head commit.
+# The pull request is opened with the App token, whose events start the pull_request checks. Until that is shown to
+# work alone, also start each required check by dispatch on the harvest branch with the job's own token.
 dispatch_checks() { # BRANCH
   local wf failed=0
   for wf in nodes reports personal-data leak-lint dco stats harvest-allowlist ecosystem-gate versions; do
