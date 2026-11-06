@@ -12,9 +12,9 @@ export CLOUDSDK_CORE_PROJECT=$LIVE_PROJECT CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 setstate() { echo "LIVE_STATE=$1" >> "$GITHUB_ENV"; LIVE_STATE=$1; }
 
-vm() { # SUBCOMMAND: start | status | stage
+vm() { # SUBCOMMAND: start | status | stage; `cd /` first, or the lab user's find reports the CI account's home path in the public log
   timeout 150 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --quiet --verbosity=error --strict-host-key-checking=no --ssh-flag=-q \
-    --command "sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
+    --command "cd / && sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
 }
 
 # Only fixed keywords from a failed call reach the public log, never its text: that keeps names, host output and
@@ -35,18 +35,13 @@ probe_access() {
       ssh) timeout 60 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --dry-run ;;
     esac < /dev/null 2>&1) && rc=0 || rc=$?
     if [ "$rc" -eq 0 ]; then echo "::notice::access probe $n: ok"
-    else echo "::warning::access probe $n: fail rc=$rc bytes=${#out}: gist=$(probe_gist "$out") $(probe_words "$out") / $(unreachable_reason "$out")"; fi
+    else echo "::warning::access probe $n: fail rc=$rc bytes=${#out}: $(probe_words "$out") / $(unreachable_reason "$out")"; fi
   done
 }
 
 # Probe failures print generic words only (a fixed list, case-insensitive), so the log shows the shape of an error without its text.
 probe_words() {
   grep -oiE '\b(40[0-9]|429|50[0-9])\b|permission|denied|forbidden|disabled|enabled|not found|does not exist|quota|billing|invalid|expired|scope|token|credential|authentication|authorization|unauthorized|required|missing|profile|account|policy|constraint|restricted|consumer|consumer_invalid|user project|login|metadata|key|import|public key|impersonat' <<< "$1" | tr 'A-Z' 'a-z' | sort -u | tr '\n' ',' | grep . || echo "no known word"
-}
-
-# TEMPORARY diagnosis (loop#368): the first words of a failed probe, letters only, so no name, number, path or `::` command survives.
-probe_gist() {
-  tr -cs 'A-Za-z' '\n' <<< "$1" | tr 'A-Z' 'a-z' | awk 'length($0) >= 3 && length($0) <= 15' | head -40 | tr '\n' ' '
 }
 
 start_run() {
