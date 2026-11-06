@@ -1487,6 +1487,7 @@ def goose_not_checked(pop, out, started):
                                 "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh"}])
     return True
 
+
 def backend(pop):
     """The probe backend is the population's choice: `probe` in population.json, else by population."""
     return pop.get("probe") or ("goose" if pop.get("goose") and pop["population"] != "live"

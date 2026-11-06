@@ -21,6 +21,7 @@ points both nodes at the local one. Each outcome (the response or the absence) i
 
 Layout, as steps/07-ask judges the book backend (<asker>/asks/<asked>/<ask>/, <asked>/advertised/):
   nodes.json
+  <node>/joined/<key_id>.json, policies/<key_id>.json (loop_join's commitment), join-record.bundle.json (the join record, disclosed): step 12
   <node>/advertised/commitment.json, policies/<node_id>.json
   <asker>/asks/<asked>/carrier.jsonl
   <asker>/asks/<asked>/<ask>/request.json, answer.json, outcome.bundle.json (+ the files loop_book_bundle writes beside it)

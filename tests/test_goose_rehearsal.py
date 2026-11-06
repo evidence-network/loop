@@ -514,10 +514,10 @@ class GooseRehearsalTest(unittest.TestCase):
             self.assertEqual(found["result"], "FAIL", found["detail"])
             self.assertTrue((out / "checks.json").is_file())
 
-    def _step_12(self, pop, name):
+    def _step_12(self, pop, name, env=None):
         out = self.work / name / "12-join"
         r = subprocess.run([str(ROOT / "steps/12-join"), "--population", str(pop), "--out", str(out)],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, env={**os.environ, **(env or {})})
         self.assertEqual(r.returncode, 0, r.stderr)
         return out, json.loads((out / "finding.json").read_text())
 
@@ -538,8 +538,7 @@ class GooseRehearsalTest(unittest.TestCase):
         def planted(name, mutate):
             doc = json.loads((self.pop / "population.json").read_text())
             run = self.work / f"{name}-asks12"
-            shutil.copytree(self.work / "asks" / "run" if False else self.work / "asks", run,
-                            ignore=shutil.ignore_patterns("run"))
+            shutil.copytree(self.work / "asks", run, ignore=shutil.ignore_patterns("run"))
             doc["goose"]["asks"]["run"] = str(run)
             mutate(run)
             pop = self.work / f"{name}-pop12"
@@ -614,6 +613,11 @@ class GooseRehearsalTest(unittest.TestCase):
         found = self._step_12(pop, "otherrev-f12")[1]
         self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
         self.assertEqual(found["not_checked"][0]["what"], "the Goose nodes' join and a stranger's probe")
+
+    def test_step_12_is_not_checked_without_capsulectl(self):
+        found = self._step_12(self.pop, "nocap-f12", {"CAPSULECTL": str(self.work / "no-such-capsulectl")})[1]
+        self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
+        self.assertIn("is not installed", found["detail"])
 
     def test_step_12_is_not_checked_when_the_run_wrote_no_asks_session(self):
         doc = json.loads((self.pop / "population.json").read_text())
