@@ -5,7 +5,7 @@
       "ok": true
     },
     "checkpoint": {
-      "detail": "checkpoint over 7 nodes of goose/node, signed by d8a1b0a2c3cb3e175b3d18073c793d3b0eec13ff5a64d81798baaea9211e0824; the node's checkpoint key is d8a1b0a2c3cb3e175b3d18073c793d3b0eec13ff5a64d81798baaea9211e0824",
+      "detail": "checkpoint over 7 nodes of goose/node, signed by 93097fd5162c668a55f998e9269df7db7378195135e62a51fae666beb80759a8; the node's checkpoint key is 93097fd5162c668a55f998e9269df7db7378195135e62a51fae666beb80759a8",
       "ok": true
     },
     "membership": {
@@ -17,27 +17,27 @@
       "ok": true
     },
     "record": {
-      "detail": "bundle root d0de684d07409a3a934c5309585bf95146febb8c15a8be32dc8b93b4b30a13f3; the capsule the node sealed is d0de684d07409a3a934c5309585bf95146febb8c15a8be32dc8b93b4b30a13f3, which the book record model-call-615916a78d5b4ce6 carries",
+      "detail": "bundle root 2c0fb265da611ada84d4129f24cfa4928a3eeee23fca1a352559ef0367351325; the capsule the node sealed is 2c0fb265da611ada84d4129f24cfa4928a3eeee23fca1a352559ef0367351325, which the book record model-call-26a6d4d6c7c7dccd carries",
       "ok": true
     },
     "signer": {
-      "detail": "record key_id 60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c, the node's key 60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c",
+      "detail": "record key_id 8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39, the node's key 8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
       "ok": true
     },
     "witness_listed": {
-      "detail": "receipt key id e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f; the run's witness listing has ['e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f']",
+      "detail": "receipt key id 4282748f60e07daad19185e0bab6bf1fbe17c4ef32ffd695ec8094315de4bdba; the run's witness listing has ['4282748f60e07daad19185e0bab6bf1fbe17c4ef32ffd695ec8094315de4bdba']",
       "ok": true
     },
     "witness_not_before": {
-      "detail": "signed at unix time 1794004029; the entry's not_before 2026-11-06T22:27:08Z",
+      "detail": "signed at unix time 1794008994; the entry's not_before 2026-11-06T23:49:53Z",
       "ok": true
     },
     "witness_not_node": {
-      "detail": "receipt key id e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f; the run's nodes' keys are ['60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c', 'a59ba3ca571672c1d92280087cdb86601b1f2123ee39a5efdfb957fbfb758113', 'd8a1b0a2c3cb3e175b3d18073c793d3b0eec13ff5a64d81798baaea9211e0824', 'f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c']",
+      "detail": "receipt key id 4282748f60e07daad19185e0bab6bf1fbe17c4ef32ffd695ec8094315de4bdba; the run's nodes' keys are ['4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7', '5e8abe41af741e2ada2fd5ebfd906fb133c935ef19afcef9d48f49d1686d08f4', '8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39', '93097fd5162c668a55f998e9269df7db7378195135e62a51fae666beb80759a8']",
       "ok": true
     },
     "witness_signature": {
-      "detail": "the receipt verifies under witness key e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f over checkpoint 7 of goose/node; openssl verifies the receipt's signature under e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f over the bundle's checkpoint",
+      "detail": "the receipt verifies under witness key 4282748f60e07daad19185e0bab6bf1fbe17c4ef32ffd695ec8094315de4bdba over checkpoint 7 of goose/node; openssl verifies the receipt's signature under 4282748f60e07daad19185e0bab6bf1fbe17c4ef32ffd695ec8094315de4bdba over the bundle's checkpoint",
       "ok": true
     }
   },

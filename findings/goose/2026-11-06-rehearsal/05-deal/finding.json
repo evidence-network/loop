@@ -1,7 +1,7 @@
 {
   "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; the halves are pushed at completion and the receiver holds the pushed bytes by record id; the receiver seals a record citing the counterparty half and the checkpoint it came under",
   "detail": "both Goose nodes ended the exchange, each pushing its half and asking for the other's; each final half carries its pushed half unchanged and closes citing the checkpoint of the other's pushed half, and each receiver holds the other's pushed half, as the payload of a goose_half_received record that cites its request and states that checkpoint. G1's verify_half held on all four halves (the two pushed, the two final), all of one deal, and capsulectl found each receiver's record VALID in its node book (verify/). The mapping of each clause is G1's README's; the halves are checked by G1's own verify_half, not by a second implementation (goose-g1 a255d824eecd64e1269aa22f581b748f099d3805). Spend: none.",
-  "finished": "2026-11-06T22:28:18Z",
+  "finished": "2026-11-06T23:51:02Z",
   "name": "deal",
   "not_checked": [],
   "pinned": {
@@ -22,58 +22,58 @@
   "proof": [
     {
       "path": "halves/buyer-exchange-half.json",
-      "sha256": "5776d2a37f3068288f95fe08a436eccc7b2d0a3585afd5f58665b7a7c6d5d253"
+      "sha256": "f419bb1b002eb36fe96a91524669cec36bfc9d1b3ce2ad29471baac9c51a0e86"
     },
     {
       "path": "verify/buyer-exchange-half.json",
-      "sha256": "2939c65674609a560da2b6d8e0d45dd959c1bed97314df1d1ea8b79f80c2058d"
+      "sha256": "95a412615c43e4a35e371d9d4e9b7052d7cb2213ab25f7d67beaf80174ec7ef5"
     },
     {
       "path": "halves/buyer-final-half.json",
-      "sha256": "24cc45f1ecd1614e578097f5ab81fce73fb0764af7a26b2fe0487e29de0e230c"
+      "sha256": "0d945157e865437c53842373372e53bdc6a1f9874ac6bf76fa7e99fd3cc95268"
     },
     {
       "path": "verify/buyer-final-half.json",
-      "sha256": "00c6e46e18e8e3aab024ce353f81fa670f194e60cec1fb9b42b6b9f1ea0ae9fd"
+      "sha256": "bb81a06fda0dbd99b490ab98d05df9923163180395d1680938b13f6e11e6a560"
     },
     {
       "path": "halves/seller-exchange-half.json",
-      "sha256": "41fd89122cd0b3e1e61a57080aa7270e187630dabc5f96116232615d54e27544"
+      "sha256": "bd379fa8655f86c7af4a0b251141423e16a4b2028506f758281896b4e41b3480"
     },
     {
       "path": "verify/seller-exchange-half.json",
-      "sha256": "17339ebef4bfb85af898b0fd75f0935e0a5a201c42cfba050ef7ca550cda7c34"
+      "sha256": "95dd96cd10fdb4c69c6226842898a6fb3435b56e9c48baefc290b1a9391e19ef"
     },
     {
       "path": "halves/seller-final-half.json",
-      "sha256": "06844f83f35206beede5429d392039ab8bad6d97a43f5a26f9c932ac62dc8118"
+      "sha256": "118ff8400c99a8d7e2da499ce90e83deaf09340bd73099e29b9adec6e04c5ef8"
     },
     {
       "path": "verify/seller-final-half.json",
-      "sha256": "e5a272142ebc98ef9ad9e53bc5d17819848c5ec80ac16d83f8ebc332e5aa3392"
+      "sha256": "c7f3ded82f62898ac8f68ace9e474f0f0f299af571eac7c13672d757b1bde9f4"
     },
     {
       "path": "halves/buyer-held-half-bundle.json",
-      "sha256": "f1abe6a37931ee5ea99c81b4069e41641e3ce85a8093be3337436f995c1a0d9e"
+      "sha256": "84dc585c8123580295e08f7fcece726ba34d4b5d6f7b7657e62e9367bd64302e"
     },
     {
       "path": "verify/buyer-held-half-bundle.json",
-      "sha256": "0f61748f55ab47e9eb87681a166cb741e8786f1545001d1604ba90b7b9df2a1f"
+      "sha256": "67258393556bf7e7d0f367af769e7123eb929a73620a4a2b045394e19e9b5878"
     },
     {
       "path": "halves/seller-held-half-bundle.json",
-      "sha256": "f5f95698c9aca7c45dad510b1cb952abe11d5dced4b4467cc5ef4091978f0851"
+      "sha256": "e8a6b7c20c5bce5739f50cdc01ffa56f108e4790bad0636d6d210a37915908d9"
     },
     {
       "path": "verify/seller-held-half-bundle.json",
-      "sha256": "0cbd867fdd88cf8158ce6719bfd516180d7702dea720e9d581ab745d7e69c6e5"
+      "sha256": "16338f6d809b1f59b09dabb5ae6ec5ea932edc927e948f44c430fe22b7199860"
     },
     {
       "path": "checks.json",
-      "sha256": "c5f718e8395943f9c4cf55f0a591f773cafbb9e5d7d02e173038ace36c7e1132"
+      "sha256": "b6c45c0a286eb0c8f6f44f861d7b4b6a224f0c1794c989598d208a7ecaf14916"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T22:28:17Z",
+  "started": "2026-11-06T23:51:01Z",
   "step": "05"
 }
