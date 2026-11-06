@@ -132,14 +132,22 @@ def allowed_member(member, prefix):
     return bool(rest) and (rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None)
 
 
-def extract(tgz, label, prefixes, into, optional=()):
+SAFE_COMPONENT = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def safe_goose_name(n):
+    """A plain path component that may name a findings/goose/ directory in a run's tgz."""
+    return isinstance(n, str) and SAFE_COMPONENT.fullmatch(n) is not None and n not in (".", "..")
+
+
+def extract(tgz, label, prefixes, into, optional=(), any_goose=False):
     """Unpack tgz (members only under one of prefixes/, plain files and directories) into `into`; Refuse(6) on anything
     else, or when a prefix is not in it. `optional` prefixes are allowed but not required (the run's tgz may carry the Goose
     directory beside the Mesh one; a caller that wants only the Mesh run still unpacks it whole). Returns each prefix's directory."""
     try:
         with tarfile.open(tgz, "r:gz") as tar:
             for m in tar.getmembers():
-                if not (m.isfile() or m.isdir()) or not any(allowed_member(m.name, p) for p in (*prefixes, *optional)):
+                if not (m.isfile() or m.isdir()) or not (any(allowed_member(m.name, p) for p in (*prefixes, *optional)) or (any_goose and goose_member(m.name, m.isdir()))):
                     raise Refuse(6, f"{label} has a member that is not {' or '.join(prefixes)}/<NN-step>/..., run.json or "
                                     f"index.md (or is not a plain file): {m.name}")
             tar.extractall(into, filter="data")
@@ -157,9 +165,17 @@ def goose_candidates(record):
     names = [f"{record['name'][:10]}-live"]
     g = record.get("goose")
     raw = g.get("name") if isinstance(g, dict) else None
-    if isinstance(raw, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,64}", raw) and raw not in (".", "..") and raw not in names:
+    if safe_goose_name(raw) and raw not in names:
         names.append(raw)
     return names
+
+
+def goose_member(member, is_dir):
+    """A member of some findings/goose/<plain name>/ directory of the run's tgz, by the same rule as any run directory
+    (the name itself only as a directory: a file there would hide from the scans)."""
+    parts = Path(member).parts
+    return len(parts) >= 3 and parts[:2] == ("findings", "goose") and safe_goose_name(parts[2]) \
+        and (len(parts) > 3 or is_dir) and allowed_member(member, "/".join(parts[:3]))
 
 
 def unpack(name, files, into, goose=()):

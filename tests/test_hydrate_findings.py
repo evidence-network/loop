@@ -147,6 +147,30 @@ class HydrateTest(unittest.TestCase):
         # No findings/goose directory is nothing to do.
         self.assertIsNone(hydrate_findings.hydrate(self.findings / "nowhere", goose=True))
 
+    def test_a_mesh_tgz_with_a_differently_named_goose_directory_hydrates(self):
+        # live_harvest leaves such a Goose directory out of the commit but publishes the tgz whole, so hydration must take it.
+        make_run(self.full, "goose/2026-11-01-live-pay")
+        with tarfile.open(self.tgz, "w:gz") as t:
+            t.add(self.full / NAME, arcname=f"findings/{NAME}")
+            t.add(self.full / "goose" / "2026-11-01-live-pay", arcname="findings/goose/2026-11-01-live-pay")
+        self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        r = self.hydrate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.findings / "goose").exists())
+        # a link, a stray top-level file or an escaping name is still refused
+        evil = self.tmp / "evil.txt"
+        evil.write_text("x\n")
+        for arc in ("findings/goose/x/../../../evil.txt", "findings/goose/loose.txt", "findings/goose/bad name/f"):
+            with tarfile.open(self.tgz, "w:gz") as t:
+                t.add(self.full / NAME, arcname=f"findings/{NAME}")
+                t.add(evil, arcname=arc)
+            self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+            (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+            for p in (self.findings / NAME).glob("*/counts.json"):
+                p.unlink()
+            self.assertEqual(self.hydrate().returncode, 3, arc)
+
     def test_a_failed_check_leaves_the_run_exactly_as_committed(self):
         # The archive's digest matches, but one proof file differs from the digest the committed finding records.
         bad = self.tmp / "bad-full"
