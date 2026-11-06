@@ -15,8 +15,8 @@
 #   3. the window: this run's start, at its whole minute (the plugin stamps records to the minute), goes into
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
-#   4. one lab/lab.sh exchange: the one paid exchange (lab-2 pays lab-1 1,000 msat; lab-3 asks too and has no
-#      settlement), never retried. If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
+#   4. one lab/lab.sh exchange: the one paid exchange (lab-2 pays lab-1 1,000 msat; lab-3 asks too and pays 1,000 msat
+#      from what lab-2 sent it; with an empty wallet it gets 402, loop#384), never retried. If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
 #      the HTTP status seen (loop#321)
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
 #   6. steps 04, 05, bundles, 06, 09, stage 1 (01 02 03 12 07, then 08, which reproduces the earlier ones), 10, 11,
