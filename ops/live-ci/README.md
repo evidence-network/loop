@@ -31,13 +31,18 @@ not part of the loop.
   releases here; it cannot push `main` directly, dispatch workflows, or change secrets, settings or rulesets, but it can merge its own
   pull request once the six required checks pass (the ruleset needs 0 approvals; `GITHUB_TOKEN` could do the same
   before), so a change to `ops/live-ci/` or `.github/` can reach `main` and run with the key and cloud login at the next
-  start: the reviewed-merge rule for those paths (an owner setting) is what enforces "a human merges"; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
+  start; it can also push a branch whose same-repository `pull_request` runs read the repository secrets those workflows use
+  (`LEAK_LINT_TERMS`; this was true of `GITHUB_TOKEN` too). What enforces "a human merges" is an owner setting: the main
+  ruleset requiring at least one approving review (an App cannot approve its own pull request) and the repository setting
+  "Allow GitHub Actions to create and approve pull requests" off, which the App makes unnecessary; (2) the private key leaks: the holder can mint such tokens until the key is revoked in the
   App's settings (revoke and replace it at once); (3) the runner itself is taken over: it has both, plus the `live-lab`
   secrets and the cloud login of the CI account. A pull request opened by the App starts this repository's `pull_request`
   and `pull_request_target` workflows, by design. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),
   `actions: write` (dispatching the checks) and the OIDC token. A fork or non-main run cannot mint it: the secrets live in the
   `live-lab` environment, which accepts deployments from `main` only, and the workflow runs on `schedule` and
-  `workflow_dispatch` from `main` only. `harvest-app-check.yml` (manual, main only) proves the App without a live run. The job still
+  `workflow_dispatch` from `main` only. `harvest-app-check.yml` (manual, main only) proves the token without a live run; it cannot prove the App's own scope, so check once in the
+  App's settings that it is installed on this repository only ("Only select repositories") and that contents and pull
+  requests are its only write permissions (a leaked key mints for every repository and permission the App has). The job still
   dispatches `nodes`, `reports`, `personal-data`, `leak-lint`, `dco`, `stats`, `harvest-allowlist`, `ecosystem-gate` and
   `versions` on the `live-harvest/<name>` branch with its own token, until the App's pull request runs are shown to start
   them alone. `--auto-merge` stays off: a human merges.
