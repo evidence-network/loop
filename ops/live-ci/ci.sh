@@ -17,6 +17,12 @@ vm() { # SUBCOMMAND: start | status | stage
     --command "sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
 }
 
+# Only fixed keywords from a failed call reach the public log, never its text: that keeps names, host output and
+# workflow commands (`::add-mask::`) out of it, and no secret can be cut in half by a truncation.
+unreachable_reason() {
+  grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|Permission denied|publickey|serviceAccountUser|osLogin|iap\.tunnel[A-Za-z.]*|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
+}
+
 start_run() {
   local out rc
   # A harvest-only dispatch (after a failed harvest) starts nothing: it polls the result of today's run.
@@ -47,7 +53,7 @@ wait_run() {
          return 0 ;;
       21) echo "$out"; setstate failed; return 1 ;;
       22) echo "$out"; setstate timeout; return 1 ;;
-      *) bad=$((bad + 1)); echo "::warning::status unreachable (rc=$rc, try $bad): ${out:0:400}"
+      *) bad=$((bad + 1)); echo "::warning::status unreachable (rc=$rc, try $bad): $(unreachable_reason "$out")"
          [ "$bad" -ge 5 ] && { setstate failed; echo "::error::status unreachable"; return 1; } ;;
     esac
     sleep 120

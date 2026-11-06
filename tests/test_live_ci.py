@@ -50,6 +50,14 @@ class CiSh(unittest.TestCase):
         self.assertEqual(self.run_ci("wait_run 1", 21, "the run ended without a result")[1], "LIVE_STATE=failed")
         self.assertEqual(self.run_ci("wait_run 1", 22, "timed out at 3 h")[1], "LIVE_STATE=timeout")
 
+    def test_unreachable_reason_prints_keywords_only(self):
+        hostile = "ERROR: code 4033\n::add-mask::X\nPERMISSION_DENIED secret-project-name"
+        with tempfile.TemporaryDirectory() as d:
+            env = {**os.environ, "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u"}
+            p = subprocess.run(["bash", "-c", f'source {CI} >/dev/null && unreachable_reason "$1"', "x", hostile],
+                               env=env, capture_output=True, text=True, cwd=d)
+        self.assertEqual(p.stdout.split(), ["4033", "PERMISSION_DENIED"])
+
     def test_stage_failure_is_a_failure(self):
         code, state, _ = self.run_ci("harvest", 23, "nothing packed (rc=5)")
         self.assertEqual((code, state), (1, "LIVE_STATE=failed"))
