@@ -2,6 +2,7 @@
 # findings/*-live-* directory, each step that is FAIL or MALFORMED opens (or comments on) one loop-step-NN issue, as loop.yml's
 # nightly rehearsal job does; a step that is only NOT_CHECKED opens nothing. Every night one loop-live-stale issue is opened
 # (or commented on) when the newest live findings date is more than 1 day old, which covers a sleeping Mac and a failed run.
+# findings/goose/ (the daily run's Goose pass, loop#363) is judged the same way on its own: loop-live-goose-stale.
 # Issues are never closed here. Only GITHUB_TOKEN is used.
 name: live-alerts
 
@@ -10,6 +11,7 @@ on:
     branches: [main]
     paths:
       - "findings/*-live*/**"
+      - "findings/goose/*-live*/**"
   schedule:
     - cron: "30 6 * * *"
   workflow_dispatch:

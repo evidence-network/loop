@@ -21,6 +21,8 @@ import finding  # noqa: E402
 
 COPY = ["scripts", "steps", "status", "baseline", "population", "versions.lock", "nodes", ".github"]
 NAME = "2026-11-01-live-1"
+GOOSE = "2026-11-01-live"
+GOOSE_RAN = {"status": "ran", "name": GOOSE, "reason": None, "exit": 0, "step_06": "PASS"}
 STEPS = {"04-admit": "PASS", "05-deal": "PASS", "06-settle": "PASS", "07-ask": "PASS", "08-verify": "NOT_CHECKED"}
 GH = r'''#!/usr/bin/env bash
 echo "$*" >> "$STUB_LOG"
@@ -81,7 +83,9 @@ class HarvestTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def make_run(self, results=STEPS, paid=True, plant=None, extra_member=None):
+    def make_run(self, results=STEPS, paid=True, plant=None, extra_member=None, goose=None, goose_in_tgz=None, goose_plant=None):
+        """goose: the record's goose entry (status ran = the Goose pass); goose_in_tgz: put findings/goose/<GOOSE> in the tgz."""
+        goose_in_tgz = (goose is not None and goose.get("status") == "ran") if goose_in_tgz is None else goose_in_tgz
         run_dir = self.tmp / "run"
         run_dir.mkdir(exist_ok=True)
         shutil.rmtree(self.tmp / "pack", ignore_errors=True)
@@ -90,13 +94,22 @@ class HarvestTest(unittest.TestCase):
         tgz = run_dir / f"{NAME}.tgz"
         with tarfile.open(tgz, "w:gz") as t:
             t.add(full, arcname=f"findings/{NAME}")
+            if goose_in_tgz:
+                gfull = self.tmp / "pack" / "findings" / "goose" / GOOSE
+                write_run(gfull, {"01-seal": "PASS", "06-settle": "PASS", "07-ask": "PASS"}, None)
+                if goose_plant:
+                    (gfull / "06-settle" / "proof.txt").write_text(goose_plant)
+                    finding.write(gfull / "06-settle", result="PASS", population="live", asserts="stub", pinned=[],
+                                  proof=["proof.txt"], detail="stub", started="2026-11-01T00:00:00Z")
+                t.add(gfull, arcname=f"findings/goose/{GOOSE}")
             if extra_member:
                 p = self.tmp / "extra.txt"
                 p.write_text("x\n")
                 t.add(p, arcname=extra_member)
         (run_dir / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
         (run_dir / f"{NAME}.json").write_text(json.dumps({"name": NAME, "exchange": {"paid": paid, "askers": {"lab-3": "HTTP/1.1 200 OK"}},
-                                                           "circulate": {"action": "refused"}, "steps": results}))
+                                                           "circulate": {"action": "refused"}, "steps": results,
+                                                           **({"goose": goose} if goose else {})}))
         return run_dir
 
     def harvest(self, *extra, **env):
@@ -144,6 +157,55 @@ class HarvestTest(unittest.TestCase):
         self.assertEqual(subprocess.run([sys.executable, "-B", ".github/harvest_allowlist.py", "origin/main", "HEAD"],
                                         cwd=self.clone).returncode, 0)
         self.assertEqual(git("worktree", "list", cwd=self.clone).count("\n"), 0)  # the temporary worktree is gone
+
+    def test_the_goose_pass_is_committed_beside_the_mesh_run(self):
+        self.make_run(goose=GOOSE_RAN)
+        r = self.harvest()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        files = git("ls-tree", "-r", "--name-only", f"live-harvest/{NAME}", f"findings/goose/{GOOSE}", cwd=self.tmp / "origin.git")
+        self.assertEqual(sorted(files.splitlines()), sorted(
+            [f"findings/goose/{GOOSE}/{s}/finding.json" for s in ("01-seal", "06-settle", "07-ask")]
+            + [f"findings/goose/{GOOSE}/run.json", f"findings/goose/{GOOSE}/proof-archive.json"]))
+        # Its proof bytes are their own asset of the same release (finding.py wants the asset named for the directory),
+        # and it moves no baseline entry.
+        pin = json.loads(self.show(f"findings/goose/{GOOSE}/proof-archive.json"))
+        self.assertEqual(pin["asset"], f"{GOOSE}.tgz")
+        self.assertTrue(pin["url"].endswith(f"/releases/download/live-{NAME}/{GOOSE}.tgz"))
+        create = [c for c in self.gh_calls() if c.startswith("release create")][0]
+        self.assertIn(f"{GOOSE}.tgz", create)
+        self.assertEqual(list(json.loads(self.show("baseline/live.json"))["ecosystems"]), ["mesh"])
+        self.assertIn(f"findings/goose/{GOOSE}", self.log.with_suffix(".log.body").read_text())
+        ok = subprocess.run([sys.executable, "-B", ".github/harvest_allowlist.py", "origin/main", f"origin/live-harvest/{NAME}"],
+                            cwd=self.clone, capture_output=True, text=True) if git("fetch", "-q", "origin", cwd=self.clone) is not None else None
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+
+    def test_a_goose_pass_that_did_not_run_adds_nothing(self):
+        self.make_run(goose={"status": "failed", "name": None, "reason": "goose.sh tools exited 1", "exit": None, "step_06": None})
+        r = self.harvest()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(git("ls-tree", "-r", "--name-only", f"live-harvest/{NAME}", "findings/goose", cwd=self.tmp / "origin.git"), "")
+
+    def test_planted_preimage_in_the_goose_findings_publishes_nothing(self):
+        self.make_run(goose=GOOSE_RAN, goose_plant="preimage: " + "ab" * 32 + "\n")
+        r = self.harvest()
+        self.assertEqual(r.returncode, 7, r.stderr)
+        self.assertEqual(self.gh_calls(), [])
+        self.assertEqual(self.branches(), "")
+
+    def test_a_goose_directory_the_record_does_not_name_is_refused(self):
+        self.make_run(goose={"status": "failed", "name": None, "reason": "x", "exit": None, "step_06": None}, goose_in_tgz=True)
+        self.assertEqual(self.harvest().returncode, 6)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_a_record_that_names_a_missing_goose_directory_is_refused(self):
+        self.make_run(goose=GOOSE_RAN, goose_in_tgz=False)
+        self.assertEqual(self.harvest().returncode, 6)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_a_goose_name_that_is_not_this_runs_day_is_refused(self):
+        self.make_run(goose={**GOOSE_RAN, "name": "2026-10-31-live"})
+        self.assertEqual(self.harvest().returncode, 6)
+        self.assertEqual(self.gh_calls(), [])
 
     def test_planted_preimage_publishes_nothing(self):
         self.make_run(plant="preimage: " + "ab" * 32 + "\n")
@@ -253,6 +315,13 @@ class AllowlistTest(unittest.TestCase):
         self.assertEqual(self.refused(("A", "findings/2026-11-01-live-2/05-deal/finding.json"),
                                       ("A", "findings/2026-11-01-live-2/proof-archive.json"),
                                       ("M", "baseline/live.json")), [])
+
+    def test_goose_live_directory_passes_and_other_goose_paths_do_not(self):
+        self.assertEqual(self.refused(("A", "findings/goose/2026-11-01-live/06-settle/finding.json")), [])
+        for entry in (("A", "findings/goose/2026-11-01-rehearsal/x"), ("A", "findings/goose/2026-11-01-live-pay/x"),
+                      ("M", "findings/goose/2026-11-02-live/run.json"), ("A", "findings/goose/2026-11-01-live"),
+                      ("A", "findings/goose/x/2026-11-01-live/y")):
+            self.assertEqual(len(self.refused(entry)), 1, entry)
 
     def test_planted_extra_file_is_refused(self):
         for entry in (("A", "scripts/evil.py"), ("A", "findings/2026-11-01-demo/x"), ("A", "findings/2026-11-01-live-2"),

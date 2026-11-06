@@ -107,13 +107,34 @@ class AlertsTest(unittest.TestCase):
         self.assertTrue(live_alerts.alert_stale(datetime.date(2026, 11, 2), "", self.findings))
         self.assertTrue(any(x.startswith("issue comment 7") and "no live findings" in x for x in self.calls()))
 
+    def test_a_goose_day_is_judged_on_its_own(self):
+        # Mesh landed yesterday and Goose three days ago: only the Goose issue opens, under its own label.
+        self.run_dir("2026-11-05-live-1", **{"04_admit": "PASS"})
+        self.run_dir("goose/2026-11-02-live", **{"04_admit": "PASS"})
+        self.run_dir("goose/2026-11-04-rehearsal", **{"04_admit": "PASS"})  # a rehearsal is not a live day
+        today = datetime.date(2026, 11, 6)
+        self.assertFalse(live_alerts.alert_stale(today, "", self.findings))
+        self.assertTrue(live_alerts.alert_stale(today, "", self.findings, goose=True))
+        c = self.calls()
+        self.assertFalse(any("--label loop-live-stale" in x for x in c))
+        self.assertTrue(any("--label loop-live-goose-stale" in x and "2026-11-02" in x for x in c))
+        self.log.write_text("")
+        self.run_dir("goose/2026-11-05-live", **{"04_admit": "PASS"})
+        self.assertFalse(live_alerts.alert_stale(today, "", self.findings, goose=True))
+        self.assertEqual(self.calls(), [])
+
+    def test_no_goose_findings_at_all_is_stale(self):
+        self.run_dir("2026-11-05-live-1", **{"04_admit": "PASS"})
+        self.assertTrue(live_alerts.alert_stale(datetime.date(2026, 11, 6), "", self.findings, goose=True))
+        self.assertTrue(any("no Goose live findings" in x for x in self.calls()))
+
     def test_changed_dirs_takes_only_live_runs(self):
         g = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x", *a], cwd=self.tmp, check=True,
                                       capture_output=True)
         g("init", "-q")
         (self.tmp / "README").write_text("x")
         g("add", "README"); g("commit", "-qm", "a")
-        for n in ("2026-11-02-live-1", "2026-11-02-rehearsal"):
+        for n in ("2026-11-02-live-1", "2026-11-02-rehearsal", "goose/2026-11-02-live", "goose/2026-11-02-rehearsal"):
             (self.tmp / "findings" / n).mkdir(parents=True)
             (self.tmp / "findings" / n / "run.json").write_text("{}")
         g("add", "findings"); g("commit", "-qm", "b")
@@ -124,8 +145,8 @@ class AlertsTest(unittest.TestCase):
             forced = live_alerts.changed_dirs("1" * 40, "HEAD")
         finally:
             live_alerts.ROOT = old
-        self.assertEqual([p.name for p in got], ["2026-11-02-live-1"])
-        self.assertEqual([p.name for p in forced], ["2026-11-02-live-1"])
+        self.assertEqual([p.relative_to(self.tmp / "findings").as_posix() for p in got], ["2026-11-02-live-1", "goose/2026-11-02-live"])
+        self.assertEqual([p.relative_to(self.tmp / "findings").as_posix() for p in forced], ["2026-11-02-live-1", "goose/2026-11-02-live"])
 
 
 if __name__ == "__main__":

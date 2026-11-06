@@ -3,7 +3,7 @@
 """harvest-allowlist: a live-harvest pull request (scripts/live_harvest.py, loop#309) is data only.
 
 The daily harvest opens its pull request from a `live-harvest/*` branch. Such a pull request may ADD files under
-findings/<date>-live-<N>/ and may change baseline/live.json; nothing else, and nothing already in findings/ may be
+findings/<date>-live-<N>/ and findings/goose/<date>-live/ (the run's Goose pass, loop#363) and may change baseline/live.json; nothing else, and nothing already in findings/ may be
 changed, renamed or deleted. Anything else leaves the pull request for a human (it is red here and is never auto-merged).
 
 Usage: python3 harvest_allowlist.py BASE HEAD
@@ -16,7 +16,7 @@ import re
 import subprocess
 import sys
 
-FINDINGS = re.compile(r"findings/\d{4}-\d\d-\d\d-live-[1-9][0-9]*/[^\n]+")
+FINDINGS = re.compile(r"findings/(\d{4}-\d\d-\d\d-live-[1-9][0-9]*|goose/\d{4}-\d\d-\d\d-live)/[^\n]+")
 BASELINE = "baseline/live.json"
 
 
