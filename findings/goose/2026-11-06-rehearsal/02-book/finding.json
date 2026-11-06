@@ -1,0 +1,55 @@
+{
+  "asserts": "the record is in the Goose node's book at a stated position, under a checkpoint the node signed that verifies; the checkpoint's witness receipt verifies",
+  "detail": "node buyer: book goose/node, record fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a: these held on the proof bytes, by capsulectl verify --bundle, the step 02 driver's lab-check and openssl pkeyutl, and this step's comparisons: bundle, membership, record, position, signer, checkpoint, witness_listed, witness_not_node, witness_not_before, witness_signature. The bundle is the one the Goose node wrote (loop_book_bundle, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805); the witness is the rehearsal's TEST witness, one key made for the run.",
+  "finished": "2026-11-06T21:22:29Z",
+  "name": "book",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "bundle.json",
+      "sha256": "ee98f953870f377e8d7daa567741e4e508ceb014563af5291430154c680a4686"
+    },
+    {
+      "path": "checkpoint.json",
+      "sha256": "3811155c2f2a93b232285df246e8cd9d6bfe796c3b3c7b8adc60d01dd14d6fdd"
+    },
+    {
+      "path": "capsule.json",
+      "sha256": "7b4455499071eb4732a40a710dfe9bb39c8dcecaa94fd21af9fafcd2ae5f9022"
+    },
+    {
+      "path": "witnesses.json",
+      "sha256": "7cd5aa514e11a47241e564e94342274605e660ded42d718f10358448c33c4d47"
+    },
+    {
+      "path": "verify.json",
+      "sha256": "cc26476c8a5593b5955525ccee0999372dfd9fcd2f90b0bde034c7e4821a4d2f"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "1d0425efc45253713d3c653e2cab33e866714de0537b6e965675f738f229f8fa"
+    },
+    {
+      "path": "checkpoint.cose",
+      "sha256": "cc91c8e99853867c0c9a209ecc3f78be6f323a22da34e908b08b5a1fd2999d35"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-06T21:22:29Z",
+  "step": "02"
+}

@@ -1,0 +1,15 @@
+{
+  "checkpoint_digest": "88b492b2dfb435e6098cb882aad0e95d1854bfc6c3bc36e26cc6b9bbbbd2e57d",
+  "close_half_digest": null,
+  "counterparty_checkpoint_cites": [],
+  "deal_id": "deal-a2d87a3c5bbf25e1",
+  "error": null,
+  "final_record_id": "6fcf159e8a3a5bea5bb8022c2b113b549e4b99991b1b82bdc6812c3426e64b2f",
+  "half_digest": "237fa13827cd6c9e95fcacdec4ee172619a03616f890322541d0f94ebdbdc9f3",
+  "ids": [
+    "6fcf159e8a3a5bea5bb8022c2b113b549e4b99991b1b82bdc6812c3426e64b2f"
+  ],
+  "key_id": "97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+  "ok": true,
+  "steps": 1
+}

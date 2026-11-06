@@ -1,0 +1,143 @@
+{
+  "asserts": "a later exchange request is sealed in the asker's book before it is sent, and is answered with a signed artifact or a signed refusal under the asked node's listed key, or recorded as an absence; a refusal is not of a subject the asked node's advertised policy answers; the deadline is the commitment's answers_within, and an answer after it counts as an absence",
+  "detail": "ask backend: goose. buyer asked seller: exchange refusal, exchange_late recorded_absence, history_card artifact; seller asked buyer: exchange refusal, exchange_late recorded_absence, history_card artifact.",
+  "finished": "2026-11-06T21:22:33Z",
+  "name": "ask",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "first-answered.json",
+      "sha256": "19372eafd0bbaa586b667ea05892abddfe5c807e25b380abcdd7f830b8f89ffb"
+    },
+    {
+      "path": "buyer/asks/seller/carrier.jsonl",
+      "sha256": "5dd56d3a863a3c2635e5f33091d458924b0b57708a61d36ff55f41e858ea9f9c"
+    },
+    {
+      "path": "buyer/asks/seller/exchange/answer.json",
+      "sha256": "2c2bb72724352ee767172a1aa2d2932ebabeb6ce31a360496a2a2377ca5d547c"
+    },
+    {
+      "path": "buyer/asks/seller/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "103e0867440f7bafea0dff4a0b80ac7c591ba1f5a7f63bea55d528fe7f984513"
+    },
+    {
+      "path": "buyer/asks/seller/exchange/outcome.bundle.json",
+      "sha256": "7c7dba3baf332e2a4184e0096506ba6d326c2fe10834a8ec351b895595f8793c"
+    },
+    {
+      "path": "buyer/asks/seller/exchange/request.json",
+      "sha256": "ccf12c3be75c46cc4c0cc16231b6919899dba28981055c8df20dd16c4efd9735"
+    },
+    {
+      "path": "buyer/asks/seller/exchange_late/answer.json",
+      "sha256": "4becdf57e47c5a2b2060f690e28eda8661defbcd603a75fc72ada601a7230aa9"
+    },
+    {
+      "path": "buyer/asks/seller/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "103e0867440f7bafea0dff4a0b80ac7c591ba1f5a7f63bea55d528fe7f984513"
+    },
+    {
+      "path": "buyer/asks/seller/exchange_late/outcome.bundle.json",
+      "sha256": "9370de21c2899a75f750e7912721922055fe4ae20db8c7398556822c9a910597"
+    },
+    {
+      "path": "buyer/asks/seller/exchange_late/request.json",
+      "sha256": "86776266a69c2cd9ad2d0515dc765ff7991bc39148a5af5a733b3eba18dca731"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/answer.json",
+      "sha256": "2ef6e11beefbe0e642a69ee12dcf1599537b88f614d3032c3e593c643782d561"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "103e0867440f7bafea0dff4a0b80ac7c591ba1f5a7f63bea55d528fe7f984513"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/outcome.bundle.json",
+      "sha256": "6e6cb4992276f4bb67aba26cd41e5fad3d26a4e6cb58c0c48a8d2c1ea01630e2"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/request.json",
+      "sha256": "96f90a52550c0950633eb1caa92807ffd57b8302fa70d2a12e756a15f22de00a"
+    },
+    {
+      "path": "seller/advertised/commitment.json",
+      "sha256": "36ad49bf2e8596b05e15fd3c4d229fc78974c64a933952822cbc1263cc4a865d"
+    },
+    {
+      "path": "seller/asks/buyer/carrier.jsonl",
+      "sha256": "f2b368f7538edbcb67b2acc66cbb334324d0cfb95a6b1c58be72ed54d126626e"
+    },
+    {
+      "path": "seller/asks/buyer/exchange/answer.json",
+      "sha256": "ab29c11c23c50f03aadc25e0238976ea3c8eb8be3835d7c891678c247227b469"
+    },
+    {
+      "path": "seller/asks/buyer/exchange/outcome.bundle.checkpoint.cose",
+      "sha256": "45c8c7acaef49ad137a3f1250dc0b0b99b44ee11cc7ae8ab68f4c86a3dc7a7e0"
+    },
+    {
+      "path": "seller/asks/buyer/exchange/outcome.bundle.json",
+      "sha256": "a1f24685c2b4c7a0662b6fa82f5606b95b5721ec49cf6ca473d6ff838bce6ec0"
+    },
+    {
+      "path": "seller/asks/buyer/exchange/request.json",
+      "sha256": "f3d45aeb02f8a2b782b2e56eff5bba139557d28ee5e0ca91e4d68bdbb8f656bc"
+    },
+    {
+      "path": "seller/asks/buyer/exchange_late/answer.json",
+      "sha256": "f7a89d8e690cdb6588629d0d41cacb13a5095545ddfc972efe41f5da4b59d208"
+    },
+    {
+      "path": "seller/asks/buyer/exchange_late/outcome.bundle.checkpoint.cose",
+      "sha256": "45c8c7acaef49ad137a3f1250dc0b0b99b44ee11cc7ae8ab68f4c86a3dc7a7e0"
+    },
+    {
+      "path": "seller/asks/buyer/exchange_late/outcome.bundle.json",
+      "sha256": "f34212584386b1bf60bb2677339102cc34f26df3b56210c732a376a5ba212e63"
+    },
+    {
+      "path": "seller/asks/buyer/exchange_late/request.json",
+      "sha256": "dbe0832e84d833316864e4fafb26be3db7bc1c6b8eb0e78f35e8102e4200a6ed"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/answer.json",
+      "sha256": "9d17ed49abf25fdf7b3db5da70d1a7e3b0a57b034bba851c8b1261b54317e61e"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "45c8c7acaef49ad137a3f1250dc0b0b99b44ee11cc7ae8ab68f4c86a3dc7a7e0"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/outcome.bundle.json",
+      "sha256": "d27fc7a313bfb3177a34e55576a6f3446cc38305f59b5755635dfca679d737e1"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/request.json",
+      "sha256": "88d4b4b2d6c88ca901e39b6fed138826615bc224f442749fcdb44461f0885f2f"
+    },
+    {
+      "path": "buyer/advertised/commitment.json",
+      "sha256": "6f01d488a3c376cf9645328677019180102e72741c60df15ecb263dcffd19092"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-06T21:22:31Z",
+  "step": "07"
+}

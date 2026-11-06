@@ -1,0 +1,123 @@
+{
+  "asserts": "one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and returns the node's signed commitment, the node then advertises the commitment it is asked through, which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject with the history_card/1 derivation) verifies and matches the advertised policy; no controller binding is kept",
+  "detail": "probe backend: goose. buyer: joined as 429b0e8d4947 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); seller: joined as 9e64966ea775 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s).",
+  "finished": "2026-11-06T21:22:34Z",
+  "name": "join",
+  "not_checked": [],
+  "pinned": {
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "buyer/joined/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
+      "sha256": "4ae05e35bdf521dcc061411fd68761a9d1e06fa83c67f21ca999a9736ace5228"
+    },
+    {
+      "path": "buyer/joined/join-record.bundle.checkpoint.cose",
+      "sha256": "5206050aef260c92b17b47d8f3ae5693be225ff98409333b95717409f196438a"
+    },
+    {
+      "path": "buyer/joined/join-record.bundle.json",
+      "sha256": "597c7c98a267d31e635fb9ce33dc1e98d0635a8cd59ef28bd6403eaec9c37ee0"
+    },
+    {
+      "path": "buyer/joined/policies/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
+      "sha256": "47d03b3ae445fe1ff000fc8d9362039cf8d2a09e25c0d80791980bd1fe0a9c3b"
+    },
+    {
+      "path": "buyer/advertised/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
+      "sha256": "6f01d488a3c376cf9645328677019180102e72741c60df15ecb263dcffd19092"
+    },
+    {
+      "path": "buyer/advertised/commitment.json",
+      "sha256": "6f01d488a3c376cf9645328677019180102e72741c60df15ecb263dcffd19092"
+    },
+    {
+      "path": "buyer/advertised/policies/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
+      "sha256": "47d03b3ae445fe1ff000fc8d9362039cf8d2a09e25c0d80791980bd1fe0a9c3b"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/answer.json",
+      "sha256": "9d17ed49abf25fdf7b3db5da70d1a7e3b0a57b034bba851c8b1261b54317e61e"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "45c8c7acaef49ad137a3f1250dc0b0b99b44ee11cc7ae8ab68f4c86a3dc7a7e0"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/outcome.bundle.json",
+      "sha256": "d27fc7a313bfb3177a34e55576a6f3446cc38305f59b5755635dfca679d737e1"
+    },
+    {
+      "path": "seller/asks/buyer/history_card/request.json",
+      "sha256": "88d4b4b2d6c88ca901e39b6fed138826615bc224f442749fcdb44461f0885f2f"
+    },
+    {
+      "path": "seller/asks/buyer/carrier.jsonl",
+      "sha256": "f2b368f7538edbcb67b2acc66cbb334324d0cfb95a6b1c58be72ed54d126626e"
+    },
+    {
+      "path": "seller/joined/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
+      "sha256": "4d5daa426e98f8cedcdf0dd366e287312fff4bbf3719b5fb4e4926f1494a8c4c"
+    },
+    {
+      "path": "seller/joined/join-record.bundle.checkpoint.cose",
+      "sha256": "77530a2112589ee62b4df9104b266dfd745a348a736c2dceb407b46f42b19b60"
+    },
+    {
+      "path": "seller/joined/join-record.bundle.json",
+      "sha256": "dab6e26f39219d9d63f6688b747eeb4393b62c35343f737f761d756268ee3e1b"
+    },
+    {
+      "path": "seller/joined/policies/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
+      "sha256": "ee89690ed9291c10ecd5454810e0cda90071ff1b2ccb63ed2f4baf8d89bd4441"
+    },
+    {
+      "path": "seller/advertised/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
+      "sha256": "36ad49bf2e8596b05e15fd3c4d229fc78974c64a933952822cbc1263cc4a865d"
+    },
+    {
+      "path": "seller/advertised/commitment.json",
+      "sha256": "36ad49bf2e8596b05e15fd3c4d229fc78974c64a933952822cbc1263cc4a865d"
+    },
+    {
+      "path": "seller/advertised/policies/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
+      "sha256": "ee89690ed9291c10ecd5454810e0cda90071ff1b2ccb63ed2f4baf8d89bd4441"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/answer.json",
+      "sha256": "2ef6e11beefbe0e642a69ee12dcf1599537b88f614d3032c3e593c643782d561"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/outcome.bundle.checkpoint.cose",
+      "sha256": "103e0867440f7bafea0dff4a0b80ac7c591ba1f5a7f63bea55d528fe7f984513"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/outcome.bundle.json",
+      "sha256": "6e6cb4992276f4bb67aba26cd41e5fad3d26a4e6cb58c0c48a8d2c1ea01630e2"
+    },
+    {
+      "path": "buyer/asks/seller/history_card/request.json",
+      "sha256": "96f90a52550c0950633eb1caa92807ffd57b8302fa70d2a12e756a15f22de00a"
+    },
+    {
+      "path": "buyer/asks/seller/carrier.jsonl",
+      "sha256": "5dd56d3a863a3c2635e5f33091d458924b0b57708a61d36ff55f41e858ea9f9c"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-06T21:22:33Z",
+  "step": "12"
+}

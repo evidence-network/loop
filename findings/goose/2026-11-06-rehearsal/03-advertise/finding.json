@@ -1,0 +1,51 @@
+{
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
+  "detail": "buyer: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179.json, not advertised on nostr, inputs signed by the node; seller: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5.json, not advertised on nostr, inputs signed by the node. Runner tools: OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157) (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (buyer, seller) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (buyer, seller) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
+  "finished": "2026-11-06T21:22:29Z",
+  "name": "advertise",
+  "not_checked": [],
+  "pinned": {
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "rehearsal",
+  "proof": [
+    {
+      "path": "buyer.commitment.json",
+      "sha256": "bf2ea107330870c6318bc9353c0dc4f6ed144f97b7e27a64b758a7e37a81a80e"
+    },
+    {
+      "path": "buyer.policy.json",
+      "sha256": "25f03a05e834caad2ca0a5a4155838e8fd9c9b8875f6e3a1a18c77883c57a2f5"
+    },
+    {
+      "path": "buyer.node-key.pub.pem",
+      "sha256": "4dc576969e0bd6f31746bbf34e3d08bc591a2e5fefb0382e9b5d1a2bbbf98e95"
+    },
+    {
+      "path": "seller.commitment.json",
+      "sha256": "e8b6debbbf0850a2d12cd1f69b73c657187d99cb6d65be36b61fbb9217c4a2c3"
+    },
+    {
+      "path": "seller.policy.json",
+      "sha256": "8e2d77f8dfa622231c8b690bf8af0533bc106d78e89eb6ab28c6478205b586c7"
+    },
+    {
+      "path": "seller.node-key.pub.pem",
+      "sha256": "43966e572fadf9ab0a0068829cc0c9847233727f6d4742c2d6546a7e13f57891"
+    },
+    {
+      "path": "carrier.bundle",
+      "sha256": "2a63cdece91cf01d5db447f0dec40ed5a42efd6f78061613c82ae7d444963e91"
+    },
+    {
+      "path": "verification.json",
+      "sha256": "e62981043cb363b5ae61e6b193193d0988120ae073f2896fbc735960a1c36a9b"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-06T21:22:29Z",
+  "step": "03"
+}

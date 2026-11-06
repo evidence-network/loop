@@ -1,0 +1,45 @@
+{
+  "checks": {
+    "bundle": {
+      "detail": "capsulectl verify --bundle exit 0, verdict VALID",
+      "ok": true
+    },
+    "checkpoint": {
+      "detail": "checkpoint over 7 nodes of goose/node, signed by e47a24402b214b9c4eb7819a25f3abc7aa19f8a7911ee884fe94f3f3510c4b31; the node's checkpoint key is e47a24402b214b9c4eb7819a25f3abc7aa19f8a7911ee884fe94f3f3510c4b31",
+      "ok": true
+    },
+    "membership": {
+      "detail": "checkpoint pass, per_record_membership pass, producer_signatures pass",
+      "ok": true
+    },
+    "position": {
+      "detail": "log goose/node seq 4, the record's header says book goose/node seq 4",
+      "ok": true
+    },
+    "record": {
+      "detail": "bundle root fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a; the capsule the node sealed is fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a, which the book record model-call-10787951681fa65f carries",
+      "ok": true
+    },
+    "signer": {
+      "detail": "record key_id 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179, the node's key 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "ok": true
+    },
+    "witness_listed": {
+      "detail": "receipt key id dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644; the run's witness listing has ['dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644']",
+      "ok": true
+    },
+    "witness_not_before": {
+      "detail": "signed at unix time 1794000083; the entry's not_before 2026-11-06T21:21:22Z",
+      "ok": true
+    },
+    "witness_not_node": {
+      "detail": "receipt key id dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644; the run's nodes' keys are ['11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5', '97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179', 'd7e38fc992deb6f6fa8c9ff6ede62a5c4e2f1c95d9bccdde495541a9665e33d7', 'e47a24402b214b9c4eb7819a25f3abc7aa19f8a7911ee884fe94f3f3510c4b31']",
+      "ok": true
+    },
+    "witness_signature": {
+      "detail": "the receipt verifies under witness key dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644 over checkpoint 7 of goose/node; openssl verifies the receipt's signature under dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644 over the bundle's checkpoint",
+      "ok": true
+    }
+  },
+  "node": "buyer"
+}

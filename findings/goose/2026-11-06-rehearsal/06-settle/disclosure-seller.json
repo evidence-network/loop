@@ -1,0 +1,13 @@
+{
+  "key_id": "11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5",
+  "node": "goose-seller",
+  "rail": "mock",
+  "settlements": 1,
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "i7D8jEJA0HIfO8XkMFIbLqX3HvNrU7JTY7TBce0SFV_Lace83edoxVCwxcIC5hgmBWW6sONUoEblOegYzHnABg"
+  },
+  "through_sequence": 1,
+  "type": "settlement-disclosure/v1"
+}
