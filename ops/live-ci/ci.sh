@@ -23,6 +23,17 @@ unreachable_reason() {
   grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|Permission denied|publickey|serviceAccountUser|osLogin|tunnelResourceAccessor|tunnelInstances|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
 }
 
+# One-shot check of which gcloud step the CI account is refused at; prints ok/fail per step, never their output.
+probe_access() {
+  local n=0 t
+  for t in "compute instances describe $LIVE_VM --zone $LIVE_ZONE" "compute project-info describe" "compute os-login describe-profile" \
+    "compute ssh $LIVE_VM --zone $LIVE_ZONE --tunnel-through-iap --dry-run"; do
+    n=$((n + 1))
+    # shellcheck disable=SC2086 # word splitting of the fixed argument list is intended
+    if timeout 60 gcloud $t < /dev/null > /dev/null 2>&1; then echo "::notice::access probe $n: ok"; else echo "::warning::access probe $n: fail"; fi
+  done
+}
+
 start_run() {
   local out rc
   # A harvest-only dispatch (after a failed harvest) starts nothing: it polls the result of today's run.
@@ -54,6 +65,7 @@ wait_run() {
       21) echo "$out"; setstate failed; return 1 ;;
       22) echo "$out"; setstate timeout; return 1 ;;
       *) bad=$((bad + 1)); echo "::warning::status unreachable (rc=$rc, try $bad): $(unreachable_reason "$out")"
+         [ "$bad" -eq 1 ] && probe_access
          [ "$bad" -ge 5 ] && { setstate failed; echo "::error::status unreachable"; return 1; } ;;
     esac
     sleep 120
