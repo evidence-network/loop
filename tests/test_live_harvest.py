@@ -95,7 +95,8 @@ class HarvestTest(unittest.TestCase):
                 p.write_text("x\n")
                 t.add(p, arcname=extra_member)
         (run_dir / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
-        (run_dir / f"{NAME}.json").write_text(json.dumps({"name": NAME, "exchange": {"paid": paid}, "steps": results}))
+        (run_dir / f"{NAME}.json").write_text(json.dumps({"name": NAME, "exchange": {"paid": paid, "askers": {"lab-3": "HTTP/1.1 200 OK"}},
+                                                           "circulate": {"action": "refused"}, "steps": results}))
         return run_dir
 
     def harvest(self, *extra, **env):
@@ -120,6 +121,9 @@ class HarvestTest(unittest.TestCase):
         self.assertEqual(sorted(files.splitlines()), sorted(
             [f"findings/{NAME}/{s}/finding.json" for s in STEPS] + [f"findings/{NAME}/run.json",
                                                                     f"findings/{NAME}/proof-archive.json"]))
+        run_json = json.loads(self.show(f"findings/{NAME}/run.json"))
+        self.assertEqual(run_json["exchange"]["askers"], {"lab-3": "HTTP/1.1 200 OK"})
+        self.assertEqual(run_json["circulate"], {"action": "refused"})
         archive = json.loads(self.show(f"findings/{NAME}/proof-archive.json"))
         tgz = self.tmp / "run" / f"{NAME}.tgz"
         self.assertEqual(archive["sha256"], hashlib.sha256(tgz.read_bytes()).hexdigest())
