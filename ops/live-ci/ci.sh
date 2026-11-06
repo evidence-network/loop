@@ -25,7 +25,7 @@ unreachable_reason() {
 
 # One-shot check of which gcloud step the CI account is refused at; prints ok/fail per step, never their output.
 probe_access() {
-  local n=0 t out
+  local n=0 t out rc
   for t in instances project os-login ssh; do
     n=$((n + 1))
     out=$(case $t in
@@ -33,7 +33,9 @@ probe_access() {
       project) timeout 60 gcloud compute project-info describe ;;
       os-login) timeout 60 gcloud compute os-login describe-profile ;;
       ssh) timeout 60 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --dry-run ;;
-    esac < /dev/null 2>&1) && echo "::notice::access probe $n: ok" || echo "::warning::access probe $n: fail: $(probe_words "$out") / $(unreachable_reason "$out")"
+    esac < /dev/null 2>&1) && rc=0 || rc=$?
+    if [ "$rc" -eq 0 ]; then echo "::notice::access probe $n: ok"
+    else echo "::warning::access probe $n: fail rc=$rc bytes=${#out}: $(probe_words "$out") / $(unreachable_reason "$out")"; fi
   done
 }
 
