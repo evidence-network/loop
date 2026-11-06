@@ -164,8 +164,11 @@ def privacy(tree, where, code, findings=True):
         raise Refuse(6, f"steps/finding.py check refused {where}: {p.stderr.strip()[:300]}")
 
 
-def slim(full, dest, name, url, digest):
-    """dest = full's finding.json files, run.json, index.md and the proof-archive.json naming the release asset."""
+def slim(full, dest, name, url, digest, record=None):
+    """dest = full's finding.json files, run.json, index.md and the proof-archive.json naming the release asset.
+
+    The run record (NAME.json, which only the release holds) carries what the pull request must show too: the exchange,
+    with each asker's HTTP status, and the circulation outcome (loop#384); they are added to the copied run.json."""
     dest.mkdir(parents=True)
     for step in sorted(p for p in full.iterdir() if p.is_dir()):
         if not (step / "finding.json").is_file():
@@ -175,6 +178,13 @@ def slim(full, dest, name, url, digest):
     for extra in ("run.json", "index.md"):
         if (full / extra).is_file():
             shutil.copy2(full / extra, dest / extra)
+    if record is not None and (dest / "run.json").is_file():
+        run_json = json.loads((dest / "run.json").read_text())
+        if isinstance(run_json, dict):
+            run_json["exchange"] = record["exchange"]
+            if "circulate" in record:
+                run_json["circulate"] = record["circulate"]
+            (dest / "run.json").write_text(json.dumps(run_json, indent=2, sort_keys=True) + "\n")
     (dest / "proof-archive.json").write_text(
         json.dumps({"asset": f"{name}.tgz", "sha256": digest, "url": url}, indent=2, sort_keys=True) + "\n")
 
@@ -231,7 +241,7 @@ def harvest(args, work, wt):
         raise Refuse(4, f"release {tag} exists on {repo}: remove it by hand if no pull request holds it")
 
     url = f"https://github.com/{repo}/releases/download/{tag}/{name}.tgz"
-    slim(full, wt / "findings" / name, name, url, digest)
+    slim(full, wt / "findings" / name, name, url, digest, record)
     privacy(wt / "findings" / name, f"findings/{name} as committed", wt)
 
     # The worktree's own gate: its ROOT is the worktree, so the findings and the versions.lock are origin/main's.
