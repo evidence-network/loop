@@ -565,12 +565,55 @@ class GooseRehearsalTest(unittest.TestCase):
             c["controller_binding"] = {"digest": "11" * 32}
             p.write_text(json.dumps(c))
 
+        def no_join_record(run):
+            (run / "buyer" / "joined" / "join-record.bundle.json").unlink()
+
+        def other_join_record(run):  # the seller's join record presented as the buyer's
+            shutil.copyfile(run / "seller" / "joined" / "join-record.bundle.json",
+                            run / "buyer" / "joined" / "join-record.bundle.json")
+
+        def one_node(run):  # a session that joined only one of the population's nodes
+            n = json.loads((run / "nodes.json").read_text())
+            del n["seller"]
+            (run / "nodes.json").write_text(json.dumps(n))
+
         for name, mutate, text in (("otherkey", other_key, "joined as"), ("noprobe", no_probe, "no history_card/1 probe"),
-                                   ("reply", altered_reply, "history_card"), ("forged", forged_commitment, "commitment")):
+                                   ("reply", altered_reply, "history_card"), ("forged", forged_commitment, "commitment"),
+                                   ("nojoin", no_join_record, "no join record was exported"),
+                                   ("otherjoin", other_join_record, "not the node's goose_joined record"),
+                                   ("onenode", one_node, "the population lists")):
             with self.subTest(name):
                 found = planted(name, mutate)
                 self.assertEqual(found["result"], "FAIL", found["detail"])
                 self.assertIn(text, found["detail"])
+
+    def test_step_12_judge_refuses_a_binding_and_a_probe_that_is_not_the_history_card_probe(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("step12_join_tests", str(ROOT / "steps" / "12-join"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        self.assertEqual(mod.goose_binding_errors("buyer", {"key_id": "x"}), [])
+        self.assertIn("names a controller binding", mod.goose_binding_errors("buyer", {"controller_binding": {}})[0])
+        s07 = mod.load_step07()
+        adv = {"subjects": ["checkpoints"], "derivations": ["history_card/1"]}
+        probe = dict(s07.ASKS["history_card"]["request"], nonce="n", deadline="2026-01-01T00:00:00Z", profile="evidence-interop/0")
+        self.assertEqual(mod.goose_probe_errors(s07, probe, adv), [])
+        self.assertTrue(mod.goose_probe_errors(s07, {**probe, "derivation": "other/1"}, adv))  # another derivation
+        self.assertTrue(mod.goose_probe_errors(s07, {**probe, "subject": {"exchange": "x"}}, adv))  # another subject
+        self.assertTrue(mod.goose_probe_errors(s07, {**probe, "coverage": {"min_freshness": 9}}, adv))  # other coverage
+        self.assertTrue(mod.goose_probe_errors(s07, probe, {**adv, "derivations": []}))  # not advertised
+
+    def test_step_12_is_not_checked_on_a_checkout_other_than_the_pin(self):
+        self._step_04_ready()
+        doc = json.loads((self.pop / "population.json").read_text())
+        doc["goose"]["rev"] = "0" * 40
+        pop = self.work / "otherrev-pop12"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        found = self._step_12(pop, "otherrev-f12")[1]
+        self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
+        self.assertEqual(found["not_checked"][0]["what"], "the Goose nodes' join and a stranger's probe")
 
     def test_step_12_is_not_checked_when_the_run_wrote_no_asks_session(self):
         doc = json.loads((self.pop / "population.json").read_text())

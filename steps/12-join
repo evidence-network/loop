@@ -327,15 +327,21 @@ def card_probe(adv, stream):
     return f"probe/cards/{stream}"
 
 
-def check_staple(node_dir, adv):
-    """The join's own book is stapled, and each stapled card is the kept answer for its book. Returns what is not."""
-    node_dir = Path(node_dir)
+def check_own_card(adv):
+    """The commitment staples a history_card/1 for the join's own book, under that book's checkpoint key."""
     errs = []
     if adv["book_id"] not in adv["streams"]:
         errs.append(f"the commitment staples no history_card/1 for the join's own book {adv['book_id']}")
     own_key = adv["card_keys"].get(adv["book_id"])
     if own_key is not None and own_key != adv["checkpoint_key"]:
         errs.append(f"the card entry for {adv['book_id']} names a checkpoint key other than the book's checkpoint's")
+    return errs
+
+
+def check_staple(node_dir, adv):
+    """The join's own book is stapled, and each stapled card is the kept answer for its book. Returns what is not."""
+    node_dir = Path(node_dir)
+    errs = check_own_card(adv)
     for e in hc.entries(load(node_dir / "commitment.json")):
         stream = e.get("stream")
         probe = card_probe(adv, stream) if stream else None
@@ -1349,9 +1355,10 @@ def judge_live(pop, out, started):
 # is not made) of it. The probe is answered by the node polling its mailbox and is verified under the
 # node's listed keys in a fresh book. The controller binding is optional (Steven, u137): a commitment that names none is
 # the unbound case, stated, not a failure.
-GOOSE_ASSERTS = ("one command on the pinned Goose release (loop_join) creates the node's book and publishes its commitment, "
-                 "which names the keys it answers under, and a stranger's probe of the node (the checkpoints "
-                 "subject with the history_card/1 derivation) verifies and matches the advertised policy; no controller "
+GOOSE_ASSERTS = ("one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and "
+                 "returns the node's signed commitment, the node then advertises the commitment it is asked through, "
+                 "which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject "
+                 "with the history_card/1 derivation) verifies and matches the advertised policy; no controller "
                  "binding is kept")
 GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
 
@@ -1363,20 +1370,60 @@ def load_step07():
     return mod
 
 
+def goose_binding_errors(name, doc):
+    """A Goose node keeps no controller binding: a commitment that names one is not the node's."""
+    return [f"{name}: the commitment names a controller binding, which a Goose node does not keep"] \
+        if "controller_binding" in doc else []
+
+
+def goose_probe_errors(s07, request, adv):
+    """The ask kept as the history_card/1 probe is that probe, and the advertised policy answers it to a stranger."""
+    want = s07.ASKS["history_card"]["request"]
+    errs = [] if all(request.get(k) == v for k, v in want.items()) else [
+        f"the request is {s07.asked(request)} with coverage {request.get('coverage')}, not "
+        f"checkpoints+history_card/1 with coverage {want['coverage']}"]
+    if "checkpoints" not in adv["subjects"] or want["derivation"] not in adv["derivations"]:
+        errs.append("the commitment does not advertise checkpoints and history_card/1")
+    if not s07.stranger_safe(request, adv):
+        errs.append("the advertised policy does not answer this request to a stranger")
+    return errs
+
+
 def run_goose(pop, out, tmp):
     """(failures, not_checked, proof, lines) for the nodes of the Goose rehearsal's asks session, judged on its bytes."""
     capsulectl = tools()
-    if not capsulectl.is_file():
-        raise SystemExit(f"12-join: no capsulectl at {capsulectl}; run steps/12-join.setup.sh")
     s07 = load_step07()
     run = Path(pop["goose"]["asks"]["run"])
     nodes = load(run / "nodes.json")
     failures, not_checked, proof, lines = [], [], [], []
+    expected = sorted(n["name"] for n in pop["nodes"])
+    if sorted(nodes) != expected:
+        failures.append(f"the asks session joined nodes {sorted(nodes)}, the population lists {expected}")
     for name in nodes:  # every node's tree first: a node is judged on the asks the others made of it
         shutil.rmtree(out / name, ignore_errors=True)
         shutil.copytree(run / name, out / name)
     for name, joined in sorted(nodes.items()):
-        adv_dir = out / name / "advertised"
+        joined_dir, adv_dir = out / name / "joined", out / name / "advertised"
+        # The join: loop_join's own commitment and the join record it sealed.
+        jadv, errs = s07.advertisement(joined_dir, f"{joined['key_id']}.json")
+        failures += [f"{name}: loop_join's commitment: {e}" for e in errs]
+        if jadv is not None and jadv["node_key"] != joined["key_id"]:
+            failures.append(f"{name}: loop_join's commitment is for key {jadv['node_key']}, the node joined as {joined['key_id']}")
+        proof += [f"{name}/joined/{f.relative_to(joined_dir)}" for f in sorted(joined_dir.rglob("*")) if f.is_file()]
+        bundle_path = joined_dir / "join-record.bundle.json"
+        if bundle_path.is_file():
+            verdict, verrs = s07.verify_bundle(bundle_path, capsulectl)
+            bundle = load(bundle_path)
+            head = s07.disclosed(bundle, bundle.get("root")) or {}
+            held = [b for b in bundle.get("records", []) if b.get("capsule_id") == bundle.get("root")]
+            failures += [f"{name}: the join record's bundle: {e}" for e in verrs]
+            if not verrs and not (bundle.get("root") == joined["first_record"] and head.get("record_type") == "goose_joined"
+                                  and held and held[0].get("key_id") == joined["key_id"]
+                                  and (head.get("statement") or {}).get("key_id") == joined["key_id"]):
+                failures.append(f"{name}: the bundle's root is not the node's goose_joined record signed by its key")
+        else:
+            failures.append(f"{name}: no join record was exported")
+        # The commitment the node is asked through.
         adv, errs = s07.advertisement(adv_dir)
         if adv is None:
             failures += [f"{name}: {e}" for e in errs]
@@ -1384,14 +1431,8 @@ def run_goose(pop, out, tmp):
         proof += [f"{name}/advertised/{f.relative_to(adv_dir)}" for f in sorted(adv_dir.rglob("*")) if f.is_file()]
         if adv["node_key"] != joined["key_id"]:
             failures.append(f"{name}: the commitment is for key {adv['node_key']}, the node joined as {joined['key_id']}")
-        doc = load(adv_dir / "commitment.json")
-        if "controller_binding" in doc:
-            failures.append(f"{name}: the commitment names a controller binding, which a Goose node does not keep")
-        if adv["book_id"] not in adv["streams"]:
-            failures.append(f"{name}: the commitment staples no history_card/1 for the node's own book {adv['book_id']}")
-        own_key = adv["card_keys"].get(adv["book_id"])
-        if own_key is not None and own_key != adv["checkpoint_key"]:
-            failures.append(f"{name}: the card entry for {adv['book_id']} names a checkpoint key other than the book's")
+        failures += goose_binding_errors(name, load(adv_dir / "commitment.json"))
+        failures += [f"{name}: {e}" for e in check_own_card(adv)]
         # A stranger's probe: every other node asked this one for history_card/1 (checkpoints with that derivation).
         probed = 0
         for asker in sorted(set(nodes) - {name}):
@@ -1403,6 +1444,7 @@ def run_goose(pop, out, tmp):
             verdict, verrs = s07.verify_bundle(d / "outcome.bundle.json", capsulectl)
             errs = list(verrs)
             if not errs:
+                errs += goose_probe_errors(s07, load(d / "request.json"), adv)
                 verifier = s07.Verifier(Path(tmp) / f"verify-{asker}-{name}", capsulectl)
                 e, at = s07.judge_ask(d, adv, nodes[asker]["key_id"], [x for x in events if x["ask"] == "history_card"],
                                       verdict, verifier, not_checked, mailbox=True)
@@ -1416,18 +1458,39 @@ def run_goose(pop, out, tmp):
             proof += [f"{asker}/asks/{name}/history_card/{f.name}" for f in sorted(d.iterdir()) if f.is_file()]
             proof.append(f"{asker}/asks/{name}/carrier.jsonl")
             probed += 1
-        lines.append(f"{name}: joined as {joined['key_id'][:12]}, the commitment verifies under it and names no controller "
-                     f"binding (optional, u137), history_card/1 probed by {probed} stranger(s)")
+        if probed == 0:
+            failures.append(f"{name}: no stranger probed it")
+        lines.append(f"{name}: joined as {joined['key_id'][:12]} (loop_join's commitment and its join record verify), the "
+                     f"commitment it is asked through names no controller binding (optional, u137), history_card/1 "
+                     f"probed by {probed} stranger(s)")
     if not nodes:
         failures.append("the asks session joined no nodes")
     return failures, not_checked, list(dict.fromkeys(proof)), lines
 
 
+def goose_not_checked(pop, out, started):
+    """The NOT_CHECKED finding when the run or the host lacks what step 12 reads on the Goose rehearsal, else None."""
+    asks = (pop["goose"].get("asks") or {}).get("run")
+    want = finding.pins()["goose-g1"][1]
+    cap = tools()
+    if not asks or not Path(asks, "nodes.json").is_file():
+        why = "the run wrote no asks session, so no Goose node's join or probe was kept"
+    elif not cap.is_file():
+        why = f"{cap} is not installed"
+    elif pop["goose"]["rev"] != want:
+        why = f"installed goose-g1 {pop['goose']['rev']}, versions.lock pins {want}"
+    else:
+        return None
+    finding.write(out, result="NOT_CHECKED", population=pop["population"], asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED,
+                  proof=[], detail=f"not checked: {why}", started=started,
+                  not_checked=[{"what": "the Goose nodes' join and a stranger's probe", "why": why,
+                                "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh"}])
+    return True
+
 def backend(pop):
     """The probe backend is the population's choice: `probe` in population.json, else by population."""
-    if pop.get("goose") and pop["population"] != "live":
-        return "goose"
-    return pop.get("probe") or ("reporter" if pop["population"] == "live" else "doctor")
+    return pop.get("probe") or ("goose" if pop.get("goose") and pop["population"] != "live"
+                                else "reporter" if pop["population"] == "live" else "doctor")
 
 
 def main(argv=None):
@@ -1460,14 +1523,9 @@ def main(argv=None):
         with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
             failures, not_checked, proof, lines = run_doctor(pop, a.out, tmp)
     elif which == "goose":
+        if goose_not_checked(pop, a.out, started):
+            return 0
         with tempfile.TemporaryDirectory(prefix="12-join-") as tmp:
-            if not (pop["goose"].get("asks") or {}).get("run") or not Path(pop["goose"]["asks"]["run"], "nodes.json").is_file():
-                why = "the run wrote no asks session, so no Goose node's join or probe was kept"
-                finding.write(a.out, result="NOT_CHECKED", population=pop["population"], asserts=GOOSE_ASSERTS,
-                              pinned=GOOSE_PINNED, proof=[], detail=f"not checked: {why}", started=started,
-                              not_checked=[{"what": "the Goose nodes' join and a stranger's probe", "why": why,
-                                            "issue": "evidence-network/loop: steps/goose.setup.sh"}])
-                return 0
             failures, not_checked, proof, lines = run_goose(pop, a.out, tmp)
     elif which == "reporter":
         if a.self_node and a.self_node not in [n["name"] for n in pop["nodes"]]:

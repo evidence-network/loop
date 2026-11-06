@@ -133,7 +133,13 @@ async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=AD
             await bs.initialize()
             await ss.initialize()
             nodes = {names[0]: Goose(bs, names[0]), names[1]: Goose(ss, names[1])}
-            joined = joined or {name: await g.call("loop_join") for name, g in nodes.items()}
+            rehearsal = not joined  # the lab passes its first joins; the rehearsal joins here and keeps what loop_join gave
+            joined = joined or {name: await g.call("loop_join", commitment_dir=str(out / name / "joined"))
+                                for name, g in nodes.items()}
+            if rehearsal:  # step 12: the join record as an Evidence Bundle, its header disclosed
+                for name, g in nodes.items():
+                    await g.call("loop_book_bundle", book_id="goose/node", record_id=joined[name]["record_id"],
+                                 disclose=True, out_path=str(out / name / "joined" / "join-record.bundle.json"))
             for name, g in nodes.items():
                 adv = out / name / "advertised"
                 node_id = joined[name]["key_id"]
