@@ -20,7 +20,7 @@ vm() { # SUBCOMMAND: start | status | stage
 # Only fixed keywords from a failed call reach the public log, never its text: that keeps names, host output and
 # workflow commands (`::add-mask::`) out of it, and no secret can be cut in half by a truncation.
 unreachable_reason() {
-  grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|Permission denied|publickey|serviceAccountUser|osLogin|iap\.tunnel[A-Za-z.]*|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
+  grep -oE 'PERMISSION_DENIED|FAILED_PRECONDITION|NOT_FOUND|RESOURCE_EXHAUSTED|UNAUTHENTICATED|4003|4033|4047|4033|timed out|Connection (refused|closed|reset)|Permission denied|publickey|serviceAccountUser|osLogin|tunnelResourceAccessor|tunnelInstances|not authorized|Could not|Unable to' <<< "$1" | sort -u | tr '\n' ' ' | grep . || echo "no known error keyword"
 }
 
 start_run() {
