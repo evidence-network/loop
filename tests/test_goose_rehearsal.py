@@ -652,6 +652,8 @@ class GooseRehearsalTest(unittest.TestCase):
         # the askers are the deal's parties (loop#399): the same homes and keys that steps 01-06 read, and the request
         # was read as sealed before it was sent
         self.assertIn("the askers are the deal's parties", found["detail"])
+        deal_id = json.loads((self.work / "run" / "deal.json").read_text())["deal_id"]
+        self.assertIn(f"({deal_id[:21]})", found["detail"])  # the whole `deal-` + 16 hex id, not 11 hex of it
         for who in ("buyer", "seller"):
             self.assertTrue((self.work / "run" / who / "shelf.db").is_file())
             self.assertFalse((self.work / "asks" / "run").exists())

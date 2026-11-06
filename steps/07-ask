@@ -722,9 +722,11 @@ def run_goose(pop, out, tmp):
                              "why": "the population names no deal (goose.run/deal.json), so the askers' keys have "
                                     "nothing to be compared with",
                              "issue": "evidence-network/loop#399"}])
-    elif rehearsal:
+    elif not rehearsal:
+        lines.append("the askers are the lab's persistent nodes, no deal to compare them with")
+    else:
         if {n: v["key_id"] for n, v in nodes.items()} == {"buyer": parties["buyer"], "seller": parties["seller"]}:
-            lines.append(f"the askers are the deal's parties (deal {parties['deal_id'][:16]}), the nodes of steps 01-06")
+            lines.append(f"the askers are the deal's parties ({parties['deal_id'][:21]}), the nodes of steps 01-06")
         else:
             failures.append("the askers are not the deal's parties: their keys differ from the buyer and seller "
                             "of the deal steps 01-06 read")
