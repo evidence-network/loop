@@ -112,7 +112,7 @@ class Circulate(unittest.TestCase):
 
     def test_an_error_after_send_across_utc_midnight_is_still_unknown(self):
         a, b = wallets()
-        days = iter(["2026-11-07", "2026-11-08"] + ["2026-11-08"] * 20)  # the day moves on while pay() runs
+        days = iter(["2026-11-07", "2026-11-07"] + ["2026-11-08"] * 20)  # preflight and the reservation are stamped on the old day; it moves on after
 
         def transaction(h, inbound):
             raise gl.Refused("HTTP 500")
