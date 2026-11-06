@@ -1,7 +1,7 @@
 """The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, step 01
-judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 02, 03, 04, 05, 06, 07 and 12 pass). Skipped unless steps/goose.setup.sh has installed the
-Goose tools; the step 01 test also needs steps/01-seal.setup.sh's verifier, step 04 capsulectl, and the step 02 tests the step 02 driver, capsulectl and
-openssl 3 (steps/02-book.setup.sh, steps/12-join.setup.sh).
+judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 02, 03, 04, 05, 06, 07 and 12 pass). Skipped unless steps/goose.setup.sh has installed the Goose tools; with LOOP_REQUIRE_TOOLS=1 (CI) a missing tool fails instead of
+skipping. The step 01 tests also need steps/01-seal.setup.sh's verifier, the step 04 and 05 tests capsulectl, and the step 02 tests
+the step 02 driver, capsulectl and openssl 3 (steps/02-book.setup.sh, steps/12-join.setup.sh).
 
 Run: python3 -m unittest tests.test_goose_rehearsal -v
 """
