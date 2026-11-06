@@ -47,7 +47,8 @@ wait_run() {
          return 0 ;;
       21) echo "$out"; setstate failed; return 1 ;;
       22) echo "$out"; setstate timeout; return 1 ;;
-      *) bad=$((bad + 1)); [ "$bad" -ge 5 ] && { echo "$out"; setstate failed; echo "::error::status unreachable"; return 1; } ;;
+      *) bad=$((bad + 1)); echo "::warning::status unreachable (rc=$rc, try $bad): ${out:0:400}"
+         [ "$bad" -ge 5 ] && { setstate failed; echo "::error::status unreachable"; return 1; } ;;
     esac
     sleep 120
   done
