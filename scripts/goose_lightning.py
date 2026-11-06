@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """The Goose lab's one real Lightning payment, lab wallet to lab wallet, inside the lab payment guard (loop#349).
 
+scripts/lab_circulate.py (loop#384) also calls pay() to return lab-1's earnings to lab-3 at the end of a daily run; it
+shares this log and guard.
+
 Not run by the loop's steps (steps/06-settle only reads what this wrote): lab/goose.sh pay runs it on the lab host,
 through goose_live.py. The Goose nodes (G1) drive no rail and hold no wallet, so the payer's lab wallet (lab-1 by
 default) pays an invoice the payee's (lab-2) raised, both through their node's local wallet API (`/api/wallet`, the

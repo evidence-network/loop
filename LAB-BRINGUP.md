@@ -639,7 +639,9 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   leaves a payment hash in the payer's book alone, which step 06 reads as unproven
   (`finality`) and unpaired (`exchange_match`), so do not probe on the live lab
   before a run.
-- Only lab-1 serves a model, so payments go lab-2 to lab-1 (lab-3 to lab-1 too, while its wallet holds 1,000 msat); the wallets cannot ping-pong today.
+- Only lab-1 serves a model, so exchanges go lab-2 to lab-1 and lab-3 to lab-1; lab-1's
+  earnings go back to lab-3 through `scripts/lab_circulate.py` (above), so value circulates
+  between the lab wallets, but lab-2 and lab-3 do not sell.
 - The lab payment guard (Ethan, 2026-11-01) is at most 3,000 msat per payment and
   at most 9,000 msat per direction per UTC day, not lifetime. It matches lab-2's
   wallet policy `daily_budget_msat` 9,000 (`wallet policy`), which the wallet

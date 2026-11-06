@@ -23,7 +23,9 @@ TOPUP_MSAT = 1500   # the receive-side fee took 100 of 2,000 on 2026-11-06; this
 
 
 def circulate(payer, payee, log):
-    """payer (lab-1) returns TOPUP_MSAT to payee (lab-3) when payee holds less than CHARGE_MSAT. Returns the report."""
+    """payer (lab-1) returns TOPUP_MSAT to payee (lab-3) when payee holds less than CHARGE_MSAT. Returns the report:
+    action none (nothing to do), sent (confirmed on both wallets), refused (the guard or a check refused; nothing was
+    sent) or unknown (the payment may have gone out; its reservation stays in the log)."""
     try:
         before = (payee.call("balance") or {}).get("spendable_msat")
         if not isinstance(before, int):
@@ -31,12 +33,17 @@ def circulate(payer, payee, log):
         if before >= CHARGE_MSAT:
             return {"action": "none", "payee": payee.name, "spendable_msat": before}
         out = gl.pay(payer, payee, log, amount_msat=TOPUP_MSAT)
-        after = (payee.call("balance") or {}).get("spendable_msat")
-        return {"action": "sent", "payer": payer.name, "payee": payee.name, "amount_msat": TOPUP_MSAT,
-                "payee_received_msat": out["payee"]["amount_msat"], "spendable_before_msat": before,
-                "spendable_after_msat": after}
-    except (gl.Refused, gl.Unknown) as e:
+    except gl.Refused as e:
         return {"action": "refused", "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}
+    except (gl.Unknown, ValueError) as e:  # ValueError: a 200 with a body that is not JSON, after `send` was issued
+        return {"action": "unknown", "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}
+    try:
+        after = (payee.call("balance") or {}).get("spendable_msat")
+    except (gl.Refused, gl.Unknown, ValueError):
+        after = None  # the payment is confirmed; only the balance read failed
+    return {"action": "sent", "payer": payer.name, "payee": payee.name, "amount_msat": TOPUP_MSAT,
+            "payee_received_msat": out["payee"]["amount_msat"], "spendable_before_msat": before,
+            "spendable_after_msat": after}
 
 
 def main():

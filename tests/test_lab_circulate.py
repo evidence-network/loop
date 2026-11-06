@@ -78,6 +78,26 @@ class Circulate(unittest.TestCase):
         self.assertEqual(r["action"], "refused")
         self.assertIn("9000", r["reason"])
 
+    def test_unknown_outcome_is_not_reported_as_refused(self):
+        a, b = wallets()
+        orig = b.call
+        b.call = lambda c, timeout=30, **k: (_ for _ in ()).throw(gl.Unknown("no answer")) if c == "fund" else orig(c, timeout, **k)
+        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
+
+    def test_a_confirmed_payment_survives_a_failed_balance_read_after_it(self):
+        a, b = wallets()
+        orig, reads = b.call, []
+
+        def call(c, timeout=30, **k):
+            if c == "balance":
+                reads.append(1)
+                if len(reads) > 1:
+                    raise gl.Unknown("no answer")
+            return orig(c, timeout, **k)
+        b.call = call
+        r = lab_circulate.circulate(a, b, self.log)
+        self.assertEqual((r["action"], r["spendable_after_msat"]), ("sent", None))
+
     def test_lab1_too_poor_is_a_refusal(self):
         a, b = wallets(lab1=1000)
         self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "refused")

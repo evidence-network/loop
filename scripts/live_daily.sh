@@ -16,7 +16,7 @@
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
 #   4. one lab/lab.sh exchange, never retried (lab-2 pays lab-1 1,000 msat; lab-3 asks too and pays 1,000 msat
-#      from what lab-2 sent it; with under 1,000 msat it gets 402, loop#384). If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
+#      from what lab-1 returns to it (step 8b); with under 1,000 msat it gets 402, loop#384). If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
 #      the HTTP status seen (loop#321)
 #      Each asker's status goes into the run record (exchange.askers), lab-3's included.
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
@@ -344,8 +344,22 @@ gate_other=$(grep -v -x -e 'mesh step 06: PASS -> NOT_CHECKED' -e '' <<< "$gate_
 # --- 8b. lab-3's next charge ----------------------------------------------------------------------------------------
 # After every step has read the books: a payment now falls before the next run's window. Its outcome is recorded and
 # never changes the run's exit code (loop#384).
-circulate=$(bounded env LAB_DIR="$LAB_DIR" "$CIRCULATE" < /dev/null 2> /dev/null | tail -n 1)
-case "$circulate" in "{"*"}") ;; *) circulate='{"action": "none", "reason": "lab_circulate.py printed no report"}' ;; esac
+circ_out=$(mktemp) || refuse 2 "cannot make a temporary file"
+bounded env LAB_DIR="$LAB_DIR" "$CIRCULATE" < /dev/null > "$circ_out" 2> /dev/null
+circ_rc=$?
+circulate=$(python3 -B - "$circ_out" "$circ_rc" << 'PY'
+import json, sys
+path, rc = sys.argv[1:]
+try:
+    report = json.loads(open(path).read().strip().splitlines()[-1])
+    assert isinstance(report, dict) and isinstance(report.get("action"), str)
+except Exception:
+    # No usable report: a payment may or may not have gone out, so this is not "none".
+    report = {"action": "unknown", "reason": f"lab_circulate.py gave no report (exit {rc})"}
+print(json.dumps(report, sort_keys=True))
+PY
+)
+rm -f "$circ_out"
 log "lab-3 top-up: $circulate"
 
 # --- 9. the pack ----------------------------------------------------------------------------------------------------

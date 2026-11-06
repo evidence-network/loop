@@ -127,6 +127,20 @@ class LiveDailyTest(unittest.TestCase):
         subprocess.run(["tar", "xzf", str(self.lab / "out" / f"{name}.tgz"), "-C", str(dest)], check=True)
         return dest / "findings" / name
 
+    def test_a_top_up_that_fails_or_prints_nonsense_is_recorded_unknown_and_changes_nothing_else(self):
+        for body in ("exit 7", "echo '{bad}'", "echo 'not json'"):
+            circ = Path(self.env["LIVE_CIRCULATE"])
+            circ.write_text(f"#!/usr/bin/env bash\n{body}\n")
+            r = self.run_daily()
+            self.assertEqual(r.returncode, 0, (body, r.stderr))
+            record = json.loads(sorted((self.lab / "out").glob("*.json"))[-1].read_text())
+            self.assertEqual(record["circulate"]["action"], "unknown", body)
+            self.assertEqual(record["steps"]["06-settle"], "PASS")
+            for f in (self.lab / "out").glob("*"):
+                f.unlink()
+            for d in (self.lab / "out").glob("*"):
+                shutil.rmtree(d, ignore_errors=True)
+
     def test_run_writes_findings_pack_and_record(self):
         r = self.run_daily()
         self.assertEqual(r.returncode, 0, r.stderr)
