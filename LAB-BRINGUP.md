@@ -613,7 +613,7 @@ names the one gap outside it (no public ledger, loop#247). `pack` takes
 What a paid exchange costs, measured live on 2026-11-01 (loop#300; lab-2 pays,
 lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
 - The loop sets no amount. `lab.sh exchange` sends one `max_tokens` 8 request from
-  each of lab-2 and lab-3; both have a wallet and both exchanges are paid, but lab-3's
+  each of lab-2 and lab-3; both have a wallet, and an exchange is paid only while the asker's wallet holds the charge. lab-3's
   holds only what lab-2 sent it (2,000 msat on 2026-11-06, of which 1,900 arrived after
   an LSP fee of 100 msat), and lab-3 spends 1,000 msat a day and sells nothing, so it
   needs a top-up every day or two (loop#384). With an empty wallet its charge row goes
