@@ -20,17 +20,27 @@ not part of the loop.
   `entry.sh` allows one start per UTC day (a marker the lab user could delete; it guards against accidents and loops in
   the workflow, not against code the lab user runs), and `start` refuses when `live_daily.sh`'s exchange call sites are
   no longer exactly one. The payment ceiling itself is node side, outside this repository.
-- The pull request is opened with `GITHUB_TOKEN`, which starts no `pull_request` workflow. The job therefore dispatches
-  `nodes`, `reports`, `personal-data`, `leak-lint`, `dco`, `stats` (the `site` check), `harvest-allowlist`,
-  `ecosystem-gate` and `versions` on the `live-harvest/<name>` branch; their checks attach to the pull request's head commit. Each
-  dispatched run judges the range a pull request from that branch would show (merge base with `main` to the branch head; `ecosystem-gate` compares with main's tip, as a pull request does).
-  `--auto-merge` stays off: a human merges.
+- The pull request is opened with a GitHub App installation token (`actions/create-github-app-token`, pinned by commit,
+  minted in the harvest step only, from the environment secrets `HARVEST_APP_CLIENT_ID` and `HARVEST_APP_PRIVATE_KEY`; there
+  is no fallback to `GITHUB_TOKEN`: without the secrets the harvest fails visibly). A `GITHUB_TOKEN` pull request starts no
+  `pull_request` or `pull_request_target` workflow, so the ruleset's required checks (`leak-lint` first) never ran on it
+  (loop#395); a pull request opened by an App does. The App holds `contents: write` and `pull requests: write` (plus the
+  implicit read-only `metadata`), installed on this repository only, and the token is scoped to it. If the workflow were
+  compromised, the token could push new branches and open or edit pull requests here for about an hour, and create releases;
+  it cannot push `main` (the ruleset requires a pull request and checks), change workflows' secrets, settings or rulesets,
+  reach other repositories, or run workflows. `GITHUB_TOKEN` shrinks to `contents: read`, `issues: write` (the failure issue),
+  `actions: write` (dispatching the checks) and the OIDC token. A fork or non-main run cannot mint it: the secrets live in the
+  `live-lab` environment, which accepts deployments from `main` only, and the workflow runs on `schedule` and
+  `workflow_dispatch` from `main` only. `harvest-app-check.yml` (manual, main only) proves the App without a live run. The job still
+  dispatches `nodes`, `reports`, `personal-data`, `leak-lint`, `dco`, `stats`, `harvest-allowlist`, `ecosystem-gate` and
+  `versions` on the `live-harvest/<name>` branch with its own token, until the App's pull request runs are shown to start
+  them alone. `--auto-merge` stays off: a human merges.
 
 ## Settings
 
 Environment `live-lab` (create it first, with deployment branches limited to `main`; a job naming a missing environment
 creates it unprotected) secrets: `LIVE_VM`, `LIVE_PROJECT`, `LIVE_ZONE`, `LIVE_LAB_USER`, `LIVE_WIF_PROVIDER`,
-`LIVE_SERVICE_ACCOUNT`. Repository setting: Actions may create pull requests. The host needs `entry.sh` and
+`LIVE_SERVICE_ACCOUNT`, `HARVEST_APP_CLIENT_ID`, `HARVEST_APP_PRIVATE_KEY`. The host needs `entry.sh` and
 `/etc/loop-live-ci/conf` (`LIVE_HOME`, `LIVE_ENV`, `LAB_DIR`, `LIVE_CI_USER`). Access is through IAP only (port 22 open to
 Google's IAP range, never to the runners' addresses); staged raw files are readable by the lab user and the CI login only installed by the operator.
 

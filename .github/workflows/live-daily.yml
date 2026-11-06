@@ -1,6 +1,7 @@
 # The daily live run (evidence-network/loop#368, replacing the Claude scheduled task of loop#314): start
 # scripts/live_daily.sh on the lab host, harvest its findings with scripts/live_harvest.py into a data-only pull request
-# opened with GITHUB_TOKEN, and fail visibly. See ops/live-ci/README.md for the trust model.
+# opened with a GitHub App installation token (minted in the harvest step only; a GITHUB_TOKEN pull request starts no
+# pull_request or pull_request_target run, so its required checks never ran, loop#395), and fail visibly. See ops/live-ci/README.md for the trust model.
 #
 # Fork exposure: this workflow runs on `schedule` and `workflow_dispatch` only (never pull_request, pull_request_target
 # or push), only from main, and its one job sits in the `live-lab` environment, which accepts deployments from main
@@ -31,8 +32,7 @@ jobs:
     timeout-minutes: 240
     environment: live-lab
     permissions:
-      contents: write # the findings branch and the live-<name> release
-      pull-requests: write
+      contents: read # the App token, not this one, pushes the findings branch and creates the release
       issues: write # the loop-live-failed issue
       actions: write # dispatching the required checks on the findings branch
       id-token: write # the OIDC token for the cloud exchange
@@ -51,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false # the push is authenticated in ci.sh with the App token, never this job's token
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
@@ -99,10 +100,22 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.LIVE_WIF_PROVIDER }}
           service_account: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
+      # No fallback: without the two HARVEST_APP_* environment secrets this step fails and the harvest fails visibly.
+      - name: Mint the harvest App token
+        id: app
+        if: env.LIVE_STATE == 'done'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.HARVEST_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HARVEST_APP_PRIVATE_KEY }}
+          repositories: loop
+          permission-contents: write
+          permission-pull-requests: write
       - name: Harvest into a findings pull request
         if: env.LIVE_STATE == 'done'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          WORKFLOW_TOKEN: ${{ github.token }} # dispatching the checks stays with the job's own token
         run: source ops/live-ci/ci.sh && harvest
       - name: Make the failure visible
         if: failure() || cancelled() || env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'

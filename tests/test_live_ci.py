@@ -16,7 +16,7 @@ ENTRY = ROOT / "ops" / "live-ci" / "entry.sh"
 
 
 class CiSh(unittest.TestCase):
-    def run_ci(self, call, gcloud_exit, gcloud_out, gh_fail=()):
+    def run_ci(self, call, gcloud_exit, gcloud_out, gh_fail=(), token="tok"):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             bin_ = d / "bin"
@@ -28,12 +28,17 @@ class CiSh(unittest.TestCase):
                 f.chmod(0o755)
             env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "env"), "GH_LOG": str(d / "gh.log"),
                    "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u", "GITHUB_RUN_ID": "1",
-                   "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r"}
+                   "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r", "GH_TOKEN": token}
             p = subprocess.run(["bash", "-c", f"source {CI} && {call}"], env=env, capture_output=True, text=True, cwd=d)
             envf = d / "env"
             state = [l for l in envf.read_text().splitlines() if l.startswith("LIVE_STATE=")][-1] if envf.exists() else ""
             ghlog = (d / "gh.log").read_text() if (d / "gh.log").exists() else ""
             return p.returncode, state, ghlog
+
+    def test_harvest_without_the_app_token_fails_and_pushes_nothing(self):
+        code, state, ghlog = self.run_ci("harvest", 0, "name=2026-11-06-live-9 x", token="")
+        self.assertEqual((code, state), (1, "LIVE_STATE=harvest-failed"))
+        self.assertEqual(ghlog, "")
 
     def test_start_states(self):
         self.assertEqual(self.run_ci("start_run", 0, "started day=2026-11-05 pid=1")[:2], (0, "LIVE_STATE=waiting"))
