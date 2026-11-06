@@ -15,8 +15,8 @@
 #   3. the window: this run's start, at its whole minute (the plugin stamps records to the minute), goes into
 #      population/live/population.json as window.from for steps 06-08 and into LOOP_SEALED_SINCE for 05; the file
 #      is restored on exit
-#   4. one lab/lab.sh exchange, never retried (lab-2 pays lab-1 1,000 msat; lab-3 asks too and pays 1,000 msat
-#      from what lab-1 returns to it (step 8b); with under 1,000 msat it gets 402, loop#384). If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
+#   4. one lab/lab.sh exchange, never retried (lab-2 pays lab-1 1,000 msat; lab-3 asks too and pays 1,000 msat,
+#      which lab-1 pays back (step 8b); with no funds it gets 402, loop#384). If lab-2's request does not succeed, step 06 is written here NOT_CHECKED, stating
 #      the HTTP status seen (loop#321)
 #      Each asker's status goes into the run record (exchange.askers), lab-3's included.
 #   5. wait LIVE_CHECKPOINT_WAIT seconds (default 360) for each node's checkpoint over the exchange
@@ -26,9 +26,9 @@
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
-#   8b. scripts/lab_circulate.py: when lab-3's ledger (not its balance, which reads 0) holds less than its next 1,000 msat charge or its request got no 200, lab-1 returns 1,500 msat
-#      to it through the guarded lab-to-lab payment (loop#384); the outcome goes into the record (circulate), and a
-#      refusal changes nothing else
+#   8b. scripts/lab_circulate.py: when lab-3's request was answered 200 (its 1,000 msat charge settled), lab-1 pays lab-3 the
+#      same amount back once through the guarded lab-to-lab payment (loop#384); otherwise nothing is paid. No balance or
+#      ledger decides. The outcome goes into the record (circulate), and a refusal changes nothing else
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
 #      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing. The findings
 #      directory does not stay in the clone (the tgz holds it): a run that stopped before packing leaves it in
@@ -160,7 +160,7 @@ if [ "$DRY" = 1 ]; then
   6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, dispute, loop; $STEPS/10-judge, $STEPS/11-report
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
-  8b. scripts/lab_circulate.py: lab-1 returns 1,500 msat to lab-3 when lab-3's ledger holds under 1,000 msat
+  8b. scripts/lab_circulate.py: when lab-3's request got 200, lab-1 pays lab-3 1,000 msat back, once
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
   exit 0
@@ -254,7 +254,7 @@ case "$paid_status" in
 esac
 [ -z "$refused" ] && [ "$exchange_rc" -ne 0 ] && log "lab.sh exchange exited $exchange_rc after lab-2's paid exchange; the steps judge what was recorded"
 [ -n "$refused" ] && log "$refused; step 06 is NOT_CHECKED, no retry"
-# lab-3 asks too and pays from what lab-1 sends back (step 8b); under 1,000 msat it gets 402. Recorded, never judged.
+# lab-3 asks too and pays 1,000 msat, which lab-1 pays back when it settles (step 8b); with no funds it gets 402. Recorded, never judged.
 lab3_status=$(status_line "$LAB_DIR/exchange/lab-3.headers.txt")
 log "lab-3's request to lab-1 got '${lab3_status:-no HTTP answer}'"
 

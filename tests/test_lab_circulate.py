@@ -1,5 +1,5 @@
-"""scripts/lab_circulate.py (loop#384): lab-1 returns part of its earnings to lab-3 only when lab-3 cannot pay its
-next charge, through the guarded payment, and a refusal is a report, not an error. Wallets here are in-memory stand-ins:
+"""scripts/lab_circulate.py (loop#384): lab-1 pays lab-3 back its charge once, through the guarded payment, only when lab-3's
+request settled (200), and a refusal is a report, not an error. Wallets here are in-memory stand-ins:
 nothing is paid and no network is reached. Run: python3 -B -m unittest discover -s tests -v"""
 import hashlib
 import sys
@@ -47,58 +47,51 @@ class FakeWallet:
         return next((t for t in self.rows if t["payment_hash"] == h and bool(t["inbound"]) == inbound), None)
 
 
-def wallets(lab1=11000, lab3=900):
-    a, b = FakeWallet("lab-1", lab1), FakeWallet("lab-3", 0)  # lab-3's `balance` reads 0 whatever it holds (2026-11-06)
-    b.rows = [{"payment_hash": "f" * 64, "inbound": True, "status": "succeeded", "amount_msat": lab3, "fee_msat": 0}]
+def wallets(lab1=11000):
+    a, b = FakeWallet("lab-1", lab1), FakeWallet("lab-3", 0)
     a.peer, b.peer = b, a
     return a, b
+
+
+OK = "HTTP/1.1 200 OK"
 
 
 class Circulate(unittest.TestCase):
     def setUp(self):
         self.log = Path(tempfile.mkdtemp()) / "payments.jsonl"
 
-    def test_sends_when_lab3_is_under_a_charge(self):
-        a, b = wallets(lab3=900)
-        r = lab_circulate.circulate(a, b, self.log)
-        self.assertEqual((r["action"], r["amount_msat"], r["payee_received_msat"]), ("sent", 1500, 1400))
-        self.assertGreaterEqual(lab_circulate.ledger_msat(b), lab_circulate.CHARGE_MSAT)
-        self.assertEqual([e["direction"] for e in gl.read_log(self.log)], ["lab-1>lab-3"])  # counted against the guard
+    def test_pays_the_charge_back_once_when_lab3_was_answered(self):
+        a, b = wallets()
+        r = lab_circulate.circulate(a, b, self.log, OK)
+        self.assertEqual((r["action"], r["amount_msat"], r["payee_received_msat"]), ("sent", 1000, 900))
+        self.assertEqual([(e["direction"], e["amount_msat"]) for e in gl.read_log(self.log)], [("lab-1>lab-3", 1000)])
         self.assertNotIn("payment_hash", r)
 
-    def test_does_nothing_when_lab3_can_pay_even_though_its_balance_reads_zero(self):
-        a, b = wallets(lab3=2800)
-        self.assertEqual(b.call("balance"), {"spendable_msat": 0})
-        r = lab_circulate.circulate(a, b, self.log)
-        self.assertEqual((r["action"], r["ledger_msat"]), ("none", 2800))
-        self.assertEqual(gl.read_log(self.log), [])
+    def test_pays_nothing_and_records_it_when_the_charge_did_not_settle(self):
+        for status in ("HTTP/1.1 402 Payment Required", "", None):
+            a, b = wallets()
+            r = lab_circulate.circulate(a, b, self.log, status or "")
+            self.assertEqual(r["action"], "skipped")
+            self.assertEqual(gl.read_log(self.log), [])
+            self.assertEqual(b.rows, [])
 
     def test_refusal_is_reported_inside_the_daily_cap(self):
         a, b = wallets()
-        used = [{"day": gl.utc_day(), "direction": "lab-1>lab-3", "payment_hash": "0" * 64, "amount_msat": 1500,
-                 "status": "succeeded"}] * 6  # 6 x 1,500 = 9,000 msat: the direction's day is used up
-        gl.rewrite_log(self.log, used)
-        r = lab_circulate.circulate(a, b, self.log)
+        used = [{"day": gl.utc_day(), "direction": "lab-1>lab-3", "payment_hash": "0" * 64, "amount_msat": 1500, "status": "succeeded"}] * 6
+        gl.rewrite_log(self.log, used)  # 9,000 msat: the direction's day is used up
+        r = lab_circulate.circulate(a, b, self.log, OK)
         self.assertEqual(r["action"], "refused")
         self.assertIn("9000", r["reason"])
 
-    def test_ledger_counts_payments_and_fees_and_ignores_failed_and_pending(self):
-        _, b = wallets(lab3=3800)
-        b.rows += [{"inbound": False, "status": "succeeded", "amount_msat": 1000, "fee_msat": 0},
-                   {"inbound": False, "status": "failed", "amount_msat": 1000, "fee_msat": 0},
-                   {"inbound": True, "status": "pending", "amount_msat": 2000, "fee_msat": 0}]
-        self.assertEqual(lab_circulate.ledger_msat(b), 2800)
+    def test_eight_manual_runs_and_the_daily_one_fit_the_cap(self):
+        a, b = wallets(lab1=100000)
+        for _ in range(9):
+            self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "sent")
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "refused")
 
-    def test_a_list_that_reaches_the_limit_is_not_summed_and_nothing_is_sent(self):
-        a, b = wallets(lab3=100)
-        b.rows = b.rows * lab_circulate.TX_LIMIT
-        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
-        self.assertEqual(gl.read_log(self.log), [])
-
-    def test_a_request_that_got_no_200_tops_up_even_when_the_ledger_looks_enough(self):
-        a, b = wallets(lab3=2800)
-        self.assertEqual(lab_circulate.circulate(a, b, self.log, "HTTP/1.1 200 OK")["action"], "none")
-        self.assertEqual(lab_circulate.circulate(a, b, self.log, "HTTP/1.1 402 Payment Required")["action"], "sent")
+    def test_lab1_too_poor_is_a_refusal(self):
+        a, b = wallets(lab1=1000)
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "refused")
 
     def test_an_error_after_send_is_unknown_not_refused(self):
         a, b = wallets()
@@ -106,32 +99,13 @@ class Circulate(unittest.TestCase):
         def transaction(h, inbound):  # the poll after `send` (Wallet.transaction -> call) answers with an HTTP error
             raise gl.Refused("HTTP 500")
         a.transaction = transaction
-        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "unknown")
         self.assertEqual(len(gl.read_log(self.log)), 1)  # the reservation stays
 
-    def test_unknown_outcome_is_not_reported_as_refused(self):
+    def test_an_unknown_outcome_is_not_reported_as_refused(self):
         a, b = wallets()
-        orig = b.call
-        b.call = lambda c, timeout=30, **k: (_ for _ in ()).throw(gl.Unknown("no answer")) if c == "fund" else orig(c, timeout, **k)
-        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
-
-    def test_a_confirmed_payment_survives_a_failed_balance_read_after_it(self):
-        a, b = wallets()
-        orig, reads = b.call, []
-
-        def call(c, timeout=30, **k):
-            if c == "transactions" and k.get("limit") == lab_circulate.TX_LIMIT:
-                reads.append(1)
-                if len(reads) > 1:
-                    raise gl.Unknown("no answer")
-            return orig(c, timeout, **k)
-        b.call = call
-        r = lab_circulate.circulate(a, b, self.log)
-        self.assertEqual((r["action"], r["ledger_after_msat"]), ("sent", None))
-
-    def test_lab1_too_poor_is_a_refusal(self):
-        a, b = wallets(lab1=1000)
-        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "refused")
+        b.call = lambda c, timeout=30, **k: (_ for _ in ()).throw(gl.Unknown("no answer"))
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "unknown")
 
 
 if __name__ == "__main__":
