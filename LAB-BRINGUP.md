@@ -616,7 +616,7 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   each of lab-2 and lab-3; both have a wallet, and an exchange is paid only while the asker's wallet holds the charge. lab-3's
   holds only what lab-2 sent it (2,000 msat on 2026-11-06, of which 1,900 arrived after
   an LSP fee of 100 msat), and lab-3 spends 1,000 msat a day and sells nothing, so it
-  needs a top-up every day or two (loop#384). With an empty wallet its charge row goes
+  needs a top-up every day or two (loop#384). With less than 1,000 msat its charge row goes
   to `failed` and lab-1 answers 402. For a
   cold peer the amount is lab-1's admission deposit for the model: its own
   deposit, else the node-wide `admission-deposit`, else the minimum payment, and
