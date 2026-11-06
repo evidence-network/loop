@@ -14,6 +14,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import staple_stub  # noqa: E402
+
+staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 REQUIRE_TOOLS = os.environ.get("LOOP_REQUIRE_TOOLS") == "1"  # CI, after the setups: a missing tool is an error, never a skip
 

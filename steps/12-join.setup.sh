@@ -20,6 +20,8 @@ mkdir -p "$bin"
 # binaries and their directory are made go-w here, on every run, the early exit included.
 tighten() { chmod go-w "$bin" "$(dirname "$bin")"; for f in "$bin/capsulectl" "$bin/capsulectl-book"; do [ -e "$f" ] && chmod 755 "$f"; done; return 0; }
 tighten
+# The capsule-cli whose `verify --history` checks the stapled history_card/1 (its own pin, built by its own script).
+"$root/steps/capsule-cli.setup.sh"
 
 pin() { awk -v n="$1" '$1 == n { print $2, $3 }' "$root/versions.lock"; }
 read -r core_repo core_tag <<<"$(pin capsulectl)"

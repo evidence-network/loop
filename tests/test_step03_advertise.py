@@ -13,9 +13,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import staple_stub  # noqa: E402
+
+staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
 FIXTURES = ROOT / "tests" / "fixtures" / "step03"
 POPULATION = FIXTURES / "population" / "rehearsal"
 ALICE_KEY = POPULATION / "keys" / "alice" / "node-key.pem"
@@ -101,9 +106,14 @@ class StepTest(unittest.TestCase):
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")
         # The staple's signature and the checkpoint are outside the assertion: named in detail, never passed.
         self.assertEqual(f["not_checked"], [])
+        # alice's staple is verified (by the stub here); bob's is a stand-in, which the real verifier refuses.
         self.assertEqual(finding.gaps(f["detail"]), [
-            ("the stapled history_card/1 signature (alice, bob) is not verified, as no released history_card/1 "
-             "verifier is callable from the loop", "action-state-group/agent-action-capsule#430")])
+            ("the stapled history_card/1 signature (bob) is not verified: the staple is a rehearsal stand-in, "
+             "not a card the node's book signed", "evidence-network/loop#401")])
+        self.assertIn("The stapled history_card/1 of alice verifies with capsule-cli", f["detail"])
+        self.assertEqual(nodes["alice"]["staple_verify"]["state"], "PASS")
+        self.assertEqual(nodes["bob"]["staple_verify"]["state"], "NOT_CHECKED")
+        self.assertIn("capsule-cli", f["pinned"])
         self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
         self.assertIn("The staple of bob is a rehearsal stand-in.", f["detail"])
         # The bytes fetched back are the bytes in the carrier bundle's HEAD.
@@ -131,6 +141,30 @@ class StepTest(unittest.TestCase):
         self.assertEqual(f["result"], "FAIL")
         self.assertEqual(self.nodes(out)["alice"]["errors"], ["signature does not verify under spki"])
         self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_staple_the_pinned_verifier_refuses_fails_the_node(self):
+        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "fail"}):
+            f, out = self.run_step()
+        self.assertEqual(f["result"], "FAIL")
+        alice = self.nodes(out)["alice"]
+        self.assertEqual(alice["result"], "FAIL")
+        self.assertTrue(any("commitment_signature FAIL" in e for e in alice["errors"]), alice["errors"])
+        self.assertTrue((out / "alice.staple-verify.json").is_file())
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_card_whose_checkpoint_key_cannot_be_checked_stays_not_checked(self):
+        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "nokey"}):
+            f, out = self.run_step()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertTrue(finding.gaps(f["detail"])[0][0].startswith("the stapled history_card/1 signature (alice)"))
+        self.assertNotIn("The stapled history_card/1 of alice verifies", f["detail"])
+
+    def test_no_installed_verifier_leaves_the_signature_not_checked(self):
+        with unittest.mock.patch.dict("os.environ", {"CAPSULE_CLI": str(self.tmp / "absent")}):
+            f, out = self.run_step()
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertIn("steps/capsule-cli.setup.sh", f["detail"])
+        self.assertNotIn("capsule-cli", f["pinned"])
 
     def test_planted_policy_digest_mismatch_fails(self):
         f, out = self.run_step(on_alice(alter_policy))
@@ -233,7 +267,7 @@ class NodeSignedTest(unittest.TestCase):
         self.assertEqual([c["stream"] for c in nodes["alice"]["history_cards"]], ["goose/node"])
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")  # a node without one is signed by the harness as before
         # The Goose rehearsal's commitments are G1's: the finding pins goose-g1, and the key they must be under is kept.
-        self.assertEqual(list(f["pinned"]), ["goose-g1"])
+        self.assertEqual(sorted(f["pinned"]), ["capsule-cli", "goose-g1"])
         self.assertIn("alice.node-key.pub.pem", [x["path"] for x in f["proof"]])
         self.assertEqual((out / "alice.node-key.pub.pem").read_bytes(),
                          (self.keys / "alice" / "node-key.pub.pem").read_bytes())

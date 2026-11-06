@@ -32,6 +32,10 @@ from urllib.parse import parse_qs, urlparse
 os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import staple_stub  # noqa: E402
+
+staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
 FIX = ROOT / "tests" / "fixtures" / "step12"
 REPORTER_FIX = ROOT / "tests" / "reporter" / "fixtures"
 
@@ -129,6 +133,34 @@ class BindingRecordTest(Tmp):
         self.assertEqual(len(errs), 1, errs)
 
 
+class StapleSignatureTest(Tmp):
+    """The pinned capsule-cli's verdict on the stapled history_card/1 (scripts/staple_verify.py), as step 12 takes it."""
+    def node(self):
+        node = Path(self.tmp.name) / "alice"
+        shutil.copytree(FIX / "joined" / "alice", node)
+        return node
+
+    def test_a_verified_staple_adds_no_entry_and_keeps_the_report(self):
+        node = self.node()
+        fails, nc, proof, state = step.staple_signatures(node, "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((fails, nc, proof, state), ([], [], ["staple-verify.json"], "PASS"))
+        self.assertTrue((node / "staple-verify.json").is_file())
+
+    def test_a_refused_staple_is_a_failure(self):
+        with unittest.mock.patch.dict(os.environ, {"STUB_MODE": "fail"}):
+            fails, nc, _, state = step.staple_signatures(self.node(), "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((state, nc), ("FAIL", []))
+        self.assertTrue(fails and all(f.startswith("alice: history_card/1 of ") for f in fails), fails)
+
+    def test_a_property_that_cannot_run_is_a_not_checked_entry(self):
+        with unittest.mock.patch.dict(os.environ, {"STUB_MODE": "nokey"}):
+            fails, nc, _, state = step.staple_signatures(self.node(), "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((fails, state), ([], "NOT_CHECKED"))
+        self.assertEqual([(n["what"], n["issue"]) for n in nc],
+                         [("alice: the stapled history_card/1 signature verifies", "evidence-network/loop#401")])
+        self.assertIn("checkpoint_key NOT_CHECKED", nc[0]["why"])
+
+
 class DoctorBackendTest(Tmp):
     @needs_capsulectl
     def test_rehearsal_population_joins_and_passes_with_revocation_on_the_runs_snapshot(self):
@@ -140,7 +172,7 @@ class DoctorBackendTest(Tmp):
         # on the list the run declares complete (CB-1 option A, agent-action-capsule#495): nothing stays outside.
         self.assertEqual(finding.gaps(r["detail"]), [])
         self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
-        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
+        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go", "capsule-cli"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
                       json.loads((self.out / node / "doctor.json").read_text())["findings"]}
@@ -862,7 +894,7 @@ class PluginToolsTest(Tmp):
         self.assertEqual(self.console.doctor_bodies, [{"probe": True}, {}])
         self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
         self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
-                                 "doctor-after.json"])
+                                 "staple-verify.json", "doctor-after.json"])
         self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), plugin_doc())
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
         self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))

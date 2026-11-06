@@ -23,6 +23,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import staple_stub  # noqa: E402
+
+staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
 FIX = ROOT / "tests" / "fixtures" / "commitment1"
 TWO = FIX / "two-books"
 CLEARED = FIX / "cleared"
