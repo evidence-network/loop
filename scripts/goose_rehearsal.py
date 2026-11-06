@@ -10,7 +10,7 @@ holds `node-key.pem` and `node-key.pub.pem`, taken from the node's own producer 
 a record under the key the node signed it with. A `goose` member names what the run exported and which
 steps read it (`steps`): step 01 the capsule the buyer sealed (`sealed`), step 02 the Evidence Bundle of that record in the buyer's book with
 the checkpoint over it and the test witness's receipt (`book`, loop_book_bundle), step 05 the halves the nodes pushed at the end of the exchange and their final halves, and each receiver's record of the half it holds (`deal`), step 04 the buyer's admissions (`admit`: the GO and the NO as Evidence Bundles, loop_book_bundle, the deal's first half, and the node's refusal to open a deal with the refused peer); steps 04 and 05 check halves with G1's own verify_half, run in the Goose venv named by the `verify` member (python, src, and each node's checkpoint key),  step 03 each node's own signed commitment and
-policy (`commitments`, loop_advertise), steps 07 and 12 the asks the two nodes made of each other (12 judges each node's commitment and the stranger's history_card/1 probe of it) through the mailboxes their
+policy (`commitments`, loop_advertise), steps 07 and 12 the asks the two deal nodes made of each other (12 judges each node's commitment and the stranger's history_card/1 probe of it) through the mailboxes their
 commitments advertise (`asks`, scripts/goose_ask_session.py: each node polls its own mailbox and answers, never serves); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
 
@@ -84,9 +84,9 @@ def main(argv=None):
         print("goose_rehearsal: the scripted run failed; the end of its log:\n" + "\n".join(
             (r.stdout + r.stderr).splitlines()[-30:]), file=sys.stderr)
         return 1
-    # Step 07: the two nodes ask each other through their advertised mailboxes (a second pair of nodes, its own homes).
+    # Step 07: the deal's two nodes (the same homes and keys) ask each other through their advertised mailboxes.
     asks = work / "asks"
-    r = subprocess.run([str(python), "-B", str(HERE / "goose_ask_session.py"), str(asks)], stdin=subprocess.DEVNULL,
+    r = subprocess.run([str(python), "-B", str(HERE / "goose_ask_session.py"), str(asks), str(run)], stdin=subprocess.DEVNULL,
                        capture_output=True, text=True,
                        env={**os.environ, "LOOP_GOOSE_SRC": str(src), "PYTHONDONTWRITEBYTECODE": "1"})
     (work / "ask_session.log").write_text(r.stdout + r.stderr)

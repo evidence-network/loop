@@ -35,6 +35,8 @@ from mcp.client.stdio import stdio_client  # noqa: E402
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
 CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 500, 1  # the deal's price is in USD cents
+# The mailbox the nodes advertise (scripts/goose_ask_session.py serves it for step 07).
+ADVERTISED_RELAY, ANSWERS_WITHIN, POLL_INTERVAL = "wss://relay.rehearsal.example", "PT1M", 30
 # A peer the buyer refuses: two 64-hex keys no node holds.
 STRANGER, STRANGER_CHECKPOINT = "ab" * 32, "cd" * 32
 
@@ -110,7 +112,16 @@ async def run(out, rail_dir):
             await bs.initialize()
             await ss.initialize()
             buyer, seller = Goose(bs, "buyer"), Goose(ss, "seller")
-            b, s = await buyer.call("loop_join"), await seller.call("loop_join")
+            # 12: the join, with the node's default commitment written beside it; the join record's bundle (header disclosed)
+            # is exported for step 12. The asks of step 07 are made by these same nodes (goose_ask_session.py DEAL_RUN).
+            b = await buyer.call("loop_join", commitment_dir=str(out / "buyer" / "joined"))
+            s = await seller.call("loop_join", commitment_dir=str(out / "seller" / "joined"))
+            for me, j in ((buyer, b), (seller, s)):
+                await me.call("loop_book_bundle", book_id="goose/node", record_id=j["record_id"], disclose=True,
+                              out_path=str(out / me.name / "joined" / "join-record.bundle.json"))
+            (out / "joined.json").write_text(json.dumps(
+                {"buyer": {"key_id": b["key_id"], "record_id": b["record_id"]},
+                 "seller": {"key_id": s["key_id"], "record_id": s["record_id"]}}, sort_keys=True))
             await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
                              decision="GO", reason="known inference seller")
             await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
@@ -180,7 +191,9 @@ async def run(out, rail_dir):
                 (out / f"{node.name}.key").write_text(key["key_id"])
                 (out / f"{node.name}.checkpoint-key").write_text(key["checkpoint_key_id"])
                 # 03: the node's own signed commitment and policy (loop_advertise), laid out for nodes/commitments/.
-                await node.call("loop_advertise", out_dir=str(out / "commitments"))
+                # It advertises a Nostr mailbox, through which step 07 asks the node.
+                await node.call("loop_advertise", out_dir=str(out / "commitments"), relays=ADVERTISED_RELAY,
+                                answers_within=ANSWERS_WITHIN, poll_interval=POLL_INTERVAL)
             # 04: the NO with the book up to the end of the session, so no record sealed after it cites it.
             await buyer.call("loop_book_bundle", book_id="goose/node", record_id=refused["record_id"], disclose=True,
                              out_path=str(out / "admission-no-disclosed.json"))

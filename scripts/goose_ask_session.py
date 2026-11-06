@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Step 07 on the Goose rehearsal: two G1 nodes ask each other through the mailbox their commitments advertise (loop#330).
+"""Step 07 on the Goose rehearsal: the deal's two G1 nodes ask each other through the mailbox their commitments advertise (loop#330, loop#399).
 
-Usage (in the Goose venv, which has `mcp` and `websockets`): goose_ask_session.py OUT
+Usage (in the Goose venv, which has `mcp` and `websockets`): goose_ask_session.py OUT [DEAL_RUN]
 
-Two loop_server.py processes (a buyer and a seller), spoken to over MCP stdio as Goose speaks to them, advertise a
-Nostr mailbox with loop_advertise and ask each other, three asks each way, with the answering side polling its
+With DEAL_RUN (the rehearsal), the nodes are the deal's parties: scripts/goose_session.py ran steps 01-06 on the homes
+DEAL_RUN/<node> and wrote the commitments they advertise (a mailbox) to DEAL_RUN/commitments, and the same two
+loop_server.py processes are started again on those homes. Without it, two fresh nodes join and advertise here.
+
+Two loop_server.py processes (a buyer and a seller), spoken to over MCP stdio as Goose speaks to them, ask each other, three asks each way, with the answering side polling its
 mailbox (loop_mailbox_poll), never serving:
 
   exchange        an exchange request about the asker's own join record: the asker is a stranger on a mailbox
@@ -234,10 +237,17 @@ async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=AD
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: goose_ask_session.py OUT")
+    if len(sys.argv) not in (2, 3):
+        raise SystemExit("usage: goose_ask_session.py OUT [DEAL_RUN]")
     relay = Relay()
     try:
-        asyncio.run(run(Path(sys.argv[1]), relay))
+        if len(sys.argv) == 3:  # the deal's parties: their homes, the commitments they advertised, their joins
+            deal = Path(sys.argv[2])
+            joined = json.loads((deal / "joined.json").read_text())
+            asyncio.run(run(Path(sys.argv[1]), relay, homes=deal, published=deal / "commitments", joined=joined))
+            for name in NAMES:  # step 12 reads each node's join (its commitment, the join record's bundle) beside the asks
+                shutil.copytree(deal / name / "joined", Path(sys.argv[1]) / name / "joined")
+        else:
+            asyncio.run(run(Path(sys.argv[1]), relay))
     finally:
         relay.close()

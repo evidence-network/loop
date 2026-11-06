@@ -649,10 +649,22 @@ class GooseRehearsalTest(unittest.TestCase):
         for asker, asked in (("buyer", "seller"), ("seller", "buyer")):
             self.assertIn(f"{asker} asked {asked}: exchange refusal, exchange_late recorded_absence, "
                           "history_card artifact", found["detail"])
-        asks = self.work / "asks"
+        # the askers are the deal's parties (loop#399): the same homes and keys that steps 01-06 read, and the request
+        # was read as sealed before it was sent
+        self.assertIn("the askers are the deal's parties", found["detail"])
         for who in ("buyer", "seller"):
-            node_dir = next((asks / "run" / who).glob("shelf.db"))
-            self.assertTrue(node_dir.is_file())
+            self.assertTrue((self.work / "run" / who / "shelf.db").is_file())
+            self.assertFalse((self.work / "asks" / "run").exists())
+        self.assertTrue(json.loads((out / "first-answered.json").read_text())["sealed"])
+
+    def test_step_07_fails_askers_that_are_not_the_deals_parties(self):
+        def other_nodes(asks):
+            nodes = json.loads((asks / "nodes.json").read_text())
+            nodes["buyer"]["key_id"] = "0" * 64
+            (asks / "nodes.json").write_text(json.dumps(nodes))
+        found = self._judged(other_nodes)
+        self.assertEqual(found["result"], "FAIL")
+        self.assertIn("the askers are not the deal's parties", found["detail"])
 
     def _judged(self, mutate):
         """Step 07 on a copy of the asks with `mutate(copy)` applied: the finding."""

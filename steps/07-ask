@@ -714,6 +714,15 @@ def run_goose(pop, out, tmp):
     not_checked = []
     failures, answered, proof, lines = judge_run(out, {n: v["key_id"] for n, v in nodes.items()}, capsulectl, tmp,
                                                  not_checked, mailbox=True)
+    deal = pop["goose"].get("run")  # the rehearsal's deal (steps 01-06): are its parties the askers?
+    parties = (load(Path(deal) / "deal.json") if pop["population"] != "live" and deal
+               and (Path(deal) / "deal.json").is_file() else None)
+    if parties:
+        if {n: v["key_id"] for n, v in nodes.items()} == {"buyer": parties["buyer"], "seller": parties["seller"]}:
+            lines.append(f"the askers are the deal's parties (deal {parties['deal_id'][:16]}), the nodes of steps 01-06")
+        else:
+            failures.append("the askers are not the deal's parties: their keys differ from the buyer and seller "
+                            "of the deal steps 01-06 read")
     return failures, not_checked, answered, proof, lines
 
 
@@ -1715,9 +1724,10 @@ def conclude(out, population, failures, not_checked, answered, proof, lines, sta
     write_json(out / "first-answered.json",
                {"answered_at": stamp(first[0]) if first else None,
                 "ask": first[1] if first else None,
-                # whether this step read each request sealed in the asker's book: the book backend does; the
-                # reporter backend does when every ask has its sealed record read from the asker's ledger
-                "sealed": which == "book" or sealed_all(out)})
+                # whether this step read each request sealed in the asker's book: the book and goose backends do
+                # (judge_ask fails an ask whose request was not sealed before it was sent); the reporter backend
+                # does when every ask has its sealed record read from the asker's ledger
+                "sealed": which in ("book", "goose") or sealed_all(out)})
     proof = ["first-answered.json", *proof]
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     detail = f"ask backend: {which}. " + "; ".join(failures or lines) + "."
