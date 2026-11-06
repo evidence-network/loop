@@ -9,7 +9,7 @@ mesh rehearsal's mock rail paying the deal, into DIR/run and DIR/population/rail
 holds `node-key.pem` and `node-key.pub.pem`, taken from the node's own producer key, so a step checks
 a record under the key the node signed it with. A `goose` member names what the run exported and which
 steps read it (`steps`): step 01 the capsule the buyer sealed (`sealed`), step 02 the Evidence Bundle of that record in the buyer's book with
-the checkpoint over it and the test witness's receipt (`book`, loop_book_bundle), step 03 each node's own signed commitment and
+the checkpoint over it and the test witness's receipt (`book`, loop_book_bundle), step 05 the halves the nodes pushed at the end of the exchange and their final halves, and each receiver's record of the half it holds (`deal`; G1's verify_half judges the halves), step 04 the buyer's admissions (`admit`: the GO and the NO as Evidence Bundles, loop_book_bundle, and the deal's first half), step 03 each node's own signed commitment and
 policy (`commitments`, loop_advertise), step 07 the asks the two nodes made of each other through the mailboxes their
 commitments advertise (`asks`, scripts/goose_ask_session.py: each node polls its own mailbox and answers, never serves); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
@@ -31,7 +31,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["01", "02", "03", "06", "07"]
+STEPS = ["01", "02", "03", "04", "05", "06", "07"]
 NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.
@@ -135,8 +135,14 @@ def main(argv=None):
              "witnesses": str(run / "witnesses.json"), "checkpoint_key": (run / "buyer.checkpoint-key").read_text().strip(),
              "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip() for n in ("buyer", "seller")}}
             if bundle.is_file() else None)
+    admit = ({"node": "buyer", "peer": "seller", "go": str(run / "admission-go-disclosed.json"),
+              "no": str(run / "admission-no-disclosed.json"), "half": str(run / "buyer-half.json")})
+    names = [f"{who}-{kind}" for who in ("buyer", "seller") for kind in ("exchange-half", "final-half", "held-half-bundle")]
+    deal_inputs = {"python": str(python), "src": str(src),
+                   "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip() for n in ("buyer", "seller")},
+                   **{n: str(run / f"{n}.json") for n in names}}
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}, **({"book": book} if book else {}),
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}, **({"book": book} if book else {}), "admit": admit, "deal": deal_inputs,
                                              "commitments": commitments,
                                              "asks": {"run": str(asks), "log": str(work / "ask_session.log")}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

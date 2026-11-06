@@ -35,6 +35,8 @@ from mcp.client.stdio import stdio_client  # noqa: E402
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
 CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 500, 1  # the deal's price is in USD cents
+# A peer the buyer refuses: two 64-hex keys no node holds.
+STRANGER, STRANGER_CHECKPOINT = "ab" * 32, "cd" * 32
 
 
 class Goose:
@@ -109,6 +111,9 @@ async def run(out, rail_dir):
                              decision="GO", reason="known inference seller")
             await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
                               decision="GO", reason="paying customer")
+            # 04: the buyer also refuses a stranger (NO). No deal opens with it, and no record cites that NO.
+            refused = await buyer.call("loop_admit", peer_key_id=STRANGER, checkpoint_key_id=STRANGER_CHECKPOINT,
+                                       decision="NO", reason="unknown seller")
             # 01: the buyer seals a model call, an effect-boundary record step 01 reads. Provider and model are what
             # the step tells the producer (steps/01-seal MODEL); model_attestation must carry them back.
             sealed = await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
@@ -121,6 +126,15 @@ async def run(out, rail_dir):
                                       price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock",
                                       asked="buy 1k tokens of inference from the seller")
             deal_id = opened["deal_id"]
+            # 04: the buyer's admission and the deal's opening as one bundle, and the NO with the book up to its checkpoint.
+            # The headers (the decision and what each record cites) travel only when disclosed, so the judged bundles
+            # disclose the root: the opening, and the NO.
+            await buyer.call("loop_deal_bundle", deal_id=deal_id, out_path=str(out / "admission-go-bundle.json"))
+            opening = json.loads((out / "admission-go-bundle.json").read_text())["root"]
+            await buyer.call("loop_book_bundle", book_id="goose/node", record_id=opening, disclose=True,
+                             out_path=str(out / "admission-go-disclosed.json"))
+            await buyer.call("loop_book_bundle", book_id="goose/node", record_id=refused["record_id"], disclose=True,
+                             out_path=str(out / "admission-no-disclosed.json"))
             await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "buyer-half.json"))
             await seller.call("loop_deal_respond", request_file=str(out / "buyer-half.json"),
                               asked="sell 1k tokens of inference at the listed price")
@@ -133,7 +147,10 @@ async def run(out, rail_dir):
             for me in (buyer, seller):
                 await me.call("loop_deal_end_exchange", deal_id=deal_id, out_path=str(out / f"{me.name}-exchange-half.json"))
             for me, peer in ((buyer, seller), (seller, buyer)):
-                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
+                held = await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
+                # 05: the record the receiver sealed for the half it holds, with the request it cites disclosed.
+                await peer.call("loop_book_bundle", book_id="goose/node", record_id=held["recorded"], disclose=True,
+                                out_path=str(out / f"{peer.name}-held-half-bundle.json"))
             await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
             await seller.call("loop_deal_close", deal_id=deal_id, status="received")
             # 06: the buyer opens its pay record's reference commitment, and each node signs its own count of the

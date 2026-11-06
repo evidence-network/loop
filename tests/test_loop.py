@@ -139,8 +139,8 @@ class LoopTest(unittest.TestCase):
                                                  str(out)]).returncode, 0)
 
     GOOSE_OWNERS = {"01": "evidence-network/loop#330", "02": "evidence-network/loop#330",
-                    "03": "evidence-network/loop#330", "04": "action-state-group/evidencebook#302",
-                    "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",
+                    "03": "evidence-network/loop#330", "04": "evidence-network/loop#330",
+                    "05": "evidence-network/loop#330", "06": "action-state-group/capsule-emit#408",
                     "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
                     "09": "action-state-group/capsule-emit#393", "10": "evidence-network/loop#315",
                     "11": "evidence-network/loop#315", "12": "evidence-network/loop#315"}
@@ -156,7 +156,7 @@ class LoopTest(unittest.TestCase):
         run = json.loads((out / "run.json").read_text())
         self.assertEqual((run["ecosystem"], len(run["steps"])), ("goose", 12))
         owners = {n: self.finding(f"{n}-{d}", out)["not_checked"][0]["issue"] for n, d in self.GOOSE_NAMES.items()}
-        # steps 01, 02, 06 and 07 have a Goose input: without the tools they wait on them, not on G1's or the live rail's work
+        # steps 01, 02, 04, 05, 06 and 07 have a Goose input: without the tools they wait on them, not on G1's or the live rail's work
         self.assertEqual(owners, {**self.GOOSE_OWNERS, "06": "evidence-network/loop#330", "07": "evidence-network/loop#330"})
         six = self.finding("06-settle", out)
         self.assertIn("Goose tools are not installed", six["detail"])
@@ -178,12 +178,13 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(six["result"], "FAIL")
         self.assertEqual(self.finding("01-seal", out)["result"], "FAIL")
         self.assertIn("planted: the deal failed", (out / "06-settle" / "goose-rehearsal.log").read_text())
-        self.assertEqual(self.finding("05-deal", out)["result"], "NOT_CHECKED")
+        self.assertEqual(self.finding("05-deal", out)["result"], "FAIL")  # 05 has a Goose input now
+        self.assertEqual(self.finding("09-dispute", out)["result"], "NOT_CHECKED")  # 09 has none yet
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
                          "run steps/goose.setup.sh and steps/01-seal.setup.sh")
-    def test_goose_with_its_tools_passes_steps_01_03_06_and_07_and_02_when_its_driver_is_there_and_keeps_every_other_row_not_checked(self):
+    def test_goose_with_its_tools_passes_steps_01_03_04_05_06_and_07_and_02_when_its_driver_is_there_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -194,6 +195,8 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(results.pop("03"), "PASS")
         # 02 judges the book bundle the node wrote, with the step 02 driver, capsulectl and openssl; without them it says so
         self.assertIn(results.pop("02"), ("PASS", "NOT_CHECKED"))
+        self.assertEqual(results.pop("04"), "PASS")  # on the admissions and the deal opening the buyer sealed
+        self.assertEqual(results.pop("05"), "PASS")  # on the halves the nodes pushed and the records that hold them
         self.assertEqual(results.pop("06"), "PASS")  # on the buyer's pay record and each node's own signed count
         self.assertEqual(results.pop("07"), "PASS")  # on the asks the nodes answered by polling their mailboxes
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
