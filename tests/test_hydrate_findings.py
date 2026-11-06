@@ -147,6 +147,22 @@ class HydrateTest(unittest.TestCase):
         # No findings/goose directory is nothing to do.
         self.assertIsNone(hydrate_findings.hydrate(self.findings / "nowhere", goose=True))
 
+    def test_a_goose_failure_never_fails_the_mesh_hydration(self):
+        gname = "2026-11-01-live"
+        make_run(self.findings, f"goose/{gname}")
+        for p in (self.findings / "goose" / gname).glob("*/counts.json"):
+            p.unlink()
+        (self.findings / "goose" / gname / "proof-archive.json").write_text(json.dumps(
+            {"asset": f"{gname}.tgz", "sha256": "0" * 64, "url": f"https://127.0.0.1:1/{gname}.tgz"}))  # cannot be fetched
+        # main() without --archive-file hydrates the Mesh run (not here: its archive needs the network too) and then Goose.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import hydrate_findings
+        hydrate_findings.download = lambda url, dest: (_ for _ in ()).throw(hydrate_findings.Refuse(1, "404"))
+        shutil.rmtree(self.findings / NAME)  # no Mesh digest-only run: only the Goose failure is in play
+        make_run(self.findings, NAME)
+        self.assertEqual(hydrate_findings.main([str(self.findings)]), 0)
+        self.assertTrue(finding.digest_only(self.findings / "goose" / gname))  # left as committed
+
 
 if __name__ == "__main__":
     unittest.main()

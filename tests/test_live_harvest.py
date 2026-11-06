@@ -197,10 +197,43 @@ class HarvestTest(unittest.TestCase):
         self.assertEqual(self.harvest().returncode, 6)
         self.assertEqual(self.gh_calls(), [])
 
-    def test_a_record_that_names_a_missing_goose_directory_is_refused(self):
+    def test_a_record_that_names_a_missing_goose_directory_costs_only_the_goose_part(self):
         self.make_run(goose=GOOSE_RAN, goose_in_tgz=False)
-        self.assertEqual(self.harvest().returncode, 6)
-        self.assertEqual(self.gh_calls(), [])
+        self.assert_mesh_only("holds none")
+
+    def assert_mesh_only(self, why):
+        """The harvest still opened the Mesh pull request and moved the baseline; the Goose part was left out and says why."""
+        r = self.harvest()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(why, r.stderr)
+        self.assertEqual(git("diff", "--name-only", "main", f"live-harvest/{NAME}", "--", "findings/goose", cwd=self.tmp / "origin.git"), "")
+        self.assertEqual(json.loads(self.show("baseline/live.json"))["ecosystems"]["mesh"]["findings"], f"findings/{NAME}")
+        self.assertIn(f"live-{NAME}", " ".join(c for c in self.gh_calls() if c.startswith("release create")))
+        self.assertIn("NOT harvested", self.log.with_suffix(".log.body").read_text())
+
+    def test_a_goose_name_already_on_main_costs_only_the_goose_part(self):
+        # A manual `goose.sh run` (unpaid) landed findings/goose/<date>-live first.
+        src = self.tmp / "src"
+        (src / "findings" / "goose" / GOOSE).mkdir(parents=True)
+        (src / "findings" / "goose" / GOOSE / "run.json").write_text("{}\n")
+        git("add", ".", cwd=src)
+        git("commit", "-q", "-m", "manual goose run", cwd=src)
+        git("push", "-q", str(self.tmp / "origin.git"), "main", cwd=src)
+        git("pull", "-q", "origin", "main", cwd=self.clone)
+        self.make_run(goose=GOOSE_RAN)
+        self.assert_mesh_only("already on origin/main")
+
+    def test_goose_findings_that_fail_the_check_cost_only_the_goose_part(self):
+        self.make_run(goose=GOOSE_RAN)
+        # corrupt the Goose finding inside the tgz: rebuild it with a malformed 06-settle/finding.json
+        pack = self.tmp / "pack" / "findings" / "goose" / GOOSE / "06-settle" / "finding.json"
+        pack.write_text("{")
+        tgz = self.tmp / "run" / f"{NAME}.tgz"
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(self.tmp / "pack" / "findings" / NAME, arcname=f"findings/{NAME}")
+            t.add(self.tmp / "pack" / "findings" / "goose" / GOOSE, arcname=f"findings/goose/{GOOSE}")
+        (self.tmp / "run" / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
+        self.assert_mesh_only("refused")
 
     def test_a_goose_name_that_is_not_this_runs_day_is_refused(self):
         self.make_run(goose={**GOOSE_RAN, "name": "2026-10-31-live"})

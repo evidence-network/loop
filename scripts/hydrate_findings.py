@@ -94,11 +94,17 @@ def main(argv):
     try:
         # --archive-file is one run's archive: it completes the Mesh run (the original use), never a Goose one.
         runs = [hydrate(args.findings, args.archive_file)]
-        if not args.archive_file:
-            runs.append(hydrate(args.findings, goose=True))
     except Refuse as r:
         print(f"hydrate_findings: {r}", file=sys.stderr)
         return r.code
+    if not args.archive_file:
+        # The Goose run (loop#363) is the page's second column: its download, digest or check failing must not stop the
+        # Mesh site (this step's non-zero exit fails stats.yml, which then deploys nothing), so it is logged and left as
+        # committed (digest-only, which the status page reads).
+        try:
+            runs.append(hydrate(args.findings, goose=True))
+        except (Refuse, OSError, ValueError, KeyError, TypeError) as r:
+            print(f"::warning::hydrate_findings: Goose run left digest-only: {r}", file=sys.stderr)
     done = [str(r) for r in runs if r]
     print(f"hydrate_findings: hydrated {', '.join(done)}" if done else "hydrate_findings: nothing to hydrate")
     return 0

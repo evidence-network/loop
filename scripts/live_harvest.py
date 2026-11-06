@@ -157,8 +157,10 @@ def unpack(name, files, into, goose=None):
     digest = (files / f"{name}.tgz.sha256").read_text().split()
     if not digest or digest[0] != sha256(want):
         raise Refuse(5, f"{name}.tgz does not match {name}.tgz.sha256")
-    dirs = extract(want, f"{name}.tgz", [f"findings/{name}"] + ([f"findings/goose/{goose}"] if goose else []), into)
-    return dirs[0], (dirs[1] if goose else None)
+    # The Goose directory is optional: a record that names it while the tgz lacks it costs the Goose part only.
+    mesh = extract(want, f"{name}.tgz", [f"findings/{name}"], into, [f"findings/goose/{goose}"] if goose else ())[0]
+    gdir = into / "findings" / "goose" / goose if goose else None
+    return mesh, (gdir if gdir is not None and gdir.is_dir() else None)
 
 
 def goose_name(record):
@@ -250,8 +252,16 @@ def harvest(args, work, wt):
     if not (isinstance(record, dict) and isinstance(record.get("exchange"), dict) and isinstance(record.get("steps"), dict)
             and record.get("name") == name):
         raise Refuse(6, f"{name}.json is not a run record")
-    gname = goose_name(record)
+    # A Goose problem (loop#363) costs the Goose part of this harvest only, never the Mesh findings or the baseline: the
+    # reason goes in the pull request. A privacy hit anywhere in the tgz still refuses everything, since the whole tgz is published.
+    goose_skipped = None
+    try:
+        gname = goose_name(record)
+    except Refuse as r:
+        gname, goose_skipped = None, str(r)
     full, goose_full = unpack(name, files, work / "unpacked", gname)
+    if gname and goose_full is None:
+        gname, goose_skipped = None, f"the run record names findings/goose/{gname}, but the tgz holds none"
     paid = record["exchange"].get("paid") is True
     digest = sha256(files / f"{name}.tgz")
 
@@ -262,12 +272,18 @@ def harvest(args, work, wt):
     run("git", "worktree", "add", "-q", "--detach", str(wt), "origin/main", cwd=ROOT)
     privacy(full, f"{name} as unpacked", wt)
     if goose_full is not None:
-        privacy(goose_full, f"findings/goose/{gname} as unpacked", wt)
+        try:
+            privacy(goose_full, f"findings/goose/{gname} as unpacked", wt)
+        except Refuse as r:
+            if r.code == 7:  # the whole tgz is published, so a privacy hit anywhere in it refuses everything
+                raise
+            gname, goose_skipped = None, str(r)
     privacy(files / f"{name}.json", f"{name}.json", wt, findings=False)  # it goes on the release too
     if (wt / "findings" / name).exists():
         raise Refuse(4, f"findings/{name} is already on origin/main")
     if gname and (wt / "findings" / "goose" / gname).exists():
-        raise Refuse(4, f"findings/goose/{gname} is already on origin/main")
+        # e.g. a manual `goose.sh run` landed the same day's name first (its -live dir is unpaid): keep the Mesh harvest
+        gname, goose_skipped = None, f"findings/goose/{gname} is already on origin/main"
     tag = f"live-{name}"
     if run("gh", "release", "view", tag, "--repo", repo, check=False).returncode == 0:
         raise Refuse(4, f"release {tag} exists on {repo}: remove it by hand if no pull request holds it")
@@ -278,8 +294,15 @@ def harvest(args, work, wt):
     if gname:
         goose_tgz, goose_digest = goose_archive(goose_full, gname, files)
         goose_url = f"https://github.com/{repo}/releases/download/{tag}/{gname}.tgz"
-        slim(goose_full, wt / "findings" / "goose" / gname, gname, goose_url, goose_digest)
-        privacy(wt / "findings" / "goose" / gname, f"findings/goose/{gname} as committed", wt)
+        gdest = wt / "findings" / "goose" / gname
+        try:
+            slim(goose_full, gdest, gname, goose_url, goose_digest)
+            privacy(gdest, f"findings/goose/{gname} as committed", wt)
+        except Refuse as r:
+            if r.code == 7:  # a privacy hit is never traded away
+                raise
+            shutil.rmtree(gdest, ignore_errors=True)
+            gname, goose_skipped = None, str(r)
 
     # The worktree's own gate: its ROOT is the worktree, so the findings and the versions.lock are origin/main's.
     gate_cmd = [sys.executable, "-B", str(wt / "scripts" / "ecosystem_gate.py"), "update", "--ecosystem", "mesh",
@@ -323,6 +346,7 @@ def harvest(args, work, wt):
         f"Data-only harvest of live run `{name}` (loop#309).\n\n"
         f"- Steps: {steps}\n- Gate: {verdict}\n- Proof bytes: [{name}.tgz]({url}) (sha256 `{digest}`); "
         f"`findings/{name}/proof-archive.json` pins it, and `steps/finding.py check` accepts the digest-only layout.\n"
+        + (f"- Goose run (loop#363): NOT harvested: {goose_skipped}. The Mesh findings are unaffected.\n" if goose_skipped else "")
         + (f"- Goose run (loop#363): `findings/goose/{gname}`, step 06 {record['goose'].get('step_06')}; its proof bytes are the release asset "
            f"[{gname}.tgz]({goose_url}) (sha256 `{goose_digest}`), and no baseline moves for it.\n" if gname else "")
         + "- The diff holds only `findings/<date>-live-<N>/`, `findings/goose/<date>-live/` and `baseline/live.json` (`harvest-allowlist`). "
@@ -331,6 +355,8 @@ def harvest(args, work, wt):
     pr = run("gh", "pr", "create", "--repo", repo, "--base", "main", "--head", branch, "--title", f"data: live harvest {name}",
              "--body-file", str(body))
     print(pr.stdout.strip())
+    if goose_skipped:
+        print(f"live_harvest: the Goose part was left out: {goose_skipped}", file=sys.stderr)
     if args.auto_merge:
         if not moved:
             raise Refuse(1, "not arming auto-merge: the baseline did not move")
