@@ -110,6 +110,43 @@ class HydrateTest(unittest.TestCase):
         shutil.rmtree(self.findings)
         self.assertEqual(self.hydrate().returncode, 0)
 
+    def test_a_mesh_tgz_that_also_carries_the_goose_directory_hydrates(self):
+        gname = "2026-11-01-live"
+        make_run(self.full, f"goose/{gname}")
+        with tarfile.open(self.tgz, "w:gz") as t:
+            t.add(self.full / NAME, arcname=f"findings/{NAME}")
+            t.add(self.full / "goose" / gname, arcname=f"findings/goose/{gname}")
+        self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        r = self.hydrate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.findings / NAME / "04-admit" / "counts.json").is_file())
+        self.assertFalse((self.findings / "goose").exists())  # the Goose directory is not unpacked into the repository
+
+    def test_the_newest_goose_live_run_is_hydrated_from_its_own_asset(self):
+        gname = "2026-11-01-live"
+        make_run(self.full, f"goose/{gname}")
+        gtgz = self.tmp / f"{gname}.tgz"
+        with tarfile.open(gtgz, "w:gz") as t:
+            t.add(self.full / "goose" / gname, arcname=f"findings/goose/{gname}")
+        make_run(self.findings, f"goose/{gname}")
+        for p in (self.findings / "goose" / gname).glob("*/counts.json"):
+            p.unlink()
+        (self.findings / "goose" / gname / "proof-archive.json").write_text(json.dumps(
+            {"asset": f"{gname}.tgz", "sha256": hashlib.sha256(gtgz.read_bytes()).hexdigest(),
+             "url": f"https://example.org/releases/download/live-{NAME}/{gname}.tgz"}))
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import hydrate_findings
+        fetched = []
+        hydrate_findings.download = lambda url, dest: (fetched.append(url), shutil.copy2(gtgz, dest))
+        self.assertTrue(finding.digest_only(self.findings / "goose" / gname))
+        run = hydrate_findings.hydrate(self.findings, goose=True)
+        self.assertEqual(run, self.findings / "goose" / gname)
+        self.assertEqual(fetched, [f"https://example.org/releases/download/live-{NAME}/{gname}.tgz"])
+        self.assertEqual(finding.check(run), [])
+        # No findings/goose directory is nothing to do.
+        self.assertIsNone(hydrate_findings.hydrate(self.findings / "nowhere", goose=True))
+
 
 if __name__ == "__main__":
     unittest.main()

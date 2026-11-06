@@ -59,6 +59,30 @@ class DriverArgumentsTest(unittest.TestCase):
             self.assertIn("LIVE_RUN exists", r.stderr)
             self.assertTrue((Path(lab) / "run" / "LIVE_RUN").is_file())  # the other run's lock is not ours to remove
 
+    def test_under_live_daily_run_uses_the_lock_that_run_holds(self):
+        with tempfile.TemporaryDirectory() as lab:
+            python = Path(lab) / "goose" / "venv" / "bin" / "python"
+            python.parent.mkdir(parents=True)
+            python.write_text("#!/bin/sh\n")
+            python.chmod(0o755)
+            verifier = Path(lab) / "01-seal" / "bin" / "cross_language"
+            verifier.parent.mkdir(parents=True)
+            verifier.write_text("#!/bin/sh\n")
+            verifier.chmod(0o755)
+            (Path(lab) / "goose" / "ids.json").write_text("{}")
+            # GOOSE_IN_LIVE_DAILY without the lock live_daily.sh holds is refused (nobody holds the lab).
+            r = goose("run", LAB_DIR=lab, LOOP_TOOLS=lab, GOOSE_IN_LIVE_DAILY="1")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("is not held", r.stderr)
+            # With the lock held it goes on to the session (which this stand-in python does not write) and leaves the lock.
+            (Path(lab) / "run").mkdir()
+            (Path(lab) / "run" / "LIVE_RUN").write_text("held")
+            r = goose("run", LAB_DIR=lab, LOOP_TOOLS=lab, GOOSE_IN_LIVE_DAILY="1")
+            self.assertEqual(r.returncode, 2)
+            self.assertNotIn("LIVE_RUN exists", r.stderr)
+            self.assertIn("session", r.stderr)
+            self.assertTrue((Path(lab) / "run" / "LIVE_RUN").is_file())  # live_daily.sh's lock, not ours to remove
+
 
 class ReporterListTest(unittest.TestCase):
     def test_the_rehearsal_confidence_list_leaves_out_nodes_the_mesh_reporter_does_not_ask(self):

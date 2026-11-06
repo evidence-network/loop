@@ -22,7 +22,7 @@ are the release asset `live-<name>` / `<name>.tgz`, pinned by the sha256 in `pro
 check` accepts a missing proof file there (a present one must still match its digest). To check every byte, download the
 asset, compare its sha256 to `proof-archive.json`, and unpack it from the repository root (`tar xzf <name>.tgz`) over
 `findings/<name>/`, then run `python3 steps/finding.py check findings/<name>`. The `harvest-allowlist` job keeps the pull
-request data only (added `findings/<date>-live-<N>/` files and `baseline/live.json`). A human merges it; `--auto-merge`
+request data only (added `findings/<date>-live-<N>/` files, `findings/goose/<date>-live/` files and `baseline/live.json`). The daily run's Goose pass (loop#363) rides in the same tarball: its findings are committed digest-only like the Mesh ones, its proof bytes are the release asset `<date>-live.tgz`, `hydrate_findings.py` completes it for the site build, and no Goose baseline moves. A human merges it; `--auto-merge`
 stays off until Steven approves it, and then `harvest-allowlist` goes into the required checks.
 
 The site and status builds (`.github/workflows/stats.yml`) run `scripts/hydrate_findings.py findings` first (loop#336): for

@@ -46,8 +46,13 @@ def download(url, dest):
         raise Refuse(1, f"downloading {url} failed: {e}")
 
 
-def hydrate(findings, archive_file=None):
-    """The run directory hydrated, or None when the newest live run is absent or already complete."""
+def hydrate(findings, archive_file=None, goose=False):
+    """The run directory hydrated, or None when the newest live run is absent or already complete. goose: the newest live
+    run under findings/goose/ (loop#363), whose archive holds findings/goose/<name> and is its own release asset."""
+    if goose:
+        findings = Path(findings) / "goose"
+        if not findings.is_dir():
+            return None
     run = status_page.latest_runs(findings)["live"]
     if run is None or not finding.digest_only(run):
         return None
@@ -60,7 +65,10 @@ def hydrate(findings, archive_file=None):
         if got != pin["sha256"]:
             raise Refuse(2, f"{pin['asset']} has sha256 {got}, but {run.name}/{finding.ARCHIVE} records {pin['sha256']}")
         try:
-            src = live_harvest.extract(tgz, pin["asset"], f"findings/{run.name}", Path(tmp) / "unpacked")
+            # The Mesh run's tgz also carries the day's Goose directory (loop#363); it is not this run's to unpack.
+            optional = () if goose else (f"findings/goose/{run.name[:10]}-live",)
+            src = live_harvest.extract(tgz, pin["asset"], [f"findings/{'goose/' if goose else ''}{run.name}"],
+                                       Path(tmp) / "unpacked", optional)[0]
         except live_harvest.Refuse as r:
             raise Refuse(3, str(r))
         for f in sorted(p for p in src.rglob("*") if p.is_file()):
@@ -84,11 +92,15 @@ def main(argv):
     ap.add_argument("--archive-file")
     args = ap.parse_args(argv)
     try:
-        run = hydrate(args.findings, args.archive_file)
+        # --archive-file is one run's archive: it completes the Mesh run (the original use), never a Goose one.
+        runs = [hydrate(args.findings, args.archive_file)]
+        if not args.archive_file:
+            runs.append(hydrate(args.findings, goose=True))
     except Refuse as r:
         print(f"hydrate_findings: {r}", file=sys.stderr)
         return r.code
-    print(f"hydrate_findings: hydrated {run}" if run else "hydrate_findings: nothing to hydrate")
+    done = [str(r) for r in runs if r]
+    print(f"hydrate_findings: hydrated {', '.join(done)}" if done else "hydrate_findings: nothing to hydrate")
     return 0
 
 

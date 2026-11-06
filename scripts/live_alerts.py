@@ -4,7 +4,9 @@
   scripts/live_alerts.py findings DIR...          one issue per FAIL or MALFORMED step in each live findings directory
   scripts/live_alerts.py changed BEFORE AFTER     the same, for each findings/*-live-* directory that range adds or changes
   scripts/live_alerts.py stale [--today YYYY-MM-DD]   one loop-live-stale issue when the newest live findings date is
-                                                  more than 1 day old; it closes nothing
+                                                  more than 1 day old, and one loop-live-goose-stale issue when the newest
+                                                  findings/goose/ live date is (loop#363: the Goose pass is checked on its
+                                                  own, so a Mesh day does not hide a missing Goose day); it closes nothing
 
 A step is FAIL when its finding.json says so and MALFORMED when it is missing, not JSON, or refused by steps/finding.py
 (check_record). NOT_CHECKED, PASS and a budget refusal open nothing: they are not a regression. An issue is labelled
@@ -28,6 +30,7 @@ import finding  # noqa: E402
 
 LIVE_DIR = re.compile(r"(\d{4}-\d{2}-\d{2})-live(-\d+)?")
 STALE_LABEL = "loop-live-stale"
+GOOSE_STALE_LABEL = "loop-live-goose-stale"
 STALE_DAYS = 1
 # The repository that owns each live step's component, as in loop.yml's table (loop.yml has no other live steps either).
 OWNER = {
@@ -94,10 +97,11 @@ def alert_run(run, run_url):
     alerts = failing(run)
     where = run.relative_to(ROOT) if run.is_absolute() and run.is_relative_to(ROOT) else run
     for nn, name, result, why in alerts:
-        owner = OWNER.get(nn, "unknown")
+        # OWNER names Mesh's components; Goose steps run on evidencebook's G1 node (loop#315).
+        owner = "evidence-network/loop#315 (the Goose pass)" if "goose" in run.parts else OWNER.get(nn, "unknown")
         raise_issue(f"loop-step-{nn}", "B60205", f"loop step {nn} failed",
                     f"loop step {nn} ({name}) fails",
-                    f"Step {nn} ({name}) is {result} on the live run {run.name}: {run_url}\n"
+                    f"Step {nn} ({name}) is {result} on the live {'Goose ' if 'goose' in run.parts else ''}run {run.name}: {run_url}\n"
                     f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why}\n"
                     f"Owning component repository: {owner}.")
     print(f"live_alerts: {run.name}: {len(alerts)} FAIL or MALFORMED step(s)")
@@ -109,17 +113,23 @@ def newest_live(findings=ROOT / "findings"):
     return max(dates) if dates else None
 
 
-def alert_stale(today, run_url, findings=ROOT / "findings"):
-    newest = newest_live(findings)
+def alert_stale(today, run_url, findings=ROOT / "findings", goose=False):
+    """goose: judge findings/goose/ (the Goose pass of the daily run) with its own label and title."""
+    where = findings / "goose" if goose else findings
+    newest = newest_live(where) if where.is_dir() else None
     age = (today - datetime.date.fromisoformat(newest)).days if newest else None
+    kind = "Goose live" if goose else "live"
     if age is not None and age <= STALE_DAYS:
-        print(f"live_alerts: newest live findings {newest} is {age} day(s) old")
+        print(f"live_alerts: newest {kind} findings {newest} is {age} day(s) old")
         return False
-    seen = f"the newest live findings are dated {newest}, {age} days ago" if newest else "there are no live findings"
-    raise_issue(STALE_LABEL, "FBCA04", "the daily live run has not landed",
-                "the daily live run is stale",
+    seen = f"the newest {kind} findings are dated {newest}, {age} days ago" if newest else f"there are no {kind} findings"
+    raise_issue(GOOSE_STALE_LABEL if goose else STALE_LABEL, "FBCA04",
+                f"the daily {kind} run has not landed",
+                f"the daily {kind} run is stale",
                 f"As of {today}, {seen} (more than {STALE_DAYS} day old): {run_url}\n"
-                "The lab host's run may have failed, or the operator's Mac slept; check scripts/live_harvest.py's pull request. "
+                "The lab host's run may have failed, or the harvest pull request may not be merged; check "
+                "scripts/live_harvest.py's pull request"
+                + (" and the Goose pass in the run record (goose.status)" if goose else "") + ". "
                 "This issue is closed by hand once a new live run is on main.")
     return True
 
@@ -131,8 +141,14 @@ def changed_dirs(before, after):
         before = f"{after}^"
     out = subprocess.run(["git", "diff", "--name-only", before, after, "--", "findings"], cwd=ROOT, capture_output=True,
                          text=True, check=True).stdout.split()
-    names = {Path(p).parts[1] for p in out if len(Path(p).parts) > 2}
-    return [ROOT / "findings" / n for n in sorted(names) if LIVE_DIR.fullmatch(n) and (ROOT / "findings" / n).is_dir()]
+    names = set()
+    for p in out:
+        parts = Path(p).parts
+        if len(parts) > 3 and parts[1] == "goose":  # findings/goose/<name>/...
+            names.add(Path("goose") / parts[2])
+        elif len(parts) > 2:
+            names.add(Path(parts[1]))
+    return [ROOT / "findings" / n for n in sorted(names) if LIVE_DIR.fullmatch(n.name) and (ROOT / "findings" / n).is_dir()]
 
 
 def main(argv):
@@ -146,7 +162,9 @@ def main(argv):
     a = ap.parse_args(argv[1:])
     run_url = os.environ.get("RUN_URL", "")
     if a.cmd == "stale":
-        alert_stale(datetime.date.fromisoformat(a.today), run_url)
+        today = datetime.date.fromisoformat(a.today)
+        alert_stale(today, run_url)
+        alert_stale(today, run_url, goose=True)
         return 0
     dirs = a.dirs if a.cmd == "findings" else changed_dirs(a.before, a.after)
     for d in dirs:

@@ -35,6 +35,9 @@
 # on this host reaches, and a node answers only while a run polls it, so the commitments' PT1M answer window holds
 # during a run only. The finding says so; no authenticating public relay is approved yet.
 #
+# live_daily.sh runs `pay` itself as its last pass (loop#363) with GOOSE_IN_LIVE_DAILY=1, which makes run use the LIVE_RUN
+# lock live_daily.sh holds instead of taking its own, and skip the process check that would see live_daily.sh.
+#
 # run refuses to start when $LAB_DIR/run/LIVE_RUN exists or a lab.sh, loop.sh or live_daily.sh process runs, and holds
 # LIVE_RUN while it runs (asg-lab-rebuild skips a host that has one). It touches no lab node, wallet or port of
 # lab-1..4, and never Brattain or Shockley.
@@ -151,12 +154,18 @@ cmd_run() {
     echo "+ LOOP_GOOSE_POPULATION=<population> ./loop.sh --stage 1 --ecosystem goose --population live --out ${LAB_OUT:-findings/goose/<UTC date>-live}" 
     return
   fi
-  mkdir -p "$LAB_DIR/run"
-  ( set -o noclobber; echo "goose.sh $$ $(date -u +%FT%TZ)" > "$lock" ) 2> /dev/null || die "$lock exists: another run holds the lab"
-  # Ours from here: removed on every exit, and a signal also stops the children (the session, loop.sh).
-  trap 'rm -f "$lock"' EXIT
-  trap 'pkill -P $$ 2> /dev/null || true; exit 143' INT TERM
-  if pgrep -f '(^|[/ ])(lab|loop|live_daily)\.sh( |$)' > /dev/null; then die "a lab.sh, loop.sh or live_daily.sh process runs"; fi
+  if [ "${GOOSE_IN_LIVE_DAILY:-}" = 1 ]; then
+    # scripts/live_daily.sh (the only caller that sets this) already holds LIVE_RUN and checked for other runs; it runs
+    # this as its last pass, so the lock and the process check below would refuse its own run.
+    [ -e "$lock" ] || die "GOOSE_IN_LIVE_DAILY is set but $lock is not held"
+  else
+    mkdir -p "$LAB_DIR/run"
+    ( set -o noclobber; echo "goose.sh $$ $(date -u +%FT%TZ)" > "$lock" ) 2> /dev/null || die "$lock exists: another run holds the lab"
+    # Ours from here: removed on every exit, and a signal also stops the children (the session, loop.sh).
+    trap 'rm -f "$lock"' EXIT
+    trap 'pkill -P $$ 2> /dev/null || true; exit 143' INT TERM
+    if pgrep -f '(^|[/ ])(lab|loop|live_daily)\.sh( |$)' > /dev/null; then die "a lab.sh, loop.sh or live_daily.sh process runs"; fi
+  fi
   pop=$(cmd_session | tail -n 1)
   [ -f "$pop/population.json" ] || die "the session wrote no population"
   LOOP_GOOSE_POPULATION=$pop "$ROOT/loop.sh" --stage 1 --ecosystem goose --population live \

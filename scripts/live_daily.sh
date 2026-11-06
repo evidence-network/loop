@@ -29,7 +29,13 @@
 #   8b. scripts/lab_circulate.py: when lab-3's request was answered 200 (its 1,000 msat charge settled), lab-1 pays lab-3 the
 #      same amount back once through the guarded lab-to-lab payment (loop#384); otherwise nothing is paid. No balance or
 #      ledger decides. The outcome goes into the record (circulate), and a refusal changes nothing else
-#   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
+#   8c. lab/goose.sh pay (loop#363): the Goose ecosystem's live run, last, after the Mesh pass has finished and its window
+#      is restored: two Goose nodes, step 06 one real payment lab-1 to lab-2 of 1,000 msat inside the same lab guard
+#      (goose_lightning.py refuses first when the day's log or lab-1's wallet leaves no room). The findings are
+#      findings/goose/<UTC date>-live, put through the same privacy checks and steps/finding.py check as the Mesh run's.
+#      It cannot change the Mesh result: a Goose pass that fails, is refused, is held or finds that its name is taken
+#      leaves the Mesh findings, the exit code and the pack as they were; its outcome goes into the run record (goose)
+#   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory, and the Goose one when 8c produced it), its .sha256, and <name>.json, the run's record
 #      (head, start, window, exchange outcome, each step's result, the gate's rc). Commits and pushes nothing. The findings
 #      directory does not stay in the clone (the tgz holds it): a run that stopped before packing leaves it in
 #      $LIVE_OUT_DIR/unpacked/<name>, which keeps its N taken, so the next run starts from a clean tree.
@@ -59,6 +65,10 @@
 #   LIVE_LAB_SH           the lab.sh to run (default lab/lab.sh here; tests use a stand-in)
 #   LIVE_CIRCULATE        the executable step 8b runs (default scripts/lab_circulate.py; tests use a stand-in)
 #   LIVE_STEPS_DIR        where steps 10 and 11 are (default steps/ here; tests use stand-ins)
+#   LIVE_GOOSE_SH         the goose.sh step 8c runs (default lab/goose.sh here; tests use a stand-in)
+#   LIVE_GOOSE_TIMEOUT    seconds step 8c's goose.sh pay may take (default 1800); it also gets at most the time left before
+#                         LIVE_DEADLINE (default 9000 s after the start, under entry.sh's 3 h kill) minus a margin, and is
+#                         skipped when that is under 600 s, so a slow Goose pass cannot cost the Mesh pack
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -88,14 +98,19 @@ export LAB_DIR
 LAB_SH=${LIVE_LAB_SH:-$ROOT/lab/lab.sh}
 STEPS=${LIVE_STEPS_DIR:-$ROOT/steps}
 CIRCULATE=${LIVE_CIRCULATE:-$ROOT/scripts/lab_circulate.py}
+GOOSE_SH=${LIVE_GOOSE_SH:-$ROOT/lab/goose.sh}
 WAIT=${LIVE_CHECKPOINT_WAIT:-360}
 STEP_TIMEOUT=${LIVE_STEP_TIMEOUT:-3600}
+GOOSE_TIMEOUT=${LIVE_GOOSE_TIMEOUT:-1800}
+DEADLINE_S=${LIVE_DEADLINE:-9000}
+START_S=$(date +%s)
 export LOOP_TOOLS=${LIVE_TOOLS:-$HOME/.cache/evidence-network-loop-live}
 OUT_DIR=${LIVE_OUT_DIR:-$LAB_DIR/out/live}
 HELD_DIR=${LIVE_HELD_DIR:-$LAB_DIR/held}
 LOCK=$LAB_DIR/run/LIVE_RUN
 POP=population/live/population.json
 [[ $WAIT =~ ^[0-9]+$ ]] || refuse 2 "LIVE_CHECKPOINT_WAIT must be a whole number of seconds"
+[[ $GOOSE_TIMEOUT =~ ^[1-9][0-9]*$ && $DEADLINE_S =~ ^[1-9][0-9]*$ ]] || refuse 2 "LIVE_GOOSE_TIMEOUT and LIVE_DEADLINE must be positive whole numbers of seconds"
 [[ $STEP_TIMEOUT =~ ^[1-9][0-9]*$ ]] || refuse 2 "LIVE_STEP_TIMEOUT must be a positive whole number of seconds"
 command -v timeout > /dev/null || refuse 2 "needs timeout (GNU coreutils) on PATH"
 
@@ -146,6 +161,8 @@ sha256() { if command -v sha256sum > /dev/null; then sha256sum "$@"; else shasum
 
 NAME=$(next_name)
 OUT=$ROOT/findings/$NAME
+GNAME=$DAY-live # the Goose run's findings/goose/ name (8c)
+GOUT=$ROOT/findings/goose/$GNAME
 
 if [ "$DRY" = 1 ]; then
   echo "live_daily --dry-run at $(git -C "$ROOT" rev-parse --short HEAD 2> /dev/null || echo '<no git>'); nothing is changed"
@@ -161,6 +178,8 @@ if [ "$DRY" = 1 ]; then
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
   8b. scripts/lab_circulate.py: when lab-3's request got 200, lab-1 pays lab-3 1,000 msat back, once (a second real payment)
+  8c. $GOOSE_SH pay as the last pass: findings/goose/$GNAME, lab-1 pays lab-2 1,000 msat once (a third real payment); its privacy
+      checks and finding.py check; it never changes the Mesh result
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
   exit 0
@@ -174,6 +193,7 @@ fi
 CHILD=""
 POP_TOUCHED=0
 OWN_OUT=0
+OWN_GOUT=0
 # Each process is stopped as it is listed, so a stopped parent cannot start another before the TERM; then all get it.
 tree() { local c; kill -STOP "$1" 2> /dev/null; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
 kill_tree() {
@@ -186,6 +206,12 @@ kill_tree() {
 # one that stopped before packing goes to $OUT_DIR/unpacked/$NAME (mode 700, since it may not have been scanned yet;
 # its N stays taken, see next_name).
 leave_clone() {
+  if [ "$OWN_GOUT" = 1 ] && [ -d "$GOUT" ]; then
+    if [ -f "$OUT_DIR/$NAME.tgz" ]; then rm -rf "$GOUT"
+    else mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/goose-$GNAME" ] \
+      && mv "$GOUT" "$OUT_DIR/unpacked/goose-$GNAME" && log "the Goose findings stay unpacked in $OUT_DIR/unpacked/goose-$GNAME"
+    fi || log "could not move $GOUT out of the clone: remove it by hand before the next run"
+  fi
   [ "$OWN_OUT" = 1 ] && [ -d "$OUT" ] || return 0
   if [ -f "$OUT_DIR/$NAME.tgz" ]; then rm -rf "$OUT"
   else mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/$NAME" ] \
@@ -362,15 +388,73 @@ PY
 [ "$circ_out" = /dev/null ] || rm -f "$circ_out"
 log "lab-3 top-up: $circulate"
 
+# --- 8c. the Goose pass -----------------------------------------------------------------------------------------------
+# Last, so a Goose failure can change nothing the Mesh run produced. The Mesh window goes first: the Goose run reads the
+# live population file as committed, not with this run's window.
+goose_status=ran
+goose_reason=""
+goose_rc=""
+goose_step06=""
+goose_skip() { goose_status=$1; goose_reason=$2; log "goose: $1: $2"; }
+if [ "$POP_TOUCHED" = 1 ]; then git -C "$ROOT" checkout -q -- "$POP" && POP_TOUCHED=0; fi
+unset LOOP_SEALED_SINCE
+if [ "$POP_TOUCHED" = 1 ]; then
+  goose_skip skipped "the Mesh window could not be restored"
+elif [ -e "$GOUT" ] || [ -e "$HELD_DIR/goose-$GNAME" ] || [ -e "$OUT_DIR/unpacked/goose-$GNAME" ] \
+     || grep -qsF "\"name\": \"$GNAME\"" "$OUT_DIR/$DAY"-live*.json; then
+  # (a packed run of this day that carried it, and has not reached main yet, counts as taking it)
+  goose_skip skipped "findings/goose/$GNAME is already taken"
+else
+  # lab.sh tools (step 2) already installed every step's setup, goose.setup.sh included, into the same LOOP_TOOLS.
+  left=$((DEADLINE_S - ($(date +%s) - START_S) - 300))
+  gt=$GOOSE_TIMEOUT
+  [ "$left" -lt "$gt" ] && gt=$left
+  if [ "$left" -lt 600 ]; then
+    goose_skip skipped "only ${left}s are left before the run's deadline; the Mesh pack comes first"
+  else
+    OWN_GOUT=1
+    mkdir -p "$(dirname "$GOUT")"
+    # Reasons name files by their short names only: the record is published (the lab's paths are not).
+    waited timeout -k 30 "$gt" env LAB_DIR="$LAB_DIR" LAB_OUT="$GOUT" GOOSE_IN_LIVE_DAILY=1 "$GOOSE_SH" pay > "$LAB_DIR/logs/live-goose.log" 2>&1
+    goose_rc=$?
+    if ! compgen -G "$GOUT/*/finding.json" > /dev/null; then
+      goose_skip failed "goose.sh pay exited $goose_rc and wrote no findings (logs/live-goose.log on the lab host)"
+    fi
+  fi
+  if [ "$goose_status" = ran ]; then
+    if ! python3 -B "$ROOT/scripts/check_no_preimages.py" "$GOUT" > /dev/null \
+       || ! python3 -B "$ROOT/scripts/check_personal_data.py" "$GOUT" > /dev/null \
+       || { [ -s "$LAB_DIR/run/invite.token" ] && grep -rlqF -f "$LAB_DIR/run/invite.token" "$GOUT"; }; then
+      mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && [ ! -e "$HELD_DIR/goose-$GNAME" ] && mv "$GOUT" "$HELD_DIR/goose-$GNAME" \
+        || rm -rf "$GOUT" # never left in the clone, where the pack would take it
+      goose_skip held "a privacy check hit the Goose findings; held as goose-$GNAME on the lab host, not packed"
+    elif ! python3 -B "$ROOT/steps/finding.py" check "$GOUT" > /dev/null 2>&1; then
+      mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/goose-$GNAME" ] \
+        && mv "$GOUT" "$OUT_DIR/unpacked/goose-$GNAME" || rm -rf "$GOUT"
+      goose_skip refused "steps/finding.py check refused the Goose findings; kept as unpacked/goose-$GNAME on the lab host, not packed"
+    else
+      goose_step06=$(python3 -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["result"])' "$GOUT/06-settle/finding.json" 2> /dev/null || echo missing)
+      log "goose: $GNAME packed with 06-settle $goose_step06 (goose.sh pay exited $goose_rc)"
+      # A guard refusal leaves 06 NOT_CHECKED with no payment; the session logged why (names and amounts only).
+      if [ "$goose_step06" != PASS ]; then
+        goose_reason=$(grep -a -h -m1 '^goose_live: payment refused: ' "$LAB_DIR/logs/live-goose.log" 2> /dev/null | cut -c1-300 | tr -d '\r')
+        goose_reason=${goose_reason#goose_live: }
+      fi
+    fi
+  fi
+fi
+
 # --- 9. the pack ----------------------------------------------------------------------------------------------------
 mkdir -p "$OUT_DIR" || refuse 2 "cannot make $OUT_DIR"
-tar czf "$OUT_DIR/$NAME.tgz.tmp" -C "$ROOT" "findings/$NAME" && mv "$OUT_DIR/$NAME.tgz.tmp" "$OUT_DIR/$NAME.tgz" \
+pack=("findings/$NAME")
+[ "$goose_status" = ran ] && pack+=("findings/goose/$GNAME")
+tar czf "$OUT_DIR/$NAME.tgz.tmp" -C "$ROOT" "${pack[@]}" && mv "$OUT_DIR/$NAME.tgz.tmp" "$OUT_DIR/$NAME.tgz" \
   || refuse 2 "cannot write $OUT_DIR/$NAME.tgz"
 (cd "$OUT_DIR" && sha256 "$NAME.tgz" > "$NAME.tgz.sha256") || refuse 2 "cannot hash $NAME.tgz"
-python3 -B - "$OUT" "$OUT_DIR/$NAME.json" "$NAME" "$HEAD" "$STARTED_AT" "$SINCE" "$refused" "$paid_status" "$gate_rc" "$lab3_status" "$circulate" << 'PY'
+python3 -B - "$OUT" "$OUT_DIR/$NAME.json" "$NAME" "$HEAD" "$STARTED_AT" "$SINCE" "$refused" "$paid_status" "$gate_rc" "$lab3_status" "$circulate" "$goose_status" "$goose_reason" "$goose_rc" "$goose_step06" "$GNAME" << 'PY'
 import json, sys
 from pathlib import Path
-out, path, name, head, started, since, refused, status, gate_rc, lab3_status, circulate = sys.argv[1:]
+out, path, name, head, started, since, refused, status, gate_rc, lab3_status, circulate, g_status, g_reason, g_rc, g_06, g_name = sys.argv[1:]
 steps = {}
 for f in sorted(Path(out).glob("*/finding.json")):
     steps[f.parent.name] = json.loads(f.read_text())["result"]
@@ -378,6 +462,8 @@ run = {"name": name, "head": head, "started": started, "window_from": since,
        "exchange": {"paid": not refused, "status": status or None, "refused": refused or None,
                     "askers": {"lab-2": status or None, "lab-3": lab3_status or None}},
        "circulate": json.loads(circulate),
+       "goose": {"status": g_status, "name": g_name if g_status == "ran" else None, "reason": g_reason or None,
+                 "exit": int(g_rc) if g_rc else None, "step_06": g_06 or None},
        "steps": steps, "gate_check_rc": int(gate_rc)}
 Path(path).write_text(json.dumps(run, indent=2, sort_keys=True) + "\n")
 for step, result in steps.items():

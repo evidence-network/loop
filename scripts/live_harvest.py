@@ -12,6 +12,9 @@ origin/main, so the clone is left as it is). In order:
      findings/NAME/, no link, no member outside it)
   2. re-run check_no_preimages.py, check_personal_data.py and steps/finding.py check on what was unpacked
   3. a GitHub release live-NAME on the repository carries the three files: the proof bytes live there, not on main
+     When the run record says the Goose pass ran (goose.status "ran"), the same tgz holds findings/goose/<date>-live
+     as well; it is unpacked, checked and committed beside the Mesh findings (no baseline moves for it). Its proof bytes
+     are a second asset of the same release, <date>-live.tgz (steps/finding.py wants the asset named for the directory)
   4. a branch live-harvest/NAME from origin/main takes findings/NAME holding only each step's finding.json (its proof is
      named there by sha256), run.json, index.md and proof-archive.json (the release asset and its digest), and the
      privacy checks run again over exactly what is committed
@@ -41,6 +44,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 NAME_RE = re.compile(r"\d{4}-\d\d-\d\d-live-[1-9][0-9]*")
+GOOSE_RE = re.compile(r"\d{4}-\d\d-\d\d-live")  # findings/goose/<name>: the Goose run the same live_daily.sh run made (loop#363)
 
 
 class Refuse(Exception):
@@ -128,29 +132,43 @@ def allowed_member(member, prefix):
     return bool(rest) and (rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None)
 
 
-def extract(tgz, label, prefix, into):
-    """Unpack tgz (members only under prefix/, plain files and directories) into `into`; Refuse(6) on anything else."""
+def extract(tgz, label, prefixes, into, optional=()):
+    """Unpack tgz (members only under one of prefixes/, plain files and directories) into `into`; Refuse(6) on anything
+    else, or when a prefix is not in it. `optional` prefixes are allowed but not required (the run's tgz may carry the Goose
+    directory beside the Mesh one; a caller that wants only the Mesh run still unpacks it whole). Returns each prefix's directory."""
     try:
         with tarfile.open(tgz, "r:gz") as tar:
             for m in tar.getmembers():
-                if not (m.isfile() or m.isdir()) or not allowed_member(m.name, prefix):
-                    raise Refuse(6, f"{label} has a member that is not {prefix}/<NN-step>/..., run.json or index.md "
-                                    f"(or is not a plain file): {m.name}")
+                if not (m.isfile() or m.isdir()) or not any(allowed_member(m.name, p) for p in (*prefixes, *optional)):
+                    raise Refuse(6, f"{label} has a member that is not {' or '.join(prefixes)}/<NN-step>/..., run.json or "
+                                    f"index.md (or is not a plain file): {m.name}")
             tar.extractall(into, filter="data")
     except (tarfile.TarError, OSError) as e:
         raise Refuse(6, f"{label} cannot be unpacked: {e}")
-    out = into / prefix
-    if not out.is_dir():
-        raise Refuse(6, f"{label} holds no {prefix}/")
-    return out
+    for prefix in prefixes:
+        if not (into / prefix).is_dir():
+            raise Refuse(6, f"{label} holds no {prefix}/")
+    return [into / p for p in prefixes]
 
 
-def unpack(name, files, into):
+def unpack(name, files, into, goose=None):
+    """(the run's directory, the Goose run's directory or None); goose is its name when the record says it ran."""
     want = files / f"{name}.tgz"
     digest = (files / f"{name}.tgz.sha256").read_text().split()
     if not digest or digest[0] != sha256(want):
         raise Refuse(5, f"{name}.tgz does not match {name}.tgz.sha256")
-    return extract(want, f"{name}.tgz", f"findings/{name}", into)
+    dirs = extract(want, f"{name}.tgz", [f"findings/{name}"] + ([f"findings/goose/{goose}"] if goose else []), into)
+    return dirs[0], (dirs[1] if goose else None)
+
+
+def goose_name(record):
+    """The Goose run's name when the run record says the pass ran, else None."""
+    g = record.get("goose")
+    if not isinstance(g, dict) or g.get("status") != "ran":
+        return None
+    if not (isinstance(g.get("name"), str) and GOOSE_RE.fullmatch(g["name"]) and g["name"][:10] == record["name"][:10]):
+        raise Refuse(6, "the run record's goose.name is not this run's <date>-live")
+    return g["name"]
 
 
 def privacy(tree, where, code, findings=True):
@@ -162,6 +180,14 @@ def privacy(tree, where, code, findings=True):
     p = run(sys.executable, "-B", str(code / "steps" / "finding.py"), "check", str(tree), check=False) if findings else None
     if p is not None and p.returncode != 0:
         raise Refuse(6, f"steps/finding.py check refused {where}: {p.stderr.strip()[:300]}")
+
+
+def goose_archive(goose_full, gname, dest):
+    """dest/<gname>.tgz holding only findings/goose/<gname> (as the run's tgz held it); its sha256."""
+    path = dest / f"{gname}.tgz"
+    with tarfile.open(path, "w:gz") as t:
+        t.add(goose_full, arcname=f"findings/goose/{gname}")
+    return path, sha256(path)
 
 
 def slim(full, dest, name, url, digest, record=None):
@@ -220,10 +246,12 @@ def harvest(args, work, wt):
     files = work / "files"
     files.mkdir()
     name, files = fetch(args, files)
-    full = unpack(name, files, work / "unpacked")
     record = json.loads((files / f"{name}.json").read_text())
-    if not (isinstance(record, dict) and isinstance(record.get("exchange"), dict) and isinstance(record.get("steps"), dict)):
+    if not (isinstance(record, dict) and isinstance(record.get("exchange"), dict) and isinstance(record.get("steps"), dict)
+            and record.get("name") == name):
         raise Refuse(6, f"{name}.json is not a run record")
+    gname = goose_name(record)
+    full, goose_full = unpack(name, files, work / "unpacked", gname)
     paid = record["exchange"].get("paid") is True
     digest = sha256(files / f"{name}.tgz")
 
@@ -233,9 +261,13 @@ def harvest(args, work, wt):
         raise Refuse(4, f"origin already has {branch}")
     run("git", "worktree", "add", "-q", "--detach", str(wt), "origin/main", cwd=ROOT)
     privacy(full, f"{name} as unpacked", wt)
+    if goose_full is not None:
+        privacy(goose_full, f"findings/goose/{gname} as unpacked", wt)
     privacy(files / f"{name}.json", f"{name}.json", wt, findings=False)  # it goes on the release too
     if (wt / "findings" / name).exists():
         raise Refuse(4, f"findings/{name} is already on origin/main")
+    if gname and (wt / "findings" / "goose" / gname).exists():
+        raise Refuse(4, f"findings/goose/{gname} is already on origin/main")
     tag = f"live-{name}"
     if run("gh", "release", "view", tag, "--repo", repo, check=False).returncode == 0:
         raise Refuse(4, f"release {tag} exists on {repo}: remove it by hand if no pull request holds it")
@@ -243,6 +275,11 @@ def harvest(args, work, wt):
     url = f"https://github.com/{repo}/releases/download/{tag}/{name}.tgz"
     slim(full, wt / "findings" / name, name, url, digest, record)
     privacy(wt / "findings" / name, f"findings/{name} as committed", wt)
+    if gname:
+        goose_tgz, goose_digest = goose_archive(goose_full, gname, files)
+        goose_url = f"https://github.com/{repo}/releases/download/{tag}/{gname}.tgz"
+        slim(goose_full, wt / "findings" / "goose" / gname, gname, goose_url, goose_digest)
+        privacy(wt / "findings" / "goose" / gname, f"findings/goose/{gname} as committed", wt)
 
     # The worktree's own gate: its ROOT is the worktree, so the findings and the versions.lock are origin/main's.
     gate_cmd = [sys.executable, "-B", str(wt / "scripts" / "ecosystem_gate.py"), "update", "--ecosystem", "mesh",
@@ -265,7 +302,7 @@ def harvest(args, work, wt):
     else:
         verdict = "REGRESSION: " + (gate.stderr or gate.stdout).strip()
 
-    paths = [f"findings/{name}"] + (["baseline/live.json"] if moved else [])
+    paths = [f"findings/{name}"] + ([f"findings/goose/{gname}"] if gname else []) + (["baseline/live.json"] if moved else [])
     run("git", "add", "--", *paths, cwd=wt)
     run("git", "checkout", "-q", "-b", branch, cwd=wt)
     args.local_branch = branch
@@ -276,8 +313,8 @@ def harvest(args, work, wt):
 
     notes = work / "notes.md"
     notes.write_text(f"Release asset (the proof bytes): {url}\nsha256 {digest}\n")
-    run("gh", "release", "create", tag, str(files / f"{name}.tgz"), str(files / f"{name}.tgz.sha256"),
-        str(files / f"{name}.json"), "--repo", repo, "--title", f"Live run {name}", "--notes-file", str(notes))
+    assets = [files / f"{name}.tgz", files / f"{name}.tgz.sha256", files / f"{name}.json"] + ([goose_tgz] if gname else [])
+    run("gh", "release", "create", tag, *map(str, assets), "--repo", repo, "--title", f"Live run {name}", "--notes-file", str(notes))
     run("git", "push", "-q", "origin", branch, cwd=wt)
     args.local_branch = None  # pushed: the branch is the PR's
     steps = ", ".join(f"{k} {v}" for k, v in sorted(record.get("steps", {}).items()))
@@ -286,7 +323,9 @@ def harvest(args, work, wt):
         f"Data-only harvest of live run `{name}` (loop#309).\n\n"
         f"- Steps: {steps}\n- Gate: {verdict}\n- Proof bytes: [{name}.tgz]({url}) (sha256 `{digest}`); "
         f"`findings/{name}/proof-archive.json` pins it, and `steps/finding.py check` accepts the digest-only layout.\n"
-        "- The diff holds only `findings/<date>-live-<N>/` and `baseline/live.json` (`harvest-allowlist`). "
+        + (f"- Goose run (loop#363): `findings/goose/{gname}`, step 06 {record['goose'].get('step_06')}; its proof bytes are the release asset "
+           f"[{gname}.tgz]({goose_url}) (sha256 `{goose_digest}`), and no baseline moves for it.\n" if gname else "")
+        + "- The diff holds only `findings/<date>-live-<N>/`, `findings/goose/<date>-live/` and `baseline/live.json` (`harvest-allowlist`). "
         "Preimage and personal-data checks ran on the full archive before it was published and on what is committed.\n"
         "- A human merges this pull request until Steven has approved auto-merge.\n")
     pr = run("gh", "pr", "create", "--repo", repo, "--base", "main", "--head", branch, "--title", f"data: live harvest {name}",

@@ -57,6 +57,26 @@ case "$cmd" in
 esac
 '''
 
+STUB_GOOSE = r'''#!/usr/bin/env bash
+# A stand-in goose.sh: logs the call with the Mesh window it must no longer see, and writes the findings pay would.
+set -u
+cmd=$1
+pop=$(python3 -c 'import json; print(json.load(open("population/live/population.json")).get("window", {}).get("from", "-"))')
+echo "goose-$cmd since=${LOOP_SEALED_SINCE:--} window=$pop in_live_daily=${GOOSE_IN_LIVE_DAILY:--} out=${LAB_OUT:--}" >> "$STUB_LOG"
+w() { python3 -B "$STUB_ROOT/write_finding.py" "$LAB_OUT/$1" "$2"; }
+case "$cmd" in
+  pay)
+    [ -n "${STUB_GOOSE_HANG:-}" ] && sleep 60
+    [ -n "${STUB_GOOSE_REFUSED:-}" ] && echo "goose_live: payment refused: lab-1 has 1 pending payment(s): the lab is not idle" >&2
+    [ -n "${STUB_GOOSE_NONE:-}" ] && exit 2
+    for s in 01-seal 02-book 03-advertise 07-ask; do w $s PASS; done
+    w 06-settle "${STUB_GOOSE_06:-PASS}"
+    [ -n "${STUB_GOOSE_LEAK:-}" ] && echo "token stub-invite-token-0123456789" > "$LAB_OUT/06-settle/leak.txt"
+    exit "${STUB_GOOSE_RC:-0}" ;;
+  *) echo "stub goose.sh: unexpected $cmd" >&2; exit 9 ;;
+esac
+'''
+
 STUB_STEP = r'''#!/usr/bin/env bash
 out=$4
 echo "$(basename "$0") since=${LOOP_SEALED_SINCE:--}" >> "$STUB_LOG"
@@ -89,6 +109,8 @@ class LiveDailyTest(unittest.TestCase):
         (stubs / "write_finding.py").write_text(WRITE_FINDING.replace('os.environ["STUB_ROOT"] + "/steps"',
                                                                       repr(str(self.clone / "steps"))))
         (stubs / "lab.sh").write_text(STUB_LAB)
+        (stubs / "goose.sh").write_text(STUB_GOOSE)
+        (stubs / "goose.sh").chmod(0o755)
         for s in ("10-judge", "11-report"):
             (stubs / "steps" / s).write_text(STUB_STEP)
         (stubs / "circulate").write_text('#!/usr/bin/env bash\necho "circulate" >> "$STUB_LOG"\n'
@@ -97,7 +119,7 @@ class LiveDailyTest(unittest.TestCase):
         for f in [stubs / "lab.sh", stubs / "steps" / "10-judge", stubs / "steps" / "11-report"]:
             f.chmod(0o755)
         self.log = self.tmp / "calls.log"
-        self.env = dict(os.environ, LAB_DIR=str(self.lab), LIVE_LAB_SH=str(stubs / "lab.sh"),
+        self.env = dict(os.environ, LAB_DIR=str(self.lab), LIVE_LAB_SH=str(stubs / "lab.sh"), LIVE_GOOSE_SH=str(stubs / "goose.sh"),
                         LIVE_STEPS_DIR=str(stubs / "steps"), LIVE_CHECKPOINT_WAIT="0", STUB_LOG=str(self.log),
                         STUB_ROOT=str(stubs), LIVE_OUT_DIR=str(self.lab / "out"),
                         LIVE_TOOLS=str(self.lab / "tools"), LIVE_CIRCULATE=str(stubs / "circulate"))
@@ -126,6 +148,68 @@ class LiveDailyTest(unittest.TestCase):
         dest = Path(tempfile.mkdtemp(dir=self.tmp))
         subprocess.run(["tar", "xzf", str(self.lab / "out" / f"{name}.tgz"), "-C", str(dest)], check=True)
         return dest / "findings" / name
+
+    def packed_goose(self, name, gname):
+        dest = Path(tempfile.mkdtemp(dir=self.tmp))
+        subprocess.run(["tar", "xzf", str(self.lab / "out" / f"{name}.tgz"), "-C", str(dest)], check=True)
+        return dest / "findings" / "goose" / gname
+
+    def record(self, name):
+        return json.loads((self.lab / "out" / f"{name}.json").read_text())
+
+    def test_a_goose_pass_that_fails_changes_nothing_in_the_mesh_run(self):
+        mesh = self.run_daily()
+        self.assertEqual(mesh.returncode, 0, mesh.stderr)
+        base = self.record(f"{self.day()}-live-1")
+        for f in (self.lab / "out").glob("*"):
+            f.unlink()
+        for env, status in (({"STUB_GOOSE_HANG": "1", "LIVE_GOOSE_TIMEOUT": "2"}, "failed"), ({"STUB_GOOSE_NONE": "1"}, "failed"),
+                           ({"LIVE_DEADLINE": "400"}, "skipped")):
+            r = self.run_daily(**env)
+            self.assertEqual(r.returncode, 0, (env, r.stderr))
+            name = f"{self.day()}-live-1"
+            rec = self.record(name)
+            self.assertEqual(rec["goose"]["status"], status, env)
+            self.assertIsNone(rec["goose"]["name"])
+            self.assertEqual(rec["steps"], base["steps"])
+            self.assertEqual(rec["gate_check_rc"], base["gate_check_rc"])
+            listing = subprocess.run(["tar", "tzf", str(self.lab / "out" / f"{name}.tgz")], capture_output=True, text=True,
+                                     check=True).stdout.split()
+            self.assertFalse(any("goose" in p for p in listing), listing[:3])
+            self.assert_untouched()
+            for f in (self.lab / "out").glob("*"):
+                f.unlink()
+
+    def test_a_refused_goose_payment_is_packed_with_06_not_checked(self):
+        r = self.run_daily(STUB_GOOSE_06="NOT_CHECKED", STUB_GOOSE_RC="1", STUB_GOOSE_REFUSED="1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = self.record(f"{self.day()}-live-1")
+        self.assertEqual(rec["goose"]["reason"], "payment refused: lab-1 has 1 pending payment(s): the lab is not idle")
+        self.assertNotIn(str(self.lab), json.dumps(rec))  # the published record names no path of the lab host
+        self.assertEqual(rec["goose"]["step_06"], "NOT_CHECKED")
+        self.assertEqual(rec["goose"]["exit"], 1)
+        self.assertEqual(rec["goose"]["status"], "ran")
+
+    def test_a_privacy_hit_in_the_goose_findings_holds_only_them(self):
+        (self.lab / "run" / "invite.token").write_text("stub-invite-token-0123456789\n")
+        r = self.run_daily(STUB_GOOSE_LEAK="1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("stub-invite-token", r.stderr + r.stdout)
+        name = f"{self.day()}-live-1"
+        rec = self.record(name)
+        self.assertEqual(rec["goose"]["status"], "held")
+        self.assertTrue((self.lab / "held" / f"goose-{self.day()}-live" / "06-settle" / "leak.txt").is_file())
+        self.assertEqual(len(list(self.packed(name).glob("*/finding.json"))), 12)
+        self.assert_untouched()
+
+    def test_a_second_run_the_same_day_does_not_take_the_goose_name_again(self):
+        self.assertEqual(self.run_daily().returncode, 0)
+        r = self.run_daily()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        second = self.record(f"{self.day()}-live-2")
+        self.assertEqual(second["goose"]["status"], "skipped")
+        self.assertIn("already taken", second["goose"]["reason"])
+        self.assertEqual(self.calls().count(f"goose-pay since=- window=- in_live_daily=1 out={self.clone / 'findings' / 'goose' / (self.day() + '-live')}"), 1)
 
     def test_a_top_up_that_fails_or_prints_nonsense_is_recorded_unknown_and_changes_nothing_else(self):
         for body in ("exit 7", "echo '{bad}'", "echo 'not json'"):
@@ -161,13 +245,21 @@ class LiveDailyTest(unittest.TestCase):
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
                          ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "dispute",
-                          "loop", "10-judge", "11-report", "circulate"])
+                          "loop", "10-judge", "11-report", "circulate", "goose-pay"])
         self.assertIn(f"tools={self.lab / 'tools'}", calls[0])  # the run's own tools, first: check reads their record
         for c in calls[3:10]:
             self.assertIn(f"since={since} window={since} out={out} tools=", c)
+        # The Goose pass is last and sees neither the Mesh window nor the Mesh cutoff; it runs under this run's lock.
+        gname = f"{self.day()}-live"
+        self.assertEqual(calls[-1], f"goose-pay since=- window=- in_live_daily=1 out={self.clone / 'findings' / 'goose' / gname}")
+        self.assertEqual(record["goose"], {"status": "ran", "name": gname, "reason": None, "exit": 0, "step_06": "PASS"})
+        goose = self.packed_goose(name, gname)
+        self.assertEqual(sorted(d.name for d in goose.iterdir() if (d / "finding.json").is_file()),
+                         ["01-seal", "02-book", "03-advertise", "06-settle", "07-ask"])
+        self.assertEqual(json.loads((goose / "06-settle" / "finding.json").read_text())["result"], "PASS")
         tgz = self.lab / "out" / f"{name}.tgz"
         listing = subprocess.run(["tar", "tzf", str(tgz)], capture_output=True, text=True, check=True).stdout.split()
-        self.assertTrue(all(p.startswith(f"findings/{name}") for p in listing), listing[:5])
+        self.assertTrue(all(p.startswith((f"findings/{name}", f"findings/goose/{gname}")) for p in listing), listing[:5])
         self.assertIn(f"{name}.tgz", (self.lab / "out" / f"{name}.tgz.sha256").read_text())
         self.assert_untouched()
 
@@ -338,6 +430,7 @@ class LiveDailyTest(unittest.TestCase):
         r = self.run_daily("--dry-run")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("exchange, once", r.stdout)
+        self.assertIn(f"findings/goose/{self.day()}-live", r.stdout)
         self.assertEqual(self.calls(), [])
         self.assertEqual(list((self.clone / "findings").iterdir()), [])
         self.assert_untouched()
