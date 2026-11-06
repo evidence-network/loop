@@ -837,6 +837,138 @@ def judge_live(pop, out, started):
                          started=started)
 
 
+# --- The Goose rehearsal: the book bundle the Goose node writes (loop#330, evidencebook#301) ------------------
+# G1's loop_book_bundle writes the Evidence Bundle of one record of the node's book, with the checkpoint that covers it
+# and the receipt of the witness the node asked for that very checkpoint. The step does not seal anything: it judges
+# those bytes with the checks the live population uses, the pinned capsulectl on the bundle and the offline receipt
+# check, and holds the node's own keys to what the population names.
+GOOSE_ASSERTS = ("the record is in the Goose node's book at a stated position, under a checkpoint the node signed that "
+                 "verifies; the checkpoint's witness receipt verifies")
+GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
+GOOSE_PROOF = ["bundle.json", "checkpoint.json", "capsule.json", "witnesses.json", "verify.json", "checks.json"]
+
+
+def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed):
+    """The checks on a Goose node's bundle kept under out: {name: {ok, detail}}."""
+    def bad(e):
+        return {"ok": False, "detail": f"unreadable: {e}"}
+    checks = {}
+    try:
+        v = json.loads((out / "verify.json").read_text())
+        checks["bundle"] = {"ok": rc == 0 and v.get("verdict") == "VALID",
+                            "detail": f"capsulectl verify --bundle exit {rc}, verdict {v.get('verdict')}"}
+        parts = {k: (v.get(k) or {}).get("status") for k in ("checkpoint", "per_record_membership",
+                                                              "producer_signatures")}
+        checks["membership"] = {"ok": all(s == "pass" for s in parts.values()),
+                                "detail": ", ".join(f"{k} {s}" for k, s in parts.items())}
+    except (OSError, ValueError, AttributeError) as e:
+        checks["bundle"] = bad(e)
+    try:
+        b = json.loads((out / "bundle.json").read_text())
+        root = b["root"]
+        rec = next(r for r in b["records"] if r.get("capsule_id") == root)
+        header = rec["evidence_record_header"]
+        ok = root == sealed.get("capsule_id") and header.get("subject_ref") == sealed.get("action_id")
+        checks["record"] = {"ok": ok, "detail": f"bundle root {root}; the capsule the node sealed is "
+                                                f"{sealed.get('capsule_id')}, which the book record "
+                                                f"{header.get('subject_ref')} carries"}
+        coords = b["completeness_certificate"]["memberships"][root]["log_coordinates"]
+        ok = coords.get("log_id") == book_id == header.get("book_id") and coords.get("seq") == header.get("seq")
+        checks["position"] = {"ok": ok, "detail": f"log {coords.get('log_id')} seq {coords.get('seq')}, the record's "
+                                                  f"header says book {header.get('book_id')} seq {header.get('seq')}"}
+        ok = rec.get("key_id") == node_pub
+        checks["signer"] = {"ok": ok, "detail": f"record key_id {rec.get('key_id')}, the node's key {node_pub}"}
+        cp = b["checkpoint"]
+        ok = cp.get("key_id") == checkpoint_key and cp.get("log_id") == book_id
+        checks["checkpoint"] = {"ok": ok, "detail": f"checkpoint over {cp.get('mmr_size')} nodes of {cp.get('log_id')}, "
+                                                    f"signed by {cp.get('key_id')}; the node's checkpoint key is "
+                                                    f"{checkpoint_key}"}
+    except (OSError, ValueError, KeyError, StopIteration, AttributeError, TypeError) as e:
+        checks.setdefault("record", bad(e))
+    try:
+        entries = [e for e in json.loads((out / "witnesses.json").read_text()).get("witnesses", [])
+                   if isinstance(e, dict)]
+        cp = json.loads((out / "bundle.json").read_text())["checkpoint"]
+        got = cp["witnesses"][0]
+        receipt = {"Bytes": got["receipt_b64"], "EntryHash": got["entry_hash"], "TreeSize": got["tree_size"],
+                   "LeafIndex": got["leaf_index"]}
+        kid, iat = receipt_header(base64.b64decode(receipt["Bytes"]))
+        entry = next((e for e in entries if e.get("key_id") == kid), None)
+        checks["witness_listed"] = {"ok": entry is not None, "detail": f"receipt key id {kid}; the run's witness "
+                                    f"listing has {[e.get('key_id') for e in entries]}"}
+        checks["witness_not_node"] = {"ok": kid not in (node_pub, checkpoint_key),
+                                      "detail": f"receipt key id {kid}; the node's keys are {node_pub} and "
+                                                f"{checkpoint_key}"}
+        try:
+            ok = entry is not None and iat is not None and iat >= utc_seconds(entry.get("not_before"))
+        except (TypeError, ValueError):
+            ok = False
+        checks["witness_not_before"] = {"ok": ok, "detail": f"signed at unix time {iat}; the entry's not_before "
+                                                            f"{entry.get('not_before') if entry else None}"}
+        # The receipt's signature, from the proof bytes: the driver's lab-check over the checkpoint's COSE statement
+        # and openssl over the bundle's checkpoint, as for a live book.
+        (out / "checkpoint.json").write_text(json.dumps({
+            "statement": base64.b64encode((out / "checkpoint.cose").read_bytes()).decode(), "receipt": receipt}) + "\n")
+        checks["witness_signature"] = receipt_signature(bin_, out, {"receipt": receipt}, entries, cp)
+    except (OSError, ValueError, KeyError, IndexError, TypeError, AttributeError) as e:
+        checks["witness_signature"] = bad(e)
+    return checks
+
+
+def goose_finding(pop, out, started):
+    """Judge the book bundle the Goose rehearsal's node wrote (population.json `goose.book`)."""
+    population, book = pop["population"], pop["goose"].get("book")
+    out.mkdir(parents=True, exist_ok=True)
+    for p in GOOSE_PROOF + ["checkpoint.cose", "verify.stderr.txt"]:
+        (out / p).unlink(missing_ok=True)
+    cap, missing = capsulectl()
+    bin_ = driver()
+    if book is None or missing or bin_ is None or not openssl_ed25519():
+        why = ("the run wrote no book bundle: the step 02 driver is not installed, so the run had no test witness"
+               if book is None else "a pinned tool is missing: " + (
+                   "; ".join(f"{m['what']}: {m['why']}" for m in missing) if missing else
+                   "the step 02 driver" if bin_ is None else "openssl 3.0 or later"))
+        return finding.write(out, result="NOT_CHECKED", population=population, asserts=GOOSE_ASSERTS,
+                             pinned=GOOSE_PINNED, proof=[], detail=f"not checked: {why}", started=started,
+                             not_checked=[{"what": "the Goose node's book bundle and its witness receipt", "why": why,
+                                           "issue": "evidence-network/loop: steps/02-book.setup.sh and steps/12-join.setup.sh"}])
+    run = Path(book["bundle"]).parent
+    stem = str(Path(book["bundle"]).with_suffix(""))
+    shutil.copyfile(book["bundle"], out / "bundle.json")
+    shutil.copyfile(f"{stem}.checkpoint.cose", out / "checkpoint.cose")
+    shutil.copyfile(book["witnesses"], out / "witnesses.json")
+    shutil.copyfile(book["capsule"], out / "capsule.json")
+    sealed = json.loads((out / "capsule.json").read_text())
+    node_pub = spki_hex(Path(next(n["key_dir"] for n in pop["nodes"] if n["name"] == book["node"])) / "node-key.pub.pem")
+    with tempfile.TemporaryDirectory(prefix="02-verify-") as tmp:
+        env = dict(os.environ, XDG_CONFIG_HOME=str(Path(tmp) / "config"),
+                   CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
+        r = subprocess.run([str(cap), "verify", "--bundle", str(out / "bundle.json")], capture_output=True, text=True,
+                           env=env)
+    (out / "verify.json").write_text(r.stdout)
+    if r.returncode:
+        (out / "verify.stderr.txt").write_text(r.stderr)
+    checks = goose_checks(bin_, out, r.returncode, node_pub, book["book_id"], book["checkpoint_key"], sealed)
+    (out / "checks.json").write_text(json.dumps({"node": book["node"], "checks": checks}, indent=2, sort_keys=True) + "\n")
+    proof = [p for p in GOOSE_PROOF if (out / p).is_file()] + ["checkpoint.cose"] + (
+        ["verify.stderr.txt"] if r.returncode else [])
+    failed = [f"{n} ({c['detail']})" for n, c in checks.items() if not c["ok"]]
+    where = f"node {book['node']}: book {book['book_id']}, record {sealed.get('capsule_id')}"
+    if failed:
+        return finding.write(out, result="FAIL", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED,
+                             proof=proof, detail=f"{where}: did not hold: {'; '.join(failed)}", started=started)
+    detail = (f"{where}: these held on the proof bytes, by capsulectl verify --bundle, the step 02 driver's lab-check and "
+              f"openssl pkeyutl, and this step's comparisons: {', '.join(checks)}. The bundle is the one the Goose node "
+              f"wrote (loop_book_bundle, goose-g1 {pop['goose']['rev']}); the witness is the rehearsal's TEST witness, "
+              f"one key made for the run.")
+    return finding.write(out, result="PASS", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED,
+                         proof=proof, detail=detail, started=started)
+
+
+def main_goose(pop, out, started):
+    goose_finding(pop, out, started)
+    return 0
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)
@@ -846,6 +978,8 @@ def main(argv):
     pop = json.loads((Path(a.population) / "population.json").read_text(encoding="utf-8"))
     if pop["population"] == "live":
         return main_live(pop, Path(a.out), started)
+    if pop.get("goose"):
+        return main_goose(pop, Path(a.out), started)
     bin_ = driver()
     if bin_ is None:
         print("02-book: the driver is not installed; run steps/02-book.setup.sh", file=sys.stderr)

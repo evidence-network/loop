@@ -21,7 +21,7 @@
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
 # rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
-# it drives (today 01, 03, 06 and 07) runs on the population it wrote, FAIL with the run's log when that run fails; every
+# it drives (today 01, 02, 03, 06 and 07) runs on the population it wrote, FAIL with the run's log when that run fails; every
 # other row is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools. With
 # --population live, lab/goose.sh run (loop#349) writes the population (LOOP_GOOSE_POPULATION): the nodes listed in
 # nodes/ and the steps it gives a Goose input (today 01, 03 and 07).
@@ -226,7 +226,7 @@ import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 the book bundle, 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 09 the referee delivery; 10, 11 and 12 loop#315 (G1's loop_join returns the commitment).
+# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 a live book bundle (the rehearsal runs it), 08 loop#193; 04 and 05 the G1 mappings, 06 the live rail, 09 the referee delivery; 10, 11 and 12 loop#315 (G1's loop_join returns the commitment).
 GOOSE = {"01": "evidence-network/loop#330", "02": "action-state-group/evidencebook#301",
          "03": "evidence-network/loop#330", "04": "action-state-group/evidencebook#302",
          "05": "action-state-group/evidencebook#303", "06": "action-state-group/capsule-emit#408",

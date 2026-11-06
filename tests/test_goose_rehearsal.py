@@ -1,5 +1,5 @@
 """The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, step 01
-judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 03, 06 and 07 pass). Skipped unless steps/goose.setup.sh has installed the
+judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 02, 03, 06 and 07 pass). Skipped unless steps/goose.setup.sh has installed the
 Goose tools; the step 01 test also needs steps/01-seal.setup.sh's verifier.
 
 Run: python3 -m unittest tests.test_goose_rehearsal -v
@@ -44,7 +44,7 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
         self.assertEqual(doc["rail"], "mock")
-        self.assertEqual(doc["goose"]["steps"], ["01", "03", "06", "07"])
+        self.assertEqual(doc["goose"]["steps"], ["01", "02", "03", "06", "07"])
 
     def test_step_03_passes_on_the_commitments_the_goose_nodes_signed(self):
         out = self.work / "findings" / "03-advertise"
@@ -91,6 +91,61 @@ class GooseRehearsalTest(unittest.TestCase):
         found = json.loads((out / "finding.json").read_text())
         self.assertNotIn("goose-g1", found["pinned"])
         self.assertEqual(json.loads((out / "checks.json").read_text())["sealed_by"], "given capsule")
+
+    def _step_02(self, pop, name):
+        out = self.work / name / "02-book"
+        r = subprocess.run([str(ROOT / "steps/02-book"), "--population", str(pop), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return out, json.loads((out / "finding.json").read_text())
+
+    @unittest.skipUnless((TOOLS.parent / "02-book" / "bin" / "loop-step02-book").is_file(), "run steps/02-book.setup.sh")
+    def test_step_02_passes_on_the_book_bundle_and_witness_receipt_the_goose_node_wrote(self):
+        out, found = self._step_02(self.pop, "findings")
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        checks = json.loads((out / "checks.json").read_text())["checks"]
+        self.assertEqual(sorted(checks), ["bundle", "checkpoint", "membership", "position", "record", "signer",
+                                          "witness_listed", "witness_not_before", "witness_not_node", "witness_signature"])
+        # the bytes judged are the ones loop_book_bundle wrote, not ones the step made
+        self.assertEqual((out / "bundle.json").read_bytes(), (self.work / "run" / "book-bundle-buyer.json").read_bytes())
+        self.assertIn("goose-g1", found["pinned"])
+
+    @unittest.skipUnless((TOOLS.parent / "02-book" / "bin" / "loop-step02-book").is_file(), "run steps/02-book.setup.sh")
+    def test_step_02_fails_a_bundle_whose_record_was_altered_and_a_receipt_from_the_nodes_own_key(self):
+        import shutil
+        doc = json.loads((self.pop / "population.json").read_text())
+        run = self.work / "planted-run"
+        shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
+        stem = run / "book-bundle-buyer"
+        # a record altered after it was sealed
+        bundle = json.loads((run / "book-bundle-buyer.json").read_text())
+        rec = next(r for r in bundle["records"] if r["capsule_id"] == bundle["root"])
+        rec["operator"] = "someone-else"
+        (run / "book-bundle-buyer.json").write_text(json.dumps(bundle))
+        doc["goose"]["book"] = {**doc["goose"]["book"], "bundle": str(run / "book-bundle-buyer.json"),
+                                "witnesses": str(run / "witnesses.json")}
+        pop = self.work / "planted-pop"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        _, found = self._step_02(pop, "findings-altered")
+        self.assertEqual(found["result"], "FAIL", found["detail"])
+        self.assertIn("bundle", found["detail"])
+        # a witness listing that does not list the receipt's key
+        shutil.copyfile(self.work / "run" / "book-bundle-buyer.json", run / "book-bundle-buyer.json")
+        (run / "witnesses.json").write_text(json.dumps({"witnesses": [{"name": "w", "key_id": "00" * 32,
+                                                                       "not_before": "2026-01-01T00:00:00Z"}]}))
+        _, found = self._step_02(pop, "findings-unlisted")
+        self.assertEqual(found["result"], "FAIL", found["detail"])
+        self.assertIn("witness_listed", found["detail"])
+
+    def test_step_02_is_not_checked_when_the_run_wrote_no_book_bundle(self):
+        doc = json.loads((self.pop / "population.json").read_text())
+        doc["goose"].pop("book")
+        pop = self.work / "nobook-pop"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        _, found = self._step_02(pop, "findings-nobook")
+        self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
 
     def test_step_07_passes_on_asks_the_goose_nodes_answer_by_polling_their_mailboxes(self):
         out = self.work / "findings" / "07-ask"
