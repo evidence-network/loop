@@ -1,64 +1,64 @@
 {
   "nodes": [
     {
-      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179.json",
+      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json",
       "errors": [],
       "history_cards": [
         {
           "community": "goose",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "4497d60755f406f058dbc1a98ce5729e03fb19405bfd176954c05266f5ced7f5",
+          "sha256": "c772cd59012703d8b4ed09885a6592b0c11662327e232bec42d63f7b253691e3",
           "stream": "goose/node",
           "stream_started": "2026-11-06",
           "witnesses": []
         }
       ],
       "inputs": "signed by the node",
-      "key_id": "97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "key_id": "118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d",
       "name": "buyer",
-      "node_id": "97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "node_id": "118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d",
       "node_key_file": "buyer.node-key.pub.pem",
       "nostr": {
         "note": "not advertised on nostr",
         "result": "NOT_ADVERTISED"
       },
       "notes": [],
-      "policy_digest": "25f03a05e834caad2ca0a5a4155838e8fd9c9b8875f6e3a1a18c77883c57a2f5",
-      "published_commit": "1e3fe175bd2d8502598805e31ff1565a4dc9f4dc",
+      "policy_digest": "d6f3a4724efab165d6531c5ac4ada196b8d6b6d3fb469696900e669683cdd001",
+      "published_commit": "c24d8af6d7d99fe2a9a1f37c9fab30f959b11e87",
       "result": "PASS",
-      "sha256": "bf2ea107330870c6318bc9353c0dc4f6ed144f97b7e27a64b758a7e37a81a80e",
+      "sha256": "7aba37f66d6f72155725108e752c5e7e2910bf1fc49928150dd55e692237423c",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the Goose node buyer itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness"
     },
     {
-      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5.json",
+      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json",
       "errors": [],
       "history_cards": [
         {
           "community": "goose",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "97d4c63f563de4f9ae5b94a48a2a3852004d6640784cd4084dcb5d0ae35fa4aa",
+          "sha256": "3bb7b619a784aa52aa5b054d5ddc8f3b8353f04e5747e99e73ea403720aaa801",
           "stream": "goose/node",
           "stream_started": "2026-11-06",
           "witnesses": []
         }
       ],
       "inputs": "signed by the node",
-      "key_id": "11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5",
+      "key_id": "40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417",
       "name": "seller",
-      "node_id": "11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5",
+      "node_id": "40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417",
       "node_key_file": "seller.node-key.pub.pem",
       "nostr": {
         "note": "not advertised on nostr",
         "result": "NOT_ADVERTISED"
       },
       "notes": [],
-      "policy_digest": "8e2d77f8dfa622231c8b690bf8af0533bc106d78e89eb6ab28c6478205b586c7",
-      "published_commit": "d42c2a06885ba97b74ee7b47ddc5c97a66a93983",
+      "policy_digest": "1542f5096b82236d792805b5c5c8f878124697890716085006c887087c462a3f",
+      "published_commit": "74f03c59ab123c7c6fcee3e1d7cdd6a09b00c28d",
       "result": "PASS",
-      "sha256": "e8b6debbbf0850a2d12cd1f69b73c657187d99cb6d65be36b61fbb9217c4a2c3",
+      "sha256": "7f9ba889073ad0a9ba477169446bf6af6204e1b2c93edb3a9c99c5e3b3990f56",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
       "signed_by": "the Goose node seller itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness"
     }

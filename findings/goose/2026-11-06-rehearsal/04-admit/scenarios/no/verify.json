@@ -1,5 +1,5 @@
 {
-  "bundle_digest": "ba0784e01b8285a554696bcee12887218c59a4aa39c86357b3c8a8b46a342639",
+  "bundle_digest": "147611c3a8df83813c362af959f59e28e74bb888b1cdffb1340a09e8a4c8d6b6",
   "checkpoint": {
     "findings": [],
     "status": "pass"
@@ -7,52 +7,52 @@
   "countersignatures": [],
   "disclosures": [
     {
-      "capsule_id": "29cc0cdee7d178555f1e324e51e49f675310973e69a13243a50ab4b8ea684f78",
+      "capsule_id": "3e3b98a53d8c2db063ac0f076ebbafd2b5d9c87d34252a41df5b10b60df530d8",
       "member": "agent_input",
       "status": "withheld"
     },
     {
-      "capsule_id": "3dd207d12d0c2dfa90bdf5cfc432d66c27751fe7feffea3f6bddfb8b81b0885c",
-      "member": "agent_input",
-      "status": "withheld"
-    },
-    {
-      "capsule_id": "7cf7b67f0883a6d98c96ded267fb835e85d1ddc199b4bb56ec9f17751433371b",
-      "member": "agent_input",
-      "status": "withheld"
-    },
-    {
-      "capsule_id": "a1b321e44d6db6a392b9e73a208717ad63ca9e46397e4c6418a5d9bc77a5b512",
+      "capsule_id": "4d15f570236795b237ed13c2cba428eca7b22c387b53b2e46b63261148a9f0ab",
       "member": "agent_input",
       "status": "disclosure_match"
     },
     {
-      "capsule_id": "b4ef3974ea0cc0d0084ac31a45d2113e6caef863d9c6287333a9b374749363ec",
+      "capsule_id": "5278b1318ac6b65072b0e250e87a9c40b1a212aa5239c9dfd76505256b79d1e2",
       "member": "agent_input",
       "status": "withheld"
     },
     {
-      "capsule_id": "be2a8ee6340b47c90315b18bcdc6e2a87a999421e527ee40d51edfd0c009fd79",
+      "capsule_id": "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3",
       "member": "agent_input",
       "status": "withheld"
     },
     {
-      "capsule_id": "d8f728d3c2eefe2bb6628c8f75e4b9548cce0588db95fd3650baee79d9a2e1bf",
-      "member": "agent_input",
-      "status": "withheld"
-    },
-    {
-      "capsule_id": "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a",
-      "member": "agent_input",
-      "status": "withheld"
-    },
-    {
-      "capsule_id": "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a",
+      "capsule_id": "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3",
       "member": "agent_output",
       "status": "withheld"
     },
     {
-      "capsule_id": "fc3894933e9403bd8e8a51d09d28c9d42b40923850cc5c6fe05ba6886c8e3b48",
+      "capsule_id": "5da054b44c42ae821147441bba833bd537781ed25bd0ba556de2f5266edef6ba",
+      "member": "agent_input",
+      "status": "withheld"
+    },
+    {
+      "capsule_id": "62805de077798791e03e0192343a3f3f8e7a79d3cf3cd83b26f1e1b5952c0469",
+      "member": "agent_input",
+      "status": "withheld"
+    },
+    {
+      "capsule_id": "7bcd91c00f12b8258663c5e14f44b016b15d917bc725de8f980b453c254682dd",
+      "member": "agent_input",
+      "status": "withheld"
+    },
+    {
+      "capsule_id": "933ebd32d6bd05ecacfbe55f2d63d65582f2ddf72bb36a3e4e80222924407162",
+      "member": "agent_input",
+      "status": "withheld"
+    },
+    {
+      "capsule_id": "9571600b1cb0f7c68298c2ee9bdce3a3aa12bdb66ef21f63565e3398ca405dd5",
       "member": "agent_input",
       "status": "withheld"
     }
@@ -80,26 +80,26 @@
     "status": "pass"
   },
   "record_identity": {
-    "29cc0cdee7d178555f1e324e51e49f675310973e69a13243a50ab4b8ea684f78": "passed",
-    "3dd207d12d0c2dfa90bdf5cfc432d66c27751fe7feffea3f6bddfb8b81b0885c": "passed",
-    "7cf7b67f0883a6d98c96ded267fb835e85d1ddc199b4bb56ec9f17751433371b": "passed",
-    "a1b321e44d6db6a392b9e73a208717ad63ca9e46397e4c6418a5d9bc77a5b512": "passed",
-    "b4ef3974ea0cc0d0084ac31a45d2113e6caef863d9c6287333a9b374749363ec": "passed",
-    "be2a8ee6340b47c90315b18bcdc6e2a87a999421e527ee40d51edfd0c009fd79": "passed",
-    "d8f728d3c2eefe2bb6628c8f75e4b9548cce0588db95fd3650baee79d9a2e1bf": "passed",
-    "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a": "passed",
-    "fc3894933e9403bd8e8a51d09d28c9d42b40923850cc5c6fe05ba6886c8e3b48": "passed"
+    "3e3b98a53d8c2db063ac0f076ebbafd2b5d9c87d34252a41df5b10b60df530d8": "passed",
+    "4d15f570236795b237ed13c2cba428eca7b22c387b53b2e46b63261148a9f0ab": "passed",
+    "5278b1318ac6b65072b0e250e87a9c40b1a212aa5239c9dfd76505256b79d1e2": "passed",
+    "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3": "passed",
+    "5da054b44c42ae821147441bba833bd537781ed25bd0ba556de2f5266edef6ba": "passed",
+    "62805de077798791e03e0192343a3f3f8e7a79d3cf3cd83b26f1e1b5952c0469": "passed",
+    "7bcd91c00f12b8258663c5e14f44b016b15d917bc725de8f980b453c254682dd": "passed",
+    "933ebd32d6bd05ecacfbe55f2d63d65582f2ddf72bb36a3e4e80222924407162": "passed",
+    "9571600b1cb0f7c68298c2ee9bdce3a3aa12bdb66ef21f63565e3398ca405dd5": "passed"
   },
   "record_signatures": {
-    "29cc0cdee7d178555f1e324e51e49f675310973e69a13243a50ab4b8ea684f78": "authored",
-    "3dd207d12d0c2dfa90bdf5cfc432d66c27751fe7feffea3f6bddfb8b81b0885c": "authored",
-    "7cf7b67f0883a6d98c96ded267fb835e85d1ddc199b4bb56ec9f17751433371b": "authored",
-    "a1b321e44d6db6a392b9e73a208717ad63ca9e46397e4c6418a5d9bc77a5b512": "authored",
-    "b4ef3974ea0cc0d0084ac31a45d2113e6caef863d9c6287333a9b374749363ec": "authored",
-    "be2a8ee6340b47c90315b18bcdc6e2a87a999421e527ee40d51edfd0c009fd79": "authored",
-    "d8f728d3c2eefe2bb6628c8f75e4b9548cce0588db95fd3650baee79d9a2e1bf": "authored",
-    "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a": "authored",
-    "fc3894933e9403bd8e8a51d09d28c9d42b40923850cc5c6fe05ba6886c8e3b48": "authored"
+    "3e3b98a53d8c2db063ac0f076ebbafd2b5d9c87d34252a41df5b10b60df530d8": "authored",
+    "4d15f570236795b237ed13c2cba428eca7b22c387b53b2e46b63261148a9f0ab": "authored",
+    "5278b1318ac6b65072b0e250e87a9c40b1a212aa5239c9dfd76505256b79d1e2": "authored",
+    "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3": "authored",
+    "5da054b44c42ae821147441bba833bd537781ed25bd0ba556de2f5266edef6ba": "authored",
+    "62805de077798791e03e0192343a3f3f8e7a79d3cf3cd83b26f1e1b5952c0469": "authored",
+    "7bcd91c00f12b8258663c5e14f44b016b15d917bc725de8f980b453c254682dd": "authored",
+    "933ebd32d6bd05ecacfbe55f2d63d65582f2ddf72bb36a3e4e80222924407162": "authored",
+    "9571600b1cb0f7c68298c2ee9bdce3a3aa12bdb66ef21f63565e3398ca405dd5": "authored"
   },
   "say": "Checked: unchanged since it was locked.",
   "spec_version": "capsule-cli-result/v1",
@@ -107,7 +107,7 @@
   "voice": "report",
   "witnesses": {
     "findings": [
-      "witness_unverified:http://127.0.0.1:58030"
+      "witness_unverified:http://127.0.0.1:64482"
     ],
     "receipts": [
       {
@@ -118,7 +118,7 @@
         "registration_time_reason": "receipt_not_passed",
         "registration_time_text": "no signed time (receipt_not_passed)",
         "status": "withheld",
-        "ts_url": "http://127.0.0.1:58030"
+        "ts_url": "http://127.0.0.1:64482"
       }
     ],
     "status": "withheld"

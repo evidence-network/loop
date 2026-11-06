@@ -1,7 +1,7 @@
 {
   "asserts": "one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and returns the node's signed commitment, the node then advertises the commitment it is asked through, which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject with the history_card/1 derivation) verifies and matches the advertised policy; no controller binding is kept",
-  "detail": "probe backend: goose. buyer: joined as 429b0e8d4947 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); seller: joined as 9e64966ea775 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s).",
-  "finished": "2026-11-06T21:22:34Z",
+  "detail": "probe backend: goose. buyer: joined as 118666e44635 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); seller: joined as 40300172fdb8 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s).",
+  "finished": "2026-11-06T22:01:02Z",
   "name": "join",
   "not_checked": [],
   "pinned": {
@@ -21,103 +21,119 @@
   "population": "rehearsal",
   "proof": [
     {
-      "path": "buyer/joined/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
-      "sha256": "4ae05e35bdf521dcc061411fd68761a9d1e06fa83c67f21ca999a9736ace5228"
+      "path": "buyer/joined/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json",
+      "sha256": "b1cc41c041f34c02a1ee295409fe8e9ce6c3590860fcba2bcf4c6f30a2c3a593"
     },
     {
       "path": "buyer/joined/join-record.bundle.checkpoint.cose",
-      "sha256": "5206050aef260c92b17b47d8f3ae5693be225ff98409333b95717409f196438a"
+      "sha256": "d72cc940a5b37afc0b60c336a32d7a949efb2ce826ec8f500a64993b8c4bd044"
     },
     {
       "path": "buyer/joined/join-record.bundle.json",
-      "sha256": "597c7c98a267d31e635fb9ce33dc1e98d0635a8cd59ef28bd6403eaec9c37ee0"
+      "sha256": "afdc7532c4a9e8d31eafb4820334535170abccd823b38f5192ef6c40b81be81b"
     },
     {
-      "path": "buyer/joined/policies/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
-      "sha256": "47d03b3ae445fe1ff000fc8d9362039cf8d2a09e25c0d80791980bd1fe0a9c3b"
+      "path": "buyer/joined/join-record.bundle.witness-receipt.json",
+      "sha256": "3fa15ca7d60ec718ebfabe88ec59435dd6866be1b8b691ee431d8086e8d718aa"
     },
     {
-      "path": "buyer/advertised/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
-      "sha256": "6f01d488a3c376cf9645328677019180102e72741c60df15ecb263dcffd19092"
+      "path": "buyer/joined/join-record.bundle.witnesses.json",
+      "sha256": "5aa3ed58f226fa50f75a531c89ee5b63718aee5ad5c3b0a147234c03cff58a67"
+    },
+    {
+      "path": "buyer/joined/policies/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json",
+      "sha256": "d6f3a4724efab165d6531c5ac4ada196b8d6b6d3fb469696900e669683cdd001"
+    },
+    {
+      "path": "buyer/advertised/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json",
+      "sha256": "7aba37f66d6f72155725108e752c5e7e2910bf1fc49928150dd55e692237423c"
     },
     {
       "path": "buyer/advertised/commitment.json",
-      "sha256": "6f01d488a3c376cf9645328677019180102e72741c60df15ecb263dcffd19092"
+      "sha256": "7aba37f66d6f72155725108e752c5e7e2910bf1fc49928150dd55e692237423c"
     },
     {
-      "path": "buyer/advertised/policies/429b0e8d4947c409abe480cc13882ff66038c0a4933754f636d5c64cbb204553.json",
-      "sha256": "47d03b3ae445fe1ff000fc8d9362039cf8d2a09e25c0d80791980bd1fe0a9c3b"
+      "path": "buyer/advertised/policies/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json",
+      "sha256": "d6f3a4724efab165d6531c5ac4ada196b8d6b6d3fb469696900e669683cdd001"
     },
     {
       "path": "seller/asks/buyer/history_card/answer.json",
-      "sha256": "9d17ed49abf25fdf7b3db5da70d1a7e3b0a57b034bba851c8b1261b54317e61e"
+      "sha256": "91e0e0f7cd47dd5a0fe2fb6538f1551818e2c2c4d7f37d5a97b4aef253993a8c"
     },
     {
       "path": "seller/asks/buyer/history_card/outcome.bundle.checkpoint.cose",
-      "sha256": "45c8c7acaef49ad137a3f1250dc0b0b99b44ee11cc7ae8ab68f4c86a3dc7a7e0"
+      "sha256": "c6dc4030c2197ef1a8c5ac19a08c744c26846eb9c07ae7be73fac4cfe16c933a"
     },
     {
       "path": "seller/asks/buyer/history_card/outcome.bundle.json",
-      "sha256": "d27fc7a313bfb3177a34e55576a6f3446cc38305f59b5755635dfca679d737e1"
+      "sha256": "1c0853c2576ca4d74945e7ffc4b7f27f256d32edbab490dc38042ca7ac42c815"
     },
     {
       "path": "seller/asks/buyer/history_card/request.json",
-      "sha256": "88d4b4b2d6c88ca901e39b6fed138826615bc224f442749fcdb44461f0885f2f"
+      "sha256": "3de9d440e3d87d0d75fa91642948325d841eb391d7a72ea211b83e8bbd0e9d39"
     },
     {
       "path": "seller/asks/buyer/carrier.jsonl",
-      "sha256": "f2b368f7538edbcb67b2acc66cbb334324d0cfb95a6b1c58be72ed54d126626e"
+      "sha256": "c2b61d43d5a8d3e977b471a6beec9e81b69f6863e99255e29105d1a5ef7125b7"
     },
     {
-      "path": "seller/joined/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
-      "sha256": "4d5daa426e98f8cedcdf0dd366e287312fff4bbf3719b5fb4e4926f1494a8c4c"
+      "path": "seller/joined/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json",
+      "sha256": "540d4486bbde72888ac9ff95ff623e166e02c0192d0e33b04e0b4a9628d03cbf"
     },
     {
       "path": "seller/joined/join-record.bundle.checkpoint.cose",
-      "sha256": "77530a2112589ee62b4df9104b266dfd745a348a736c2dceb407b46f42b19b60"
+      "sha256": "567d8e79d39b3c3a5dfc82bd58e410bd5e9a533ed264f167fd24520f76967e82"
     },
     {
       "path": "seller/joined/join-record.bundle.json",
-      "sha256": "dab6e26f39219d9d63f6688b747eeb4393b62c35343f737f761d756268ee3e1b"
+      "sha256": "8e3221fd0e7e4c7d1913b5a9dc304b5b098c16656e0a7f2a82e66437d7fe1e36"
     },
     {
-      "path": "seller/joined/policies/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
-      "sha256": "ee89690ed9291c10ecd5454810e0cda90071ff1b2ccb63ed2f4baf8d89bd4441"
+      "path": "seller/joined/join-record.bundle.witness-receipt.json",
+      "sha256": "54c25baec10891af70b5641dca7343928ed6e38fd0ee1fbf654926fb22b70802"
     },
     {
-      "path": "seller/advertised/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
-      "sha256": "36ad49bf2e8596b05e15fd3c4d229fc78974c64a933952822cbc1263cc4a865d"
+      "path": "seller/joined/join-record.bundle.witnesses.json",
+      "sha256": "5aa3ed58f226fa50f75a531c89ee5b63718aee5ad5c3b0a147234c03cff58a67"
+    },
+    {
+      "path": "seller/joined/policies/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json",
+      "sha256": "1542f5096b82236d792805b5c5c8f878124697890716085006c887087c462a3f"
+    },
+    {
+      "path": "seller/advertised/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json",
+      "sha256": "7f9ba889073ad0a9ba477169446bf6af6204e1b2c93edb3a9c99c5e3b3990f56"
     },
     {
       "path": "seller/advertised/commitment.json",
-      "sha256": "36ad49bf2e8596b05e15fd3c4d229fc78974c64a933952822cbc1263cc4a865d"
+      "sha256": "7f9ba889073ad0a9ba477169446bf6af6204e1b2c93edb3a9c99c5e3b3990f56"
     },
     {
-      "path": "seller/advertised/policies/9e64966ea7758235734470ad7552a27b58dcfed221b65533f2016f4b6bb9465b.json",
-      "sha256": "ee89690ed9291c10ecd5454810e0cda90071ff1b2ccb63ed2f4baf8d89bd4441"
+      "path": "seller/advertised/policies/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json",
+      "sha256": "1542f5096b82236d792805b5c5c8f878124697890716085006c887087c462a3f"
     },
     {
       "path": "buyer/asks/seller/history_card/answer.json",
-      "sha256": "2ef6e11beefbe0e642a69ee12dcf1599537b88f614d3032c3e593c643782d561"
+      "sha256": "2acc0ce15313b354b53625376244210e82b521079c864519aee527e85d351384"
     },
     {
       "path": "buyer/asks/seller/history_card/outcome.bundle.checkpoint.cose",
-      "sha256": "103e0867440f7bafea0dff4a0b80ac7c591ba1f5a7f63bea55d528fe7f984513"
+      "sha256": "208cc6543c9c36b9ecc4b8176cdd2da411110ef8b2903a23851b582c3c498e55"
     },
     {
       "path": "buyer/asks/seller/history_card/outcome.bundle.json",
-      "sha256": "6e6cb4992276f4bb67aba26cd41e5fad3d26a4e6cb58c0c48a8d2c1ea01630e2"
+      "sha256": "41f0da0e140fcec7712364af4091146c99560dee03c74b5dd02a6b7aea273a4b"
     },
     {
       "path": "buyer/asks/seller/history_card/request.json",
-      "sha256": "96f90a52550c0950633eb1caa92807ffd57b8302fa70d2a12e756a15f22de00a"
+      "sha256": "a7ff3bfa83393b9b3fa1c66367c942da8d601adbf3c369b4616be2673c7abc1d"
     },
     {
       "path": "buyer/asks/seller/carrier.jsonl",
-      "sha256": "5dd56d3a863a3c2635e5f33091d458924b0b57708a61d36ff55f41e858ea9f9c"
+      "sha256": "d67238b9dfed7c8c3750b2e24e7b2877082741f507810d9f87190bcf77bde365"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T21:22:33Z",
+  "started": "2026-11-06T22:01:02Z",
   "step": "12"
 }

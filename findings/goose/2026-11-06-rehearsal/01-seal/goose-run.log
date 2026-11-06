@@ -1,5 +1,7 @@
 buyer  loop_join              ok
 seller loop_join              ok
+buyer  loop_book_bundle       ok
+seller loop_book_bundle       ok
 buyer  loop_admit             ok
 seller loop_admit             ok
 buyer  loop_admit             ok
@@ -39,6 +41,8 @@ seller loop_standard_history  ok
 seller loop_history_card      ok
 seller loop_advertise         ok
 buyer  loop_book_bundle       ok
+witness: "POST /checkpoints HTTP/1.1" 200 -
+witness: "POST /checkpoints HTTP/1.1" 200 -
 witness: "POST /checkpoints HTTP/1.1" 200 -
 witness: "POST /checkpoints HTTP/1.1" 200 -
 witness: "POST /checkpoints HTTP/1.1" 200 -

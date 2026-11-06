@@ -1,6 +1,6 @@
 {
   "recompute": {
-    "capsule_id": "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a",
+    "capsule_id": "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3",
     "command": "cross_language seal (capsule_id, signature, key_id removed)",
     "exit": 0,
     "stderr": ""
@@ -15,6 +15,6 @@
     "command": "cross_language verify",
     "exit": 0,
     "stderr": "",
-    "stdout": "fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a\n"
+    "stdout": "5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3\n"
   }
 }

@@ -1,7 +1,7 @@
 {
   "checks": {
     "capsule_id": {
-      "detail": "carried fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a, recomputed fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a",
+      "detail": "carried 5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3, recomputed 5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3",
       "ok": true
     },
     "class1": {
@@ -13,7 +13,7 @@
       "ok": true
     },
     "key": {
-      "detail": "key_id 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179, node public key 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "detail": "key_id 118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d, node public key 118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d",
       "ok": true
     },
     "model": {
@@ -21,7 +21,7 @@
       "ok": true
     },
     "signature": {
-      "detail": "authored under 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "detail": "authored under 118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d",
       "ok": true,
       "state": "ok"
     }
