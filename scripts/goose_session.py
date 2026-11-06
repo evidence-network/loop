@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "lab"))
 import make_rail  # noqa: E402
 import mock_rail  # noqa: E402
+from goose_ask_session import ADVERTISED_RELAY, ANSWERS_WITHIN, POLL_INTERVAL  # noqa: E402  the mailbox step 07 asks through
 import witness as lab_witness  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 from cryptography.hazmat.primitives.serialization import (  # noqa: E402
@@ -35,8 +36,6 @@ from mcp.client.stdio import stdio_client  # noqa: E402
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
 CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 500, 1  # the deal's price is in USD cents
-# The mailbox the nodes advertise (scripts/goose_ask_session.py serves it for step 07).
-ADVERTISED_RELAY, ANSWERS_WITHIN, POLL_INTERVAL = "wss://relay.rehearsal.example", "PT1M", 30
 # A peer the buyer refuses: two 64-hex keys no node holds.
 STRANGER, STRANGER_CHECKPOINT = "ab" * 32, "cd" * 32
 

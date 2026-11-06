@@ -177,8 +177,7 @@ def cmd_session(a):
     try:
         joined = {n: {"key_id": d["key_id"], "record_id": d["record_id"]} for n, d in
                   json.loads(Path(a.ids).read_text()).items()}
-        asyncio.run(asks.run(run, relay, names=NAMES, homes=a.homes, published=a.published, relay_name=RELAY,
-                             joined=joined))
+        asyncio.run(asks.run(run, relay, a.homes, a.published, joined, names=NAMES, relay_name=RELAY))
     finally:
         relay.close()
     src = Path(os.environ["LOOP_GOOSE_SRC"])
