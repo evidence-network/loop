@@ -12,9 +12,9 @@ export CLOUDSDK_CORE_PROJECT=$LIVE_PROJECT CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 setstate() { echo "LIVE_STATE=$1" >> "$GITHUB_ENV"; LIVE_STATE=$1; }
 
-vm() { # SUBCOMMAND: start | status | stage
+vm() { # SUBCOMMAND: start | status | stage; `cd /` first, or the lab user's find reports the CI account's home path in the public log
   timeout 150 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --quiet --verbosity=error --strict-host-key-checking=no --ssh-flag=-q \
-    --command "sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
+    --command "cd / && sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
 }
 
 # Only fixed keywords from a failed call reach the public log, never its text: that keeps names, host output and
