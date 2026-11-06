@@ -17,6 +17,7 @@ import os
 import subprocess
 import sys
 import threading
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -27,6 +28,9 @@ sys.path.insert(0, str(ROOT / "lab"))
 import make_rail  # noqa: E402
 import mock_rail  # noqa: E402
 import witness as lab_witness  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
+from cryptography.hazmat.primitives.serialization import (  # noqa: E402
+    Encoding, NoEncryption, PrivateFormat, PublicFormat)
 from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
 
@@ -68,16 +72,18 @@ def start_witness(out, driver):
     HTTP (the Goose node's witness client takes http and https), signing with a key made for this run and held apart from
     both nodes. Returns (server, directory file the nodes check receipts under, the step's listing of the witness key)."""
     key = out / "witness-key.pem"
-    subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(key)], check=True, capture_output=True)
+    private = Ed25519PrivateKey.generate()
+    key.write_bytes(private.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
     key.chmod(0o600)
     server = ThreadingHTTPServer(("127.0.0.1", 0), lab_witness.handler(str(driver), str(key), None))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    key_id = lab_witness.public_hex(key)
+    key_id = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
+    not_before = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # receipts count from the witness's start
     directory = out / "witnesses-directory.json"
     directory.write_text(json.dumps({"witnesses": [{"name": "goose-rehearsal-witness", "key_ids": [key_id],
                                                     "endpoint": f"http://127.0.0.1:{server.server_port}"}]}))
     (out / "witnesses.json").write_text(json.dumps({"witnesses": [{
-        "name": "goose-rehearsal-witness", "key_id": key_id, "not_before": "2026-01-01T00:00:00Z"}]}, indent=2) + "\n")
+        "name": "goose-rehearsal-witness", "key_id": key_id, "not_before": not_before}]}, indent=2) + "\n")
     return server, directory
 
 
@@ -85,7 +91,7 @@ async def run(out, rail_dir):
     out.mkdir(parents=True, exist_ok=True)
     driver = Path(os.environ.get("LOOP_STEP02_BOOK_BIN") or Path(os.environ.get(
         "LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "02-book" / "bin" / "loop-step02-book")
-    witness, directory = start_witness(out, driver) if driver.is_file() else (None, None)
+    witness, directory = start_witness(out, driver) if driver.is_file() and os.access(driver, os.X_OK) else (None, None)
 
     def params(name):
         env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}"}

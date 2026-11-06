@@ -24,6 +24,11 @@ The finding:
 - NOT_CHECKED when the population names no witness: the rest is checked and
   listed in detail, and the witness part is the one not_checked entry.
 
+On a Goose rehearsal population (`goose.book` in population.json; scripts/goose_rehearsal.py) the step seals nothing: it
+judges the Evidence Bundle the Goose node wrote with loop_book_bundle (G1), with the checkpoint and the test witness's
+receipt beside it, by capsulectl verify --bundle, the driver's lab-check and openssl, and the comparisons in
+goose_checks. With no book bundle in the population, or a tool missing, it is NOT_CHECKED, naming what.
+
 On the live population each node's own book is used: the book join.sh made
 under its book_dir, sealed with its own key from its data_dir (steps/live.py).
 The book's profile is found under book_dir by its store (join.sh names it after
@@ -848,7 +853,7 @@ GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
 GOOSE_PROOF = ["bundle.json", "checkpoint.json", "capsule.json", "witnesses.json", "verify.json", "checks.json"]
 
 
-def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed):
+def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed, all_nodes):
     """The checks on a Goose node's bundle kept under out: {name: {ok, detail}}."""
     def bad(e):
         return {"ok": False, "detail": f"unreadable: {e}"}
@@ -884,7 +889,8 @@ def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed):
                                                     f"signed by {cp.get('key_id')}; the node's checkpoint key is "
                                                     f"{checkpoint_key}"}
     except (OSError, ValueError, KeyError, StopIteration, AttributeError, TypeError) as e:
-        checks.setdefault("record", bad(e))
+        for name in ("record", "position", "signer", "checkpoint"):  # a check the bytes did not let run did not hold
+            checks.setdefault(name, bad(e))
     try:
         entries = [e for e in json.loads((out / "witnesses.json").read_text()).get("witnesses", [])
                    if isinstance(e, dict)]
@@ -896,9 +902,9 @@ def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed):
         entry = next((e for e in entries if e.get("key_id") == kid), None)
         checks["witness_listed"] = {"ok": entry is not None, "detail": f"receipt key id {kid}; the run's witness "
                                     f"listing has {[e.get('key_id') for e in entries]}"}
-        checks["witness_not_node"] = {"ok": kid not in (node_pub, checkpoint_key),
-                                      "detail": f"receipt key id {kid}; the node's keys are {node_pub} and "
-                                                f"{checkpoint_key}"}
+        checks["witness_not_node"] = {"ok": kid is not None and kid not in {node_pub, checkpoint_key, *all_nodes},
+                                      "detail": f"receipt key id {kid}; the run's nodes' keys are "
+                                                f"{sorted({node_pub, checkpoint_key, *all_nodes})}"}
         try:
             ok = entry is not None and iat is not None and iat >= utc_seconds(entry.get("not_before"))
         except (TypeError, ValueError):
@@ -915,7 +921,7 @@ def goose_checks(bin_, out, rc, node_pub, book_id, checkpoint_key, sealed):
     return checks
 
 
-def goose_finding(pop, out, started):
+def main_goose(pop, out, started):
     """Judge the book bundle the Goose rehearsal's node wrote (population.json `goose.book`)."""
     population, book = pop["population"], pop["goose"].get("book")
     out.mkdir(parents=True, exist_ok=True)
@@ -932,14 +938,21 @@ def goose_finding(pop, out, started):
                              pinned=GOOSE_PINNED, proof=[], detail=f"not checked: {why}", started=started,
                              not_checked=[{"what": "the Goose node's book bundle and its witness receipt", "why": why,
                                            "issue": "evidence-network/loop: steps/02-book.setup.sh and steps/12-join.setup.sh"}])
-    run = Path(book["bundle"]).parent
+    want = finding.pins()["goose-g1"][1]
+    if pop["goose"]["rev"] != want:  # the bundle came from another checkout than the pin
+        why = f"installed goose-g1 {pop['goose']['rev']}, versions.lock pins {want}"
+        return finding.write(out, result="NOT_CHECKED", population=population, asserts=GOOSE_ASSERTS,
+                             pinned=GOOSE_PINNED, proof=[], detail=f"not checked: {why}", started=started,
+                             not_checked=[{"what": "goose-g1", "why": why,
+                                           "issue": "none: steps/goose.setup.sh has not installed the pin"}])
     stem = str(Path(book["bundle"]).with_suffix(""))
     shutil.copyfile(book["bundle"], out / "bundle.json")
     shutil.copyfile(f"{stem}.checkpoint.cose", out / "checkpoint.cose")
     shutil.copyfile(book["witnesses"], out / "witnesses.json")
     shutil.copyfile(book["capsule"], out / "capsule.json")
     sealed = json.loads((out / "capsule.json").read_text())
-    node_pub = spki_hex(Path(next(n["key_dir"] for n in pop["nodes"] if n["name"] == book["node"])) / "node-key.pub.pem")
+    keys = {n["name"]: spki_hex(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
+    node_pub = keys[book["node"]]
     with tempfile.TemporaryDirectory(prefix="02-verify-") as tmp:
         env = dict(os.environ, XDG_CONFIG_HOME=str(Path(tmp) / "config"),
                    CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent)))
@@ -948,7 +961,8 @@ def goose_finding(pop, out, started):
     (out / "verify.json").write_text(r.stdout)
     if r.returncode:
         (out / "verify.stderr.txt").write_text(r.stderr)
-    checks = goose_checks(bin_, out, r.returncode, node_pub, book["book_id"], book["checkpoint_key"], sealed)
+    checks = goose_checks(bin_, out, r.returncode, node_pub, book["book_id"], book["checkpoint_key"], sealed,
+                          {k for k in keys.values() if k})
     (out / "checks.json").write_text(json.dumps({"node": book["node"], "checks": checks}, indent=2, sort_keys=True) + "\n")
     proof = [p for p in GOOSE_PROOF if (out / p).is_file()] + ["checkpoint.cose"] + (
         ["verify.stderr.txt"] if r.returncode else [])
@@ -965,10 +979,6 @@ def goose_finding(pop, out, started):
                          proof=proof, detail=detail, started=started)
 
 
-def main_goose(pop, out, started):
-    goose_finding(pop, out, started)
-    return 0
-
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)
@@ -979,7 +989,8 @@ def main(argv):
     if pop["population"] == "live":
         return main_live(pop, Path(a.out), started)
     if pop.get("goose"):
-        return main_goose(pop, Path(a.out), started)
+        main_goose(pop, Path(a.out), started)
+        return 0
     bin_ = driver()
     if bin_ is None:
         print("02-book: the driver is not installed; run steps/02-book.setup.sh", file=sys.stderr)
