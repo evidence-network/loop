@@ -33,8 +33,13 @@ probe_access() {
       project) timeout 60 gcloud compute project-info describe ;;
       os-login) timeout 60 gcloud compute os-login describe-profile ;;
       ssh) timeout 60 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --dry-run ;;
-    esac < /dev/null 2>&1) && echo "::notice::access probe $n: ok" || echo "::warning::access probe $n: fail: $(unreachable_reason "$out")"
+    esac < /dev/null 2>&1) && echo "::notice::access probe $n: ok" || echo "::warning::access probe $n: fail: $(probe_words "$out") / $(unreachable_reason "$out")"
   done
+}
+
+# Probe failures print generic words only (a fixed list, case-insensitive), so the log shows the shape of an error without its text.
+probe_words() {
+  grep -oiE '\b(40[0-9]|429|50[0-9])\b|permission|denied|forbidden|disabled|enabled|not found|does not exist|quota|billing|invalid|expired|scope|token|credential|authentication|authorization|unauthorized|required|missing|profile|account|policy|constraint|restricted|consumer|consumer_invalid|user project|login|metadata|key|import|public key|impersonat' <<< "$1" | tr 'A-Z' 'a-z' | sort -u | tr '\n' ',' | grep . || echo "no known word"
 }
 
 start_run() {
