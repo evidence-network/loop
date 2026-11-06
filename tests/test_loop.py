@@ -183,8 +183,10 @@ class LoopTest(unittest.TestCase):
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file()
-                         and (GOOSE_TOOLS.parent / "bin" / "capsulectl").is_file(),
-                         "run steps/goose.setup.sh, steps/01-seal.setup.sh and steps/12-join.setup.sh")
+                         and (GOOSE_TOOLS.parent / "bin" / "capsulectl").is_file()
+                         and (GOOSE_TOOLS.parent / "capsule-cli" / "bin" / "capsulectl").is_file(),
+                         "run steps/goose.setup.sh, steps/01-seal.setup.sh, steps/12-join.setup.sh and "
+                         "steps/capsule-cli.setup.sh")
     def test_goose_with_its_tools_passes_steps_01_03_04_05_06_07_12_and_02_when_its_driver_is_there_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
@@ -206,7 +208,8 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(sorted(self.finding("01-seal", out)["pinned"]), ["aac-go", "goose-g1"])  # the Goose node sealed it
         nodes = json.loads((out / "03-advertise" / "verification.json").read_text())["nodes"]
         self.assertEqual({n["inputs"] for n in nodes}, {"signed by the node"})  # the harness signed neither
-        self.assertEqual(list(self.finding("03-advertise", out)["pinned"]), ["goose-g1"])
+        # capsule-cli is pinned too when it is installed where this runs (the signed staples are then verified with it)
+        self.assertEqual(sorted(set(self.finding("03-advertise", out)["pinned"]) - {"capsule-cli"}), ["goose-g1"])
         six = self.finding("06-settle", out)
         self.assertIn("the exchange read from G1's pay record", six["detail"])
         self.assertIn("each node's own signed disclosure", six["detail"])
