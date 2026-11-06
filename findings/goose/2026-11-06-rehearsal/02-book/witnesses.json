@@ -1,0 +1,9 @@
+{
+  "witnesses": [
+    {
+      "name": "goose-rehearsal-witness",
+      "key_id": "dea78e21bb7ccce260d2ec32ce3c6cc3f0329882de9c11abbd40ec5a05898644",
+      "not_before": "2026-11-06T21:21:22Z"
+    }
+  ]
+}

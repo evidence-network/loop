@@ -1,0 +1,10 @@
+{
+  "deal_id": "deal-a2d87a3c5bbf25e1",
+  "field": "deal_local",
+  "opening": {
+    "nonce": "e55d2afdfa287622a428519f820a5e2dd208819122fa42ce2caa9cf437108afd",
+    "text": "{\"deal_id\":\"deal-a2d87a3c5bbf25e1\",\"n\":5,\"kind\":\"action\",\"at\":\"2026-11-06T21:21:23Z\",\"act\":{\"action\":\"pay\",\"reference\":\"0e4610ae24eb169c37ca6ebd6899cbc444017c5ba6821309a9de01192c1dbc5e\"},\"nonces\":{\"reference\":\"db3930d7635d279e774aaa3237e61a2d0ae9179606c8c8a96d2089ad3093dd99\"}}"
+  },
+  "record_id": "c4d8494ee38f62fa8ac8ef7fd0677576070b1236d14d542d61fe3bfb4a48ce17",
+  "type": "pay-opening/v1"
+}

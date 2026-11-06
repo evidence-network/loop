@@ -1,0 +1,36 @@
+{
+  "checks": {
+    "capsule_id": {
+      "detail": "carried fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a, recomputed fb464cce006840a55cd4a7e1dd7b5c505fdd646d1640adc1a89f96850b92466a",
+      "ok": true
+    },
+    "class1": {
+      "detail": "Class 1 ok",
+      "ok": true
+    },
+    "effect_class": {
+      "detail": "effect_attestation 'runtime_claimed': sealed in the producer's own process reads runtime_claimed",
+      "ok": true
+    },
+    "key": {
+      "detail": "key_id 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179, node public key 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "ok": true
+    },
+    "model": {
+      "detail": "model_attestation {\"compute_attestation\": {\"agent_input_digest\": \"41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a\", \"agent_output_digest\": \"c2fc6764611032ad32a01b8a0f3a71ec1be12b15e955008c4d74cf61a737efb1\"}, \"model_id\": \"rehearsal-model\", \"provider\": \"rehearsal\"}",
+      "ok": true
+    },
+    "signature": {
+      "detail": "authored under 97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+      "ok": true,
+      "state": "ok"
+    }
+  },
+  "installed": {
+    "aac-go": "0.17.0",
+    "capsule-emit": "0.14.1",
+    "goose-g1": "a255d824eecd64e1269aa22f581b748f099d3805"
+  },
+  "node": "buyer",
+  "sealed_by": "the Goose node buyer, tool loop_seal, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805"
+}

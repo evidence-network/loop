@@ -1,0 +1,12 @@
+{
+  "amount_atomic": 500,
+  "currency": "USD",
+  "decimals": 2,
+  "exchange_id": "deal-a2d87a3c5bbf25e1",
+  "payee": "11ea4ab76f816abdbc1d3a9ebd3b26495ba585c56477ebe24a660ef1a02d0ad5",
+  "payer": "97cbd6c0cc304f163cd07d97747179b175cd4a40ae312adcb20f844031d8d179",
+  "settlement_ref": {
+    "rail": "mock",
+    "settlement_id": "0e4610ae24eb169c37ca6ebd6899cbc444017c5ba6821309a9de01192c1dbc5e"
+  }
+}
