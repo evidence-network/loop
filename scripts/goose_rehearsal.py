@@ -132,7 +132,8 @@ def main(argv=None):
     # reports NOT_CHECKED, naming the driver.
     bundle = run / "book-bundle-buyer.json"
     book = ({"node": "buyer", "bundle": str(bundle), "book_id": "goose/node", "capsule": str(capsule),
-             "witnesses": str(run / "witnesses.json"), "checkpoint_key": (run / "buyer.checkpoint-key").read_text().strip()}
+             "witnesses": str(run / "witnesses.json"), "checkpoint_key": (run / "buyer.checkpoint-key").read_text().strip(),
+             "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip() for n in ("buyer", "seller")}}
             if bundle.is_file() else None)
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
            "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}, **({"book": book} if book else {}),

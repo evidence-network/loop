@@ -163,12 +163,22 @@ class GooseRehearsalTest(unittest.TestCase):
             w["witnesses"][0]["not_before"] = "2999-01-01T00:00:00Z"
             (run / "witnesses.json").write_text(json.dumps(w))
 
-        def nodes_key(run, book):  # the witness key is the node's own key
-            pub = subprocess.run(["openssl", "pkey", "-pubin", "-in", str(self.work / "keys" / "buyer" / "node-key.pub.pem"),
-                                  "-outform", "DER"], capture_output=True).stdout[-32:].hex()
-            w = json.loads((run / "witnesses.json").read_text())
-            w["witnesses"][0]["key_id"] = pub
-            (run / "witnesses.json").write_text(json.dumps(w))
+        def signed_by(pem):  # a receipt really signed by a key of one of the run's nodes, and that key listed
+            def mutate(run, book):
+                driver = TOOLS.parent / "02-book" / "bin" / "loop-step02-book"
+                got = json.loads(subprocess.run(
+                    [str(driver), "lab-receipt", "--key", str(pem), "--statement", str(run / "book-bundle-buyer.checkpoint.cose"),
+                     "--at", "1793937188"], capture_output=True, text=True, check=True).stdout)
+                b = bundle(run)
+                b["checkpoint"]["witnesses"] = [{"ts_url": "http://127.0.0.1:1", "entry_hash": got["entry_hash"],
+                                                 "receipt_b64": got["receipt_b64"], "leaf_index": got["leaf_index"],
+                                                 "tree_size": got["tree_size"]}]
+                save(run, b)
+                pub = subprocess.run(["openssl", "pkey", "-in", str(pem), "-pubout", "-outform", "DER"],
+                                     capture_output=True, check=True).stdout[-32:].hex()
+                (run / "witnesses.json").write_text(json.dumps({"witnesses": [{
+                    "name": "w", "key_id": pub, "not_before": "2026-01-01T00:00:00Z"}]}))
+            return mutate
 
         def other_checkpoint_key(run, book):
             book["checkpoint_key"] = "11" * 32
@@ -189,13 +199,15 @@ class GooseRehearsalTest(unittest.TestCase):
 
         for name, mutate, broken in (("altered", altered, {"bundle"}), ("unlisted", unlisted, {"witness_listed"}),
                                      ("notyet", not_yet, {"witness_not_before"}),
-                                     ("nodeskey", nodes_key, {"witness_not_node", "witness_listed"}),
-                                     ("cpkey", other_checkpoint_key, {"checkpoint"}), ("otherbook", other_book, {"position", "checkpoint"}),
+                                     ("buyerkey", signed_by(self.work / "keys" / "buyer" / "node-key.pem"), {"witness_not_node"}),
+                                     ("sellerkey", signed_by(self.work / "keys" / "seller" / "node-key.pem"), {"witness_not_node"}),
+                                     ("sellercheckpointkey", signed_by(self.work / "run" / "seller" / "checkpoint.key"), {"witness_not_node"}),
+                                     ("cpkey", other_checkpoint_key, {"checkpoint"}), ("otherbook", other_book, {"position"}),
                                      ("othercapsule", other_capsule, {"record"}), ("receipt", altered_receipt, {"witness_signature"})):
             with self.subTest(name):
                 found, checks = self._planted(name, mutate)
                 self.assertEqual(found["result"], "FAIL", found["detail"])
-                self.assertTrue(broken & {n for n, c in checks.items() if not c["ok"]}, checks)
+                self.assertLessEqual(broken, {n for n, c in checks.items() if not c["ok"]}, checks)
 
     def test_step_02_is_not_checked_when_the_run_wrote_no_book_bundle(self):
         doc = json.loads((self.pop / "population.json").read_text())
@@ -213,8 +225,28 @@ class GooseRehearsalTest(unittest.TestCase):
         pop.mkdir()
         (pop / "population.json").write_text(json.dumps(doc))
         _, found = self._step_02(pop, "findings-otherrev")
-        if "book" in doc["goose"]:
-            self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
+        self._step_02_ready()
+        self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
+        self.assertEqual(found["not_checked"][0]["what"], "goose-g1")
+
+    def test_a_run_without_a_usable_step_02_driver_still_passes_step_03_and_step_02_says_not_checked(self):
+        for name, bin_ in (("missing", self.work / "no-such-driver"), ("plain-file", self.work / "plain")):
+            with self.subTest(name):
+                if name == "plain-file":
+                    bin_.write_text("")  # exists, but is not executable
+                work = self.work / f"nodriver-{name}"
+                env = {**os.environ, "LOOP_STEP02_BOOK_BIN": str(bin_)}
+                r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/goose_rehearsal.py"), "--work", str(work)],
+                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                pop = work / "population"
+                self.assertNotIn("book", json.loads((pop / "population.json").read_text())["goose"])
+                for step, result in (("02-book", "NOT_CHECKED"), ("03-advertise", "PASS")):
+                    out = work / "findings" / step
+                    done = subprocess.run([str(ROOT / "steps" / step), "--population", str(pop), "--out", str(out)],
+                                          stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    self.assertEqual(json.loads((out / "finding.json").read_text())["result"], result)
 
     def test_step_07_passes_on_asks_the_goose_nodes_answer_by_polling_their_mailboxes(self):
         out = self.work / "findings" / "07-ask"

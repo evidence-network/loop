@@ -962,7 +962,7 @@ def main_goose(pop, out, started):
     if r.returncode:
         (out / "verify.stderr.txt").write_text(r.stderr)
     checks = goose_checks(bin_, out, r.returncode, node_pub, book["book_id"], book["checkpoint_key"], sealed,
-                          {k for k in keys.values() if k})
+                          {k for k in keys.values() if k} | set(book.get("checkpoint_keys", {}).values()))
     (out / "checks.json").write_text(json.dumps({"node": book["node"], "checks": checks}, indent=2, sort_keys=True) + "\n")
     proof = [p for p in GOOSE_PROOF if (out / p).is_file()] + ["checkpoint.cose"] + (
         ["verify.stderr.txt"] if r.returncode else [])

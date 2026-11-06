@@ -14,7 +14,6 @@ one the mesh rehearsal's step 06 reads; the deal's pay record commits the refere
 import asyncio
 import json
 import os
-import subprocess
 import sys
 import threading
 from datetime import datetime, timezone
@@ -70,7 +69,8 @@ def issue_settlement(rail_dir, deal_id, payer, payee):
 def start_witness(out, driver):
     """The rehearsal's test witness for step 02: the lab witness's handler (lab/witness.py) on a loopback port, over plain
     HTTP (the Goose node's witness client takes http and https), signing with a key made for this run and held apart from
-    both nodes. Returns (server, directory file the nodes check receipts under, the step's listing of the witness key)."""
+    both nodes. Returns (server, the directory file the nodes check receipts under); the step's listing of the witness key is
+    written beside it as witnesses.json."""
     key = out / "witness-key.pem"
     private = Ed25519PrivateKey.generate()
     key.write_bytes(private.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
