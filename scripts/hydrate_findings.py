@@ -65,8 +65,10 @@ def hydrate(findings, archive_file=None, goose=False):
         if got != pin["sha256"]:
             raise Refuse(2, f"{pin['asset']} has sha256 {got}, but {run.name}/{finding.ARCHIVE} records {pin['sha256']}")
         try:
+            # The Mesh run's tgz also carries the day's Goose directory (loop#363); it is not this run's to unpack.
+            optional = () if goose else (f"findings/goose/{run.name[:10]}-live",)
             src = live_harvest.extract(tgz, pin["asset"], [f"findings/{'goose/' if goose else ''}{run.name}"],
-                                       Path(tmp) / "unpacked")[0]
+                                       Path(tmp) / "unpacked", optional)[0]
         except live_harvest.Refuse as r:
             raise Refuse(3, str(r))
         for f in sorted(p for p in src.rglob("*") if p.is_file()):

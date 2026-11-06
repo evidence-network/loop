@@ -196,16 +196,23 @@ def cmd_session(a):
         import goose_lightning as gl
         payer, payee = gl.Wallet(a.payer_port, a.payer_name), gl.Wallet(a.payee_port, a.payee_name)
         log = Path(a.lightning_log)
-        gl.preflight(payer, payee, gl.AMOUNT_MSAT, log)  # refuse before the nodes start the deal
-        node_ids = {n: {**d, "checkpoint_key_id": checkpoint_key_id(a.published, d["key_id"])}
-                    for n, d in json.loads(Path(a.ids).read_text()).items()}
+        try:
+            gl.preflight(payer, payee, gl.AMOUNT_MSAT, log)  # refuse before the nodes start the deal
+        except gl.Refused as e:
+            # The guard refused and nothing was sent: the run goes on without 06, which loop.sh writes NOT_CHECKED
+            # (loop#363: a refused day still publishes steps 01, 03 and 07). The reason is one line for the caller.
+            print(f"goose_live: payment refused: {e}", file=sys.stderr)
+            a.pay = False
+        if a.pay:
+            node_ids = {n: {**d, "checkpoint_key_id": checkpoint_key_id(a.published, d["key_id"])}
+                        for n, d in json.loads(Path(a.ids).read_text()).items()}
 
-        async def deal(nodes):
-            return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log),
-                                  lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"))
-        asyncio.run(with_nodes(a.homes, deal))
-        steps.append("06")
-        lightning = {"payer": payer.name, "payee": payee.name, "file": "step06/lightning.json"}
+            async def deal(nodes):
+                return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log),
+                                      lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"))
+            asyncio.run(with_nodes(a.homes, deal))
+            steps.append("06")
+            lightning = {"payer": payer.name, "payee": payee.name, "file": "step06/lightning.json"}
     nodes = [{"name": n, "node_id": ids[n]["key_id"], "key_dir": str(Path(a.keys) / n)} for n in NAMES]
     doc = {"population": "live", "nodes": nodes, "pinned": ["goose-g1"],
            "goose": {"run": str(work), "log": str(work / "session.log"), "rev": rev, "capsule_emit": emit,

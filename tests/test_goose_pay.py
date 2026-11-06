@@ -169,6 +169,25 @@ class PaidSessionTest(unittest.TestCase):
             self.assertIn(check, found["detail"], what)
         (pop_dir / "step06" / "lightning.json").write_text(json.dumps(ln))
 
+    def test_a_guard_refusal_runs_the_session_without_06_and_says_why(self):
+        lab = self.lab / "goose"
+        pub = self.lab / "published-refused"
+        self.drive("advertise", "--homes", str(lab / "homes"), "--out", str(pub))
+        with FakeLab(pending=True) as fake:
+            work = self.lab / "work-refused"
+            r = subprocess.run([str(PY), "-B", str(ROOT / "scripts" / "goose_live.py"), "session", "--homes", str(lab / "homes"),
+                                "--keys", str(lab / "keys"), "--ids", str(lab / "ids.json"), "--published", str(pub),
+                                "--work", str(work), "--pay", "--payer-port", str(fake.ports["lab-1"]),
+                                "--payee-port", str(fake.ports["lab-2"]), "--lightning-log", str(lab / "lightning" / "refused.jsonl")],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               env={**os.environ, "LOOP_GOOSE_SRC": str(TOOLS / "goose" / "src")})
+            self.assertEqual(r.returncode, 0, r.stderr[-2500:])
+            self.assertEqual(fake.sent, 0)
+        self.assertIn("goose_live: payment refused: ", r.stderr)
+        pop = json.loads((work / "population" / "population.json").read_text())
+        self.assertEqual(pop["goose"]["steps"], ["01", "03", "07"])
+        self.assertNotIn("lightning", pop["goose"])
+
 
 if __name__ == "__main__":
     unittest.main()

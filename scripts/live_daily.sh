@@ -66,6 +66,9 @@
 #   LIVE_CIRCULATE        the executable step 8b runs (default scripts/lab_circulate.py; tests use a stand-in)
 #   LIVE_STEPS_DIR        where steps 10 and 11 are (default steps/ here; tests use stand-ins)
 #   LIVE_GOOSE_SH         the goose.sh step 8c runs (default lab/goose.sh here; tests use a stand-in)
+#   LIVE_GOOSE_TIMEOUT    seconds step 8c's goose.sh pay may take (default 1800); it also gets at most the time left before
+#                         LIVE_DEADLINE (default 9000 s after the start, under entry.sh's 3 h kill) minus a margin, and is
+#                         skipped when that is under 600 s, so a slow Goose pass cannot cost the Mesh pack
 set -uo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -98,12 +101,16 @@ CIRCULATE=${LIVE_CIRCULATE:-$ROOT/scripts/lab_circulate.py}
 GOOSE_SH=${LIVE_GOOSE_SH:-$ROOT/lab/goose.sh}
 WAIT=${LIVE_CHECKPOINT_WAIT:-360}
 STEP_TIMEOUT=${LIVE_STEP_TIMEOUT:-3600}
+GOOSE_TIMEOUT=${LIVE_GOOSE_TIMEOUT:-1800}
+DEADLINE_S=${LIVE_DEADLINE:-9000}
+START_S=$(date +%s)
 export LOOP_TOOLS=${LIVE_TOOLS:-$HOME/.cache/evidence-network-loop-live}
 OUT_DIR=${LIVE_OUT_DIR:-$LAB_DIR/out/live}
 HELD_DIR=${LIVE_HELD_DIR:-$LAB_DIR/held}
 LOCK=$LAB_DIR/run/LIVE_RUN
 POP=population/live/population.json
 [[ $WAIT =~ ^[0-9]+$ ]] || refuse 2 "LIVE_CHECKPOINT_WAIT must be a whole number of seconds"
+[[ $GOOSE_TIMEOUT =~ ^[1-9][0-9]*$ && $DEADLINE_S =~ ^[1-9][0-9]*$ ]] || refuse 2 "LIVE_GOOSE_TIMEOUT and LIVE_DEADLINE must be positive whole numbers of seconds"
 [[ $STEP_TIMEOUT =~ ^[1-9][0-9]*$ ]] || refuse 2 "LIVE_STEP_TIMEOUT must be a positive whole number of seconds"
 command -v timeout > /dev/null || refuse 2 "needs timeout (GNU coreutils) on PATH"
 
@@ -398,17 +405,20 @@ elif [ -e "$GOUT" ] || [ -e "$HELD_DIR/goose-$GNAME" ] || [ -e "$OUT_DIR/unpacke
   # (a packed run of this day that carried it, and has not reached main yet, counts as taking it)
   goose_skip skipped "findings/goose/$GNAME is already taken"
 else
-  OWN_GOUT=1
-  bounded env LAB_DIR="$LAB_DIR" "$GOOSE_SH" tools > "$LAB_DIR/logs/live-goose-tools.log" 2>&1
-  rc=$?
-  if [ "$rc" != 0 ]; then
-    goose_skip failed "goose.sh tools exited $rc (see $LAB_DIR/logs/live-goose-tools.log)"
+  # lab.sh tools (step 2) already installed every step's setup, goose.setup.sh included, into the same LOOP_TOOLS.
+  left=$((DEADLINE_S - ($(date +%s) - START_S) - 300))
+  gt=$GOOSE_TIMEOUT
+  [ "$left" -lt "$gt" ] && gt=$left
+  if [ "$left" -lt 600 ]; then
+    goose_skip skipped "only ${left}s are left before the run's deadline; the Mesh pack comes first"
   else
+    OWN_GOUT=1
     mkdir -p "$(dirname "$GOUT")"
-    bounded env LAB_DIR="$LAB_DIR" LAB_OUT="$GOUT" GOOSE_IN_LIVE_DAILY=1 "$GOOSE_SH" pay > "$LAB_DIR/logs/live-goose.log" 2>&1
+    # Reasons name files by their short names only: the record is published (the lab's paths are not).
+    waited timeout -k 30 "$gt" env LAB_DIR="$LAB_DIR" LAB_OUT="$GOUT" GOOSE_IN_LIVE_DAILY=1 "$GOOSE_SH" pay > "$LAB_DIR/logs/live-goose.log" 2>&1
     goose_rc=$?
     if ! compgen -G "$GOUT/*/finding.json" > /dev/null; then
-      goose_skip failed "goose.sh pay exited $goose_rc and wrote no findings (see $LAB_DIR/logs/live-goose.log)"
+      goose_skip failed "goose.sh pay exited $goose_rc and wrote no findings (logs/live-goose.log on the lab host)"
     fi
   fi
   if [ "$goose_status" = ran ]; then
@@ -417,14 +427,19 @@ else
        || { [ -s "$LAB_DIR/run/invite.token" ] && grep -rlqF -f "$LAB_DIR/run/invite.token" "$GOUT"; }; then
       mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && [ ! -e "$HELD_DIR/goose-$GNAME" ] && mv "$GOUT" "$HELD_DIR/goose-$GNAME" \
         || rm -rf "$GOUT" # never left in the clone, where the pack would take it
-      goose_skip held "a privacy check hit the Goose findings; held in $HELD_DIR/goose-$GNAME, not packed"
+      goose_skip held "a privacy check hit the Goose findings; held as goose-$GNAME on the lab host, not packed"
     elif ! python3 -B "$ROOT/steps/finding.py" check "$GOUT" > /dev/null 2>&1; then
       mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/goose-$GNAME" ] \
         && mv "$GOUT" "$OUT_DIR/unpacked/goose-$GNAME" || rm -rf "$GOUT"
-      goose_skip refused "steps/finding.py check refused the Goose findings; not packed"
+      goose_skip refused "steps/finding.py check refused the Goose findings; kept as unpacked/goose-$GNAME on the lab host, not packed"
     else
       goose_step06=$(python3 -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["result"])' "$GOUT/06-settle/finding.json" 2> /dev/null || echo missing)
       log "goose: $GNAME packed with 06-settle $goose_step06 (goose.sh pay exited $goose_rc)"
+      # A guard refusal leaves 06 NOT_CHECKED with no payment; the session logged why (names and amounts only).
+      if [ "$goose_step06" != PASS ]; then
+        goose_reason=$(grep -a -h -m1 '^goose_live: payment refused: ' "$LAB_DIR/logs/live-goose.log" 2> /dev/null | cut -c1-300 | tr -d '\r')
+        goose_reason=${goose_reason#goose_live: }
+      fi
     fi
   fi
 fi

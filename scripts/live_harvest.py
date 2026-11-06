@@ -132,13 +132,14 @@ def allowed_member(member, prefix):
     return bool(rest) and (rest in (("run.json",), ("index.md",)) or STEP_DIR.fullmatch(rest[0]) is not None)
 
 
-def extract(tgz, label, prefixes, into):
+def extract(tgz, label, prefixes, into, optional=()):
     """Unpack tgz (members only under one of prefixes/, plain files and directories) into `into`; Refuse(6) on anything
-    else, or when a prefix is not in it. Returns each prefix's directory."""
+    else, or when a prefix is not in it. `optional` prefixes are allowed but not required (the run's tgz may carry the Goose
+    directory beside the Mesh one; a caller that wants only the Mesh run still unpacks it whole). Returns each prefix's directory."""
     try:
         with tarfile.open(tgz, "r:gz") as tar:
             for m in tar.getmembers():
-                if not (m.isfile() or m.isdir()) or not any(allowed_member(m.name, p) for p in prefixes):
+                if not (m.isfile() or m.isdir()) or not any(allowed_member(m.name, p) for p in (*prefixes, *optional)):
                     raise Refuse(6, f"{label} has a member that is not {' or '.join(prefixes)}/<NN-step>/..., run.json or "
                                     f"index.md (or is not a plain file): {m.name}")
             tar.extractall(into, filter="data")

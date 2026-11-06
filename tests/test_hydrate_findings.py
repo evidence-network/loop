@@ -110,6 +110,19 @@ class HydrateTest(unittest.TestCase):
         shutil.rmtree(self.findings)
         self.assertEqual(self.hydrate().returncode, 0)
 
+    def test_a_mesh_tgz_that_also_carries_the_goose_directory_hydrates(self):
+        gname = "2026-11-01-live"
+        make_run(self.full, f"goose/{gname}")
+        with tarfile.open(self.tgz, "w:gz") as t:
+            t.add(self.full / NAME, arcname=f"findings/{NAME}")
+            t.add(self.full / "goose" / gname, arcname=f"findings/goose/{gname}")
+        self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        r = self.hydrate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((self.findings / NAME / "04-admit" / "counts.json").is_file())
+        self.assertFalse((self.findings / "goose").exists())  # the Goose directory is not unpacked into the repository
+
     def test_the_newest_goose_live_run_is_hydrated_from_its_own_asset(self):
         gname = "2026-11-01-live"
         make_run(self.full, f"goose/{gname}")

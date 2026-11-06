@@ -65,8 +65,9 @@ pop=$(python3 -c 'import json; print(json.load(open("population/live/population.
 echo "goose-$cmd since=${LOOP_SEALED_SINCE:--} window=$pop in_live_daily=${GOOSE_IN_LIVE_DAILY:--} out=${LAB_OUT:--}" >> "$STUB_LOG"
 w() { python3 -B "$STUB_ROOT/write_finding.py" "$LAB_OUT/$1" "$2"; }
 case "$cmd" in
-  tools) exit "${STUB_GOOSE_TOOLS_RC:-0}" ;;
   pay)
+    [ -n "${STUB_GOOSE_HANG:-}" ] && sleep 60
+    [ -n "${STUB_GOOSE_REFUSED:-}" ] && echo "goose_live: payment refused: lab-1 has 1 pending payment(s): the lab is not idle" >&2
     [ -n "${STUB_GOOSE_NONE:-}" ] && exit 2
     for s in 01-seal 02-book 03-advertise 07-ask; do w $s PASS; done
     w 06-settle "${STUB_GOOSE_06:-PASS}"
@@ -162,7 +163,8 @@ class LiveDailyTest(unittest.TestCase):
         base = self.record(f"{self.day()}-live-1")
         for f in (self.lab / "out").glob("*"):
             f.unlink()
-        for env, status in (({"STUB_GOOSE_TOOLS_RC": "1"}, "failed"), ({"STUB_GOOSE_NONE": "1"}, "failed")):
+        for env, status in (({"STUB_GOOSE_HANG": "1", "LIVE_GOOSE_TIMEOUT": "2"}, "failed"), ({"STUB_GOOSE_NONE": "1"}, "failed"),
+                           ({"LIVE_DEADLINE": "400"}, "skipped")):
             r = self.run_daily(**env)
             self.assertEqual(r.returncode, 0, (env, r.stderr))
             name = f"{self.day()}-live-1"
@@ -179,9 +181,11 @@ class LiveDailyTest(unittest.TestCase):
                 f.unlink()
 
     def test_a_refused_goose_payment_is_packed_with_06_not_checked(self):
-        r = self.run_daily(STUB_GOOSE_06="NOT_CHECKED", STUB_GOOSE_RC="1")
+        r = self.run_daily(STUB_GOOSE_06="NOT_CHECKED", STUB_GOOSE_RC="1", STUB_GOOSE_REFUSED="1")
         self.assertEqual(r.returncode, 0, r.stderr)
         rec = self.record(f"{self.day()}-live-1")
+        self.assertEqual(rec["goose"]["reason"], "payment refused: lab-1 has 1 pending payment(s): the lab is not idle")
+        self.assertNotIn(str(self.lab), json.dumps(rec))  # the published record names no path of the lab host
         self.assertEqual(rec["goose"]["step_06"], "NOT_CHECKED")
         self.assertEqual(rec["goose"]["exit"], 1)
         self.assertEqual(rec["goose"]["status"], "ran")
@@ -241,7 +245,7 @@ class LiveDailyTest(unittest.TestCase):
         calls = self.calls()
         self.assertEqual([c.split()[0] for c in calls],
                          ["tools", "check", "running", "exchange", "admit", "deal", "bundles", "settle", "dispute",
-                          "loop", "10-judge", "11-report", "circulate", "goose-tools", "goose-pay"])
+                          "loop", "10-judge", "11-report", "circulate", "goose-pay"])
         self.assertIn(f"tools={self.lab / 'tools'}", calls[0])  # the run's own tools, first: check reads their record
         for c in calls[3:10]:
             self.assertIn(f"since={since} window={since} out={out} tools=", c)

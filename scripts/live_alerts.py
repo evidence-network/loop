@@ -97,10 +97,11 @@ def alert_run(run, run_url):
     alerts = failing(run)
     where = run.relative_to(ROOT) if run.is_absolute() and run.is_relative_to(ROOT) else run
     for nn, name, result, why in alerts:
-        owner = OWNER.get(nn, "unknown")
+        # OWNER names Mesh's components; Goose steps run on evidencebook's G1 node (loop#315).
+        owner = "evidence-network/loop#315 (the Goose pass)" if "goose" in run.parts else OWNER.get(nn, "unknown")
         raise_issue(f"loop-step-{nn}", "B60205", f"loop step {nn} failed",
                     f"loop step {nn} ({name}) fails",
-                    f"Step {nn} ({name}) is {result} on the live run {run.name}: {run_url}\n"
+                    f"Step {nn} ({name}) is {result} on the live {'Goose ' if 'goose' in run.parts else ''}run {run.name}: {run_url}\n"
                     f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why}\n"
                     f"Owning component repository: {owner}.")
     print(f"live_alerts: {run.name}: {len(alerts)} FAIL or MALFORMED step(s)")
