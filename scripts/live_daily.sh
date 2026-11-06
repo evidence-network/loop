@@ -432,7 +432,9 @@ for d, dirs, files in os.walk(root, followlinks=False):
     for n in dirs + files:
         p = os.path.join(d, n)
         rel = prefix + "/" + os.path.relpath(p, root)
-        if os.path.islink(p) or not live_harvest.allowed_member(rel, prefix) or not (os.path.isdir(p) or os.path.isfile(p)):
+        # a file with more than one link would be packed by tar as a hard-link member, which the harvest refuses
+        if (os.path.islink(p) or not live_harvest.allowed_member(rel, prefix) or not (os.path.isdir(p) or os.path.isfile(p))
+                or (os.path.isfile(p) and os.stat(p).st_nlink > 1)):
             sys.exit(f"not allowed in the pack: {rel}")
 PY
     then

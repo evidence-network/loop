@@ -191,8 +191,16 @@ class LiveDailyTest(unittest.TestCase):
         self.assertEqual(rec["goose"]["status"], "ran")
 
     def test_a_member_the_harvest_would_refuse_keeps_the_goose_findings_out_of_the_pack(self):
+        for link in ('ln -s /etc/hosts "$LAB_OUT/06-settle/link"', 'ln "$LAB_OUT/06-settle/proof.txt" "$LAB_OUT/01-seal/hard"'):
+            self.refused_member(link)
+            for f in (self.lab / "out").glob("*"):
+                if f.is_file():
+                    f.unlink()
+            shutil.rmtree(self.lab / "out" / "unpacked", ignore_errors=True)
+
+    def refused_member(self, link):
         gl = Path(self.env["LIVE_GOOSE_SH"])
-        gl.write_text(gl.read_text().replace("exit \"${STUB_GOOSE_RC:-0}\"", 'ln -s /etc/hosts "$LAB_OUT/06-settle/link"\n    exit "${STUB_GOOSE_RC:-0}"'))
+        gl.write_text(STUB_GOOSE.replace("exit \"${STUB_GOOSE_RC:-0}\"", link + '\n    exit "${STUB_GOOSE_RC:-0}"'))
         r = self.run_daily()
         self.assertEqual(r.returncode, 0, r.stderr)
         name = f"{self.day()}-live-1"

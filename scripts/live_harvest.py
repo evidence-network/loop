@@ -151,19 +151,34 @@ def extract(tgz, label, prefixes, into, optional=()):
     return [into / p for p in prefixes]
 
 
-def unpack(name, files, into, goose=None):
-    """(the run's directory, the Goose run's directory or None); goose is its name when the record says it ran."""
+def goose_candidates(record):
+    """The findings/goose/ names the tgz may carry: this run's <date>-live, and the record's own goose.name when it is a
+    plain path component (even a malformed one: the Goose part is left out then, not the whole harvest)."""
+    names = [f"{record['name'][:10]}-live"]
+    g = record.get("goose")
+    raw = g.get("name") if isinstance(g, dict) else None
+    if isinstance(raw, str) and re.fullmatch(r"[A-Za-z0-9._-]{1,64}", raw) and raw not in (".", "..") and raw not in names:
+        names.append(raw)
+    return names
+
+
+def unpack(name, files, into, goose=()):
+    """(the run's directory, {name: directory} of each candidate Goose directory the tgz holds)."""
     want = files / f"{name}.tgz"
     digest = (files / f"{name}.tgz.sha256").read_text().split()
     if not digest or digest[0] != sha256(want):
         raise Refuse(5, f"{name}.tgz does not match {name}.tgz.sha256")
     # The Goose directory is optional: a record that names it while the tgz lacks it costs the Goose part only.
-    mesh = extract(want, f"{name}.tgz", [f"findings/{name}"], into, [f"findings/goose/{goose}"] if goose else ())[0]
-    gdir = into / "findings" / "goose" / goose if goose else None
-    if gdir is not None and gdir.exists() and not gdir.is_dir():
-        # the tgz is published whole: a file where the directory belongs would skip the Goose scans
-        raise Refuse(6, f"{name}.tgz holds findings/goose/{goose} as a file, not a directory")
-    return mesh, (gdir if gdir is not None and gdir.is_dir() else None)
+    mesh = extract(want, f"{name}.tgz", [f"findings/{name}"], into, [f"findings/goose/{g}" for g in goose])[0]
+    found = {}
+    for g in goose:
+        gdir = into / "findings" / "goose" / g
+        if gdir.exists() and not gdir.is_dir():
+            # the tgz is published whole: a file where the directory belongs would skip the Goose scans
+            raise Refuse(6, f"{name}.tgz holds findings/goose/{g} as a file, not a directory")
+        if gdir.is_dir():
+            found[g] = gdir
+    return mesh, found
 
 
 def goose_name(record):
@@ -262,9 +277,12 @@ def harvest(args, work, wt):
         gname = goose_name(record)
     except Refuse as r:
         gname, goose_skipped = None, str(r)
-    full, goose_full = unpack(name, files, work / "unpacked", gname)
+    full, goose_dirs = unpack(name, files, work / "unpacked", goose_candidates(record))
+    goose_full = goose_dirs.get(gname) if gname else None
     if gname and goose_full is None:
         gname, goose_skipped = None, f"the run record names findings/goose/{gname}, but the tgz holds none"
+    if goose_dirs and not gname and not goose_skipped:
+        goose_skipped = "the run record does not say the Goose pass ran, though the tgz holds a Goose directory"
     paid = record["exchange"].get("paid") is True
     digest = sha256(files / f"{name}.tgz")
 
@@ -274,6 +292,8 @@ def harvest(args, work, wt):
         raise Refuse(4, f"origin already has {branch}")
     run("git", "worktree", "add", "-q", "--detach", str(wt), "origin/main", cwd=ROOT)
     privacy(full, f"{name} as unpacked", wt)
+    for g, d in goose_dirs.items():  # the whole tgz is published: scan every Goose directory in it, used or not
+        privacy(d, f"findings/goose/{g} as unpacked", wt, findings=False)
     if goose_full is not None:
         try:
             privacy(goose_full, f"findings/goose/{gname} as unpacked", wt)
