@@ -43,6 +43,8 @@ jobs:
       LIVE_PROJECT: ${{ secrets.LIVE_PROJECT }}
       LIVE_ZONE: ${{ secrets.LIVE_ZONE }}
       LIVE_LAB_USER: ${{ secrets.LIVE_LAB_USER }}
+      # The auth action leaves gcloud without an account name; os-login (ssh) crashes on it (TypeError in quote_from_bytes).
+      CLOUDSDK_CORE_ACCOUNT: ${{ secrets.LIVE_SERVICE_ACCOUNT }}
       HARVEST_ONLY: ${{ inputs.harvest_only }}
       LIVE_STATE: init
     steps:
