@@ -89,6 +89,26 @@ class Circulate(unittest.TestCase):
                    {"inbound": True, "status": "pending", "amount_msat": 2000, "fee_msat": 0}]
         self.assertEqual(lab_circulate.ledger_msat(b), 2800)
 
+    def test_a_list_that_reaches_the_limit_is_not_summed_and_nothing_is_sent(self):
+        a, b = wallets(lab3=100)
+        b.rows = b.rows * lab_circulate.TX_LIMIT
+        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
+        self.assertEqual(gl.read_log(self.log), [])
+
+    def test_a_request_that_got_no_200_tops_up_even_when_the_ledger_looks_enough(self):
+        a, b = wallets(lab3=2800)
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, "HTTP/1.1 200 OK")["action"], "none")
+        self.assertEqual(lab_circulate.circulate(a, b, self.log, "HTTP/1.1 402 Payment Required")["action"], "sent")
+
+    def test_an_error_after_send_is_unknown_not_refused(self):
+        a, b = wallets()
+
+        def transaction(h, inbound):  # the poll after `send` (Wallet.transaction -> call) answers with an HTTP error
+            raise gl.Refused("HTTP 500")
+        a.transaction = transaction
+        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "unknown")
+        self.assertEqual(len(gl.read_log(self.log)), 1)  # the reservation stays
+
     def test_unknown_outcome_is_not_reported_as_refused(self):
         a, b = wallets()
         orig = b.call

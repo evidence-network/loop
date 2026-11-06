@@ -138,8 +138,6 @@ class LiveDailyTest(unittest.TestCase):
             self.assertEqual(record["steps"]["06-settle"], "PASS")
             for f in (self.lab / "out").glob("*"):
                 f.unlink()
-            for d in (self.lab / "out").glob("*"):
-                shutil.rmtree(d, ignore_errors=True)
 
     def test_run_writes_findings_pack_and_record(self):
         r = self.run_daily()

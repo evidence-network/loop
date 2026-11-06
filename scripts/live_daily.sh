@@ -26,7 +26,7 @@
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
-#   8b. scripts/lab_circulate.py: when lab-3's ledger (not its balance, which reads 0) holds less than its next 1,000 msat charge, lab-1 returns 1,500 msat
+#   8b. scripts/lab_circulate.py: when lab-3's ledger (not its balance, which reads 0) holds less than its next 1,000 msat charge or its request got no 200, lab-1 returns 1,500 msat
 #      to it through the guarded lab-to-lab payment (loop#384); the outcome goes into the record (circulate), and a
 #      refusal changes nothing else
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
@@ -344,8 +344,8 @@ gate_other=$(grep -v -x -e 'mesh step 06: PASS -> NOT_CHECKED' -e '' <<< "$gate_
 # --- 8b. lab-3's next charge ----------------------------------------------------------------------------------------
 # After every step has read the books: a payment now falls before the next run's window. Its outcome is recorded and
 # never changes the run's exit code (loop#384).
-circ_out=$(mktemp) || refuse 2 "cannot make a temporary file"
-bounded env LAB_DIR="$LAB_DIR" "$CIRCULATE" < /dev/null > "$circ_out" 2> /dev/null
+circ_out=$(mktemp) || circ_out=/dev/null # no temporary file: the report below falls back to unknown, the run goes on
+bounded env LAB_DIR="$LAB_DIR" LIVE_LAB3_STATUS="$lab3_status" "$CIRCULATE" < /dev/null > "$circ_out" 2> /dev/null
 circ_rc=$?
 circulate=$(python3 -B - "$circ_out" "$circ_rc" << 'PY'
 import json, sys
@@ -359,7 +359,7 @@ except Exception:
 print(json.dumps(report, sort_keys=True))
 PY
 )
-rm -f "$circ_out"
+[ "$circ_out" = /dev/null ] || rm -f "$circ_out"
 log "lab-3 top-up: $circulate"
 
 # --- 9. the pack ----------------------------------------------------------------------------------------------------
