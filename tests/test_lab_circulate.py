@@ -34,9 +34,10 @@ class FakeWallet:
             return {"payment_hash": h, "bolt11": "lnbc" + "x" * 30, "amount_msat": a["amount_msat"]}
         if command == "send":
             h, amt = next(iter(self.peer.invoices.items()))
-            self.rows = [{"payment_hash": h, "inbound": False, "status": "succeeded", "amount_msat": amt, "fee_msat": 0,
-                          "preimage": PREIMAGE.hex()}]
-            self.peer.rows = [{"payment_hash": h, "inbound": True, "status": "succeeded", "amount_msat": amt - 100, "fee_msat": 100}]
+            self.rows = self.rows + [{"payment_hash": h, "inbound": False, "status": "succeeded", "amount_msat": amt,
+                                      "fee_msat": 0, "preimage": PREIMAGE.hex()}]
+            self.peer.rows = self.peer.rows + [{"payment_hash": h, "inbound": True, "status": "succeeded",
+                                                "amount_msat": amt - 100, "fee_msat": 100}]
             self.peer.spendable += amt - 100
             self.spendable -= amt
             return {}
@@ -47,7 +48,8 @@ class FakeWallet:
 
 
 def wallets(lab1=11000, lab3=900):
-    a, b = FakeWallet("lab-1", lab1), FakeWallet("lab-3", lab3)
+    a, b = FakeWallet("lab-1", lab1), FakeWallet("lab-3", 0)  # lab-3's `balance` reads 0 whatever it holds (2026-11-06)
+    b.rows = [{"payment_hash": "f" * 64, "inbound": True, "status": "succeeded", "amount_msat": lab3, "fee_msat": 0}]
     a.peer, b.peer = b, a
     return a, b
 
@@ -60,13 +62,15 @@ class Circulate(unittest.TestCase):
         a, b = wallets(lab3=900)
         r = lab_circulate.circulate(a, b, self.log)
         self.assertEqual((r["action"], r["amount_msat"], r["payee_received_msat"]), ("sent", 1500, 1400))
-        self.assertGreaterEqual(b.spendable, lab_circulate.CHARGE_MSAT)
+        self.assertGreaterEqual(lab_circulate.ledger_msat(b), lab_circulate.CHARGE_MSAT)
         self.assertEqual([e["direction"] for e in gl.read_log(self.log)], ["lab-1>lab-3"])  # counted against the guard
         self.assertNotIn("payment_hash", r)
 
-    def test_does_nothing_when_lab3_can_pay(self):
-        a, b = wallets(lab3=1000)
-        self.assertEqual(lab_circulate.circulate(a, b, self.log)["action"], "none")
+    def test_does_nothing_when_lab3_can_pay_even_though_its_balance_reads_zero(self):
+        a, b = wallets(lab3=2800)
+        self.assertEqual(b.call("balance"), {"spendable_msat": 0})
+        r = lab_circulate.circulate(a, b, self.log)
+        self.assertEqual((r["action"], r["ledger_msat"]), ("none", 2800))
         self.assertEqual(gl.read_log(self.log), [])
 
     def test_refusal_is_reported_inside_the_daily_cap(self):
@@ -77,6 +81,13 @@ class Circulate(unittest.TestCase):
         r = lab_circulate.circulate(a, b, self.log)
         self.assertEqual(r["action"], "refused")
         self.assertIn("9000", r["reason"])
+
+    def test_ledger_counts_payments_and_fees_and_ignores_failed_and_pending(self):
+        _, b = wallets(lab3=3800)
+        b.rows += [{"inbound": False, "status": "succeeded", "amount_msat": 1000, "fee_msat": 0},
+                   {"inbound": False, "status": "failed", "amount_msat": 1000, "fee_msat": 0},
+                   {"inbound": True, "status": "pending", "amount_msat": 2000, "fee_msat": 0}]
+        self.assertEqual(lab_circulate.ledger_msat(b), 2800)
 
     def test_unknown_outcome_is_not_reported_as_refused(self):
         a, b = wallets()
@@ -89,14 +100,14 @@ class Circulate(unittest.TestCase):
         orig, reads = b.call, []
 
         def call(c, timeout=30, **k):
-            if c == "balance":
+            if c == "transactions" and k.get("limit") == lab_circulate.TX_LIMIT:
                 reads.append(1)
                 if len(reads) > 1:
                     raise gl.Unknown("no answer")
             return orig(c, timeout, **k)
         b.call = call
         r = lab_circulate.circulate(a, b, self.log)
-        self.assertEqual((r["action"], r["spendable_after_msat"]), ("sent", None))
+        self.assertEqual((r["action"], r["ledger_after_msat"]), ("sent", None))
 
     def test_lab1_too_poor_is_a_refusal(self):
         a, b = wallets(lab1=1000)

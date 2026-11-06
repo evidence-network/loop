@@ -26,7 +26,7 @@
 #   7. check_no_preimages.py, check_personal_data.py and a search for the lab's invite token over the findings (any
 #      hit moves the findings out of the clone to $LIVE_HELD_DIR and nothing is packed), then steps/finding.py check
 #   8. ecosystem_gate.py update on a copy of baseline/live.json, then check against baseline/live.json
-#   8b. scripts/lab_circulate.py: when lab-3's wallet holds less than its next 1,000 msat charge, lab-1 returns 1,500 msat
+#   8b. scripts/lab_circulate.py: when lab-3's ledger (not its balance, which reads 0) holds less than its next 1,000 msat charge, lab-1 returns 1,500 msat
 #      to it through the guarded lab-to-lab payment (loop#384); the outcome goes into the record (circulate), and a
 #      refusal changes nothing else
 #   9. $LIVE_OUT_DIR/<name>.tgz (the findings directory only), its .sha256, and <name>.json, the run's record
@@ -160,7 +160,7 @@ if [ "$DRY" = 1 ]; then
   6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, dispute, loop; $STEPS/10-judge, $STEPS/11-report
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
-  8b. scripts/lab_circulate.py: lab-1 returns 1,500 msat to lab-3 when lab-3 holds under 1,000 msat
+  8b. scripts/lab_circulate.py: lab-1 returns 1,500 msat to lab-3 when lab-3's ledger holds under 1,000 msat
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
   exit 0

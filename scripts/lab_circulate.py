@@ -2,7 +2,7 @@
 """Keep lab-3's wallet able to pay its daily 1,000 msat charge, by returning part of what lab-1 earned (loop#384).
 
 lab-2 and lab-3 each pay lab-1 1,000 msat a day for the one chat completion lab.sh exchange asks, and only lab-1 sells,
-so lab-3 only spends. At the end of a daily run, if lab-3 holds less than the next charge, lab-1 sends it TOPUP_MSAT
+so lab-3 only spends. At the end of a daily run, if lab-3's ledger holds less than the next charge (ledger_msat; its `balance` reads 0 whatever it holds), lab-1 sends it TOPUP_MSAT
 through goose_lightning.pay, the guarded lab-to-lab payment (at most 3,000 msat per payment and 9,000 msat per
 direction per UTC day, counted in the same log as the Goose payments). Value circulates between our own lab wallets;
 nothing comes from outside the lab. A refusal or an unknown outcome is reported, never raised: the run's exit code
@@ -19,7 +19,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import goose_lightning as gl  # noqa: E402
 
 CHARGE_MSAT = 1000  # what lab-3 pays lab-1 each day (the minimum payment, LAB-BRINGUP.md)
+TX_LIMIT = 1000
 TOPUP_MSAT = 1500   # the receive-side fee took 100 of 2,000 on 2026-11-06; this leaves room for it and a day's charge
+
+
+def ledger_msat(wallet):
+    """What the wallet's own transaction list says it holds: settled receipts minus settled payments and their fees.
+    Not `balance`: lab-3's `balance` reads 0 after it received 3,800 msat and paid 1,000 (2026-11-06), so it cannot say
+    when to top up. A list cut short by the limit understates the sum, which tops up early, never late."""
+    rows = wallet.call("transactions", limit=TX_LIMIT)
+    if not isinstance(rows, list):
+        raise gl.Unknown(f"{wallet.name}'s transactions are unreadable")
+    return sum((t.get("amount_msat") or 0) if t.get("inbound") else -((t.get("amount_msat") or 0) + (t.get("fee_msat") or 0))
+               for t in rows if t.get("status") == "succeeded")
 
 
 def circulate(payer, payee, log):
@@ -27,23 +39,21 @@ def circulate(payer, payee, log):
     action none (nothing to do), sent (confirmed on both wallets), refused (the guard or a check refused; nothing was
     sent) or unknown (the payment may have gone out; its reservation stays in the log)."""
     try:
-        before = (payee.call("balance") or {}).get("spendable_msat")
-        if not isinstance(before, int):
-            return {"action": "none", "reason": f"{payee.name}'s balance is unreadable"}
+        before = ledger_msat(payee)
         if before >= CHARGE_MSAT:
-            return {"action": "none", "payee": payee.name, "spendable_msat": before}
+            return {"action": "none", "payee": payee.name, "ledger_msat": before}
         out = gl.pay(payer, payee, log, amount_msat=TOPUP_MSAT)
     except gl.Refused as e:
         return {"action": "refused", "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}
     except (gl.Unknown, ValueError) as e:  # ValueError: a 200 with a body that is not JSON, after `send` was issued
         return {"action": "unknown", "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}
     try:
-        after = (payee.call("balance") or {}).get("spendable_msat")
+        after = ledger_msat(payee)
     except (gl.Refused, gl.Unknown, ValueError):
         after = None  # the payment is confirmed; only the balance read failed
     return {"action": "sent", "payer": payer.name, "payee": payee.name, "amount_msat": TOPUP_MSAT,
-            "payee_received_msat": out["payee"]["amount_msat"], "spendable_before_msat": before,
-            "spendable_after_msat": after}
+            "payee_received_msat": out["payee"]["amount_msat"], "ledger_before_msat": before,
+            "ledger_after_msat": after}
 
 
 def main():

@@ -616,7 +616,8 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   each of lab-2 and lab-3; both have a wallet, and an exchange is paid only
   while the asker's wallet holds the charge. lab-3 sells nothing (only lab-1 serves), so
   at the end of each daily run `scripts/lab_circulate.py` has lab-1 return 1,500 msat to
-  lab-3 when lab-3 holds under 1,000 msat, through the guarded lab-to-lab payment
+  lab-3 when lab-3's ledger (settled receipts less payments and fees; its `balance` reads 0 whatever it holds)
+  is under 1,000 msat, through the guarded lab-to-lab payment
   (`goose_lightning.py`, counted in the Goose payment log; 1,400 arrive after the receive
   fee seen on 2026-11-06, which took 100 of 2,000). With less than 1,000 msat lab-3's
   charge row goes to `failed` and lab-1 answers 402 (loop#384); the run record shows each
