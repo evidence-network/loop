@@ -269,7 +269,7 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual({n: [c["check"] for c in cs] for n, cs in checks.items()}, {
             "go": ["bundle_verifies", "decision_sealed", "one_outcome", "goose_shape", "peer_named", "deal_sealed",
                    "sealed_before_deal", "deal_cites_decision", "first_step_cites_decision"],
-            "no": ["bundle_verifies", "decision_sealed", "one_outcome", "goose_shape", "no_deal_after_no"]})
+            "no": ["bundle_verifies", "decision_sealed", "one_outcome", "goose_shape", "no_deal_after_no", "gate_refuses"]})
         self.assertEqual(json.loads((out / "counts.json").read_text())["by_outcome"], {"GO": 1, "NO": 1})
         # the bytes judged are the ones loop_book_bundle wrote
         self.assertEqual((out / "scenarios" / "go" / "bundle.json").read_bytes(),
@@ -284,7 +284,7 @@ class GooseRehearsalTest(unittest.TestCase):
             run = self.work / f"{name}-run4"
             shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
             doc["goose"]["admit"].update(go=str(run / "admission-go-disclosed.json"), no=str(run / "admission-no-disclosed.json"),
-                                         half=str(run / "buyer-half.json"))
+                                         half=str(run / "buyer-half.json"), refused=str(run / "deal-refused.json"))
             mutate(doc, run)
             pop = self.work / f"{name}-pop4"
             pop.mkdir()
@@ -309,7 +309,17 @@ class GooseRehearsalTest(unittest.TestCase):
             h["steps"][0]["capsule"]["evidence_record_header"]["links"] = []
             (run / "buyer-half.json").write_text(json.dumps(h))
 
+        def refusal_missing(doc, run):  # the gate was never asked: the kept answer is a success
+            (run / "deal-refused.json").write_text(json.dumps({"ok": True, "peer": "ab" * 32}))
+
+        def half_forged(doc, run):  # the deal's first half altered after it was sealed
+            h = json.loads((run / "buyer-half.json").read_text())
+            h["steps"][0]["payload"]["body"]["terms"]["price_minor"] += 1
+            (run / "buyer-half.json").write_text(json.dumps(h))
+
         for name, mutate, broken in (("swapped", swapped, {"go.decision_sealed", "no.decision_sealed"}),
+                                     ("norefusal", refusal_missing, {"no.gate_refuses"}),
+                                     ("forgedhalf", half_forged, {"go.first_step_cites_decision"}),
                                      ("otherbuyer", other_buyer, {"go.decision_sealed", "no.decision_sealed"}),
                                      ("otherpeer", other_peer, {"go.peer_named"}),
                                      ("nocite", half_without_cite, {"go.first_step_cites_decision"})):
@@ -332,10 +342,11 @@ class GooseRehearsalTest(unittest.TestCase):
         def judged(name, path, mutate):
             b = json.loads(Path(path).read_text())
             mutate(b)
-            p = self.work / f"judge-{name}.json"
-            p.write_text(json.dumps(b))
             verdict = {"verdict": "VALID", "disclosures": [{"capsule_id": c, "status": "disclosure_match"} for c in b["disclosures"]]}
-            checks, _ = mod.goose_judge(name[:2], p, verdict, keys["buyer"], keys["seller"], half, "GO" if name[:2] == "go" else "NO")
+            half_verdict = {"ok": True, "key_id": keys["buyer"], "deal_id": half["deal_id"]}
+            refusal = json.loads(Path(admit["refused"]).read_text())
+            checks, _ = mod.goose_judge(name[:2], b, verdict, keys["buyer"], keys["seller"], half, half_verdict, refusal,
+                                        "GO" if name[:2] == "go" else "NO")
             return {c["check"] for c in checks if not c["ok"]}
 
         def cited(b):  # a later record's capsule cites the NO
@@ -367,8 +378,10 @@ class GooseRehearsalTest(unittest.TestCase):
         checks = json.loads((out / "checks.json").read_text())
         for side in ("buyer", "seller"):
             self.assertEqual([c["check"] for c in checks[side]], [
-                "halves_verify", "pushed_at_completion", "close_cites_counterparty_checkpoint", "receiver_record",
-                "holds_bytes_by_record_id", "cites_request_and_checkpoint"])
+                "halves_verify", "one_deal", "final_extends_pushed", "pushed_at_completion",
+                "close_cites_counterparty_checkpoint", "receiver_record", "holds_bytes_by_record_id",
+                "cites_request_and_checkpoint"])
+            self.assertTrue((out / "verify" / f"{side}-held-half-bundle.json").is_file())  # capsulectl's verdict is kept
         # the halves judged are the bytes the nodes wrote
         self.assertEqual((out / "halves" / "seller-exchange-half.json").read_bytes(),
                          (self.work / "run" / "seller-exchange-half.json").read_bytes())
@@ -416,6 +429,65 @@ class GooseRehearsalTest(unittest.TestCase):
                 found, failed = planted(name, mutate)
                 self.assertEqual(found["result"], "FAIL", found["detail"])
                 self.assertLessEqual(broken, failed)
+
+    def test_step_05_judge_fails_a_fork_another_deal_a_close_citing_another_checkpoint_and_a_payload_that_is_not_the_half(self):
+        self._step_04_ready()
+        import base64
+        import copy
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("step05_deal_tests", str(ROOT / "steps" / "05-deal"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        out, found = self._step_05(self.pop, "findings-unit")
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        deal = json.loads((self.pop / "population.json").read_text())["goose"]["deal"]
+        halves = {f"{w}-{k}": json.loads(Path(deal[f"{w}-{k}"]).read_text()) for w in ("buyer", "seller")
+                  for k in ("exchange-half", "final-half")}
+        verdicts = {n: json.loads((out / "verify" / f"{n}.json").read_text()) for n in halves}
+        keys = {n: mod.goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")} \
+            if hasattr(mod, "goose_half") else None
+        if keys is None:
+            sys.path.insert(0, str(ROOT / "steps"))
+            import goose_half
+            keys = {n: goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")}
+        bundle = json.loads(Path(deal["buyer-held-half-bundle"]).read_text())
+
+        def failed(mutate_verdicts=None, mutate_bundle=None):
+            v, b = copy.deepcopy(verdicts), copy.deepcopy(bundle)
+            (mutate_verdicts or (lambda v: None))(v)
+            (mutate_bundle or (lambda b: None))(b)
+            return {c["check"] for c in mod.goose_clauses("buyer", "seller", halves, v, b, True, keys) if not c["ok"]}
+
+        self.assertEqual(failed(), set())
+
+        def other_deal(v):
+            v["seller-final-half"]["deal_id"] = "deal-another"
+        self.assertIn("one_deal", failed(other_deal))
+
+        def forked(v):  # the buyer's final half does not start with the steps it pushed
+            v["buyer-final-half"]["ids"] = ["00" * 32] + v["buyer-final-half"]["ids"][1:]
+        self.assertIn("final_extends_pushed", failed(forked))
+
+        def wrong_checkpoint(v):
+            v["buyer-final-half"]["counterparty_checkpoint_cites"] = ["11" * 32]
+        self.assertEqual(failed(wrong_checkpoint) >= {"close_cites_counterparty_checkpoint"}, True)
+
+        def garbage_payload(b):  # the held bytes replaced
+            ext = b["extensions"]["evidencebook/payloads"]
+            for k in ext:
+                ext[k] = base64.urlsafe_b64encode(b"not the half").decode()
+        self.assertIn("holds_bytes_by_record_id", failed(mutate_bundle=garbage_payload))
+
+        def no_payload(b):
+            b["extensions"]["evidencebook/payloads"] = {}
+        self.assertIn("holds_bytes_by_record_id", failed(mutate_bundle=no_payload))
+
+        def other_request(b):  # the record cites nothing
+            for d in b["disclosures"].values():
+                if d["agent_input"]["record_type"] == "goose_half_received":
+                    d["agent_input"]["links"] = []
+        self.assertIn("cites_request_and_checkpoint", failed(mutate_bundle=other_request))
 
     def test_step_07_passes_on_asks_the_goose_nodes_answer_by_polling_their_mailboxes(self):
         out = self.work / "findings" / "07-ask"

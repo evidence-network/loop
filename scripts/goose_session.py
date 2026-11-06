@@ -46,12 +46,16 @@ class Goose:
         self.session, self.name = session, name
 
     async def call(self, tool, **arguments):
-        result = await self.session.call_tool(tool, arguments)
-        out = json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
+        out = await self.raw(tool, **arguments)
         if not out.get("ok"):
             raise SystemExit(f"{self.name} {tool}: {out.get('error')}")
         print(f"{self.name:6} {tool:22} ok")
         return out
+
+    async def raw(self, tool, **arguments):
+        """The tool's JSON reply, a refusal included."""
+        result = await self.session.call_tool(tool, arguments)
+        return json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
 
 
 def issue_settlement(rail_dir, deal_id, payer, payee):
@@ -133,8 +137,12 @@ async def run(out, rail_dir):
             opening = json.loads((out / "admission-go-bundle.json").read_text())["root"]
             await buyer.call("loop_book_bundle", book_id="goose/node", record_id=opening, disclose=True,
                              out_path=str(out / "admission-go-disclosed.json"))
-            await buyer.call("loop_book_bundle", book_id="goose/node", record_id=refused["record_id"], disclose=True,
-                             out_path=str(out / "admission-no-disclosed.json"))
+            # 04: the gate holds, asked directly: a deal with the peer the buyer refused is itself refused, and seals nothing.
+            attempt = await buyer.raw("loop_deal_open", peer_key_id=STRANGER, item="inference: 1k tokens",
+                                      price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock", asked="buy from the stranger")
+            if attempt.get("ok"):
+                raise SystemExit("buyer loop_deal_open: a deal opened with the peer the buyer refused (NO)")
+            (out / "deal-refused.json").write_text(json.dumps({"peer": STRANGER, **attempt}, sort_keys=True))
             await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "buyer-half.json"))
             await seller.call("loop_deal_respond", request_file=str(out / "buyer-half.json"),
                               asked="sell 1k tokens of inference at the listed price")
@@ -173,6 +181,9 @@ async def run(out, rail_dir):
                 (out / f"{node.name}.checkpoint-key").write_text(key["checkpoint_key_id"])
                 # 03: the node's own signed commitment and policy (loop_advertise), laid out for nodes/commitments/.
                 await node.call("loop_advertise", out_dir=str(out / "commitments"))
+            # 04: the NO with the book up to the end of the session, so no record sealed after it cites it.
+            await buyer.call("loop_book_bundle", book_id="goose/node", record_id=refused["record_id"], disclose=True,
+                             out_path=str(out / "admission-no-disclosed.json"))
     if witness:
         witness.shutdown()
     (out / "deal.json").write_text(json.dumps({"deal_id": deal_id, "buyer": b["key_id"], "seller": s["key_id"],

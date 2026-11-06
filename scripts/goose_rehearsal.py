@@ -135,14 +135,22 @@ def main(argv=None):
              "witnesses": str(run / "witnesses.json"), "checkpoint_key": (run / "buyer.checkpoint-key").read_text().strip(),
              "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip() for n in ("buyer", "seller")}}
             if bundle.is_file() else None)
+    # Step 04 and step 05 read what the session exported; without it (it always does) their members are left out and they read NOT_CHECKED.
+    def present(*files):
+        return all((run / f).is_file() for f in files)
+
     admit = ({"node": "buyer", "peer": "seller", "go": str(run / "admission-go-disclosed.json"),
-              "no": str(run / "admission-no-disclosed.json"), "half": str(run / "buyer-half.json")})
+              "no": str(run / "admission-no-disclosed.json"), "half": str(run / "buyer-half.json"),
+              "refused": str(run / "deal-refused.json")}
+             if present("admission-go-disclosed.json", "admission-no-disclosed.json", "buyer-half.json", "deal-refused.json") else None)
     names = [f"{who}-{kind}" for who in ("buyer", "seller") for kind in ("exchange-half", "final-half", "held-half-bundle")]
-    deal_inputs = {"python": str(python), "src": str(src),
-                   "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip() for n in ("buyer", "seller")},
-                   **{n: str(run / f"{n}.json") for n in names}}
+    deal_inputs = ({n: str(run / f"{n}.json") for n in names} if present(*(f"{n}.json" for n in names)) else None)
     doc = {"population": "rehearsal", "nodes": nodes, "rail": "mock",
-           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}, **({"book": book} if book else {}), "admit": admit, "deal": deal_inputs,
+           "pinned": ["goose-g1"], "goose": {"run": str(run), "log": str(work / "scripted_run.log"), "rev": rev, "capsule_emit": emit, "steps": STEPS, "sealed": {"node": "buyer", "capsule": str(capsule)}, **({"book": book} if book else {}), **({"admit": admit} if admit else {}),
+                                             **({"deal": deal_inputs} if deal_inputs else {}),
+                                             "verify": {"python": str(python), "src": str(src),
+                                                        "checkpoint_keys": {n: (run / f"{n}.checkpoint-key").read_text().strip()
+                                                                            for n in ("buyer", "seller")}},
                                              "commitments": commitments,
                                              "asks": {"run": str(asks), "log": str(work / "ask_session.log")}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

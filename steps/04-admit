@@ -1068,8 +1068,10 @@ def judge_live(pop, out, started):
 # G1 seals the buyer's GO or NO as a `goose_admitted` record of its node book; the deal's opening (`goose_deal_opened`)
 # cites the GO, and so does the deal's first step. The node writes the Evidence Bundle of the book up to a checkpoint,
 # with the headers of the root and of the records it cites disclosed (loop_book_bundle): one root on the GO (the
-# opening, which cites the admission) and one on the NO. The step seals nothing and judges those bytes with the checks
-# above, for the Goose shape of the decision.
+# opening, which cites the admission, cut when the opening was sealed) and one on the NO (cut at the end of the session, so
+# no record sealed after it is left out). The deal's first half is checked by G1's own verify_half. The NO is also put to the
+# gate directly: the node is asked to open a deal with the refused peer and its refusal is kept. The step seals nothing and
+# judges those bytes with the checks above, for the Goose shape of the decision.
 GOOSE_DECISION, GOOSE_DEAL = "goose_admitted", "goose_deal_opened"
 GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
 GOOSE_ASSERTS = ASSERTS.replace("in the shape the capsules plugin seals", "in the shape the Goose node seals (goose_admitted)", 1)
@@ -1077,25 +1079,26 @@ assert GOOSE_ASSERTS != ASSERTS
 GOOSE_SHAPE = {"peer", "checkpoint_key_id", "decision", "reason"}
 
 
-def goose_judge(name, bundle_path, verdict, buyer, seller, half, expect):
-    """[{check, ok, detail}] for one Goose scenario's bundle (`name` is "go" or "no"; expect is the decision wanted)."""
+def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusal, expect):
+    """[{check, ok, detail}] for one Goose scenario's bundle (`name` is "go" or "no"; expect is the decision wanted), and the
+    decision block."""
     checks = []
 
     def check(n, ok, detail):
         checks.append({"check": n, "ok": bool(ok), "detail": detail})
 
-    bundle = load(bundle_path)
     status = {x["capsule_id"]: x["status"] for x in verdict.get("disclosures", [])}
     records = {r["capsule_id"]: r for r in bundle.get("records", [])}
     heads = {cid: (d or {}).get("agent_input") for cid, d in (bundle.get("disclosures") or {}).items()}
-    check("bundle_verifies", verdict.get("verdict") == "VALID", f"capsulectl verify --bundle: {verdict.get('verdict')}")
+    valid = verdict.get("verdict") == "VALID"
+    check("bundle_verifies", valid, f"capsulectl verify --bundle: {verdict.get('verdict')}")
     root = bundle.get("root")
 
     def kind(cid):
         h = heads.get(cid)
         return h.get("record_type") if isinstance(h, dict) else None
 
-    def cites(cid):  # what a record cites, by its disclosed header and by its capsule's references (both must agree)
+    def cites(cid):  # what a record cites, by its disclosed header and by its capsule's references
         h = heads.get(cid) or {}
         by_header = sorted(ln["target"] for ln in h.get("links", []) if ln.get("type") == "cites")
         by_capsule = sorted(x.get("digest") for x in records.get(cid, {}).get("references", []))
@@ -1104,10 +1107,13 @@ def goose_judge(name, bundle_path, verdict, buyer, seller, half, expect):
     dec_id = root if name == "no" else next(iter(cites(root)[0]), None)
     head = heads.get(dec_id) or {}
     block = head.get("statement")
-    check("decision_sealed", kind(dec_id) == GOOSE_DECISION and status.get(dec_id) == "disclosure_match"
-          and records.get(dec_id, {}).get("key_id") == buyer,
+    sealed = kind(dec_id) == GOOSE_DECISION and status.get(dec_id) == "disclosure_match" \
+        and records.get(dec_id, {}).get("key_id") == buyer
+    check("decision_sealed", sealed,
           "the decision is a goose_admitted record of the buyer's node book, signed by its key, disclosed and matched"
-          if kind(dec_id) == GOOSE_DECISION else f"no goose_admitted record for the {name.upper()} decision")
+          if sealed else f"the {name.upper()} decision {str(dec_id)[:12]} is not a goose_admitted record signed by the "
+          f"buyer's key, disclosed and matched (record type {kind(dec_id)}, disclosure {status.get(dec_id)}, signer "
+          f"{records.get(dec_id, {}).get('key_id')})")
     if kind(dec_id) != GOOSE_DECISION or not isinstance(block, dict):
         return checks, None
     outcome = block.get("decision")
@@ -1117,35 +1123,47 @@ def goose_judge(name, bundle_path, verdict, buyer, seller, half, expect):
              and isinstance(block.get("reason"), str))
     check("goose_shape", shape, f"members {sorted(block)}; the peer and its checkpoint key are 64-hex")
     if name == "go":
-        check("peer_named", block.get("peer") == seller, f"the decision names peer {block.get('peer')}; the seller's key is {seller}")
-        deal_id = root
-        dh = heads.get(deal_id) or {}
-        check("deal_sealed", kind(deal_id) == GOOSE_DEAL and status.get(deal_id) == "disclosure_match"
-              and records.get(deal_id, {}).get("key_id") == buyer,
-              "the deal's opening is a goose_deal_opened record, signed by the buyer's key, disclosed and matched")
-        if kind(deal_id) == GOOSE_DEAL:
+        check("peer_named", block.get("peer") == seller,
+              f"the decision names peer {block.get('peer')}; the seller's key is {seller}")
+        dh = heads.get(root) or {}
+        dst = dh.get("statement") or {}
+        opened = kind(root) == GOOSE_DEAL and status.get(root) == "disclosure_match" and records.get(root, {}).get("key_id") == buyer
+        check("deal_sealed", opened,
+              "the deal's opening is a goose_deal_opened record, signed by the buyer's key, disclosed and matched" if opened
+              else f"the root {str(root)[:12]} is not a goose_deal_opened record signed by the buyer's key, disclosed and "
+              f"matched (record type {kind(root)}, disclosure {status.get(root)})")
+        if kind(root) == GOOSE_DEAL:
             check("sealed_before_deal", head["seq"] < dh["seq"] and when(head["committed_at"]) < when(dh["committed_at"]),
                   f"decision at seq {head['seq']} ({head['committed_at']}), opening at seq {dh['seq']} ({dh['committed_at']})")
-            by_header, by_capsule = cites(deal_id)
-            check("deal_cites_decision", by_header == by_capsule == [dec_id] and (dh.get("statement") or {}).get("admission") == dec_id,
+            by_header, by_capsule = cites(root)
+            check("deal_cites_decision", by_header == by_capsule == [dec_id] and dst.get("admission") == dec_id,
                   f"the opening cites {by_header} in its header and {by_capsule} in its capsule; its statement names "
-                  f"{(dh.get('statement') or {}).get('admission')}")
+                  f"{dst.get('admission')}")
         first = (half.get("steps") or [{}])[0].get("capsule", {})
         refs = [ln.get("target") for ln in (first.get("evidence_record_header") or {}).get("links", [])
                 if ln.get("type") == "cites"]
-        check("first_step_cites_decision", dec_id in refs and first.get("key_id") == buyer,
-              f"the first step of the deal's half (signed by {first.get('key_id')}) cites {refs}")
+        check("first_step_cites_decision",
+              half_verdict.get("ok") is True and half_verdict.get("key_id") == buyer and dec_id in refs
+              and half_verdict.get("deal_id") == half.get("deal_id") == dst.get("deal_id")
+              and first.get("capsule_id") == dst.get("first_step") and dst.get("peer") == seller,
+              f"G1's verify_half on the deal's first half: {half_verdict.get('error') or 'holds'}; its first step "
+              f"{str(first.get('capsule_id'))[:12]} cites {refs}; the opening's statement names deal "
+              f"{dst.get('deal_id')}, first step {str(dst.get('first_step'))[:12]} and peer {dst.get('peer')}")
     else:
         complete, why = to_the_checkpoint(bundle)
         citing = [cid for cid in records if cid != dec_id and dec_id in set(cites(cid)[1])]
-        opened = [cid for cid in records if kind(cid) == GOOSE_DEAL]
-        check("no_deal_after_no", complete and not citing and not any(dec_id in cites(c)[0] for c in opened),
-              f"{why}; {len(citing)} records cite the decision")
+        check("no_deal_after_no", complete and not citing, f"{why}; {len(citing)} records cite the decision")
+        check("gate_refuses", refusal.get("ok") is False and refusal.get("peer") == block.get("peer")
+              and "NO" in str(refusal.get("error")),
+              f"a deal opened with the refused peer {block.get('peer')} was answered: ok {refusal.get('ok')}, "
+              f"{refusal.get('error')!r}")
     return checks, block
 
 
 def main_goose(pop, out, started):
     """Judge the admission bundles the Goose rehearsal's buyer wrote (population.json `goose.admit`)."""
+    sys.path.insert(0, str(HERE))
+    import goose_half
     population, admit = pop["population"], pop["goose"].get("admit")
     bin_ = capsulectl()
     for f in ("finding.json", "checks.json", "counts.json"):
@@ -1158,12 +1176,18 @@ def main_goose(pop, out, started):
         finding.write(out, result="NOT_CHECKED", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED,
                       proof=[], detail=f"not checked: {why}", started=started,
                       not_checked=[{"what": "the Goose node's admission bundles", "why": why,
-                                    "issue": "evidence-network/loop: steps/goose.setup.sh, steps/04-admit.setup.sh"}])
+                                    "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh"}])
         return 0
-    keys = {n["name"]: book_keys.pub_hex(Path(n["key_dir"]) / "node-key.pem") for n in pop["nodes"]}
+    keys = {n["name"]: goose_half.key_of(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
     buyer, seller = keys[admit["node"]], keys[admit["peer"]]
     half = load(admit["half"])
+    cp_key = pop["goose"]["verify"]["checkpoint_keys"][admit["node"]]
+    half_verdict = goose_half.verify(pop["goose"]["verify"], admit["half"], buyer, cp_key)
+    refusal = load(admit["refused"])
     results, proof, outcomes = {}, [], {}
+    shutil.copyfile(admit["half"], out / "deal-half.json")
+    shutil.copyfile(admit["refused"], out / "deal-refused.json")
+    (out / "deal-half.verify.json").write_text(json.dumps(half_verdict, indent=2, sort_keys=True) + "\n")
     with tempfile.TemporaryDirectory(prefix="04-admit-") as tmp:
         for name, expect in (("go", "GO"), ("no", "NO")):
             sd = out / "scenarios" / name
@@ -1171,31 +1195,35 @@ def main_goose(pop, out, started):
             shutil.copyfile(admit[name], sd / "bundle.json")
             verdict = verify_bundle(bin_, tmp, sd / "bundle.json")
             (sd / "verify.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
-            checks, block = goose_judge(name, sd / "bundle.json", verdict, buyer, seller, half, expect)
+            try:
+                checks, block = goose_judge(name, load(sd / "bundle.json"), verdict, buyer, seller, half, half_verdict,
+                                            refusal, expect)
+            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a bundle that does not read
+                checks, block = [{"check": "bundle_reads", "ok": False,
+                                  "detail": f"the {name.upper()} bundle could not be read ({type(e).__name__}: {e})"}], None
             results[name] = checks
             if block is not None:
                 outcomes[name] = block.get("decision")
             proof += [f"scenarios/{name}/{f}" for f in ("bundle.json", "verify.json")]
-    shutil.copyfile(admit["half"], out / "deal-half.json")
     (out / "checks.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     counts = {"decisions": len(outcomes), "refused": sum(1 for o in outcomes.values() if o == "NO"),
               "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in VERDICTS}}
     (out / "counts.json").write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
-    proof += ["deal-half.json", "checks.json", "counts.json"]
+    proof += ["deal-half.json", "deal-half.verify.json", "deal-refused.json", "checks.json", "counts.json"]
     failed = [f"{n}: {c['check']} ({c['detail']})" for n, cs in results.items() for c in cs if not c["ok"]]
     if failed:
         finding.write(out, result="FAIL", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                       detail=f"did not hold: {'; '.join(failed)}. {NO_SPEND}", started=started)
         return 0
     detail = (f"2 admission decisions sealed in the Goose buyer's node book (TEST key): the GO is sealed before the deal's "
-              f"opening, which cites it, as does the deal's first step; the NO is cited by no record up to the "
-              f"checkpoint. For each, capsulectl found the bundle VALID and the judge found every check held "
-              f"(checks.json); {counts['refused']} of {counts['decisions']} decisions were NO. The records are what the "
-              f"Goose node wrote (loop_admit, loop_deal_open, loop_book_bundle, goose-g1 {pop['goose']['rev']}). {NO_SPEND}")
+              f"opening, which cites it, as does the deal's first step (G1's verify_half holds on that half); the NO is "
+              f"cited by no record up to the end of the session, and a deal opened with the refused peer was refused. "
+              f"For each, capsulectl found the bundle VALID and the judge found every check held (checks.json); "
+              f"{counts['refused']} of {counts['decisions']} decisions were NO. The records are what the Goose node wrote "
+              f"(loop_admit, loop_deal_open, loop_book_bundle, goose-g1 {pop['goose']['rev']}). {NO_SPEND}")
     finding.write(out, result="PASS", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                   detail=detail, started=started)
     return 0
-
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

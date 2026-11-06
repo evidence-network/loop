@@ -1351,32 +1351,6 @@ GOOSE_ASSERTS = ("both sides seal halves of one deal, each citing the other half
                  "halves are pushed at completion and the receiver holds the pushed bytes by record id; the receiver "
                  "seals a record citing the counterparty half and the checkpoint it came under")
 GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
-SPKI_ED25519 = bytes.fromhex("302a300506032b6570032100")
-
-
-def goose_jcs(obj):
-    """RFC 8785 for the halves: strings, integers, arrays and objects only."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-
-
-def goose_key(pem):
-    """The raw Ed25519 public key of an SPKI PEM, as hex."""
-    der = base64.b64decode("".join(ln for ln in Path(pem).read_text().splitlines() if not ln.startswith("-----")))
-    return der[12:].hex() if len(der) == 44 and der.startswith(SPKI_ED25519) else None
-
-
-def goose_verify(deal, name, half, key_id, checkpoint_key, out):
-    """G1's verify_half on one half, in the Goose venv: its JSON verdict (kept under out/verify/)."""
-    r = subprocess.run([deal["python"], "-B", str(ROOT / "scripts" / "goose_verify_half.py"), str(half), key_id, checkpoint_key],
-                       stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                       env=dict(os.environ, LOOP_GOOSE_SRC=deal["src"], PYTHONDONTWRITEBYTECODE="1"))
-    try:
-        verdict = json.loads(r.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        verdict = {"ok": False, "error": f"goose_verify_half exited {r.returncode}: {r.stderr.strip()[-200:]}"}
-    (out / "verify").mkdir(exist_ok=True)
-    (out / "verify" / f"{name}.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
-    return verdict
 
 
 def goose_clauses(side, other, halves, verdicts, bundle, bundle_ok, keys):
@@ -1389,9 +1363,20 @@ def goose_clauses(side, other, halves, verdicts, bundle, bundle_ok, keys):
     pushed, vp, vf = halves[f"{other}-exchange-half"], verdicts[f"{other}-exchange-half"], verdicts[f"{side}-final-half"]
     bad = [f"{n}: {v.get('error')}" for n, v in verdicts.items() if not v.get("ok")]
     check("halves_verify", not bad, "G1's verify_half holds on all four halves" if not bad else "; ".join(bad))
-    pushed_digest = hashlib.sha256(bytes.fromhex(pushed["checkpoint"]["statement"])).hexdigest()
+    deals = {n: v.get("deal_id") for n, v in verdicts.items()}
+    check("one_deal", len(set(deals.values())) == 1 and None not in deals.values(),
+          f"the four halves are of deals {sorted(set(map(str, deals.values())))}")
+    # Each side's final half carries its pushed half unchanged as its first steps: it is one chain, not a fork.
+    forks = [who for who in (side, other)
+             if verdicts[f"{who}-final-half"].get("ids", [])[:len(verdicts[f"{who}-exchange-half"].get("ids", []))]
+             != verdicts[f"{who}-exchange-half"].get("ids") or not verdicts[f"{who}-exchange-half"].get("ids")]
+    check("final_extends_pushed", not forks,
+          "each side's final half starts with the steps of the half it pushed" if not forks
+          else f"the final half of {forks} does not start with the steps of its pushed half")
+    pushed_digest = vp.get("checkpoint_digest")
     check("pushed_at_completion", vp.get("ok") and vp.get("close_half_digest") is None,
-          f"{other}'s half, pushed at the end of the exchange, holds {vp.get('steps')} steps and no close yet")
+          f"{other}'s half, pushed at the end of the exchange, holds {vp.get('steps')} steps and "
+          f"{'no close yet' if vp.get('close_half_digest') is None else 'a close already'}")
     check("close_cites_counterparty_checkpoint", vf.get("counterparty_checkpoint_cites") == [pushed_digest],
           f"{side}'s close cites {vf.get('counterparty_checkpoint_cites')}; {other}'s pushed half is under checkpoint {pushed_digest}")
     records = {r["capsule_id"]: r for r in bundle.get("records", [])}
@@ -1399,29 +1384,48 @@ def goose_clauses(side, other, halves, verdicts, bundle, bundle_ok, keys):
     root = bundle.get("root")
     held = heads.get(root) or {}
     st = held.get("statement") or {}
-    check("receiver_record", bundle_ok and held.get("record_type") == "goose_half_received"
-          and records.get(root, {}).get("key_id") == keys[side],
+    is_note = held.get("record_type") == "goose_half_received" and records.get(root, {}).get("key_id") == keys[side]
+    check("receiver_record", bundle_ok and is_note,
           f"{side}'s record {str(root)[:12]} is a goose_half_received record of its node book, signed by its key, in a "
-          f"bundle capsulectl found VALID")
-    last = pushed["steps"][-1]["capsule"]["capsule_id"]
+          f"bundle capsulectl found VALID" if bundle_ok and is_note else
+          f"{side}'s record {str(root)[:12]} (type {held.get('record_type')}, signer {records.get(root, {}).get('key_id')}): "
+          f"capsulectl {'found the bundle VALID' if bundle_ok else 'did not find the bundle VALID'}")
+    # The pushed bytes themselves, as the record's payload: read from the bundle, and the digest they hold under.
+    digest = st.get("half_digest")
+    try:
+        payload = base64.urlsafe_b64decode((bundle.get("extensions") or {}).get("evidencebook/payloads", {}).get(digest, "")
+                                           + "==")
+        held_half = json.loads(payload) if payload else None
+    except ValueError:
+        payload, held_half = b"", None
+    committed = digest in (held.get("payload_commitments") or [])
     check("holds_bytes_by_record_id",
-          st.get("final_record_id") == last and st.get("half_digest") == hashlib.sha256(goose_jcs(pushed)).hexdigest()
+          bool(payload) and hashlib.sha256(payload).hexdigest() == digest and held_half == pushed and committed
+          and digest == vp.get("half_digest") and st.get("final_record_id") == vp.get("final_record_id")
           and st.get("checkpoint_digest") == pushed_digest and st.get("key_id") == keys[other]
-          and st.get("steps") == len(pushed["steps"]),
-          f"the record names final record {st.get('final_record_id')} (the half's last step is {last}), half digest "
-          f"{st.get('half_digest')} and checkpoint {st.get('checkpoint_digest')}")
+          and st.get("steps") == vp.get("steps") and st.get("deal_id") == vp.get("deal_id"),
+          f"the record names final record {st.get('final_record_id')} (the pushed half's is {vp.get('final_record_id')}) and "
+          f"checkpoint {st.get('checkpoint_digest')}; its payload is {len(payload)} bytes hashing to "
+          f"{hashlib.sha256(payload).hexdigest() if payload else None}, the record states half digest {digest} "
+          f"({'committed' if committed else 'not committed'} in its header; the pushed half's is {vp.get('half_digest')}); "
+          f"the payload {'is' if held_half == pushed else 'is not'} the pushed half")
     asked = [ln["target"] for ln in held.get("links", []) if ln.get("type") == "cites"]
     ask = heads.get(asked[0]) if len(asked) == 1 else None
+    ast = (ask or {}).get("statement") or {}
     check("cites_request_and_checkpoint",
-          (ask or {}).get("record_type") == "goose_half_asked" and vf.get("counterparty_checkpoint_cites") == [st.get("checkpoint_digest")],
-          f"the record cites {len(asked)} record(s), a {(ask or {}).get('record_type')}; the checkpoint digest it states is "
-          f"the one {side}'s close cites")
+          (ask or {}).get("record_type") == "goose_half_asked" and ast.get("deal_id") == vp.get("deal_id")
+          and ast.get("peer") == keys[other] and vf.get("counterparty_checkpoint_cites") == [st.get("checkpoint_digest")],
+          f"the record cites {len(asked)} record(s), a {(ask or {}).get('record_type')} for deal {ast.get('deal_id')} and "
+          f"peer {ast.get('peer')}; the checkpoint digest it states is "
+          f"{'the one' if vf.get('counterparty_checkpoint_cites') == [st.get('checkpoint_digest')] else 'not the one'} "
+          f"{side}'s close cites")
     return checks
 
 
 def main_goose(pop, out, started):
     """Judge the halves the Goose rehearsal's nodes exchanged (population.json `goose.deal`)."""
     sys.path.insert(0, str(ROOT / "steps"))
+    import goose_half
     population, deal = pop["population"], pop["goose"].get("deal")
     out.mkdir(parents=True, exist_ok=True)
     for f in ("finding.json", "checks.json"):
@@ -1439,16 +1443,18 @@ def main_goose(pop, out, started):
                       not_checked=[{"what": "the Goose nodes' exchanged halves", "why": why,
                                     "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh"}])
         return 0
-    keys = {n["name"]: goose_key(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
-    sides = ("buyer", "seller")
+    keys = {n["name"]: goose_half.key_of(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
+    cp_keys = pop["goose"]["verify"]["checkpoint_keys"]
     (out / "halves").mkdir()
+    (out / "verify").mkdir()
     halves, verdicts, proof = {}, {}, []
-    for who in sides:
+    for who in ("buyer", "seller"):
         for kind in ("exchange-half", "final-half"):
             name = f"{who}-{kind}"
             halves[name] = json.loads(Path(deal[name]).read_text())
             shutil.copyfile(deal[name], out / "halves" / f"{name}.json")
-            verdicts[name] = goose_verify(deal, name, deal[name], keys[who], deal["checkpoint_keys"][who], out)
+            verdicts[name] = goose_half.verify(pop["goose"]["verify"], deal[name], keys[who], cp_keys[who])
+            (out / "verify" / f"{name}.json").write_text(json.dumps(verdicts[name], indent=2, sort_keys=True) + "\n")
             proof += [f"halves/{name}.json", f"verify/{name}.json"]
     results = {}
     with tempfile.TemporaryDirectory(prefix="05-verify-") as tmp:
@@ -1458,12 +1464,17 @@ def main_goose(pop, out, started):
             r = subprocess.run([str(cap), "verify", "--bundle", str(path)], capture_output=True, text=True,
                                env=dict(os.environ, XDG_CONFIG_HOME=str(Path(tmp) / "config"),
                                         CAPSULECTL_PLUGIN_ROOTS=os.environ.get("CAPSULECTL_PLUGIN_ROOTS", str(cap.parent))))
+            (out / "verify" / f"{side}-held-half-bundle.json").write_text(r.stdout)
             try:
                 ok = r.returncode == 0 and json.loads(r.stdout).get("verdict") == "VALID"
             except ValueError:
                 ok = False
-            results[side] = goose_clauses(side, other, halves, verdicts, json.loads(path.read_text()), ok, keys)
-            proof.append(f"halves/{side}-held-half-bundle.json")
+            try:
+                results[side] = goose_clauses(side, other, halves, verdicts, json.loads(path.read_text()), ok, keys)
+            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a half or bundle that does not read
+                results[side] = [{"check": "inputs_read", "ok": False,
+                                  "detail": f"{side}'s halves or record could not be read ({type(e).__name__}: {e})"}]
+            proof += [f"halves/{side}-held-half-bundle.json", f"verify/{side}-held-half-bundle.json"]
     (out / "checks.json").write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
     proof.append("checks.json")
     failed = [f"{n}: {c['check']} ({c['detail']})" for n, cs in results.items() for c in cs if not c["ok"]]
@@ -1471,16 +1482,16 @@ def main_goose(pop, out, started):
         finding.write(out, result="FAIL", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                       detail=f"did not hold: {'; '.join(failed)}", started=started)
         return 0
-    detail = ("both Goose nodes ended the exchange, each pushing its half and asking for the other's; each closed citing the "
-              "checkpoint of the other's pushed half, and each holds the other's half by record id in a goose_half_received "
-              "record that cites its request and states that checkpoint. G1's verify_half held on all four halves (the two "
-              "pushed, the two final) and capsulectl found each receiver's record VALID in its node book. The mapping of "
-              "each clause is G1's README's; the halves are checked by G1's own verify_half, not by a second "
-              f"implementation (goose-g1 {pop['goose']['rev']}). Spend: none.")
+    detail = ("both Goose nodes ended the exchange, each pushing its half and asking for the other's; each final half carries "
+              "its pushed half unchanged and closes citing the checkpoint of the other's pushed half, and each receiver holds "
+              "the other's pushed half, as the payload of a goose_half_received record that cites its request and states "
+              "that checkpoint. G1's verify_half held on all four halves (the two pushed, the two final), all of one deal, "
+              "and capsulectl found each receiver's record VALID in its node book (verify/). The mapping of each clause is "
+              "G1's README's; the halves are checked by G1's own verify_half, not by a second implementation "
+              f"(goose-g1 {pop['goose']['rev']}). Spend: none.")
     finding.write(out, result="PASS", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                   detail=detail, started=started)
     return 0
-
 
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])

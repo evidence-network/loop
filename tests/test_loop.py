@@ -182,8 +182,9 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.finding("09-dispute", out)["result"], "NOT_CHECKED")  # 09 has none yet
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
-                         and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(),
-                         "run steps/goose.setup.sh and steps/01-seal.setup.sh")
+                         and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file()
+                         and (GOOSE_TOOLS.parent / "bin" / "capsulectl").is_file(),
+                         "run steps/goose.setup.sh, steps/01-seal.setup.sh and steps/12-join.setup.sh")
     def test_goose_with_its_tools_passes_steps_01_03_04_05_06_and_07_and_02_when_its_driver_is_there_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
                                                                "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
