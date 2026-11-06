@@ -15,12 +15,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
+REQUIRE_TOOLS = os.environ.get("LOOP_REQUIRE_TOOLS") == "1"  # CI, after the setups: a missing tool is an error, never a skip
 
 
-@unittest.skipUnless((TOOLS / "venv" / "bin" / "python").is_file(), "run steps/goose.setup.sh to install the Goose tools")
+def needs(path, msg):
+    """Skip unless `path` exists; with LOOP_REQUIRE_TOOLS=1 the test runs and fails on the missing tool instead."""
+    return (lambda f: f) if REQUIRE_TOOLS else unittest.skipUnless(Path(path).is_file(), msg)
+
+
+@needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
 class GooseRehearsalTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if REQUIRE_TOOLS and not (TOOLS / "venv" / "bin" / "python").is_file():
+            raise RuntimeError(f"LOOP_REQUIRE_TOOLS=1: the Goose tools are not installed in {TOOLS}; run steps/goose.setup.sh")
         cls.tmp = tempfile.TemporaryDirectory()
         cls.work = Path(cls.tmp.name)
         r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/goose_rehearsal.py"), "--work", str(cls.work)],
@@ -62,7 +70,7 @@ class GooseRehearsalTest(unittest.TestCase):
             self.assertEqual((out / f"{n['name']}.commitment.json").read_bytes(), Path(signed).read_bytes())
             self.assertEqual([(c["stream"], c["community"]) for c in n["history_cards"]], [("goose/node", "goose")])
 
-    @unittest.skipUnless((TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(), "run steps/01-seal.setup.sh")
+    @needs(TOOLS.parent / "01-seal" / "bin" / "cross_language", "run steps/01-seal.setup.sh")
     def test_step_01_passes_unchanged_on_the_capsule_the_goose_node_sealed(self):
         out = self.work / "findings" / "01-seal"
         r = subprocess.run([str(ROOT / "steps/01-seal"), "--population", str(self.pop), "--out", str(out)],
@@ -81,7 +89,7 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertNotIn("capsule-emit", found["pinned"])
         self.assertTrue({"node-key.pub.pem", "goose-run.log"} <= {x["path"] for x in found["proof"]})
 
-    @unittest.skipUnless((TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file(), "run steps/01-seal.setup.sh")
+    @needs(TOOLS.parent / "01-seal" / "bin" / "cross_language", "run steps/01-seal.setup.sh")
     def test_an_explicit_sealed_capsule_is_never_labelled_as_the_goose_nodes(self):
         planted = self.work / "planted.json"
         planted.write_bytes((self.work / "run" / "sealed-buyer.json").read_bytes())
@@ -109,7 +117,7 @@ class GooseRehearsalTest(unittest.TestCase):
         loader.exec_module(mod)
         _, missing = mod.capsulectl()
         if mod.driver() is None or missing or not mod.openssl_ed25519():
-            if os.environ.get("LOOP_REQUIRE_TOOLS"):
+            if REQUIRE_TOOLS:
                 self.fail(f"step 02 tools missing: driver {mod.driver()}, {missing}")
             self.skipTest("run steps/02-book.setup.sh and steps/12-join.setup.sh (and have openssl 3)")
 
@@ -257,7 +265,7 @@ class GooseRehearsalTest(unittest.TestCase):
 
     def _step_04_ready(self):
         if not (TOOLS.parent / "bin" / "capsulectl").is_file():
-            if os.environ.get("LOOP_REQUIRE_TOOLS"):
+            if REQUIRE_TOOLS:
                 self.fail("capsulectl is not installed")
             self.skipTest("run steps/12-join.setup.sh")
 
