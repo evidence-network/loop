@@ -10,7 +10,7 @@ holds `node-key.pem` and `node-key.pub.pem`, taken from the node's own producer 
 a record under the key the node signed it with. A `goose` member names what the run exported and which
 steps read it (`steps`): step 01 the capsule the buyer sealed (`sealed`), step 02 the Evidence Bundle of that record in the buyer's book with
 the checkpoint over it and the test witness's receipt (`book`, loop_book_bundle), step 05 the halves the nodes pushed at the end of the exchange and their final halves, and each receiver's record of the half it holds (`deal`), step 04 the buyer's admissions (`admit`: the GO and the NO as Evidence Bundles, loop_book_bundle, the deal's first half, and the node's refusal to open a deal with the refused peer); steps 04 and 05 check halves with G1's own verify_half, run in the Goose venv named by the `verify` member (python, src, and each node's checkpoint key),  step 03 each node's own signed commitment and
-policy (`commitments`, loop_advertise), step 07 the asks the two nodes made of each other through the mailboxes their
+policy (`commitments`, loop_advertise), steps 07 and 12 the asks the two nodes made of each other (12 judges each node's commitment and the stranger's history_card/1 probe of it) through the mailboxes their
 commitments advertise (`asks`, scripts/goose_ask_session.py: each node polls its own mailbox and answers, never serves); loop.sh runs a step for Goose only when it is listed and writes NOT_CHECKED for
 the others. The keys are generated for the run and are test keys; DIR stays outside the findings.
 
@@ -31,7 +31,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
-STEPS = ["01", "02", "03", "04", "05", "06", "07"]
+STEPS = ["01", "02", "03", "04", "05", "06", "07", "12"]
 NO_TOOLS = 3  # exit status: the Goose tools are not installed, so nothing was run
 # Run in the Goose venv (the loop's own steps are standard-library only): a node's producer key, PKCS#8 PEM, in;
 # its public half, SPKI PEM, out.

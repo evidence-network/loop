@@ -21,7 +21,7 @@
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
 # rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
-# it drives (today 01, 02, 03, 04, 05, 06 and 07) runs on the population it wrote, FAIL with the run's log when that run fails; every
+# it drives (today 01, 02, 03, 04, 05, 06, 07 and 12) runs on the population it wrote, FAIL with the run's log when that run fails; every
 # other row is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools. With
 # --population live, lab/goose.sh run (loop#349) writes the population (LOOP_GOOSE_POPULATION): the nodes listed in
 # nodes/ and the steps it gives a Goose input (today 01, 03 and 07).
@@ -231,7 +231,7 @@ GOOSE = {"01": "evidence-network/loop#330", "02": "evidence-network/loop#330",
          "03": "evidence-network/loop#330", "04": "evidence-network/loop#330",
          "05": "evidence-network/loop#330", "06": "action-state-group/capsule-emit#408",
          "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
-         "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#315"}
+         "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#330"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."
 if ecosystem == "goose" and population == "live" and nn == "06":  # only lab/goose.sh pay makes the payment
