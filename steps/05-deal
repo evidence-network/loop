@@ -1451,7 +1451,10 @@ def main_goose(pop, out, started):
     for who in ("buyer", "seller"):
         for kind in ("exchange-half", "final-half"):
             name = f"{who}-{kind}"
-            halves[name] = json.loads(Path(deal[name]).read_text())
+            try:
+                halves[name] = json.loads(Path(deal[name]).read_text())
+            except (OSError, ValueError):  # a half that does not read: G1's verdict on it fails below
+                halves[name] = {}
             shutil.copyfile(deal[name], out / "halves" / f"{name}.json")
             verdicts[name] = goose_half.verify(pop["goose"]["verify"], deal[name], keys[who], cp_keys[who])
             (out / "verify" / f"{name}.json").write_text(json.dumps(verdicts[name], indent=2, sort_keys=True) + "\n")
@@ -1471,7 +1474,7 @@ def main_goose(pop, out, started):
                 ok = False
             try:
                 results[side] = goose_clauses(side, other, halves, verdicts, json.loads(path.read_text()), ok, keys)
-            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a half or bundle that does not read
+            except (OSError, KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a half or bundle that does not read
                 results[side] = [{"check": "inputs_read", "ok": False,
                                   "detail": f"{side}'s halves or record could not be read ({type(e).__name__}: {e})"}]
             proof += [f"halves/{side}-held-half-bundle.json", f"verify/{side}-held-half-bundle.json"]

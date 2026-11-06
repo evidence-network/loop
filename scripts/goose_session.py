@@ -130,9 +130,9 @@ async def run(out, rail_dir):
                                       price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock",
                                       asked="buy 1k tokens of inference from the seller")
             deal_id = opened["deal_id"]
-            # 04: the buyer's admission and the deal's opening as one bundle, and the NO with the book up to its checkpoint.
-            # The headers (the decision and what each record cites) travel only when disclosed, so the judged bundles
-            # disclose the root: the opening, and the NO.
+            # 04: the buyer's admission and the deal's opening as one bundle (the NO's, with the book up to the end of the
+            # session, is exported last). The headers (the decision and what each record cites) travel only when disclosed,
+            # so the judged bundles disclose the root: the opening, and the NO.
             await buyer.call("loop_deal_bundle", deal_id=deal_id, out_path=str(out / "admission-go-bundle.json"))
             opening = json.loads((out / "admission-go-bundle.json").read_text())["root"]
             await buyer.call("loop_book_bundle", book_id="goose/node", record_id=opening, disclose=True,

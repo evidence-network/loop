@@ -37,9 +37,10 @@ status page.
 Goose rehearsal (`goose.admit` in population.json; scripts/goose_rehearsal.py). The step seals nothing: it judges the
 Evidence Bundles the Goose buyer wrote with loop_book_bundle (G1), the GO rooted at the deal's opening and the NO rooted at the
 refused admission, each of the node book up to a checkpoint with the headers of the root and of the records it cites disclosed,
-and the deal's first half. The checks are the ones above for the Goose shape: the decision is a `goose_admitted` record with
+the deal's first half (checked by G1's own verify_half and tied to the opening by its deal id, first step and peer), and the refusal
+the node gave when asked to open a deal with the refused peer (`deal-refused.json`). The checks are the ones above for the Goose shape: the decision is a `goose_admitted` record with
 exactly the members peer, checkpoint_key_id, decision, reason; the opening (`goose_deal_opened`) and the first step of the deal's
-half cite the GO; no record up to the checkpoint cites the NO. With no admission bundles, capsulectl missing or another
+half cite the GO; no record up to the end of the session cites the NO, and the gate refuses a deal with the refused peer. With no admission bundles, capsulectl missing or another
 goose-g1 than the pin, it is NOT_CHECKED, naming what.
 
 `--plant` makes the buyer seal one wrong thing, for the tests:
@@ -1121,7 +1122,8 @@ def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusa
     hex64 = lambda v: isinstance(v, str) and HEX64.fullmatch(v)  # noqa: E731
     shape = (set(block) == GOOSE_SHAPE and hex64(block.get("peer")) and hex64(block.get("checkpoint_key_id"))
              and isinstance(block.get("reason"), str))
-    check("goose_shape", shape, f"members {sorted(block)}; the peer and its checkpoint key are 64-hex")
+    check("goose_shape", shape, f"members {sorted(block)} (wanted {sorted(GOOSE_SHAPE)}); peer {block.get('peer')!r}, "
+          f"checkpoint key {block.get('checkpoint_key_id')!r} ({'64-hex' if hex64(block.get('peer')) and hex64(block.get('checkpoint_key_id')) else 'not both 64-hex'})")
     if name == "go":
         check("peer_named", block.get("peer") == seller,
               f"the decision names peer {block.get('peer')}; the seller's key is {seller}")
@@ -1180,10 +1182,16 @@ def main_goose(pop, out, started):
         return 0
     keys = {n["name"]: goose_half.key_of(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
     buyer, seller = keys[admit["node"]], keys[admit["peer"]]
-    half = load(admit["half"])
+    def readable(path):  # an input that does not read as JSON is an empty object: the checks then fail on it
+        try:
+            return load(path)
+        except (OSError, ValueError):
+            return {}
+
+    half = readable(admit["half"])
     cp_key = pop["goose"]["verify"]["checkpoint_keys"][admit["node"]]
     half_verdict = goose_half.verify(pop["goose"]["verify"], admit["half"], buyer, cp_key)
-    refusal = load(admit["refused"])
+    refusal = readable(admit["refused"])
     results, proof, outcomes = {}, [], {}
     shutil.copyfile(admit["half"], out / "deal-half.json")
     shutil.copyfile(admit["refused"], out / "deal-refused.json")
@@ -1198,7 +1206,7 @@ def main_goose(pop, out, started):
             try:
                 checks, block = goose_judge(name, load(sd / "bundle.json"), verdict, buyer, seller, half, half_verdict,
                                             refusal, expect)
-            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a bundle that does not read
+            except (OSError, KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a bundle that does not read
                 checks, block = [{"check": "bundle_reads", "ok": False,
                                   "detail": f"the {name.upper()} bundle could not be read ({type(e).__name__}: {e})"}], None
             results[name] = checks

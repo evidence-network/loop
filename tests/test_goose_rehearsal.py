@@ -445,12 +445,9 @@ class GooseRehearsalTest(unittest.TestCase):
         halves = {f"{w}-{k}": json.loads(Path(deal[f"{w}-{k}"]).read_text()) for w in ("buyer", "seller")
                   for k in ("exchange-half", "final-half")}
         verdicts = {n: json.loads((out / "verify" / f"{n}.json").read_text()) for n in halves}
-        keys = {n: mod.goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")} \
-            if hasattr(mod, "goose_half") else None
-        if keys is None:
-            sys.path.insert(0, str(ROOT / "steps"))
-            import goose_half
-            keys = {n: goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")}
+        sys.path.insert(0, str(ROOT / "steps"))
+        import goose_half
+        keys = {n: goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")}
         bundle = json.loads(Path(deal["buyer-held-half-bundle"]).read_text())
 
         def failed(mutate_verdicts=None, mutate_bundle=None):
@@ -488,6 +485,34 @@ class GooseRehearsalTest(unittest.TestCase):
                 if d["agent_input"]["record_type"] == "goose_half_received":
                     d["agent_input"]["links"] = []
         self.assertIn("cites_request_and_checkpoint", failed(mutate_bundle=other_request))
+
+    def test_steps_04_and_05_are_not_checked_when_the_run_exported_nothing_for_them(self):
+        self._step_04_ready()
+        doc = json.loads((self.pop / "population.json").read_text())
+        doc["goose"].pop("admit")
+        doc["goose"].pop("deal")
+        pop = self.work / "noexport-pop"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        self.assertEqual(self._step_04(pop, "noexport-f4")[1]["result"], "NOT_CHECKED")
+        self.assertEqual(self._step_05(pop, "noexport-f5")[1]["result"], "NOT_CHECKED")
+
+    def test_steps_04_and_05_fail_with_their_checks_on_inputs_that_are_not_json(self):
+        self._step_04_ready()
+        import shutil
+        doc = json.loads((self.pop / "population.json").read_text())
+        run = self.work / "truncated-run"
+        shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
+        for name in ("buyer-half", "deal-refused", "seller-exchange-half", "buyer-held-half-bundle"):
+            (run / f"{name}.json").write_text('{"truncated": ')
+        doc["goose"]["admit"].update({"half": str(run / "buyer-half.json"), "refused": str(run / "deal-refused.json")})
+        doc["goose"]["deal"].update({n: str(run / f"{n}.json") for n in ("seller-exchange-half", "buyer-held-half-bundle")})
+        pop = self.work / "truncated-pop"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps(doc))
+        for out, found in (self._step_04(pop, "truncated-f4"), self._step_05(pop, "truncated-f5")):
+            self.assertEqual(found["result"], "FAIL", found["detail"])
+            self.assertTrue((out / "checks.json").is_file())
 
     def test_step_07_passes_on_asks_the_goose_nodes_answer_by_polling_their_mailboxes(self):
         out = self.work / "findings" / "07-ask"
