@@ -657,6 +657,23 @@ class GooseRehearsalTest(unittest.TestCase):
             self.assertFalse((self.work / "asks" / "run").exists())
         self.assertTrue(json.loads((out / "first-answered.json").read_text())["sealed"])
 
+    def test_step_07_is_not_checked_when_the_population_names_no_deal_to_compare_the_askers_with(self):
+        import shutil
+        work = Path(tempfile.mkdtemp(dir=self.work))
+        doc = json.loads((self.pop / "population.json").read_text())
+        shutil.copytree(self.work / "asks", work / "asks", ignore=shutil.ignore_patterns("run"))
+        doc["goose"]["run"] = str(work / "no-deal")
+        doc["goose"]["asks"] = {"run": str(work / "asks")}
+        (work / "population").mkdir()
+        (work / "population" / "population.json").write_text(json.dumps(doc))
+        out = work / "findings" / "07-ask"
+        r = subprocess.run([str(ROOT / "steps/07-ask"), "--population", str(work / "population"), "--out", str(out)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        found = json.loads((out / "finding.json").read_text())
+        self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
+        self.assertEqual(found["not_checked"][0]["what"], "that the askers are the deal's parties")
+
     def test_step_07_fails_askers_that_are_not_the_deals_parties(self):
         def other_nodes(asks):
             nodes = json.loads((asks / "nodes.json").read_text())

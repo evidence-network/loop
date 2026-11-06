@@ -715,9 +715,14 @@ def run_goose(pop, out, tmp):
     failures, answered, proof, lines = judge_run(out, {n: v["key_id"] for n, v in nodes.items()}, capsulectl, tmp,
                                                  not_checked, mailbox=True)
     deal = pop["goose"].get("run")  # the rehearsal's deal (steps 01-06): are its parties the askers?
-    parties = (load(Path(deal) / "deal.json") if pop["population"] != "live" and deal
-               and (Path(deal) / "deal.json").is_file() else None)
-    if parties:
+    rehearsal = pop["population"] != "live"  # the live lab's asks are made by its persistent nodes, not a deal's
+    parties = (load(Path(deal) / "deal.json") if deal and (Path(deal) / "deal.json").is_file() else None)
+    if rehearsal and not parties:
+        merge(not_checked, [{"what": "that the askers are the deal's parties",
+                             "why": "the population names no deal (goose.run/deal.json), so the askers' keys have "
+                                    "nothing to be compared with",
+                             "issue": "evidence-network/loop#399"}])
+    elif rehearsal:
         if {n: v["key_id"] for n, v in nodes.items()} == {"buyer": parties["buyer"], "seller": parties["seller"]}:
             lines.append(f"the askers are the deal's parties (deal {parties['deal_id'][:16]}), the nodes of steps 01-06")
         else:

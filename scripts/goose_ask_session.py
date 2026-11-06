@@ -117,10 +117,11 @@ class Goose:
 
 
 async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=ADVERTISED_RELAY, joined=None):
-    """Two nodes ask each other. By default (the rehearsal) each starts in a fresh home under out/run and advertises
-    now. The live lab passes `homes` (the persistent GOOSE_HOME root, a directory per name) and `published` (the
-    directory holding the commitments the nodes already published, nodes/commitments/): the nodes keep their keys, and
-    ask through the commitment each published, advertising nothing new. `relay_name` is the relay those name. `joined`
+    """Two nodes ask each other. Without `homes` each starts in a fresh home under out/run, joins and advertises now.
+    The rehearsal (DEAL_RUN) and the live lab pass `homes` (the GOOSE_HOME root of nodes that already exist, a
+    directory per name: the deal's, or the lab's persistent ones) and `published` (the directory holding the
+    commitments the nodes already published): the nodes keep their keys, and ask through the commitment each
+    published, advertising nothing new. `relay_name` is the relay those name. `joined`
     ({name: {key_id, record_id}}, from the nodes' first join) stops the run joining them again, so a persistent node's
     book holds one join record, not one per run."""
     shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
