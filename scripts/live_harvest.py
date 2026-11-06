@@ -160,6 +160,9 @@ def unpack(name, files, into, goose=None):
     # The Goose directory is optional: a record that names it while the tgz lacks it costs the Goose part only.
     mesh = extract(want, f"{name}.tgz", [f"findings/{name}"], into, [f"findings/goose/{goose}"] if goose else ())[0]
     gdir = into / "findings" / "goose" / goose if goose else None
+    if gdir is not None and gdir.exists() and not gdir.is_dir():
+        # the tgz is published whole: a file where the directory belongs would skip the Goose scans
+        raise Refuse(6, f"{name}.tgz holds findings/goose/{goose} as a file, not a directory")
     return mesh, (gdir if gdir is not None and gdir.is_dir() else None)
 
 

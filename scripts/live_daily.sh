@@ -422,7 +422,24 @@ else
     fi
   fi
   if [ "$goose_status" = ran ]; then
-    if ! python3 -B "$ROOT/scripts/check_no_preimages.py" "$GOUT" > /dev/null \
+    # What the pack may hold, by the harvest's own member rule: nothing else reaches the release (a symlink, a stray file).
+    if ! python3 -B - "$ROOT" "$GOUT" "$GNAME" << 'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1] + "/scripts")
+import live_harvest
+root, prefix = sys.argv[2], f"findings/goose/{sys.argv[3]}"
+for d, dirs, files in os.walk(root, followlinks=False):
+    for n in dirs + files:
+        p = os.path.join(d, n)
+        rel = prefix + "/" + os.path.relpath(p, root)
+        if os.path.islink(p) or not live_harvest.allowed_member(rel, prefix) or not (os.path.isdir(p) or os.path.isfile(p)):
+            sys.exit(f"not allowed in the pack: {rel}")
+PY
+    then
+      mkdir -p "$OUT_DIR/unpacked" && chmod 700 "$OUT_DIR/unpacked" && [ ! -e "$OUT_DIR/unpacked/goose-$GNAME" ] \
+        && mv "$GOUT" "$OUT_DIR/unpacked/goose-$GNAME" || rm -rf "$GOUT"
+      goose_skip refused "the Goose findings hold a member the harvest would refuse; kept as unpacked/goose-$GNAME on the lab host, not packed"
+    elif ! python3 -B "$ROOT/scripts/check_no_preimages.py" "$GOUT" > /dev/null \
        || ! python3 -B "$ROOT/scripts/check_personal_data.py" "$GOUT" > /dev/null \
        || { [ -s "$LAB_DIR/run/invite.token" ] && grep -rlqF -f "$LAB_DIR/run/invite.token" "$GOUT"; }; then
       mkdir -p "$HELD_DIR" && chmod 700 "$HELD_DIR" && [ ! -e "$HELD_DIR/goose-$GNAME" ] && mv "$GOUT" "$HELD_DIR/goose-$GNAME" \

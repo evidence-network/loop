@@ -211,6 +211,21 @@ class HarvestTest(unittest.TestCase):
         self.assertIn(f"live-{NAME}", " ".join(c for c in self.gh_calls() if c.startswith("release create")))
         self.assertIn("NOT harvested", self.log.with_suffix(".log.body").read_text())
 
+    def test_a_file_where_the_goose_directory_belongs_is_refused_not_skipped(self):
+        # The tgz is published whole, so a file there (holding what the scans would catch) must not skip the Goose scans.
+        self.make_run(goose=GOOSE_RAN, goose_in_tgz=False)
+        tgz = self.tmp / "run" / f"{NAME}.tgz"
+        leak = self.tmp / "leak.txt"
+        leak.write_text("preimage: " + "ab" * 32 + "\n")
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(self.tmp / "pack" / "findings" / NAME, arcname=f"findings/{NAME}")
+            t.add(leak, arcname=f"findings/goose/{GOOSE}")
+        (self.tmp / "run" / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
+        r = self.harvest()
+        self.assertEqual(r.returncode, 6, r.stderr)
+        self.assertEqual(self.gh_calls(), [])
+        self.assertEqual(self.branches(), "")
+
     def test_a_goose_name_already_on_main_costs_only_the_goose_part(self):
         # A manual `goose.sh run` (unpaid) landed findings/goose/<date>-live first.
         src = self.tmp / "src"

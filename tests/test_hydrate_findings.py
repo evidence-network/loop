@@ -147,6 +147,40 @@ class HydrateTest(unittest.TestCase):
         # No findings/goose directory is nothing to do.
         self.assertIsNone(hydrate_findings.hydrate(self.findings / "nowhere", goose=True))
 
+    def test_a_failed_check_leaves_the_run_exactly_as_committed(self):
+        # The archive's digest matches, but one proof file differs from the digest the committed finding records.
+        bad = self.tmp / "bad-full"
+        make_run(bad, NAME)
+        (bad / NAME / "04-admit" / "counts.json").write_text("tampered\n")
+        tgz = self.tmp / "bad.tgz"
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(bad / NAME, arcname=f"findings/{NAME}")
+        self.archive["sha256"] = hashlib.sha256(tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        before = sorted((p.relative_to(self.findings), p.read_bytes()) for p in (self.findings / NAME).rglob("*") if p.is_file())
+        r = self.hydrate(tgz)
+        self.assertEqual(r.returncode, 3, r.stderr)
+        after = sorted((p.relative_to(self.findings), p.read_bytes()) for p in (self.findings / NAME).rglob("*") if p.is_file())
+        self.assertEqual(before, after)
+        self.assertTrue(finding.digest_only(self.findings / NAME))
+
+    def test_a_cut_short_goose_download_never_fails_the_mesh_hydration(self):
+        import http.client
+        gname = "2026-11-01-live"
+        make_run(self.findings, f"goose/{gname}")
+        for p in (self.findings / "goose" / gname).glob("*/counts.json"):
+            p.unlink()
+        (self.findings / "goose" / gname / "proof-archive.json").write_text(json.dumps(
+            {"asset": f"{gname}.tgz", "sha256": "0" * 64, "url": f"https://example.org/{gname}.tgz"}))
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import hydrate_findings
+        def cut(url, dest):
+            raise http.client.IncompleteRead(b"")
+        hydrate_findings.download = cut
+        shutil.rmtree(self.findings / NAME)  # a complete Mesh run: only the Goose download is in play
+        make_run(self.findings, NAME)
+        self.assertEqual(hydrate_findings.main([str(self.findings)]), 0)
+
     def test_a_goose_failure_never_fails_the_mesh_hydration(self):
         gname = "2026-11-01-live"
         make_run(self.findings, f"goose/{gname}")

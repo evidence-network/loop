@@ -16,6 +16,7 @@ Exit: 0 hydrated or nothing to do; 1 the download failed; 2 the archive does not
 import argparse
 import json
 import sys
+import shutil
 import tempfile
 import urllib.request
 from pathlib import Path
@@ -71,18 +72,24 @@ def hydrate(findings, archive_file=None, goose=False):
                                        Path(tmp) / "unpacked", optional)[0]
         except live_harvest.Refuse as r:
             raise Refuse(3, str(r))
+        # Written and checked on a copy, and put in place only when it passes: a run that fails the check stays exactly as
+        # committed (digest-only), never half hydrated.
+        stage = Path(tmp) / "stage" / run.name
+        shutil.copytree(run, stage)
         for f in sorted(p for p in src.rglob("*") if p.is_file()):
             rel = f.relative_to(src)
             if len(rel.parts) > 1 and rel.name == "finding.json":
                 continue  # the committed finding is the record; the check below compares its proof digests to these bytes
-            if rel.parts[0] in ("run.json", "index.md") or (run / rel.parts[0]).is_dir():
-                (run / rel).parent.mkdir(parents=True, exist_ok=True)
-                (run / rel).write_bytes(f.read_bytes())
-    errs = finding.check(run)
-    if errs:
-        raise Refuse(3, f"{run.name} fails steps/finding.py check after hydration: {'; '.join(errs)[:300]}")
-    if finding.digest_only(run):
-        raise Refuse(3, f"{run.name} still lacks proof files after hydration: the archive does not hold them")
+            if rel.parts[0] in ("run.json", "index.md") or (stage / rel.parts[0]).is_dir():
+                (stage / rel).parent.mkdir(parents=True, exist_ok=True)
+                (stage / rel).write_bytes(f.read_bytes())
+        errs = finding.check(stage)
+        if errs:
+            raise Refuse(3, f"{run.name} fails steps/finding.py check after hydration: {'; '.join(errs)[:300]}")
+        if finding.digest_only(stage):
+            raise Refuse(3, f"{run.name} still lacks proof files after hydration: the archive does not hold them")
+        shutil.rmtree(run)
+        shutil.copytree(stage, run)
     return run
 
 
@@ -103,7 +110,7 @@ def main(argv):
         # committed (digest-only, which the status page reads).
         try:
             runs.append(hydrate(args.findings, goose=True))
-        except (Refuse, OSError, ValueError, KeyError, TypeError) as r:
+        except Exception as r:  # nothing about the Goose run may stop the Mesh site (a cut-short download is not an OSError)
             print(f"::warning::hydrate_findings: Goose run left digest-only: {r}", file=sys.stderr)
     done = [str(r) for r in runs if r]
     print(f"hydrate_findings: hydrated {', '.join(done)}" if done else "hydrate_findings: nothing to hydrate")
