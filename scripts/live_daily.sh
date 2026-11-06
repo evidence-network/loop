@@ -155,12 +155,12 @@ if [ "$DRY" = 1 ]; then
   1. take $LOCK; git fetch origin main; HEAD must be origin/main with no tracked change
   2. $LAB_SH tools into LOOP_TOOLS=$LOOP_TOOLS; $LAB_SH check; $LAB_SH running
   3. window.from = $SINCE in $POP (restored on exit); LOOP_SEALED_SINCE=$SINCE
-  4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat; a refusal leaves 06 NOT_CHECKED, no retry
+  4. $LAB_SH exchange, once: lab-2 pays lab-1 1,000 msat (lab-3 asks too); a refusal leaves 06 NOT_CHECKED, no retry
   5. wait ${WAIT}s for the checkpoints
   6. LAB_OUT=findings/$NAME: lab.sh admit, deal, bundles, settle, dispute, loop; $STEPS/10-judge, $STEPS/11-report
   7. check_no_preimages.py, check_personal_data.py, invite token search (a hit: held in $HELD_DIR); steps/finding.py check
   8. ecosystem_gate.py update on a copy of baseline/live.json, check against baseline/live.json
-  8b. scripts/lab_circulate.py: when lab-3's request got 200, lab-1 pays lab-3 1,000 msat back, once
+  8b. scripts/lab_circulate.py: when lab-3's request got 200, lab-1 pays lab-3 1,000 msat back, once (a second real payment)
   9. $OUT_DIR/$NAME.tgz, $NAME.tgz.sha256, $NAME.json
 EOF
   exit 0

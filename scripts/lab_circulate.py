@@ -13,11 +13,17 @@ it. Prints one JSON line without a payment hash, invoice or preimage.
                       LAB_PORT_BASE, default 9800: lab-N's wallet API is on its console, BASE+10+N)
 
 Guard fit on a day with a manual run: this direction (lab-1 to lab-3) takes CHARGE_MSAT per run, so a daily run plus
-8 manual ones fit the 9,000 msat cap; lab-3 to lab-1 (its charge) is settled by mesh-llm, and lab-1's other direction
-(Goose, lab-1 to lab-2, 1,000 msat per pay) has its own cap.
+8 manual ones fit its 9,000 msat cap. pay() also checks lab-1's wallet-wide spent_today_msat against 9,000, and the
+Goose payment (lab-1 to lab-2, 1,000 msat per run) spends from the same day, so with a Goose run that day one fewer
+manual run fits; a refusal is recorded, never raised.
+
+A refusal "the lab is not idle" is expected while lab-3's wallet holds an unpaid invoice of ours (the probe of
+2026-11-06, a pending inbound row that pay()'s idle check counts): it is not a payment in flight and not a failed
+run. It expires on 2026-11-07 at 16:17 UTC, after that day's 13:05 UTC run; the 2026-11-08 run is the first that can pay.
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -27,24 +33,27 @@ import goose_lightning as gl  # noqa: E402
 CHARGE_MSAT = 1000  # what lab-3 pays lab-1 each day (the minimum payment, LAB-BRINGUP.md)
 
 
-def sent_or_pending(log):
-    """The log's payments today in the circulation direction that are not known to have failed."""
-    return sum(1 for e in gl.read_log(log) if e["direction"] == "lab-1>lab-3" and e["day"] == gl.utc_day() and e["status"] != "failed")
+STATUS_200 = re.compile(r"HTTP/\S+\s+200(\s|$)")
+
+
+def open_payments(log):
+    """The payment hashes in the circulation direction, on any day, that are not known to have failed."""
+    return {e["payment_hash"] for e in gl.read_log(log) if e["direction"] == "lab-1>lab-3" and e["status"] != "failed"}
 
 
 def circulate(payer, payee, log, asked_status=""):
     """payer (lab-1) pays payee (lab-3) CHARGE_MSAT back when payee's request was answered 200. Returns the report:
     action skipped (the charge did not settle: nothing paid), sent (confirmed on both wallets), refused (the guard or a
     check refused before anything was sent) or unknown (the payment may have gone out; its reservation stays in the log)."""
-    if " 200" not in asked_status:
+    if not STATUS_200.match(asked_status.strip()):
         return {"action": "skipped", "payee": payee.name, "asked_status": asked_status or None,
                 "reason": "lab-3's charge did not settle"}
-    reserved = sent_or_pending(log)
+    before = open_payments(log)
     try:
         out = gl.pay(payer, payee, log, amount_msat=CHARGE_MSAT)
     except gl.Refused as e:
         # `pay` also raises Refused for an error after `send` (its transaction poll): that left a reservation.
-        action = "unknown" if sent_or_pending(log) > reserved else "refused"
+        action = "unknown" if open_payments(log) - before else "refused"
         return {"action": action, "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}
     except (gl.Unknown, ValueError) as e:  # ValueError: a 200 with a body that is not JSON, after `send` was issued
         return {"action": "unknown", "payer": payer.name, "payee": payee.name, "reason": gl.clean(e)}

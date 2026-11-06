@@ -67,6 +67,14 @@ class Circulate(unittest.TestCase):
         self.assertEqual([(e["direction"], e["amount_msat"]) for e in gl.read_log(self.log)], [("lab-1>lab-3", 1000)])
         self.assertNotIn("payment_hash", r)
 
+    def test_only_a_status_line_with_code_200_pays(self):
+        for status in ("HTTP/1.1 500 upstream returned 200 unexpectedly", "HTTP/1.1 2000 OK", "200", "HTTP/1.1 402 200"):
+            a, b = wallets()
+            self.assertEqual(lab_circulate.circulate(a, b, self.log, status)["action"], "skipped", status)
+        for status in ("HTTP/1.1 200 OK", "HTTP/2 200", "HTTP/1.1 200", " HTTP/1.1 200 OK\r"):
+            a, b = wallets()
+            self.assertEqual(lab_circulate.circulate(a, b, self.log, status)["action"], "sent", status)
+
     def test_pays_nothing_and_records_it_when_the_charge_did_not_settle(self):
         for status in ("HTTP/1.1 402 Payment Required", "", None):
             a, b = wallets()
@@ -101,6 +109,20 @@ class Circulate(unittest.TestCase):
         a.transaction = transaction
         self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "unknown")
         self.assertEqual(len(gl.read_log(self.log)), 1)  # the reservation stays
+
+    def test_an_error_after_send_across_utc_midnight_is_still_unknown(self):
+        a, b = wallets()
+        days = iter(["2026-11-07", "2026-11-08"] + ["2026-11-08"] * 20)  # the day moves on while pay() runs
+
+        def transaction(h, inbound):
+            raise gl.Refused("HTTP 500")
+        a.transaction = transaction
+        orig = gl.utc_day
+        gl.utc_day = lambda now=None: next(days)
+        try:
+            self.assertEqual(lab_circulate.circulate(a, b, self.log, OK)["action"], "unknown")
+        finally:
+            gl.utc_day = orig
 
     def test_an_unknown_outcome_is_not_reported_as_refused(self):
         a, b = wallets()

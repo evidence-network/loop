@@ -734,10 +734,10 @@ clones do not change, but `$LAB_DIR/build.json` holds one `tools` record, which
 reads `"ok": false` (and `entries` refuses) until a `tools` run passes, and the
 other way round. Its `loop_tools` field names the directory that wrote it.
 Then the run does `lab.sh check` and `lab.sh running` (every node up on the checked build, and the test witness serving its port when the lab has one: `lab.sh stop` kills the witness and `start` does not bring it back, so run `lab/lab.sh witness` after a restart or the run exits 5 before it spends), and makes one paid
-exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it. After the checkpoints it runs steps 04 to 06,
+exchange: lab-2 pays lab-1 1,000 msat, and the run never retries it (lab-3 asks too and pays 1,000 msat when it has funds). After the checkpoints it runs steps 04 to 06,
 09, stage 1 (01, 02, 03, 12, 07, then 08) and 10 and 11 into `findings/<date>-live-<N>`, judged from the run's start.
 Step 08 stays NOT_CHECKED (evidence-network/loop#193). The tarball and the run record go to `$LAB_DIR/out/live/`;
-the script commits and pushes nothing, and leaves no findings in the clone (the tarball holds them; a run that
+after the steps it makes a second real payment, lab-1 to lab-3, 1,000 msat once, when lab-3's request was answered 200 (`scripts/lab_circulate.py`; its outcome is `circulate` in the run record, and a refusal never changes the exit code; "the lab is not idle" is expected until lab-3's unpaid probe invoice expires on 2026-11-07 at 16:17 UTC, so the 2026-11-08 run is the first that can pay, and it is not a failed run); the script commits and pushes nothing, and leaves no findings in the clone (the tarball holds them; a run that
 stopped before packing leaves them in `$LAB_DIR/out/live/unpacked/<name>`). When the paid request does not succeed, step 06 is NOT_CHECKED with the
 status seen (evidence-network/loop#321), and the run exits 8 (1 if another step also regressed): packed, but the
 baseline must not move. The script's
