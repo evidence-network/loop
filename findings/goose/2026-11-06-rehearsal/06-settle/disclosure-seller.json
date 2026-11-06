@@ -1,12 +1,12 @@
 {
-  "key_id": "40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417",
+  "key_id": "f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c",
   "node": "goose-seller",
   "rail": "mock",
   "settlements": 1,
   "sig": {
     "alg": "Ed25519",
     "canon": "jcs",
-    "value": "yLFwwOQPAQLUQhrUXOI04lF6MpwjtOv4n_bfHDmXjxr63ET95LOPjS_W60qsBKzXpgzYoRKRmiLy8UfeaXgZAw"
+    "value": "rOPx4KGnTzU3Uixc0cqZRbWoHrWEQ7p_msq8NlKl2OXt9I6BiRDVSazPRaggcHoG2bUiC0ykKb5-39_xgwiiCw"
   },
   "through_sequence": 1,
   "type": "settlement-disclosure/v1"

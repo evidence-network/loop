@@ -1,0 +1,50 @@
+{
+  "answers": {
+    "derivations": [
+      "history_card/1"
+    ],
+    "subjects": [
+      "checkpoints",
+      "full_history"
+    ]
+  },
+  "answers_within": "PT24H",
+  "ask": {
+    "bindings": [
+      "evidencebook/respond"
+    ],
+    "endpoint": "book:goose/node"
+  },
+  "checkpoint": {
+    "bytes": "0oRYZKQBJwN4H2FwcGxpY2F0aW9uL2NsbC1jaGVja3BvaW50K2Nib3IEWCClm6PKVxZywdkigAh824ZgGx8hI+45pe/fuVf7+3WBEw+iAWpnb29zZS9ub2RlAmxnb29zZS9ub2RlIzGgWI+mZGtpbmRuY2xsLWNoZWNrcG9pbnRobG9nX3NpemUBaWlzc3VlZF9hdHgYMjAyNi0xMS0wNlQyMjoyNzowOS4zMzFaaXByZXZfc2l6ZQBqY29tbWl0bWVudFgjgVggjTMQF9fy3RJx5SAum7OeZMQ/18+w4UQKGY6mGowFwIxvcHJldl9jb21taXRtZW50QFhAD3VK4ca5aWgEOMwHk1assY/QvIDHt5Fbzd+36AzmZUdElIz0rGW102bJKc3jEk7dijI0YToV4hZkEXV+f4DmBw==",
+    "sha256": "51c3f3002515bf97d17b008832785665a48414e9db8b25c0d155df37f7903a0f"
+  },
+  "history_cards": [
+    {
+      "bytes": "eyJhbmNob3IiOnsiZGlnZXN0IjoiNTFjM2YzMDAyNTE1YmY5N2QxN2IwMDg4MzI3ODU2NjVhNDg0MTRlOWRiOGIyNWMwZDE1NWRmMzdmNzkwM2EwZiJ9LCJhcnRpZmFjdCI6ImV5SmhibU5vYjNJaU9pSTFNV016WmpNd01ESTFNVFZpWmprM1pERTNZakF3T0Rnek1qYzROVFkyTldFME9EUXhOR1U1WkdJNFlqSTFZekJrTVRVMVpHWXpOMlkzT1RBellUQm1JaXdpWkdWeWFYWmhkR2x2YmlJNkltaHBjM1J2Y25sZlkyRnlaQzh4SWl3aVpYWnBaR1Z1WTJWZmMzUnlaV0Z0SWpvaVoyOXZjMlV2Ym05a1pTSXNJbWhwYzNSdmNua2lPbHQ3SW1Ob1pXTnJjRzlwYm5RaU9pSmtNamcwTlRnMk5HRTBNREV5TnpBek56Z3haall4TnpBM01EWmpOamsyTXpZeE56UTJPVFptTm1VeVpqWXpObU0yWXpKa05qTTJPRFkxTmpNMllqY3dObVkyT1RabE56UXlZall6TmpJMlpqY3lNRFExT0RJd1lUVTVZbUV6WTJFMU56RTJOekpqTVdRNU1qSTRNREE0TjJOa1lqZzJOakF4WWpGbU1qRXlNMlZsTXpsaE5XVm1aR1ppT1RVM1ptSm1ZamMxT0RFeE16Qm1ZVEl3TVRaaE5qYzJaalptTnpNMk5USm1ObVUyWmpZME5qVXdNalpqTmpjMlpqWm1Oek0yTlRKbU5tVTJaalkwTmpVeU16TXhZVEExT0RobVlUWTJORFppTmprMlpUWTBObVUyTXpaak5tTXlaRFl6TmpnMk5UWXpObUkzTURabU5qazJaVGMwTmpnMll6Wm1OamMxWmpjek5qazNZVFkxTURFMk9UWTVOek0zTXpjMU5qVTJORFZtTmpFM05EYzRNVGd6TWpNd016SXpOakprTXpFek1USmtNekF6TmpVME16SXpNak5oTXpJek56TmhNekF6T1RKbE16TXpNek14TldFMk9UY3dOekkyTlRjMk5XWTNNelk1TjJFMk5UQXdObUUyTXpabU5tUTJaRFk1TnpRMlpEWTFObVUzTkRVNE1qTTRNVFU0TWpBNFpETXpNVEF4TjJRM1pqSmtaREV5TnpGbE5USXdNbVU1WW1Jek9XVTJOR00wTTJaa04yTm1ZakJsTVRRME1HRXhPVGhsWVRZeFlUaGpNRFZqTURoak5tWTNNRGN5TmpVM05qVm1Oak0yWmpaa05tUTJPVGMwTm1RMk5UWmxOelEwTURVNE5EQXdaamMxTkdGbE1XTTJZamsyT1RZNE1EUXpPR05qTURjNU16VTJZV05pTVRobVpEQmlZemd3WXpkaU56a3hOV0pqWkdSbVlqZGxPREJqWlRZMk5UUTNORFE1TkRoalpqUmhZelkxWWpWa016WTJZemt5T1dOa1pUTXhNalJsWkdRNFlUTXlNelEyTVROaE1UVmxNakUyTmpReE1UYzFOMlUzWmpnd1pUWXdOeUlzSW1OdmJuTnBjM1JsYm1ONVgyWnliMjFmY0hKbGRtbHZkWE1pT201MWJHeDlYU3dpYzNWaWFtVmpkQ0k2ZXlKamFHVmphM0J2YVc1MGN5STZiblZzYkgxOSIsImFydGlmYWN0X2RpZ2VzdCI6ImQ5MDI5NjAyZjE1ZGUxYjVjZDdmNWQ1OTU0ZjY5OGE0NTllNGIzNGZlOGVhNTY3ODc5YmIxYzZkMWJjZGNjYzUiLCJkZXJpdmF0aW9uIjoiaGlzdG9yeV9jYXJkLzEiLCJpc3N1ZWRfYXQiOiIyMDI2LTExLTA2VDIyOjI3OjA5WiIsInByb2ZpbGUiOiJldmlkZW5jZS1pbnRlcm9wLzAiLCJyZXF1ZXN0X2RpZ2VzdCI6IjBlNGQwYWYwZjM2ZjJjODkzNmE2YmJkODg2ZGVkNmVmODFlMDAxMTJlOTlkMzhlNWEyZWNmMzY5MDY3YjNmMDgiLCJyZXNwb25kZXIiOiJmMjQ4OTJkNWRlYjU2ZmFiODg0NWM5ZDNkODAwZGI4ODBmNGZmZjE1YzFkZjhlZTU0MmYzODIwMjA3NTNkMTBjIiwic2lnIjoiZDdlMmYwZjA3YzQxOTY4YzkzZDY0ZjFhMTY2ZTc0NzJmZTYyODQ0ZTRiYzQ5ZmFiYzEwZThjZjE2YzRmN2JiZDgzOGQ5OGQwNDk4ZWEwZDkxZTk4YTI1MGU1ODdmNmUwMDlkYTA0N2NkYmU1MWVmODg4YjZjMDJiY2Y3M2JhMGIiLCJzdWJqZWN0Ijp7ImNoZWNrcG9pbnRzIjpudWxsfX0=",
+      "checkpoint_key": "MCowBQYDK2VwAyEApZujylcWcsHZIoAIfNuGYBsfISPuOaXv37lX-_t1gRM",
+      "community": "goose",
+      "derivation": "history_card/1",
+      "sha256": "159c924de3883a5e72e26381592e9317a9f112189da9c6e62d4b7a400fcfddb5",
+      "stream": "goose/node"
+    }
+  ],
+  "human_gated": true,
+  "issued_at": "2026-11-06T22:27:09Z",
+  "key_id": "f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c",
+  "lcap": {
+    "policy_digest": "c244cddc57e742d52dec7e6ce5d1c28bce261303f18785c17e42e2945983b6e5",
+    "policy_uri": "policies/f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c.json",
+    "predicate_classes": [
+      "performed:counterparty_half"
+    ]
+  },
+  "node_id": "f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c",
+  "profile": "evidence-commitment/1",
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "ciRJ1vGBj2bhmajh1Fu3FI4TaZE-UOO0s6lv_KieXn8cDxSF89qw4gu1OlRyjMRCqF2u5jQYtbfZ1-17zLGkDw"
+  },
+  "spki": "MCowBQYDK2VwAyEA8kiS1d61b6uIRcnT2ADbiA9P/xXB347lQvOCAgdT0Qw="
+}

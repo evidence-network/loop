@@ -1,7 +1,7 @@
 {
   "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
-  "detail": "buyer: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d.json, not advertised on nostr, inputs signed by the node; seller: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417.json, not advertised on nostr, inputs signed by the node. Runner tools: OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157) (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (buyer, seller) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (buyer, seller) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
-  "finished": "2026-11-06T22:00:58Z",
+  "detail": "buyer: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c.json, not advertised on nostr, inputs signed by the node; seller: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c.json, not advertised on nostr, inputs signed by the node. Runner tools: OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157) (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (buyer, seller) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (buyer, seller) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
+  "finished": "2026-11-06T22:28:16Z",
   "name": "advertise",
   "not_checked": [],
   "pinned": {
@@ -14,38 +14,38 @@
   "proof": [
     {
       "path": "buyer.commitment.json",
-      "sha256": "7aba37f66d6f72155725108e752c5e7e2910bf1fc49928150dd55e692237423c"
+      "sha256": "0e0fc58e18e3783c835af753b137f8abb1b33cbb417f35f2e3398e4f8a1b5e73"
     },
     {
       "path": "buyer.policy.json",
-      "sha256": "d6f3a4724efab165d6531c5ac4ada196b8d6b6d3fb469696900e669683cdd001"
+      "sha256": "e814835d3199ce53a85b4118f2fba51399a6417b698d579a1b0466292f3551f1"
     },
     {
       "path": "buyer.node-key.pub.pem",
-      "sha256": "d36bf7a45ae9ee67b5ad840c4d15f43b4f528387114427318521bf6fdef9d9df"
+      "sha256": "6b22951fc5bb85a8aaa934e8e6b6b8a4e2e410b91f3a5c32df8b18b071ad19e2"
     },
     {
       "path": "seller.commitment.json",
-      "sha256": "7f9ba889073ad0a9ba477169446bf6af6204e1b2c93edb3a9c99c5e3b3990f56"
+      "sha256": "7e8aa98b87eb6e35813c84fc8f3366f78da09fd422a8beec7ee7fd06f266ca74"
     },
     {
       "path": "seller.policy.json",
-      "sha256": "1542f5096b82236d792805b5c5c8f878124697890716085006c887087c462a3f"
+      "sha256": "c244cddc57e742d52dec7e6ce5d1c28bce261303f18785c17e42e2945983b6e5"
     },
     {
       "path": "seller.node-key.pub.pem",
-      "sha256": "de5a6ca0aa8ca92c45803aab92da0da66ce9481a02859a1022b0d27c12d90d8e"
+      "sha256": "543f484a895ef429f5f97e35809e76f3d2f1247b0069a63bd87eeea079043fbb"
     },
     {
       "path": "carrier.bundle",
-      "sha256": "a5805a0d245c6e645d9368006c99cada42ec72571b266595a44ea6f01b6fc248"
+      "sha256": "7547ebf72b4f548cdccdb76972aafe16a1f3c95cf057d7d969474c4d22a5c5f0"
     },
     {
       "path": "verification.json",
-      "sha256": "08145968e1e588f12d60a3f1946b2794f37b38a883cfc15b199e58aa5f1c7012"
+      "sha256": "261be40a3a86649ee897ed7a70d21ca3b483df220521d9bf884a56a233e4aa73"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T22:00:57Z",
+  "started": "2026-11-06T22:28:16Z",
   "step": "03"
 }

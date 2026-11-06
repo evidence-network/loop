@@ -9,7 +9,7 @@
       "ok": true
     },
     "exchange_match": {
-      "detail": "exchange deal-c0614a04f9eb246e: exchange_id, payer, payee, currency, amount_atomic, decimals match",
+      "detail": "exchange deal-5deab6a32335809e: exchange_id, payer, payee, currency, amount_atomic, decimals match",
       "ok": true
     },
     "finality": {
@@ -29,7 +29,7 @@
       "ok": true
     },
     "pay_record": {
-      "detail": "the buyer's pay record (seq 5) commits settlement id 1ddf7bc59a2b6f5fdca13fce1bc272efa2690b8a3c9d6d17d7b69f25fb130113 on rail mock, opened by buyer-pay-opening.json",
+      "detail": "the buyer's pay record (seq 5) commits settlement id 320249e0438021f326f3d5d3d760d09dc6c593379a4f574fef047b4c4ee26f33 on rail mock, opened by buyer-pay-opening.json",
       "ok": true
     },
     "rail_fee": {
@@ -37,7 +37,7 @@
       "ok": true
     },
     "reference": {
-      "detail": "settlement_ref {\"rail\": \"mock\", \"settlement_id\": \"1ddf7bc59a2b6f5fdca13fce1bc272efa2690b8a3c9d6d17d7b69f25fb130113\"} names 1 ledger line(s); exchange members ['amount_atomic', 'currency', 'decimals', 'exchange_id', 'payee', 'payer', 'settlement_ref']",
+      "detail": "settlement_ref {\"rail\": \"mock\", \"settlement_id\": \"320249e0438021f326f3d5d3d760d09dc6c593379a4f574fef047b4c4ee26f33\"} names 1 ledger line(s); exchange members ['amount_atomic', 'currency', 'decimals', 'exchange_id', 'payee', 'payer', 'settlement_ref']",
       "ok": true
     }
   }

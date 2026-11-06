@@ -1,7 +1,7 @@
 {
   "asserts": "the record is in the Goose node's book at a stated position, under a checkpoint the node signed that verifies; the checkpoint's witness receipt verifies",
-  "detail": "node buyer: book goose/node, record 5d92bcafbd1ff7ebd8a4eac3de58f3c3355bfd996d9c8a1ba7c5d9b77aa0edb3: these held on the proof bytes, by capsulectl verify --bundle, the step 02 driver's lab-check and openssl pkeyutl, and this step's comparisons: bundle, membership, record, position, signer, checkpoint, witness_listed, witness_not_node, witness_not_before, witness_signature. The bundle is the one the Goose node wrote (loop_book_bundle, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805); the witness is the rehearsal's TEST witness, one key made for the run.",
-  "finished": "2026-11-06T22:00:57Z",
+  "detail": "node buyer: book goose/node, record d0de684d07409a3a934c5309585bf95146febb8c15a8be32dc8b93b4b30a13f3: these held on the proof bytes, by capsulectl verify --bundle, the step 02 driver's lab-check and openssl pkeyutl, and this step's comparisons: bundle, membership, record, position, signer, checkpoint, witness_listed, witness_not_node, witness_not_before, witness_signature. The bundle is the one the Goose node wrote (loop_book_bundle, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805); the witness is the rehearsal's TEST witness, one key made for the run.",
+  "finished": "2026-11-06T22:28:16Z",
   "name": "book",
   "not_checked": [],
   "pinned": {
@@ -22,34 +22,34 @@
   "proof": [
     {
       "path": "bundle.json",
-      "sha256": "fe94f506a60db1d82ffa7c4f562074cb11c3cac368f44b3eb75f301b24be2e5c"
+      "sha256": "a03c378e5882c1ddaf3923d50b6831f7e213db19b09c19fbf2fa638fea818029"
     },
     {
       "path": "checkpoint.json",
-      "sha256": "d00c23c537cf4e48b93857e9180329fc7b3f4f89526077ff792a20245357b295"
+      "sha256": "f8405ee87804b0d7e8498de40ee4d0904bd9af7f6b991902affe57d2667630b4"
     },
     {
       "path": "capsule.json",
-      "sha256": "f08a358ae2977506b480cb0ceed57d0811c580575c4362930dada4d23891b211"
+      "sha256": "7c8a6474290c9bc366673e012d22991ca84d7e7d1f3941b8d80548607516b2bd"
     },
     {
       "path": "witnesses.json",
-      "sha256": "eddb0ea2570ebc432d94df8222d1cc121a2de815d546140471130a9b1bbcc4fb"
+      "sha256": "c7638b26339d92f9d304dafc09dc140120afc904bb01b370a78ed9353e02c22b"
     },
     {
       "path": "verify.json",
-      "sha256": "e5e822fd80a2bd029d2b0560a01c601d2e04423293d6e6684fe96755ec31ae0c"
+      "sha256": "bea66c0c3a015c2e60ef2933e339b82820bd74fe6ec1c101f49cf8da96818008"
     },
     {
       "path": "checks.json",
-      "sha256": "3bdb0e1b47a6a684125883e5f013934993f92e6ba261a02930ddec6f55466e6a"
+      "sha256": "9ee9dd3d790d91316839610f357b99c806537ffd7b32e62dd0a0b6ed06e97595"
     },
     {
       "path": "checkpoint.cose",
-      "sha256": "938c32d76e4872ed13e54709c20d0b0f7c595e7a3902c42336447ea5d4f35711"
+      "sha256": "bf9ef42e0c168be2ac6e8838eed84df77b380a4ce8dc07e230a337b0d2a7f50f"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T22:00:57Z",
+  "started": "2026-11-06T22:28:16Z",
   "step": "02"
 }

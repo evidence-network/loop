@@ -1,5 +1,5 @@
 {
-  "key_id": "118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d",
+  "key_id": "60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c",
   "policy": {
     "share_deal_half": "counterparty",
     "stranger_safe": [
@@ -10,6 +10,6 @@
   "sig": {
     "alg": "Ed25519",
     "canon": "jcs",
-    "value": "bNlR6V2vw65lqYy7QIMjRxzAw7Ejl4hVMq8gGY6-yXcuTnEZHX5NwgRkmBzqlZeMXeXstksxm1QVed3hWey_BQ"
+    "value": "9UsIOYJW5aEOLqpSGLkN6XaY68HMoLy044RlsKBDiJ2ygcbZ5qJHsGa4p8DCY2_WqVBQlLlaytspHg-91lJsDA"
   }
 }

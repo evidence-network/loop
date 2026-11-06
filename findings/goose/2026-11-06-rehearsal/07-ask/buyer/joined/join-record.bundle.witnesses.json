@@ -1,1 +1,1 @@
-{"witnesses": [{"endpoint": "http://127.0.0.1:64482", "key_ids": ["aeb25c60e36524356d06981030d11df110d492022d14db3774eb0b87d02f397c"], "name": "goose-rehearsal-witness"}]}
+{"witnesses": [{"endpoint": "http://127.0.0.1:51870", "key_ids": ["e24458f2d5d892bacddbc4cc51ceb96aad0ce9e8490cb6e080d908022ecb3f7f"], "name": "goose-rehearsal-witness"}]}

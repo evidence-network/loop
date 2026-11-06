@@ -7,7 +7,7 @@
     },
     {
       "check": "one_deal",
-      "detail": "the four halves are of deals ['deal-c0614a04f9eb246e']",
+      "detail": "the four halves are of deals ['deal-5deab6a32335809e']",
       "ok": true
     },
     {
@@ -22,22 +22,22 @@
     },
     {
       "check": "close_cites_counterparty_checkpoint",
-      "detail": "buyer's close cites ['dc0794053aa693fb7eca4b79476ed17d930b7b43eb7b5e49ab8335db004e4c2e']; seller's pushed half is under checkpoint dc0794053aa693fb7eca4b79476ed17d930b7b43eb7b5e49ab8335db004e4c2e",
+      "detail": "buyer's close cites ['2ee4e3abe1ea241de470b534a74ca94d2490316bb6f6ae814c6bd8637ce8bf8a']; seller's pushed half is under checkpoint 2ee4e3abe1ea241de470b534a74ca94d2490316bb6f6ae814c6bd8637ce8bf8a",
       "ok": true
     },
     {
       "check": "receiver_record",
-      "detail": "buyer's record 3e3b98a53d8c is a goose_half_received record of its node book, signed by its key, in a bundle capsulectl found VALID",
+      "detail": "buyer's record c278279363b5 is a goose_half_received record of its node book, signed by its key, in a bundle capsulectl found VALID",
       "ok": true
     },
     {
       "check": "holds_bytes_by_record_id",
-      "detail": "the record names final record cb7e62a296f44dc9a3d602eb3b06cc1592e3f5bfaf2e0c64e15b218fc20bc152 (the pushed half's is cb7e62a296f44dc9a3d602eb3b06cc1592e3f5bfaf2e0c64e15b218fc20bc152) and checkpoint dc0794053aa693fb7eca4b79476ed17d930b7b43eb7b5e49ab8335db004e4c2e; its payload is 27231 bytes hashing to e52e5baecc40cc8850dc67bed8f1e3acd41ca08b50ce98ec01f392442d6c2600, the record states half digest e52e5baecc40cc8850dc67bed8f1e3acd41ca08b50ce98ec01f392442d6c2600 (committed in its header; the pushed half's is e52e5baecc40cc8850dc67bed8f1e3acd41ca08b50ce98ec01f392442d6c2600); the payload is the pushed half",
+      "detail": "the record names final record 24e54c732a2307f69fc2c039c08a9034602baf66d4d7f9dc4043d88a926ed2b2 (the pushed half's is 24e54c732a2307f69fc2c039c08a9034602baf66d4d7f9dc4043d88a926ed2b2) and checkpoint 2ee4e3abe1ea241de470b534a74ca94d2490316bb6f6ae814c6bd8637ce8bf8a; its payload is 27231 bytes hashing to bdfb76e9e742c2b81220e8867f3c3df6ebd19acfcd2dae4c92694a3d0dbc96f0, the record states half digest bdfb76e9e742c2b81220e8867f3c3df6ebd19acfcd2dae4c92694a3d0dbc96f0 (committed in its header; the pushed half's is bdfb76e9e742c2b81220e8867f3c3df6ebd19acfcd2dae4c92694a3d0dbc96f0); the payload is the pushed half",
       "ok": true
     },
     {
       "check": "cites_request_and_checkpoint",
-      "detail": "the record cites 1 record(s), a goose_half_asked for deal deal-c0614a04f9eb246e and peer 40300172fdb8db759722b156a5d6bd434c835b2e44fcdcd961e8b8efae6fa417; the checkpoint digest it states is the one buyer's close cites",
+      "detail": "the record cites 1 record(s), a goose_half_asked for deal deal-5deab6a32335809e and peer f24892d5deb56fab8845c9d3d800db880f4fff15c1df8ee542f382020753d10c; the checkpoint digest it states is the one buyer's close cites",
       "ok": true
     }
   ],
@@ -49,7 +49,7 @@
     },
     {
       "check": "one_deal",
-      "detail": "the four halves are of deals ['deal-c0614a04f9eb246e']",
+      "detail": "the four halves are of deals ['deal-5deab6a32335809e']",
       "ok": true
     },
     {
@@ -64,22 +64,22 @@
     },
     {
       "check": "close_cites_counterparty_checkpoint",
-      "detail": "seller's close cites ['fb797f62950d57c6102e0b5f47a0a221199320095243338676e3d1522a488dcb']; buyer's pushed half is under checkpoint fb797f62950d57c6102e0b5f47a0a221199320095243338676e3d1522a488dcb",
+      "detail": "seller's close cites ['7a3ebc98bc5dbcb36907cbaef04e7bdca97ff3af50c4301ee061ebd04469b2bb']; buyer's pushed half is under checkpoint 7a3ebc98bc5dbcb36907cbaef04e7bdca97ff3af50c4301ee061ebd04469b2bb",
       "ok": true
     },
     {
       "check": "receiver_record",
-      "detail": "seller's record d5c8de9c590d is a goose_half_received record of its node book, signed by its key, in a bundle capsulectl found VALID",
+      "detail": "seller's record df3c05e01b44 is a goose_half_received record of its node book, signed by its key, in a bundle capsulectl found VALID",
       "ok": true
     },
     {
       "check": "holds_bytes_by_record_id",
-      "detail": "the record names final record 67c319e2fbb7fce70ffae8c3365e271ba10a4d51d01897b8b01985f309e70843 (the pushed half's is 67c319e2fbb7fce70ffae8c3365e271ba10a4d51d01897b8b01985f309e70843) and checkpoint fb797f62950d57c6102e0b5f47a0a221199320095243338676e3d1522a488dcb; its payload is 15113 bytes hashing to 99caea2a62b4a88aafa39d33b06886790a02b33dda2347e7cab785e1a545ac19, the record states half digest 99caea2a62b4a88aafa39d33b06886790a02b33dda2347e7cab785e1a545ac19 (committed in its header; the pushed half's is 99caea2a62b4a88aafa39d33b06886790a02b33dda2347e7cab785e1a545ac19); the payload is the pushed half",
+      "detail": "the record names final record 9553a9e1c42870cdb1b6dcdd9aa30ca8ce0c83f5b993899774192e517a7e07fc (the pushed half's is 9553a9e1c42870cdb1b6dcdd9aa30ca8ce0c83f5b993899774192e517a7e07fc) and checkpoint 7a3ebc98bc5dbcb36907cbaef04e7bdca97ff3af50c4301ee061ebd04469b2bb; its payload is 15113 bytes hashing to 074e88bbb4161afef67762eafd0b22b22972531f13256f9e3e30578ad66db373, the record states half digest 074e88bbb4161afef67762eafd0b22b22972531f13256f9e3e30578ad66db373 (committed in its header; the pushed half's is 074e88bbb4161afef67762eafd0b22b22972531f13256f9e3e30578ad66db373); the payload is the pushed half",
       "ok": true
     },
     {
       "check": "cites_request_and_checkpoint",
-      "detail": "the record cites 1 record(s), a goose_half_asked for deal deal-c0614a04f9eb246e and peer 118666e4463583cf1caf998059f5bd43d9e39b17c3114b5b07f1e4f816201b1d; the checkpoint digest it states is the one seller's close cites",
+      "detail": "the record cites 1 record(s), a goose_half_asked for deal deal-5deab6a32335809e and peer 60a64dfc9754d3f69517290fd33a74a2abb995f7afce687ba7c572fdf7221d8c; the checkpoint digest it states is the one seller's close cites",
       "ok": true
     }
   ]
