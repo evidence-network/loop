@@ -168,10 +168,13 @@ import refusal  # noqa: E402
 import report_layout as layout  # noqa: E402
 import staple_verify  # noqa: E402
 
+# A refused staple is a FAIL, so the finding says it asserts that (scripts/staple_verify.py).
+STAPLE_ASSERT = (", and, where the pinned capsule-cli is installed, no stapled history_card/1 of the commitment fails its "
+                 "checks (digest, envelope and checkpoint signatures, checkpoint key, responder)")
 ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
-           "advertised policy")
+           "advertised policy" + STAPLE_ASSERT)
 PINNED = ["capsulectl", "capsulectl-book", "aac-go", "capsule-cli"]
 PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
@@ -365,7 +368,7 @@ def check_staple(node_dir, adv):
 
 
 def staple_signatures(node_dir, name, commitment, node_key):
-    """(failures, not_checked, proof names, tools) for the history_card/1 `commitment` (a file in node_dir) staples, run
+    """(failures, not_checked, proof names, state) for the history_card/1 `commitment` (a file in node_dir) staples, run
     through the pinned capsule-cli's `verify --history` under the node key and each card entry's checkpoint_key
     (scripts/staple_verify.py). A property that fails is a failure; one that cannot run (no binary, a card entry
     without a checkpoint_key) is a not_checked entry. The report is kept as staple-verify.json beside the commitment."""
@@ -375,8 +378,10 @@ def staple_signatures(node_dir, name, commitment, node_key):
     if got["report"] is not None:
         (node_dir / "staple-verify.json").write_text(json.dumps(got["report"], indent=2, sort_keys=True) + "\n")
         proof.append("staple-verify.json")
-    nc = [{"what": f"{name}: the stapled history_card/1 signature verifies", "why": why, "issue": STAPLE_ISSUE}
-          for why in got["not_checked"]]
+    # An evidence-commitment/0 (what the pinned plugin signs) is not an entry here: capsule-cli takes no keys for it, and
+    # step 12 never listed its staple as unchecked; step 03 names it.
+    nc = [] if got["legacy"] else [{"what": f"{name}: the stapled history_card/1 signature verifies", "why": why,
+                                    "issue": STAPLE_ISSUE} for why in got["not_checked"]]
     return [f"{name}: {e}" for e in got["errors"]], nc, proof, got["state"]
 
 
@@ -1391,7 +1396,7 @@ GOOSE_ASSERTS = ("one command on the pinned Goose release (loop_join) opens the 
                  "returns the node's signed commitment, the node then advertises the commitment it is asked through, "
                  "which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject "
                  "with the history_card/1 derivation) verifies and matches the advertised policy; no controller "
-                 "binding is kept")
+                 "binding is kept" + STAPLE_ASSERT)
 GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book", "capsule-cli"]
 
 

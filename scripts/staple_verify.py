@@ -61,8 +61,9 @@ def pinned_version():
     return None
 
 
-def unchecked(why):
-    return {"state": "NOT_CHECKED", "errors": [], "not_checked": [why], "outside": [], "report": None}
+def unchecked(why, legacy=False):
+    """`legacy` marks an evidence-commitment/0, which capsulectl takes no keys for: no run could verify it."""
+    return {"state": "NOT_CHECKED", "errors": [], "not_checked": [why], "outside": [], "report": None, "legacy": legacy}
 
 
 def verify(commitment_path, node_key_id, binary_path=None):
@@ -76,6 +77,11 @@ def verify(commitment_path, node_key_id, binary_path=None):
         entries = hc.entries(doc)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         return unchecked(f"the commitment could not be read for capsule-cli ({e})")
+    if not isinstance(doc, dict) or doc.get("profile") != hc.PROFILE_1:
+        return unchecked(f"capsule-cli {pinned_version()} verifies the staples of an {hc.PROFILE_1} only: it refuses the "
+                         f"key flags for a commitment of any other profile ({doc.get('profile') if isinstance(doc, dict) else 'none'}), "
+                         "and without them checks no signature",
+                         legacy=True)
     if not entries:
         return unchecked("the commitment staples no history_card/1")
     # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
@@ -83,26 +89,29 @@ def verify(commitment_path, node_key_id, binary_path=None):
     by_key = {}
     for e in entries:
         by_key.setdefault(cc.card_checkpoint_key(e), []).append(e.get("stream"))
-    staples, toplevel = [], []
+    staples, toplevel, missing = [], [], []
     for key, streams in sorted(by_key.items(), key=lambda kv: kv[0] or ""):
         cmd = [str(exe), "verify", "--history", str(commitment_path), "--counterparty-key", node_key_id]
         if key:
             cmd += ["--checkpoint-key", key]
+        names = ", ".join(str(x) for x in streams)
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
             report = json.loads(r.stdout)
         except (OSError, subprocess.TimeoutExpired, ValueError) as e:
-            return unchecked(f"capsule-cli verify --history gave no report ({type(e).__name__}: {e})")
+            missing.append(f"history_card/1 of {names}: capsule-cli verify --history gave no report ({type(e).__name__}: {e})")
+            continue
         if not isinstance(report, dict) or report.get("kind") != "history_card/1":
             why = (report.get("reason") or "; ".join(report.get("findings") or [])) if isinstance(report, dict) else ""
-            return {**unchecked(f"capsule-cli does not evaluate this commitment's cards as history_card/1 "
-                                f"({why or r.stderr.strip()})"), "report": report}
+            missing.append(f"history_card/1 of {names}: capsule-cli does not evaluate it as history_card/1 "
+                           f"({why or r.stderr.strip()})")
+            continue
         # A single run covers every card; with several, each card is taken from the run holding its own key.
         staples += [x for x in report.get("staples") or [] if len(by_key) == 1 or x.get("stream") in streams]
         toplevel += [f for f in report.get("findings") or [] if not f.startswith("staples[") and "FAIL" in f]
     report = {"kind": "history_card/1", "staples": staples, "findings": toplevel,
               "capsule_cli_runs": len(by_key)}
-    errors, missing, outside = list(toplevel), [], set()
+    errors, outside = list(toplevel), set()
     for staple in staples:
         props, name = staple.get("properties") or {}, staple.get("stream")
         for prop in SIGNATURE_PROPERTIES:
@@ -114,10 +123,11 @@ def verify(commitment_path, node_key_id, binary_path=None):
                 missing.append(f"history_card/1 of {name}: {prop} {state or 'absent'}"
                                + (" (no checkpoint_key on its entry, or no key given)" if prop == "checkpoint_key" else ""))
         outside.update(p for p in OUTSIDE if props.get(p) != "PASS")
-    if not staples:
+    if not staples and not missing:
         missing.append("capsule-cli reported no staple")
     state = "FAIL" if errors else "NOT_CHECKED" if missing else "PASS"
-    return {"state": state, "errors": errors, "not_checked": missing, "outside": sorted(outside), "report": report}
+    return {"state": state, "errors": errors, "not_checked": missing, "outside": sorted(outside),
+            "report": report if staples else None, "legacy": False}
 
 
 def main(argv):

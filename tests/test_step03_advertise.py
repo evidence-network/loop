@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 import staple_stub  # noqa: E402
 
-staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
+# The pinned capsule-cli is a stub for this module; tests/test_staple_verify.py runs the real one.
+setUpModule, tearDownModule = staple_stub.module_hooks()
 FIXTURES = ROOT / "tests" / "fixtures" / "step03"
 POPULATION = FIXTURES / "population" / "rehearsal"
 ALICE_KEY = POPULATION / "keys" / "alice" / "node-key.pem"
@@ -106,14 +107,13 @@ class StepTest(unittest.TestCase):
         self.assertEqual(nodes["bob"]["inputs"], "stand-in")
         # The staple's signature and the checkpoint are outside the assertion: named in detail, never passed.
         self.assertEqual(f["not_checked"], [])
-        # alice's staple is verified (by the stub here); bob's is a stand-in, which the real verifier refuses.
-        self.assertEqual(finding.gaps(f["detail"]), [
-            ("the stapled history_card/1 signature (bob) is not verified: the staple is a rehearsal stand-in, "
-             "not a card the node's book signed", "evidence-network/loop#401")])
-        self.assertIn("The stapled history_card/1 of alice verifies with capsule-cli", f["detail"])
-        self.assertEqual(nodes["alice"]["staple_verify"]["state"], "PASS")
-        self.assertEqual(nodes["bob"]["staple_verify"]["state"], "NOT_CHECKED")
-        self.assertIn("capsule-cli", f["pinned"])
+        # alice's commitment is an evidence-commitment/0, which capsule-cli takes no keys for; bob's staple is a stand-in.
+        self.assertEqual([w.split(" is not verified")[0] for w, _ in finding.gaps(f["detail"])],
+                         ["the stapled history_card/1 signature (alice)", "the stapled history_card/1 signature (bob)"])
+        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"evidence-network/loop#401"})
+        self.assertIn("evidence-commitment/1 only", f["detail"])
+        self.assertIn("a rehearsal stand-in", f["detail"])
+        self.assertNotIn("capsule-cli", f["pinned"])
         self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
         self.assertIn("The staple of bob is a rehearsal stand-in.", f["detail"])
         # The bytes fetched back are the bytes in the carrier bundle's HEAD.
@@ -142,28 +142,37 @@ class StepTest(unittest.TestCase):
         self.assertEqual(self.nodes(out)["alice"]["errors"], ["signature does not verify under spki"])
         self.assertEqual(finding.check(out.parent), [])
 
+    def verified_as(self, **got):
+        """Run the step with scripts/staple_verify.verify answering `got` for every real (not stand-in) staple."""
+        base = {"state": "PASS", "errors": [], "not_checked": [], "outside": [], "report": {"staples": []}, "legacy": False}
+        return unittest.mock.patch.object(self.step.sv_, "verify", return_value={**base, **got})
+
     def test_a_staple_the_pinned_verifier_refuses_fails_the_node(self):
-        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "fail"}):
+        with self.verified_as(state="FAIL", errors=["history_card/1 of x: commitment_signature FAIL: planted"]):
             f, out = self.run_step()
         self.assertEqual(f["result"], "FAIL")
         alice = self.nodes(out)["alice"]
-        self.assertEqual(alice["result"], "FAIL")
-        self.assertTrue(any("commitment_signature FAIL" in e for e in alice["errors"]), alice["errors"])
+        self.assertEqual((alice["result"], alice["errors"]), ("FAIL", ["history_card/1 of x: commitment_signature FAIL: planted"]))
         self.assertTrue((out / "alice.staple-verify.json").is_file())
         self.assertEqual(finding.check(out.parent), [])
 
-    def test_a_card_whose_checkpoint_key_cannot_be_checked_stays_not_checked(self):
-        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "nokey"}):
+    def test_a_verified_staple_is_a_sentence_and_pins_capsule_cli(self):
+        with self.verified_as():
             f, out = self.run_step()
         self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertTrue(finding.gaps(f["detail"])[0][0].startswith("the stapled history_card/1 signature (alice)"))
-        self.assertNotIn("The stapled history_card/1 of alice verifies", f["detail"])
+        self.assertIn("The stapled history_card/1 of alice verifies with capsule-cli", f["detail"])
+        self.assertEqual([w.split(" is not verified")[0] for w, _ in finding.gaps(f["detail"])],
+                         ["the stapled history_card/1 signature (bob)"])  # bob's is a stand-in
+        self.assertIn("capsule-cli", f["pinned"])
+        self.assertIn("no stapled history_card/1 fails its checks", f["asserts"])
+        self.assertEqual(finding.check(out.parent), [])
 
-    def test_no_installed_verifier_leaves_the_signature_not_checked(self):
-        with unittest.mock.patch.dict("os.environ", {"CAPSULE_CLI": str(self.tmp / "absent")}):
+    def test_a_card_that_cannot_be_checked_stays_not_checked(self):
+        why = "history_card/1 of x: checkpoint_key NOT_CHECKED (no checkpoint_key on its entry, or no key given)"
+        with self.verified_as(state="NOT_CHECKED", not_checked=[why]):
             f, out = self.run_step()
         self.assertEqual(f["result"], "PASS", f["detail"])
-        self.assertIn("steps/capsule-cli.setup.sh", f["detail"])
+        self.assertIn(why, f["detail"])
         self.assertNotIn("capsule-cli", f["pinned"])
 
     def test_planted_policy_digest_mismatch_fails(self):

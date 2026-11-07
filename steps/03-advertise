@@ -70,6 +70,9 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
            "count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the "
            "signed policy's bytes")
+# Added when the pinned capsule-cli ran on a node's staples: a failing staple is a FAIL, so the finding says it asserts that.
+ASSERTS_STAPLE = (", and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, "
+                  "envelope and checkpoint signatures, checkpoint key, responder)")
 # Added when a node was also read back from Nostr (nostr_carrier.py, rehearsal recordings).
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
                  "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
@@ -622,7 +625,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
     else:
         not_checked += outside
     ran = any(r.get("staple_verify", {}).get("state") in ("PASS", "FAIL") for r in records)
-    return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else ""),
+    return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else "") + (ASSERTS_STAPLE if ran else ""),
                          pinned=list(pinned) + (["capsule-cli"] if ran else []), proof=proof, detail=detail, not_checked=not_checked, started=started)
 
 

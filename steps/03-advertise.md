@@ -42,8 +42,7 @@ PASS means, for every node: all required fields present and well formed, no
 count, the signature verifies under the key in `spki`, the policy digest is
 the sha256 of the policy bytes, the policy is signed by the same key, and the
 staple and checkpoint bytes match their digests. The result covers what the
-step asserts, and the step does not assert that the staple verifies. The
-stapled `history_card/1` is also run through the pinned capsule-cli
+step asserts. The stapled `history_card/1` is also run through the pinned capsule-cli
 (`capsulectl verify --history`, `scripts/staple_verify.py`, installed by
 `steps/capsule-cli.setup.sh`; versions.lock's `capsule-cli`, a pre-release like
 every capsule-cli release) under the node key from the carrier and the

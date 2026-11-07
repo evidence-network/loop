@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 import staple_stub  # noqa: E402
 
-staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
+# The pinned capsule-cli is a stub for this module; tests/test_staple_verify.py runs the real one.
+setUpModule, tearDownModule = staple_stub.module_hooks()
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 REQUIRE_TOOLS = os.environ.get("LOOP_REQUIRE_TOOLS") == "1"  # CI, after the setups: a missing tool is an error, never a skip
 
@@ -538,7 +539,7 @@ class GooseRehearsalTest(unittest.TestCase):
         out, found = self._step_12(self.pop, "findings")
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertIn("probe backend: goose", found["detail"])
-        self.assertEqual(sorted(found["pinned"]), ["capsulectl", "capsulectl-book", "goose-g1"])
+        self.assertEqual(sorted(found["pinned"]), ["capsule-cli", "capsulectl", "capsulectl-book", "goose-g1"])
         paths = {x["path"] for x in found["proof"]}
         self.assertTrue({"buyer/asks/seller/history_card/answer.json", "seller/asks/buyer/history_card/outcome.bundle.json",
                          "buyer/advertised/commitment.json"} <= paths)

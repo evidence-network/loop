@@ -12,6 +12,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,7 +22,7 @@ import staple_stub  # noqa: E402
 import staple_verify  # noqa: E402
 
 REHEARSAL = ROOT / "findings/goose/2026-11-06-rehearsal/03-advertise"
-STUB = staple_stub.use()
+STUB = staple_stub.path()
 REAL = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache/evidence-network-loop")) / "capsule-cli/bin/capsulectl"
 
 
@@ -67,8 +68,39 @@ class MappingTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)  # keyless, goose/node's key, goose/other's key
         self.assertEqual(sorted(c.count("--checkpoint-key") for c in calls), [0, 1, 1])
         self.assertEqual(got["report"]["capsule_cli_runs"], 3)
+        # With the stub holding a card to its own entry's key, only the keyed cards verify; the keyless one does not.
+        os.environ["STUB_KEYED"] = "1"
+        self.addCleanup(os.environ.pop, "STUB_KEYED", None)
+        keyed = staple_verify.verify(self.path, doc["key_id"], STUB)
+        self.assertEqual(keyed["state"], "NOT_CHECKED")
+        self.assertEqual(keyed["not_checked"], ["history_card/1 of goose/keyless: checkpoint_key NOT_CHECKED "
+                                                "(no checkpoint_key on its entry, or no key given)"])
         self.assertEqual(sorted(s["stream"] for s in got["report"]["staples"]),
                          ["goose/keyless", "goose/node", "goose/other"])
+
+    def test_a_failure_survives_a_later_group_that_gives_no_report(self):
+        doc = commitment()
+        other = dict(doc["history_cards"][0], stream="goose/other",
+                     checkpoint_key=doc["history_cards"][0]["checkpoint_key"][:-3] + "AAA")
+        doc["history_cards"] = sorted(doc["history_cards"] + [other], key=lambda c: c["stream"])
+        self.path.write_text(json.dumps(doc))
+        flaky = self.tmp / "flaky"  # fails the first run it is given (keys sort goose/node's before goose/other's)
+        flaky.write_text(f"#!{sys.executable}\nimport os, sys\nn = os.path.exists('{self.tmp}/ran')\n"
+                         f"open('{self.tmp}/ran', 'w')\nif n:\n    print('not json')\n    sys.exit(1)\n"
+                         f"os.environ['STUB_MODE'] = 'fail'\nos.execv('{STUB}', ['{STUB}'] + sys.argv[1:])\n")
+        flaky.chmod(0o755)
+        got = staple_verify.verify(self.path, doc["key_id"], flaky)
+        self.assertEqual(got["state"], "FAIL")
+        self.assertTrue(got["errors"])
+        self.assertTrue(any("gave no report" in m for m in got["not_checked"]), got["not_checked"])
+
+    def test_a_legacy_commitment_is_not_checked_and_marked_legacy(self):
+        doc = commitment()
+        doc["profile"] = "evidence-commitment/0"
+        self.path.write_text(json.dumps(doc))
+        got = staple_verify.verify(self.path, doc["key_id"], STUB)
+        self.assertEqual((got["state"], got["legacy"]), ("NOT_CHECKED", True))
+        self.assertFalse(self.log.exists())
 
     def test_a_failing_property_is_a_failure(self):
         os.environ["STUB_MODE"] = "fail"
@@ -86,9 +118,8 @@ class MappingTest(unittest.TestCase):
                                               "(no checkpoint_key on its entry, or no key given)"])
 
     def test_no_binary_is_not_checked_and_names_the_setup(self):
-        os.environ["CAPSULE_CLI"], real = str(self.tmp / "absent"), os.environ["CAPSULE_CLI"]
-        self.addCleanup(os.environ.__setitem__, "CAPSULE_CLI", real)
-        got = staple_verify.verify(self.path, commitment()["key_id"])
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(self.tmp / "absent")}):
+            got = staple_verify.verify(self.path, commitment()["key_id"])
         self.assertEqual(got["state"], "NOT_CHECKED")
         self.assertIn("steps/capsule-cli.setup.sh", got["not_checked"][0])
         self.assertIn(staple_verify.pinned_version(), got["not_checked"][0])

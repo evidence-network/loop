@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest import mock
 
@@ -479,6 +480,26 @@ class Step08Test(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_BASE and HAS_GO, NO_GO)
+class Step08CapsuleCliTest(unittest.TestCase):
+    """A finding whose judge ran capsule-cli on the staples is not re-derived where it is not installed."""
+
+    def ctx(self, pinned):
+        return type("C", (), {"record": {"pinned": pinned}})()
+
+    def test_a_recorded_pin_without_the_binary_is_not_reproduced(self):
+        with unittest.mock.patch.object(step.staple_verify, "binary", return_value=None):
+            for nn in ("03", "12"):
+                with self.assertRaises(step.Unreproducible) as caught:
+                    step.need_capsule_cli(self.ctx({"capsule-cli": {}}), nn)
+                self.assertIn("steps/capsule-cli.setup.sh", caught.exception.args[1])
+
+    def test_no_pin_or_an_installed_binary_is_reproduced(self):
+        with unittest.mock.patch.object(step.staple_verify, "binary", return_value=None):
+            step.need_capsule_cli(self.ctx({"goose-g1": {}}), "03")
+        with unittest.mock.patch.object(step.staple_verify, "binary", return_value=Path("/bin/true")):
+            step.need_capsule_cli(self.ctx({"capsule-cli": {}}), "12")
+
+
 class Step08NotCheckedListTest(unittest.TestCase):
     """A recorded not_checked list is reproduced entry for entry. Step 01's FAIL carries none since the producer
     signature is verified in a second language (#137), so the plant adds an entry the judge does not derive."""

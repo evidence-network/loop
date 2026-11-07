@@ -13,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # steps/capsule-cli.setup.sh builds capsule-cli with the Go toolchain, pinned as loop.yml's.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: false
       - name: Step 03 tools
         run: steps/03-advertise.setup.sh
       - name: Checker and step tests

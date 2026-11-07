@@ -35,7 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 import staple_stub  # noqa: E402
 
-staple_stub.use()  # the pinned capsule-cli is a stub here; tests/test_staple_verify.py runs the real one
+# The pinned capsule-cli is a stub for this module; tests/test_staple_verify.py runs the real one.
+setUpModule, tearDownModule = staple_stub.module_hooks()
 FIX = ROOT / "tests" / "fixtures" / "step12"
 REPORTER_FIX = ROOT / "tests" / "reporter" / "fixtures"
 
@@ -137,7 +138,9 @@ class StapleSignatureTest(Tmp):
     """The pinned capsule-cli's verdict on the stapled history_card/1 (scripts/staple_verify.py), as step 12 takes it."""
     def node(self):
         node = Path(self.tmp.name) / "alice"
-        shutil.copytree(FIX / "joined" / "alice", node)
+        node.mkdir()
+        # A real evidence-commitment/1 (the Goose rehearsal's buyer): the fixture commitments here are /0.
+        shutil.copy(ROOT / "tests/fixtures/staple/buyer.commitment.json", node / "commitment.json")
         return node
 
     def test_a_verified_staple_adds_no_entry_and_keeps_the_report(self):
@@ -145,6 +148,12 @@ class StapleSignatureTest(Tmp):
         fails, nc, proof, state = step.staple_signatures(node, "alice", "commitment.json", "ab" * 32)
         self.assertEqual((fails, nc, proof, state), ([], [], ["staple-verify.json"], "PASS"))
         self.assertTrue((node / "staple-verify.json").is_file())
+
+    def test_an_evidence_commitment_0_adds_no_entry_and_no_report(self):
+        node = Path(self.tmp.name) / "legacy"
+        shutil.copytree(FIX / "joined" / "alice", node)
+        self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "NOT_CHECKED"))
+        self.assertFalse((node / "staple-verify.json").exists())
 
     def test_a_refused_staple_is_a_failure(self):
         with unittest.mock.patch.dict(os.environ, {"STUB_MODE": "fail"}):
@@ -911,7 +920,7 @@ class PluginToolsTest(Tmp):
         self.assertEqual(self.console.doctor_bodies, [{"probe": True}, {}])
         self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
         self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
-                                 "staple-verify.json", "doctor-after.json"])
+                                 "doctor-after.json"])  # an evidence-commitment/0: no staple report
         self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), plugin_doc())
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
         self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))

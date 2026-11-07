@@ -512,7 +512,7 @@ def card_errors(member, name, key_id):
     """One stapled history_card/1: its bytes match, it is the plugin's answer format, presented by its subject.
 
     Returns (errors as (code, text), the decoded answer or None). Its signature
-    is not verified here (no pinned verifier yet; see steps/03-advertise.md).
+    is not verified here: steps 03 and 12 run the pinned capsule-cli on it (scripts/staple_verify.py).
     """
     raw, errs = _decoded(member, name)
     if errs:
@@ -561,7 +561,7 @@ def staple_errors(doc):
 def standard_errors(doc, request, reply):
     """The staple bytes against the standard_history member: digests, and that the reply answers the request.
 
-    The staple's signature, anchor and nonce are evidencebook's CheckStaple, not checked here (no pinned verifier).
+    The staple's signature, anchor and nonce are evidencebook's CheckStaple, not checked here.
     """
     member, key_id = doc["standard_history"], doc["key_id"]
     errs = []
