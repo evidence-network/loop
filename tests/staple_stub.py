@@ -4,7 +4,7 @@ the fixtures' synthetic cards (the real verifier refuses those synthetic cards).
     import staple_stub
     setUpModule, tearDownModule = staple_stub.module_hooks()   # CAPSULE_CLI -> the stub for this test module only
 
-The stub reports every property PASS. STUB_MODE=fail makes it report `commitment_signature FAIL` on every staple,
+The stub reports every property PASS (for a served standard_history/1 answer, those a served answer can carry). STUB_MODE=fail makes it report `commitment_signature FAIL` on every staple,
 STUB_MODE=nokey `checkpoint_key NOT_CHECKED`, and STUB_KEYED=1 reports `checkpoint_key` PASS for a card only when
 its own entry's key is among the --checkpoint-key arguments (as the real binary does); STUB_LOG, when set, receives
 its argv as one JSON line per call. The real binary is exercised by tests/test_staple_verify.py and
@@ -24,6 +24,17 @@ argv = sys.argv[1:]
 if os.environ.get("STUB_LOG"):
     open(os.environ["STUB_LOG"], "a").write(json.dumps(argv) + "\\n")
 doc = json.load(open(argv[argv.index("--history") + 1]))
+if "staple" in doc:  # a served standard_history/1 answer
+    env = {{p: "PASS" for p in ("anchor_match", "artifact_digest", "envelope_signature", "issued_at_form", "profile_version",
+                              "request_binding", "responder_trust", "subject_binding")}}
+    env.update(anchor_inclusion="NOT_CHECKED", responder_key_current="NOT_CHECKED", verification_binding="NOT_PRESENT")
+    hist = {{"card_form": "PASS", "counts_integral": "PASS", "denominator": "PASS", "as_of": "NOT_CHECKED",
+            "counts_recompute": "NOT_CHECKED", "window_from_policy": "NOT_CHECKED"}}
+    if os.environ.get("STUB_MODE") == "fail":
+        env["envelope_signature"] = "FAIL"
+    print(json.dumps({{"spec_version": "capsule-cli-result/v1", "kind": "standard_history/1", "verdict": "ACCEPTED",
+                      "history_properties": hist, "envelope_properties": env, "findings": []}}))
+    sys.exit(0)
 streams = [c.get("stream") for c in doc.get("history_cards", [])] or ["card"]
 mode = os.environ.get("STUB_MODE", "")
 keys = {{c.get("stream"): base64.urlsafe_b64decode(c["checkpoint_key"] + "==")[-32:].hex()

@@ -31,6 +31,34 @@ def commitment(name="buyer"):
     return json.loads((REHEARSAL / f"{name}.commitment.json").read_text())
 
 
+STD_REQUEST = (REHEARSAL / "standard_history.request.json").read_bytes()
+STD_REPLY = (REHEARSAL / "standard_history.reply.json").read_bytes()
+# The key a real standard_history/1 staple (`capsulectl deal standard-history staple`, a throwaway test profile) is signed under.
+STD_KEY = "34e3983a447bd86e65e82f9f315b739978e6bc133aed96b4af5ac4d5cda3d2eb"
+
+
+class StandardMappingTest(unittest.TestCase):
+    def test_a_served_answer_passing_every_property_it_can_carry_is_pass(self):
+        got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, STUB)
+        self.assertEqual((got["state"], got["errors"], got["not_checked"]), ("PASS", [], []))
+        self.assertEqual(got["outside"], ["anchor_inclusion", "as_of", "counts_recompute", "responder_key_current",
+                                          "verification_binding", "window_from_policy"])
+
+    def test_a_failing_property_is_a_failure(self):
+        os.environ["STUB_MODE"] = "fail"
+        self.addCleanup(os.environ.pop, "STUB_MODE", None)
+        got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, STUB)
+        self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: envelope_signature FAIL"]))
+
+    def test_no_binary_and_unreadable_bytes_are_not_checked(self):
+        with unittest.mock.patch.object(staple_verify, "binary", return_value=None):
+            got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY)
+        self.assertEqual(got["state"], "NOT_CHECKED")
+        self.assertIn(staple_verify.SETUP, got["not_checked"][0])
+        got = staple_verify.verify_standard(b"not json", STD_REPLY, STD_KEY, STUB)
+        self.assertEqual(got["state"], "NOT_CHECKED")
+
+
 class MappingTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -146,6 +174,28 @@ class RealBinaryTest(unittest.TestCase):
         for name in ("buyer", "seller"):
             got = staple_verify.verify(REHEARSAL / f"{name}.commitment.json", commitment(name)["key_id"], REAL)
             self.assertEqual((got["state"], got["errors"], got["not_checked"]), ("PASS", [], []), name)
+
+    def test_a_real_standard_history_staple_verifies(self):
+        got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, REAL)
+        self.assertEqual((got["state"], got["errors"], got["not_checked"]), ("PASS", [], []))
+        self.assertEqual(got["report"]["verdict"], "ACCEPTED")
+
+    def test_a_standard_history_staple_held_under_another_key_is_a_failure(self):
+        got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, "0" * 64, REAL)
+        self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: responder_trust FAIL"]))
+
+    def test_an_altered_standard_history_staple_is_a_failure(self):
+        def flip(text):
+            return text[:-1] + ("0" if text[-1] != "0" else "1")
+        request, reply = json.loads(STD_REQUEST), json.loads(STD_REPLY)
+        nonce = dict(request, nonce="00" * 16)  # another request than the one answered
+        sig = dict(reply, sig=flip(reply["sig"]))
+        anchor = dict(reply, anchor={"digest": flip(reply["anchor"]["digest"])})
+        for name, (req, rep), want in (("nonce", (nonce, reply), "request_binding"), ("signature", (request, sig), "envelope_signature"),
+                                       ("anchor", (request, anchor), "anchor_match")):
+            got = staple_verify.verify_standard(json.dumps(req).encode(), json.dumps(rep).encode(), STD_KEY, REAL)
+            self.assertEqual(got["state"], "FAIL", name)
+            self.assertIn(f"standard_history/1: {want} FAIL", got["errors"], name)
 
     def test_another_nodes_key_is_a_failure(self):
         got = staple_verify.verify(REHEARSAL / "buyer.commitment.json", commitment("seller")["key_id"], REAL)

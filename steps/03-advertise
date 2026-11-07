@@ -73,7 +73,8 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "signed policy's bytes")
 # Added when the pinned capsule-cli ran on a node's staples: a failing staple is a FAIL, so the finding says it asserts that.
 ASSERTS_STAPLE = (", and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, "
-                  "envelope and checkpoint signatures, checkpoint key, responder)")
+                  "envelope and checkpoint signatures, checkpoint key, responder) and no published standard_history/1 "
+                  "staple fails its signature, anchor or request binding")
 # Added when a node was also read back from Nostr (nostr_carrier.py, rehearsal recordings).
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
                  "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
@@ -81,10 +82,10 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
 # What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, a stand-in staple, an
 # evidence-commitment/0 (capsule-cli takes no keys for it) or a card entry without a checkpoint_key.
 # The owner of each staple gap, by cause: stand-in and keyless staples and a capsule-cli that is not installed; the
-# plugin's evidence-commitment/0, which capsule-cli cannot verify; the standard_history/1 staple's signature.
+# plugin's evidence-commitment/0, which capsule-cli cannot verify. A standard_history/1 staple's signature is
+# verified the same way (loop#408) and stays unchecked for the same causes, or when its bytes are not published.
 STAPLE_ISSUE = "evidence-network/loop#407"
 LEGACY_ISSUE = "Mesh-LLM/capsules-plugin#266"
-STANDARD_ISSUE = "evidence-network/loop#408"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
 LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
@@ -375,8 +376,11 @@ def verify_node(out, name, rec, key_id, read, live):
         doc = None
         errs, notes = [f"fetched bytes are not JSON ({e})"], []
     if doc is not None:
+        staple_bytes = {}
+
         def fetch_staple(part):
             got = read(f"nodes/commitments/standard_history/{rec['node_id']}.{part}.json")
+            staple_bytes[part] = got
             if got is not None:
                 (out / f"{name}.standard_history.{part}.json").write_bytes(got)
                 proofs.append(f"{name}.standard_history.{part}.json")
@@ -396,6 +400,17 @@ def verify_node(out, name, rec, key_id, read, live):
             if sv["report"] is not None:
                 (out / f"{name}.staple-verify.json").write_text(json.dumps(sv["report"], indent=2, sort_keys=True) + "\n")
                 proofs.append(f"{name}.staple-verify.json")
+            if "standard_history" in doc and None not in staple_bytes.values() and len(staple_bytes) == 2:
+                # The holder key is the commitment's key_id from the node's record, never the reply's own responder.
+                std = (sv_.unchecked("the staple is a rehearsal stand-in, not an answer the node's book signed")
+                       if rec.get("inputs") == "stand-in"
+                       else sv_.verify_standard(staple_bytes["request"], staple_bytes["reply"], key_id))
+                errs += std["errors"]
+                rec["standard_verify"] = {k: std[k] for k in ("state", "not_checked", "outside")}
+                rec["standard_verify"]["ran"] = std["report"] is not None
+                if std["report"] is not None:
+                    (out / f"{name}.standard-verify.json").write_text(json.dumps(std["report"], indent=2, sort_keys=True) + "\n")
+                    proofs.append(f"{name}.standard-verify.json")
     rec["result"] = "FAIL" if errs else "PASS"
     rec["errors"], rec["notes"] = errs, notes
     if doc is not None and not errs:
@@ -404,8 +419,16 @@ def verify_node(out, name, rec, key_id, read, live):
         rec["policy_digest"] = doc["lcap"]["policy_digest"]
         rec["history_cards"] = hc.history_cards(doc)
         if "standard_history" in doc:
-            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes)}
+            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes),
+                                       "verified": rec.get("standard_verify", {}).get("state") == "PASS"}
     return rec, proofs
+
+
+def standard_why(r):
+    """Why a standard_history/1 staple's signature was not verified: no bytes published, or what capsule-cli said."""
+    if not r["standard_history"]["bytes_checked"]:
+        return "its bytes were not published, so capsule-cli had nothing to verify"
+    return "; ".join(r.get("standard_verify", {}).get("not_checked") or ["capsule-cli did not run on it"])
 
 
 def tool_versions():
@@ -571,12 +594,12 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
         outside.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
                         "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
                         "issue": CHECKPOINT_ISSUE})
-        if "standard_history" in r:
+        if "standard_history" in r and not r["standard_history"]["verified"]:
             outside.append({"what": f"{r['name']}: the standard_history/1 staple verifies",
                             "why": "its two digests " + ("and its answer's responder and request are checked" if r["standard_history"]["bytes_checked"]
                                                          else "are shape-checked, the bytes were not supplied")
-                                   + "; the staple's signature is evidencebook's CheckStaple, not run here",
-                            "issue": STANDARD_ISSUE})
+                                   + "; its signature, anchor and nonce are not verified: " + standard_why(r),
+                            "issue": STAPLE_ISSUE})
         for n in r["notes"]:
             if n.startswith(cc.STD_NOT_SUPPLIED):
                 continue
@@ -619,20 +642,32 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                     LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
-            with_bytes = [r["name"] for r in stapled if r["standard_history"]["bytes_checked"]]
-            shape_only = [r["name"] for r in stapled if not r["standard_history"]["bytes_checked"]]
-            coverage = []
-            if with_bytes:
-                coverage.append("the digests, the answer's responder and its request were checked from the published "
+            def coverage(group):
+                with_bytes = [r["name"] for r in group if r["standard_history"]["bytes_checked"]]
+                shape_only = [r["name"] for r in group if not r["standard_history"]["bytes_checked"]]
+                said = []
+                if with_bytes:
+                    said.append("the digests, the answer's responder and its request were checked from the published "
                                 f"bytes ({', '.join(with_bytes)})")
-            if shape_only:
-                coverage.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
-            detail += " " + finding.outside(
-                f"the standard_history/1 staple of {', '.join(r['name'] for r in stapled)}: its signature is "
-                "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STANDARD_ISSUE)
+                if shape_only:
+                    said.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
+                return "; ".join(said)
+
+            verified = [r for r in stapled if r["standard_history"]["verified"]]
+            unverified = [r for r in stapled if not r["standard_history"]["verified"]]
+            if verified:
+                detail += (f" The standard_history/1 staple of {', '.join(r['name'] for r in verified)} verifies with "
+                           f"capsule-cli {sv_.pinned_version()} `verify --history`, held under the node's key_id: the "
+                           "answer's signature, its anchor and its request (nonce) binding; the deal's entries and the "
+                           f"policy a recount needs are not part of it. {coverage(verified)}.")
+            if unverified:
+                detail += " " + finding.outside(
+                    f"the standard_history/1 staple of {', '.join(r['name'] for r in unverified)}: its signature, anchor "
+                    "and nonce are not verified (" + "; ".join(standard_why(r) for r in unverified) + "); "
+                    + coverage(unverified), STAPLE_ISSUE)
     else:
         not_checked += outside
-    ran = any(r.get("staple_verify", {}).get("ran") for r in records)
+    ran = any(r.get("staple_verify", {}).get("ran") or r.get("standard_verify", {}).get("ran") for r in records)
     return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else "") + (ASSERTS_STAPLE if ran else ""),
                          pinned=list(pinned) + (["capsule-cli"] if ran else []), proof=proof, detail=detail, not_checked=not_checked, started=started)
 

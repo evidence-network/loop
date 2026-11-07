@@ -38,8 +38,8 @@ reply_sha256}, the derivation `standard_history/1` and the sha256 of the staple'
 Book.Staple: the holder's own request and the signed envelope its book answered with). Only digests: the card is
 shown when the other side asks, so the commitment never carries it. Where the staple bytes are supplied
 (`standard_history/<node_id>.request.json` and `.reply.json` beside the commitment), their digests must match and the
-reply must be an evidence-interop/0 answer to that request, presented by key_id. The staple's own signature is
-evidencebook's CheckStaple. Each refusal starts with `standard_history.<name>:` (the STD_* constants).
+reply must be an evidence-interop/0 answer to that request, presented by key_id. The staple's own signature, anchor and nonce are not checked here:
+step 03 runs the pinned capsule-cli's `verify --history` on the bytes (scripts/staple_verify.py). Each refusal starts with `standard_history.<name>:` (the STD_* constants).
 
 COUNT RULE. A commitment says what a node can answer, never what it has done.
 It is refused when, anywhere in its own members (the opaque `bytes` of the
@@ -561,7 +561,7 @@ def staple_errors(doc):
 def standard_errors(doc, request, reply):
     """The staple bytes against the standard_history member: digests, and that the reply answers the request.
 
-    The staple's signature, anchor and nonce are evidencebook's CheckStaple, not checked here.
+    The staple's signature, anchor and nonce are not checked here; step 03 runs capsule-cli's `verify --history` on them.
     """
     member, key_id = doc["standard_history"], doc["key_id"]
     errs = []
@@ -627,7 +627,7 @@ def verify(doc, fetch_policy, fetch_staple=None):
             errs.append(f"{STD_BYTES}: only the staple's {'request' if staple[0] is not None else 'reply'} is "
                         "published; both parts are needed")
         elif None in staple:
-            notes.append(f"{STD_NOT_SUPPLIED}; the staple is not checked (evidencebook CheckStaple), only the "
+            notes.append(f"{STD_NOT_SUPPLIED}; the staple is not verified, only the "
                          "member's shape")
         else:
             errs += standard_errors(doc, *staple)

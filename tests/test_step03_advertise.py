@@ -299,6 +299,28 @@ class NodeSignedTest(unittest.TestCase):
         self.assertEqual(finding.check(out.parent), [])
         self.assertTrue((out / "alice.standard_history.reply.json").is_file())
 
+    def test_a_standard_history_staple_is_verified_with_capsule_cli_and_the_detail_says_so(self):
+        f, nodes, out = self.staple_run(lambda req, rep: (req, rep))
+        self.assertTrue(nodes["alice"]["standard_history"]["verified"])
+        self.assertEqual(nodes["alice"]["standard_verify"]["state"], "PASS")
+        self.assertIn("standard_history/1 staple of alice verifies with capsule-cli", f["detail"])
+        self.assertNotIn("CheckStaple", f["detail"])
+        self.assertTrue((out / "alice.standard-verify.json").is_file())
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_standard_history_staple_capsule_cli_fails_is_refused(self):
+        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "fail"}):
+            errs = self.refusals(lambda req, rep: (req, rep))
+        self.assertIn("standard_history/1: envelope_signature FAIL", errs)
+
+    def test_a_standard_history_staple_without_capsule_cli_passes_and_says_it_is_not_verified(self):
+        with unittest.mock.patch.dict("os.environ", {"CAPSULE_CLI": "/nonexistent/capsulectl", "LOOP_TOOLS": "/nonexistent"}):
+            f, nodes, out = self.staple_run(lambda req, rep: (req, rep))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertFalse(nodes["alice"]["standard_history"]["verified"])
+        self.assertIn("its signature, anchor and nonce are not verified", f["detail"])
+        self.assertEqual(finding.check(out.parent), [])
+
     def test_a_standard_history_without_bytes_passes_and_says_the_staple_is_not_checked(self):
         f, nodes, out = self.staple_run(lambda req, rep: (None, None))
         self.assertEqual(f["result"], "PASS", f["detail"])

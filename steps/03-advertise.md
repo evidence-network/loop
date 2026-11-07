@@ -238,8 +238,16 @@ the request and the answer name `standard_history/1`, that the answer is
 presented by the commitment's `key_id`, and that its `request_digest` is
 `request_sha256`. Without the bytes the commitment still passes and the result
 lists the staple as not checked; one part published without the other is refused
-(`standard_history.bytes_mismatch`). The staple's signature, anchor and nonce are
-`CheckStaple`'s, not checked here. Each refusal is named:
+(`standard_history.bytes_mismatch`). With the bytes published, the pinned
+capsule-cli (`scripts/staple_verify.py`) also runs `verify --history` on them as a
+served `standard_history/1` answer, holding the node under the commitment's `key_id`
+(never the reply's own responder): the answer's signature (`envelope_signature`), its
+anchor (`anchor_match`) and its request binding (`request_binding`, the nonce) must pass
+with the other envelope and card-form properties, and a failure refuses the commitment.
+Where capsule-cli is not installed, or the bytes are a rehearsal stand-in or not
+published, the result lists the staple as not verified. The recount against the deal's
+entries and the policy (`counts_recompute`, `as_of`, `window_from_policy`) is not part
+of it: a served answer carries neither. Each refusal is named:
 `standard_history.malformed`, `standard_history.derivation`,
 `standard_history.bytes_mismatch`, `standard_history.not_an_answer`,
 `standard_history.not_its_subject` and `standard_history.request_mismatch`.
