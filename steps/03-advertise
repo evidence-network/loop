@@ -84,6 +84,9 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
 # loop#407) or a card entry without a checkpoint_key (an allowed shape, not refused).
 # The owner of each staple gap, by cause: keyless entries and a capsule-cli that is not installed; evidence-commitment/0
 # and the rehearsal stand-ins in it; the standard_history/1 staple's signature.
+# loop#410 owns every unchecked staple that is not the /0 case: a keyless entry, a capsule-cli that is not installed,
+# and one that gave no report or evaluates no card. Its stand-in arm below (sv_.unchecked(..., legacy=True)) must be
+# revisited when LEGACY_ISSUE closes: the harness, not the plugin, builds those /0 commitments.
 STAPLE_ISSUE = "evidence-network/loop#410"
 LEGACY_ISSUE = "Mesh-LLM/capsules-plugin#266"
 STANDARD_ISSUE = "evidence-network/loop#408"
