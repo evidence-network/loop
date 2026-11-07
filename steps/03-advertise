@@ -402,9 +402,7 @@ def verify_node(out, name, rec, key_id, read, live):
                 proofs.append(f"{name}.staple-verify.json")
             if "standard_history" in doc and None not in staple_bytes.values() and len(staple_bytes) == 2:
                 # The holder key is the commitment's key_id from the node's record, never the reply's own responder.
-                std = (sv_.unchecked("the staple is a rehearsal stand-in, not an answer the node's book signed")
-                       if rec.get("inputs") == "stand-in"
-                       else sv_.verify_standard(staple_bytes["request"], staple_bytes["reply"], key_id))
+                std = sv_.verify_standard(staple_bytes["request"], staple_bytes["reply"], key_id)
                 errs += std["errors"]
                 rec["standard_verify"] = {k: std[k] for k in ("state", "not_checked", "outside")}
                 rec["standard_verify"]["ran"] = std["report"] is not None
@@ -419,7 +417,7 @@ def verify_node(out, name, rec, key_id, read, live):
         rec["policy_digest"] = doc["lcap"]["policy_digest"]
         rec["history_cards"] = hc.history_cards(doc)
         if "standard_history" in doc:
-            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes),
+            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes), "live": live,
                                        "verified": rec.get("standard_verify", {}).get("state") == "PASS"}
     return rec, proofs
 
@@ -427,6 +425,8 @@ def verify_node(out, name, rec, key_id, read, live):
 def standard_why(r):
     """Why a standard_history/1 staple's signature was not verified: no bytes published, or what capsule-cli said."""
     if not r["standard_history"]["bytes_checked"]:
+        if r["standard_history"]["live"]:
+            return "the live collector keeps no staple bytes, so capsule-cli had nothing to verify"
         return "its bytes were not published, so capsule-cli had nothing to verify"
     return "; ".join(r.get("standard_verify", {}).get("not_checked") or ["capsule-cli did not run on it"])
 

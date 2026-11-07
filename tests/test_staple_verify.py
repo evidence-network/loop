@@ -50,6 +50,25 @@ class StandardMappingTest(unittest.TestCase):
         got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, STUB)
         self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: envelope_signature FAIL"]))
 
+    def mode(self, mode):
+        os.environ["STUB_MODE"] = mode
+        self.addCleanup(os.environ.pop, "STUB_MODE", None)
+        return staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, STUB)
+
+    def test_a_property_capsule_cli_does_not_find_present_is_a_failure(self):
+        got = self.mode("notpresent")
+        self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: envelope_signature NOT_PRESENT"]))
+
+    def test_a_failure_in_an_outside_property_is_a_failure_not_an_outside_note(self):
+        got = self.mode("outside")
+        self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: verification_binding FAIL"]))
+        self.assertNotIn("verification_binding", got["outside"])
+
+    def test_only_a_property_capsule_cli_calls_not_checked_stays_open(self):
+        got = self.mode("nocheck")
+        self.assertEqual((got["state"], got["errors"], got["not_checked"]),
+                         ("NOT_CHECKED", [], ["standard_history/1: responder_trust NOT_CHECKED"]))
+
     def test_no_binary_and_unreadable_bytes_are_not_checked(self):
         with unittest.mock.patch.object(staple_verify, "binary", return_value=None):
             got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY)
@@ -186,9 +205,16 @@ class RealBinaryTest(unittest.TestCase):
         got = staple_verify.verify_standard(respaced, STD_REPLY, STD_KEY, REAL)
         self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: request_binding FAIL"]))
 
-    def test_bytes_that_are_not_a_staple_are_not_checked(self):
-        got = staple_verify.verify_standard(b"not json", STD_REPLY, STD_KEY, REAL)
-        self.assertNotEqual(got["state"], "PASS")
+    def test_a_reply_with_its_signature_removed_is_a_failure(self):
+        reply = json.loads(STD_REPLY)
+        del reply["sig"]
+        got = staple_verify.verify_standard(STD_REQUEST, json.dumps(reply).encode(), STD_KEY, REAL)
+        self.assertEqual(got["state"], "FAIL", got)
+
+    def test_bytes_that_are_not_a_staple_are_a_failure(self):
+        for request, reply in ((b"not json", STD_REPLY), (STD_REQUEST, b"{}")):
+            got = staple_verify.verify_standard(request, reply, STD_KEY, REAL)
+            self.assertEqual(got["state"], "FAIL", got)
 
     def test_a_standard_history_staple_held_under_another_key_is_a_failure(self):
         got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, "0" * 64, REAL)

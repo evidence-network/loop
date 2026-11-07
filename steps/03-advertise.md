@@ -244,8 +244,8 @@ served `standard_history/1` answer, holding the node under the commitment's `key
 (never the reply's own responder): the answer's signature (`envelope_signature`), its
 anchor (`anchor_match`) and its request binding (`request_binding`, the nonce) must pass
 with the other envelope and card-form properties, and a failure refuses the commitment.
-Where capsule-cli is not installed, or the bytes are a rehearsal stand-in or not
-published, the result lists the staple as not verified. The recount against the deal's
+Where capsule-cli is not installed or the bytes are not published (a live run keeps
+none), the result lists the staple as not verified. The recount against the deal's
 entries and the policy (`counts_recompute`, `as_of`, `window_from_policy`) is not part
 of it: a served answer carries neither. Each refusal is named:
 `standard_history.malformed`, `standard_history.derivation`,

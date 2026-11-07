@@ -32,6 +32,12 @@ if doc.get("history") == "standard_history/1":  # a served answer, its parts car
             "counts_recompute": "NOT_CHECKED", "window_from_policy": "NOT_CHECKED"}}
     if os.environ.get("STUB_MODE") == "fail":
         env["envelope_signature"] = "FAIL"
+    if os.environ.get("STUB_MODE") == "notpresent":
+        env["envelope_signature"] = "NOT_PRESENT"
+    if os.environ.get("STUB_MODE") == "outside":
+        env["verification_binding"] = "FAIL"
+    if os.environ.get("STUB_MODE") == "nocheck":
+        env["responder_trust"] = "NOT_CHECKED"
     print(json.dumps({{"spec_version": "capsule-cli-result/v1", "kind": "standard_history/1", "verdict": "ACCEPTED",
                       "history_properties": hist, "envelope_properties": env, "findings": []}}))
     sys.exit(0)

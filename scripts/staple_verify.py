@@ -24,7 +24,8 @@ carries no request) are outside the check; verify() names them in "outside".
 verify_standard() does the same for the commitment's standard_history/1 staple: the published request and reply
 bytes go to `verify --history` as a served answer, the holder key being the commitment's key_id (never the reply's
 own responder). The signature, the anchor and the nonce are the properties envelope_signature, anchor_match and
-request_binding; the properties that need the deal's entries or a policy (as_of, counts_recompute,
+request_binding; a property capsule-cli reports as anything but PASS or NOT_CHECKED (FAIL, NOT_PRESENT, absent) is a
+failure, and so is a FAIL in one of the properties below; the properties that need the deal's entries or a policy (as_of, counts_recompute,
 window_from_policy), a key-rotation record or verification material stay outside, as the answer carries none.
 """
 import json
@@ -171,17 +172,23 @@ def verify_standard(request_bytes, reply_bytes, holder_key_id, binary_path=None)
             report = json.loads(r.stdout)
         except (OSError, subprocess.TimeoutExpired, ValueError) as e:
             return unchecked(f"standard_history/1: capsule-cli verify --history gave no report ({type(e).__name__}: {e})")
+    # capsule-cli judged the bytes from here on. A property it reports FAIL, NOT_PRESENT or leaves out, a reply it does
+    # not take as an envelope and an input it refuses are all a staple that is not a good one (a reply with its `sig`
+    # removed is NOT_PRESENT, not NOT_CHECKED): a failure. Only a property the tool itself calls NOT_CHECKED is open.
     if not isinstance(report, dict) or report.get("kind") != "standard_history/1":
         why = (report.get("reason") or report.get("error") or "; ".join(report.get("findings") or [])) if isinstance(report, dict) else ""
-        return unchecked(f"capsule-cli does not evaluate it as standard_history/1 ({why or r.stderr.strip()})")
+        return {**unchecked(""), "state": "FAIL", "not_checked": [], "errors": [
+            f"standard_history/1: capsule-cli does not evaluate it as a standard_history/1 answer ({why or r.stderr.strip()})"]}
     errors, missing = [], []
     for group, prop in STANDARD_PROPERTIES:
         state = (report.get(group) or {}).get(prop)
-        if state == "FAIL":
-            errors.append(f"standard_history/1: {prop} FAIL")
+        if state == "NOT_CHECKED":
+            missing.append(f"standard_history/1: {prop} NOT_CHECKED")
         elif state != "PASS":
-            missing.append(f"standard_history/1: {prop} {state or 'absent'}")
-    outside = sorted(prop for group, prop in STANDARD_OUTSIDE if (report.get(group) or {}).get(prop) != "PASS")
+            errors.append(f"standard_history/1: {prop} {state or 'absent'}")
+    # A property a served answer cannot settle stays outside; one that capsule-cli found wrong is still a failure.
+    errors += [f"standard_history/1: {prop} FAIL" for group, prop in STANDARD_OUTSIDE if (report.get(group) or {}).get(prop) == "FAIL"]
+    outside = sorted(prop for group, prop in STANDARD_OUTSIDE if (report.get(group) or {}).get(prop) not in ("PASS", "FAIL"))
     state = "FAIL" if errors else "NOT_CHECKED" if missing else "PASS"
     return {"state": state, "errors": errors, "not_checked": missing, "outside": outside, "report": report,
             "legacy": False}
