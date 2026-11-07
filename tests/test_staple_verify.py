@@ -21,7 +21,8 @@ sys.path.insert(0, str(ROOT / "tests"))
 import staple_stub  # noqa: E402
 import staple_verify  # noqa: E402
 
-REHEARSAL = ROOT / "findings/goose/2026-11-06-rehearsal/03-advertise"
+# Copies of the Goose rehearsal's buyer and seller commitments (real evidence-commitment/1), so a later data commit cannot move them.
+REHEARSAL = ROOT / "tests/fixtures/staple"
 STUB = staple_stub.path()
 REAL = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache/evidence-network-loop")) / "capsule-cli/bin/capsulectl"
 
@@ -100,6 +101,8 @@ class MappingTest(unittest.TestCase):
         self.path.write_text(json.dumps(doc))
         got = staple_verify.verify(self.path, doc["key_id"], STUB)
         self.assertEqual((got["state"], got["legacy"]), ("NOT_CHECKED", True))
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(self.tmp / "absent")}):  # not installed: still legacy
+            self.assertTrue(staple_verify.verify(self.path, doc["key_id"])["legacy"])
         self.assertFalse(self.log.exists())
 
     def test_a_failing_property_is_a_failure(self):

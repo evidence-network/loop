@@ -479,7 +479,6 @@ class Step08Test(unittest.TestCase):
         self.assertEqual(finding.check(empty), [])
 
 
-@unittest.skipUnless(HAS_BASE and HAS_GO, NO_GO)
 class Step08CapsuleCliTest(unittest.TestCase):
     """A finding whose judge ran capsule-cli on the staples is not re-derived where it is not installed."""
 
@@ -500,6 +499,7 @@ class Step08CapsuleCliTest(unittest.TestCase):
             step.need_capsule_cli(self.ctx({"capsule-cli": {}}), "12")
 
 
+@unittest.skipUnless(HAS_BASE and HAS_GO, NO_GO)
 class Step08NotCheckedListTest(unittest.TestCase):
     """A recorded not_checked list is reproduced entry for entry. Step 01's FAIL carries none since the producer
     signature is verified in a second language (#137), so the plant adds an entry the judge does not derive."""

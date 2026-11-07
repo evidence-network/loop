@@ -152,7 +152,9 @@ class StapleSignatureTest(Tmp):
     def test_an_evidence_commitment_0_adds_no_entry_and_no_report(self):
         node = Path(self.tmp.name) / "legacy"
         shutil.copytree(FIX / "joined" / "alice", node)
-        self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "NOT_CHECKED"))
+        self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "LEGACY"))
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(Path(self.tmp.name) / "absent")}):  # whether or not installed
+            self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "LEGACY"))
         self.assertFalse((node / "staple-verify.json").exists())
 
     def test_a_refused_staple_is_a_failure(self):

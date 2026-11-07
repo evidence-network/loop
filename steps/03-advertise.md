@@ -51,7 +51,8 @@ checkpoint signature, the card's checkpoint anchor, responder) fails the node. W
 passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
 request, and no second caller's answer is held). A rehearsal stand-in staple,
-a runner without the binary, or a card entry without a `checkpoint_key` leaves
+an `evidence-commitment/0` (capsule-cli takes no keys for it, and the pinned plugin signs those today), a runner without
+the binary, or a card entry without a `checkpoint_key` leaves
 the staple's signature as a `not_checked` entry on a PASS. Two parts are listed
 as `not_checked` when nothing verified them here:
 

@@ -173,7 +173,7 @@ class StepTest(unittest.TestCase):
             f, out = self.run_step()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn(why, f["detail"])
-        self.assertNotIn("capsule-cli", f["pinned"])
+        self.assertIn("capsule-cli", f["pinned"])  # it ran, and gave a report
 
     def test_planted_policy_digest_mismatch_fails(self):
         f, out = self.run_step(on_alice(alter_policy))

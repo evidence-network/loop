@@ -43,7 +43,8 @@ node gets stand-ins, named as such in the finding. The stapled history_card/1 is
 verified by the pinned capsule-cli (`capsulectl verify --history`, scripts/staple_verify.py, installed by
 steps/capsule-cli.setup.sh) under the node key and each card entry's checkpoint_key: a failing property fails the
 node, a stand-in staple, a missing binary or an entry without a checkpoint_key leaves the card not checked. The
-checkpoint attestation is not verified here (step 02 owns it). Each is a sentence in detail on a PASS when not
+checkpoint attestation is not verified here (step 02 owns it). An evidence-commitment/0 is not run (capsule-cli takes no
+keys for it). Each is a sentence in detail on a PASS when not
 verified, otherwise a not_checked entry.
 """
 import argparse
@@ -77,7 +78,8 @@ ASSERTS_STAPLE = (", and, where the pinned capsule-cli is installed, no stapled 
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
                  "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
                  "by the node)")
-# What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, or a stand-in staple.
+# What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, a stand-in staple, an
+# evidence-commitment/0 (capsule-cli takes no keys for it) or a card entry without a checkpoint_key.
 STAPLE_ISSUE = "evidence-network/loop#401"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
@@ -386,6 +388,7 @@ def verify_node(out, name, rec, key_id, read, live):
             errs += sv["errors"]
             rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside")}
             rec["staple_verify"]["capsule_cli"] = sv_.pinned_version()
+            rec["staple_verify"]["ran"] = sv["report"] is not None  # capsule-cli gave a report, whatever it found
             if sv["report"] is not None:
                 (out / f"{name}.staple-verify.json").write_text(json.dumps(sv["report"], indent=2, sort_keys=True) + "\n")
                 proofs.append(f"{name}.staple-verify.json")
@@ -624,7 +627,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                 "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STAPLE_ISSUE)
     else:
         not_checked += outside
-    ran = any(r.get("staple_verify", {}).get("state") in ("PASS", "FAIL") for r in records)
+    ran = any(r.get("staple_verify", {}).get("ran") for r in records)
     return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else "") + (ASSERTS_STAPLE if ran else ""),
                          pinned=list(pinned) + (["capsule-cli"] if ran else []), proof=proof, detail=detail, not_checked=not_checked, started=started)
 

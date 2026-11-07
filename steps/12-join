@@ -169,8 +169,8 @@ import report_layout as layout  # noqa: E402
 import staple_verify  # noqa: E402
 
 # A refused staple is a FAIL, so the finding says it asserts that (scripts/staple_verify.py).
-STAPLE_ASSERT = (", and, where the pinned capsule-cli is installed, no stapled history_card/1 of the commitment fails its "
-                 "checks (digest, envelope and checkpoint signatures, checkpoint key, responder)")
+STAPLE_ASSERT = (", and, for an evidence-commitment/1 where the pinned capsule-cli is installed, no stapled history_card/1 "
+                 "of the commitment fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder)")
 ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
@@ -382,7 +382,7 @@ def staple_signatures(node_dir, name, commitment, node_key):
     # step 12 never listed its staple as unchecked; step 03 names it.
     nc = [] if got["legacy"] else [{"what": f"{name}: the stapled history_card/1 signature verifies", "why": why,
                                     "issue": STAPLE_ISSUE} for why in got["not_checked"]]
-    return [f"{name}: {e}" for e in got["errors"]], nc, proof, got["state"]
+    return [f"{name}: {e}" for e in got["errors"]], nc, proof, "LEGACY" if got["legacy"] else got["state"]
 
 
 def check_commitment(node_dir):
@@ -1068,7 +1068,10 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, w
         proof += [p for p in ("commitment.json", "disclosure-policy.json") if doc is not None]
         if holds:
             lines.append(compare_published(name, entry["node_id"], doc))
-            f, n, p, _ = staple_signatures(node_dir, name, "commitment.json", entry["key_id"])
+            f, n, p, staple_state = staple_signatures(node_dir, name, "commitment.json", entry["key_id"])
+            if staple_state == "LEGACY":
+                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0: capsule-cli "
+                             "takes no keys for it)")
             fails += f
             nc += n
             proof += p
@@ -1471,6 +1474,9 @@ def run_goose(pop, out, tmp):
         failures += goose_binding_errors(name, load(adv_dir / "commitment.json"))
         failures += [f"{name}: {e}" for e in check_own_card(adv)]
         f, n, p, signed_state = staple_signatures(adv_dir, name, "commitment.json", adv["node_key"])
+        if signed_state == "LEGACY":
+            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0: capsule-cli takes no "
+                         "keys for it)")
         failures += f
         not_checked += n
         proof += [f"{name}/advertised/{x}" for x in p]

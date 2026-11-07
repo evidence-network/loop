@@ -69,9 +69,6 @@ def unchecked(why, legacy=False):
 def verify(commitment_path, node_key_id, binary_path=None):
     """{"state": PASS|FAIL|NOT_CHECKED, "errors": [...], "not_checked": [...], "outside": [...], "report": dict|None}
     for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given."""
-    exe = binary_path or binary()
-    if exe is None:
-        return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
     try:
         doc = json.loads(Path(commitment_path).read_text())
         entries = hc.entries(doc)
@@ -80,8 +77,10 @@ def verify(commitment_path, node_key_id, binary_path=None):
     if not isinstance(doc, dict) or doc.get("profile") != hc.PROFILE_1:
         return unchecked(f"capsule-cli {pinned_version()} verifies the staples of an {hc.PROFILE_1} only: it refuses the "
                          f"key flags for a commitment of any other profile ({doc.get('profile') if isinstance(doc, dict) else 'none'}), "
-                         "and without them checks no signature",
-                         legacy=True)
+                         "and without them checks no signature", legacy=True)
+    exe = binary_path or binary()
+    if exe is None:
+        return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
     if not entries:
         return unchecked("the commitment staples no history_card/1")
     # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
