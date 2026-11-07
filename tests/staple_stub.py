@@ -24,7 +24,7 @@ argv = sys.argv[1:]
 if os.environ.get("STUB_LOG"):
     open(os.environ["STUB_LOG"], "a").write(json.dumps(argv) + "\\n")
 doc = json.load(open(argv[argv.index("--history") + 1]))
-if "staple" in doc:  # a served standard_history/1 answer
+if doc.get("history") == "standard_history/1":  # a served answer, its parts carried as exact octets
     env = {{p: "PASS" for p in ("anchor_match", "artifact_digest", "envelope_signature", "issued_at_form", "profile_version",
                               "request_binding", "responder_trust", "subject_binding")}}
     env.update(anchor_inclusion="NOT_CHECKED", responder_key_current="NOT_CHECKED", verification_binding="NOT_PRESENT")

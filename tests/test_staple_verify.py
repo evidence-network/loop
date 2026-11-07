@@ -55,7 +55,7 @@ class StandardMappingTest(unittest.TestCase):
             got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY)
         self.assertEqual(got["state"], "NOT_CHECKED")
         self.assertIn(staple_verify.SETUP, got["not_checked"][0])
-        got = staple_verify.verify_standard(b"not json", STD_REPLY, STD_KEY, STUB)
+        got = staple_verify.verify_standard(b"\xff", STD_REPLY, STD_KEY, STUB)
         self.assertEqual(got["state"], "NOT_CHECKED")
 
 
@@ -179,6 +179,16 @@ class RealBinaryTest(unittest.TestCase):
         got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, STD_KEY, REAL)
         self.assertEqual((got["state"], got["errors"], got["not_checked"]), ("PASS", [], []))
         self.assertEqual(got["report"]["verdict"], "ACCEPTED")
+
+    def test_the_published_octets_are_judged_as_they_are_not_reserialised(self):
+        # request_binding hashes the request octets: a respaced copy of the same JSON is another request.
+        respaced = json.dumps(json.loads(STD_REQUEST), indent=1).encode()
+        got = staple_verify.verify_standard(respaced, STD_REPLY, STD_KEY, REAL)
+        self.assertEqual((got["state"], got["errors"]), ("FAIL", ["standard_history/1: request_binding FAIL"]))
+
+    def test_bytes_that_are_not_a_staple_are_not_checked(self):
+        got = staple_verify.verify_standard(b"not json", STD_REPLY, STD_KEY, REAL)
+        self.assertNotEqual(got["state"], "PASS")
 
     def test_a_standard_history_staple_held_under_another_key_is_a_failure(self):
         got = staple_verify.verify_standard(STD_REQUEST, STD_REPLY, "0" * 64, REAL)

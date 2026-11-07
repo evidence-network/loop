@@ -154,11 +154,14 @@ def verify_standard(request_bytes, reply_bytes, holder_key_id, binary_path=None)
     exe = binary_path or binary()
     if exe is None:
         return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
+    # The carried form {history, request, reply} hands capsulectl each part's exact octets: request_binding hashes the
+    # request octets, so a re-serialised request (escaped non-ASCII, other spacing) would fail for a correct staple.
     try:
-        staple = {"derivation": "standard_history/1",
-                  "staple": {"request": json.loads(request_bytes), "reply": json.loads(reply_bytes)}}
-    except ValueError as e:
-        return unchecked(f"the staple's bytes are not JSON ({e})")
+        staple = {"history": "standard_history/1",
+                  "request": {"media_type": "application/json", "octets_text": request_bytes.decode("utf-8")},
+                  "reply": {"media_type": "application/json", "octets_text": reply_bytes.decode("utf-8")}}
+    except UnicodeDecodeError as e:
+        return unchecked(f"the staple's bytes are not UTF-8 ({e})")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "staple.json"
         path.write_text(json.dumps(staple))
