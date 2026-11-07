@@ -168,7 +168,7 @@ class StapleSignatureTest(Tmp):
             fails, nc, _, state = step.staple_signatures(self.node(), "alice", "commitment.json", "ab" * 32)
         self.assertEqual((fails, state), ([], "NOT_CHECKED"))
         self.assertEqual([(n["what"], n["issue"]) for n in nc],
-                         [("alice: the stapled history_card/1 signature verifies", "evidence-network/loop#407")])
+                         [("alice: the stapled history_card/1 signature verifies", "evidence-network/loop#410")])
         self.assertIn("checkpoint_key NOT_CHECKED", nc[0]["why"])
 
 

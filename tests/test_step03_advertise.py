@@ -110,9 +110,12 @@ class StepTest(unittest.TestCase):
         # alice's commitment is an evidence-commitment/0, which capsule-cli takes no keys for; bob's staple is a stand-in.
         self.assertEqual([w.split(" is not verified")[0] for w, _ in finding.gaps(f["detail"])],
                          ["the stapled history_card/1 signature (alice)", "the stapled history_card/1 signature (bob)"])
-        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"evidence-network/loop#407", "Mesh-LLM/capsules-plugin#266"})
+        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"Mesh-LLM/capsules-plugin#266"})
         self.assertIn("evidence-commitment/1 only", f["detail"])
-        self.assertIn("a rehearsal stand-in", f["detail"])
+        self.assertIn("a rehearsal stand-in in an evidence-commitment/0", f["detail"])
+        # A stand-in staple is the /0 gap, owned by the plugin issue, not by the keyless-entry issue.
+        self.assertTrue(all(i == "Mesh-LLM/capsules-plugin#266" for w, i in finding.gaps(f["detail"]) if "(bob)" in w))
+        self.assertTrue(nodes["bob"]["staple_verify"]["legacy"])
         self.assertNotIn("capsule-cli", f["pinned"])
         self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
         self.assertIn("The staple of bob is a rehearsal stand-in.", f["detail"])

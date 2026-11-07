@@ -42,7 +42,8 @@ history_card.json, checkpoint.json) when present. Without them a rehearsal
 node gets stand-ins, named as such in the finding. The stapled history_card/1 is
 verified by the pinned capsule-cli (`capsulectl verify --history`, scripts/staple_verify.py, installed by
 steps/capsule-cli.setup.sh) under the node key and each card entry's checkpoint_key: a failing property fails the
-node, a stand-in staple, a missing binary or an entry without a checkpoint_key leaves the card not checked. The
+node, a stand-in staple (the harness builds an evidence-commitment/0, loop#407), a missing binary or an entry
+without a checkpoint_key (allowed, never refused here) leaves the card not checked. The
 checkpoint attestation is not verified here (step 02 owns it). An evidence-commitment/0 is not run (capsule-cli takes no
 keys for it). Each is a sentence in detail on a PASS when not
 verified, otherwise a not_checked entry.
@@ -78,11 +79,12 @@ ASSERTS_STAPLE = (", and, where the pinned capsule-cli is installed, no stapled 
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
                  "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
                  "by the node)")
-# What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, a stand-in staple, an
-# evidence-commitment/0 (capsule-cli takes no keys for it) or a card entry without a checkpoint_key.
-# The owner of each staple gap, by cause: stand-in and keyless staples and a capsule-cli that is not installed; the
-# plugin's evidence-commitment/0, which capsule-cli cannot verify; the standard_history/1 staple's signature.
-STAPLE_ISSUE = "evidence-network/loop#407"
+# What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, an evidence-commitment/0
+# (capsule-cli takes no keys for it; the plain rehearsal harness builds only /0, so its stand-in staples are this case,
+# loop#407) or a card entry without a checkpoint_key (an allowed shape, not refused).
+# The owner of each staple gap, by cause: keyless entries and a capsule-cli that is not installed; evidence-commitment/0
+# and the rehearsal stand-ins in it; the standard_history/1 staple's signature.
+STAPLE_ISSUE = "evidence-network/loop#410"
 LEGACY_ISSUE = "Mesh-LLM/capsules-plugin#266"
 STANDARD_ISSUE = "evidence-network/loop#408"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
@@ -387,7 +389,8 @@ def verify_node(out, name, rec, key_id, read, live):
         elif isinstance(doc, dict) and doc.get("key_id") != key_id:
             errs.append("the commitment is not under this node's key")
         if not errs:
-            sv = (sv_.unchecked("the staple is a rehearsal stand-in, not a card the node's book signed")
+            sv = (sv_.unchecked("the staple is a rehearsal stand-in in an evidence-commitment/0, not a card the node's book "
+                                "signed; capsule-cli takes no keys for /0 and the Goose population verifies a real /1 card", legacy=True)
                   if rec.get("inputs") == "stand-in" else sv_.verify(out / proofs[0], key_id))
             errs += sv["errors"]
             rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside", "legacy")}
