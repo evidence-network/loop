@@ -64,6 +64,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
 import finding  # noqa: E402
+import staple_verify  # noqa: E402
 
 # Who owns each kind of gap 08 leaves NOT_CHECKED.
 LIVE_ISSUE = "evidence-network/loop#193"  # a live step whose judge reads bytes its proof does not cite
@@ -90,7 +91,7 @@ BROKE = "the step runs to the end and writes its finding"
 NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"], "12": ["*/commitment.json", "*/disclosure-policy.json"]}
+LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"], "12": ["*/commitment.json", "*/disclosure-policy.json", "*/staple-verify.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -277,11 +278,21 @@ def rederive_02(m, c):
     return m.decide(bin_, c.work, population=population, book_id=f"{population}-alice", pub=pub, started=c.started)
 
 
+def need_capsule_cli(c, nn):
+    """Unreproducible when the recorded finding pins capsule-cli (its judge ran it on the staples) and it is not
+    installed where 08 runs: the judge here would read every staple as unchecked, a mismatch that is no change in the
+    bytes. A recorded FAIL is covered too: it pins capsule-cli."""
+    if "capsule-cli" in (c.record.get("pinned") or {}) and staple_verify.binary() is None:
+        raise Unreproducible(f"step {nn}: its judge, run again here",
+                             "capsule-cli is not installed where 08 runs; steps/capsule-cli.setup.sh installs it")
+
+
 def rederive_03(m, c):
     if shutil.which("git") is None:
         raise Unreproducible("step 03: its judge, run again here", "git is not installed where 08 runs")
     if shutil.which("openssl") is None:
         raise Unreproducible("step 03: its judge, run again here", "openssl is not installed where 08 runs")
+    need_capsule_cli(c, "03")
     src = c.tmp / "carrier.bundle"
     shutil.copyfile(c.work / "carrier.bundle", src)
     recorded = {n["name"]: n for n in load(c.work / "verification.json").get("nodes", [])}
@@ -839,6 +850,7 @@ def rederive_12_live(m, c):
     from their replies, join's commitment is verified under the listed key, and a kept binding is checked again by
     cross_language with the revocations main commit nodes.json names, held to origin/main as live 05's."""
     old_shape(c, "12", "nodes.json")
+    need_capsule_cli(c, "12")
     if any(p["path"].endswith("/" + m.BINDING_FILE) for p in c.record["proof"]) and not m.cross_language().is_file():
         raise Unreproducible("step 12: its judge, run again here",
                              f"aac-go cross_language is not installed where 08 runs ({m.cross_language()}); "
@@ -936,6 +948,7 @@ def rederive_03_live(m, c):
     if not openssl_ed25519():
         raise Unreproducible("step 03: its judge, run again here",
                              "openssl 3.0 or later (Ed25519 pkeyutl -rawin) is not installed where 08 runs")
+    need_capsule_cli(c, "03")
     return m.judge_live(load(c.pop / "population.json"), c.work, c.started)
 
 
@@ -1045,6 +1058,7 @@ def rederive_09(m, c):
 
 def rederive_12(m, c):
     need(m.tools(), "step 12", "capsulectl")
+    need_capsule_cli(c, "12")
     return m.decide(c.work, c.population, c.started, c.pop)
 
 

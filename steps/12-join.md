@@ -100,3 +100,13 @@ code is not kept is a FAIL), so 08 calls it to reproduce 12. A change to a file
 the judge reads (exit code, commitment, policy, doctor, probe answers, the
 stranger's book) gives FAIL; a change to any cited file is also caught by
 08's digest check. `decide` writes into `work`: pass a scratch copy.
+
+## The stapled history_card/1
+
+The commitment's stapled `history_card/1` is run through the pinned capsule-cli (`capsulectl verify --history`,
+`scripts/staple_verify.py`, versions.lock's `capsule-cli`, installed by `steps/capsule-cli.setup.sh`) on every backend
+that holds the commitment's bytes (doctor, reporter, Goose), under the node key and each card entry's `checkpoint_key`.
+A failing property fails the node; a card that cannot be checked (no binary installed, an entry without a
+`checkpoint_key`) is a not_checked entry. An `evidence-commitment/0` commitment, which the pinned plugin signs today, is
+not verified: capsule-cli takes no keys for it, so it adds no entry here (step 03 names it). The report is kept as
+`staple-verify.json` beside the commitment.

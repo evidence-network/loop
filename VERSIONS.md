@@ -2,8 +2,8 @@
 
 [`versions.lock`](versions.lock) is the only place the loop's pins change: the
 lab host build, the capsules plugin and the `evidence-request` crate it
-verifies answers with, the reporter, and the capsulectl and evidencebook a
-verifier re-checks saved answers with. One pin per line:
+verifies answers with, the reporter, the capsulectl and evidencebook a
+verifier re-checks saved answers with, and the capsule-cli that verifies a stapled history_card/1. One pin per line:
 
 ```
 <name> <repository> <ref>

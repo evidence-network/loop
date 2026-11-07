@@ -39,10 +39,13 @@ read back from its Nostr announce event; the event's octets must equal the git c
 
 Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
-node gets stand-ins, named as such in the finding. The staple's signature and
-the checkpoint attestation are not verified here (no pinned verifier for the
-first; step 02 owns the second). Both are outside the assertion: on a PASS
-each is a sentence in detail, otherwise a not_checked entry.
+node gets stand-ins, named as such in the finding. The stapled history_card/1 is
+verified by the pinned capsule-cli (`capsulectl verify --history`, scripts/staple_verify.py, installed by
+steps/capsule-cli.setup.sh) under the node key and each card entry's checkpoint_key: a failing property fails the
+node, a stand-in staple, a missing binary or an entry without a checkpoint_key leaves the card not checked. The
+checkpoint attestation is not verified here (step 02 owns it). An evidence-commitment/0 is not run (capsule-cli takes no
+keys for it). Each is a sentence in detail on a PASS when not
+verified, otherwise a not_checked entry.
 """
 import argparse
 import base64
@@ -58,6 +61,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "steps"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
+import staple_verify as sv_  # noqa: E402
 import nostr_carrier  # noqa: E402
 import history_cards as hc  # noqa: E402
 import finding  # noqa: E402
@@ -67,12 +71,16 @@ ASSERTS = ("the node's commitment is published to a carrier (a signed file in no
            "repository), fetched back from that repository's HEAD, and verifies: every required field, no "
            "count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the "
            "signed policy's bytes")
+# Added when the pinned capsule-cli ran on a node's staples: a failing staple is a FAIL, so the finding says it asserts that.
+ASSERTS_STAPLE = (", and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, "
+                  "envelope and checkpoint signatures, checkpoint key, responder)")
 # Added when a node was also read back from Nostr (nostr_carrier.py, rehearsal recordings).
 ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event read back from its relays carries "
                  "exactly the git carrier's commitment bytes (the newest valid commitment on its relays, announced "
                  "by the node)")
-# No released verifier for a stapled history_card/1 that the loop can call.
-STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
+# What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, a stand-in staple, an
+# evidence-commitment/0 (capsule-cli takes no keys for it) or a card entry without a checkpoint_key.
+STAPLE_ISSUE = "evidence-network/loop#401"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
 LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
@@ -374,6 +382,16 @@ def verify_node(out, name, rec, key_id, read, live):
             errs.append(f"nodes/{rec['node_id']}.json does not list the node's key_id at HEAD")
         elif isinstance(doc, dict) and doc.get("key_id") != key_id:
             errs.append("the commitment is not under this node's key")
+        if not errs:
+            sv = (sv_.unchecked("the staple is a rehearsal stand-in, not a card the node's book signed")
+                  if rec.get("inputs") == "stand-in" else sv_.verify(out / proofs[0], key_id))
+            errs += sv["errors"]
+            rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside")}
+            rec["staple_verify"]["capsule_cli"] = sv_.pinned_version()
+            rec["staple_verify"]["ran"] = sv["report"] is not None  # capsule-cli gave a report, whatever it found
+            if sv["report"] is not None:
+                (out / f"{name}.staple-verify.json").write_text(json.dumps(sv["report"], indent=2, sort_keys=True) + "\n")
+                proofs.append(f"{name}.staple-verify.json")
     rec["result"] = "FAIL" if errs else "PASS"
     rec["errors"], rec["notes"] = errs, notes
     if doc is not None and not errs:
@@ -540,12 +558,12 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
     outside = []
     for r in checked:
         streams = ", ".join(str(c["stream"]) for c in r["history_cards"] if c["stream"])
-        outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies"
-                                + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
-                        "why": "its bytes, digest, profile and responder are checked; its signature is not, "
-                               "as no pinned history_card/1 verifier is callable from the loop"
-                               + ("; the staple is a rehearsal stand-in" if r.get("inputs") == "stand-in" else ""),
-                        "issue": STAPLE_ISSUE})
+        if r["staple_verify"]["state"] != "PASS":
+            outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies"
+                                    + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
+                            "why": "its bytes, digest, profile and responder are checked; its signature is not: "
+                                   + "; ".join(r["staple_verify"]["not_checked"]),
+                            "issue": STAPLE_ISSUE})
         outside.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
                         "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
                         "issue": CHECKPOINT_ISSUE})
@@ -581,9 +599,19 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
         if standins:
             detail += f" The staple of {', '.join(standins)} is a rehearsal stand-in."
         detail += (f" The stapled checkpoint attestation is step 02's assertion; here ({names}) only its bytes are "
-                   "matched to the committed digest. " + finding.outside(
-                       f"the stapled history_card/1 signature ({names}) is not verified, as no released "
-                       "history_card/1 verifier is callable from the loop", STAPLE_ISSUE))
+                   "matched to the committed digest.")
+        verified = [r["name"] for r in checked if r["staple_verify"]["state"] == "PASS"]
+        if verified:
+            detail += (f" The stapled history_card/1 of {', '.join(verified)} verifies with capsule-cli "
+                       f"{sv_.pinned_version()} (a pre-release; every capsule-cli release is one) `verify --history`, under "
+                       "the node key and the checkpoint key each card entry names: digest, envelope and checkpoint "
+                       "signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a "
+                       "commitment carries no request, and no second caller's answer is held).")
+        for r in checked:
+            if r["staple_verify"]["state"] != "PASS":
+                detail += " " + finding.outside(
+                    f"the stapled history_card/1 signature ({r['name']}) is not verified: "
+                    + "; ".join(r["staple_verify"]["not_checked"]), STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
             with_bytes = [r["name"] for r in stapled if r["standard_history"]["bytes_checked"]]
@@ -599,8 +627,9 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                 "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STAPLE_ISSUE)
     else:
         not_checked += outside
-    return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else ""),
-                         pinned=list(pinned), proof=proof, detail=detail, not_checked=not_checked, started=started)
+    ran = any(r.get("staple_verify", {}).get("ran") for r in records)
+    return finding.write(out, result=result, population=kind, asserts=ASSERTS + (ASSERTS_NOSTR if nostr_read else "") + (ASSERTS_STAPLE if ran else ""),
+                         pinned=list(pinned) + (["capsule-cli"] if ran else []), proof=proof, detail=detail, not_checked=not_checked, started=started)
 
 
 if __name__ == "__main__":

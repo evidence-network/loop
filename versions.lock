@@ -53,6 +53,12 @@ aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.
 # The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
 # built from the evidencebook tag's capsulectl/ module.
 capsulectl-book action-state-group/evidencebook v0.13.1
+# The capsule-cli release whose `capsulectl verify --history` checks the history_card/1 a commitment staples
+# (steps 03 and 12; scripts/staple_verify.py, steps/capsule-cli.setup.sh builds it from this tag). Not the capsulectl
+# pin above, which is the core evidencebook v0.13.1 builds with (v0.1.0-rc30, without that check). Every capsule-cli
+# release is a pre-release: the stapled-card verifier first shipped in v0.1.0-rc33 (agent-action-capsule#430), and
+# v0.1.0-rc38 is the latest on 2026-11-06.
+capsule-cli action-state-group/capsule-cli v0.1.0-rc38
 # step 01 seal
 # The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).

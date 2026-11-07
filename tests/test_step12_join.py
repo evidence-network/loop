@@ -32,6 +32,11 @@ from urllib.parse import parse_qs, urlparse
 os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import staple_stub  # noqa: E402
+
+# The pinned capsule-cli is a stub for this module; tests/test_staple_verify.py runs the real one.
+setUpModule, tearDownModule = staple_stub.module_hooks()
 FIX = ROOT / "tests" / "fixtures" / "step12"
 REPORTER_FIX = ROOT / "tests" / "reporter" / "fixtures"
 
@@ -129,6 +134,44 @@ class BindingRecordTest(Tmp):
         self.assertEqual(len(errs), 1, errs)
 
 
+class StapleSignatureTest(Tmp):
+    """The pinned capsule-cli's verdict on the stapled history_card/1 (scripts/staple_verify.py), as step 12 takes it."""
+    def node(self):
+        node = Path(self.tmp.name) / "alice"
+        node.mkdir()
+        # A real evidence-commitment/1 (the Goose rehearsal's buyer): the fixture commitments here are /0.
+        shutil.copy(ROOT / "tests/fixtures/staple/buyer.commitment.json", node / "commitment.json")
+        return node
+
+    def test_a_verified_staple_adds_no_entry_and_keeps_the_report(self):
+        node = self.node()
+        fails, nc, proof, state = step.staple_signatures(node, "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((fails, nc, proof, state), ([], [], ["staple-verify.json"], "PASS"))
+        self.assertTrue((node / "staple-verify.json").is_file())
+
+    def test_an_evidence_commitment_0_adds_no_entry_and_no_report(self):
+        node = Path(self.tmp.name) / "legacy"
+        shutil.copytree(FIX / "joined" / "alice", node)
+        self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "LEGACY"))
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(Path(self.tmp.name) / "absent")}):  # whether or not installed
+            self.assertEqual(step.staple_signatures(node, "alice", "commitment.json", "ab" * 32), ([], [], [], "LEGACY"))
+        self.assertFalse((node / "staple-verify.json").exists())
+
+    def test_a_refused_staple_is_a_failure(self):
+        with unittest.mock.patch.dict(os.environ, {"STUB_MODE": "fail"}):
+            fails, nc, _, state = step.staple_signatures(self.node(), "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((state, nc), ("FAIL", []))
+        self.assertTrue(fails and all(f.startswith("alice: history_card/1 of ") for f in fails), fails)
+
+    def test_a_property_that_cannot_run_is_a_not_checked_entry(self):
+        with unittest.mock.patch.dict(os.environ, {"STUB_MODE": "nokey"}):
+            fails, nc, _, state = step.staple_signatures(self.node(), "alice", "commitment.json", "ab" * 32)
+        self.assertEqual((fails, state), ([], "NOT_CHECKED"))
+        self.assertEqual([(n["what"], n["issue"]) for n in nc],
+                         [("alice: the stapled history_card/1 signature verifies", "evidence-network/loop#401")])
+        self.assertIn("checkpoint_key NOT_CHECKED", nc[0]["why"])
+
+
 class DoctorBackendTest(Tmp):
     @needs_capsulectl
     def test_rehearsal_population_joins_and_passes_with_revocation_on_the_runs_snapshot(self):
@@ -140,7 +183,7 @@ class DoctorBackendTest(Tmp):
         # on the list the run declares complete (CB-1 option A, agent-action-capsule#495): nothing stays outside.
         self.assertEqual(finding.gaps(r["detail"]), [])
         self.assertIn("revocation PASS: no statement applies in the list evidence-network/loop step 12", r["detail"])
-        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go"})
+        self.assertEqual(set(r["pinned"]), {"capsulectl", "capsulectl-book", "aac-go", "capsule-cli"})
         for node in ("alice", "bob"):
             doctor = {f["check"]: f["state"] for f in
                       json.loads((self.out / node / "doctor.json").read_text())["findings"]}
@@ -151,6 +194,23 @@ class DoctorBackendTest(Tmp):
                 self.assertEqual((v["exit"], v["result"]["outcome"]), (0, "artifact"))
             self.assertIn(f"{node}/probe/history_card.answer.json", [p["path"] for p in r["proof"]])
         self.assertEqual(finding.check(self.out.parent), [])
+
+    REAL_CAPSULE_CLI = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache/evidence-network-loop")) / \
+        "capsule-cli/bin/capsulectl"
+
+    @needs_capsulectl
+    @unittest.skipUnless(REAL_CAPSULE_CLI.is_file() or os.environ.get("LOOP_REQUIRE_TOOLS"),
+                         "run steps/capsule-cli.setup.sh")
+    def test_the_commitments_join_sh_writes_verify_with_the_real_capsule_cli(self):
+        # The step tests use a stub; this is the one run of join.sh's real commitment and cards through the pinned binary.
+        with unittest.mock.patch.dict(os.environ, {"CAPSULE_CLI": str(self.REAL_CAPSULE_CLI)}):
+            self.assertEqual(step.main(["--population", str(FIX / "population"), "--out", str(self.out)]), 0)
+        r = json.loads((self.out / "finding.json").read_text())
+        self.assertEqual((r["result"], r["not_checked"]), ("PASS", []), r["detail"])
+        for node in ("alice", "bob"):
+            report = json.loads((self.out / node / "staple-verify.json").read_text())
+            self.assertTrue(report["staples"] and all(
+                x["properties"]["envelope_signature"] == "PASS" for x in report["staples"]), node)
 
     def reproduce(self, mutate=None):
         """Step 08's way: only the cited proof files copied to a fresh dir, then decide() on them."""
@@ -862,7 +922,7 @@ class PluginToolsTest(Tmp):
         self.assertEqual(self.console.doctor_bodies, [{"probe": True}, {}])
         self.assertEqual(self.console.joins, [{}])  # join with no arguments: it binds nothing
         self.assertEqual(proof, ["doctor-probe.json", "join.json", "commitment.json", "disclosure-policy.json",
-                                 "doctor-after.json"])
+                                 "doctor-after.json"])  # an evidence-commitment/0: no staple report
         self.assertEqual(json.loads((self.out / "alice" / "commitment.json").read_text()), plugin_doc())
         self.assertIn("; the re-join reports it joined, and its commitment holds under the listed key", " ".join(lines))
         self.assertIn("the binding is bound before the re-join and bound after", " ".join(lines))

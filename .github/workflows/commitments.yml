@@ -13,10 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # steps/capsule-cli.setup.sh builds capsule-cli with the Go toolchain, pinned as loop.yml's.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: false
       - name: Step 03 tools
         run: steps/03-advertise.setup.sh
       - name: Checker and step tests
-        run: python3 -B -m unittest tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 -v
+        run: python3 -B -m unittest tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 tests.test_staple_verify -v
       - name: Step 03 on the test population
         run: |
           python3 -B steps/03-advertise --population tests/fixtures/step03/population/rehearsal --out "$RUNNER_TEMP/findings/03-advertise"

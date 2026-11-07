@@ -42,9 +42,19 @@ PASS means, for every node: all required fields present and well formed, no
 count, the signature verifies under the key in `spki`, the policy digest is
 the sha256 of the policy bytes, the policy is signed by the same key, and the
 staple and checkpoint bytes match their digests. The result covers what the
-step asserts, and the step does not assert that the staple verifies. Two
-parts are listed as `not_checked` on every PASS, because nothing pinned
-verifies them here yet:
+step asserts. The stapled `history_card/1` is also run through the pinned capsule-cli
+(`capsulectl verify --history`, `scripts/staple_verify.py`, installed by
+`steps/capsule-cli.setup.sh`; versions.lock's `capsule-cli`, a pre-release like
+every capsule-cli release) under the node key from the carrier and the
+`checkpoint_key` each card entry names. A failing property (digest, envelope or
+checkpoint signature, the card's checkpoint anchor, responder) fails the node. When every property
+passes, the finding says so in `detail` and lists no staple entry; caller
+invariance and request binding stay outside the check (a commitment carries no
+request, and no second caller's answer is held). A rehearsal stand-in staple,
+an `evidence-commitment/0` (capsule-cli takes no keys for it, and the pinned plugin signs those today), a runner without
+the binary, or a card entry without a `checkpoint_key` leaves
+the staple's signature as a `not_checked` entry on a PASS. Two parts are listed
+as `not_checked` when nothing verified them here:
 
 - the stapled `history_card/1`'s own signature (its bytes, digest, profile,
   derivation and responder are checked);
@@ -172,8 +182,8 @@ id (the `evidence_stream` its result names), no stream is stapled twice (compare
 community is on the list, and a `checkpoint_key`, where present, is an Ed25519
 SPKI. Each refusal of a card is named, for example
 `history_cards.duplicate_stream`, `history_cards.bytes_mismatch`,
-`history_cards.stream_mismatch` or `history_cards.unknown_community`. Step 12
-verifies the signature of each card whose entry names a `checkpoint_key`; a
+`history_cards.stream_mismatch` or `history_cards.unknown_community`. Steps 03 and 12
+verify the signature of each card whose entry names a `checkpoint_key`; a
 card without one is listed as not checked.
 
 The witnesses a card carries are not a field of the commitment: a reader takes

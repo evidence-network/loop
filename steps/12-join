@@ -30,6 +30,13 @@ join.sh wrote:
     every stapled card (evidence-commitment/0 or /1) is, byte for byte, the
     answer the stranger kept for that book.
 
+Every stapled card is also run through the pinned capsule-cli (versions.lock's `capsule-cli`, a pre-release like
+every capsule-cli release; steps/capsule-cli.setup.sh): `capsulectl verify --history` on the commitment, under the
+node key and each card entry's checkpoint_key (scripts/staple_verify.py). A failing property (digest, envelope or
+checkpoint signature, the card's checkpoint anchor, responder) fails the node; one that cannot run (no binary installed, an entry
+without a checkpoint_key) is a not_checked entry. Caller invariance and request binding are not part of it. The
+report is kept as staple-verify.json beside the commitment.
+
 A card of a book other than the join's own is verified the same way, by the
 pinned capsulectl-book, under the node key and the checkpoint key its
 evidence-commitment/1 entry names (checkpoint_key). A card whose entry names
@@ -159,18 +166,23 @@ import finding  # noqa: E402
 import live  # noqa: E402
 import refusal  # noqa: E402
 import report_layout as layout  # noqa: E402
+import staple_verify  # noqa: E402
 
+# A refused staple is a FAIL, so the finding says it asserts that (scripts/staple_verify.py).
+STAPLE_ASSERT = (", and, for an evidence-commitment/1 where the pinned capsule-cli is installed, no stapled history_card/1 "
+                 "of the commitment fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder)")
 ASSERTS = ("one command on the pinned release keeps a controller binding for the node key (its controller "
            "class recorded), creates the book, publishes the commitment, and a stranger's probe of the node "
            "(capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the "
-           "advertised policy")
-PINNED = ["capsulectl", "capsulectl-book", "aac-go"]
+           "advertised policy" + STAPLE_ASSERT)
+PINNED = ["capsulectl", "capsulectl-book", "aac-go", "capsule-cli"]
 PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
          "doctor.json", "join.json"]
 DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
-# No released verifier the loop can call for a stapled history_card/1 (as step 03).
-STAPLE_ISSUE = "action-state-group/agent-action-capsule#430"
+# What keeps a stapled history_card/1's signature unchecked (as step 03): no installed capsule-cli, or a card entry
+# without a checkpoint_key.
+STAPLE_ISSUE = "evidence-network/loop#401"
 
 # The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
@@ -353,6 +365,24 @@ def check_staple(node_dir, adv):
         if not same:
             errs.append(f"the stapled card for stream {stream} is not the answer the stranger kept for that book")
     return errs
+
+
+def staple_signatures(node_dir, name, commitment, node_key):
+    """(failures, not_checked, proof names, state) for the history_card/1 `commitment` (a file in node_dir) staples, run
+    through the pinned capsule-cli's `verify --history` under the node key and each card entry's checkpoint_key
+    (scripts/staple_verify.py). A property that fails is a failure; one that cannot run (no binary, a card entry
+    without a checkpoint_key) is a not_checked entry. The report is kept as staple-verify.json beside the commitment."""
+    node_dir = Path(node_dir)
+    got = staple_verify.verify(node_dir / commitment, node_key)
+    proof = []
+    if got["report"] is not None:
+        (node_dir / "staple-verify.json").write_text(json.dumps(got["report"], indent=2, sort_keys=True) + "\n")
+        proof.append("staple-verify.json")
+    # An evidence-commitment/0 (what the pinned plugin signs) is not an entry here: capsule-cli takes no keys for it, and
+    # step 12 never listed its staple as unchecked; step 03 names it.
+    nc = [] if got["legacy"] else [{"what": f"{name}: the stapled history_card/1 signature verifies", "why": why,
+                                    "issue": STAPLE_ISSUE} for why in got["not_checked"]]
+    return [f"{name}: {e}" for e in got["errors"]], nc, proof, "LEGACY" if got["legacy"] else got["state"]
 
 
 def check_commitment(node_dir):
@@ -573,10 +603,13 @@ def judge(node_dir, capsulectl, work, at=None, said=None):
     errs += check_binding_record(node_dir, at or utc_now(), not_checked, said)
     errs += check_policy_match(node_dir, adv)
     errs += check_staple(node_dir, adv)
+    sig_fails, sig_nc, sig_proof, _ = staple_signatures(node_dir, node_dir.name, "commitment.json", adv["node_key"])
+    errs += sig_fails
+    not_checked += sig_nc
     errs += verify_answers(node_dir, adv, capsulectl, work)
     # The stranger's book too: the kept answers are verified again in it, so a rerun needs its bytes.
-    proof = list(PROOF) + sorted(str(f.relative_to(node_dir)) for f in (node_dir / "probe/stranger").rglob("*")
-                                 if f.is_file())
+    proof = list(PROOF) + sig_proof + sorted(str(f.relative_to(node_dir)) for f in (node_dir / "probe/stranger").rglob("*")
+                                             if f.is_file())
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
     for stream in sorted({x for x in adv["streams"] if x and x != adv["book_id"] and card_probe(adv, x)}):
@@ -1035,6 +1068,13 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, w
         proof += [p for p in ("commitment.json", "disclosure-policy.json") if doc is not None]
         if holds:
             lines.append(compare_published(name, entry["node_id"], doc))
+            f, n, p, staple_state = staple_signatures(node_dir, name, "commitment.json", entry["key_id"])
+            if staple_state == "LEGACY":
+                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0: capsule-cli "
+                             "takes no keys for it)")
+            fails += f
+            nc += n
+            proof += p
             signed = signed_terms(doc, policy)
             if signed is None:
                 signed = False
@@ -1359,8 +1399,8 @@ GOOSE_ASSERTS = ("one command on the pinned Goose release (loop_join) opens the 
                  "returns the node's signed commitment, the node then advertises the commitment it is asked through, "
                  "which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject "
                  "with the history_card/1 derivation) verifies and matches the advertised policy; no controller "
-                 "binding is kept")
-GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
+                 "binding is kept" + STAPLE_ASSERT)
+GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book", "capsule-cli"]
 
 
 def load_step07():
@@ -1433,6 +1473,13 @@ def run_goose(pop, out, tmp):
             failures.append(f"{name}: the commitment is for key {adv['node_key']}, the node joined as {joined['key_id']}")
         failures += goose_binding_errors(name, load(adv_dir / "commitment.json"))
         failures += [f"{name}: {e}" for e in check_own_card(adv)]
+        f, n, p, signed_state = staple_signatures(adv_dir, name, "commitment.json", adv["node_key"])
+        if signed_state == "LEGACY":
+            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0: capsule-cli takes no "
+                         "keys for it)")
+        failures += f
+        not_checked += n
+        proof += [f"{name}/advertised/{x}" for x in p]
         # A stranger's probe: every other node asked this one for history_card/1 (checkpoints with that derivation).
         probed = 0
         for asker in sorted(set(nodes) - {name}):
@@ -1462,7 +1509,9 @@ def run_goose(pop, out, tmp):
             failures.append(f"{name}: no stranger probed it")
         lines.append(f"{name}: joined as {joined['key_id'][:12]} (loop_join's commitment and its join record verify), the "
                      f"commitment it is asked through names no controller binding (optional, u137), history_card/1 "
-                     f"probed by {probed} stranger(s)")
+                     f"probed by {probed} stranger(s)"
+                     + (f"; its stapled history_card/1 verifies with capsule-cli {staple_verify.pinned_version()}"
+                        if signed_state == "PASS" else ""))
     if not nodes:
         failures.append("the asks session joined no nodes")
     return failures, not_checked, list(dict.fromkeys(proof)), lines
@@ -1576,7 +1625,7 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     pinned = (PINNED if which == "doctor" else GOOSE_PINNED if which == "goose"
-              else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go"])
+              else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go", "capsule-cli"])
     shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
     detail = f"probe backend: {which}. " + "; ".join(shown) + "."
     return finding.write(out, result=result, population=population, asserts=GOOSE_ASSERTS if which == "goose" else ASSERTS,
