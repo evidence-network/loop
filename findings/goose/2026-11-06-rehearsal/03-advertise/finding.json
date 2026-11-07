@@ -1,10 +1,14 @@
 {
-  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes",
-  "detail": "buyer: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json, not advertised on nostr, inputs signed by the node; seller: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json, not advertised on nostr, inputs signed by the node. Runner tools: OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157) (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (buyer, seller) only its bytes are matched to the committed digest. Outside this step's assertion: the stapled history_card/1 signature (buyer, seller) is not verified, as no released history_card/1 verifier is callable from the loop: action-state-group/agent-action-capsule#430.",
-  "finished": "2026-11-06T23:51:00Z",
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes, and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder)",
+  "detail": "buyer: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json, not advertised on nostr, inputs signed by the node; seller: PASS via git scratch repository (carrier.bundle) HEAD:nodes/commitments/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json, not advertised on nostr, inputs signed by the node. Runner tools: OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157) (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (buyer, seller) only its bytes are matched to the committed digest. The stapled history_card/1 of buyer, seller verifies with capsule-cli v0.1.0-rc38 (a pre-release; every capsule-cli release is one) `verify --history`, under the node key and the checkpoint key each card entry names: digest, envelope and checkpoint signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a commitment carries no request, and no second caller's answer is held).",
+  "finished": "2026-11-07T00:53:53Z",
   "name": "advertise",
   "not_checked": [],
   "pinned": {
+    "capsule-cli": {
+      "ref": "v0.1.0-rc38",
+      "repository": "action-state-group/capsule-cli"
+    },
     "goose-g1": {
       "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
       "repository": "action-state-group/evidencebook"
@@ -14,38 +18,46 @@
   "proof": [
     {
       "path": "buyer.commitment.json",
-      "sha256": "448b9a07ed749162cc71e54b19340c1d5e3dbd1ba810f8e6372b5427645ae5f3"
+      "sha256": "0fdf2ea92ef4bd89bb5458585b6332ed0bcd4ede830b0f4c7369573ce4b2551f"
     },
     {
       "path": "buyer.policy.json",
-      "sha256": "42558254db17e71f6b09240bf272f6d750d0ecbcfafd8b514ccbe2f013de14dd"
+      "sha256": "6122d06076f55c5b7bcc4c3a1c4b648bfd0a76007d24b89d79ef16ef6669488d"
+    },
+    {
+      "path": "buyer.staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
     },
     {
       "path": "buyer.node-key.pub.pem",
-      "sha256": "25a4b7d680668e773511a95ff67158db08091ab00a20fc5c443125b7967c66be"
+      "sha256": "bd1368ec2d518132516e95a0ba487be07d5d002de58f741c1297c9261ccd77c1"
     },
     {
       "path": "seller.commitment.json",
-      "sha256": "5467d90e18c2e02db8fe33fda8c86f443ea23c462020a6a4786a11150611d962"
+      "sha256": "c0b247dbad1ae3197657b5516a0b395b8f45200205ee34079d75cb4d821c7eae"
     },
     {
       "path": "seller.policy.json",
-      "sha256": "f7e0b530f2731c1065475008598ab6dac3778c02b26d493612a4b128cb0fcefb"
+      "sha256": "376df4b711b09337f2c7d8edac520799816e2ab657b34098f4aac8a1f5b565cd"
+    },
+    {
+      "path": "seller.staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
     },
     {
       "path": "seller.node-key.pub.pem",
-      "sha256": "805f6237bbf5d5f2add92997d64a254696964da0ec5f32db3d4f2881bbe9cd51"
+      "sha256": "c31cb1f59d668a29efc4014141752db8272156b2c4823c192eb5141834f33290"
     },
     {
       "path": "carrier.bundle",
-      "sha256": "3d2e30745d4ec9736c72e25df15fb48871d72cd0aff742c5ab05fec21b0f43ae"
+      "sha256": "39172dd42d3617c5426ed33a96641b3e78b468748b9d7d1d5ad2a8f61a9f2447"
     },
     {
       "path": "verification.json",
-      "sha256": "7d89413d5ddbada66e4f7f3118a5e0a8b1fa6787d3ddc8727c2eb6f9fc3e1680"
+      "sha256": "e1938aee19d111300f8d9ca852837537a017706614d1b97e314024048e73df6e"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T23:51:00Z",
+  "started": "2026-11-07T00:53:52Z",
   "step": "03"
 }

@@ -125,6 +125,9 @@ ADAPTER_ISSUE = "Mesh-LLM/capsules-plugin#83"
 WALLET_ISSUE = ADAPTER_ISSUE
 # The exchange's sealed halves and the controller declarations are step 05's component work.
 DEAL_ISSUE = "Mesh-LLM/capsules-plugin#49"
+# The Goose column's own issue (the mesh issues above are the capsules plugin's work, which the Goose nodes do not
+# run): its steps are G1's, and what the Goose rehearsal leaves unverified is tracked there.
+GOOSE_ISSUE = "evidence-network/loop#315"
 # The live Lightning population ("rail": "lightning"), as the loop#243 ruling restates the assertion for a rail that
 # signs nothing (the coordinator and Sherlock2 under Ethan's delegation, Buzz 077d4d5b; Sherlock2's 8e23469a).
 LIGHTNING_ASSERTS = ("each paid exchange's settlement is referenced by the payment_hash its payer sealed with the "
@@ -341,10 +344,11 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
                   f"the population's two nodes) and each node's own signed disclosure, "
                   f"the rest on the rail's proof bytes: {', '.join(checks)}. Band {band}. "
                   f"Volume: {vol['filtered']} filtered of {vol['raw']} raw settlements ({vol['filter']}). "
-                  + finding.outside("the halves' capsule signatures and checkpoints, which no step verifies for Goose yet, and the "
-                                    "controller declarations, which are rehearsal stand-ins", DEAL_ISSUE) + " "
-                  + finding.outside("a settlement object on a real rail, verified with finality by its adapter",
-                                    ADAPTER_ISSUE))
+                  + finding.outside("the controller declarations, which are rehearsal stand-ins (the halves' signatures and "
+                                    "checkpoints are step 05's assertion; this step reads G1's unsigned pay record)", GOOSE_ISSUE) + " "
+                  + finding.outside("a settlement object on a real rail, verified with finality: the rehearsal's rail is a mock, "
+                                    "and a real Lightning payment is judged only in the live Goose run "
+                                    "(findings/goose/*-live*)", GOOSE_ISSUE))
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=pinned or PINNED, proof=proof,
                          detail=detail, started=started)
 

@@ -1,7 +1,7 @@
 {
   "asserts": "a capsule sealed by the Goose node (evidencebook's G1, loop_seal) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
-  "detail": "node buyer: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39; the sealed call is the step's placeholder model (rehearsal/rehearsal-model), not a real inference",
-  "finished": "2026-11-06T23:51:00Z",
+  "detail": "node buyer: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5; the sealed call is the step's placeholder model (rehearsal/rehearsal-model), not a real inference",
+  "finished": "2026-11-07T00:53:52Z",
   "name": "seal",
   "not_checked": [],
   "pinned": {
@@ -18,19 +18,19 @@
   "proof": [
     {
       "path": "capsule.json",
-      "sha256": "e419751f5c5996f64ff71b4643b43f692d69c73fb12dd98b3370e1656691f366"
+      "sha256": "1abb863950c0085a3d6582ee3ced09d18ebb24d13ee1017e4645bf5360dfa19b"
     },
     {
       "path": "verifier.json",
-      "sha256": "f137f6d7f005ee852677e27efac92c9941d1dd3b2fd2eeb0c6bf970d14a42134"
+      "sha256": "c3baec41c53f09ada59aa2ffaf20761470902f503ff6469d01bb316daf39087b"
     },
     {
       "path": "checks.json",
-      "sha256": "b1aad0495319122668c5a789f18a803fd6637b814d967ad2cf87742904c0a2c7"
+      "sha256": "ae362a4b450bf2b2e288cf208df57016e1fee33eb52ddbf44a528f4b741a3085"
     },
     {
       "path": "node-key.pub.pem",
-      "sha256": "25a4b7d680668e773511a95ff67158db08091ab00a20fc5c443125b7967c66be"
+      "sha256": "bd1368ec2d518132516e95a0ba487be07d5d002de58f741c1297c9261ccd77c1"
     },
     {
       "path": "goose-run.log",
@@ -38,6 +38,6 @@
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T23:51:00Z",
+  "started": "2026-11-07T00:53:52Z",
   "step": "01"
 }

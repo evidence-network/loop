@@ -140,9 +140,9 @@ class LoopTest(unittest.TestCase):
 
     GOOSE_OWNERS = {"01": "evidence-network/loop#330", "02": "evidence-network/loop#330",
                     "03": "evidence-network/loop#330", "04": "evidence-network/loop#330",
-                    "05": "evidence-network/loop#330", "06": "action-state-group/capsule-emit#408",
+                    "05": "evidence-network/loop#330", "06": "evidence-network/loop#315",
                     "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
-                    "09": "action-state-group/capsule-emit#393", "10": "evidence-network/loop#315",
+                    "09": "evidence-network/loop#315", "10": "evidence-network/loop#315",
                     "11": "evidence-network/loop#315", "12": "evidence-network/loop#330"}
     GOOSE_NAMES = {"01": "seal", "02": "book", "03": "advertise", "04": "admit", "05": "deal", "06": "settle",
                    "07": "ask", "08": "verify", "09": "dispute", "10": "judge", "11": "report", "12": "join"}
@@ -162,6 +162,24 @@ class LoopTest(unittest.TestCase):
         self.assertIn("Goose tools are not installed", six["detail"])
         self.assertNotIn("no step", six["not_checked"][0]["why"])
         self.assertEqual(self.loop("--ecosystem", "muse", "--out", str(out)).returncode, 2)
+
+    def test_a_goose_row_without_an_input_names_the_driver_of_its_population(self):
+        r = self.loop("--ecosystem", "goose", "--steps", "09", env={"LOOP_TOOLS": str(self.dir / "no-tools")})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
+        nine = self.finding("09-dispute", out)["not_checked"][0]
+        self.assertEqual((nine["issue"], nine["why"]), ("evidence-network/loop#315",
+                                                        "scripts/goose_rehearsal.py gives step 09 no Goose input"))
+        pop = self.dir / "goose-live"
+        pop.mkdir()
+        (pop / "population.json").write_text(json.dumps({"goose": {"steps": ["01"]}}))
+        r = self.loop("--ecosystem", "goose", "--population", "live", "--steps", "02,06", "--out", str(self.dir / "glive"),
+                      env={"LOOP_GOOSE_POPULATION": str(pop)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        two = self.finding("02-book", self.dir / "glive")["not_checked"][0]
+        self.assertEqual(two["why"], "scripts/goose_live.py gives step 02 no Goose input")
+        six = self.finding("06-settle", self.dir / "glive")["not_checked"][0]
+        self.assertEqual(six["issue"], "evidence-network/loop#315")
 
     def test_goose_run_that_fails_with_its_tools_installed_is_a_fail_with_the_log_not_a_not_checked(self):
         tools = self.dir / "tools" / "goose"

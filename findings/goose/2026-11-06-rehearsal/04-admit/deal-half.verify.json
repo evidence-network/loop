@@ -1,15 +1,15 @@
 {
-  "checkpoint_digest": "fbb28ee3d564f171901a34368691e07c124c54657da5e86973e141e92eb66915",
+  "checkpoint_digest": "84928657a99b97019e83eaed667b418eae995fac8b0f7c98b899b9b71ad36081",
   "close_half_digest": null,
   "counterparty_checkpoint_cites": [],
-  "deal_id": "deal-d02d5207d4bdd004",
+  "deal_id": "deal-59617461f7a29800",
   "error": null,
-  "final_record_id": "c3f70d816316f456b8f178f2be4ce8ea8b9d1a81ebe4ec02d2c0fc04dfab2038",
-  "half_digest": "62f6d02e8301177e8e90382da77f23326cfc8802855e83955af89302ee6c8391",
+  "final_record_id": "d81c16b12178c1b3628321a5af2ca1977d18523005f53f2c52e01a25d7548a61",
+  "half_digest": "194078d1966bc229b0fbf9ceaba6a6d4c17e28a58ae754a68381e6ad4b5dd50a",
   "ids": [
-    "c3f70d816316f456b8f178f2be4ce8ea8b9d1a81ebe4ec02d2c0fc04dfab2038"
+    "d81c16b12178c1b3628321a5af2ca1977d18523005f53f2c52e01a25d7548a61"
   ],
-  "key_id": "8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
+  "key_id": "c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5",
   "ok": true,
   "steps": 1
 }

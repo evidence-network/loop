@@ -17,12 +17,12 @@
     },
     {
       "check": "goose_shape",
-      "detail": "members ['checkpoint_key_id', 'decision', 'peer', 'reason'] (wanted ['checkpoint_key_id', 'decision', 'peer', 'reason']); peer '4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7', checkpoint key '5e8abe41af741e2ada2fd5ebfd906fb133c935ef19afcef9d48f49d1686d08f4' (64-hex)",
+      "detail": "members ['checkpoint_key_id', 'decision', 'peer', 'reason'] (wanted ['checkpoint_key_id', 'decision', 'peer', 'reason']); peer '4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea', checkpoint key '77f06431ba14b810e1e545a7f6d6eef7e57e97470f4417ed6cb5c3c349ba4eff' (64-hex)",
       "ok": true
     },
     {
       "check": "peer_named",
-      "detail": "the decision names peer 4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7; the seller's key is 4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7",
+      "detail": "the decision names peer 4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea; the seller's key is 4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea",
       "ok": true
     },
     {
@@ -32,17 +32,17 @@
     },
     {
       "check": "sealed_before_deal",
-      "detail": "decision at seq 2 (2026-11-06T23:49:54.281506Z), opening at seq 5 (2026-11-06T23:49:54.320269Z)",
+      "detail": "decision at seq 2 (2026-11-07T00:52:47.601314Z), opening at seq 5 (2026-11-07T00:52:47.635407Z)",
       "ok": true
     },
     {
       "check": "deal_cites_decision",
-      "detail": "the opening cites ['7d79a391d25e3b0a5ab50629575c0a9917fda8a55a9699710899e5e1255e6984'] in its header and ['7d79a391d25e3b0a5ab50629575c0a9917fda8a55a9699710899e5e1255e6984'] in its capsule; its statement names 7d79a391d25e3b0a5ab50629575c0a9917fda8a55a9699710899e5e1255e6984",
+      "detail": "the opening cites ['23c6da09c56bb4780cb219c36f97a35670c7ef7e82f510a3476796270328ddde'] in its header and ['23c6da09c56bb4780cb219c36f97a35670c7ef7e82f510a3476796270328ddde'] in its capsule; its statement names 23c6da09c56bb4780cb219c36f97a35670c7ef7e82f510a3476796270328ddde",
       "ok": true
     },
     {
       "check": "first_step_cites_decision",
-      "detail": "G1's verify_half on the deal's first half: holds; its first step c3f70d816316 cites ['7d79a391d25e3b0a5ab50629575c0a9917fda8a55a9699710899e5e1255e6984']; the opening's statement names deal deal-d02d5207d4bdd004, first step c3f70d816316 and peer 4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7",
+      "detail": "G1's verify_half on the deal's first half: holds; its first step d81c16b12178 cites ['23c6da09c56bb4780cb219c36f97a35670c7ef7e82f510a3476796270328ddde']; the opening's statement names deal deal-59617461f7a29800, first step d81c16b12178 and peer 4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea",
       "ok": true
     }
   ],

@@ -1,10 +1,14 @@
 {
-  "asserts": "one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and returns the node's signed commitment, the node then advertises the commitment it is asked through, which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject with the history_card/1 derivation) verifies and matches the advertised policy; no controller binding is kept",
-  "detail": "probe backend: goose. buyer: joined as 8877df644588 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); seller: joined as 4bca46446bd1 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s).",
-  "finished": "2026-11-06T23:51:04Z",
+  "asserts": "one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and returns the node's signed commitment, the node then advertises the commitment it is asked through, which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject with the history_card/1 derivation) verifies and matches the advertised policy; no controller binding is kept, and, for an evidence-commitment/1 where the pinned capsule-cli is installed, no stapled history_card/1 of the commitment fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder)",
+  "detail": "probe backend: goose. buyer: joined as c999a82e6cf0 (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); its stapled history_card/1 verifies with capsule-cli v0.1.0-rc38; seller: joined as 4ef664d0293f (loop_join's commitment and its join record verify), the commitment it is asked through names no controller binding (optional, u137), history_card/1 probed by 1 stranger(s); its stapled history_card/1 verifies with capsule-cli v0.1.0-rc38.",
+  "finished": "2026-11-07T00:53:56Z",
   "name": "join",
   "not_checked": [],
   "pinned": {
+    "capsule-cli": {
+      "ref": "v0.1.0-rc38",
+      "repository": "action-state-group/capsule-cli"
+    },
     "capsulectl": {
       "ref": "v0.13.1",
       "repository": "action-state-group/evidencebook"
@@ -21,119 +25,127 @@
   "population": "rehearsal",
   "proof": [
     {
-      "path": "buyer/joined/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json",
-      "sha256": "fad83106099093df2ec4d078a841c104235daf366c32ad0d9023834ec9f687e7"
+      "path": "buyer/joined/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json",
+      "sha256": "a0c0a098f80c33a7b49496f14f939eda62bdee34290b11a97e760b913975c643"
     },
     {
       "path": "buyer/joined/join-record.bundle.checkpoint.cose",
-      "sha256": "fbe7e81b27b44a82c52c2d8c3b58892fbb07300a17adea4ff1773d2c4490cc9a"
+      "sha256": "0fb1b43c230f62e229f0addbcc49f34ef1b3671035ea111b13268272a61c7700"
     },
     {
       "path": "buyer/joined/join-record.bundle.json",
-      "sha256": "326453489fc8061574a9fefa7df9ac58ff23fe4152a18ee24c3b2cccb563bae3"
+      "sha256": "291b3a34ab3df7cb12a984891271e7d22a3df056e9899611ec211e8b3f870822"
     },
     {
       "path": "buyer/joined/join-record.bundle.witness-receipt.json",
-      "sha256": "30f106cca66bc930ca1290112fa351328c35f32a45defc26098f77c13aeab75f"
+      "sha256": "e48a7512c45dc5adb65e0608ddc07a9baa954e1e9c4d31fb9540db206f9d94c0"
     },
     {
       "path": "buyer/joined/join-record.bundle.witnesses.json",
-      "sha256": "b93ebfcad0ebdf7edbcbfb9faec9b5f7dfe44f1b3f9959d67807cfdb54d2ad3d"
+      "sha256": "d95aca5f3150c35b6a79ce4ef759e9a5f42e47c5cc278acd9b6ec56b59dba4e9"
     },
     {
-      "path": "buyer/joined/policies/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json",
-      "sha256": "42558254db17e71f6b09240bf272f6d750d0ecbcfafd8b514ccbe2f013de14dd"
+      "path": "buyer/joined/policies/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json",
+      "sha256": "6122d06076f55c5b7bcc4c3a1c4b648bfd0a76007d24b89d79ef16ef6669488d"
     },
     {
-      "path": "buyer/advertised/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json",
-      "sha256": "448b9a07ed749162cc71e54b19340c1d5e3dbd1ba810f8e6372b5427645ae5f3"
+      "path": "buyer/advertised/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json",
+      "sha256": "0fdf2ea92ef4bd89bb5458585b6332ed0bcd4ede830b0f4c7369573ce4b2551f"
     },
     {
       "path": "buyer/advertised/commitment.json",
-      "sha256": "448b9a07ed749162cc71e54b19340c1d5e3dbd1ba810f8e6372b5427645ae5f3"
+      "sha256": "0fdf2ea92ef4bd89bb5458585b6332ed0bcd4ede830b0f4c7369573ce4b2551f"
     },
     {
-      "path": "buyer/advertised/policies/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json",
-      "sha256": "42558254db17e71f6b09240bf272f6d750d0ecbcfafd8b514ccbe2f013de14dd"
+      "path": "buyer/advertised/policies/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json",
+      "sha256": "6122d06076f55c5b7bcc4c3a1c4b648bfd0a76007d24b89d79ef16ef6669488d"
+    },
+    {
+      "path": "buyer/advertised/staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
     },
     {
       "path": "seller/asks/buyer/history_card/answer.json",
-      "sha256": "2deb389034b7a10ac91a24fb7297b509d152278c32dd7e02a364a63e753f6ef8"
+      "sha256": "af828ac0d4ab34c3dec27cae24f0afcabafa6137352d441edd358f14522209d8"
     },
     {
       "path": "seller/asks/buyer/history_card/outcome.bundle.checkpoint.cose",
-      "sha256": "a8edf03582778a951cc318782e6755a5cc14bff91b43b0ab79d959b8fef9dc7c"
+      "sha256": "213bdc57ea7f16f3c137b5cbf15f954d67cdcc1097ee38554059724c1f87dcd5"
     },
     {
       "path": "seller/asks/buyer/history_card/outcome.bundle.json",
-      "sha256": "3ff63f995d67402371fb37bb68eb353c382c43e10b36fe9e55edea3573b32131"
+      "sha256": "c81d51ff200b846b72009f7673705fd0be33a30c88f3e9d9f68f27a4089db6a9"
     },
     {
       "path": "seller/asks/buyer/history_card/request.json",
-      "sha256": "e5553988c33e8d34352ca702a0aef920bde46013a03f0808190304076127e8ac"
+      "sha256": "5b51533fa0b88d880f0292d912519170706aa4b1bd932b851d42182158fb1e3d"
     },
     {
       "path": "seller/asks/buyer/carrier.jsonl",
-      "sha256": "764711cce9b111b2d9f66f4afce251a3f7f763f487d814e5343078551182732a"
+      "sha256": "8d85727a861bfed64ca14645a23176539e0a1ca2500efc8d5863fb65eac6da35"
     },
     {
-      "path": "seller/joined/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json",
-      "sha256": "2385ea3ea3a614a73aeddb9b772d19972a3cfd995d3141ae3935e67899e47c01"
+      "path": "seller/joined/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json",
+      "sha256": "e219cea23f13910c7095c449ce1d87b23e6424ef0157c8f84dee0c9d185fc0e9"
     },
     {
       "path": "seller/joined/join-record.bundle.checkpoint.cose",
-      "sha256": "f3924dbc6ed88d069107dbe015479d84e1d14468a92ad07794b5afe46fc37ca5"
+      "sha256": "70428e8cf432cae3eaafccebab3deaff7a5ab8ede896b22a74b7f34dc9577842"
     },
     {
       "path": "seller/joined/join-record.bundle.json",
-      "sha256": "7533f8a6f1d8befc526024261938f08d14f97824d8e9cd59293bacba51a7926a"
+      "sha256": "1665ce513ecabf1fc4cf1361f4ff6bcc5178ba8b2bf714a7238fb3279304ea06"
     },
     {
       "path": "seller/joined/join-record.bundle.witness-receipt.json",
-      "sha256": "0154c3a9137e09e4ee4dea730a8adaab410d22a432590eebe0a9fc8c89509f10"
+      "sha256": "7677aea48c1e5d57406dcc9dc4fc46eef5556685d5b90ac5d1700077299898d3"
     },
     {
       "path": "seller/joined/join-record.bundle.witnesses.json",
-      "sha256": "b93ebfcad0ebdf7edbcbfb9faec9b5f7dfe44f1b3f9959d67807cfdb54d2ad3d"
+      "sha256": "d95aca5f3150c35b6a79ce4ef759e9a5f42e47c5cc278acd9b6ec56b59dba4e9"
     },
     {
-      "path": "seller/joined/policies/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json",
-      "sha256": "f7e0b530f2731c1065475008598ab6dac3778c02b26d493612a4b128cb0fcefb"
+      "path": "seller/joined/policies/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json",
+      "sha256": "376df4b711b09337f2c7d8edac520799816e2ab657b34098f4aac8a1f5b565cd"
     },
     {
-      "path": "seller/advertised/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json",
-      "sha256": "5467d90e18c2e02db8fe33fda8c86f443ea23c462020a6a4786a11150611d962"
+      "path": "seller/advertised/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json",
+      "sha256": "c0b247dbad1ae3197657b5516a0b395b8f45200205ee34079d75cb4d821c7eae"
     },
     {
       "path": "seller/advertised/commitment.json",
-      "sha256": "5467d90e18c2e02db8fe33fda8c86f443ea23c462020a6a4786a11150611d962"
+      "sha256": "c0b247dbad1ae3197657b5516a0b395b8f45200205ee34079d75cb4d821c7eae"
     },
     {
-      "path": "seller/advertised/policies/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json",
-      "sha256": "f7e0b530f2731c1065475008598ab6dac3778c02b26d493612a4b128cb0fcefb"
+      "path": "seller/advertised/policies/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json",
+      "sha256": "376df4b711b09337f2c7d8edac520799816e2ab657b34098f4aac8a1f5b565cd"
+    },
+    {
+      "path": "seller/advertised/staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
     },
     {
       "path": "buyer/asks/seller/history_card/answer.json",
-      "sha256": "88c53bea8bfc531052dc28671f548c80ee9e8804fd9d622d3143d7fa9162d71b"
+      "sha256": "4cdf2a2b354bd3cc9316a075ed38e5b221ca4a3034804b2ac24a4cb12ba961ce"
     },
     {
       "path": "buyer/asks/seller/history_card/outcome.bundle.checkpoint.cose",
-      "sha256": "95d7d6c424e36804beb1344417e3659e6f862e6476b4ea52cb05cbaa44e818da"
+      "sha256": "204138fc5cb975ca4f9840f6f2fe601d717760f8b38f7a482c54ca4f8a00c4b7"
     },
     {
       "path": "buyer/asks/seller/history_card/outcome.bundle.json",
-      "sha256": "fa2e535b0c53db3ff68215b0952860033e2906f0650b94f30e4ee26949535e04"
+      "sha256": "5765ec159cbb994feeb71c9301a5bb108b9f79dacd2f4bf9cd7354957dbae3df"
     },
     {
       "path": "buyer/asks/seller/history_card/request.json",
-      "sha256": "7ebbcc124794532d3c6ef59312ba877c9a4770397e10d852c06bd8f32c0ab6cd"
+      "sha256": "61acc55fddc56a90e72e3119c76b5e867c6d5cf69f5bfa9a639ee8cbaba1369f"
     },
     {
       "path": "buyer/asks/seller/carrier.jsonl",
-      "sha256": "b79d33b4e0ea965c96457ba69b4c98fe0bebf4b10e43cae297581c11edabaa43"
+      "sha256": "64e83ef73ed553eb096bd8719c7adc14b63ae95a7dea6c9794dea2335edfee69"
     }
   ],
   "result": "PASS",
-  "started": "2026-11-06T23:51:04Z",
+  "started": "2026-11-07T00:53:55Z",
   "step": "12"
 }

@@ -1,66 +1,86 @@
 {
   "nodes": [
     {
-      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39.json",
+      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5.json",
       "errors": [],
       "history_cards": [
         {
           "community": "goose",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "06933c180b4e19e2195161763b65446d0c2c8e46a8bd627c444642c52ad7f173",
+          "sha256": "7be10294637b24bd3e09baf9c3b096792a2afd1e0b7426d59922742a571955b8",
           "stream": "goose/node",
-          "stream_started": "2026-11-06",
+          "stream_started": "2026-11-07",
           "witnesses": []
         }
       ],
       "inputs": "signed by the node",
-      "key_id": "8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
+      "key_id": "c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5",
       "name": "buyer",
-      "node_id": "8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
+      "node_id": "c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5",
       "node_key_file": "buyer.node-key.pub.pem",
       "nostr": {
         "note": "not advertised on nostr",
         "result": "NOT_ADVERTISED"
       },
       "notes": [],
-      "policy_digest": "42558254db17e71f6b09240bf272f6d750d0ecbcfafd8b514ccbe2f013de14dd",
-      "published_commit": "e7d34e62368f2d1058b258dcf7ccb20f46ebf178",
+      "policy_digest": "6122d06076f55c5b7bcc4c3a1c4b648bfd0a76007d24b89d79ef16ef6669488d",
+      "published_commit": "71d253b1cb879b2230f784a24f35f414cded4ca3",
       "result": "PASS",
-      "sha256": "448b9a07ed749162cc71e54b19340c1d5e3dbd1ba810f8e6372b5427645ae5f3",
+      "sha256": "0fdf2ea92ef4bd89bb5458585b6332ed0bcd4ede830b0f4c7369573ce4b2551f",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
-      "signed_by": "the Goose node buyer itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness"
+      "signed_by": "the Goose node buyer itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness",
+      "staple_verify": {
+        "capsule_cli": "v0.1.0-rc38",
+        "not_checked": [],
+        "outside": [
+          "caller_invariance",
+          "request_binding"
+        ],
+        "ran": true,
+        "state": "PASS"
+      }
     },
     {
-      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7.json",
+      "carrier": "git scratch repository (carrier.bundle) HEAD:nodes/commitments/4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea.json",
       "errors": [],
       "history_cards": [
         {
           "community": "goose",
           "derivation": "history_card/1",
           "has_history": true,
-          "sha256": "63d6e41b7560ea3842d676bd9e157232b10a66fcba0244734823e65331ec7209",
+          "sha256": "8e1d62f4ee1dd7741fc640f705423fa539c0be7171524e2571c0586e23fac300",
           "stream": "goose/node",
-          "stream_started": "2026-11-06",
+          "stream_started": "2026-11-07",
           "witnesses": []
         }
       ],
       "inputs": "signed by the node",
-      "key_id": "4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7",
+      "key_id": "4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea",
       "name": "seller",
-      "node_id": "4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7",
+      "node_id": "4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea",
       "node_key_file": "seller.node-key.pub.pem",
       "nostr": {
         "note": "not advertised on nostr",
         "result": "NOT_ADVERTISED"
       },
       "notes": [],
-      "policy_digest": "f7e0b530f2731c1065475008598ab6dac3778c02b26d493612a4b128cb0fcefb",
-      "published_commit": "971ecbe484796c65607b9b43de1cc470713a047d",
+      "policy_digest": "376df4b711b09337f2c7d8edac520799816e2ab657b34098f4aac8a1f5b565cd",
+      "published_commit": "6e83d1030c13b9d6d96b9929ddbf0cda500a3571",
       "result": "PASS",
-      "sha256": "5467d90e18c2e02db8fe33fda8c86f443ea23c462020a6a4786a11150611d962",
+      "sha256": "c0b247dbad1ae3197657b5516a0b395b8f45200205ee34079d75cb4d821c7eae",
       "signature": "Ed25519 over the JCS form without sig, verified under spki (openssl pkeyutl)",
-      "signed_by": "the Goose node seller itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness"
+      "signed_by": "the Goose node seller itself, tool loop_advertise, goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; never the harness",
+      "staple_verify": {
+        "capsule_cli": "v0.1.0-rc38",
+        "not_checked": [],
+        "outside": [
+          "caller_invariance",
+          "request_binding"
+        ],
+        "ran": true,
+        "state": "PASS"
+      }
     }
   ],
   "tool": "scripts/check_commitment.py with OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026) and git version 2.54.0 (Apple Git-157)"
