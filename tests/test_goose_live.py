@@ -172,6 +172,7 @@ class SessionTest(unittest.TestCase):
         self.assertEqual(found7["result"], "PASS")
         self.assertIn("wss://relay.loop-lab.example) is the lab's, reachable only from the lab host", found7["detail"])
         self.assertIn("(PT1M) holds during a run only", found7["detail"])
+        self.assertIn("the askers are the lab's persistent nodes, no deal to compare them with", found7["detail"])
         # step 01 holds the sealing node to the key nodes/<node_id>.json lists
         if not (TOOLS / "01-seal").is_dir():
             self.skipTest("run steps/01-seal.setup.sh for the step 01 half")

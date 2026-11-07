@@ -1,10 +1,10 @@
 {
-  "deal_id": "deal-a2d87a3c5bbf25e1",
+  "deal_id": "deal-d02d5207d4bdd004",
   "field": "deal_local",
   "opening": {
-    "nonce": "e55d2afdfa287622a428519f820a5e2dd208819122fa42ce2caa9cf437108afd",
-    "text": "{\"deal_id\":\"deal-a2d87a3c5bbf25e1\",\"n\":5,\"kind\":\"action\",\"at\":\"2026-11-06T21:21:23Z\",\"act\":{\"action\":\"pay\",\"reference\":\"0e4610ae24eb169c37ca6ebd6899cbc444017c5ba6821309a9de01192c1dbc5e\"},\"nonces\":{\"reference\":\"db3930d7635d279e774aaa3237e61a2d0ae9179606c8c8a96d2089ad3093dd99\"}}"
+    "nonce": "66514231038a9a4471ca41fcb44ddae80ae924cfc7d444a2d19c697a4484300d",
+    "text": "{\"deal_id\":\"deal-d02d5207d4bdd004\",\"n\":5,\"kind\":\"action\",\"at\":\"2026-11-06T23:49:54Z\",\"act\":{\"action\":\"pay\",\"reference\":\"0bb5c5c308bafd4e9bda7dcbe675d3c5ca072ae77f9a552a756bff43028f92f4\"},\"nonces\":{\"reference\":\"b88987a4ef3fdca95ea75e98611eca2c275a2f0f7a0938072e53174cd3d65e94\"}}"
   },
-  "record_id": "c4d8494ee38f62fa8ac8ef7fd0677576070b1236d14d542d61fe3bfb4a48ce17",
+  "record_id": "31019a8bd4cf00383f740016fc08cc53ddb5079586b439467286459f7a73e999",
   "type": "pay-opening/v1"
 }

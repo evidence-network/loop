@@ -3,7 +3,7 @@
   "decimals": 2,
   "declaration": "mock-rail/v1",
   "fee_paying": true,
-  "key_id": "7d19c067d49bb586bd6595ea925058a76dcd5e649086a1cedbaa97dcfac36d2d",
+  "key_id": "b8975b8fe63a40a9ff757e25b146fd1e21a33ff3624e51ffe3841da20301d542",
   "ledger": "ledger.jsonl",
   "public_key": "keys/rail-key.pub.pem",
   "rail": "mock",

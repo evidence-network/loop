@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Step 07 on the Goose rehearsal: two G1 nodes ask each other through the mailbox their commitments advertise (loop#330).
+"""Step 07 on the Goose rehearsal: the deal's two G1 nodes ask each other through the mailbox their commitments advertise (loop#330, loop#399).
 
-Usage (in the Goose venv, which has `mcp` and `websockets`): goose_ask_session.py OUT
+Usage (in the Goose venv, which has `mcp` and `websockets`): goose_ask_session.py OUT DEAL_RUN
 
-Two loop_server.py processes (a buyer and a seller), spoken to over MCP stdio as Goose speaks to them, advertise a
-Nostr mailbox with loop_advertise and ask each other, three asks each way, with the answering side polling its
+The nodes are the deal's parties: scripts/goose_session.py ran steps 01-06 on the homes DEAL_RUN/<node>, joined them
+and wrote the commitments they advertise (a mailbox) to DEAL_RUN/commitments. The same two loop_server.py processes
+are started again on those homes (a buyer and a seller), spoken to over MCP stdio as Goose speaks to them, and ask each other, three asks each way, with the answering side polling its
 mailbox (loop_mailbox_poll), never serving:
 
   exchange        an exchange request about the asker's own join record: the asker is a stranger on a mailbox
@@ -113,20 +114,19 @@ class Goose:
         return out
 
 
-async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=ADVERTISED_RELAY, joined=None):
-    """Two nodes ask each other. By default (the rehearsal) each starts in a fresh home under out/run and advertises
-    now. The live lab passes `homes` (the persistent GOOSE_HOME root, a directory per name) and `published` (the
-    directory holding the commitments the nodes already published, nodes/commitments/): the nodes keep their keys, and
-    ask through the commitment each published, advertising nothing new. `relay_name` is the relay those name. `joined`
-    ({name: {key_id, record_id}}, from the nodes' first join) stops the run joining them again, so a persistent node's
-    book holds one join record, not one per run."""
+async def run(out, relay, homes, published, joined, names=NAMES, relay_name=ADVERTISED_RELAY):
+    """Two existing nodes ask each other. `homes` is the GOOSE_HOME root of nodes that already exist (a directory per
+    name: the rehearsal's deal parties, or the live lab's persistent nodes), `published` the directory holding the
+    commitments they already published (<key_id>.json, policies/): the nodes keep their keys and ask through the
+    commitment each published, advertising nothing new. `relay_name` is the relay those name. `joined`
+    ({name: {key_id, record_id}}, from the nodes' first join) keeps a node's book at one join record, not one per run."""
     shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
     out.mkdir(parents=True)
     relay_map = json.dumps({relay_name: relay.address})
 
     def params(name):
-        home = Path(homes) / name if homes else out / "run" / name
-        env = {**os.environ, "GOOSE_HOME": str(home), "GOOSE_OPERATOR": f"goose-{name}", "GOOSE_RELAY_MAP": relay_map}
+        env = {**os.environ, "GOOSE_HOME": str(Path(homes) / name), "GOOSE_OPERATOR": f"goose-{name}",
+               "GOOSE_RELAY_MAP": relay_map}
         return StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
 
     async with stdio_client(params(names[0])) as (br, bw), stdio_client(params(names[1])) as (sr, sw):
@@ -134,24 +134,13 @@ async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=AD
             await bs.initialize()
             await ss.initialize()
             nodes = {names[0]: Goose(bs, names[0]), names[1]: Goose(ss, names[1])}
-            rehearsal = not joined  # the lab passes its first joins; the rehearsal joins here and keeps what loop_join gave
-            joined = joined or {name: await g.call("loop_join", commitment_dir=str(out / name / "joined"))
-                                for name, g in nodes.items()}
-            if rehearsal:  # step 12: the join record as an Evidence Bundle, its header disclosed
-                for name, g in nodes.items():
-                    await g.call("loop_book_bundle", book_id="goose/node", record_id=joined[name]["record_id"],
-                                 disclose=True, out_path=str(out / name / "joined" / "join-record.bundle.json"))
-            for name, g in nodes.items():
+            for name in nodes:
                 adv = out / name / "advertised"
                 node_id = joined[name]["key_id"]
-                if published:
-                    adv.mkdir(parents=True)
-                    shutil.copyfile(Path(published) / f"{node_id}.json", adv / f"{node_id}.json")
-                    (adv / "policies").mkdir()
-                    shutil.copyfile(Path(published) / "policies" / f"{node_id}.json", adv / "policies" / f"{node_id}.json")
-                else:
-                    await g.call("loop_advertise", out_dir=str(adv), relays=relay_name, answers_within=ANSWERS_WITHIN,
-                                 poll_interval=POLL_INTERVAL)
+                adv.mkdir(parents=True)
+                shutil.copyfile(Path(published) / f"{node_id}.json", adv / f"{node_id}.json")
+                (adv / "policies").mkdir()
+                shutil.copyfile(Path(published) / "policies" / f"{node_id}.json", adv / "policies" / f"{node_id}.json")
                 shutil.copyfile(adv / f"{node_id}.json", adv / "commitment.json")
             (out / "nodes.json").write_text(json.dumps(
                 {n: {"key_id": j["key_id"], "first_record": j["record_id"]} for n, j in joined.items()},
@@ -234,10 +223,14 @@ async def run(out, relay, names=NAMES, homes=None, published=None, relay_name=AD
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: goose_ask_session.py OUT")
+    if len(sys.argv) != 3:
+        raise SystemExit("usage: goose_ask_session.py OUT DEAL_RUN")
     relay = Relay()
-    try:
-        asyncio.run(run(Path(sys.argv[1]), relay))
+    try:  # the deal's parties: their homes, the commitments they advertised, their joins
+        deal = Path(sys.argv[2])
+        joined = json.loads((deal / "joined.json").read_text())
+        asyncio.run(run(Path(sys.argv[1]), relay, deal, deal / "commitments", joined))
+        for name in NAMES:  # step 12 reads each node's join (its commitment, the join record's bundle) beside the asks
+            shutil.copytree(deal / name / "joined", Path(sys.argv[1]) / name / "joined")
     finally:
         relay.close()
