@@ -1,0 +1,32 @@
+# Proves the harvest GitHub App's installation token without a live run (evidence-network/loop#368): mints it in the
+# live-lab environment (deployments from main only) and prints how many repositories it reaches and the push/pull/admin
+# access it has. The App's install scope (this repository only) is checked in the App's settings; repositories: loop narrows the token.
+# Run by hand: `gh workflow run harvest-app-check.yml --ref main`. It never prints the token.
+name: harvest-app-check
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: live-lab
+    steps:
+      - name: Mint the harvest App token
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.HARVEST_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HARVEST_APP_PRIVATE_KEY }}
+          repositories: loop
+          permission-contents: write
+          permission-pull-requests: write
+      - name: What the token reaches
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh api installation/repositories --jq '"repositories reached: \(.total_count) (\([.repositories[].full_name]|join(",")))"'
+          gh api repos/${{ github.repository }} --jq '"admin=\(.permissions.admin) push=\(.permissions.push) pull=\(.permissions.pull)"'

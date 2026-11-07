@@ -83,18 +83,23 @@ wait_run() {
   return 0
 }
 
-# The pull request is opened with GITHUB_TOKEN, which starts no pull_request workflow: start each required check by
-# dispatch on the harvest branch, so it reports on the pull request's head commit.
+# The pull request is opened with the App token, whose events start the pull_request checks. Until that is shown to
+# work alone, also start each required check by dispatch on the harvest branch with the job's own token.
 dispatch_checks() { # BRANCH
   local wf failed=0
   for wf in nodes reports personal-data leak-lint dco stats harvest-allowlist ecosystem-gate versions; do
-    gh workflow run "$wf.yml" --ref "$1" || { echo "::error::could not dispatch $wf on $1"; failed=1; }
+    GH_TOKEN=${WORKFLOW_TOKEN:-${GH_TOKEN:-}} gh workflow run "$wf.yml" --ref "$1" || { echo "::error::could not dispatch $wf on $1"; failed=1; }
   done
   return $failed
 }
 
 harvest() {
-  local out name rc
+  local out name rc auth
+  # The App token pushes the branch and opens the pull request, so the pull request starts its own checks (loop#395).
+  [ -n "${GH_TOKEN:-}" ] || { setstate harvest-failed; echo "::error::no harvest App token (HARVEST_APP_* secrets)"; return 1; }
+  auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+  echo "::add-mask::$auth"
+  export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
   out=$(vm stage 2>&1) && rc=0 || rc=$?
   echo "$out"
   [ "$rc" = 0 ] || { setstate failed; echo "::error::stage failed (exit $rc)"; return 1; }

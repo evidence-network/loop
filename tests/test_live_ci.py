@@ -16,7 +16,7 @@ ENTRY = ROOT / "ops" / "live-ci" / "entry.sh"
 
 
 class CiSh(unittest.TestCase):
-    def run_ci(self, call, gcloud_exit, gcloud_out, gh_fail=()):
+    def run_ci(self, call, gcloud_exit, gcloud_out, gh_fail=(), token="tok"):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             bin_ = d / "bin"
@@ -28,12 +28,17 @@ class CiSh(unittest.TestCase):
                 f.chmod(0o755)
             env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "env"), "GH_LOG": str(d / "gh.log"),
                    "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u", "GITHUB_RUN_ID": "1",
-                   "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r"}
+                   "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r", "GH_TOKEN": token}
             p = subprocess.run(["bash", "-c", f"source {CI} && {call}"], env=env, capture_output=True, text=True, cwd=d)
             envf = d / "env"
             state = [l for l in envf.read_text().splitlines() if l.startswith("LIVE_STATE=")][-1] if envf.exists() else ""
             ghlog = (d / "gh.log").read_text() if (d / "gh.log").exists() else ""
             return p.returncode, state, ghlog
+
+    def test_harvest_without_the_app_token_fails_and_pushes_nothing(self):
+        code, state, ghlog = self.run_ci("harvest", 0, "name=2026-11-06-live-9 x", token="")
+        self.assertEqual((code, state), (1, "LIVE_STATE=harvest-failed"))
+        self.assertEqual(ghlog, "")
 
     def test_start_states(self):
         self.assertEqual(self.run_ci("start_run", 0, "started day=2026-11-05 pid=1")[:2], (0, "LIVE_STATE=waiting"))
@@ -70,6 +75,33 @@ class CiSh(unittest.TestCase):
         for wf in ("nodes", "reports", "personal-data", "leak-lint", "dco", "stats", "harvest-allowlist", "ecosystem-gate", "versions"):
             self.assertIn(f"workflow run {wf}.yml --ref live-harvest/x", log)
         self.assertEqual(self.run_ci("dispatch_checks live-harvest/x", 0, "")[0], 0)
+
+    def test_harvest_uses_the_app_token_for_git_and_pr_and_the_job_token_for_dispatch(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            bin_ = d / "bin"
+            bin_.mkdir()
+            log = d / "calls.log"
+            (bin_ / "gcloud").write_text("#!/bin/sh\necho 'name=2026-11-06-live-9 x'\nexit 0\n")
+            (bin_ / "timeout").write_text("#!/bin/sh\nshift\nexec \"$@\"\n")
+            (bin_ / "git").write_text("#!/bin/sh\nexit 0\n")
+            (bin_ / "python3").write_text('#!/bin/sh\necho "harvest GH_TOKEN=$GH_TOKEN HEADER=$GIT_CONFIG_VALUE_0 KEY=$GIT_CONFIG_KEY_0" >> "$CALLS"\nexit 0\n')
+            (bin_ / "gh").write_text('#!/bin/sh\necho "gh GH_TOKEN=$GH_TOKEN $*" >> "$CALLS"\nexit 0\n')
+            for f in bin_.iterdir():
+                f.chmod(0o755)
+            env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "GITHUB_ENV": str(d / "env"), "CALLS": str(log),
+                   "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u",
+                   "GH_TOKEN": "app-token", "WORKFLOW_TOKEN": "job-token"}
+            p = subprocess.run(["bash", "-c", f"source {CI} && harvest"], env=env, capture_output=True, text=True, cwd=d)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            calls = log.read_text()
+            import base64
+            header = "AUTHORIZATION: basic " + base64.b64encode(b"x-access-token:app-token").decode()
+            self.assertIn(f"harvest GH_TOKEN=app-token HEADER={header} KEY=http.https://github.com/.extraheader", calls)
+            self.assertEqual(calls.count("gh GH_TOKEN=job-token workflow run"), 9)
+            self.assertNotIn("gh GH_TOKEN=app-token", calls)
+            self.assertIn(f"::add-mask::{header.split()[-1]}", p.stdout)
+            self.assertNotIn("app-token", (d / "env").read_text() if (d / "env").exists() else "")
 
     def test_every_dispatched_workflow_is_dispatchable(self):
         for line in CI.read_text().splitlines():
