@@ -50,9 +50,10 @@ every capsule-cli release) under the node key from the carrier and the
 checkpoint signature, the card's checkpoint anchor, responder) fails the node. When every property
 passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
-request, and no second caller's answer is held). A rehearsal stand-in staple,
+request, and no second caller's answer is held). A rehearsal stand-in staple (the harness builds an `evidence-commitment/0`, so it is the same gap as
+the next, owned by Mesh-LLM/capsules-plugin#266; the Goose population verifies a real `/1` card, loop#407),
 an `evidence-commitment/0` (capsule-cli takes no keys for it, and the pinned plugin signs those today), a runner without
-the binary, or a card entry without a `checkpoint_key` leaves
+the binary, or a card entry without a `checkpoint_key` (an allowed shape, never refused; loop#410) leaves
 the staple's signature as a `not_checked` entry on a PASS. Two parts are listed
 as `not_checked` when nothing verified them here:
 

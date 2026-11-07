@@ -182,7 +182,7 @@ PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitm
 DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # What keeps a stapled history_card/1's signature unchecked (as step 03): no installed capsule-cli, or a card entry
 # without a checkpoint_key.
-STAPLE_ISSUE = "evidence-network/loop#407"  # stand-in and keyless staples, and a capsule-cli that is not installed
+STAPLE_ISSUE = "evidence-network/loop#410"  # keyless staples and a capsule-cli that is not installed
 
 # The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
