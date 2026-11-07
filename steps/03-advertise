@@ -80,7 +80,11 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
                  "by the node)")
 # What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, a stand-in staple, an
 # evidence-commitment/0 (capsule-cli takes no keys for it) or a card entry without a checkpoint_key.
-STAPLE_ISSUE = "evidence-network/loop#401"
+# The owner of each staple gap, by cause: stand-in and keyless staples and a capsule-cli that is not installed; the
+# plugin's evidence-commitment/0, which capsule-cli cannot verify; the standard_history/1 staple's signature.
+STAPLE_ISSUE = "evidence-network/loop#407"
+LEGACY_ISSUE = "Mesh-LLM/capsules-plugin#266"
+STANDARD_ISSUE = "evidence-network/loop#408"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
 LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
@@ -386,7 +390,7 @@ def verify_node(out, name, rec, key_id, read, live):
             sv = (sv_.unchecked("the staple is a rehearsal stand-in, not a card the node's book signed")
                   if rec.get("inputs") == "stand-in" else sv_.verify(out / proofs[0], key_id))
             errs += sv["errors"]
-            rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside")}
+            rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside", "legacy")}
             rec["staple_verify"]["capsule_cli"] = sv_.pinned_version()
             rec["staple_verify"]["ran"] = sv["report"] is not None  # capsule-cli gave a report, whatever it found
             if sv["report"] is not None:
@@ -563,7 +567,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                                     + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
                             "why": "its bytes, digest, profile and responder are checked; its signature is not: "
                                    + "; ".join(r["staple_verify"]["not_checked"]),
-                            "issue": STAPLE_ISSUE})
+                            "issue": LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE})
         outside.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
                         "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
                         "issue": CHECKPOINT_ISSUE})
@@ -572,7 +576,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                             "why": "its two digests " + ("and its answer's responder and request are checked" if r["standard_history"]["bytes_checked"]
                                                          else "are shape-checked, the bytes were not supplied")
                                    + "; the staple's signature is evidencebook's CheckStaple, not run here",
-                            "issue": STAPLE_ISSUE})
+                            "issue": STANDARD_ISSUE})
         for n in r["notes"]:
             if n.startswith(cc.STD_NOT_SUPPLIED):
                 continue
@@ -611,7 +615,8 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
             if r["staple_verify"]["state"] != "PASS":
                 detail += " " + finding.outside(
                     f"the stapled history_card/1 signature ({r['name']}) is not verified: "
-                    + "; ".join(r["staple_verify"]["not_checked"]), STAPLE_ISSUE)
+                    + "; ".join(r["staple_verify"]["not_checked"]),
+                    LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
             with_bytes = [r["name"] for r in stapled if r["standard_history"]["bytes_checked"]]
@@ -624,7 +629,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                 coverage.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
             detail += " " + finding.outside(
                 f"the standard_history/1 staple of {', '.join(r['name'] for r in stapled)}: its signature is "
-                "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STAPLE_ISSUE)
+                "evidencebook's CheckStaple, not run here; " + "; ".join(coverage), STANDARD_ISSUE)
     else:
         not_checked += outside
     ran = any(r.get("staple_verify", {}).get("ran") for r in records)

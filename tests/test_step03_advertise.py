@@ -110,7 +110,7 @@ class StepTest(unittest.TestCase):
         # alice's commitment is an evidence-commitment/0, which capsule-cli takes no keys for; bob's staple is a stand-in.
         self.assertEqual([w.split(" is not verified")[0] for w, _ in finding.gaps(f["detail"])],
                          ["the stapled history_card/1 signature (alice)", "the stapled history_card/1 signature (bob)"])
-        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"evidence-network/loop#401"})
+        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"evidence-network/loop#407", "Mesh-LLM/capsules-plugin#266"})
         self.assertIn("evidence-commitment/1 only", f["detail"])
         self.assertIn("a rehearsal stand-in", f["detail"])
         self.assertNotIn("capsule-cli", f["pinned"])
