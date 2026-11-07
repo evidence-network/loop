@@ -327,6 +327,10 @@ class NodeSignedTest(unittest.TestCase):
         self.assertIn("live collector keeps no staple bytes", self.step.standard_why(r))
         r["standard_history"]["live"] = False
         self.assertIn("were not published", self.step.standard_why(r))
+        live = {"name": "alice", "standard_history": {"bytes_checked": False, "live": True}}
+        self.assertNotIn("published", self.step.standard_coverage([live]))
+        live["standard_history"]["live"] = False
+        self.assertIn("not published", self.step.standard_coverage([live]))
 
     def test_a_standard_history_property_capsule_cli_does_not_find_present_is_refused(self):
         with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "notpresent"}):

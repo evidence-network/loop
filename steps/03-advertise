@@ -431,6 +431,21 @@ def standard_why(r):
     return "; ".join(r.get("standard_verify", {}).get("not_checked") or ["capsule-cli did not run on it"])
 
 
+def standard_coverage(group):
+    """What was checked of the standard_history/1 staples of these records (those that name one)."""
+    with_bytes = [r["name"] for r in group if r["standard_history"]["bytes_checked"]]
+    shape_only = [r["name"] for r in group if not r["standard_history"]["bytes_checked"]]
+    said = []
+    if with_bytes:
+        said.append("the digests, the answer's responder and its request were checked from the published "
+                    f"bytes ({', '.join(with_bytes)})")
+    if shape_only:
+        why = "the bytes were not held" if any(r["standard_history"]["live"] for r in group if r["name"] in shape_only) \
+            else "the bytes were not published"
+        said.append(f"{why}, so only the member's shape was checked ({', '.join(shape_only)})")
+    return "; ".join(said)
+
+
 def tool_versions():
     """The runner's openssl and git, which the step uses (base-image tools, not versions.lock components)."""
     out = [subprocess.run([t, a], capture_output=True, text=True).stdout.strip()
@@ -642,29 +657,18 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                     LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
-            def coverage(group):
-                with_bytes = [r["name"] for r in group if r["standard_history"]["bytes_checked"]]
-                shape_only = [r["name"] for r in group if not r["standard_history"]["bytes_checked"]]
-                said = []
-                if with_bytes:
-                    said.append("the digests, the answer's responder and its request were checked from the published "
-                                f"bytes ({', '.join(with_bytes)})")
-                if shape_only:
-                    said.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
-                return "; ".join(said)
-
             verified = [r for r in stapled if r["standard_history"]["verified"]]
             unverified = [r for r in stapled if not r["standard_history"]["verified"]]
             if verified:
                 detail += (f" The standard_history/1 staple of {', '.join(r['name'] for r in verified)} verifies with "
                            f"capsule-cli {sv_.pinned_version()} `verify --history`, held under the node's key_id: the "
                            "answer's signature, its anchor and its request (nonce) binding; the deal's entries and the "
-                           f"policy a recount needs are not part of it. {coverage(verified)}.")
+                           f"policy a recount needs are not part of it. {standard_coverage(verified)}.")
             if unverified:
                 detail += " " + finding.outside(
                     f"the standard_history/1 staple of {', '.join(r['name'] for r in unverified)}: its signature, anchor "
                     "and nonce are not verified (" + "; ".join(standard_why(r) for r in unverified) + "); "
-                    + coverage(unverified), STAPLE_ISSUE)
+                    + standard_coverage(unverified), STAPLE_ISSUE)
     else:
         not_checked += outside
     ran = any(r.get("staple_verify", {}).get("ran") or r.get("standard_verify", {}).get("ran") for r in records)
