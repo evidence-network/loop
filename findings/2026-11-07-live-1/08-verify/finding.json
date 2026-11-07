@@ -1,0 +1,164 @@
+{
+  "asserts": "an outsider reproduces every finding of the run offline from the run's bundle alone: each proof file matches its sha256, each key the proof relies on is the repository's key, and the step's own judge, run again on the proof bytes it cites, gives the result and not_checked list the step recorded",
+  "detail": "run 2026-11-07-live-1, offline, from the bundle and the repository's keys only: 01-seal: reproduced PASS; 02-book: reproduced PASS; 03-advertise: reproduced PASS; 04-admit: reproduced PASS; 05-deal: reproduced PASS; 06-settle: reproduced PASS; 07-ask: reproduced PASS; 09-dispute: reproduced PASS; 12-join: reproduced PASS. The manifest, per step, is this step's proof file.",
+  "finished": "2026-11-07T18:04:59Z",
+  "name": "verify",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 02: node stevenmih-1's trusted keys (`bound`, read from the book's profile on the node)",
+      "why": "the bundle does not bear it out, so it is 02's record of its run"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 02: node stevenmih-2's trusted keys (`bound`, read from the book's profile on the node)",
+      "why": "the bundle does not bear it out, so it is 02's record of its run"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 02: node stevenmih-3's trusted keys (`bound`, read from the book's profile on the node)",
+      "why": "the bundle does not bear it out, so it is 02's record of its run"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 04: each node's plugin build mark in nodes.json, which decides the decisions judged",
+      "why": "08 judges the decisions at or after the mark again, but since when the node ran its plugin build ($LAB_DIR/run/<lab-N>.build.json) is 04's reading of the lab host"
+    },
+    {
+      "issue": "evidence-network/loop#135",
+      "what": "step 04: each line of a node's copied capsules.jsonl is the record its capsule_id names",
+      "why": "the checkpoint check takes a chain line's capsule_id as the line states it; it does not recompute a capsule_id from its record, so the records are read as written, a settlement observation's line whose preimage was withheld included (the only line a redaction marker counts on)"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 04: each node's checkpoint reply was asked before its copy was read, and a file with no copy held no line",
+      "why": "a node's every genuine reply keeps checking a copy of its own size, and a checkpoint's time is no freshness test (the plugin reuses its last cut while a file has not grown), so that the reply was the node's answer at the step's ask is the step's word"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 05: the cutoff LOOP_SEALED_SINCE 2026-11-07T17:57:00Z (when the lab's current build started sealing)",
+      "why": "the bundle does not bear it out, so it is 05's record of its run"
+    },
+    {
+      "issue": "evidence-network/loop#135",
+      "what": "step 05: each line of a node's copied capsules.jsonl is the record its capsule_id names",
+      "why": "the checkpoint check takes a chain line's capsule_id as the line states it; it does not recompute a capsule_id from its record, so the records are read as written, a settlement observation's line whose preimage was withheld included (the only line a redaction marker counts on)"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 05: each node's checkpoint reply was asked before its copy was read, and a file with no copy held no line",
+      "why": "a node's every genuine reply keeps checking a copy of its own size, and a checkpoint's time is no freshness test (the plugin reuses its last cut while a file has not grown), so that the reply was the node's answer at the step's ask is the step's word"
+    },
+    {
+      "issue": "Mesh-LLM/capsules-plugin#175",
+      "what": "step 06: each node's recorded.json is all the settlements its ledger held",
+      "why": "08 runs 06's ruled checks again on the records 06 kept, but no checkpoint the node signs covers its ledger"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 06: the preimage checks behind finality",
+      "why": "recorded.json keeps each preimage check's outcome, never the preimage, so 08 takes that a payer's preimage hashed to its payment_hash from 06"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 06: each settlement bundle a counterparty_count was checked against",
+      "why": "the proof holds each check's status, counts and the bundle's sha256, not the signed bundle or the check file, so 08 takes the status against the bundle from 06 and decides again only that the paired count is the books' pair count"
+    },
+    {
+      "issue": "evidence-network/loop#135",
+      "what": "step 07: each line of the asker's ledger copy is the record its capsule_id names",
+      "why": "where an ask's checkpoint reply checks, 08 shows its extract complete (the copy's first lines are the whole ledger at the asker's signed checkpoint, loop-ledger-check under the listed key). That check takes a line's capsule_id as the line states it, and a line whose payment preimage was withheld as the loop kept it; it does not recompute a capsule_id from its record, so the records are read as written"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 07: each node's kept commitment is the one in force when it was asked",
+      "why": "08 verifies the kept copy under the listed key, but which commitment applied (and the records skipped) is 07's choice.json, made from lab/runs and nodes/commitments as they were then"
+    },
+    {
+      "issue": "evidence-network/loop#209",
+      "what": "step 09: node stevenmih-4's announced key",
+      "why": "the node has no nodes/ listing (a node the twins run adds, which the repository's population does not list), so the key nodes.json records is 09's reading of its data_dir"
+    },
+    {
+      "issue": "evidence-network/loop#135",
+      "what": "step 09: each line of a node's copied capsules.jsonl is the record its capsule_id names",
+      "why": "the checkpoint check takes a chain line's capsule_id as the line states it; it does not recompute a capsule_id from its record, so the records are read as written, a settlement observation's line whose preimage was withheld included (the only line a redaction marker counts on)"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 09: each node's checkpoint reply was asked before its copy was read, and a file with no copy held no line",
+      "why": "a node's every genuine reply keeps checking a copy of its own size, and a checkpoint's time is no freshness test (the plugin reuses its last cut while a file has not grown), so that the reply was the node's answer at the step's ask is the step's word"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 12: what each node's plugin answered to doctor, join and the commitment fetches",
+      "why": "08 judges the kept replies (wire.json and the reply bytes) again, and join's commitment is verified under the listed key, but doctor's findings and the fetch replies are console reads no key signs, and neither is each attempt's peer-key.json, the announced key the lines are matched with"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 12: each probe reply's signatures, verified again offline",
+      "why": "each kept verification line is computed again from its reply, but from the pinned plugin's verification in it; 08 does not verify the reply bytes under the listed key itself"
+    },
+    {
+      "issue": "evidence-network/loop#193",
+      "what": "step 12: the run's clock: nodes.json's bind_at 2026-11-07T18:04:36Z, which the binding window and the revocation statements are judged at (no node signs it)",
+      "why": "the bundle does not bear it out, so it is 12's record of its run"
+    }
+  ],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.17.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsule-cli": {
+      "ref": "v0.1.0-rc38",
+      "repository": "action-state-group/capsule-cli"
+    },
+    "capsule-emit": {
+      "ref": "python/v0.13.0",
+      "repository": "action-state-group/capsule-emit"
+    },
+    "capsulectl": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsulectl-book": {
+      "ref": "v0.13.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "capsules": {
+      "ref": "v0.1.8",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "checkpointed-local-log": {
+      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "repository": "action-state-group/checkpointed-local-log"
+    },
+    "evidencebook": {
+      "ref": "v0.8.1",
+      "repository": "action-state-group/evidencebook"
+    },
+    "mesh-llm": {
+      "ref": "c86f58e58de7bf02bce52a390a144413d8d99183",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "reporter": {
+      "ref": "4d00c42c9856fc892f7309ee9b434dca1bb69202",
+      "repository": "evidence-network/loop"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "verified.json",
+      "sha256": "bfca4603924ec5b5acadfbc3807fd60dff8360b2e17ef2a184d402e944f86d23"
+    }
+  ],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-07T18:04:48Z",
+  "step": "08"
+}
