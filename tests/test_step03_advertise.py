@@ -305,6 +305,44 @@ class NodeSignedTest(unittest.TestCase):
         self.assertEqual(finding.check(out.parent), [])
         self.assertTrue((out / "alice.standard_history.reply.json").is_file())
 
+    def test_a_standard_history_staple_is_verified_with_capsule_cli_and_the_detail_says_so(self):
+        f, nodes, out = self.staple_run(lambda req, rep: (req, rep))
+        self.assertTrue(nodes["alice"]["standard_history"]["verified"])
+        self.assertEqual(nodes["alice"]["standard_verify"]["state"], "PASS")
+        self.assertIn("standard_history/1 staple of alice verifies with capsule-cli", f["detail"])
+        self.assertNotIn("CheckStaple", f["detail"])
+        self.assertTrue((out / "alice.standard-verify.json").is_file())
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_standard_history_staple_capsule_cli_fails_is_refused(self):
+        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "fail"}):
+            errs = self.refusals(lambda req, rep: (req, rep))
+        self.assertIn("standard_history/1: envelope_signature FAIL", errs)
+
+    def test_a_standard_history_staple_without_capsule_cli_passes_and_says_it_is_not_verified(self):
+        with unittest.mock.patch.dict("os.environ", {"CAPSULE_CLI": "/nonexistent/capsulectl", "LOOP_TOOLS": "/nonexistent"}):
+            f, nodes, out = self.staple_run(lambda req, rep: (req, rep))
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        self.assertFalse(nodes["alice"]["standard_history"]["verified"])
+        self.assertIn("its signature, anchor and nonce are not verified", f["detail"])
+        self.assertEqual(finding.check(out.parent), [])
+
+    def test_a_live_run_does_not_claim_the_staple_bytes_were_unpublished(self):
+        # collect_live keeps no staple parts, so a live record cannot say the node did not publish them.
+        r = {"standard_history": {"bytes_checked": False, "live": True}}
+        self.assertIn("live collector keeps no staple bytes", self.step.standard_why(r))
+        r["standard_history"]["live"] = False
+        self.assertIn("were not published", self.step.standard_why(r))
+        live = {"name": "alice", "standard_history": {"bytes_checked": False, "live": True}}
+        self.assertNotIn("published", self.step.standard_coverage([live]))
+        live["standard_history"]["live"] = False
+        self.assertIn("not published", self.step.standard_coverage([live]))
+
+    def test_a_standard_history_property_capsule_cli_does_not_find_present_is_refused(self):
+        with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "notpresent"}):
+            errs = self.refusals(lambda req, rep: (req, rep))
+        self.assertIn("standard_history/1: envelope_signature NOT_PRESENT", errs)
+
     def test_a_standard_history_without_bytes_passes_and_says_the_staple_is_not_checked(self):
         f, nodes, out = self.staple_run(lambda req, rep: (None, None))
         self.assertEqual(f["result"], "PASS", f["detail"])
