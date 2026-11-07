@@ -147,6 +147,80 @@ class HydrateTest(unittest.TestCase):
         # No findings/goose directory is nothing to do.
         self.assertIsNone(hydrate_findings.hydrate(self.findings / "nowhere", goose=True))
 
+    def test_a_mesh_tgz_with_a_differently_named_goose_directory_hydrates(self):
+        # live_harvest leaves such a Goose directory out of the commit but publishes the tgz whole, so hydration must take it.
+        make_run(self.full, "goose/2026-11-01-live-pay")
+        with tarfile.open(self.tgz, "w:gz") as t:
+            t.add(self.full / NAME, arcname=f"findings/{NAME}")
+            t.add(self.full / "goose" / "2026-11-01-live-pay", arcname="findings/goose/2026-11-01-live-pay")
+        self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        r = self.hydrate()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse((self.findings / "goose").exists())
+        # a link, a stray top-level file or an escaping name is still refused
+        evil = self.tmp / "evil.txt"
+        evil.write_text("x\n")
+        for arc in ("findings/goose/x/../../../evil.txt", "findings/goose/loose.txt", "findings/goose/bad name/f"):
+            with tarfile.open(self.tgz, "w:gz") as t:
+                t.add(self.full / NAME, arcname=f"findings/{NAME}")
+                t.add(evil, arcname=arc)
+            self.archive["sha256"] = hashlib.sha256(self.tgz.read_bytes()).hexdigest()
+            (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+            for p in (self.findings / NAME).glob("*/counts.json"):
+                p.unlink()
+            self.assertEqual(self.hydrate().returncode, 3, arc)
+
+    def test_a_failed_check_leaves_the_run_exactly_as_committed(self):
+        # The archive's digest matches, but one proof file differs from the digest the committed finding records.
+        bad = self.tmp / "bad-full"
+        make_run(bad, NAME)
+        (bad / NAME / "04-admit" / "counts.json").write_text("tampered\n")
+        tgz = self.tmp / "bad.tgz"
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(bad / NAME, arcname=f"findings/{NAME}")
+        self.archive["sha256"] = hashlib.sha256(tgz.read_bytes()).hexdigest()
+        (self.findings / NAME / "proof-archive.json").write_text(json.dumps(self.archive))
+        before = sorted((p.relative_to(self.findings), p.read_bytes()) for p in (self.findings / NAME).rglob("*") if p.is_file())
+        r = self.hydrate(tgz)
+        self.assertEqual(r.returncode, 3, r.stderr)
+        after = sorted((p.relative_to(self.findings), p.read_bytes()) for p in (self.findings / NAME).rglob("*") if p.is_file())
+        self.assertEqual(before, after)
+        self.assertTrue(finding.digest_only(self.findings / NAME))
+
+    def test_a_cut_short_goose_download_never_fails_the_mesh_hydration(self):
+        import http.client
+        gname = "2026-11-01-live"
+        make_run(self.findings, f"goose/{gname}")
+        for p in (self.findings / "goose" / gname).glob("*/counts.json"):
+            p.unlink()
+        (self.findings / "goose" / gname / "proof-archive.json").write_text(json.dumps(
+            {"asset": f"{gname}.tgz", "sha256": "0" * 64, "url": f"https://example.org/{gname}.tgz"}))
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import hydrate_findings
+        def cut(url, dest):
+            raise http.client.IncompleteRead(b"")
+        hydrate_findings.download = cut
+        shutil.rmtree(self.findings / NAME)  # a complete Mesh run: only the Goose download is in play
+        make_run(self.findings, NAME)
+        self.assertEqual(hydrate_findings.main([str(self.findings)]), 0)
+
+    def test_a_goose_failure_never_fails_the_mesh_hydration(self):
+        gname = "2026-11-01-live"
+        make_run(self.findings, f"goose/{gname}")
+        for p in (self.findings / "goose" / gname).glob("*/counts.json"):
+            p.unlink()
+        (self.findings / "goose" / gname / "proof-archive.json").write_text(json.dumps(
+            {"asset": f"{gname}.tgz", "sha256": "0" * 64, "url": f"https://127.0.0.1:1/{gname}.tgz"}))  # cannot be fetched
+        # main() without --archive-file hydrates the Mesh run (not here: its archive needs the network too) and then Goose.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import hydrate_findings
+        hydrate_findings.download = lambda url, dest: (_ for _ in ()).throw(hydrate_findings.Refuse(1, "404"))
+        shutil.rmtree(self.findings / NAME)  # no Mesh digest-only run: only the Goose failure is in play
+        make_run(self.findings, NAME)
+        self.assertEqual(hydrate_findings.main([str(self.findings)]), 0)
+        self.assertTrue(finding.digest_only(self.findings / "goose" / gname))  # left as committed
+
 
 if __name__ == "__main__":
     unittest.main()

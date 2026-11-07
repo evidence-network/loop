@@ -83,7 +83,7 @@ class HarvestTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def make_run(self, results=STEPS, paid=True, plant=None, extra_member=None, goose=None, goose_in_tgz=None, goose_plant=None):
+    def make_run(self, results=STEPS, paid=True, plant=None, extra_member=None, goose=None, goose_in_tgz=None, goose_plant=None, goose_dir=GOOSE):
         """goose: the record's goose entry (status ran = the Goose pass); goose_in_tgz: put findings/goose/<GOOSE> in the tgz."""
         goose_in_tgz = (goose is not None and goose.get("status") == "ran") if goose_in_tgz is None else goose_in_tgz
         run_dir = self.tmp / "run"
@@ -95,13 +95,13 @@ class HarvestTest(unittest.TestCase):
         with tarfile.open(tgz, "w:gz") as t:
             t.add(full, arcname=f"findings/{NAME}")
             if goose_in_tgz:
-                gfull = self.tmp / "pack" / "findings" / "goose" / GOOSE
+                gfull = self.tmp / "pack" / "findings" / "goose" / goose_dir
                 write_run(gfull, {"01-seal": "PASS", "06-settle": "PASS", "07-ask": "PASS"}, None)
                 if goose_plant:
                     (gfull / "06-settle" / "proof.txt").write_text(goose_plant)
                     finding.write(gfull / "06-settle", result="PASS", population="live", asserts="stub", pinned=[],
                                   proof=["proof.txt"], detail="stub", started="2026-11-01T00:00:00Z")
-                t.add(gfull, arcname=f"findings/goose/{GOOSE}")
+                t.add(gfull, arcname=f"findings/goose/{goose_dir}")
             if extra_member:
                 p = self.tmp / "extra.txt"
                 p.write_text("x\n")
@@ -192,20 +192,77 @@ class HarvestTest(unittest.TestCase):
         self.assertEqual(self.gh_calls(), [])
         self.assertEqual(self.branches(), "")
 
-    def test_a_goose_directory_the_record_does_not_name_is_refused(self):
+    def test_a_goose_directory_the_record_does_not_name_costs_only_the_goose_part(self):
         self.make_run(goose={"status": "failed", "name": None, "reason": "x", "exit": None, "step_06": None}, goose_in_tgz=True)
-        self.assertEqual(self.harvest().returncode, 6)
+        self.assert_mesh_only("does not say the Goose pass ran")
+
+    def test_a_malformed_goose_name_costs_only_the_goose_part(self):
+        # Sherlock2: the tgz carries findings/goose/<x> and the record's goose.name is not this run's <date>-live.
+        for dirname, recorded in ((GOOSE, "2026-10-31-live"), ("2026-11-01-live-pay", "2026-11-01-live-pay")):
+            self.make_run(goose={**GOOSE_RAN, "name": recorded}, goose_dir=dirname)
+            self.assert_mesh_only("not this run's <date>-live")
+            git("branch", "-D", f"live-harvest/{NAME}", cwd=self.tmp / "origin.git")
+            git("branch", "-D", f"live-harvest/{NAME}", cwd=self.clone)
+            self.log.unlink()
+
+    def test_a_skipped_goose_directory_is_still_scanned(self):
+        self.make_run(goose={**GOOSE_RAN, "name": "2026-10-31-live"}, goose_plant="preimage: " + "ab" * 32 + "\n")
+        r = self.harvest()
+        self.assertEqual(r.returncode, 7, r.stderr)
         self.assertEqual(self.gh_calls(), [])
 
-    def test_a_record_that_names_a_missing_goose_directory_is_refused(self):
+    def test_a_record_that_names_a_missing_goose_directory_costs_only_the_goose_part(self):
         self.make_run(goose=GOOSE_RAN, goose_in_tgz=False)
-        self.assertEqual(self.harvest().returncode, 6)
-        self.assertEqual(self.gh_calls(), [])
+        self.assert_mesh_only("holds none")
 
-    def test_a_goose_name_that_is_not_this_runs_day_is_refused(self):
-        self.make_run(goose={**GOOSE_RAN, "name": "2026-10-31-live"})
-        self.assertEqual(self.harvest().returncode, 6)
+    def assert_mesh_only(self, why):
+        """The harvest still opened the Mesh pull request and moved the baseline; the Goose part was left out and says why."""
+        r = self.harvest()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(why, r.stderr)
+        self.assertEqual(git("diff", "--name-only", "main", f"live-harvest/{NAME}", "--", "findings/goose", cwd=self.tmp / "origin.git"), "")
+        self.assertEqual(json.loads(self.show("baseline/live.json"))["ecosystems"]["mesh"]["findings"], f"findings/{NAME}")
+        self.assertIn(f"live-{NAME}", " ".join(c for c in self.gh_calls() if c.startswith("release create")))
+        self.assertIn("NOT harvested", self.log.with_suffix(".log.body").read_text())
+
+    def test_a_file_where_the_goose_directory_belongs_is_refused_not_skipped(self):
+        # The tgz is published whole, so a file there (holding what the scans would catch) must not skip the Goose scans.
+        self.make_run(goose=GOOSE_RAN, goose_in_tgz=False)
+        tgz = self.tmp / "run" / f"{NAME}.tgz"
+        leak = self.tmp / "leak.txt"
+        leak.write_text("preimage: " + "ab" * 32 + "\n")
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(self.tmp / "pack" / "findings" / NAME, arcname=f"findings/{NAME}")
+            t.add(leak, arcname=f"findings/goose/{GOOSE}")
+        (self.tmp / "run" / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
+        r = self.harvest()
+        self.assertEqual(r.returncode, 6, r.stderr)
         self.assertEqual(self.gh_calls(), [])
+        self.assertEqual(self.branches(), "")
+
+    def test_a_goose_name_already_on_main_costs_only_the_goose_part(self):
+        # A manual `goose.sh run` (unpaid) landed findings/goose/<date>-live first.
+        src = self.tmp / "src"
+        (src / "findings" / "goose" / GOOSE).mkdir(parents=True)
+        (src / "findings" / "goose" / GOOSE / "run.json").write_text("{}\n")
+        git("add", ".", cwd=src)
+        git("commit", "-q", "-m", "manual goose run", cwd=src)
+        git("push", "-q", str(self.tmp / "origin.git"), "main", cwd=src)
+        git("pull", "-q", "origin", "main", cwd=self.clone)
+        self.make_run(goose=GOOSE_RAN)
+        self.assert_mesh_only("already on origin/main")
+
+    def test_goose_findings_that_fail_the_check_cost_only_the_goose_part(self):
+        self.make_run(goose=GOOSE_RAN)
+        # corrupt the Goose finding inside the tgz: rebuild it with a malformed 06-settle/finding.json
+        pack = self.tmp / "pack" / "findings" / "goose" / GOOSE / "06-settle" / "finding.json"
+        pack.write_text("{")
+        tgz = self.tmp / "run" / f"{NAME}.tgz"
+        with tarfile.open(tgz, "w:gz") as t:
+            t.add(self.tmp / "pack" / "findings" / NAME, arcname=f"findings/{NAME}")
+            t.add(self.tmp / "pack" / "findings" / "goose" / GOOSE, arcname=f"findings/goose/{GOOSE}")
+        (self.tmp / "run" / f"{NAME}.tgz.sha256").write_text(hashlib.sha256(tgz.read_bytes()).hexdigest() + f"  {NAME}.tgz\n")
+        self.assert_mesh_only("refused")
 
     def test_planted_preimage_publishes_nothing(self):
         self.make_run(plant="preimage: " + "ab" * 32 + "\n")
