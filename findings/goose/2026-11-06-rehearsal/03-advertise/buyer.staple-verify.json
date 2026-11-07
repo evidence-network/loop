@@ -1,0 +1,27 @@
+{
+  "capsule_cli_runs": 1,
+  "findings": [],
+  "kind": "history_card/1",
+  "staples": [
+    {
+      "findings": [],
+      "properties": {
+        "caller_invariance": "NOT_CHECKED",
+        "card_digest": "PASS",
+        "card_form": "PASS",
+        "checkpoint_anchor": "PASS",
+        "checkpoint_consistency": "PASS",
+        "checkpoint_key": "PASS",
+        "checkpoint_signature": "PASS",
+        "commitment_anchor": "PASS",
+        "commitment_signature": "PASS",
+        "envelope_signature": "PASS",
+        "request_binding": "NOT_PRESENT",
+        "responder_trust": "PASS",
+        "stream_match": "PASS",
+        "subject_scope": "PASS"
+      },
+      "stream": "goose/node"
+    }
+  ]
+}

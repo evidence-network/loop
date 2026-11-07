@@ -1,5 +1,5 @@
 {
-  "action_id": "model-call-26a6d4d6c7c7dccd",
+  "action_id": "model-call-d177ff11b9003fd2",
   "action_type": "fyi",
   "assurance": {
     "attestation_mode": "self_attested",
@@ -7,7 +7,7 @@
     "ledger_mode": "standalone"
   },
   "canonicalization_id": "jcs",
-  "capsule_id": "2c0fb265da611ada84d4129f24cfa4928a3eeee23fca1a352559ef0367351325",
+  "capsule_id": "b916b3d23631f2e4f10e1931c48cb6d0406c5d1c012b1c4db483fbf3e5bdb8b6",
   "developer": "goose-loop@v1",
   "effect": {
     "effect_attestation": "runtime_claimed",
@@ -19,7 +19,7 @@
   },
   "evidence_record_header": {
     "book_id": "goose/node",
-    "committed_at": "2026-11-06T23:49:54Z",
+    "committed_at": "2026-11-07T00:52:47Z",
     "epistemic_type": "producer_claim",
     "links": [],
     "payload_commitments": [
@@ -28,11 +28,11 @@
     "record_type": "goose_model_call",
     "retention_state": "AVAILABLE",
     "seq": 4,
-    "subject_ref": "model-call-26a6d4d6c7c7dccd",
+    "subject_ref": "model-call-d177ff11b9003fd2",
     "v": 1
   },
   "format_version": "4",
-  "key_id": "8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
+  "key_id": "c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5",
   "model_attestation": {
     "compute_attestation": {
       "agent_input_digest": "41db2634fc47c7fe24ae9cf2fff94b72333a92cf660f78790103977dedb2963a",
@@ -42,7 +42,7 @@
     "provider": "rehearsal"
   },
   "operator": "goose-buyer",
-  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d69640458208877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec390127a058202c0fb265da611ada84d4129f24cfa4928a3eeee23fca1a352559ef036735132558408f1fa75861456b9a777b952886426bf833974912700e88be1a783aa744fc16f01350e1e7418d7bc00d56602d3e45b9e53423319cefd488dde5c730e0b0acbc0c",
+  "signature": "d284584ca30378236170706c69636174696f6e2f6167656e742d616374696f6e2d63617073756c652d6964045820c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b50127a05820b916b3d23631f2e4f10e1931c48cb6d0406c5d1c012b1c4db483fbf3e5bdb8b658407c8108e08d6ceb9c10360e0819925d11388889da7c29a9f05eeff289baae955f4742e8782fd9f5021cef743a613a923bec3f77bc908d77d6b4f0a8fe6e9d2807",
   "spec_version": "draft-mih-scitt-agent-action-capsule-05",
-  "timestamp": "2026-11-06T23:49:54Z"
+  "timestamp": "2026-11-07T00:52:47Z"
 }

@@ -2,11 +2,11 @@
   "amount_atomic": 500,
   "currency": "USD",
   "decimals": 2,
-  "exchange_id": "deal-d02d5207d4bdd004",
-  "payee": "4bca46446bd1961c1a614016f091dba058ddef88d9a18b3fca7ee53d3d1724e7",
-  "payer": "8877df644588e28f184efe7e4ae9204e84ce178683621eb4f083f07c4b2aec39",
+  "exchange_id": "deal-59617461f7a29800",
+  "payee": "4ef664d0293fde0d761a47b60e5c5602cff17d45cc8ca8e566b1ec5f627e0eea",
+  "payer": "c999a82e6cf06c4b803cb8d41df111ee561abf59850fa1a39bd303d7b3e510b5",
   "settlement_ref": {
     "rail": "mock",
-    "settlement_id": "0bb5c5c308bafd4e9bda7dcbe675d3c5ca072ae77f9a552a756bff43028f92f4"
+    "settlement_id": "0b681a7837ce4a732bc039e019178c549c1c619821cf62f968b580c6dd4a8624"
   }
 }

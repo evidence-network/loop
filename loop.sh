@@ -226,16 +226,20 @@ import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
 # the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 a live book bundle (the rehearsal runs it), 08 loop#193; 04, 05 and 12 a live deal and join (the rehearsal runs them), 06 the live rail, 09 the referee delivery; 10 and 11 loop#315 (G1's loop_join returns the commitment).
+# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 a live book bundle (the rehearsal runs it), 08 loop#193; 04, 05 and 12 a live deal and join (the rehearsal runs them), 06 the live rail; 09, 10 and 11 loop#315 (steps/09-dispute exists, and G1 has loop_dispute_ask and loop_dispute_poll, but the Goose drivers (scripts/goose_rehearsal.py, scripts/goose_live.py) give step 09 no input; 10 and 11 likewise).
 GOOSE = {"01": "evidence-network/loop#330", "02": "evidence-network/loop#330",
          "03": "evidence-network/loop#330", "04": "evidence-network/loop#330",
-         "05": "evidence-network/loop#330", "06": "action-state-group/capsule-emit#408",
+         "05": "evidence-network/loop#330", "06": "evidence-network/loop#315",
          "07": "evidence-network/loop#330", "08": "evidence-network/loop#193",
-         "09": "action-state-group/capsule-emit#393", "12": "evidence-network/loop#330"}
+         "09": "evidence-network/loop#315", "12": "evidence-network/loop#330"}
 owner = GOOSE.get(nn, "evidence-network/loop#315") if ecosystem == "goose" else "evidence-network/loop#150"
 why, detail = "no step for this ecosystem exists yet", f"The {ecosystem} ecosystem has no step {nn} yet; loop.sh ran nothing for it."
+if ecosystem == "goose":  # steps/NN exists; the population's driver gives it no input
+    driver = "scripts/goose_live.py" if population == "live" else "scripts/goose_rehearsal.py"
+    why = f"{driver} gives step {nn} no Goose input"
+    detail = f"The Goose {population} population has no input for step {nn} ({driver} lists the steps it gives one); loop.sh ran nothing for it."
 if ecosystem == "goose" and population == "live" and nn == "06":  # only lab/goose.sh pay makes the payment
-    owner, why = "evidence-network/loop#349", "this run made no live Lightning payment (lab/goose.sh pay makes the one, inside the lab payment guard)"
+    owner, why = "evidence-network/loop#315", "this run made no live Lightning payment (lab/goose.sh pay makes the one, inside the lab payment guard)"
     detail = f"This live Goose run made no payment, so step {nn} has no input; loop.sh ran nothing for it."
 if note:  # a step with a Goose input, on a host without the Goose tools
     owner, why, detail = "evidence-network/loop#330", "the Goose tools are not installed", f"{note}; loop.sh ran nothing for it."
