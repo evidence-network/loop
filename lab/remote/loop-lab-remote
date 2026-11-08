@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# loop-lab-remote: the forced command of the driver host's key on the lab's second host (LAB-BRINGUP.md, "Two hosts").
+# It runs the few verbs lab/lab.sh needs there and nothing else; the key carries no shell, no sudo and only the port
+# forwards authorized_keys.example lists. The verb comes from SSH_ORIGINAL_COMMAND, never from the key holder's shell.
+#
+#   put-token            read the mesh invite token on stdin into $LAB_DIR/run/invite.token (0600)
+#   node-start NODE      lab.sh node-start NODE
+#   node-id NODE         print NODE's node id
+#   knows-id NODE        exit 0 when NODE's plugin has learned its node id
+#   mirror NODE          a tar of NODE's ledger/ and self-peer-id on stdout (no key, no payments directory)
+#   running MESH CAPS    lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin
+#   stop                 lab.sh stop (this host's nodes only)
+#
+# The environment file (default ~/.loop-lab-remote.env, owned by this user, mode 0600) sets: LOOP_LAB_SH (a copy of
+# lab/lab.sh's tree from the same commit as the driver's), LAB_DIR, LAB_ONLY (e.g. "lab-2 lab-4"), MESH_LLM_BIN,
+# CAPSULES_BIN, LAB_PORT_BASE, LAB_PAYMENTS, LAB_SHARE_AT_COMPLETION, LAB_TWINS, LAB_MODEL_REF and the rest of the
+# environment the driver's lab.sh start would have.
+set -euo pipefail
+ENV_FILE=${LOOP_LAB_REMOTE_ENV:-$HOME/.loop-lab-remote.env}
+[ -r "$ENV_FILE" ] || { echo "loop-lab-remote: no $ENV_FILE" >&2; exit 2; }
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+: "${LOOP_LAB_SH:?}" "${LAB_DIR:?}" "${LAB_ONLY:?}"
+read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
+verb=${argv[0]:-}
+node_ok() { [[ ${1:-} =~ ^lab-[1-4]$ ]] && [[ " $LAB_ONLY " == *" $1 "* ]]; }
+sha_ok() { [[ ${1:-} =~ ^[0-9a-f]{64}$ ]]; }
+[ "${#argv[@]}" -le 3 ] || { echo "loop-lab-remote: too many arguments" >&2; exit 2; }
+case "$verb" in
+  put-token)
+    umask 077
+    mkdir -p "$LAB_DIR/run" && chmod 700 "$LAB_DIR/run"
+    cat > "$LAB_DIR/run/invite.token.tmp"
+    [ -s "$LAB_DIR/run/invite.token.tmp" ] || { rm -f "$LAB_DIR/run/invite.token.tmp"; echo "loop-lab-remote: empty token" >&2; exit 1; }
+    mv "$LAB_DIR/run/invite.token.tmp" "$LAB_DIR/run/invite.token"
+    ;;
+  node-start | node-id | mirror)
+    node_ok "${argv[1]:-}" || { echo "loop-lab-remote: $verb: not one of this host's nodes" >&2; exit 2; }
+    exec "$LOOP_LAB_SH" "$verb" "${argv[1]}"
+    ;;
+  knows-id)
+    node_ok "${argv[1]:-}" || exit 2
+    [ -s "$LAB_DIR/nodes/${argv[1]}/.local/share/capsules/self-peer-id" ]
+    ;;
+  running)
+    sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" || { echo "loop-lab-remote: running needs two sha256 values" >&2; exit 2; }
+    LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} exec "$LOOP_LAB_SH" running
+    ;;
+  stop)
+    exec "$LOOP_LAB_SH" stop
+    ;;
+  *)
+    echo "loop-lab-remote: unknown verb" >&2
+    exit 2
+    ;;
+esac
