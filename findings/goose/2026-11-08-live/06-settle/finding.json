@@ -1,0 +1,51 @@
+{
+  "asserts": "the buyer's pay record commits the payment_hash of a real Lightning payment, opened by the buyer; the payment is final by the payer's preimage (checked on the host that paid, only the outcome kept); its value band is derived from the amount; it carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's own signed settlement disclosure equals the count of payments recorded between the two lab wallets",
+  "detail": "exchange deal-2b3ac6e319071ceb, payment_hash 2c0965a1179f8d3fc027e1d8f043b273586ecce18154f9242c4f63ece19f4906 (goose-2 pays goose-1): one real Lightning payment of 1000 msat from lab wallet lab-1 to lab-2 inside the lab payment guard, the lab wallets standing in as the Goose nodes' controllers (the nodes hold no wallet). These held: pay_record, reference, finality, band, rail_fee, exchange_match, ledger_count:goose-1, ledger_count:goose-2. Band {\"currency\": \"BTC\", \"decade\": -8}. Outside this step's assertion: a public ledger's count of the payments (Lightning has none; the nodes' own signed disclosures are compared with the lab wallets' payment log): evidence-network/loop#247. Outside this step's assertion: the halves' capsule signatures and checkpoints, which no step verifies for Goose yet: Mesh-LLM/capsules-plugin#49. Spend: one payment, made by the run that paid (lab/goose.sh pay), never by this step.",
+  "finished": "2026-11-08T18:25:10Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "exchange.json",
+      "sha256": "06d2111ed3907b0ab497100c6288a531026936a92c98620d0a02f340b2ec727b"
+    },
+    {
+      "path": "buyer-half.json",
+      "sha256": "eda95c50cf5886fb159c8d12331463eef8a096950b1c7fe802e66134cdccf54a"
+    },
+    {
+      "path": "seller-half.json",
+      "sha256": "57b63e5b482a6df6b262b1e08a3ff1c9ea8f87ffc10e5406cf84d7abe60f4326"
+    },
+    {
+      "path": "buyer-pay-opening.json",
+      "sha256": "d284725e3b4e78e9af23d30094f314496c1ede4af9d088011a868af11e0d8f8b"
+    },
+    {
+      "path": "lightning.json",
+      "sha256": "051bad9c22000798b11c03f8706d744e2b3e38c12863892a199cb7e56b99ad8b"
+    },
+    {
+      "path": "disclosure-goose-1.json",
+      "sha256": "27444cf7495178cb62a7dff8f8825b278f57ab0f1525637731431296d875abc7"
+    },
+    {
+      "path": "disclosure-goose-2.json",
+      "sha256": "ca37a5df0c64d6e3c11be9d9d2f82df56a9592cce5690ff478f5acccef8bff0d"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "ed396541b7774f6ce6b097b5af5fe926c697bbcb1751f3f3f9b23df6c528c804"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-08T18:25:10Z",
+  "step": "06"
+}
