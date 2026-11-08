@@ -144,6 +144,19 @@ class EntrySh(unittest.TestCase):
         self.assertEqual(code, 10)
         self.assertIn("skipped:", out)
 
+    def test_the_demo_home_not_the_lab_home_holds_the_rebuild_log_skip_rule(self):
+        # The lab user (LIVE_HOME) and the demo account (DEMO_HOME) differ: a fresh pm-*.log skips only where the demo runs.
+        demo = self.home.parent / "demo"
+        demo.mkdir()
+        conf = self.entry.parent / "conf"
+        conf.write_text(conf.read_text() + f"DEMO_HOME={demo}\n")
+        (self.home / "pm-rebuild.log").write_text("x")  # in the lab user's home: no longer a reason to skip
+        self.assertNotEqual(self.call("start")[0], 10)
+        (demo / "pm-rebuild.log").write_text("x")
+        code, out = self.call("start")
+        self.assertEqual(code, 10)
+        self.assertIn("pm-*.log", out)
+
     def test_exchange_call_sites_are_a_tripwire(self):
         self.script.write_text('#!/bin/bash\nbounded "$LAB_SH" exchange\nbounded "$LAB_SH" exchange\n')
         subprocess.run(["git", "-C", str(self.home / "loop-live"), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "y"], check=True, capture_output=True)

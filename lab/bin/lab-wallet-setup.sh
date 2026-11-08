@@ -16,10 +16,10 @@
 # It never creates a wallet, reads the seed or pays. --check runs step 1 only and changes nothing.
 #
 # Environment (defaults are the lab as of 2026-10-31 07:05Z):
-#   LAB_DIR        node root (/home/intangible/loop-lab)
+#   LAB_DIR        node root ($HOME/loop-lab)
 #   LAB_PORT_BASE  lab.sh's port base (9800): lab-N's console is BASE + 10 + N
-#   MESH_LLM_BIN   lab build of mesh-llm (/home/intangible/lab-1031/target/release/mesh-llm, e877a45df)
-#   LEXE_PLUGIN    staged plugin binary (/home/intangible/lexe-9f830c1/lexe-wallet)
+#   MESH_LLM_BIN   lab build of mesh-llm ($HOME/lab-bin/mesh-llm, the lab build)
+#   LEXE_PLUGIN    staged plugin binary ($HOME/lab-bin/lexe-wallet)
 #   LEXE_SHA256    its expected sha256 (the #7 build staged by mesh-2717)
 set -euo pipefail
 
@@ -30,9 +30,9 @@ case "$N" in 1 | 2 | 3) ;; *) usage ;; esac
 MODE=install
 case "${2:-}" in --check) MODE=check ;; --balance) MODE=balance ;; "") ;; *) usage ;; esac
 
-LAB_DIR=${LAB_DIR:-/home/intangible/loop-lab}
-MESH_LLM_BIN=${MESH_LLM_BIN:-/home/intangible/lab-1031/target/release/mesh-llm}
-LEXE_PLUGIN=${LEXE_PLUGIN:-/home/intangible/lexe-9f830c1/lexe-wallet}
+LAB_DIR=${LAB_DIR:-$HOME/loop-lab}
+MESH_LLM_BIN=${MESH_LLM_BIN:-$HOME/lab-bin/mesh-llm}
+LEXE_PLUGIN=${LEXE_PLUGIN:-$HOME/lab-bin/lexe-wallet}
 LEXE_SHA256=${LEXE_SHA256:-6c82bd9fc64cdd177023d9c99990c4e7e5d931e258ee01217b59286e0a404255}
 
 NODE=lab-$N
@@ -43,7 +43,7 @@ WALLET_DIR=$HOME_N/payments/wallets/lexe-wallet
 
 die() { echo "lab-wallet-setup: $*" >&2; exit 1; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
-[ "$(id -un)" = intangible ] || die "run as intangible (sudo -u intangible)"
+[ "$(id -un)" = "$(stat -c %U "$LAB_DIR" 2> /dev/null)" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
 [ -f "$CONFIG" ] || die "$CONFIG not found"
 [ -x "$MESH_LLM_BIN" ] || die "$MESH_LLM_BIN not found"
 

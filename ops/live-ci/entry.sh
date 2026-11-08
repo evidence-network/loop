@@ -8,6 +8,8 @@
 # reaches the lab only when the operator reinstalls it. It takes no argument but the subcommand and reads no wallet,
 # seed, key, macaroon, peer-key, join or invite file. Its settings come from /etc/loop-live-ci/conf (root-owned):
 #   LIVE_HOME  the lab user's home       LIVE_ENV  the lab env file live_daily.sh sources       LAB_DIR  the lab directory
+#   DEMO_HOME  (optional, default LIVE_HOME) the home of the account that runs the demo nodes and their rebuilds: the skip
+#              rules for a recent pm-*.log and a running lab rebuild look there, not in the lab user's home
 #   LIVE_CI_USER  the OS Login user of the workflow's service account (the only reader of the staged files)
 #
 #   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day, one start at a time (11), the
@@ -24,6 +26,7 @@ CONF=/etc/loop-live-ci/conf
 # shellcheck disable=SC1090
 . "$CONF"
 : "${LIVE_HOME:?}" "${LIVE_ENV:?}" "${LAB_DIR:?}" "${LIVE_CI_USER:?}"
+DEMO_HOME=${DEMO_HOME:-$LIVE_HOME}
 MAX_SECONDS=$((3 * 3600))
 CLONE=$LIVE_HOME/loop-live
 STATE=$LIVE_HOME/.loop-live-ci
@@ -51,9 +54,9 @@ start() {
   for s in loop-reporter.service loop-reporter-ask.service; do
     systemctl is-active --quiet "$s" && skip "$s is active"
   done
-  find "$LIVE_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
+  find "$DEMO_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
   for p in $(pgrep -x 'cargo|just|cmake' 2> /dev/null); do
-    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$LIVE_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
+    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$DEMO_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
   done
   [ -e "$STATE/started-$day" ] && { echo "refused: a run already started on $day (UTC); no retry"; exit 11; }
 
