@@ -219,17 +219,35 @@ wait_for() {
   echo "ready: $what"
 }
 
+# The chain of the node whose ledger dir is $1, one record per line. From capsules-plugin v0.1.11 a node keeps it on the
+# EvidenceBook shelf (ledger/shelf.db) and capsules.jsonl is archived: read it through `capsules chain-lines` (read-only, so it
+# runs beside the running node). A node not yet migrated keeps the flat file. Same rule as steps/live.py chain_bytes (loop#417).
+chain_lines() { # LEDGER_DIR
+  if [ -f "$1/shelf.db" ]; then
+    "$CAPSULES_BIN" chain-lines --data-dir "$(dirname "$1")" < /dev/null
+  else
+    cat "$1/capsules.jsonl"
+  fi
+}
 # At least two records of the chain carry the bracket; wait_for calls it again on every retry.
-sealed_twice() { [ "$(grep -c -- "$1" "$2" 2> /dev/null)" -ge 2 ] 2> /dev/null; }
+sealed_twice() { # BRACKET LEDGER_DIR
+  local chain
+  chain=$(chain_lines "$2" 2> /dev/null) || return 1  # an unreadable chain is not sealed yet
+  [ "$(printf '%s\n' "$chain" | grep -c -- "$1")" -ge 2 ] 2> /dev/null
+}
 # The pair is complete here when, for each of this bracket's own records, the requester holds the provider's signed half with
 # the same effect.request_digest (the plugin's referee/live.rs assemble, which does not look again if it asked too early).
 halves_held() { # BRACKET LEDGER_DIR
-  python3 -B - "$1" "$2" << 'PY'
+  local chain
+  chain=$(mktemp) || return 1
+  chain_lines "$2" > "$chain" 2> /dev/null || : > "$chain"  # an unreadable chain holds nothing yet; wait_for retries
+  python3 -B - "$1" "$2" "$chain" << 'PY'
 import json, sys
-bracket, led = sys.argv[1:]
+bracket, led, chain = sys.argv[1:]
 def rows(name):
     try:
-        return [json.loads(l) for l in open(f"{led}/{name}") if l.strip()]
+        path = chain if name == "capsules.jsonl" else f"{led}/{name}"
+        return [json.loads(l) for l in open(path) if l.strip()]
     except (OSError, ValueError):
         return []
 def digest(r):
@@ -244,6 +262,9 @@ have = {(n, digest(h)) for h in held for n in {json.dumps(h)} if digest(h)}
 ok = len(need) >= 2 and all(any(p in text and d == hd for text, hd in have) for p, d in need)
 sys.exit(0 if ok else 1)
 PY
+  local rc=$?
+  rm -f "$chain"
+  return $rc
 }
 # Every other node has a plugin key for the plugin `capsules` in NODE's host /api/plugin-keys (the answer peer_keys::announced folds).
 keys_announced() {
@@ -1103,7 +1124,7 @@ cmd_twins() {
     -H "x-mesh-target: $b" -H "x-mesh-twin-bracket: $bracket" -d "$body" "$api"
   # 3. Stock mesh-llm passes plugins no exchange text, so the client that marked the pair supplies it (INSTALL.md,
   #    "Sharing policy"): the request and both answers, each checked against what the requester's own records sealed.
-  twins_wait 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led/capsules.jsonl"
+  twins_wait 120 "the requester sealed both twin exchanges" sealed_twice "$bracket" "$led"
   # The plugin considers the pair when the texts are supplied and does not look again when a half lands later, so
   # supply them only after each twin's own signed half has been pushed to the requester.
   twins_wait 180 "the requester holds each twin's signed half of this pair" halves_held "$bracket" "$led"
