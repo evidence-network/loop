@@ -35,7 +35,8 @@ stapled card's stream (scripts/history_cards.py).
 Second carrier (loop#305): a rehearsal node with advertise/<name>/nostr.json (recorded relay responses) is also
 read back from its Nostr announce event; the event's octets must equal the git carrier's bytes
 (scripts/nostr_carrier.py, steps/03-advertise.md "The second carrier: Nostr"). A node without one is reported
-"not advertised on nostr", not failed. The live read-back waits on Mesh-LLM/capsules-plugin#212.
+"not advertised on nostr", not failed. The pinned plugin publishes the commitment when its
+advertise_evidence_requests switch is on (Mesh-LLM/capsules-plugin#212); the live population leaves it off.
 
 Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
