@@ -386,8 +386,10 @@ close_tunnel() { [ "${#REMOTE[@]}" -gt 0 ] && [ "$DRY" = 0 ] && ssh -S "$(remote
 # rcmd VERB ARGS...: the second host's loop-lab-remote runs the verb; stdin and stdout pass through.
 rcmd() {
   if [ "$DRY" = 1 ]; then ensure_tunnel; say ssh -S "$(remote_sock)" "$REMOTE_SSH" "$*"; return 0; fi
-  if ensure_tunnel; then ssh -o BatchMode=yes -S "$(remote_sock)" "$REMOTE_SSH" "$*"
-  else ssh -o BatchMode=yes -o ConnectTimeout=15 "$REMOTE_SSH" "$*"; fi
+  # -n: ssh must not read the caller's stdin (a script fed to bash -s, a `while read` loop); only put-token passes stdin on.
+  local n=-n; [ "${RCMD_STDIN:-0}" = 1 ] && n=
+  if ensure_tunnel; then ssh $n -o BatchMode=yes -S "$(remote_sock)" "$REMOTE_SSH" "$*"
+  else ssh $n -o BatchMode=yes -o ConnectTimeout=15 "$REMOTE_SSH" "$*"; fi
 }
 # A node moves to the second host with its home renamed here and a mirror standing at its path: the population names its
 # data_dir and book_dir under $LAB_DIR/nodes/<node>, where the steps read them. Starting it there while a real home or a
@@ -852,7 +854,7 @@ cmd_start() {
     mv "$(token_file).tmp" "$(token_file)"
   fi
   local n
-  [ "${#REMOTE[@]}" = 0 ] || { if [ "$DRY" = 1 ]; then ensure_tunnel; say ssh -S "$(remote_sock)" "$REMOTE_SSH" put-token '<' "$(token_file)"; else rcmd put-token < "$(token_file)" || die "cannot send the invite token to $REMOTE_SSH"; fi; }
+  [ "${#REMOTE[@]}" = 0 ] || { if [ "$DRY" = 1 ]; then ensure_tunnel; say ssh -S "$(remote_sock)" "$REMOTE_SSH" put-token '<' "$(token_file)"; else RCMD_STDIN=1 rcmd put-token < "$(token_file)" || die "cannot send the invite token to $REMOTE_SSH"; fi; }
   for n in "${NODES[@]:1}"; do
     if is_remote "$n"; then
       rcmd node-start "$n" || die "$n did not start on $REMOTE_SSH"
