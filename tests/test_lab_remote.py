@@ -76,7 +76,7 @@ class DryRunTest(RemoteBase):
         self.assertIn(str(self.lab / "run" / "lab-3.sh"), out)
         self.assertNotIn(str(self.lab / "run" / "lab-2.sh"), out)
         self.assertNotIn(str(self.lab / "run" / "lab-4.sh"), out)
-        # The forwards: API and console of each remote node to here, the witness port back.
+        # The forwards: API and console of each remote node to here.
         self.assertIn("-L 127.0.0.1:29802:127.0.0.1:29802", out)
         self.assertIn("-L 127.0.0.1:29814:127.0.0.1:29814", out)
         self.assertNotIn("-R ", out)  # nothing on the second host needs the witness
@@ -119,6 +119,7 @@ class WrapperTest(RemoteBase):
                     "node-start lab-2 extra extra", "running x y", "running " + "a" * 64 + " zz", ""):
             r = self.wrapper(cmd)
             self.assertEqual(r.returncode, 2, (cmd, r.stderr))
+            self.assertNotIn("command not found", r.stderr)
 
     def test_node_id_prints_the_id_and_fails_without_one(self):
         d = self.rlab / "nodes" / "lab-2" / ".local" / "share" / "capsules"

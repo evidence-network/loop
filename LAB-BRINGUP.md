@@ -917,8 +917,14 @@ sha256 of the mesh-llm and plugin binaries it runs.
 **The second host** needs: the lab unix user; a copy of this repository's `lab/` and `scripts/` tree from the driver's commit;
 copies of the driver's `MESH_LLM_BIN` and `CAPSULES_BIN`; its own `LEXE_PLUGIN` copy checked against the pinned sha256 (no read
 access into another account's home); `~/.loop-lab-remote.env` (mode 0600; see the header of `lab/remote/loop-lab-remote`).
-Any process of any account on that host can reach a node's console and wallet API on 127.0.0.1; the lab payment guard
-(3,000 msat per payment, 9,000 per direction per day) is what bounds a spend there.
+Any process of any account on that host can reach a node's console and wallet API on 127.0.0.1, and the payment guard
+(3,000 msat per payment, 9,000 per direction per day) is client code in `scripts/goose_lightning.py` that such a process does not
+run; the wallet itself checks only its `daily_budget_msat`, which `wallet policy` also sets through the console. So the bound on
+what another local account could spend is the wallet's balance: keep it small, and keep other accounts off that host's lab
+user's consoles (today the other account there is the operator's own).
+
+**Keeping the second host current.** `running` on the second host compares its `lab/lab.sh` with the driver's, so after any
+merge that changes `lab/lab.sh` copy the driver's `lab/` tree there before the next daily run, or that run stops with exit 5.
 
 **Moving a node with a wallet (once, node stopped).** `stop` the lab; copy `<LAB_DIR>/nodes/lab-2` to the second host with tar
 and compare file lists and sha256; on the driver rename the real home to `nodes/lab-2.moved-<date>` (mode 0700) and make a

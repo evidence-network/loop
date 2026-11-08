@@ -27,9 +27,9 @@ read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
 verb=${argv[0]:-}
 node_ok() { [[ ${1:-} =~ ^lab-[1-4]$ ]] && [[ " $LAB_ONLY " == *" $1 "* ]]; }
 sha_ok() { [[ ${1:-} =~ ^[0-9a-f]{64}$ ]]; }
-[ "${#argv[@]}" -le 5 ] || { echo "loop-lab-remote: too many arguments" >&2; exit 2; }
 case "$verb" in
   put-token)
+    [ "${#argv[@]}" = 1 ] || exit 2
     umask 077
     mkdir -p "$LAB_DIR/run" && chmod 700 "$LAB_DIR/run"
     cat > "$LAB_DIR/run/invite.token.tmp"
@@ -37,16 +37,19 @@ case "$verb" in
     mv "$LAB_DIR/run/invite.token.tmp" "$LAB_DIR/run/invite.token"
     ;;
   node-start | node-id | mirror)
+    [ "${#argv[@]}" = 2 ] || { echo "loop-lab-remote: $verb takes one node" >&2; exit 2; }
     node_ok "${argv[1]:-}" || { echo "loop-lab-remote: $verb: not one of this host's nodes" >&2; exit 2; }
     exec "$LOOP_LAB_SH" "$verb" "${argv[1]}"
     ;;
   running)
+    [ "${#argv[@]}" = 5 ] || { echo "loop-lab-remote: running takes four sha256 values" >&2; exit 2; }
     sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" && sha_ok "${argv[3]:-}" && sha_ok "${argv[4]:-}" \
       || { echo "loop-lab-remote: running needs four sha256 values" >&2; exit 2; }
     LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} LAB_EXPECT_LAB_SH_SHA256=${argv[3]} \
       LAB_EXPECT_CONFIG_DIGEST=${argv[4]} exec "$LOOP_LAB_SH" running
     ;;
   stop)
+    [ "${#argv[@]}" = 1 ] || exit 2
     exec "$LOOP_LAB_SH" stop
     ;;
   *)

@@ -102,7 +102,7 @@
 #             /api/plugin-keys every 30s with a 5s timeout, peer_keys::announced EVERY and TIMEOUT)
 #   LAB_REMOTE_NODES    nodes that live on a second host (e.g. "lab-2 lab-4"; never lab-1, which makes the mesh, nor the
 #             reporter). This host drives: it reaches them by one ssh session to LAB_REMOTE_SSH that forwards their
-#             API and console ports to 127.0.0.1 here (and the witness port back), starts and stops them through
+#             API and console ports to 127.0.0.1 here, starts and stops them through
 #             lab/remote/loop-lab-remote on that host, and reads a snapshot of their ledgers (`mirror`) at the paths
 #             the population names. LAB-BRINGUP.md, "Two hosts"
 #   LAB_REMOTE_SSH      the ssh destination (an ssh config alias) for the second host
@@ -818,6 +818,7 @@ PY
 
 cmd_start() {
   need MESH_LLM_BIN; need CAPSULES_BIN
+  ensure_tunnel || die "the remote nodes are not reachable"
   local n
   no_dropped_wallet
   if [ "$TWINS" = 1 ]; then
@@ -1430,9 +1431,9 @@ cmd_all() {
 
 # The second host's nodes are reached through the ssh session, and the steps read their ledgers from a fresh mirror.
 case "$cmd" in
-  start | exchange | join | witness | bind | commitments | bundles | twins | loop | ask | admit | deal | settle | dispute | refresh-mirror)
+  start | exchange | bind | commitments | bundles | twins | loop | ask | admit | deal | settle | dispute | refresh-mirror)
     ensure_tunnel || die "the remote nodes are not reachable" ;;
-  status) ensure_tunnel || true ;;
+  status | join | witness) ensure_tunnel || true ;;  # driver-side files only; status says what it cannot reach
 esac
 case "$cmd" in
   admit | deal | settle | dispute | ask | loop | bundles | twins) refresh_mirror ;;
