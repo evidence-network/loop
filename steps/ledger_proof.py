@@ -12,6 +12,7 @@ checks every kept copy of one node.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -193,6 +194,16 @@ def consoles():
     return out
 
 
+def refresh_mirror(src):
+    """With the lab split over two hosts (lab/lab.sh LAB_REMOTE_NODES), the node's ledger under `src` is a mirror: read it
+    again after the ask, so it holds every line the checkpoint reply covers. LOOP_MIRROR_REFRESH names lab.sh; a node that
+    is not remote is left alone by it. No variable, no change."""
+    hook = os.environ.get("LOOP_MIRROR_REFRESH")
+    m = re.search(r"/nodes/(lab-[1-4])/", str(src)) if hook else None
+    if m:
+        subprocess.run([hook, "refresh-mirror", m.group(1)], stdin=subprocess.DEVNULL, check=True, timeout=300)
+
+
 def keep_checked(console, src, dest, file, timeout=30, http=None):
     """Keep the node's `file` (its ledger/<file>, `src`) at `dest` with the node's checkpoint reply beside it
     (dest + KEPT_SUFFIX), as the plugin says to take a copy a reply covers: ask first, then read the file, and keep
@@ -206,6 +217,7 @@ def keep_checked(console, src, dest, file, timeout=30, http=None):
         http = daily_report.http
     asked = fetch(console, file, timeout, http) if console else \
         {"file": file, "reply": None, "refusal": f"no console for the node ({CONSOLES})"}
+    refresh_mirror(src)
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     shelf = Path(src).name == CHAIN and live.chain_stored(Path(src).parent)

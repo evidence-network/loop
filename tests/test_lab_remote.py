@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LAB = ROOT / "lab" / "lab.sh"
 WRAPPER = ROOT / "lab" / "remote" / "loop-lab-remote"
+TRUE = shutil.which("true")
 
 
 def clean_env(extra):
@@ -35,7 +36,7 @@ class RemoteBase(unittest.TestCase):
         self.log = self.tmp / "ssh.log"
         self.env_file = self.tmp / "remote.env"
         self.env_file.write_text(f"LOOP_LAB_SH={LAB}\nLAB_DIR={self.rlab}\nLAB_ONLY='lab-2 lab-4'\nLAB_TWINS=1\n"
-                                 "MESH_LLM_BIN=/bin/true\nCAPSULES_BIN=/bin/true\n")
+                                 f"MESH_LLM_BIN={TRUE}\nCAPSULES_BIN={TRUE}\n")
         # A stand-in ssh: `-O check` fails (no master), the tunnel (-fN) is logged, and a command runs through the
         # wrapper with SSH_ORIGINAL_COMMAND, as a forced command would.
         fake = self.bin / "ssh"
@@ -54,7 +55,7 @@ exec env -i PATH="$PATH" HOME="$HOME" SSH_ORIGINAL_COMMAND="$cmd" LOOP_LAB_REMOT
     def lab_sh(self, *args, **env):
         e = clean_env({"PATH": f"{self.bin}:{os.environ['PATH']}", "LAB_DIR": str(self.lab), "LAB_PORT_BASE": "29800",
                        "LAB_REMOTE_NODES": "lab-2 lab-4", "LAB_REMOTE_SSH": "labprov", "LAB_TWINS": "1",
-                       "LAB_MODEL_REF": "o/r/m.gguf", "MESH_LLM_BIN": "/bin/true", "CAPSULES_BIN": "/bin/true", **env})
+                       "LAB_MODEL_REF": "o/r/m.gguf", "MESH_LLM_BIN": TRUE, "CAPSULES_BIN": TRUE, **env})
         return subprocess.run(["bash", str(LAB), *args], capture_output=True, text=True, env=e, cwd=ROOT)
 
     def wrapper(self, command, stdin=""):
@@ -78,7 +79,7 @@ class DryRunTest(RemoteBase):
         # The forwards: API and console of each remote node to here, the witness port back.
         self.assertIn("-L 127.0.0.1:29802:127.0.0.1:29802", out)
         self.assertIn("-L 127.0.0.1:29814:127.0.0.1:29814", out)
-        self.assertIn("-R 127.0.0.1:29830:127.0.0.1:29830", out)
+        self.assertNotIn("-R ", out)  # nothing on the second host needs the witness
         self.assertIn("guard: lab-2's home here is a mirror", out)
 
     def test_stop_stops_this_hosts_nodes_and_asks_the_other_to_stop_its_own(self):
@@ -119,13 +120,22 @@ class WrapperTest(RemoteBase):
             r = self.wrapper(cmd)
             self.assertEqual(r.returncode, 2, (cmd, r.stderr))
 
-    def test_knows_id_follows_the_self_peer_id_file(self):
+    def test_node_id_prints_the_id_and_fails_without_one(self):
         d = self.rlab / "nodes" / "lab-2" / ".local" / "share" / "capsules"
-        self.assertNotEqual(self.wrapper("knows-id lab-2").returncode, 0)
+        self.assertNotEqual(self.wrapper("node-id lab-2").returncode, 0)
         d.mkdir(parents=True)
         (d / "self-peer-id").write_text("2" * 64 + "\n")
-        self.assertEqual(self.wrapper("knows-id lab-2").returncode, 0)
-        self.assertEqual(self.wrapper("knows-id lab-1").returncode, 2)
+        r = self.wrapper("node-id lab-2")
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "2" * 64))
+        self.assertEqual(self.wrapper("node-id lab-1").returncode, 2)
+
+    def test_running_needs_four_digests_and_a_matching_script_and_config(self):
+        a = "a" * 64
+        self.assertEqual(self.wrapper(f"running {a} {a}").returncode, 2)
+        r = self.wrapper(f"running {a} {a} {a} {a}")  # runs lab.sh running with the wrong script digest
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not the driver's", r.stderr)
+        self.assertIn("config digest", r.stderr)
 
 
 class MirrorTest(RemoteBase):
@@ -137,6 +147,10 @@ class MirrorTest(RemoteBase):
         (d / "payments").mkdir()
         (d / "payments" / "seedphrase.txt").write_text("PRIVATE: must not travel\n")
         (d / "self-peer-id").write_text("2" * 64 + "\n")
+        (d / "controller-binding.json").write_text("{}")
+        (d / "sharing-effective.json").write_text("{}")
+        (self.rlab / "run").mkdir(exist_ok=True)
+        (self.rlab / "run" / f"{name}.build.json").write_text('{"plugin_sha256": "x"}')
         (d / "ledger" / "received-capsules.jsonl").write_text('{"a":1}\n')
         db = sqlite3.connect(d / "ledger" / "shelf.db")
         db.execute("create table t (x)")
@@ -157,7 +171,8 @@ class MirrorTest(RemoteBase):
         with tarfile.open(self.tmp / "m.tar") as t:
             names = sorted(m.name for m in t.getmembers() if m.isfile())
             t.extractall(out)
-        self.assertEqual(names, ["./ledger/received-capsules.jsonl", "./ledger/shelf.db", "./self-peer-id"])
+        self.assertEqual(names, ["./build-mark.json", "./controller-binding.json", "./ledger/received-capsules.jsonl", "./ledger/shelf.db",
+                                 "./self-peer-id", "./sharing-effective.json"])
         self.assertEqual(sqlite3.connect(out / "ledger" / "shelf.db").execute("select x from t").fetchone(), (42,))
 
     def test_refresh_replaces_ledger_and_peer_id_in_the_driver_mirror_and_keeps_the_rest(self):
@@ -175,8 +190,12 @@ class MirrorTest(RemoteBase):
             m = self.lab / "nodes" / n
             m.mkdir(parents=True)
             (m / ".mirror").write_text("")
-        r = self.lab_sh("entries", LAB_OPERATOR="x")  # entries refreshes first, then fails on the missing nodes: fine
+        (self.lab / "run").mkdir(exist_ok=True)
+        r = self.lab_sh("refresh-mirror")
+        self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue((data / "ledger" / "received-capsules.jsonl").exists(), r.stderr)
+        self.assertTrue((data / "controller-binding.json").exists())
+        self.assertEqual((self.lab / "run" / "lab-2.build.json").read_text(), '{"plugin_sha256": "x"}')
         self.assertFalse((data / "ledger" / "old.jsonl").exists())
         self.assertEqual((data / "self-peer-id").read_text(), "2" * 64 + "\n")
         self.assertTrue((data / "keys" / "node-key.pub.pem").exists())
@@ -189,10 +208,70 @@ class MirrorTest(RemoteBase):
         home = self.lab / "nodes" / "lab-2"
         (home / ".local" / "share" / "capsules").mkdir(parents=True)
         (home / "config.toml").write_text("real node home\n")
-        r = self.lab_sh("entries", LAB_OPERATOR="x")
+        (self.lab / "run").mkdir(exist_ok=True)
+        r = self.lab_sh("refresh-mirror", "lab-2")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("not a mirror", r.stderr)
         self.assertEqual((home / "config.toml").read_text(), "real node home\n")
+
+
+class EnvironmentTest(RemoteBase):
+    def test_a_mirror_without_the_remote_setting_refuses_every_command(self):
+        home = self.lab / "nodes" / "lab-2"
+        home.mkdir(parents=True)
+        (home / ".mirror").write_text("")
+        for cmd in ("stop", "start", "status", "running"):
+            r = self.lab_sh("--dry-run", cmd, LAB_REMOTE_NODES="", LAB_REMOTE_SSH="")
+            self.assertEqual(r.returncode, 2, cmd)
+            self.assertIn("mirror of a node on another host", r.stderr)
+
+    def test_remote_names_need_not_be_in_a_twins_free_node_list(self):
+        r = self.lab_sh("--dry-run", "stop", LAB_TWINS="0")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_requester_cannot_be_remote(self):
+        r = self.lab_sh("--dry-run", "stop", LAB_REMOTE_NODES="lab-2", LAB_REQUESTER="lab-2", LAB_REFEREE="lab-3")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("requester", r.stderr)
+
+    def test_an_unreachable_second_host_still_stops_this_one_and_says_so(self):
+        (self.bin / "ssh").write_text("#!/bin/bash\nexit 255\n")
+        r = self.lab_sh("stop")
+        self.assertEqual(r.returncode, 2, r.stderr)
+        self.assertIn("could not stop lab-2 lab-4", r.stderr)
+        self.assertIn("stopped lab-1 lab-3", r.stdout)
+
+
+class GuardTest(RemoteBase):
+    def guard(self):
+        return self.lab_sh("guard-moved", "lab-2", LAB_PAYMENTS="lab-1 lab-2 lab-3")
+
+    def test_only_a_mirror_with_no_node_home_may_start_remotely(self):
+        home = self.lab / "nodes" / "lab-2"
+        home.mkdir(parents=True)
+        self.assertNotEqual(self.guard().returncode, 0)  # no .mirror marker
+        (home / ".mirror").write_text("")
+        r = self.guard()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for leftover in ("config.toml", "payments", ".mesh-llm/key"):
+            p = home / leftover
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.mkdir() if leftover == "payments" else p.write_text("")
+            r = self.guard()
+            self.assertNotEqual(r.returncode, 0, leftover)
+            self.assertIn("never run in two places", r.stderr)
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+    def test_a_live_process_refuses_it_too(self):
+        home = self.lab / "nodes" / "lab-2"
+        home.mkdir(parents=True)
+        (home / ".mirror").write_text("")
+        (self.lab / "run").mkdir()
+        (self.lab / "run" / "lab-2.pid").write_text(str(os.getpid()))  # this test process is alive
+        self.assertNotEqual(self.guard().returncode, 0)
+
+    def test_a_local_node_is_not_guarded(self):
+        self.assertNotEqual(self.lab_sh("guard-moved", "lab-1").returncode, 0)
 
 
 if __name__ == "__main__":

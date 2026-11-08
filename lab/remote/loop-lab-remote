@@ -6,9 +6,9 @@
 #   put-token            read the mesh invite token on stdin into $LAB_DIR/run/invite.token (0600)
 #   node-start NODE      lab.sh node-start NODE
 #   node-id NODE         print NODE's node id
-#   knows-id NODE        exit 0 when NODE's plugin has learned its node id
-#   mirror NODE          a tar of NODE's ledger/ and self-peer-id on stdout (no key, no payments directory)
-#   running MESH CAPS    lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin
+#   mirror NODE          a tar of NODE's ledger, self-peer-id, binding, sharing report and build mark on stdout (no key, no payments)
+#   running MESH CAPS LABSH DIGEST   lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin, of lab/lab.sh,
+#                        and its digest of the roles and settings both hosts must share
 #   stop                 lab.sh stop (this host's nodes only)
 #
 # The environment file (default ~/.loop-lab-remote.env, owned by this user, mode 0600) sets: LOOP_LAB_SH (a copy of
@@ -27,7 +27,7 @@ read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
 verb=${argv[0]:-}
 node_ok() { [[ ${1:-} =~ ^lab-[1-4]$ ]] && [[ " $LAB_ONLY " == *" $1 "* ]]; }
 sha_ok() { [[ ${1:-} =~ ^[0-9a-f]{64}$ ]]; }
-[ "${#argv[@]}" -le 3 ] || { echo "loop-lab-remote: too many arguments" >&2; exit 2; }
+[ "${#argv[@]}" -le 5 ] || { echo "loop-lab-remote: too many arguments" >&2; exit 2; }
 case "$verb" in
   put-token)
     umask 077
@@ -40,13 +40,11 @@ case "$verb" in
     node_ok "${argv[1]:-}" || { echo "loop-lab-remote: $verb: not one of this host's nodes" >&2; exit 2; }
     exec "$LOOP_LAB_SH" "$verb" "${argv[1]}"
     ;;
-  knows-id)
-    node_ok "${argv[1]:-}" || exit 2
-    [ -s "$LAB_DIR/nodes/${argv[1]}/.local/share/capsules/self-peer-id" ]
-    ;;
   running)
-    sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" || { echo "loop-lab-remote: running needs two sha256 values" >&2; exit 2; }
-    LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} exec "$LOOP_LAB_SH" running
+    sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" && sha_ok "${argv[3]:-}" && sha_ok "${argv[4]:-}" \
+      || { echo "loop-lab-remote: running needs four sha256 values" >&2; exit 2; }
+    LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} LAB_EXPECT_LAB_SH_SHA256=${argv[3]} \
+      LAB_EXPECT_CONFIG_DIGEST=${argv[4]} exec "$LOOP_LAB_SH" running
     ;;
   stop)
     exec "$LOOP_LAB_SH" stop
