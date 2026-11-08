@@ -15,7 +15,7 @@
 # get-balance on lab-N's console, which opens A's wallet (same directory, pin and seed).
 # It never creates a wallet, reads the seed or pays. --check runs step 1 only and changes nothing.
 #
-# Environment (defaults are the lab as of 2026-10-31 07:05Z):
+# Environment (defaults: the lab user's home layout, LAB-BRINGUP.md "One user on both hosts"):
 #   LAB_DIR        node root ($HOME/loop-lab)
 #   LAB_PORT_BASE  lab.sh's port base (9800): lab-N's console is BASE + 10 + N
 #   MESH_LLM_BIN   lab build of mesh-llm ($HOME/lab-bin/mesh-llm, the lab build)
@@ -43,7 +43,8 @@ WALLET_DIR=$HOME_N/payments/wallets/lexe-wallet
 
 die() { echo "lab-wallet-setup: $*" >&2; exit 1; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
-[ "$(id -un)" = "$(stat -c %U "$LAB_DIR" 2> /dev/null)" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
+[ -d "$LAB_DIR" ] || die "$LAB_DIR not found"
+[ "$(id -un)" = "$(stat -c %U "$LAB_DIR")" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
 [ -f "$CONFIG" ] || die "$CONFIG not found"
 [ -x "$MESH_LLM_BIN" ] || die "$MESH_LLM_BIN not found"
 

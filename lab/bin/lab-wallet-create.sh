@@ -23,7 +23,7 @@
 # you pay it (skipped for SATS 0), show the balance, then stop the instance, check wallet.lock is free and remove the
 # temporary config and HOME. It never reads, prints or copies the seed.
 #
-# Environment (defaults are the lab as of 2026-10-31):
+# Environment (defaults: the lab user's home layout, LAB-BRINGUP.md "One user on both hosts"):
 #   LAB_DIR       node root ($HOME/loop-lab)
 #   MESH_LLM_BIN  lab build ($HOME/lab-bin/mesh-llm, the lab build)
 #   LEXE_PLUGIN   staged plugin ($HOME/lab-bin/lexe-wallet); LEXE_SHA256 its sha256
@@ -56,7 +56,8 @@ sha() { sha256sum "$1" | cut -d' ' -f1; }
 w() { HOME=$TMP_HOME "$MESH_LLM_BIN" --config "$TMP_CONFIG" wallet --port "$CONSOLE_PORT" "$@"; }
 port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
 
-[ "$(id -un)" = "$(stat -c %U "$LAB_DIR" 2> /dev/null)" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
+[ -d "$LAB_DIR" ] || die "$LAB_DIR not found"
+[ "$(id -un)" = "$(stat -c %U "$LAB_DIR")" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
 [ -d "$NODE_DIR" ] || die "$NODE_DIR not found"
 [ -x "$MESH_LLM_BIN" ] || die "$MESH_LLM_BIN not found"
 [ "$(sha "$LEXE_PLUGIN")" = "$LEXE_SHA256" ] || die "$LEXE_PLUGIN sha256 is not $LEXE_SHA256"

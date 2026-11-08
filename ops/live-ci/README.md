@@ -16,11 +16,14 @@ not part of the loop.
   `/usr/local/sbin/loop-live-ci-entry start`, `status`, `stage`. `entry.sh` is root-owned, installed by the operator and not
   fetched from this repository at run time. It reads no wallet, seed, key, macaroon, peer-key, join or invite file.
 - The lab user is `looplab` on both VMs, a separate unix account with no sudo; Brattain and Shockley, the demo nodes and their
-  rebuilds stay under `intangible`, which the service account cannot reach (`DEMO_HOME` in the conf names it only for the
-  skip rules). With the lab split over two hosts (`LAB-BRINGUP.md`, "Two hosts"), the payer's `looplab` holds a key to the
+  rebuilds stay under `intangible`. The service account has no login to `intangible` and no write access to its files (`DEMO_HOME`
+  in the conf names it only for the skip rules; the `pm-*.log` rule needs that home readable by the lab user and is off, with a
+  note in the output, when it is not). This is a login and file boundary, not a network one: any account on a host reaches
+  the loopback consoles and wallet APIs of the nodes there. With the lab split over two hosts (`LAB-BRINGUP.md`, "Two hosts"), the payer's `looplab` holds a key to the
   provider's `looplab`, restricted to the lab's four forwarded ports and one forced command (`lab/remote/loop-lab-remote`, no
   shell). **The service account reaches the payer's `looplab`, so through that key it also reaches the provider's** (it starts
-  and stops the two lab nodes there and reads their ledgers). `entry.sh` is the same; its conf and sudoers name `looplab`.
+  and stops the two lab nodes there, reads their ledgers, and can use their consoles and wallet APIs through the forwarded
+  ports, up to those wallets' balance). Reinstall `entry.sh` from this commit; its conf (with `DEMO_HOME`) and sudoers name `looplab`.
 - A change merged to `main` runs as the lab user at the next start, as it did when a person started the run: review of
   `scripts/`, `lab/`, `steps/` and `.github/` is the control, and the repository ruleset should require it. On the host,
   `entry.sh` allows one start per UTC day (a marker the lab user could delete; it guards against accidents and loops in

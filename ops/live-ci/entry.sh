@@ -54,9 +54,20 @@ start() {
   for s in loop-reporter.service loop-reporter-ask.service; do
     systemctl is-active --quiet "$s" && skip "$s is active"
   done
-  find "$DEMO_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
+  # The demo account's rules. Another account's /proc/<pid>/cwd is not readable, so when it is not the lab user's own account a
+  # build (cargo, just, cmake) it owns counts as a rebuild; its home must be readable here for the pm-*.log rule, and when it is
+  # not, that rule is off and the run says so (fixed text, no path).
+  if [ -r "$DEMO_HOME" ] && [ -x "$DEMO_HOME" ]; then
+    find "$DEMO_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 2> /dev/null | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
+  else
+    echo "note: the demo home is not readable here; the pm-*.log skip rule is not checked"
+  fi
+  demo_user=$(stat -c %U "$DEMO_HOME" 2> /dev/null)
+  if [ -n "$demo_user" ] && [ "$demo_user" != "$(id -un)" ]; then
+    pgrep -u "$demo_user" -x 'cargo|just|cmake' > /dev/null 2>&1 && skip "a build runs in the demo account"
+  fi
   for p in $(pgrep -x 'cargo|just|cmake' 2> /dev/null); do
-    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$DEMO_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
+    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$DEMO_HOME"/lab-* | "$LIVE_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
   done
   [ -e "$STATE/started-$day" ] && { echo "refused: a run already started on $day (UTC); no retry"; exit 11; }
 
