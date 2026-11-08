@@ -254,7 +254,7 @@ class DryRunTest(unittest.TestCase):
         own = [dict(poc("A" * 8, {"twin_bracket_id": "b-1"}), effect={"request_digest": "d1"}),
                dict(poc("B" * 8, {"twin_bracket_id": "b-1"}), effect={"request_digest": "d1"})]
         (led / "capsules.jsonl").write_text("".join(json.dumps(r) + "\n" for r in own))
-        script = 'eval "$(sed -n "/^halves_held()/,/^}/p" "$LAB")"; halves_held b-1 "$LED"'
+        script = 'eval "$(sed -n "/^chain_lines()/,/^}/p;/^halves_held()/,/^}/p" "$LAB")"; halves_held b-1 "$LED"'
         def held():
             return subprocess.run(["bash", "-c", script], capture_output=True, text=True,
                                   env={**os.environ, "LAB": str(LAB), "LED": str(led)}).returncode
@@ -1112,12 +1112,63 @@ class EntriesTest(LabFixture):
         self.assertFalse((self.lab / "population-twins").exists())
 
     def test_the_twin_exchange_wait_reads_the_ledger_on_every_retry(self):
-        led = self.tmp / "capsules.jsonl"
-        script = ('eval "$(sed -n "/^sealed_twice()/p" "$LAB")"; '
-                  '(sleep 1; echo b-1 >> "$LED"; echo b-1 >> "$LED") & '
+        led = self.tmp / "ledger"
+        led.mkdir()
+        script = ('eval "$(sed -n "/^chain_lines()/,/^}/p;/^sealed_twice()/,/^}/p" "$LAB")"; '
+                  '(sleep 1; echo b-1 >> "$LED/capsules.jsonl"; echo b-1 >> "$LED/capsules.jsonl") & '
                   'for i in 1 2 3 4 5 6 7 8; do sealed_twice b-1 "$LED" && echo seen && exit 0; sleep 0.5; done; echo never')
         r = subprocess.run(["bash", "-c", script], capture_output=True, text=True, env={**os.environ, "LAB": str(LAB), "LED": str(led)})
         self.assertEqual(r.stdout.strip(), "seen", r.stderr)
+
+    def shelf_node(self, chain_out, code=0):
+        """A data dir whose ledger holds shelf.db and no capsules.jsonl, and a fake `capsules` that records its arguments."""
+        data = self.tmp / "shelf-node"
+        (data / "ledger").mkdir(parents=True)
+        (data / "ledger" / "shelf.db").write_bytes(b"sqlite")
+        out = self.tmp / "chain.out"
+        out.write_text(chain_out)
+        self.args = self.tmp / "capsules.args"
+        fake = self.tmp / "capsules"
+        fake.write_text(f'#!/bin/sh\necho "$@" > {self.args}\ncat {out}\nexit {code}\n')
+        fake.chmod(0o755)
+        return data, fake
+
+    def test_a_shelf_node_is_read_through_chain_lines(self):
+        data, fake = self.shelf_node('{"effect":{"request_digest":"d1"},"b":"b-1"}\n{"b":"b-1"}\n')
+        script = ('eval "$(sed -n "/^chain_lines()/,/^}/p;/^sealed_twice()/,/^}/p" "$LAB")"; '
+                  'sealed_twice b-1 "$LED" && echo seen')
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                           env={**os.environ, "LAB": str(LAB), "LED": str(data / "ledger"), "CAPSULES_BIN": str(fake)})
+        self.assertEqual(r.stdout.strip(), "seen", r.stderr)
+        self.assertEqual(self.args.read_text().split(), ["chain-lines", "--data-dir", str(data)])
+
+    def test_twins_without_capsules_bin_stops_before_sending_anything(self):
+        r = lab_sh("twins", env={"LAB_TWINS": "1", "LAB_DIR": str(self.tmp / "none")})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("set CAPSULES_BIN", r.stderr)
+
+    def test_a_failing_chain_lines_is_not_sealed_yet(self):
+        data, fake = self.shelf_node("b-1\nb-1\n", code=1)
+        script = ('eval "$(sed -n "/^chain_lines()/,/^}/p;/^sealed_twice()/,/^}/p" "$LAB")"; '
+                  'sealed_twice b-1 "$LED"')
+        r = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                           env={**os.environ, "LAB": str(LAB), "LED": str(data / "ledger"), "CAPSULES_BIN": str(fake)})
+        self.assertEqual(r.returncode, 1)
+
+    def test_the_pair_is_complete_on_a_shelf_node_too(self):
+        def poc(node):
+            return {"model_attestation": {"compute_attestation": {"x-mesh-poc-v1": {
+                "serving_provenance": {"served_by_node_id": node}, "twin_bracket_id": "b-1"}}}}
+        own = "".join(json.dumps(dict(poc(n * 8), effect={"request_digest": "d1"})) + "\n" for n in "AB")
+        data, fake = self.shelf_node(own)
+        led = data / "ledger"
+        (led / "received-capsules.jsonl").write_text("".join(
+            json.dumps(dict(poc(n * 8), effect={"request_digest": "d1"})) + "\n" for n in "AB"))
+        script = ('eval "$(sed -n "/^chain_lines()/,/^}/p;/^halves_held()/,/^}/p" "$LAB")"; halves_held b-1 "$LED"')
+        env = {**os.environ, "LAB": str(LAB), "LED": str(led), "CAPSULES_BIN": str(fake)}
+        self.assertEqual(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env).returncode, 0)
+        (led / "received-capsules.jsonl").write_text("")
+        self.assertEqual(subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env).returncode, 1)
 
     def test_writes_entries_that_pass_check_nodes(self):
         self.assertEqual(self.entries(), [])
