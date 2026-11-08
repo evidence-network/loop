@@ -1142,6 +1142,11 @@ class EntriesTest(LabFixture):
         self.assertEqual(r.stdout.strip(), "seen", r.stderr)
         self.assertEqual(self.args.read_text().split(), ["chain-lines", "--data-dir", str(data)])
 
+    def test_twins_without_capsules_bin_stops_before_sending_anything(self):
+        r = lab_sh("twins", env={"LAB_TWINS": "1", "LAB_DIR": str(self.tmp / "none")})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("set CAPSULES_BIN", r.stderr)
+
     def test_a_failing_chain_lines_is_not_sealed_yet(self):
         data, fake = self.shelf_node("b-1\nb-1\n", code=1)
         script = ('eval "$(sed -n "/^chain_lines()/,/^}/p;/^sealed_twice()/,/^}/p" "$LAB")"; '

@@ -1097,6 +1097,7 @@ cmd_settle() {
 # prompt; the referee re-answers and the verdict names the twin it disagrees with. Pays nothing.
 cmd_twins() {
   [ "$TWINS" = 1 ] || die "twins needs LAB_TWINS=1"
+  need CAPSULES_BIN  # chain_lines reads a shelf node through the plugin binary; unset would only show as a 120 s timeout
   local bracket body ref a b led
   bracket="lab-twins-$(date -u +%Y%m%dT%H%M%SZ)"   # one pair per run: a bracket with more than two exchanges is refused
   led=$(data_of "$REQUESTER")/ledger
