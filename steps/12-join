@@ -1070,7 +1070,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, w
             lines.append(compare_published(name, entry["node_id"], doc))
             f, n, p, staple_state = staple_signatures(node_dir, name, "commitment.json", entry["key_id"])
             if staple_state == "LEGACY":
-                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, Mesh-LLM/capsules-plugin#266: capsule-cli "
+                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, loop#410: capsule-cli "
                              "takes no keys for it)")
             fails += f
             nc += n
@@ -1475,7 +1475,7 @@ def run_goose(pop, out, tmp):
         failures += [f"{name}: {e}" for e in check_own_card(adv)]
         f, n, p, signed_state = staple_signatures(adv_dir, name, "commitment.json", adv["node_key"])
         if signed_state == "LEGACY":
-            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, Mesh-LLM/capsules-plugin#266: capsule-cli takes no "
+            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, loop#410: capsule-cli takes no "
                          "keys for it)")
         failures += f
         not_checked += n

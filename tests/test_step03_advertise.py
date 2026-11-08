@@ -110,10 +110,10 @@ class StepTest(unittest.TestCase):
         # alice's commitment is an evidence-commitment/0, which capsule-cli takes no keys for; bob's staple is a stand-in.
         self.assertEqual([w.split(" is not verified")[0] for w, _ in finding.gaps(f["detail"])],
                          ["the stapled history_card/1 signature (alice)", "the stapled history_card/1 signature (bob)"])
-        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"Mesh-LLM/capsules-plugin#266"})
+        self.assertEqual({i for _, i in finding.gaps(f["detail"])}, {"evidence-network/loop#410"})
         self.assertIn("evidence-commitment/1 only", f["detail"])
         self.assertIn("a rehearsal stand-in in an evidence-commitment/0", f["detail"])
-        # A stand-in staple is the /0 gap, owned by the plugin issue, not by loop#410.
+        # A stand-in staple is the /0 gap, owned by loop#410 (the closed plugin issue #266 owns nothing now).
         self.assertTrue(nodes["bob"]["staple_verify"]["legacy"])
         self.assertNotIn("capsule-cli", f["pinned"])
         self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
@@ -175,10 +175,10 @@ class StepTest(unittest.TestCase):
             f, out = self.run_step()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn(why, f["detail"])
-        # A non-/0 card that cannot be checked is owned by loop#410; bob's stand-in stays with the /0 owner.
+        # Every unchecked staple, /0 stand-in or not, is owned by loop#410.
         self.assertEqual({w.split(" is not verified")[0]: i for w, i in finding.gaps(f["detail"])},
                          {"the stapled history_card/1 signature (alice)": "evidence-network/loop#410",
-                          "the stapled history_card/1 signature (bob)": "Mesh-LLM/capsules-plugin#266"})
+                          "the stapled history_card/1 signature (bob)": "evidence-network/loop#410"})
         self.assertIn("capsule-cli", f["pinned"])  # it ran, and gave a report
 
     def test_planted_policy_digest_mismatch_fails(self):

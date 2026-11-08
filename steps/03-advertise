@@ -83,15 +83,13 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
 # What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, an evidence-commitment/0
 # (capsule-cli takes no keys for it; the plain rehearsal harness builds only /0, so its stand-in staples are this case,
 # loop#407) or a card entry without a checkpoint_key (an allowed shape, not refused).
-# The owner of each staple gap, by cause: keyless entries and a capsule-cli that is not installed; evidence-commitment/0
-# and the rehearsal stand-ins in it; the standard_history/1 staple's signature.
-# loop#410 owns every unchecked staple that is not the /0 case: a keyless entry, a capsule-cli that is not installed,
-# and one that gave no report or evaluates no card. Its stand-in arm below (sv_.unchecked(..., legacy=True)) must be
-# revisited when LEGACY_ISSUE closes: the harness, not the plugin, builds those /0 commitments.
+# loop#410 owns every unchecked staple signature: a keyless entry, a capsule-cli that is not installed or gave no report,
+# and the /0 case above. The harness, not the plugin, builds the rehearsal /0 commitments and their stand-in staples
+# (capsules-plugin#266 shipped /1 and is closed), so the loop owns that gap (loop#418); the Goose population verifies a
+# real /1 card (loop#407).
 STAPLE_ISSUE = "evidence-network/loop#410"
 # A standard_history/1 staple is verified like a card (loop#408); a live run keeps no staple bytes (loop#413).
 STANDARD_LIVE_ISSUE = "evidence-network/loop#413"
-LEGACY_ISSUE = "Mesh-LLM/capsules-plugin#266"
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
 LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
@@ -612,7 +610,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                                     + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
                             "why": "its bytes, digest, profile and responder are checked; its signature is not: "
                                    + "; ".join(r["staple_verify"]["not_checked"]),
-                            "issue": LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE})
+                            "issue": STAPLE_ISSUE})
         outside.append({"what": f"{r['name']}: the stapled checkpoint attestation verifies",
                         "why": "its bytes match the committed digest; verifying the checkpoint is step 02's assertion",
                         "issue": CHECKPOINT_ISSUE})
@@ -661,7 +659,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                 detail += " " + finding.outside(
                     f"the stapled history_card/1 signature ({r['name']}) is not verified: "
                     + "; ".join(r["staple_verify"]["not_checked"]),
-                    LEGACY_ISSUE if r["staple_verify"]["legacy"] else STAPLE_ISSUE)
+                    STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]
         if stapled:
             verified = [r for r in stapled if r["standard_history"]["verified"]]
