@@ -1,0 +1,5 @@
+# The driver host's lab key, in the second host's lab user's ~/.ssh/authorized_keys (one line). The lab user is its own unix
+# account, not the one that runs Shockley, and has no sudo. 9802 9812 9804 9814 are the API and console ports of lab-2 and
+# lab-4 at LAB_PORT_BASE 9800.
+# `restrict` turns everything off (shell, pty, agent and X11 forwarding); port-forwarding is turned back on for those ports only.
+restrict,port-forwarding,command="/home/looplab/bin/loop-lab-remote",permitopen="127.0.0.1:9802",permitopen="127.0.0.1:9812",permitopen="127.0.0.1:9804",permitopen="127.0.0.1:9814" ssh-ed25519 AAAA... loop-lab driver

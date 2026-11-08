@@ -15,6 +15,11 @@ not part of the loop.
 - On the host, that login may run exactly three commands as the lab user (sudoers lists them with their argument):
   `/usr/local/sbin/loop-live-ci-entry start`, `status`, `stage`. `entry.sh` is root-owned, installed by the operator and not
   fetched from this repository at run time. It reads no wallet, seed, key, macaroon, peer-key, join or invite file.
+- With the lab split over two hosts (`LAB-BRINGUP.md`, "Two hosts"), the lab user on the payer holds a key to a second, separate unix
+  user on the provider host, restricted to the lab's four forwarded ports and one forced command (`lab/remote/loop-lab-remote`,
+  no shell, no sudo). **The service account reaches the payer, so through that key it now also reaches the provider's lab user**
+  (it starts and stops the two lab nodes there and reads their ledgers); it still has no login to the accounts that run the demo
+  nodes, and `entry.sh` is unchanged.
 - A change merged to `main` runs as the lab user at the next start, as it did when a person started the run: review of
   `scripts/`, `lab/`, `steps/` and `.github/` is the control, and the repository ruleset should require it. On the host,
   `entry.sh` allows one start per UTC day (a marker the lab user could delete; it guards against accidents and loops in

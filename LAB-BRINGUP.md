@@ -1,7 +1,7 @@
-# Lab bring-up: three nodes on one host
+# Lab bring-up: three or four nodes, on one host or two
 
 This runbook brings up the loop's three lab nodes (`lab-1`, `lab-2`, `lab-3`
-in [`population/live/`](population/live/population.json)) on one lab host,
+in [`population/live/`](population/live/population.json), and `lab-4` with `LAB_TWINS=1`) on one lab host, or split over two ("Two hosts", last section),
 joins each with [`join.sh`](join.sh), runs stage 1 once against them, and
 packs everything that goes back into this repository into one tarball.
 
@@ -158,7 +158,7 @@ then restart the witness (`kill $(cat $LAB_DIR/run/witness.pid)`, then
 `tools` installs into its own directory (`LIVE_TOOLS`, below), so it never
 rebuilds the driver the witness signs with: that stays this manual step.
 
-## 2. Three nodes on one host
+## 2. Start the nodes (one host)
 
 ```sh
 lab/lab.sh --dry-run start      # read it
@@ -890,3 +890,53 @@ to keep a node started without it), `LAB_TWINS=1 start`, `exchange`, `join`,
 `LAB_TWINS=1 entries` (writes the four-node population under `$LAB_DIR/population-twins/`; `lab-4` stays out of `population/live` and `nodes/`), `LAB_TWINS=1 twins`
 (asks the referee, sends one `x-mesh-twin-bracket` pair, supplies the pair's
 text with `referee_supply_twin_texts`, waits for the Result), then `LAB_TWINS=1 dispute`.
+
+## Two hosts (evidence-network/loop#423)
+
+The lab can run `lab-2` and `lab-4` on a second host of the same operator, with `lab-1` (it makes the mesh and serves the
+model) and the reporter `lab-3` (its key is never copied, section 4) staying on the driver host. The driver is where
+`live_daily.sh` runs; the operator's daily flow does not change. **What a run across two hosts shows: two VMs, one operator, one
+GCP project/VPC, internal IPs, relays off. It does not show cross-operator or public-internet operation.** Say exactly that
+in any report of such a run.
+
+**How it works.** `LAB_REMOTE_NODES="lab-2 lab-4" LAB_REMOTE_SSH=<ssh alias>` in the lab's environment file on the driver (every
+command refuses to run when a mirror is there and these are unset). One ssh session (`$LAB_DIR/run/remote.sock`, opened by any
+command that needs it, closed by `stop`) forwards each remote node's API and console ports to the same ports on `127.0.0.1` here,
+so `lab.sh`, the steps and the Goose payment keep their loopback paths. The mesh itself is node to node over UDP between the
+hosts' internal addresses (relays stay off). The test witness runs on the driver only: the steps use it, no node does. Every command for
+the second host goes through `lab/remote/loop-lab-remote`, the forced command of the driver's key there
+(`lab/remote/authorized_keys.example`: `restrict`, `permitopen` for the four ports; a separate unix user with no sudo, not the
+account that runs the demo nodes). The steps read each remote node's ledger from a **mirror**: `$LAB_DIR/nodes/<node>/` on the
+driver holds `.mirror`, the node's `join-book/` and `keys/` (copied once, at the move), and, refreshed from the second host before
+each command that reads them and between a step's checkpoint ask and its read (`lab.sh refresh-mirror`; the shelf by sqlite's
+online backup), `ledger/`, `self-peer-id`, `controller-binding.json`, `sharing-effective.json` and the plugin build mark (to
+`run/<node>.build.json`). A mirror never holds `payments/`, the node's mesh key or its config. `running` on the second host also
+compares its `lab/lab.sh` and its roles, model and share/payments settings (a config digest) with the driver's, and the
+sha256 of the mesh-llm and plugin binaries it runs.
+
+**The second host** needs: the lab unix user; a copy of this repository's `lab/` and `scripts/` tree from the driver's commit;
+copies of the driver's `MESH_LLM_BIN` and `CAPSULES_BIN`; its own `LEXE_PLUGIN` copy checked against the pinned sha256 (no read
+access into another account's home); `~/.loop-lab-remote.env` (mode 0600; see the header of `lab/remote/loop-lab-remote`).
+Any process of any account on that host can reach a node's console and wallet API on 127.0.0.1, and the payment guard
+(3,000 msat per payment, 9,000 per direction per day) is client code in `scripts/goose_lightning.py` that such a process does not
+run; the wallet itself checks only its `daily_budget_msat`, which `wallet policy` also sets through the console. So the bound on
+what another local account could spend is the wallet's balance: keep it small, and keep other accounts off that host's lab
+user's consoles (today the other account there is the operator's own).
+
+**Keeping the second host current.** `running` on the second host compares its `lab/lab.sh` with the driver's, so after any
+merge that changes `lab/lab.sh` copy the driver's `lab/` tree there before the next daily run, or that run stops with exit 5.
+
+**Moving a node with a wallet (once, node stopped).** `stop` the lab; copy `<LAB_DIR>/nodes/lab-2` to the second host with tar
+and compare file lists and sha256; on the driver rename the real home to `nodes/lab-2.moved-<date>` (mode 0700) and make a
+mirror at `nodes/lab-2` (mode 0700: `.mirror`, a copy of `join-book/` and `keys/`). `start` refuses, before any node starts, to
+start a remote node while its home here is not a mirror, or still holds a config, mesh key, `payments/` or a live process:
+`wallet.lock` is a local flock and does not see across hosts, so "never both running" is this procedure and this guard
+(`lab.sh guard-moved lab-2` checks it alone). After the first start on the second host, `get-balance` on the moved wallet must
+equal what it showed before. Keep `lab-2.moved-<date>` (with its `seedphrase.txt`, mode 0600) for rollback, and delete its seed
+file only after the first good live run. Never print or read a seed.
+
+**Rollback.** `stop`. The second host's home is the newer one (the chain and the wallet moved on after the move), so it is the
+one that returns: copy it back to `nodes/lab-2` on the driver (tar, compare sha256) after archiving the mirror and the
+`lab-2.moved-<date>` copy as `lab-2.mirror` and `lab-2.premove`, never in place of it. Steps 01 and 02 sealed into the mirror's `join-book` during the remote period (it is the `book_dir` the population names), so copy that `join-book` over the restored home's too, or keep it as the book of record. Remove `.mirror`, unset `LAB_REMOTE_NODES`
+and `LAB_REMOTE_SSH`, and `start` with the same environment as before. Only if the second host's home is lost does the
+`premove` copy return, which rolls the chain and the wallet back to the time of the move.

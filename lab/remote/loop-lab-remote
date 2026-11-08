@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# loop-lab-remote: the forced command of the driver host's key on the lab's second host (LAB-BRINGUP.md, "Two hosts").
+# It runs the few verbs lab/lab.sh needs there and nothing else; the key carries no shell, no sudo and only the port
+# forwards authorized_keys.example lists. The verb comes from SSH_ORIGINAL_COMMAND, never from the key holder's shell.
+#
+#   put-token            read the mesh invite token on stdin into $LAB_DIR/run/invite.token (0600)
+#   node-start NODE      lab.sh node-start NODE
+#   node-id NODE         print NODE's node id
+#   mirror NODE          a tar of NODE's ledger, self-peer-id, binding, sharing report and build mark on stdout (no key, no payments)
+#   running MESH CAPS LABSH DIGEST   lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin, of lab/lab.sh,
+#                        and its digest of the roles and settings both hosts must share
+#   stop                 lab.sh stop (this host's nodes only)
+#
+# The environment file (default ~/.loop-lab-remote.env, owned by this user, mode 0600) sets: LOOP_LAB_SH (a copy of
+# lab/lab.sh's tree from the same commit as the driver's), LAB_DIR, LAB_ONLY (e.g. "lab-2 lab-4"), MESH_LLM_BIN,
+# CAPSULES_BIN, LAB_PORT_BASE, LAB_PAYMENTS, LAB_SHARE_AT_COMPLETION, LAB_TWINS, LAB_MODEL_REF and the rest of the
+# environment the driver's lab.sh start would have.
+set -euo pipefail
+ENV_FILE=${LOOP_LAB_REMOTE_ENV:-$HOME/.loop-lab-remote.env}
+[ -r "$ENV_FILE" ] || { echo "loop-lab-remote: no $ENV_FILE" >&2; exit 2; }
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+: "${LOOP_LAB_SH:?}" "${LAB_DIR:?}" "${LAB_ONLY:?}"
+read -r -a argv <<< "${SSH_ORIGINAL_COMMAND:-}"
+verb=${argv[0]:-}
+node_ok() { [[ ${1:-} =~ ^lab-[1-4]$ ]] && [[ " $LAB_ONLY " == *" $1 "* ]]; }
+sha_ok() { [[ ${1:-} =~ ^[0-9a-f]{64}$ ]]; }
+case "$verb" in
+  put-token)
+    [ "${#argv[@]}" = 1 ] || exit 2
+    umask 077
+    mkdir -p "$LAB_DIR/run" && chmod 700 "$LAB_DIR/run"
+    cat > "$LAB_DIR/run/invite.token.tmp"
+    [ -s "$LAB_DIR/run/invite.token.tmp" ] || { rm -f "$LAB_DIR/run/invite.token.tmp"; echo "loop-lab-remote: empty token" >&2; exit 1; }
+    mv "$LAB_DIR/run/invite.token.tmp" "$LAB_DIR/run/invite.token"
+    ;;
+  node-start | node-id | mirror)
+    [ "${#argv[@]}" = 2 ] || { echo "loop-lab-remote: $verb takes one node" >&2; exit 2; }
+    node_ok "${argv[1]:-}" || { echo "loop-lab-remote: $verb: not one of this host's nodes" >&2; exit 2; }
+    exec "$LOOP_LAB_SH" "$verb" "${argv[1]}"
+    ;;
+  running)
+    [ "${#argv[@]}" = 5 ] || { echo "loop-lab-remote: running takes four sha256 values" >&2; exit 2; }
+    sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" && sha_ok "${argv[3]:-}" && sha_ok "${argv[4]:-}" \
+      || { echo "loop-lab-remote: running needs four sha256 values" >&2; exit 2; }
+    LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} LAB_EXPECT_LAB_SH_SHA256=${argv[3]} \
+      LAB_EXPECT_CONFIG_DIGEST=${argv[4]} exec "$LOOP_LAB_SH" running
+    ;;
+  stop)
+    [ "${#argv[@]}" = 1 ] || exit 2
+    exec "$LOOP_LAB_SH" stop
+    ;;
+  *)
+    echo "loop-lab-remote: unknown verb" >&2
+    exit 2
+    ;;
+esac

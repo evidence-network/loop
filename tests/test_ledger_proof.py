@@ -108,6 +108,29 @@ class KeepChecked(unittest.TestCase):
         self.assertNotIn(b"ab" * 32, self.dest.read_bytes())
         self.assertEqual(self.beside()["reply"]["range_proof"]["to_index"], 1)
 
+    def test_a_mirrored_ledger_is_refreshed_after_the_ask_and_before_the_read(self):
+        # The lab split over two hosts: the file under /nodes/lab-N/ is a snapshot, so a line sealed between the snapshot
+        # and the ask is missing unless the mirror is read again after the ask (lab.sh refresh-mirror).
+        node = Path(self.tmp.name) / "nodes" / "lab-2" / "ledger"
+        node.mkdir(parents=True)
+        src, dest = node / "capsules.jsonl", Path(self.tmp.name) / "out" / "capsules.jsonl"
+        src.write_text('{"a":1}\n')  # the snapshot
+        hook = Path(self.tmp.name) / "hook.sh"
+        calls = Path(self.tmp.name) / "calls"
+        hook.write_text(f'#!/bin/sh\necho "$@" >> {calls}\nprintf %s\\\\n \'{{"b":2}}\' >> {src}\n')
+        hook.chmod(0o755)
+
+        def answer(method, url, body, timeout):  # the node sealed a second line before it answered; it covers both
+            return 200, json.dumps({"ledger_checkpoint": 1, "file": src.name,
+                                    "range_proof": {"from_index": 0, "to_index": 1}}).encode()
+        with mock.patch.dict(os.environ, {"LOOP_MIRROR_REFRESH": str(hook)}):
+            ledger_proof.keep_checked("http://node", src, dest, src.name, http=answer)
+        self.assertEqual(calls.read_text().strip(), "refresh-mirror lab-2")
+        self.assertEqual(dest.read_text().count("\n"), 2)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("LOOP_MIRROR_REFRESH", None)
+            self.assertEqual(ledger_proof.refresh_mirror(src), None)  # no variable, no call
+
     def test_a_refusal_keeps_the_whole_copy_and_says_why(self):
         self.src.write_text('{"a":1}\n')
         ledger_proof.keep_checked("http://node", self.src, self.dest, self.src.name, http=self.http(None))

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# lab/lab.sh: bring up the three lab nodes on one host, join them, run stage 1 once, and pack
+# lab/lab.sh: bring up the lab nodes (three, or four with LAB_TWINS) on one host or two, join them, run stage 1 once, and pack
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|running|tools|start|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|running|tools|start|node-start|node-id|mirror|guard-moved|refresh-mirror|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -68,6 +68,10 @@
 #             $LAB_DIR/population-twins/: lab-4 is not a committed live node), into the same findings/<date>-live/. Read-only
 #   ask       steps/07-ask on population/live, into the same findings/<date>-live/, asking from the reporter
 #             node's console (and the reporter node itself from a second node's). Pays nothing
+#   node-start NAME / node-id NAME / mirror NAME   (second host only, run by loop-lab-remote) start one node as `start` does,
+#             print its node id, or write a tar of its ledger and self-peer-id to stdout
+#   guard-moved NODE   (driver) exit 0 only when a remote NODE's home here is a mirror, with no node home or process left (start runs it)
+#   refresh-mirror [NODE]   (driver) read the remote nodes' ledgers into their mirrors now (the steps call it between a checkpoint ask and the read)
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, commitments, loop, pack
@@ -96,6 +100,14 @@
 #   LAB_MODEL_NAME      the name requests carry (default lab-model; with LAB_MODEL_REF, that advertised name)
 #   LAB_KEY_SETTLE      seconds start waits after every host lists every plugin key (default 40: the plugin re-reads
 #             /api/plugin-keys every 30s with a 5s timeout, peer_keys::announced EVERY and TIMEOUT)
+#   LAB_REMOTE_NODES    nodes that live on a second host (e.g. "lab-2 lab-4"; never lab-1, which makes the mesh, nor the
+#             reporter). This host drives: it reaches them by one ssh session to LAB_REMOTE_SSH that forwards their
+#             API and console ports to 127.0.0.1 here, starts and stops them through
+#             lab/remote/loop-lab-remote on that host, and reads a snapshot of their ledgers (`mirror`) at the paths
+#             the population names. LAB-BRINGUP.md, "Two hosts"
+#   LAB_REMOTE_SSH      the ssh destination (an ssh config alias) for the second host
+#   LAB_ONLY            set only by loop-lab-remote on the second host: the nodes that host runs. Every process command
+#             (start, stop, running) then covers just those nodes
 #   LAB_OPERATOR        the GitHub handle of whoever runs the nodes (entries)
 #   LAB_PORT_BASE       default 9800: API base+1..3, console base+11..13, QUIC base+21..23
 #   LAB_REPORTER        the reporter node (default lab-3)
@@ -172,6 +184,39 @@ for n in "${PAYS[@]+"${PAYS[@]}"}"; do
   [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_PAYMENTS names $n, not a lab node"
 done
 pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
+# Two hosts (LAB-BRINGUP.md, "Two hosts"): REMOTE nodes run on the second host, ONLY is set there; MINE is what this host runs.
+in_list() { local x=$1 y; shift; for y in "$@"; do [ "$x" = "$y" ] && return 0; done; return 1; }
+REMOTE=(); read -r -d '' -a REMOTE <<< "${LAB_REMOTE_NODES:-}" || true
+ONLY=(); read -r -d '' -a ONLY <<< "${LAB_ONLY:-}" || true
+REMOTE_SSH=${LAB_REMOTE_SSH:-}
+if [ "${#REMOTE[@]}" -gt 0 ]; then
+  [ "${#ONLY[@]}" = 0 ] || die "LAB_ONLY (the second host) and LAB_REMOTE_NODES (the driver) are not set together"
+  [ -n "$REMOTE_SSH" ] || die "LAB_REMOTE_NODES needs LAB_REMOTE_SSH"
+  for n in "${REMOTE[@]}"; do
+    [[ $n =~ ^lab-[1-4]$ ]] || die "LAB_REMOTE_NODES names $n, not a lab node"
+    [ "$n" != lab-1 ] || die "lab-1 makes the mesh and serves the model: it stays on the driver host"
+    [ "$n" != "$REPORTER" ] || die "the reporter $n keeps its key on the driver host and never moves (LAB-BRINGUP.md, key custody)"
+    [ "$n" != "$REQUESTER" ] || die "the requester $n asks from this host's ledger and cannot be remote"
+  done
+  # The steps (children of lab.sh) refresh a mirror between a checkpoint ask and the file read (steps/ledger_proof.py).
+  export LAB_REMOTE_NODES LAB_REMOTE_SSH LOOP_MIRROR_REFRESH="$ROOT/lab/lab.sh"
+fi
+# A mirror stands where a node that moved used to live. Commands run without LAB_REMOTE_NODES would start or "stop" a node
+# that is running on the other host, or sign with the key the mirror holds: refuse until the environment names it.
+if [ "${#ONLY[@]}" = 0 ]; then
+  for m in "$LAB_DIR"/nodes/lab-[1-4]/.mirror; do
+    [ -e "$m" ] || continue
+    n=$(basename "$(dirname "$m")")
+    in_list "$n" "${REMOTE[@]+"${REMOTE[@]}"}" || die "$n is a mirror of a node on another host: set LAB_REMOTE_NODES and LAB_REMOTE_SSH (the lab's environment file)"
+  done
+fi
+MINE=()
+for n in "${NODES[@]}"; do
+  if [ "${#ONLY[@]}" -gt 0 ]; then in_list "$n" "${ONLY[@]}" || continue
+  else ! in_list "$n" "${REMOTE[@]+"${REMOTE[@]}"}" || continue; fi
+  MINE+=("$n")
+done
+is_remote() { [ "${#REMOTE[@]}" -gt 0 ] && in_list "$1" "${REMOTE[@]}"; }
 UP_SECONDS=${LAB_UP_SECONDS:-5}
 STARTED=()
 TODAY=$(date -u +%F)
@@ -199,6 +244,7 @@ alive() { local p; p=$(pid_of "$1") && kill -0 "$p" 2> /dev/null; }
 # The node id the plugin learned from its host: the same file reporter_key.py reads.
 node_id() {
   if [ "$DRY" = 1 ]; then echo "<$1 node_id>"; return 0; fi
+  if is_remote "$1"; then rcmd node-id "$1" | tr -d '[:space:]'; return; fi
   local f; f=$(data_of "$1")/self-peer-id
   [ -s "$f" ] || { echo "lab.sh: $1 has no $f yet" >&2; return 1; }
   tr -d '[:space:]' < "$f"
@@ -308,8 +354,79 @@ routes_model() {
   curl -fsS "http://127.0.0.1:$(api_port "$1")/v1/models" \
     | python3 -c 'import json,sys; sys.exit(0 if any(m.get("id") == sys.argv[1] for m in json.load(sys.stdin).get("data", [])) else 1)' "$MODEL_NAME"
 }
-knows_own_id() { [ -s "$(data_of "$1")/self-peer-id" ]; }
+knows_own_id() { if is_remote "$1"; then [ -n "$(rcmd node-id "$1" 2> /dev/null | tr -d '[:space:]')" ]; else [ -s "$(data_of "$1")/self-peer-id" ]; fi; }
 port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
+
+# --- two hosts -------------------------------------------------------------------------------
+# One ssh session (key: lab/remote/authorized_keys.example) carries, for each remote node, its API and console ports to
+# 127.0.0.1 here, so every 127.0.0.1 path above and in the steps keeps working. Commands for the second host go through the
+# same session to the key's forced command; with no session (the ports forwarded are busy, the host is slow) a plain ssh does,
+# so `stop` and `running` still reach it.
+remote_sock() { echo "$LAB_DIR/run/remote.sock"; }
+ensure_tunnel() {
+  [ "${#REMOTE[@]}" -gt 0 ] || return 0
+  local n p sock; sock=$(remote_sock)
+  local -a fwd=()
+  for n in "${REMOTE[@]}"; do
+    for p in "$(api_port "$n")" "$(console_port "$n")"; do fwd+=(-L "127.0.0.1:$p:127.0.0.1:$p"); done
+  done
+  if [ "$DRY" = 1 ]; then say ssh -fN -M -S "$sock" "${fwd[@]}" "$REMOTE_SSH"; return 0; fi
+  ssh -S "$sock" -O check "$REMOTE_SSH" 2> /dev/null && return 0
+  mkdir -p "$LAB_DIR/run" && chmod 700 "$LAB_DIR/run"
+  rm -f "$sock"
+  for n in "${REMOTE[@]}"; do
+    for p in "$(api_port "$n")" "$(console_port "$n")"; do
+      port_free "$p" || { echo "lab.sh: port $p is in use here: $n's console must not run on this host" >&2; return 1; }
+    done
+  done
+  ssh -n -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -fN -M -S "$sock" "${fwd[@]}" "$REMOTE_SSH" \
+    < /dev/null > /dev/null || { echo "lab.sh: cannot open the ssh session to $REMOTE_SSH" >&2; return 1; }
+}
+close_tunnel() { [ "${#REMOTE[@]}" -gt 0 ] && [ "$DRY" = 0 ] && ssh -S "$(remote_sock)" -O exit "$REMOTE_SSH" > /dev/null 2>&1 || true; }
+# rcmd VERB ARGS...: the second host's loop-lab-remote runs the verb; stdin and stdout pass through.
+rcmd() {
+  if [ "$DRY" = 1 ]; then ensure_tunnel; say ssh -S "$(remote_sock)" "$REMOTE_SSH" "$*"; return 0; fi
+  # -n: ssh must not read the caller's stdin (a script fed to bash -s, a `while read` loop); only put-token passes stdin on.
+  local n=-n; [ "${RCMD_STDIN:-0}" = 1 ] && n=
+  if ensure_tunnel; then ssh $n -o BatchMode=yes -S "$(remote_sock)" "$REMOTE_SSH" "$*"
+  else ssh $n -o BatchMode=yes -o ConnectTimeout=15 "$REMOTE_SSH" "$*"; fi
+}
+# A node moves to the second host with its home renamed here and a mirror standing at its path: the population names its
+# data_dir and book_dir under $LAB_DIR/nodes/<node>, where the steps read them. Starting it there while a real home or a
+# live process remains here would run one wallet in two places (wallet.lock is a local flock and does not see across hosts).
+guard_moved() { # NODE
+  [ "$DRY" = 1 ] && { echo "  (guard: $1's home here is a mirror, not a node home, and no $1 runs here)"; return 0; }
+  local h; h=$(home_of "$1")
+  [ -e "$h/.mirror" ] || die "$h is not a mirror: stop $1 and rename its home before it starts on $REMOTE_SSH (LAB-BRINGUP.md, \"Two hosts\")"
+  if [ -e "$h/config.toml" ] || [ -e "$h/.mesh-llm/key" ] || [ -e "$h/payments" ] || alive "$1"; then
+    die "$1 still has a node home or a live process here: rename its home first; it must never run in two places"
+  fi
+}
+# The remote nodes' ledgers, self-peer-id, controller binding and sharing report, as of now, over the data_dir the steps read,
+# and the plugin build mark where step 04 reads it. Nothing else is replaced. refresh_mirror [NODE]: one node, or all.
+MIRROR_FILES=(ledger self-peer-id controller-binding.json sharing-effective.json build-mark.json)
+refresh_mirror() {
+  local n d t f list=()
+  if [ -n "${1:-}" ]; then list=("$1"); else list=(${REMOTE[@]+"${REMOTE[@]}"}); fi
+  for n in ${list[@]+"${list[@]}"}; do
+    d=$(data_of "$n")
+    if [ "$DRY" = 1 ]; then echo "  (mirror: rcmd mirror $n | tar -x into $d: ${MIRROR_FILES[*]})"; continue; fi
+    is_remote "$n" || continue  # a node that stayed here has no mirror
+    [ -e "$(home_of "$n")/.mirror" ] || die "$(home_of "$n") is not a mirror (no .mirror)"
+    t=$(mktemp -d "$LAB_DIR/run/mirror.XXXXXX") || die "cannot make a temp dir under $LAB_DIR/run"
+    if ! rcmd mirror "$n" | tar -x --no-same-owner -C "$t" -f -; then rm -rf "$t"; die "cannot read $n's ledger from $REMOTE_SSH"; fi
+    for f in $(ls -A "$t"); do
+      in_list "$f" "${MIRROR_FILES[@]}" || { rm -rf "$t"; die "the mirror of $n holds $f, which is not one of ${MIRROR_FILES[*]}"; }
+    done
+    mkdir -p "$d"
+    for f in ledger self-peer-id controller-binding.json sharing-effective.json; do rm -rf "${d:?}/$f"; done
+    if [ -e "$t/build-mark.json" ]; then mv "$t/build-mark.json" "$LAB_DIR/run/$n.build.json"; fi
+    for f in $(ls -A "$t"); do mv "$t/$f" "$d/$f"; done
+    rm -rf "$t"
+    chmod 700 "$(home_of "$n")" "$d" 2> /dev/null || true
+    [ ! -d "$d/keys" ] || chmod -R go-rwx "$d/keys" 2> /dev/null || true
+  done
+}
 
 # --- check ------------------------------------------------------------------------------------
 pin() { awk -v n="$1" '$1 == n { print $3 }' "$ROOT/versions.lock"; }
@@ -486,6 +603,28 @@ node_config() {
   if pays "$name"; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
 }
 
+# The label comes from the config this node was started with, not from whatever `twins` is run with. A restart keeps
+# what `twins` added (bracket, roles, supply answer) while the fault is the same one: the Results it names stay in the
+# ledgers, and a file without the bracket makes step 09 apply no fault to them (loop#259). On the driver, also for a remote twin B.
+write_twin_fault() { # NODE
+  local name=$1
+  python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
+import json, sys
+path, node, prompt = sys.argv[1:]
+fault = {"injected_difference": {
+    "node": node, "kind": "system_prompt", "value": prompt,
+    "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
+            "the model hash and weights digest are unchanged"}}
+try:
+    old = json.load(open(path))
+    if old["injected_difference"] == fault["injected_difference"]:
+        fault = old
+except (OSError, ValueError, KeyError, TypeError):
+    pass
+open(path, "w").write(json.dumps(fault, indent=2, sort_keys=True) + "\n")
+PY
+}
+
 write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   local name=$1; shift
   local home launcher
@@ -515,26 +654,7 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   )
   local config
   config=$(node_config "$name")
-  if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then
-    # The label comes from the config this node was started with, not from whatever `twins` is run with. A restart keeps
-    # what `twins` added (bracket, roles, supply answer) while the fault is the same one: the Results it names stay in the
-    # ledgers, and a file without the bracket makes step 09 apply no fault to them (loop#259).
-    python3 -B - "$LAB_DIR/twin-fault.json" "$name" "$FAULT_PROMPT" << 'PY'
-import json, sys
-path, node, prompt = sys.argv[1:]
-fault = {"injected_difference": {
-    "node": node, "kind": "system_prompt", "value": prompt,
-    "note": "lab-only fault injection in the node's config.toml [models.request_defaults]; "
-            "the model hash and weights digest are unchanged"}}
-try:
-    old = json.load(open(path))
-    if old["injected_difference"] == fault["injected_difference"]:
-        fault = old
-except (OSError, ValueError, KeyError, TypeError):
-    pass
-open(path, "w").write(json.dumps(fault, indent=2, sort_keys=True) + "\n")
-PY
-  fi
+  if [ "$DRY" = 0 ] && [ "$TWINS" = 1 ] && [ "$name" = "$TWIN_B" ]; then write_twin_fault "$name"; fi
   if [ "$DRY" = 1 ]; then
     echo "  > $home/config.toml:"; sed 's/^/    /' <<< "$config"
     echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
@@ -604,23 +724,115 @@ dead_node() { # prints the first started node that is not running
   return 1
 }
 
-cmd_start() {
-  need MESH_LLM_BIN; need CAPSULES_BIN
-  # Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
+# The model arguments of a node that serves a local model file; none with an HF ref (every serving node loads it from config.toml).
+model_args=()
+compute_model_args() {
+  model_args=(--gguf "${LAB_MODEL:-<LAB_MODEL>}" --model "$MODEL_NAME")
+  [ -z "$MODEL_REF" ] || model_args=()
+}
+# start_joined NAME: a node other than lab-1, started into lab-1's mesh by the invite token file.
+start_joined() {
+  local n=$1
+  if [ -n "$MODEL_REF" ] && serves_model "$n"; then
+    start_node "$n" --join-file "$(token_file)"
+  elif [ "$TWINS" = 1 ] && [ "$n" = "$TWIN_B" ]; then
+    start_node "$n" --join-file "$(token_file)"
+  elif serves_model "$n"; then
+    start_node "$n" ${model_args[@]+"${model_args[@]}"} --join-file "$(token_file)"
+  else
+    start_node "$n" --join-file "$(token_file)"
+  fi
+}
+# Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
+no_dropped_wallet() {
   local n
-  for n in "${NODES[@]}"; do
+  for n in "${MINE[@]}"; do
     if ! pays "$n" && grep -q '^\[payments\]' "$(home_of "$n")/config.toml" 2> /dev/null; then
       die "$n's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
     fi
   done
+}
+# The second host: one node, as `start` would start it, into the mesh whose invite token put-token wrote. Waits are the driver's.
+cmd_node_start() {
+  local n=${1:-}
+  [ "${#ONLY[@]}" -gt 0 ] && in_list "$n" "${ONLY[@]}" || die "node-start: $n is not one of this host's nodes (LAB_ONLY)"
+  need MESH_LLM_BIN; need CAPSULES_BIN
+  no_dropped_wallet
+  [ -s "$(token_file)" ] || die "node-start: no invite token at $(token_file): the driver sends it first"
+  [ "$TWINS" = 0 ] || [ -n "$MODEL_REF" ] || die "LAB_TWINS needs LAB_MODEL_REF"
+  [ -n "$MODEL_REF" ] || need LAB_MODEL
+  compute_model_args
+  run mkdir -p "$LAB_DIR/run" "$LAB_DIR/logs"
+  run chmod 700 "$LAB_DIR/run"
+  start_joined "$n"
+}
+cmd_node_id() { node_id "${1:-}"; }
+# What both hosts must agree on for the second host's nodes: roles, model, ports, fault, and which of them share and pay. The
+# driver sends its value with its sha256 of this script to `running` there, which refuses a mismatch (a stale tree or env file).
+config_digest() {
+  local n; local -a nodes=(${REMOTE[@]+"${REMOTE[@]}"} ${ONLY[@]+"${ONLY[@]}"})
+  {
+    printf 'twins=%s a=%s b=%s referee=%s requester=%s model=%s base=%s fault=%s\n' "$TWINS" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$MODEL_REF" "$BASE" "$FAULT_PROMPT"
+    for n in "${nodes[@]}"; do
+      printf '%s share=%s pays=%s\n' "$n" "$(shares "$n" && echo 1 || echo 0)" "$(pays "$n" && echo 1 || echo 0)"
+    done
+  } | sha256sum | cut -d' ' -f1
+}
+cmd_config_digest() { config_digest; }
+# A tar of a node's ledger, self-peer-id, binding, sharing report and build mark on stdout: the shelf is copied with sqlite's online backup, since the node runs.
+cmd_mirror() {
+  local n=${1:-}; local d; d=$(data_of "$n")
+  [ "${#ONLY[@]}" -gt 0 ] && in_list "$n" "${ONLY[@]}" || die "mirror: $n is not one of this host's nodes"
+  python3 -B - "$d" "$LAB_DIR/run/$n.build.json" << 'PY'
+import os, shutil, sqlite3, subprocess, sys, tempfile
+d, mark = sys.argv[1:]
+with tempfile.TemporaryDirectory() as t:
+    led = os.path.join(d, "ledger")
+    os.makedirs(os.path.join(t, "ledger"))
+    if os.path.isdir(led):
+        for f in sorted(os.listdir(led)):
+            src, dst = os.path.join(led, f), os.path.join(t, "ledger", f)
+            if f.startswith("shelf.db"):
+                if f != "shelf.db":
+                    continue  # -wal and -shm: the backup below folds them in
+                s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+                try:
+                    o = sqlite3.connect(dst)
+                    s.backup(o)
+                    o.close()
+                finally:
+                    s.close()
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst)
+            elif os.path.isfile(src):
+                shutil.copyfile(src, dst)
+    # What the steps read beside the ledger (binding: steps 05 and 12; sharing: step 05) and the build mark step 04 reads.
+    for f in ("self-peer-id", "controller-binding.json", "sharing-effective.json"):
+        if os.path.isfile(os.path.join(d, f)):
+            shutil.copyfile(os.path.join(d, f), os.path.join(t, f))
+    if os.path.isfile(mark):
+        shutil.copyfile(mark, os.path.join(t, "build-mark.json"))
+    sys.stdout.flush()
+    sys.exit(subprocess.run(["tar", "-c", "-C", t, "-f", "-", "."], stdout=sys.stdout.fileno(),
+                              env={**os.environ, "COPYFILE_DISABLE": "1"}).returncode)
+PY
+}
+
+cmd_start() {
+  need MESH_LLM_BIN; need CAPSULES_BIN
+  ensure_tunnel || die "the remote nodes are not reachable"
+  local n
+  no_dropped_wallet
   if [ "$TWINS" = 1 ]; then
     # The referee compares only pairs whose halves carry a model identity hash; a local file never gets one.
     [ -n "$MODEL_REF" ] || [ "$DRY" = 1 ] || die "LAB_TWINS needs LAB_MODEL_REF (a Hugging Face ref): a local GGUF gets no identity hash and the referee answers not_comparable"
   fi
   [ -n "$MODEL_REF" ] || need LAB_MODEL
   # With an HF ref every serving node loads it the same way, from its own config.toml [[models]]; the CLI names no model.
-  local -a model_args=(--gguf "${LAB_MODEL:-<LAB_MODEL>}" --model "$MODEL_NAME")
-  [ -z "$MODEL_REF" ] || model_args=()
+  compute_model_args
+  # Before any node starts, so a refusal leaves no half-started lab; the injected fault's label is the driver's record of twin B.
+  for n in ${REMOTE[@]+"${REMOTE[@]}"}; do guard_moved "$n"; done
+  if [ "$TWINS" = 1 ] && is_remote "$TWIN_B" && [ "$DRY" = 0 ]; then write_twin_fault "$TWIN_B"; fi
   [ "$DRY" = 1 ] || [ -f "$LAB_DIR/build.json" ] || die "run lab/lab.sh check first"
   run mkdir -p "$LAB_DIR/run" "$LAB_DIR/logs"
   run chmod 700 "$LAB_DIR/run"
@@ -642,15 +854,12 @@ cmd_start() {
     mv "$(token_file).tmp" "$(token_file)"
   fi
   local n
+  [ "${#REMOTE[@]}" = 0 ] || { if [ "$DRY" = 1 ]; then ensure_tunnel; say ssh -S "$(remote_sock)" "$REMOTE_SSH" put-token '<' "$(token_file)"; else RCMD_STDIN=1 rcmd put-token < "$(token_file)" || die "cannot send the invite token to $REMOTE_SSH"; fi; }
   for n in "${NODES[@]:1}"; do
-    if [ -n "$MODEL_REF" ] && serves_model "$n"; then
-      start_node "$n" --join-file "$(token_file)"
-    elif [ "$TWINS" = 1 ] && [ "$n" = "$TWIN_B" ]; then
-      start_node "$n" --join-file "$(token_file)"
-    elif serves_model "$n"; then
-      start_node "$n" "${model_args[@]}" --join-file "$(token_file)"
+    if is_remote "$n"; then
+      rcmd node-start "$n" || die "$n did not start on $REMOTE_SSH"
     else
-      start_node "$n" --join-file "$(token_file)"
+      start_joined "$n"
     fi
     # routes_model passes through lab-1; a node that serves the model itself must have loaded it (twin B from config alone).
     if serves_model "$n"; then wait_for 600 "$n has loaded the model itself" node_ready "$n"; fi
@@ -681,19 +890,26 @@ cmd_start() {
     echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
     echo "advertised model name: $MODEL_NAME"
   fi
+  refresh_mirror
   cmd_status
 }
 
 cmd_stop() {
   local n p
-  # Always lab-1..4: a lab started with LAB_TWINS=1 is stopped by a plain `stop` too.
-  local NODES=(lab-1 lab-2 lab-3 lab-4)
+  # Always lab-1..4: a lab started with LAB_TWINS=1 is stopped by a plain `stop` too. This host's own only.
+  local NODES=() all
+  for all in lab-1 lab-2 lab-3 lab-4; do
+    if [ "${#ONLY[@]}" -gt 0 ]; then in_list "$all" "${ONLY[@]}" || continue
+    else ! in_list "$all" "${REMOTE[@]+"${REMOTE[@]}"}" || continue; fi
+    NODES+=("$all")
+  done
   for n in "${NODES[@]}"; do
     if [ "$DRY" = 1 ]; then say kill -TERM "<pid in $(pidfile "$n")>"; continue; fi
     p=$(pid_of "$n") || continue
     kill -TERM "$p" 2> /dev/null || true
   done
-  [ "$DRY" = 1 ] && say kill -TERM "<pid in $(pidfile witness)>"
+  [ "${#ONLY[@]}" = 0 ] && [ "$DRY" = 1 ] && say kill -TERM "<pid in $(pidfile witness)>"
+  [ "$DRY" = 1 ] && [ "${#REMOTE[@]}" -gt 0 ] && rcmd stop
   [ "$DRY" = 1 ] && { echo "  (wait up to 30s for the shutdown checkpoints, then kill -KILL what is left)"; return 0; }
   local _ any
   for _ in $(seq 60); do
@@ -706,10 +922,13 @@ cmd_stop() {
     if alive "$n"; then kill -KILL "$(pid_of "$n")" 2> /dev/null || true; fi
     rm -f "$(pidfile "$n")"
   done
-  p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true
-  rm -f "$(pidfile witness)"
+  [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile witness)"; }
   tmux kill-session -t "$SESSION" 2> /dev/null || true
-  echo "stopped ${NODES[*]} and the witness"
+  # The second host's nodes last: a failure there leaves this host stopped and is said loudly.
+  local rrc=0
+  if [ "${#REMOTE[@]}" -gt 0 ]; then rcmd stop || rrc=$?; close_tunnel; fi
+  echo "stopped ${NODES[*]}${ONLY[*]:+ (on this host)} and the witness"
+  [ "$rrc" = 0 ] || die "could not stop ${REMOTE[*]} on $REMOTE_SSH (exit $rrc): stop them there before starting anything"
 }
 
 cmd_running() {
@@ -717,13 +936,21 @@ cmd_running() {
   need MESH_LLM_BIN; need CAPSULES_BIN
   if [ "$DRY" = 1 ]; then
     say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
-    for n in "${NODES[@]}"; do echo "  ($n: pid $(pidfile "$n") alive, /proc/<pid>/exe and a plugin child's exe compared by sha256)"; done
+    for n in "${MINE[@]}"; do echo "  ($n: pid $(pidfile "$n") alive, /proc/<pid>/exe and a plugin child's exe compared by sha256)"; done
+    [ "${#REMOTE[@]}" = 0 ] || rcmd running '<mesh-llm sha256>' '<capsules sha256>' '<lab.sh sha256>' '<config digest>'
     echo "  (if $LAB_DIR/run/witness.sh exists: pid $(pidfile witness) alive and port $(witness_port) listening)"
     return 0
   fi
   mesh_sha=$(sha256sum < "$MESH_LLM_BIN" | cut -d' ' -f1) || die "cannot read MESH_LLM_BIN"
   cap_sha=$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1) || die "cannot read CAPSULES_BIN"
-  for n in "${NODES[@]}"; do
+  # On the second host the driver's checked binaries are the reference: its nodes must run exactly those bytes.
+  mesh_sha=${LAB_EXPECT_MESH_SHA256:-$mesh_sha}; cap_sha=${LAB_EXPECT_CAPSULES_SHA256:-$cap_sha}
+  # On the second host, its copy of this script and its environment must be the driver's.
+  if [ -n "${LAB_EXPECT_LAB_SH_SHA256:-}" ]; then
+    [ "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" = "$LAB_EXPECT_LAB_SH_SHA256" ] || fails+=("lab/lab.sh here is not the driver's: copy lab/ from the driver's commit")
+    [ "$(config_digest)" = "${LAB_EXPECT_CONFIG_DIGEST:-}" ] || fails+=("this host's roles, model, share or payments settings differ from the driver's (config digest)")
+  fi
+  for n in "${MINE[@]}"; do
     if ! alive "$n"; then fails+=("$n is down"); continue; fi
     p=$(pid_of "$n")
     [ "$(sha256sum < "/proc/$p/exe" 2> /dev/null | cut -d' ' -f1)" = "$mesh_sha" ] \
@@ -736,8 +963,12 @@ cmd_running() {
   done
   # The witness is no node, so `start` and a node restart never bring it back; a lab that had one must say when it is gone.
   # A pid file outlives a crash or a reboot and its pid can be reused, so the port it serves is checked too.
-  if [ -e "$LAB_DIR/run/witness.sh" ] && { ! alive witness || port_free "$(witness_port)"; }; then
+  if [ "${#ONLY[@]}" = 0 ] && [ -e "$LAB_DIR/run/witness.sh" ] && { ! alive witness || port_free "$(witness_port)"; }; then
     fails+=("the test witness is down (no live process in $(pidfile witness) serving port $(witness_port)): run lab/lab.sh witness")
+  fi
+  # The second host's nodes, against the bytes checked here.
+  if [ "${#REMOTE[@]}" -gt 0 ]; then
+    rcmd running "$mesh_sha" "$cap_sha" "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" "$(config_digest)" > /dev/null || fails+=("${REMOTE[*]} on $REMOTE_SSH: not all running the checked build (run: ssh ... running)")
   fi
   if [ "${#fails[@]}" -gt 0 ]; then
     printf 'lab.sh: running: %s\n' "${fails[@]}" >&2
@@ -752,7 +983,15 @@ cmd_status() {
     if [ "$DRY" = 1 ]; then
       say curl -fsS "$(console "$n")/api/plugin-keys"; continue
     fi
-    if alive "$n"; then
+    if is_remote "$n"; then
+      if curl -fsS --max-time 10 "$(console "$n")/api/status" > /dev/null 2>&1; then
+        echo "$n: up on $REMOTE_SSH api $(api_port "$n") console $(console_port "$n") quic $(bind_port "$n")"
+        echo "  node_id: $(node_id "$n" 2> /dev/null || echo '<not learned yet>')"
+        echo "  plugin keys: $(curl -fsS "$(console "$n")/api/plugin-keys" 2> /dev/null | head -c 600 || echo '<no answer>')"
+      else
+        echo "$n: down (no answer on $(console "$n") through the ssh session to $REMOTE_SSH)"
+      fi
+    elif alive "$n"; then
       echo "$n: up pid $(pid_of "$n") api $(api_port "$n") console $(console_port "$n") quic $(bind_port "$n")"
       echo "  node_id: $(node_id "$n" 2> /dev/null || echo '<not learned yet>')"
       echo "  plugin keys: $(curl -fsS "$(console "$n")/api/plugin-keys" 2> /dev/null | head -c 600 || echo '<no answer>')"
@@ -1189,10 +1428,22 @@ cmd_all() {
   cmd_check; cmd_tools; cmd_start; cmd_exchange
   local wait=${LAB_CHECKPOINT_WAIT:-360}
   if [ "$DRY" = 1 ]; then echo "  (wait ${wait}s: each node cuts its first checkpoint 300 s after activity)"; else sleep "$wait"; fi
-  cmd_join; cmd_witness; cmd_bind; cmd_entries; cmd_commitments; cmd_loop; cmd_pack
+  cmd_join; cmd_witness; cmd_bind; refresh_mirror; cmd_entries; cmd_commitments; cmd_loop; cmd_pack
 }
 
+# The second host's nodes are reached through the ssh session, and the steps read their ledgers from a fresh mirror.
 case "$cmd" in
+  start | exchange | bind | commitments | bundles | twins | loop | ask | admit | deal | settle | dispute | refresh-mirror)
+    ensure_tunnel || die "the remote nodes are not reachable" ;;
+  status | join | witness) ensure_tunnel || true ;;  # driver-side files only; status says what it cannot reach
+esac
+case "$cmd" in
+  admit | deal | settle | dispute | ask | loop | bundles | twins) refresh_mirror ;;
+esac
+case "$cmd" in
+  node-start | node-id | mirror | config-digest) "cmd_$(printf %s "$cmd" | tr - _)" "${2:-}" ;;
+  refresh-mirror) refresh_mirror "${2:-}" ;;
+  guard-moved) is_remote "${2:-}" || die "guard-moved: ${2:-} is not in LAB_REMOTE_NODES"; guard_moved "$2"; echo "guard-moved: $2 may start on $REMOTE_SSH" ;;
   check | running | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
