@@ -20,12 +20,15 @@ mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
 mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
 mesh-llm-pr-2741 Mesh-LLM/mesh-llm ff57b477fefd5a6882f012c8b088aa1c3de72eec
 mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
-# The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.8 release (tag on cc21587). Over 4eba920
-# (capsules-plugin#188, the previous pin), it adds #188's catch-up from the first mesh event, #193's own_binding on
-# leg pushes, and #177's signed ledger checkpoints (the `ledger-checkpoint` console route and `capsules
-# ledger-check`, which loop#276 needs). The lab leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on
-# and a ledger-checkpoint ask is served.
-capsules Mesh-LLM/capsules-plugin v0.1.8
+# The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.17 release (tag on 3480a36). Over v0.1.8 (cc21587,
+# the previous pin) it adds the signed commitment published to Nostr relays when advertise_evidence_requests is on
+# (#269), the peer's history_card/1 asked for at join (#273) and agreement terms and records that cite the
+# inference-deals digest (#274: both nodes need this release, an older provider refuses the new terms member). Its
+# INFERENCE_DEALS_DIGEST equals the pack_source_digest of the inference-deals pin below. v0.1.8 had #188's catch-up
+# from the first mesh event, #193's own_binding on leg pushes and #177's signed ledger checkpoints (the
+# `ledger-checkpoint` console route and `capsules ledger-check`, which loop#276 needs); the lab leaves
+# CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
+capsules Mesh-LLM/capsules-plugin v0.1.17
 # The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
 # matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
 # .cargo_vcs_info.json names the tag's commit, dd64efe7).
