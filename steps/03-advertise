@@ -83,10 +83,10 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
 # What keeps a stapled history_card/1's signature unchecked: no installed capsule-cli, an evidence-commitment/0
 # (capsule-cli takes no keys for it; the plain rehearsal harness builds only /0, so its stand-in staples are this case,
 # loop#407) or a card entry without a checkpoint_key (an allowed shape, not refused).
-# loop#410 owns every unchecked staple signature: a keyless entry, a capsule-cli that is not installed or gave no report,
-# and the /0 case above. The harness, not the plugin, builds the rehearsal /0 commitments and their stand-in staples
-# (capsules-plugin#266 shipped /1 and is closed), so the loop owns that gap (loop#418); the Goose population verifies a
-# real /1 card (loop#407).
+# loop#410 owns every unchecked history_card/1 staple signature: a keyless entry, a capsule-cli that is not installed or
+# gave no report, and the /0 case above (the standard_history/1 staple is loop#413). A /0 is built by the rehearsal
+# harness (the stand-in staples) or signed by a plugin whose pin predates /1 (capsules-plugin#266, closed, shipped /1 in
+# v0.1.16; loop#416 moves the pin); it closes when the pin is on /1 and no rehearsal node stays on /0 (loop#418).
 STAPLE_ISSUE = "evidence-network/loop#410"
 # A standard_history/1 staple is verified like a card (loop#408); a live run keeps no staple bytes (loop#413).
 STANDARD_LIVE_ISSUE = "evidence-network/loop#413"
@@ -396,10 +396,10 @@ def verify_node(out, name, rec, key_id, read, live):
             errs.append("the commitment is not under this node's key")
         if not errs:
             sv = (sv_.unchecked("the staple is a rehearsal stand-in in an evidence-commitment/0, not a card the node's book "
-                                "signed; capsule-cli takes no keys for /0 and the Goose population verifies a real /1 card", legacy=True)
+                                "signed; capsule-cli takes no keys for /0 and the Goose population verifies a real /1 card")
                   if rec.get("inputs") == "stand-in" else sv_.verify(out / proofs[0], key_id))
             errs += sv["errors"]
-            rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside", "legacy")}
+            rec["staple_verify"] = {k: sv[k] for k in ("state", "not_checked", "outside")}
             rec["staple_verify"]["capsule_cli"] = sv_.pinned_version()
             rec["staple_verify"]["ran"] = sv["report"] is not None  # capsule-cli gave a report, whatever it found
             if sv["report"] is not None:

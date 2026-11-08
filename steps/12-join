@@ -180,9 +180,9 @@ PROBES = ("checkpoints", "history_card")
 PROOF = ["controller.json", "binding.json", "policy.json", "book.json", "commitment.json", "disclosure-policy.json",
          "doctor.json", "join.json"]
 DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
-# What keeps a stapled history_card/1's signature unchecked (as step 03): no installed capsule-cli, or a card entry
-# without a checkpoint_key.
-STAPLE_ISSUE = "evidence-network/loop#410"  # keyless staples and a capsule-cli that is not installed
+# What keeps a stapled history_card/1's signature unchecked (as step 03): no installed capsule-cli, a card entry
+# without a checkpoint_key, or an evidence-commitment/0 (named in the lines below; loop#418).
+STAPLE_ISSUE = "evidence-network/loop#410"  # keyless staples, a capsule-cli that is not installed, an evidence-commitment/0
 
 # The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
@@ -1070,7 +1070,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, w
             lines.append(compare_published(name, entry["node_id"], doc))
             f, n, p, staple_state = staple_signatures(node_dir, name, "commitment.json", entry["key_id"])
             if staple_state == "LEGACY":
-                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, loop#410: capsule-cli "
+                lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, {STAPLE_ISSUE}: capsule-cli "
                              "takes no keys for it)")
             fails += f
             nc += n
@@ -1475,7 +1475,7 @@ def run_goose(pop, out, tmp):
         failures += [f"{name}: {e}" for e in check_own_card(adv)]
         f, n, p, signed_state = staple_signatures(adv_dir, name, "commitment.json", adv["node_key"])
         if signed_state == "LEGACY":
-            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, loop#410: capsule-cli takes no "
+            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, {STAPLE_ISSUE}: capsule-cli takes no "
                          "keys for it)")
         failures += f
         not_checked += n

@@ -51,7 +51,7 @@ checkpoint signature, the card's checkpoint anchor, responder) fails the node. W
 passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
 request, and no second caller's answer is held). A rehearsal stand-in staple (the harness builds an `evidence-commitment/0`, so it is the same gap as
-the next, owned by loop#410 (the harness, not the plugin, builds those `/0` commitments); the Goose population verifies a real `/1` card, loop#407),
+the next, owned by loop#410 (the harness builds those `/0` commitments; a plugin pin that predates `/1` signs them for real nodes); the Goose population verifies a real `/1` card, loop#407),
 an `evidence-commitment/0` (capsule-cli takes no keys for it, and the pinned plugin signs those today), a runner without
 the binary, or a card entry without a `checkpoint_key` (an allowed shape, never refused; loop#410) leaves
 the staple's signature as a `not_checked` entry on a PASS. Two parts are listed

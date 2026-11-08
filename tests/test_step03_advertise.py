@@ -114,7 +114,6 @@ class StepTest(unittest.TestCase):
         self.assertIn("evidence-commitment/1 only", f["detail"])
         self.assertIn("a rehearsal stand-in in an evidence-commitment/0", f["detail"])
         # A stand-in staple is the /0 gap, owned by loop#410 (the closed plugin issue #266 owns nothing now).
-        self.assertTrue(nodes["bob"]["staple_verify"]["legacy"])
         self.assertNotIn("capsule-cli", f["pinned"])
         self.assertIn("The stapled checkpoint attestation is step 02's assertion", f["detail"])
         self.assertIn("The staple of bob is a rehearsal stand-in.", f["detail"])
@@ -175,7 +174,7 @@ class StepTest(unittest.TestCase):
             f, out = self.run_step()
         self.assertEqual(f["result"], "PASS", f["detail"])
         self.assertIn(why, f["detail"])
-        # Every unchecked staple, /0 stand-in or not, is owned by loop#410.
+        # Every unchecked history_card/1 staple signature, /0 stand-in or not, is owned by loop#410.
         self.assertEqual({w.split(" is not verified")[0]: i for w, i in finding.gaps(f["detail"])},
                          {"the stapled history_card/1 signature (alice)": "evidence-network/loop#410",
                           "the stapled history_card/1 signature (bob)": "evidence-network/loop#410"})
