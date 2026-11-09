@@ -6,7 +6,10 @@
   scripts/live_alerts.py stale [--today YYYY-MM-DD]   one loop-live-stale issue when the newest live findings date is
                                                   more than 1 day old, and one loop-live-goose-stale issue when the newest
                                                   findings/goose/ live date is (loop#363: the Goose pass is checked on its
-                                                  own, so a Mesh day does not hide a missing Goose day); it closes nothing
+                                                  own, so a Mesh day does not hide a missing Goose day); it closes nothing.
+                                                  It also opens one loop-reporter-stale issue when the newest daily report
+                                                  in stats/data/daily/ (a settled day, not a MISSED one) is more than 1 day old
+                                                  (loop#427: the lab reporter failed 10 days unnoticed)
 
 A step is FAIL when its finding.json says so and MALFORMED when it is missing, not JSON, or refused by steps/finding.py
 (check_record). NOT_CHECKED, PASS and a budget refusal open nothing: they are not a regression. An issue is labelled
@@ -31,6 +34,7 @@ import finding  # noqa: E402
 LIVE_DIR = re.compile(r"(\d{4}-\d{2}-\d{2})-live(-\d+)?")
 STALE_LABEL = "loop-live-stale"
 GOOSE_STALE_LABEL = "loop-live-goose-stale"
+REPORTER_STALE_LABEL = "loop-reporter-stale"
 STALE_DAYS = 1
 # The repository that owns each live step's component, as in loop.yml's table (loop.yml has no other live steps either).
 OWNER = {
@@ -113,6 +117,39 @@ def newest_live(findings=ROOT / "findings"):
     return max(dates) if dates else None
 
 
+def newest_report(daily=ROOT / "stats" / "data" / "daily"):
+    """Date of the newest settled daily report among the scrubbed day files, or None. A MISSED day is not a report.
+
+    evidence-network/loop-data is private, so loop's token cannot read its `report: daily` commits; its publish-scrubbed
+    workflow pushes one scrubbed file per day into stats/data/daily/ every night, and run is "settled" only for a day
+    the reporter finished (scripts/scrub_reports.py)."""
+    dates = []
+    for f in daily.glob("*.json") if daily.is_dir() else []:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("run") == "settled" and d.get("date") == f.stem and re.fullmatch(r"\d{4}-\d{2}-\d{2}", f.stem):
+            dates.append(f.stem)
+    return max(dates) if dates else None
+
+
+def alert_reporter_stale(today, run_url, daily=ROOT / "stats" / "data" / "daily"):
+    newest = newest_report(daily)
+    age = (today - datetime.date.fromisoformat(newest)).days if newest else None
+    if age is not None and age <= STALE_DAYS:
+        print(f"live_alerts: newest daily report {newest} is {age} day(s) old")
+        return False
+    seen = f"the newest daily report is dated {newest}, {age} days ago" if newest else "there is no daily report"
+    raise_issue(REPORTER_STALE_LABEL, "FBCA04", "the daily reporter has published no report",
+                "the daily reporter has published no report for over a day",
+                f"As of {today}, {seen} (more than {STALE_DAYS} day old; a MISSED day is not a report): {run_url}\n"
+                "Read from stats/data/daily/, which evidence-network/loop-data's publish-scrubbed workflow fills nightly, so "
+                "either the reporter on the lab VM has stopped (check its timer and its git pull in loop-data) or that "
+                "workflow has. loop-data's reports workflow is also red. This issue is closed by hand once a new report is published.")
+    return True
+
+
 def alert_stale(today, run_url, findings=ROOT / "findings", goose=False):
     """goose: judge findings/goose/ (the Goose pass of the daily run) with its own label and title."""
     where = findings / "goose" if goose else findings
@@ -165,6 +202,7 @@ def main(argv):
         today = datetime.date.fromisoformat(a.today)
         alert_stale(today, run_url)
         alert_stale(today, run_url, goose=True)
+        alert_reporter_stale(today, run_url)
         return 0
     dirs = a.dirs if a.cmd == "findings" else changed_dirs(a.before, a.after)
     for d in dirs:

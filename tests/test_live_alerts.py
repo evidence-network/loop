@@ -3,6 +3,7 @@
 Run: python3 -B -m unittest tests.test_live_alerts -v
 """
 import datetime
+import json
 import os
 import shutil
 import subprocess
@@ -127,6 +128,33 @@ class AlertsTest(unittest.TestCase):
         self.run_dir("2026-11-05-live-1", **{"04_admit": "PASS"})
         self.assertTrue(live_alerts.alert_stale(datetime.date(2026, 11, 6), "", self.findings, goose=True))
         self.assertTrue(any("no Goose live findings" in x for x in self.calls()))
+
+    def day(self, date, run="settled"):
+        d = self.tmp / "daily"
+        d.mkdir(exist_ok=True)
+        (d / f"{date}.json").write_text(json.dumps({"date": date, "run": run}))
+        return d
+
+    def test_reporter_stale_fires_on_old_data_only_and_missed_is_not_a_report(self):
+        # The incident: the last real report is 10-29, every later day is MISSED. 11-08 must alert.
+        daily = self.day("2026-10-29")
+        for d in ("2026-10-30", "2026-11-07", "2026-11-08"):
+            self.day(d, run="missed")
+        self.assertTrue(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 9), "", daily))
+        self.assertTrue(any("--label loop-reporter-stale" in x and "2026-10-29" in x for x in self.calls()))
+        self.assertFalse(any(x.startswith("issue close") for x in self.calls()))
+
+    def test_reporter_stale_quiet_on_fresh_data(self):
+        self.log.write_text("")
+        daily = self.day("2026-11-08")
+        self.assertFalse(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 9), "", daily))  # 1 day old
+        self.assertEqual(self.calls(), [])
+        self.assertTrue(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 10), "", daily))  # 2 days old
+
+    def test_reporter_stale_with_nothing_and_open_issue(self):
+        os.environ["STUB_OPEN"] = "9"
+        self.assertTrue(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 9), "", self.tmp / "none"))
+        self.assertTrue(any(x.startswith("issue comment 9") and "no daily report" in x for x in self.calls()))
 
     def test_changed_dirs_takes_only_live_runs(self):
         g = lambda *a: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@x", *a], cwd=self.tmp, check=True,
