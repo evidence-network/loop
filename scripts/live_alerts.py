@@ -148,15 +148,15 @@ def alert_reporter_stale(today, run_url, daily=ROOT / "stats" / "data" / "daily"
         return False
     seen = f"the newest daily report is dated {newest}, {age} days ago" if newest else "there is no daily report"
     days = scrubbed_days(daily)
-    missed = max((k for k, d in days.items() if d.get("run") == "missed"), default=None)
-    why = (f"The newest day the reporter marked MISSED is {missed}: {days[missed].get('missed_reason')}. "
-           "The reporter ran but could not report; check its node.\n") if missed else ""
+    # Only a MISSED day newer than the newest report says why the reporter is silent now; an older one is history.
+    missed = max((k for k, d in days.items() if d.get("run") == "missed" and (newest is None or k > newest)), default=None)
+    why = f"The newest day the reporter marked MISSED is {missed}: {days[missed].get('missed_reason')}.\n" if missed else ""
     raise_issue(REPORTER_STALE_LABEL, "FBCA04", "the daily reporter has published no report",
                 "the daily reporter has published no report for over a day",
                 f"As of {today}, {seen} (more than {STALE_DAYS} day old; a MISSED day is not a report): {run_url}\n{why}"
-                "Read from stats/data/daily/, which evidence-network/loop-data's publish-scrubbed workflow fills nightly. "
+                "Read from stats/data/daily/, which evidence-network/loop-data's publish-scrubbed workflow fills daily. "
                 "Either the reporter on the lab VM has stopped (check its timer and its git pull in loop-data), or it ran and "
-                "wrote MISSED (the reason above; loop-data's reports workflow stays green then), or publish-scrubbed has "
+                "wrote MISSED (the reason above, if any; loop-data's reports workflow stays green then), or publish-scrubbed has "
                 "stopped (its raw store in loop-data is then ahead of this one). This issue is closed by hand once a new "
                 "report is published.")
     return True

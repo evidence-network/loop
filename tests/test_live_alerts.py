@@ -146,6 +146,12 @@ class AlertsTest(unittest.TestCase):
         self.assertTrue(any("MISSED is 2026-11-08: no answer from node" in x for x in c))  # the reporter's own reason is shown
         self.assertFalse(any(x.startswith("issue close") for x in self.calls()))
 
+    def test_an_old_missed_day_is_not_blamed(self):
+        daily = self.day("2026-10-01", run="missed", reason="old-reason")
+        self.day("2026-10-29")
+        self.assertTrue(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 9), "", daily))
+        self.assertFalse(any("old-reason" in x or "marked MISSED" in x for x in self.calls()))
+
     def test_reporter_stale_quiet_on_fresh_data(self):
         self.log.write_text("")
         daily = self.day("2026-11-08")
