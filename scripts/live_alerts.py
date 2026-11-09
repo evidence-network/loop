@@ -117,20 +117,26 @@ def newest_live(findings=ROOT / "findings"):
     return max(dates) if dates else None
 
 
-def newest_report(daily=ROOT / "stats" / "data" / "daily"):
-    """Date of the newest settled daily report among the scrubbed day files, or None. A MISSED day is not a report.
+def scrubbed_days(daily=ROOT / "stats" / "data" / "daily"):
+    """{date: day file} for each readable scrubbed day file in stats/data/daily/.
 
     evidence-network/loop-data is private, so loop's token cannot read its `report: daily` commits; its publish-scrubbed
     workflow pushes one scrubbed file per day into stats/data/daily/ every night, and run is "settled" only for a day
-    the reporter finished (scripts/scrub_reports.py)."""
-    dates = []
+    the reporter finished and "missed" for a MISSED one (scripts/scrub_reports.py)."""
+    days = {}
     for f in daily.glob("*.json") if daily.is_dir() else []:
         try:
             d = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             continue
-        if isinstance(d, dict) and d.get("run") == "settled" and d.get("date") == f.stem and re.fullmatch(r"\d{4}-\d{2}-\d{2}", f.stem):
-            dates.append(f.stem)
+        if isinstance(d, dict) and d.get("date") == f.stem and re.fullmatch(r"\d{4}-\d{2}-\d{2}", f.stem):
+            days[f.stem] = d
+    return days
+
+
+def newest_report(daily=ROOT / "stats" / "data" / "daily"):
+    """Date of the newest settled daily report, or None. A MISSED day is not a report."""
+    dates = [k for k, d in scrubbed_days(daily).items() if d.get("run") == "settled"]
     return max(dates) if dates else None
 
 
@@ -141,12 +147,18 @@ def alert_reporter_stale(today, run_url, daily=ROOT / "stats" / "data" / "daily"
         print(f"live_alerts: newest daily report {newest} is {age} day(s) old")
         return False
     seen = f"the newest daily report is dated {newest}, {age} days ago" if newest else "there is no daily report"
+    days = scrubbed_days(daily)
+    missed = max((k for k, d in days.items() if d.get("run") == "missed"), default=None)
+    why = (f"The newest day the reporter marked MISSED is {missed}: {days[missed].get('missed_reason')}. "
+           "The reporter ran but could not report; check its node.\n") if missed else ""
     raise_issue(REPORTER_STALE_LABEL, "FBCA04", "the daily reporter has published no report",
                 "the daily reporter has published no report for over a day",
-                f"As of {today}, {seen} (more than {STALE_DAYS} day old; a MISSED day is not a report): {run_url}\n"
-                "Read from stats/data/daily/, which evidence-network/loop-data's publish-scrubbed workflow fills nightly, so "
-                "either the reporter on the lab VM has stopped (check its timer and its git pull in loop-data) or that "
-                "workflow has. loop-data's reports workflow is also red. This issue is closed by hand once a new report is published.")
+                f"As of {today}, {seen} (more than {STALE_DAYS} day old; a MISSED day is not a report): {run_url}\n{why}"
+                "Read from stats/data/daily/, which evidence-network/loop-data's publish-scrubbed workflow fills nightly. "
+                "Either the reporter on the lab VM has stopped (check its timer and its git pull in loop-data), or it ran and "
+                "wrote MISSED (the reason above; loop-data's reports workflow stays green then), or publish-scrubbed has "
+                "stopped (its raw store in loop-data is then ahead of this one). This issue is closed by hand once a new "
+                "report is published.")
     return True
 
 

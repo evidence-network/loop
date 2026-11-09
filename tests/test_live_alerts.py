@@ -129,19 +129,21 @@ class AlertsTest(unittest.TestCase):
         self.assertTrue(live_alerts.alert_stale(datetime.date(2026, 11, 6), "", self.findings, goose=True))
         self.assertTrue(any("no Goose live findings" in x for x in self.calls()))
 
-    def day(self, date, run="settled"):
+    def day(self, date, run="settled", reason=None):
         d = self.tmp / "daily"
         d.mkdir(exist_ok=True)
-        (d / f"{date}.json").write_text(json.dumps({"date": date, "run": run}))
+        (d / f"{date}.json").write_text(json.dumps({"date": date, "run": run, "missed_reason": reason}))
         return d
 
     def test_reporter_stale_fires_on_old_data_only_and_missed_is_not_a_report(self):
         # The incident: the last real report is 10-29, every later day is MISSED. 11-08 must alert.
         daily = self.day("2026-10-29")
         for d in ("2026-10-30", "2026-11-07", "2026-11-08"):
-            self.day(d, run="missed")
+            self.day(d, run="missed", reason="no answer from node" if d == "2026-11-08" else None)
         self.assertTrue(live_alerts.alert_reporter_stale(datetime.date(2026, 11, 9), "", daily))
-        self.assertTrue(any("--label loop-reporter-stale" in x and "2026-10-29" in x for x in self.calls()))
+        c = self.calls()
+        self.assertTrue(any("--label loop-reporter-stale" in x and "2026-10-29" in x for x in c))
+        self.assertTrue(any("MISSED is 2026-11-08: no answer from node" in x for x in c))  # the reporter's own reason is shown
         self.assertFalse(any(x.startswith("issue close") for x in self.calls()))
 
     def test_reporter_stale_quiet_on_fresh_data(self):
