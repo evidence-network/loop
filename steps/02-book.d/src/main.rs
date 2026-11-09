@@ -181,6 +181,7 @@ fn header(book_id: &str, seq: u64, time: &str, note: &str) -> Header {
         counterparty_ref: None,
         correlation: BTreeMap::new(),
         statement: Some(json!({ "note": note })),
+        reproduction: None,
     }
 }
 
@@ -395,7 +396,7 @@ fn verified_witnesses(cp: &Checkpoint, statement: &[u8], directory: &Value) -> V
     let v = summary_value(
         &[],
         &Coverage { checkpoint: cp, covered: 0, statement, witness_directory: Some(directory) },
-        &|_| false,
+        &|_| None,
         &LABELS,
     );
     let coverage = &v["coverage"];

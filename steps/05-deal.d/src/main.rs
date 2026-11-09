@@ -223,6 +223,7 @@ fn header(book_id: &str, seq: u64, time: &str, record_type: &str) -> Header {
         counterparty_ref: None,
         correlation: BTreeMap::new(),
         statement: None,
+        reproduction: None,
     }
 }
 

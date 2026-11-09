@@ -35,19 +35,21 @@ if [ "$want" != "$got" ]; then
   echo "05-deal.setup: Cargo.lock has checkpointed-local-log '$got', versions.lock pins $want" >&2
   exit 1
 fi
-eb_repo=$(awk '$1 == "evidencebook" { print $2 }' "$ROOT/versions.lock")
-eb_tag=$(pin_ref evidencebook)
+# evidencebook: the crates.io crate the pinned crates/evidencebook-v<version> tag publishes.
+eb_want=$(pin_ref evidencebook)
+eb_want=${eb_want#crates/evidencebook-v}
+eb_got=$(locked evidencebook version)
 eb_source=$(locked evidencebook source)
-case "$eb_source" in
-  "git+https://github.com/$eb_repo?tag=$eb_tag#"*) ;;
-  *) echo "05-deal.setup: Cargo.lock has evidencebook from '$eb_source', versions.lock pins $eb_repo $eb_tag" >&2; exit 1 ;;
-esac
+if [ "$eb_want" != "$eb_got" ] || [ "$eb_source" != "registry+https://github.com/rust-lang/crates.io-index" ]; then
+  echo "05-deal.setup: Cargo.lock has evidencebook '$eb_got' from '$eb_source', versions.lock pins $(pin_ref evidencebook)" >&2
+  exit 1
+fi
 
 command -v cargo >/dev/null || { echo "05-deal.setup: cargo is not installed" >&2; exit 1; }
 CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path "$CRATE/Cargo.toml"
 mkdir -p "$TOOLS/bin"
 install -m 0755 "$TOOLS/target/release/loop-step05-deal" "$TOOLS/bin/loop-step05-deal"
-echo "05-deal.setup: installed $TOOLS/bin/loop-step05-deal (evidencebook $eb_tag at ${eb_source##*#}, checkpointed-local-log $got)"
+echo "05-deal.setup: installed $TOOLS/bin/loop-step05-deal (evidencebook $eb_got, checkpointed-local-log $got)"
 
 # On the live population the step recomputes each held half's capsule_id with
 # the AAC Go verifier at its versions.lock pin, which step 01's setup installs.

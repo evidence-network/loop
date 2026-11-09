@@ -32,10 +32,10 @@ mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
 capsules Mesh-LLM/capsules-plugin v0.1.17
-# The evidence-request crate that evidencebook v0.8.1's Rust crate builds with, which step 02's driver
-# matches (steps/02-book.setup.sh). crates.io 0.2.0 is published from this tag (its
-# .cargo_vcs_info.json names the tag's commit, dd64efe7).
-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.2.0
+# The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
+# (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
+# evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
+evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.5.0
 # The evidence-request the plugin builds with at v0.1.17: crates.io 0.4.1, published from this tag (0.3.0 was the
 # plugin's at v0.1.6 to v0.1.8: the -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
 capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.4.1
@@ -49,12 +49,14 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # stamps SOURCE_DATE_EPOCH on every book record, Result and checkpoint (evidencebook#330), which
 # step 10 sets to the window end so two runs over one 08 manifest give the same digests (loop#177).
 capsulectl action-state-group/evidencebook v0.13.1
-evidencebook action-state-group/evidencebook v0.8.1
+# The evidencebook Rust crate steps 02 and 05 build with: crates.io 0.0.15, published from this tag (evidence-request
+# 0.5.0, checkpointed-local-log 0.5, agent-action-capsule 0.10.0). The drivers take it from crates.io, not a git tag.
+evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.15
 # step 02 book
-# The log evidencebook v0.8.1's Rust crate embeds, as its Cargo.lock and step 02's driver lock it.
-checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.3.1
-# AAC's Rust crate, whose witness receipt verifier evidencebook v0.8.1's crate calls.
-aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.4.1
+# The log evidencebook 0.0.15's Rust crate embeds, as its Cargo.lock and step 02's driver lock it.
+checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.5.0
+# AAC's Rust crate, whose witness receipt verifier evidencebook 0.0.15's crate calls.
+aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.10.0
 # step 12 join
 # The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
 # built from the evidencebook tag's capsulectl/ module.
@@ -69,7 +71,7 @@ capsule-cli action-state-group/capsule-cli v0.1.0-rc38
 # The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).
 capsule-emit action-state-group/capsule-emit python/v0.13.0
-aac-go action-state-group/agent-action-capsule go/v0.17.0
+aac-go action-state-group/agent-action-capsule go/v0.21.0
 # step 10 judge
 # The inference-deals Terms Pack (evidencebook-skills#71): main at the commit that carries it with Steven's
 # term rulings (terms 1-3 must_have). Its window.months is not used: step 10 judges every record up to the as-of instant. The repo has no release tag; a full SHA.
