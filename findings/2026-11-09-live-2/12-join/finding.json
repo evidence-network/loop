@@ -1,0 +1,231 @@
+{
+  "asserts": "one command on the pinned release keeps a controller binding for the node key (its controller class recorded), creates the book, publishes the commitment, and a stranger's probe of the node (capsulectl book doctor --probe: checkpoints, then history_card/1) verifies and matches the advertised policy, and, for an evidence-commitment/1 where the pinned capsule-cli is installed, no stapled history_card/1 of the commitment fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder)",
+  "detail": "probe backend: reporter. stevenmih-1: doctor reports the controller binding bound (9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073); its signed commitment, fetched through the console that asks it, names the same digest; stevenmih-1: stevenmih-1's binding 9ccf10a2d27cad07eab82f285fd0a2105cf67b5b8f191ad404c15f62286f6073 names the node key (same_controller_asserted: no role) and applies at 2026-11-09T23:01:53Z (form, both signatures and window PASS, revocation PASS: no statement applies in the list evidence-network/loop step 12 (checking at 2026-11-09T23:01:53Z), nodes/revocations/ at main d55c27d5741cf36b8eebe96163af3b5d313181d8 declared complete as of 2026-11-09T23:01:53Z under profile evidence-network/loop: nodes/revocations/<binding_digest>.json (list sha256 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945); a statement made after 2026-11-09T23:01:53Z is not excluded); stevenmih-1: commitment changed: join's commitment is not the one published under nodes/commitments/, so the findings run republishes it; stevenmih-1: doctor --probe finds both probes match and the commitment it serves carries its policy; the re-join reports it joined, and its commitment holds under the listed key with its policy bytes; the binding is bound before the re-join and bound after; stevenmih-1: the answers are matched against its signed commitment and policy, and its nodes/ entry lists the same stranger-safe subjects; stevenmih-1 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-2: doctor reports the controller binding bound (68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e); its signed commitment, fetched through the console that asks it, names the same digest; stevenmih-2: stevenmih-2's binding 68a2b24dded7b178dda70d84e4500b3df73efc49e41e629a3ae5af5363a6141e names the node key (same_controller_asserted: no role) and applies at 2026-11-09T23:01:53Z (form, both signatures and window PASS, revocation PASS: no statement applies in the list evidence-network/loop step 12 (checking at 2026-11-09T23:01:53Z), nodes/revocations/ at main d55c27d5741cf36b8eebe96163af3b5d313181d8 declared complete as of 2026-11-09T23:01:53Z under profile evidence-network/loop: nodes/revocations/<binding_digest>.json (list sha256 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945); a statement made after 2026-11-09T23:01:53Z is not excluded); stevenmih-2: commitment changed: join's commitment is not the one published under nodes/commitments/, so the findings run republishes it; stevenmih-2: doctor --probe finds both probes match and the commitment it serves carries its policy; the re-join reports it joined, and its commitment holds under the listed key with its policy bytes; the binding is bound before the re-join and bound after; stevenmih-2: the answers are matched against its signed commitment and policy, and its nodes/ entry lists the same stranger-safe subjects; stevenmih-2 (asked through the reporter's console): checkpoints answered under the listed key; history_card/1 answered under the listed key; stevenmih-3: doctor reports no controller binding held, and the signed commitment names none; stevenmih-3: commitment changed: join's commitment is not the one published under nodes/commitments/, so the findings run republishes it; stevenmih-3: unbound before and after the re-join (optional; its signed commitment, from join and fetched through the asking console, carries no binding); stevenmih-3: doctor --probe finds both probes match and the commitment it serves carries its policy; the re-join reports it joined, and its commitment holds under the listed key with its policy bytes; the binding is unbound before the re-join and unbound after; stevenmih-3: the answers are matched against its signed commitment and policy, and its nodes/ entry lists the same stranger-safe subjects; stevenmih-3 (asked through a second node's console): checkpoints answered under the listed key; history_card/1 answered under the listed key.",
+  "finished": "2026-11-09T23:01:56Z",
+  "name": "join",
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.17.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsule-cli": {
+      "ref": "v0.1.0-rc38",
+      "repository": "action-state-group/capsule-cli"
+    },
+    "capsules": {
+      "ref": "v0.1.17",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "c86f58e58de7bf02bce52a390a144413d8d99183",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "reporter": {
+      "ref": "4d00c42c9856fc892f7309ee9b434dca1bb69202",
+      "repository": "evidence-network/loop"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "nodes.json",
+      "sha256": "9118ac56a1ab3d40f8b135525158e550d57e895e60ea8298945b3ec847618023"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/ATTEMPT",
+      "sha256": "356d994760242c0719d3b9880e631ce5c67c39688fbdf7e684707d9334e1100d"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/checkpoints.response.json",
+      "sha256": "5cb343fbfbe65f031ec941d0ef32d71df67027fab59626fb767bd77504351fa1"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/checkpoints.verification",
+      "sha256": "8a556da6e0fbed5036b8575909820f59d922e1c459726d454eac00c65c76e09a"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/history_card.response.json",
+      "sha256": "39cb1e86e849310937ff326649771bf8db15fa8d62d7a71bc22d9ffcae0a3111"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/history_card.verification",
+      "sha256": "8a556da6e0fbed5036b8575909820f59d922e1c459726d454eac00c65c76e09a"
+    },
+    {
+      "path": "stevenmih-1/attempts/20261109T230153Z/peer-key.json",
+      "sha256": "7787dba20a6c2484a9de95bca9096c6ea39f1c84736c41607b2dc107cf75e7fa"
+    },
+    {
+      "path": "stevenmih-1/controller-binding.json",
+      "sha256": "e5fc74a8945b91636e037b60db53c960852b1f57166dc9ba18dd0bab79268621"
+    },
+    {
+      "path": "stevenmih-1/doctor-probe.json",
+      "sha256": "4fa1ccba6cba4364cb569ebe47e1f2fafcedb0b9e75271a0f4bb01dc0b4d5946"
+    },
+    {
+      "path": "stevenmih-1/join.json",
+      "sha256": "67ca58517421f52204ada382c8b2cc4d3cd29ea0a4a88a6879feb746e0c58384"
+    },
+    {
+      "path": "stevenmih-1/commitment.json",
+      "sha256": "484643471d9e1e56dc35c0129d143e6470cbcb4a83fbddfa18b4cf209f0c0fc8"
+    },
+    {
+      "path": "stevenmih-1/disclosure-policy.json",
+      "sha256": "0bbd984d22e6eaf96137e8a06b02822aa5a38a3c43b5e201103fd056a777a5f9"
+    },
+    {
+      "path": "stevenmih-1/staple-verify.json",
+      "sha256": "5145d30edbed12291d2faadfb93a3ee56f45181dc076de7e68b180f88957217c"
+    },
+    {
+      "path": "stevenmih-1/doctor-after.json",
+      "sha256": "87767c4c8d3509f6af32ebd0bdff872467cd2be8f10619f6c9451aea2ca07785"
+    },
+    {
+      "path": "stevenmih-1/wire.json",
+      "sha256": "5c151f651f26e8e625db8ec85092cd0f94d027c885f896573648c36dd2b0f056"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/ATTEMPT",
+      "sha256": "356d994760242c0719d3b9880e631ce5c67c39688fbdf7e684707d9334e1100d"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/checkpoints.response.json",
+      "sha256": "31cb1b267f589674b6f1e6114bd4779b6ff99c14e5c574eadd8b16b43fc8dd86"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/checkpoints.verification",
+      "sha256": "4c0536e2351f391c9e2fac23a9524d89b5f054d82df1e78599e60bce7997e088"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/history_card.response.json",
+      "sha256": "45cccc5831a0de027416770ec3ff0cc86c2da47cb3d7fcea3df58f40a4214f71"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/history_card.verification",
+      "sha256": "4c0536e2351f391c9e2fac23a9524d89b5f054d82df1e78599e60bce7997e088"
+    },
+    {
+      "path": "stevenmih-2/attempts/20261109T230153Z/peer-key.json",
+      "sha256": "3589ddee6d97bd007f865b97f836db4478c53a0e46d8c00ff67a463f4fb8049e"
+    },
+    {
+      "path": "stevenmih-2/controller-binding.json",
+      "sha256": "0be7a9bca01e87c109aa5ce6508af811401ca2c98043ad471c6fdea0a01c4b36"
+    },
+    {
+      "path": "stevenmih-2/doctor-probe.json",
+      "sha256": "a5b2ab7cfc2c3f5196888c1deb72aa61254a32bd36dcb3136fd103fe3da7c98a"
+    },
+    {
+      "path": "stevenmih-2/join.json",
+      "sha256": "ab1c69b3e2bfd3087c47e47193a742142b4e36bfafce475e9a82d6f6eedc21d4"
+    },
+    {
+      "path": "stevenmih-2/commitment.json",
+      "sha256": "f7bad1f1a7218eaf10a956cafa408d54f987a2564265bafe44c884850009c74d"
+    },
+    {
+      "path": "stevenmih-2/disclosure-policy.json",
+      "sha256": "8d0d59e09ea27ae351dc308215658c130558173970d9b463f34e5c77062c5e69"
+    },
+    {
+      "path": "stevenmih-2/staple-verify.json",
+      "sha256": "53dea6293b95f578822fdce82b06602431f18d41bd17bcf3f291cefcbeeef3b5"
+    },
+    {
+      "path": "stevenmih-2/doctor-after.json",
+      "sha256": "f02315fdd1c099c2d1eb8bc599369c149284eb4f456893065565d8b8a3fe84c1"
+    },
+    {
+      "path": "stevenmih-2/wire.json",
+      "sha256": "2d21de93a4737eaf69c740da3841c97e0473f49e668b2c3040592ea0297002ee"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/ATTEMPT",
+      "sha256": "356d994760242c0719d3b9880e631ce5c67c39688fbdf7e684707d9334e1100d"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/checkpoints.request.json",
+      "sha256": "9841e252c3254dc1b7c5ac3727ca5623618347f18656e182cf34df2d441548b5"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/checkpoints.response.json",
+      "sha256": "ab86f6d6986ba092f4e2174e49bdc6af392cccf297a8a65ba3532c3ffeac5524"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/checkpoints.verification",
+      "sha256": "ed526381a9db1d8d100ba2e2e06a3fbefbb12c97f57def75353ac41df03740b6"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/history_card.request.json",
+      "sha256": "4fa7715e8d934b91a67761b82e1523422fe19825b59d03bf90335b51f9f3a999"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/history_card.response.json",
+      "sha256": "183b43f6c2562b714fef2a9889e46564f53a0848e7161b52236692bf9a8d4009"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/history_card.verification",
+      "sha256": "ed526381a9db1d8d100ba2e2e06a3fbefbb12c97f57def75353ac41df03740b6"
+    },
+    {
+      "path": "stevenmih-3/attempts/20261109T230153Z/peer-key.json",
+      "sha256": "21fcb7bcf0663dc8f66d391722dd25613f844c9974ac087e7ca483180013e868"
+    },
+    {
+      "path": "stevenmih-3/doctor-probe.json",
+      "sha256": "65ecfea8e9fe1aea3af83da77c2fc92e2045c9f278713a316bab3753cdf5c36a"
+    },
+    {
+      "path": "stevenmih-3/join.json",
+      "sha256": "280f5429788d8f419427a7653c84e3ffed5055c966381c2e10c13b16a9f8450f"
+    },
+    {
+      "path": "stevenmih-3/commitment.json",
+      "sha256": "e28508137ebf1ac3c79c21d9ffbad01356600962c93fac560dfac8662a6788fd"
+    },
+    {
+      "path": "stevenmih-3/disclosure-policy.json",
+      "sha256": "893e6c61d73357d37dd321aaa7b7f0b946585866e86682d34343303b4f190469"
+    },
+    {
+      "path": "stevenmih-3/staple-verify.json",
+      "sha256": "432b8a23d4f7700da9fcb6b9c4ee13ae14fc64e6644ff662b76aa869fec11af3"
+    },
+    {
+      "path": "stevenmih-3/doctor-after.json",
+      "sha256": "df937e3848a76a5c73144ab3f89df945e758b15a1a2c22fcd1354c8b29c87d8a"
+    },
+    {
+      "path": "stevenmih-3/wire.json",
+      "sha256": "73d0b26295491a67fc0b0c25fb296d2a513953102682ea9c494f001dfdc975f3"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-09T23:01:53Z",
+  "step": "12"
+}
