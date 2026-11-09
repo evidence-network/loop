@@ -47,9 +47,9 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "checkpointed-local-log"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e0849196938de287c059d1f53874c76cc6583051e4ab7327bedb0f658ffd9d2"
+checksum = "3ec489715bc08d10eb0b0a995217951ed1f9db3c2db76d30923300a81ca8b063"
 dependencies = [
  "base64",
  "coset",
