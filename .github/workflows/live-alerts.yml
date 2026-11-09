@@ -4,7 +4,7 @@
 # (or commented on) when the newest live findings date is more than 1 day old, which covers a sleeping Mac and a failed run.
 # findings/goose/ (the daily run's Goose pass, loop#363) is judged the same way on its own: loop-live-goose-stale.
 # loop-reporter-stale (loop#427): the same nightly job opens one issue when the newest settled daily report in stats/data/daily/
-# (loop-data is private, so its publish-scrubbed workflow's nightly copy is what is read) is more than 1 day old; MISSED is no report.
+# (loop-data is private, so its publish-scrubbed workflow's daily copy is what is read) is more than 1 day old; MISSED is no report.
 # Issues are never closed here. Only GITHUB_TOKEN is used.
 name: live-alerts
 

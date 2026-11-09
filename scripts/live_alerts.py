@@ -121,7 +121,7 @@ def scrubbed_days(daily=ROOT / "stats" / "data" / "daily"):
     """{date: day file} for each readable scrubbed day file in stats/data/daily/.
 
     evidence-network/loop-data is private, so loop's token cannot read its `report: daily` commits; its publish-scrubbed
-    workflow pushes one scrubbed file per day into stats/data/daily/ every night, and run is "settled" only for a day
+    workflow pushes one scrubbed file per day into stats/data/daily/ once a day, and run is "settled" only for a day
     the reporter finished and "missed" for a MISSED one (scripts/scrub_reports.py)."""
     days = {}
     for f in daily.glob("*.json") if daily.is_dir() else []:
