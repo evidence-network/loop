@@ -14,5 +14,5 @@
   "mesh": "lab",
   "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
   "operator": "StevenMih",
-  "plugin_version": "capsules v0.1.8 (cc21587bb6d47ee7a288474f77fa10bb29bbd698), binary sha256 9d5abd585fa46979299c229faf77dd5efe01844cca62ea27b27cf33eeefb2cdd"
+  "plugin_version": "capsules v0.1.17 (3480a3673996bd9cdbb3d1e7cc47c9bbb6695086), binary sha256 feb3f602291d4c23cceef271710f58639fb7d307c60096fdd8e729baf2457af7"
 }
