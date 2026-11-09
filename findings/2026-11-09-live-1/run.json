@@ -1,0 +1,29 @@
+{
+  "circulate": {
+    "action": "sent",
+    "amount_msat": 1000,
+    "payee": "lab-3",
+    "payee_received_msat": 900,
+    "payer": "lab-1"
+  },
+  "exchange": {
+    "askers": {
+      "lab-2": "HTTP/1.1 200 OK",
+      "lab-3": "HTTP/1.1 200 OK"
+    },
+    "paid": true,
+    "refused": null,
+    "status": "HTTP/1.1 200 OK"
+  },
+  "population": "live",
+  "stage": "1",
+  "started": "2026-11-09T00:39:12Z",
+  "steps": [
+    "01",
+    "02",
+    "03",
+    "12",
+    "07",
+    "08"
+  ]
+}

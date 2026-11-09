@@ -10,8 +10,10 @@ description = "Step 08's offline ledger check: shows a kept copy of a node's led
 name = "loop-ledger-check"
 path = "src/main.rs"
 
-# checkpointed-local-log is the version the capsules plugin at versions.lock builds its checkpoints and range
-# proofs with (capsules-plugin v0.1.8 Cargo.toml: 0.3.1). Cargo.lock is committed;
+# checkpointed-local-log 0.3.1 is the version the capsules plugin built its checkpoints and range proofs with at
+# v0.1.8; the plugin at versions.lock (v0.1.17) builds with 0.4.0, which this check does not use. The shared pin
+# stays at 0.3.1 because step 05 ties it to the crate evidencebook v0.8.1 embeds; whether 0.3.1 verifies 0.4.0
+# checkpoints is unchecked until a live run under v0.1.17. Cargo.lock is committed;
 # steps/ledger-check.setup.sh builds with --locked.
 [dependencies]
 checkpointed-local-log = "=0.3.1"

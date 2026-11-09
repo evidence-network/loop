@@ -52,7 +52,7 @@ passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
 request, and no second caller's answer is held). A rehearsal stand-in staple (the harness builds an `evidence-commitment/0`, so it is the same gap as
 the next, owned by loop#410 (the harness builds those `/0` commitments; a plugin pin that predates `/1` signs them for real nodes); the Goose population verifies a real `/1` card, loop#407),
-an `evidence-commitment/0` (capsule-cli takes no keys for it, and the pinned plugin signs those today), a runner without
+an `evidence-commitment/0` (capsule-cli takes no keys for it, and a plugin before v0.1.16 signs those), a runner without
 the binary, or a card entry without a `checkpoint_key` (an allowed shape, never refused; loop#410) leaves
 the staple's signature as a `not_checked` entry on a PASS. Two parts are listed
 as `not_checked` when nothing verified them here:
@@ -81,8 +81,8 @@ with the git carrier's bytes.
 `advertise/<name>/signed/{commitment,policy}.json`, when present, is a
 commitment signed beforehand and published byte for byte (the harness signs
 nothing at run time). The recording is kept in the proof as `<name>.nostr.json`.
-The live read-back against a real producer waits on
-Mesh-LLM/capsules-plugin#212; the live population reads no relay yet.
+The pinned plugin publishes the commitment to relays when its advertise_evidence_requests switch is on
+(Mesh-LLM/capsules-plugin#212); the live population leaves it off and reads no relay yet.
 
 A node with no `nostr.json` is reported `not advertised on nostr`, a note in
 its verification record and never a failure. For a node with one, the node

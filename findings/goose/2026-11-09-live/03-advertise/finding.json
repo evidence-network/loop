@@ -1,0 +1,51 @@
+{
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes, and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder) and no published standard_history/1 staple fails its signature, anchor or request binding",
+  "detail": "goose-1: PASS via git repository HEAD:nodes/commitments/b5f6e48e8fe2db30422a2b6f5ce07be4edfcca7db6c65972713026a8a155f43a.json; goose-2: PASS via git repository HEAD:nodes/commitments/33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e.json. Runner tools: OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0 (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (goose-1, goose-2) only its bytes are matched to the committed digest. The stapled history_card/1 of goose-1, goose-2 verifies with capsule-cli v0.1.0-rc38 (a pre-release; every capsule-cli release is one) `verify --history`, under the node key and the checkpoint key each card entry names: digest, envelope and checkpoint signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a commitment carries no request, and no second caller's answer is held).",
+  "finished": "2026-11-09T00:43:28Z",
+  "name": "advertise",
+  "not_checked": [],
+  "pinned": {
+    "capsule-cli": {
+      "ref": "v0.1.0-rc38",
+      "repository": "action-state-group/capsule-cli"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "carrier.json",
+      "sha256": "94e523351caa2dcaf691dd9d158a1114ac15fb36bdc8285d7ee9feb6d1be22c6"
+    },
+    {
+      "path": "goose-1.commitment.json",
+      "sha256": "29cc944a020a3e6d87aa1d1a3f69e16c1eaa84682faecf1c3dfcca4a63d0afbd"
+    },
+    {
+      "path": "goose-1.policy.json",
+      "sha256": "2d90d220b8fa82d6c57b05cc3287734dd9c2afccbdf2940eb7937151bb497705"
+    },
+    {
+      "path": "goose-1.staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
+    },
+    {
+      "path": "goose-2.commitment.json",
+      "sha256": "2343459080ef93de489606db4b2c6c3ec7f94c02f8f923fda7212cbe02af7eaf"
+    },
+    {
+      "path": "goose-2.policy.json",
+      "sha256": "739ebf2277de1621e555715467850c742646297a4240d4ce5a9c0831fdd1f38f"
+    },
+    {
+      "path": "goose-2.staple-verify.json",
+      "sha256": "2ed6b74170ce0f300db3076948c360b97baf5c424cce9a9073d600b0deb426b1"
+    },
+    {
+      "path": "verification.json",
+      "sha256": "e614ef940651b0113e507897a7e87d1f74fb1b4248696c9f26c087606bbdfb82"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-09T00:43:28Z",
+  "step": "03"
+}
