@@ -8,6 +8,9 @@
 # reaches the lab only when the operator reinstalls it. It takes no argument but the subcommand and reads no wallet,
 # seed, key, macaroon, peer-key, join or invite file. Its settings come from /etc/loop-live-ci/conf (root-owned):
 #   LIVE_HOME  the lab user's home       LIVE_ENV  the lab env file live_daily.sh sources       LAB_DIR  the lab directory
+#   DEMO_HOME  (optional, default LIVE_HOME) the home of the account that runs the demo nodes and their rebuilds: the pm-*.log
+#              skip rule looks only there. A rebuild is any cargo, just or cmake process of that account when it is not the lab
+#              user, or one with its cwd in $DEMO_HOME/lab-* or $LIVE_HOME/lab-*
 #   LIVE_CI_USER  the OS Login user of the workflow's service account (the only reader of the staged files)
 #
 #   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day, one start at a time (11), the
@@ -24,6 +27,7 @@ CONF=/etc/loop-live-ci/conf
 # shellcheck disable=SC1090
 . "$CONF"
 : "${LIVE_HOME:?}" "${LIVE_ENV:?}" "${LAB_DIR:?}" "${LIVE_CI_USER:?}"
+DEMO_HOME=${DEMO_HOME:-$LIVE_HOME}
 MAX_SECONDS=$((3 * 3600))
 CLONE=$LIVE_HOME/loop-live
 STATE=$LIVE_HOME/.loop-live-ci
@@ -51,9 +55,20 @@ start() {
   for s in loop-reporter.service loop-reporter-ask.service; do
     systemctl is-active --quiet "$s" && skip "$s is active"
   done
-  find "$LIVE_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
+  # The demo account's rules. Another account's /proc/<pid>/cwd is not readable, so when it is not the lab user's own account a
+  # build (cargo, just, cmake) it owns counts as a rebuild; its home must be readable here for the pm-*.log rule, and when it is
+  # not, that rule is off and the run says so (fixed text, no path).
+  if [ -r "$DEMO_HOME" ] && [ -x "$DEMO_HOME" ]; then
+    find "$DEMO_HOME" -maxdepth 1 -name 'pm-*.log' -mmin -30 2> /dev/null | grep -q . && skip "a pm-*.log changed in the last 30 minutes"
+  else
+    echo "note: the demo home is not readable here; the pm-*.log skip rule is not checked"
+  fi
+  demo_user=$(stat -c %U "$DEMO_HOME" 2> /dev/null)
+  if [ -n "$demo_user" ] && [ "$demo_user" != "$(id -un)" ]; then
+    pgrep -u "$demo_user" -x 'cargo|just|cmake' > /dev/null 2>&1 && skip "a build runs in the demo account"
+  fi
   for p in $(pgrep -x 'cargo|just|cmake' 2> /dev/null); do
-    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$LIVE_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
+    case $(readlink "/proc/$p/cwd" 2> /dev/null) in "$DEMO_HOME"/lab-* | "$LIVE_HOME"/lab-*) skip "a lab rebuild is running" ;; esac
   done
   [ -e "$STATE/started-$day" ] && { echo "refused: a run already started on $day (UTC); no retry"; exit 11; }
 

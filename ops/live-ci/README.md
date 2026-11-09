@@ -15,11 +15,15 @@ not part of the loop.
 - On the host, that login may run exactly three commands as the lab user (sudoers lists them with their argument):
   `/usr/local/sbin/loop-live-ci-entry start`, `status`, `stage`. `entry.sh` is root-owned, installed by the operator and not
   fetched from this repository at run time. It reads no wallet, seed, key, macaroon, peer-key, join or invite file.
-- With the lab split over two hosts (`LAB-BRINGUP.md`, "Two hosts"), the lab user on the payer holds a key to a second, separate unix
-  user on the provider host, restricted to the lab's four forwarded ports and one forced command (`lab/remote/loop-lab-remote`,
-  no shell, no sudo). **The service account reaches the payer, so through that key it now also reaches the provider's lab user**
-  (it starts and stops the two lab nodes there and reads their ledgers); it still has no login to the accounts that run the demo
-  nodes, and `entry.sh` is unchanged.
+- The lab user is `looplab` on both VMs, a separate unix account with no sudo; Brattain and Shockley, the demo nodes and their
+  rebuilds stay under `intangible`. The service account has no login to `intangible` and no write access to its files (`DEMO_HOME`
+  in the conf names it only for the skip rules; the `pm-*.log` rule needs that home readable by the lab user and is off, with a
+  note in the output, when it is not). This is a login and file boundary, not a network one: any account on a host reaches
+  the loopback consoles and wallet APIs of the nodes there. With the lab split over two hosts (`LAB-BRINGUP.md`, "Two hosts"), the payer's `looplab` holds a key to the
+  provider's `looplab`, restricted to the lab's four forwarded ports and one forced command (`lab/remote/loop-lab-remote`, no
+  shell). **The service account reaches the payer's `looplab`, so through that key it also reaches the provider's** (it starts
+  and stops the two lab nodes there, reads their ledgers, and can use their consoles and wallet APIs through the forwarded
+  ports, up to those wallets' balance). Reinstall `entry.sh` from this commit; its conf (with `DEMO_HOME`) and sudoers name `looplab`.
 - A change merged to `main` runs as the lab user at the next start, as it did when a person started the run: review of
   `scripts/`, `lab/`, `steps/` and `.github/` is the control, and the repository ruleset should require it. On the host,
   `entry.sh` allows one start per UTC day (a marker the lab user could delete; it guards against accidents and loops in
@@ -58,7 +62,7 @@ not part of the loop.
 Environment `live-lab` (create it first, with deployment branches limited to `main`; a job naming a missing environment
 creates it unprotected) secrets: `LIVE_VM`, `LIVE_PROJECT`, `LIVE_ZONE`, `LIVE_LAB_USER`, `LIVE_WIF_PROVIDER`,
 `LIVE_SERVICE_ACCOUNT`, `HARVEST_APP_CLIENT_ID`, `HARVEST_APP_PRIVATE_KEY`. The host needs `entry.sh` and
-`/etc/loop-live-ci/conf` (`LIVE_HOME`, `LIVE_ENV`, `LAB_DIR`, `LIVE_CI_USER`). Access is through IAP only (port 22 open to
+`/etc/loop-live-ci/conf` (`LIVE_HOME`, `LIVE_ENV`, `LAB_DIR`, `LIVE_CI_USER`, and `DEMO_HOME` when the lab user is not the demo account). Access is through IAP only (port 22 open to
 Google's IAP range, never to the runners' addresses); staged raw files are readable by the lab user and the CI login only installed by the operator.
 
 ## Failures

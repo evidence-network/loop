@@ -660,7 +660,7 @@ lab-1 sells the Qwen model; the lab host build's mesh-llm payments code):
   windowed book, so it reads NOT_CHECKED in a window.
 
 A node pays only when its host has a wallet, in two parts, each run as
-intangible on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
+the lab user (the owner of `$LAB_DIR`) on the lab host. Part A, Ethan's: `lab/bin/lab-wallet-create.sh N
 [SATS]` creates lab-N's Lexe wallet in its payments directory through a
 temporary, unjoined instance with no relay, sets a small automatic policy and
 prints one funding invoice (none for SATS 0); lab-N is not touched. It reruns
@@ -925,6 +925,15 @@ user's consoles (today the other account there is the operator's own).
 
 **Keeping the second host current.** `running` on the second host compares its `lab/lab.sh` with the driver's, so after any
 merge that changes `lab/lab.sh` copy the driver's `lab/` tree there before the next daily run, or that run stops with exit 5.
+
+**One user on both hosts.** The lab runs as the unix user `looplab` on both VMs (no sudo; `LAB_DIR=/home/looplab/loop-lab`,
+the lab binaries under `/home/looplab/lab-bin` (`mesh-llm`, `runtime/`, `capsules-<commit>/capsules`, `lexe-wallet`: the build `lab.sh check` accepts, and the files the wallet scripts default to), the env file `/home/looplab/labenv.sh`). The demo nodes stay under `intangible`.
+Whatever else reads the lab moves with it: the daily clone `loop-live` and its `~/.loop-live-ci` state (the day's marker), the
+tools cache, the Rust and Go toolchains the step tools build with, the clean git source trees `lab.sh check` reads (`MESH_LLM_SRC`, `CAPSULES_SRC`; `looplab`-owned, and `labenv.sh` points at them), the driver's ssh key and `lab-provider` alias for the second
+host, the reporter's systemd user timers (they read lab-3's data dir and consoles) with `loginctl enable-linger`.
+Moving the lab from one local user to another is the move below with a plain rename: stop everything, `mv` the whole `LAB_DIR`
+(one rename on one filesystem), `chown -R`, rewrite the absolute home paths that the plugin install records and the join-book
+profiles hold, and compare each wallet's balance on the first start. lab-3's reporter key stays on the VM and moves only this way.
 
 **Moving a node with a wallet (once, node stopped).** `stop` the lab; copy `<LAB_DIR>/nodes/lab-2` to the second host with tar
 and compare file lists and sha256; on the driver rename the real home to `nodes/lab-2.moved-<date>` (mode 0700) and make a

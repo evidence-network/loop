@@ -144,6 +144,39 @@ class EntrySh(unittest.TestCase):
         self.assertEqual(code, 10)
         self.assertIn("skipped:", out)
 
+    def test_the_demo_home_not_the_lab_home_holds_the_rebuild_log_skip_rule(self):
+        # The lab user (LIVE_HOME) and the demo account (DEMO_HOME) differ: a fresh pm-*.log skips only where the demo runs.
+        demo = self.home.parent / "demo"
+        demo.mkdir()
+        conf = self.entry.parent / "conf"
+        conf.write_text(conf.read_text() + f"DEMO_HOME={demo}\n")
+        (self.home / "pm-rebuild.log").write_text("x")  # in the lab user's home: no longer a reason to skip
+        self.assertNotEqual(self.call("start")[0], 10)
+        (demo / "pm-rebuild.log").write_text("x")
+        code, out = self.call("start")
+        self.assertEqual(code, 10)
+        self.assertIn("pm-*.log", out)
+
+    def test_an_unreadable_demo_home_is_said_not_silent_and_a_demo_build_skips(self):
+        demo = self.home.parent / "demo2"
+        demo.mkdir()
+        conf = self.entry.parent / "conf"
+        conf.write_text(conf.read_text() + f"DEMO_HOME={demo}\n")
+        demo.chmod(0)
+        code, out = self.call("start")
+        self.assertIn("pm-*.log skip rule is not checked", out)
+        self.assertNotIn(str(demo), out)
+        demo.chmod(0o755)  # before anything can fail: the temp dir is removed after the test
+        # a build owned by another account counts as a rebuild: a pgrep stand-in that finds one for `-u <user>`
+        stub = self.entry.parent / "bin"
+        stub.mkdir()
+        (stub / "pgrep").write_text('#!/bin/sh\ncase "$*" in *"-u "*) echo 4242; exit 0 ;; esac\nexit 1\n')
+        (stub / "pgrep").chmod(0o755)
+        self.entry.write_text(self.entry.read_text().replace('demo_user=$(stat -c %U "$DEMO_HOME" 2> /dev/null)', 'demo_user=other'))
+        code, out = subprocess.run([str(self.entry), "start"], capture_output=True, text=True,
+                                   env={**os.environ, "PATH": f"{stub}:{os.environ['PATH']}"}).returncode, ""
+        self.assertEqual(code, 10)
+
     def test_exchange_call_sites_are_a_tripwire(self):
         self.script.write_text('#!/bin/bash\nbounded "$LAB_SH" exchange\nbounded "$LAB_SH" exchange\n')
         subprocess.run(["git", "-C", str(self.home / "loop-live"), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "y"], check=True, capture_output=True)
