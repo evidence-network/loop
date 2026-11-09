@@ -929,7 +929,7 @@ merge that changes `lab/lab.sh` copy the driver's `lab/` tree there before the n
 **One user on both hosts.** The lab runs as the unix user `looplab` on both VMs (no sudo; `LAB_DIR=/home/looplab/loop-lab`,
 the lab binaries under `/home/looplab/lab-bin` (`mesh-llm`, `runtime/`, `capsules-<commit>/capsules`, `lexe-wallet`: the build `lab.sh check` accepts, and the files the wallet scripts default to), the env file `/home/looplab/labenv.sh`). The demo nodes stay under `intangible`.
 Whatever else reads the lab moves with it: the daily clone `loop-live` and its `~/.loop-live-ci` state (the day's marker), the
-tools cache, the Rust and Go toolchains the step tools build with, the driver's ssh key and `lab-provider` alias for the second
+tools cache, the Rust and Go toolchains the step tools build with, the clean git source trees `lab.sh check` reads (`MESH_LLM_SRC`, `CAPSULES_SRC`; `looplab`-owned, and `labenv.sh` points at them), the driver's ssh key and `lab-provider` alias for the second
 host, the reporter's systemd user timers (they read lab-3's data dir and consoles) with `loginctl enable-linger`.
 Moving the lab from one local user to another is the move below with a plain rename: stop everything, `mv` the whole `LAB_DIR`
 (one rename on one filesystem), `chown -R`, rewrite the absolute home paths that the plugin install records and the join-book

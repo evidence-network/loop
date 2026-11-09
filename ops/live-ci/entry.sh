@@ -8,8 +8,9 @@
 # reaches the lab only when the operator reinstalls it. It takes no argument but the subcommand and reads no wallet,
 # seed, key, macaroon, peer-key, join or invite file. Its settings come from /etc/loop-live-ci/conf (root-owned):
 #   LIVE_HOME  the lab user's home       LIVE_ENV  the lab env file live_daily.sh sources       LAB_DIR  the lab directory
-#   DEMO_HOME  (optional, default LIVE_HOME) the home of the account that runs the demo nodes and their rebuilds: the skip
-#              rules for a recent pm-*.log and a running lab rebuild look there, not in the lab user's home
+#   DEMO_HOME  (optional, default LIVE_HOME) the home of the account that runs the demo nodes and their rebuilds: the pm-*.log
+#              skip rule looks only there. A rebuild is any cargo, just or cmake process of that account when it is not the lab
+#              user, or one with its cwd in $DEMO_HOME/lab-* or $LIVE_HOME/lab-*
 #   LIVE_CI_USER  the OS Login user of the workflow's service account (the only reader of the staged files)
 #
 #   start   skip rule (exit 10, "skipped: <reason>"), at most one start per UTC day, one start at a time (11), the
