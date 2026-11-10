@@ -1,0 +1,43 @@
+{
+  "asserts": "each paid exchange's settlement is referenced by the payment_hash its payer sealed with the exchange id, no hash under two exchanges, and is final by preimage (sha256 of the payer's preimage equals the payment_hash); one value band per side per exchange, from the capsules adapter's band(); each payment carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's settlements with a counterparty equal that counterparty's checkpoint-signed settlement bundle (counterparty_count)",
+  "detail": "node stevenmih-1: window from 2026-11-10T20:17:00Z: 56 settlement records before it and 0 without a timestamp left out; node stevenmih-1: 2 settlement legs and 2 wallet-reported settlement observations recorded, 2 with a preimage that hashes to its payment_hash; node stevenmih-2: window from 2026-11-10T20:17:00Z: 86 settlement records before it and 0 without a timestamp left out; node stevenmih-2: 3 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; node stevenmih-3: window from 2026-11-10T20:17:00Z: 36 settlement records before it and 0 without a timestamp left out; node stevenmih-3: 3 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; band: stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-3 payer BTC decade -8; counterparty_count:stevenmih-1:stevenmih-2: stevenmih-1's 30 settlements against stevenmih-2's signed bundle (sha256 d0a24c274726): PASS over the whole books, 22 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-1:stevenmih-3: stevenmih-1's 30 settlements against stevenmih-3's signed bundle (sha256 8a13265a43a8): PASS over the whole books, 8 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-2:stevenmih-1: stevenmih-2's 22 settlements against stevenmih-1's signed bundle (sha256 88b2083bdabd): PASS over the whole books, 22 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-3:stevenmih-1: stevenmih-3's 8 settlements against stevenmih-1's signed bundle (sha256 becf6d4ac422): PASS over the whole books, 8 paired, 0 unpaired; the 1 payments the books pair between them in the window are exactly the bundle's; exchange_match: 2 payments paired: the payer's amount equals the payee's credit plus fee; finality: 2 of 2 payment hashes final by the payer's preimage; rail_fee: each of 2 payments carries a wallet provider's fee (fee_msat > 0); reference: 2 payments, each referenced by one payment_hash under one exchange in each book. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays). Outside this step's assertion: a public ledger's count of each node's settlements (Lightning has none; the counterparty's signed book stands in): evidence-network/loop#247.",
+  "finished": "2026-11-10T20:25:26Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "v0.1.17",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm-pr-2620": {
+      "ref": "1d96a0205ed77959485159d2110259fd32ccb35e",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/recorded.json",
+      "sha256": "8e4cead598ee3e950b25102afb8134a41bad36977f52b10469528f9d2a713c82"
+    },
+    {
+      "path": "stevenmih-2/recorded.json",
+      "sha256": "79a5dddda2b8f7476418b15aa7b00f405339520e3ec7080581952132be12e208"
+    },
+    {
+      "path": "stevenmih-3/recorded.json",
+      "sha256": "4de00693bfb7d75655d12f3ce51389ac176729d39f236db7fc34642f36a39cc1"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "576b3102ddac843476cafb200e81e5a92b73b548b3e2fea04010ffd6f78433ad"
+    },
+    {
+      "path": "counterparty.json",
+      "sha256": "e95e4083eaa9aa2b2dfe976dcbbaf7e2203c4e187c06f88c2b95fcc6a4ce32bd"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-10T20:25:25Z",
+  "step": "06"
+}

@@ -1,0 +1,71 @@
+{
+  "asserts": "on a lab node, the plugin's admission decision for a peer is exactly one of GO or NO, recorded in the node's own ledger, naming its source and the operator policy it read by digest; the verdict follows from its source as the plugin decides, and each base-policy row it seals is one the plugin's rules give from the reads it seals; each such ledger record is Class 1 valid, its capsule_id recomputes and its producer signature verifies, in the AAC Go verifier, under the key the node's nodes/ entry publishes",
+  "detail": "node stevenmih-1: decisions since 2026-11-08T23:40:00Z (plugin build feb3f602291d); node stevenmih-1: 0 of 5760 ledger records carry an admission decision (0 GO, 0 NO), read-only; node stevenmih-2: decisions since 2026-11-08T23:41:00Z (plugin build feb3f602291d), 37 earlier set aside; node stevenmih-2: 41 of 3520 ledger records carry an admission decision, 4 judged (4 GO, 0 NO), read-only; node stevenmih-3: decisions since 2026-11-08T23:41:00Z (plugin build feb3f602291d), 51 earlier set aside; node stevenmih-3: 55 of 6656 ledger records carry an admission decision, 4 judged (4 GO, 0 NO), read-only; of the base-policy rows sealed, 8 were fixed by the record and matched it, 32 are values the rules allow but the record does not fix (rows.json) and 0 disagree. Each decision is GO or NO, names its source, cites the operator policy it read by digest (or is a NO sealed with no readable policy), carries no member beyond the plugin's own and names the peer by commitment only; its verdict follows from its source alone, the same for one peer under one policy digest; each row it seals is one the base policy's rules give from what it read. Each decision record is Class 1 valid, its capsule_id recomputes and its producer signature verifies, in the AAC Go verifier, under the key the node publishes. Each node's decisions are all its ledger held at the checkpoint it signed, its copy checked with loop-ledger-check under that key. Spend: none; this step pays nothing (would spend 0 USD). Outside this step's assertion: each base-policy row's value where the sealed decision does not fix it: identity's fail or not_read on no card, key age on a cited card, and the three local rows: evidence-network/loop#81. Outside this step's assertion: the routing path enforcing the decision when it chooses a candidate: Mesh-LLM/mesh-llm#2061.",
+  "finished": "2026-11-10T20:25:11Z",
+  "name": "admit",
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.21.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "capsules": {
+      "ref": "v0.1.17",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "mesh-llm": {
+      "ref": "c86f58e58de7bf02bce52a390a144413d8d99183",
+      "repository": "Mesh-LLM/mesh-llm"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "nodes.json",
+      "sha256": "33e2b774aee809d517a946ce9556cb67d32c06b69cefe82be5bd3f7d10cd0139"
+    },
+    {
+      "path": "stevenmih-1/ledger/capsules.jsonl.checkpoint.json",
+      "sha256": "be597a6d45f5b66d5b658ec40108e27b17db600600f3568031192103ae464f66"
+    },
+    {
+      "path": "stevenmih-1/ledger/capsules.jsonl",
+      "sha256": "d1eac265a7cba1d535415adb0319f64a60e26ff9af6f691fbcd2e7f916ad7fc6"
+    },
+    {
+      "path": "stevenmih-2/ledger/capsules.jsonl.checkpoint.json",
+      "sha256": "fae57b988e2fa41914c822a7f119d004f3548f0767f2bb76ab2920a5320a6dea"
+    },
+    {
+      "path": "stevenmih-2/ledger/capsules.jsonl",
+      "sha256": "c7ea061da33cf24deff1602ca0bcd619c308aa49acd7ea5f7d08d074b2608e17"
+    },
+    {
+      "path": "stevenmih-2/decisions.jsonl",
+      "sha256": "49c2ab3aaf2fa1bf0b7331d8bfb2ac2e30da305b0cc7d2ae8ef2d4386c94fc0e"
+    },
+    {
+      "path": "stevenmih-2/rows.json",
+      "sha256": "f595a0c328db8645e3405864f98ab2c958a7d42999daa8b68631f09b4f8786d5"
+    },
+    {
+      "path": "stevenmih-3/ledger/capsules.jsonl.checkpoint.json",
+      "sha256": "2ecb17a5cee9b2941113450ffd8cc2a7c7ac750453045890c626733bf36564be"
+    },
+    {
+      "path": "stevenmih-3/ledger/capsules.jsonl",
+      "sha256": "52a02b89e2a3ea124efc973b7e7e020842452c214b00febacd3421724f5baa64"
+    },
+    {
+      "path": "stevenmih-3/decisions.jsonl",
+      "sha256": "3434c740ae5131e3ae0061448d1fbd950ec9f1bd187ae9096025f7ce2902184e"
+    },
+    {
+      "path": "stevenmih-3/rows.json",
+      "sha256": "9bfca175e823b5d715304980d1f881e07dc1361f360d72e7f6fda73520fac07e"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-10T20:25:09Z",
+  "step": "04"
+}
