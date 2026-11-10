@@ -7,19 +7,19 @@
       "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
       "98636b816ed8b45844b820f9372a2338f7e5d04323caf78a909f49c1604c219a"
     ],
-    "issued_at": "2026-11-02T01:12:43Z",
-    "not_before": "2026-11-02T01:12:43Z",
-    "not_after": "2027-11-02T01:12:43Z",
+    "issued_at": "2026-11-10T00:30:30Z",
+    "not_before": "2026-11-10T00:30:30Z",
+    "not_after": "2027-11-10T00:30:30Z",
     "revocation": "revocation_statement/0",
     "nonce": "rehearsal-controller-alice/alice",
     "sigs": [
       {
         "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
-        "sig": "ecb637059f86b13e09fd63b2e04a85b9e8704d17c7c46a5a818e075abbabc8ea03eee9e31e720ce591af92028d2dafc6976efe008ff4bb6a9275195958fd9105"
+        "sig": "2a19ed3597c42526b455e1e19294e3573a88560634fcd5548212aa049a99cffa13c1573ad37bc8fdb590ac1dfb705a7942c95c4ba8b25e97ba3d39317995b606"
       },
       {
         "key_id": "98636b816ed8b45844b820f9372a2338f7e5d04323caf78a909f49c1604c219a",
-        "sig": "418538554fc2ad7d8d8addfa27ce912e2ecf59df83b49caed8a69a04eb05f1b2327f6edf0622a5af2477f08f3bb354295b625942ba2d5173d57c051b252e2e0a"
+        "sig": "72ab526a6cddb120f91358a2f5bfd737a778b51dc3ecb030b8d3693e49cf8a318c4e592578990caaa1a0e84e61deddc1dc6e9c16c268955aeaf1840164cd1305"
       }
     ]
   },
@@ -31,19 +31,19 @@
       "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
       "64aa89c94e6f59998fcb72109f587c41bfa3d8af617be117be4f30e004c3b24b"
     ],
-    "issued_at": "2026-11-02T01:12:43Z",
-    "not_before": "2026-11-02T01:12:43Z",
-    "not_after": "2027-11-02T01:12:43Z",
+    "issued_at": "2026-11-10T00:30:30Z",
+    "not_before": "2026-11-10T00:30:30Z",
+    "not_after": "2027-11-10T00:30:30Z",
     "revocation": "revocation_statement/0",
     "nonce": "rehearsal-controller-bob/bob",
     "sigs": [
       {
         "key_id": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
-        "sig": "95eb443e8303563c6b51dd9e65701b7653fcdf5adfdef72f4a783d6ce62ed1e38803ad7f458420b8892e51b0348391096d822e058895756747ca66f8dbe5cd0b"
+        "sig": "f9fe5c8ac8c4df025d6d3f2a2728e3af3bd1c3b76d0f324c692646067b1f481d78b40bee04d610b3f13d33de9ae6c22671c4a091af80daffd91948d64527be05"
       },
       {
         "key_id": "64aa89c94e6f59998fcb72109f587c41bfa3d8af617be117be4f30e004c3b24b",
-        "sig": "bd2a4c0f8ff3fe413d9a1df1cacc7402019a73c2e4b098b4f763d1a13b67b17871a505250123c5f7c03f3100c422bf6faf1c2775d9310d1a792aabef27d33004"
+        "sig": "4c5f24eca6d2d0bc7a68a18bb1a733bb3f13744ee7396a44fb3edcc367af385f375af87a6581dc5e4019b4eeec382a3f204dc84a44613060644e25091f14fe09"
       }
     ]
   }

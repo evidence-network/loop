@@ -11,14 +11,14 @@ name = "loop-step05-deal"
 path = "src/main.rs"
 
 # The same pins as step 02's driver: evidencebook is the Rust crate in
-# action-state-group/evidencebook at the tag versions.lock pins (v0.8.1);
-# checkpointed-local-log is the log that tag's crate embeds
-# (crates/checkpointed-local-log-v0.3.1). Cargo.lock is committed and starts
+# action-state-group/evidencebook, crates.io 0.0.15 as versions.lock pins it;
+# checkpointed-local-log is the log that crate embeds
+# (crates/checkpointed-local-log-v0.5.0). Cargo.lock is committed and starts
 # from step 02's; steps/05-deal.setup.sh builds with --locked and checks it
 # against versions.lock.
 [dependencies]
-evidencebook = { git = "https://github.com/action-state-group/evidencebook", tag = "v0.8.1" }
-checkpointed-local-log = "=0.3.1"
+evidencebook = "=0.0.15"
+checkpointed-local-log = "=0.5.0"
 ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 hex = "0.4"

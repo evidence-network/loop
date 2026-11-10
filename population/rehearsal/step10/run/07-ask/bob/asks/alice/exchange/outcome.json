@@ -1,8 +1,8 @@
 {
   "outcome": "refusal",
   "reason": "not_authorized",
-  "record_id": "1d72b3f757553450d062936157e9255c7ad3d4a05169db17a64bc0d7eaafa5bd",
-  "request_digest": "8fada87cb63e4ec97a97848ff30d6088e7d16708383beb340eb165898a701ff4",
+  "record_id": "d00c47438ef9b32fdcdf05a3ce7d1bca8139a0fba1984d7ffa03a8e2bd6f793e",
+  "request_digest": "750db5d78158e78c4ffbbe233f302f7f7eb890763885af9b6ba82e01780ac312",
   "spec_version": "capsule-cli-result/v1",
   "voice": "silent"
 }

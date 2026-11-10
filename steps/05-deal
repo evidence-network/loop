@@ -5,7 +5,7 @@ Usage: 05-deal --population DIR --out DIR
 
 The rehearsal population's `alice` and `bob` (their TEST keys) make one deal,
 each in its own book, through the driver steps/05-deal.setup.sh installs (a
-Rust build of evidencebook's crate at the pinned tag):
+Rust build of the evidencebook crate versions.lock pins, from crates.io):
 
 - each side opens its book and cuts a checkpoint, which the other side learns;
 - each side seals its half of the deal (the deal id, the exchange's request
@@ -36,7 +36,7 @@ that. The declarations come from `<population dir>/step05/controllers.json`:
 for each node it names, a real controller-binding/0 record (`same_controller_asserted`,
 `dual_signature/0`) that the controller's TEST key and the node's evidence key both
 sign, as the plugin's join writes one. The driver checks both signatures, and the
-step runs the Go verifier (`cross_language binding`, aac-go go/v0.17.0) on each
+step runs the Go verifier (`cross_language binding`, aac-go go/v0.21.0) on each
 binding a side accepted under, at the time it accepted the push, with the empty revocation list
 declared complete (the bindings are made by this run, so nothing can have been
 published for them). Refusals are replies
@@ -81,7 +81,7 @@ published commitment (`nodes/commitments/<node_id>.json` in this checkout, loop#
 the node whose `nodes/<node_id>.json` lists the half's key) counts as accepted under a controller
 declaration however the plugin first accepted the key. Whenever a current-build citing record names a binding
 digest, the binding itself is checked in a second language (`cross_language binding`, AAC#464, aac-go
-go/v0.17.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
+go/v0.21.0): the sender's own `controller-binding.json` in its data dir (the node must be in the population with
 its `node_id`, listed in nodes/) must have that digest, name the half's evidence key and apply at the half's and
 the citing record's issue times (form, both signatures and window PASS, revocation not FAIL). That is "the binding
 applies", not a trust verdict. `Binds` takes either key, so the half's key's role is read from the report's claim and
@@ -133,7 +133,7 @@ binding" is read only from a commitment that verifies this run under that listed
 Other current-build halves accepted on the evidence key, from a sender whose published commitment carries no
 equal operator binding, are their own entry ("halves from an unbound sender"), not a plugin gap. The other parts the pinned plugin does not do, or the loop cannot
 read, are not_checked entries. Each held half's producer signature is checked in
-a second language (`cross_language signature`, AAC#463, aac-go go/v0.17.0): authored under the key the
+a second language (`cross_language signature`, AAC#463, aac-go go/v0.21.0): authored under the key the
 node's citing record accepted (`received_half.sender_key_id`) and, where the sender has a `nodes/<node_id>.json`
 listing, the key it publishes is ok (an unlisted sender is a not_checked entry: the key is self-attested); authored under another key or
 invalid is a FAIL; unclaimed (no signature) is a not_checked entry; a half the verifier cannot read is a FAIL, and only its
@@ -401,7 +401,7 @@ def decide(bin_, out, *, population, keys, started):
               f"Each push was accepted on the sender's evidence key under a controller declaration (rehearsal "
               f"TEST controller keys) that binds it, and the two keys are under different controllers; the "
               f"{checked} bindings accepted under apply in a second language (cross_language binding, aac-go "
-              f"go/v0.17.0: form, both signatures and window PASS, revocation PASS on the empty list). {NO_SPEND}")
+              f"go/v0.21.0: form, both signatures and window PASS, revocation PASS on the empty list). {NO_SPEND}")
     return finding.write(out, result="PASS", population=population, asserts=ASSERTS, pinned=PINNED,
                          proof=proof, detail=detail, started=started)
 
@@ -705,7 +705,7 @@ BINDING_VERDICT_EXIT = bv.VERDICT_EXIT
 
 
 def binding_check(digest, half, citing, peers, started, snap):
-    """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.17.0) on the controller
+    """The verdict of the Go binding verifier (`cross_language binding`, aac-go go/v0.21.0) on the controller
     binding the citing record names by `digest`: (state, detail).
 
     The bytes are the sender's own controller-binding.json in its data dir (capsules-plugin controller_binding::

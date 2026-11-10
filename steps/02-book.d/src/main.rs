@@ -181,6 +181,7 @@ fn header(book_id: &str, seq: u64, time: &str, note: &str) -> Header {
         counterparty_ref: None,
         correlation: BTreeMap::new(),
         statement: Some(json!({ "note": note })),
+        reproduction: None,
     }
 }
 
@@ -395,7 +396,7 @@ fn verified_witnesses(cp: &Checkpoint, statement: &[u8], directory: &Value) -> V
     let v = summary_value(
         &[],
         &Coverage { checkpoint: cp, covered: 0, statement, witness_directory: Some(directory) },
-        &|_| false,
+        &|_| None,
         &LABELS,
     );
     let coverage = &v["coverage"];
@@ -516,7 +517,7 @@ fn verify(f: &Flags) -> Result<u8, String> {
 
     let all = c.0.iter().all(|v| v["ok"] == json!(true));
     let out = json!({
-        "verifier": "evidencebook (Rust) at action-state-group/evidencebook v0.8.1: canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion, served_summary (AAC's witness receipt verifier)",
+        "verifier": "evidencebook (Rust) crates.io 0.0.15 (the crates/evidencebook-v0.0.15 pin in versions.lock): canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion, served_summary (AAC's witness receipt verifier)",
         "book_id": book_id,
         "position": position,
         "record_id": id_hex,

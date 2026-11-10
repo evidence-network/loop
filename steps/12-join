@@ -44,7 +44,7 @@ none is a not_checked entry. The own book's entry, where it names a
 checkpoint key, must name the one its checkpoint attestation carries.
 
 The controller binding record is checked in a second language,
-`cross_language binding` (aac-go go/v0.17.0): binding.json, as join.sh wrote
+`cross_language binding` (aac-go go/v0.21.0): binding.json, as join.sh wrote
 it, must have the digest controller.json names, name the node key and apply
 now (form, both signatures, window). That is "the binding applies", not a
 trust verdict. The node key's role is checked from the verifier's report: in a
@@ -184,7 +184,7 @@ DOCTOR_PROBES = ("probe_checkpoints", "probe_history_card")
 # without a checkpoint_key, or an evidence-commitment/0 (named in the lines below; loop#418).
 STAPLE_ISSUE = "evidence-network/loop#410"  # keyless staples, a capsule-cli that is not installed, an evidence-commitment/0
 
-# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.17.0,
+# The controller binding record is checked by the Go verifier (`cross_language binding`, AAC#464, aac-go go/v0.21.0,
 # steps/01-seal.setup.sh): the record the node holds, against the digest doctor reports, naming the node's key,
 # inside its window now. That is "the binding applies" (form, both signatures, window; revocation not FAIL), not a
 # trust verdict. `Binds` takes either key of the binding, so the role is read from the report's claim and delegator

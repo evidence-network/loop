@@ -63,7 +63,7 @@ With no published file, the detail says nothing is compared.
   is a failure; `same_controller_asserted` and
   `same_organization_credentialed` give a key no role. The
   record itself is checked in a second language: `cross_language binding`
-  (aac-go go/v0.17.0) runs on the record the node holds
+  (aac-go go/v0.21.0) runs on the record the node holds
   (`controller-binding.json` in its `data_dir`, or `binding.json` for a
   node `join.sh` joined), which must have the digest doctor reports, name
   the node key and apply now (form, both signatures and window). That is

@@ -27,7 +27,7 @@
   ],
   "pinned": {
     "aac-go": {
-      "ref": "go/v0.17.0",
+      "ref": "go/v0.21.0",
       "repository": "action-state-group/agent-action-capsule"
     },
     "capsulectl": {
@@ -39,11 +39,11 @@
       "repository": "action-state-group/evidencebook"
     },
     "checkpointed-local-log": {
-      "ref": "crates/checkpointed-local-log-v0.3.1",
+      "ref": "crates/checkpointed-local-log-v0.5.0",
       "repository": "action-state-group/checkpointed-local-log"
     },
     "evidencebook": {
-      "ref": "v0.8.1",
+      "ref": "crates/evidencebook-v0.0.15",
       "repository": "action-state-group/evidencebook"
     }
   },
@@ -51,7 +51,7 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "a5c6e5964d26bab50e4eb909a411123f4ea4280987dafad2af15025e3136bebc"
+      "sha256": "a005a2b184bb145d2b52a85119f9a58ee311cc1c2c17709678bd6dfd76529342"
     }
   ],
   "result": "NOT_CHECKED",

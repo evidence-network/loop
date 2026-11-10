@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Install step 02 Book's driver: steps/02-book.d built against the pins in
-# versions.lock: evidencebook's Rust crate from the evidencebook tag, and the
-# crates that tag's crate uses (checkpointed-local-log, evidence-request, and
+# versions.lock: evidencebook's Rust crate (the crates.io release the pinned
+# crates/evidencebook-v<version> tag publishes), and the crates it uses
+# (checkpointed-local-log, evidence-request, and
 # AAC's agent-action-capsule, whose witness receipt verifier it calls). For the
 # live population, capsulectl and capsulectl-book (steps/12-join.setup.sh).
 #
 #   steps/02-book.setup.sh
 #
 # Needs cargo, git and the crates.io index (the build fetches the pinned
-# crates and the evidencebook tag; Cargo.lock carries their checksums and the
-# tag's commit). Installs to
+# crates; Cargo.lock carries their checksums). Installs to
 # ${LOOP_TOOLS:-~/.cache/evidence-network-loop}/02-book/bin/loop-step02-book,
 # where steps/02-book looks for it.
 set -euo pipefail
@@ -36,29 +36,44 @@ locked() {
     want && $1 == f { gsub(/^[a-z]+ = |"/, ""); print; exit }' "$CRATE/Cargo.lock"
 }
 
+# Whether evidencebook's own Cargo.lock entry depends on crate $1 at version $2 (agent-action-capsule 0.10.0 still
+# depends on evidence-request 0.4.1, so the lock carries two versions of it and Cargo names the version in the
+# dependency list; evidence-request is pinned to the one evidencebook uses).
+eb_depends_on() {
+  awk -v d="\"$1 $2\"," '$0 == "name = \"evidencebook\"" { want = 1; next }
+    want && $0 == "]" { exit }
+    want && $0 == " " d { found = 1 }
+    END { exit !found }' "$CRATE/Cargo.lock"
+}
+
 for pin in checkpointed-local-log:checkpointed-local-log evidence-request:evidence-request aac-rust:agent-action-capsule; do
   name=${pin%%:*} crate=${pin#*:}
   want=$(pinned_version "$name" "$crate")
+  if [ "$crate" = evidence-request ]; then
+    eb_depends_on "$crate" "$want" || { echo "02-book.setup: evidencebook's Cargo.lock entry does not depend on $crate $want, which versions.lock pins" >&2; exit 1; }
+    continue
+  fi
   got=$(locked "$crate" version)
   if [ "$want" != "$got" ]; then
     echo "02-book.setup: Cargo.lock has $crate '$got', versions.lock pins $want" >&2
     exit 1
   fi
 done
-# evidencebook: the crate in the repository at the pinned tag.
-eb_repo=$(awk '$1 == "evidencebook" { print $2 }' "$ROOT/versions.lock")
-eb_tag=$(pin_ref evidencebook)
+# evidencebook: the crates.io crate the pinned crates/evidencebook-v<version> tag publishes.
+eb_want=$(pin_ref evidencebook)
+eb_want=${eb_want#crates/evidencebook-v}
+eb_got=$(locked evidencebook version)
 eb_source=$(locked evidencebook source)
-case "$eb_source" in
-  "git+https://github.com/$eb_repo?tag=$eb_tag#"*) ;;
-  *) echo "02-book.setup: Cargo.lock has evidencebook from '$eb_source', versions.lock pins $eb_repo $eb_tag" >&2; exit 1 ;;
-esac
+if [ "$eb_want" != "$eb_got" ] || [ "$eb_source" != "registry+https://github.com/rust-lang/crates.io-index" ]; then
+  echo "02-book.setup: Cargo.lock has evidencebook '$eb_got' from '$eb_source', versions.lock pins $(pin_ref evidencebook)" >&2
+  exit 1
+fi
 
 command -v cargo >/dev/null || { echo "02-book.setup: cargo is not installed" >&2; exit 1; }
 CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path "$CRATE/Cargo.toml"
 mkdir -p "$TOOLS/bin"
 install -m 0755 "$TOOLS/target/release/loop-step02-book" "$TOOLS/bin/loop-step02-book"
-echo "02-book.setup: installed $TOOLS/bin/loop-step02-book (evidencebook $eb_tag at ${eb_source##*#}, checkpointed-local-log $(locked checkpointed-local-log version), agent-action-capsule $(locked agent-action-capsule version))"
+echo "02-book.setup: installed $TOOLS/bin/loop-step02-book (evidencebook $eb_got, checkpointed-local-log $(locked checkpointed-local-log version), agent-action-capsule $(locked agent-action-capsule version))"
 
 # On the live population the step drives each node's book with capsulectl and
 # capsulectl-book, at the versions.lock pins step 12's setup installs.
