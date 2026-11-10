@@ -66,6 +66,16 @@ def run_step(population, out, env=None):
     return r
 
 
+
+def pinned_evidencebook_version():
+    """The evidencebook crate version versions.lock pins (crates/evidencebook-v<version>): the drivers name it in verify.json."""
+    for line in (Path(__file__).resolve().parent.parent / "versions.lock").read_text().splitlines():
+        parts = line.split()
+        if parts[:1] == ["evidencebook"]:
+            return parts[2].removeprefix("crates/evidencebook-v")
+    raise AssertionError("versions.lock has no evidencebook pin")
+
+
 class Step05ExchangePairingTest(unittest.TestCase):
     """Halves join on client_nonce, never on agent_input_digest (loop#66); no verifier needed."""
     OUT_A, OUT_B = "a" * 64, "b" * 64
@@ -180,7 +190,7 @@ class Step05DealRehearsalTest(unittest.TestCase):
         self.assertEqual(self.failed(), set())
         v = json.loads((self.out / "verify.json").read_text())
         self.assertEqual(v["acceptance_not_checked"], [])
-        self.assertIn("v0.8.1", v["verifier"])
+        self.assertIn(pinned_evidencebook_version(), v["verifier"])
         for c in ("half_cites_counterparty_checkpoint", "pushed_at_completion", "holds_foreign_half",
                   "cites_foreign_half", "accepted_under_controller_declaration", "counterparty_distinct",
                   "share_record_at_completion", "halves_of_one_exchange"):

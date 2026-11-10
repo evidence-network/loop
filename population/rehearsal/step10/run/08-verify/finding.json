@@ -51,7 +51,7 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "64a8c64d74e447f57aba32ead4577416dc5b4804e081c93ce33b6cdbcde0c5d9"
+      "sha256": "a005a2b184bb145d2b52a85119f9a58ee311cc1c2c17709678bd6dfd76529342"
     }
   ],
   "result": "NOT_CHECKED",

@@ -5,32 +5,32 @@
     "seq": 3,
     "record_type": "counterparty_half_citation",
     "epistemic_type": "producer_claim",
-    "committed_at": "2026-11-09T23:34:59Z",
+    "committed_at": "2026-11-10T00:30:30Z",
     "links": [
       {
         "type": "cites",
-        "target": "3f02418f3a61e6109191df643fcff348a5ddd7015b821bb35dddc338a30749f8"
+        "target": "f48414d248deb1d3b7ca33d273c83cac725999710f7d186317f1ba354cc4ad95"
       }
     ],
     "counterparty_ref": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
     "correlation": {
-      "deal_id": "rehearsal-deal-2026-11-09T23:34:59Z"
+      "deal_id": "rehearsal-deal-2026-11-10T00:30:30Z"
     },
     "statement": {
       "citation_purpose": "counterparty_half",
-      "cited_record_id": "3f02418f3a61e6109191df643fcff348a5ddd7015b821bb35dddc338a30749f8",
+      "cited_record_id": "f48414d248deb1d3b7ca33d273c83cac725999710f7d186317f1ba354cc4ad95",
       "cited_checkpoint": {
         "log_id": "rehearsal-bob-deal",
         "mmr_size": 3,
-        "digest": "4ba333ded945f0dade8a757dd03d2208b4737925916c2672809134564774aeb8"
+        "digest": "c1543a2e9b79db65d24239748ae80b67e9441914a3e4340df7217fc30a33a9b0"
       },
-      "held_sha256": "fb25c3fd8e5c5a0867d1cc06405da4ca61209408db73df8d639076914a5b71b5",
+      "held_sha256": "d22ab4d25e90cf60da5bc6395d577d48180061bd8c8cd5b894237634b7656d5c",
       "via": "push"
     }
   },
   "seal": {
     "alg": "Ed25519",
     "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
-    "signature": "f8aeb26ad1b3a5d807715a909f96b284d52ea04f72ec4f7b62fd91253196ad2a114a9082621b226f7823c458c331cf97f9564321b0d9d8c871d941d90280ef06"
+    "signature": "9e20475b8b5569d62c8c104903dfff4d632d982c3ddf8769446a93bb9480197cb15ef84e9b458e32a6ffac2645a3e9f96c1880a190ef9dedd0b7e87725c6fb06"
   }
 }

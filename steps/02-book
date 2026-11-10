@@ -11,7 +11,7 @@ then given the checkpoint and returns a receipt over its digest, which the
 book keeps on the checkpoint. The proof bytes (record.json, placement.json,
 checkpoint.json with the receipt, checkpoint.cose, inclusion.json,
 witness-receipt.json, witnesses.json) are then checked by evidencebook's own
-verifier at the pinned tag, through the driver steps/02-book.setup.sh
+verifier (the crates.io crate versions.lock pins), through the driver steps/02-book.setup.sh
 installs; its verdict is verify.json. The receipt is verified by the
 library's served summary, which runs AAC's witness receipt verifier against
 the checkpoint's COSE statement under the witness directory (witnesses.json).

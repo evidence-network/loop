@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Install step 02 Book's driver: steps/02-book.d built against the pins in
-# versions.lock: evidencebook's Rust crate from the evidencebook tag, and the
-# crates that tag's crate uses (checkpointed-local-log, evidence-request, and
+# versions.lock: evidencebook's Rust crate (the crates.io release the pinned
+# crates/evidencebook-v<version> tag publishes), and the crates it uses
+# (checkpointed-local-log, evidence-request, and
 # AAC's agent-action-capsule, whose witness receipt verifier it calls). For the
 # live population, capsulectl and capsulectl-book (steps/12-join.setup.sh).
 #
 #   steps/02-book.setup.sh
 #
 # Needs cargo, git and the crates.io index (the build fetches the pinned
-# crates and the evidencebook tag; Cargo.lock carries their checksums and the
-# tag's commit). Installs to
+# crates; Cargo.lock carries their checksums). Installs to
 # ${LOOP_TOOLS:-~/.cache/evidence-network-loop}/02-book/bin/loop-step02-book,
 # where steps/02-book looks for it.
 set -euo pipefail
@@ -36,19 +36,26 @@ locked() {
     want && $1 == f { gsub(/^[a-z]+ = |"/, ""); print; exit }' "$CRATE/Cargo.lock"
 }
 
-# Every version of a crate that Cargo.lock carries (agent-action-capsule 0.10.0 still depends on
-# evidence-request 0.4.1, beside the 0.5.0 evidencebook uses).
-locked_versions() {
-  awk -v c="$1" '$0 == "name = \"" c "\"" { want = 1; next }
-    want && $1 == "version" { gsub(/^[a-z]+ = |"/, ""); print; want = 0 }' "$CRATE/Cargo.lock"
+# Whether evidencebook's own Cargo.lock entry depends on crate $1 at version $2 (agent-action-capsule 0.10.0 still
+# depends on evidence-request 0.4.1, so the lock carries two versions of it and Cargo names the version in the
+# dependency list; evidence-request is pinned to the one evidencebook uses).
+eb_depends_on() {
+  awk -v d="\"$1 $2\"," '$0 == "name = \"evidencebook\"" { want = 1; next }
+    want && $0 == "]" { exit }
+    want && $0 == " " d { found = 1 }
+    END { exit !found }' "$CRATE/Cargo.lock"
 }
 
 for pin in checkpointed-local-log:checkpointed-local-log evidence-request:evidence-request aac-rust:agent-action-capsule; do
   name=${pin%%:*} crate=${pin#*:}
   want=$(pinned_version "$name" "$crate")
-  got=$(locked_versions "$crate")
-  if ! grep -qxF "$want" <<<"$got"; then
-    echo "02-book.setup: Cargo.lock has $crate '$(tr '\n' ' ' <<<"$got")', versions.lock pins $want" >&2
+  if [ "$crate" = evidence-request ]; then
+    eb_depends_on "$crate" "$want" || { echo "02-book.setup: evidencebook's Cargo.lock entry does not depend on $crate $want, which versions.lock pins" >&2; exit 1; }
+    continue
+  fi
+  got=$(locked "$crate" version)
+  if [ "$want" != "$got" ]; then
+    echo "02-book.setup: Cargo.lock has $crate '$got', versions.lock pins $want" >&2
     exit 1
   fi
 done

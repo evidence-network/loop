@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Install step 05 Deal and push's driver: steps/05-deal.d built against the
-# pins in versions.lock (evidencebook's Rust crate from the evidencebook tag,
-# and the checkpointed-local-log crate that tag's crate embeds). For the live
+# pins in versions.lock (evidencebook's Rust crate from crates.io, and the
+# checkpointed-local-log crate that crate embeds). For the live
 # population, the AAC Go verifier (aac-go) that steps/01-seal.setup.sh installs.
 #
 #   steps/05-deal.setup.sh
 #
 # Needs cargo, git and the crates.io index (the build fetches the pinned
-# crates and the evidencebook tag; Cargo.lock carries their checksums and the
-# tag's commit). Installs to
+# crates; Cargo.lock carries their checksums). Installs to
 # ${LOOP_TOOLS:-~/.cache/evidence-network-loop}/05-deal/bin/loop-step05-deal,
 # where steps/05-deal looks for it.
 set -euo pipefail

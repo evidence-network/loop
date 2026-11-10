@@ -852,7 +852,7 @@ fn verify(f: &Flags) -> Result<u8, String> {
 
     let all = c.0.iter().all(|v| v["ok"] == json!(true));
     let out = json!({
-        "verifier": "evidencebook (Rust) at action-state-group/evidencebook v0.8.1: canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion; Ed25519 seals",
+        "verifier": "evidencebook (Rust) crates.io 0.0.15 (the crates/evidencebook-v0.0.15 pin in versions.lock): canonical::json_digest, Checkpoint::verify_signature_offline, substrate::verify_inclusion; Ed25519 seals",
         "deal_id": deal_id,
         "books": books,
         "halves": halves.iter().map(|h| h.as_ref().map(|(_, id)| id.clone())).collect::<Vec<_>>(),

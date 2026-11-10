@@ -12,8 +12,8 @@ path = "src/main.rs"
 
 # checkpointed-local-log is the version versions.lock pins (0.5.0, the log evidencebook 0.0.15 embeds, which steps 02
 # and 05 share). The capsules plugin at versions.lock (v0.1.17) builds its checkpoints with 0.4.0 (0.3.1 at v0.1.8), so
-# this check reads 0.4.0 checkpoints with 0.5.0; whether it verifies them is unchecked until a live run under the new
-# pins. Cargo.lock is committed; steps/ledger-check.setup.sh builds with --locked.
+# this check reads 0.4.0 checkpoints with 0.5.0; live run 2026-11-09-live-3 (step 04 PASS, the kept ledger copies checked
+# with this tool) shows that it verifies them. Cargo.lock is committed; steps/ledger-check.setup.sh builds with --locked.
 [dependencies]
 checkpointed-local-log = "=0.5.0"
 serde_json = "1"

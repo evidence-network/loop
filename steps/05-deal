@@ -5,7 +5,7 @@ Usage: 05-deal --population DIR --out DIR
 
 The rehearsal population's `alice` and `bob` (their TEST keys) make one deal,
 each in its own book, through the driver steps/05-deal.setup.sh installs (a
-Rust build of evidencebook's crate at the pinned tag):
+Rust build of the evidencebook crate versions.lock pins, from crates.io):
 
 - each side opens its book and cuts a checkpoint, which the other side learns;
 - each side seals its half of the deal (the deal id, the exchange's request

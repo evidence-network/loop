@@ -38,6 +38,16 @@ if BIN is None:
 
 
 @unittest.skipIf(BIN is None, NO_DRIVER)
+
+def pinned_evidencebook_version():
+    """The evidencebook crate version versions.lock pins (crates/evidencebook-v<version>): the drivers name it in verify.json."""
+    for line in (Path(__file__).resolve().parent.parent / "versions.lock").read_text().splitlines():
+        parts = line.split()
+        if parts[:1] == ["evidencebook"]:
+            return parts[2].removeprefix("crates/evidencebook-v")
+    raise AssertionError("versions.lock has no evidencebook pin")
+
+
 class Step02BookTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -105,7 +115,7 @@ class Step02BookTest(unittest.TestCase):
         self.assertIn("https://witness.rehearsal.invalid", r["detail"])
         v = json.loads((self.out / "verify.json").read_text())
         self.assertEqual(v["witnesses_verified"], ["https://witness.rehearsal.invalid"])
-        self.assertIn("v0.8.1", v["verifier"])
+        self.assertIn(pinned_evidencebook_version(), v["verifier"])
         self.assertEqual(set(r["pinned"]), {"evidencebook", "checkpointed-local-log", "evidence-request", "aac-rust"})
         paths = [p["path"] for p in r["proof"]]
         for p in ("checkpoint.json", "checkpoint.cose", "witness-receipt.json", "witnesses.json", "verify.json"):
