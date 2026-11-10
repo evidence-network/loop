@@ -37,8 +37,6 @@ if BIN is None:
     print(f"\ntest_step02_book: {NO_DRIVER}", file=sys.stderr)
 
 
-@unittest.skipIf(BIN is None, NO_DRIVER)
-
 def pinned_evidencebook_version():
     """The evidencebook crate version versions.lock pins (crates/evidencebook-v<version>): the drivers name it in verify.json."""
     for line in (Path(__file__).resolve().parent.parent / "versions.lock").read_text().splitlines():
@@ -48,6 +46,7 @@ def pinned_evidencebook_version():
     raise AssertionError("versions.lock has no evidencebook pin")
 
 
+@unittest.skipIf(BIN is None, NO_DRIVER)
 class Step02BookTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
