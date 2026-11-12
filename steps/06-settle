@@ -50,8 +50,9 @@ population that names no rail is NOT_CHECKED on that gap; one that names the
 Lightning rail is judged as below (evidence-network/loop#243).
 
 Where a settlement observation carries the payment's preimage, the step checks
-finality itself. The host passes the preimage with mesh-llm#2744 (open; the lab
-build carries it) and the lexe-wallet-plugin#7 wallet build. The preimage must
+finality itself. The preimage reaches the capsules plugin on payment.lifecycle.v1 from the pay-lightning plugin
+(Mesh-LLM/ln-payments-plugin#11, which the lab build carries; the host passes the event on unchanged, so mesh-llm
+needs no change) and the lexe-wallet-plugin#7 wallet build. The preimage must
 be 32 bytes of lowercase hex with sha256(preimage) == payment_hash. Only a
 payer observation's preimage proves a payment; the provider holds its preimage
 before it is paid. recorded.json keeps the check's outcome, never the
@@ -771,7 +772,8 @@ def lightning_checks(found, ids, checks_dir, since=None):
     unproven = [h for h, ok in proven.items() if not ok]
     put("finality", False if problems else None if unproven or not proven else True,
         "; ".join(problems) if problems else
-        f"{len(unproven)} of {len(proven)} payment hashes not proven by a payer's preimage" if unproven else
+        f"{len(unproven)} of {len(proven)} payment hashes not proven by a payer's preimage "
+        "(NOT_CHECKED: Mesh-LLM/ln-payments-plugin#11 carries the preimage, the lexe-wallet-plugin#7 build reports it)" if unproven else
         "no payment hash recorded" if not proven else
         f"{len(proven)} of {len(proven)} payment hashes final by the payer's preimage")
     # 3. One band per side per exchange: the side's distinct terminal settlements, summed.
@@ -982,8 +984,8 @@ def main_live(pop, out, started):
     if unproven:
         not_checked.append({"what": "the finality of the payments the nodes recorded that no payer preimage proves",
                             "why": f"{len(unproven)} recorded payment hashes are not proven by a payer's preimage, so "
-                                   "their finality is at most the wallet's terminal report (a host passes the "
-                                   "preimage with mesh-llm#2744, open, and the lexe-wallet-plugin#7 build)",
+                                   "their finality is at most the wallet's terminal report (pay-lightning carries the "
+                                   "preimage with Mesh-LLM/ln-payments-plugin#11 and the lexe-wallet-plugin#7 build)",
                             "issue": ADAPTER_ISSUE})
     if pop.get("crosscheck") == "payment_hash":
         preimages = (f"{len(unproven)} of {len(proven)} recorded payment hashes are not proven by a payer's preimage"
