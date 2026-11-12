@@ -624,8 +624,8 @@ class ReporterBackendTest(Tmp):
         r = self.run_live(VERIFIED)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertEqual(self.issues(r), sorted([step.SEAL_ISSUE, step.EXCHANGE_ISSUE]))
-        self.assertEqual(sorted(r["pinned"]), ["capsulectl", "capsulectl-book", "capsules", "mesh-llm",
-                                                 "mesh-llm-pr-2620", "reporter"])
+        self.assertEqual(sorted(r["pinned"]), sorted(["capsulectl", "capsulectl-book", "capsules", "mesh-llm",
+                                                      "reporter", *step.finding.mesh_pr_pins()]))
         first = json.loads((self.out / "first-answered.json").read_text())
         self.assertTrue(first["answered_at"])
         self.assertIn(first["ask"], ("lab-1 checkpoints", "lab-1 history_card/1"))

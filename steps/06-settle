@@ -362,7 +362,10 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
 
 
 # --- The live population: what the nodes recorded, read and listed, never paid for ----
-LIVE_PINNED = ["capsules", "mesh-llm-pr-2620"]
+# The lab host build (main base and the PRs on it) and, when the lock pins them, the payment and wallet plugins whose
+# settlement events the capsules plugin recorded (step 06 reads their finality).
+LIVE_PINNED = (["capsules", "mesh-llm", *finding.mesh_pr_pins()]
+               + [n for n in ("pay-lightning", "pay-lightning-pr-11", "lexe-wallet") if n in finding.pins()])
 SETTLEMENT_BLOCK = ("model_attestation", "compute_attestation", "x-mesh-settlement-v1")
 
 

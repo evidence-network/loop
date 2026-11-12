@@ -3,44 +3,47 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build: one tree, ethanyzhang/mesh-llm lab/asg-2026-10-31c @ 175a31dc, that contains mesh-llm main
-# c86f58e and, merged on it, seven open PRs at these heads: #2620 (a plugin the host restarts gets the mesh
-# snapshot again, and a plugin whose start was cancelled is restarted), #2649 (it pins the capsules plugin the
-# host builds), #2719 (a test fix), #2721 (the plugin is told the exact served model on routed and paid
-# requests), #2744 (a settled payment's preimage is passed to plugins, for step 06's finality), #2741 (the
-# console's set-value renderer, UI only) and #2748 (a paid request keeps the payer's client nonce, so the served
-# half ties to its own half for step 05, mesh-llm#2747). lab/lab.sh
-# check requires the lab source to contain mesh-llm and mesh-llm-pr-2620; the other PR pins record the commits
-# the tree carries, which check does not test.
-mesh-llm Mesh-LLM/mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183
-mesh-llm-pr-2620 Mesh-LLM/mesh-llm 1d96a0205ed77959485159d2110259fd32ccb35e
-mesh-llm-pr-2649 Mesh-LLM/mesh-llm 3e6c2fefd9fe30952d71ca4cee536fa5a2f02ab9
-mesh-llm-pr-2719 Mesh-LLM/mesh-llm 4beab7f643849b8fd5bfc7b8633ee3833622a3b3
-mesh-llm-pr-2721 Mesh-LLM/mesh-llm 94ca7ea3ed168df8377061a58f7f894577a96860
-mesh-llm-pr-2744 Mesh-LLM/mesh-llm 68be54cb1082899cf8347197854eeacead4aa64f
-mesh-llm-pr-2741 Mesh-LLM/mesh-llm ff57b477fefd5a6882f012c8b088aa1c3de72eec
-mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
-# The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.17 release (tag on 3480a36), nine releases after the
+# Lab host build (a lab build, not a release; loop#436): one tree on the payer, Mesh-LLM/mesh-llm main at e1b0128 (a daily-lab-build
+# base: main plus Ethan's open PRs, each squashed to one commit whose message carries the PR's head SHA, as the asg-lab-rebuild
+# task does) and two open PRs, #3008 (the recommended plugin set is installed by default in setup and update) and #3040
+# (the plugin upgrade checks run on automatic and bootstrap upgrades; stacked on #3008, so its commit holds only its own
+# changes over #3008's head). The previous lab build (lab/asg-2026-10-31c, main c86f58e plus seven PRs, mesh-llm 0.78.0) kept the
+# node's own payments feature; mesh-llm#2654 removed it, so payments run through the pay-lightning plugin below.
+# lab/lab.sh check requires the lab source to contain mesh-llm and every mesh-llm-pr-<N> pin, as an ancestor or as the head named in a
+# squash commit's message.
+mesh-llm Mesh-LLM/mesh-llm e1b0128bf022a3fa0374a016fc05b3bbebafa27e
+mesh-llm-pr-3008 Mesh-LLM/mesh-llm 98016e56019064e5d0328d9abb750c761b722ea3
+mesh-llm-pr-3040 Mesh-LLM/mesh-llm c6e754563bcf2330e0eebc7b9b499738b35cada2
+# The payment plugin: Mesh-LLM/ln-payments-plugin main at 14a5f97 plus #11 (a settled payment's preimage on
+# payment.lifecycle.v1, which the capsules plugin's settlement check reads), merged on the lab host; lab/lab.sh check
+# requires both. The host passes the event on unchanged (payment.lifecycle.v1 is a local channel it broadcasts without reading),
+# so step 06's finality needs no mesh-llm change. The wallet plugin is lexe-wallet-plugin#7 (head 9f830c1): it maps the Lexe
+# SDK's payment preimage, which pay-lightning carries; the lab has run this build since the 11-06 wallet setup.
+pay-lightning Mesh-LLM/ln-payments-plugin 14a5f977cc713f2ab3f1876b9286477524c71a33
+pay-lightning-pr-11 Mesh-LLM/ln-payments-plugin 8ff201b5ece2dd65a2c3cc579adc208ea4ace74d
+lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
+# The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.18 release (tag on 6d54aba), ten releases after the
 # previous pin v0.1.8 (cc21587). Breaking or visible changes on the way: 0.1.9 retires served_summary/1 and turns
 # share_adjudications and share_exchange_corroboration on by default; 0.1.11 moves the chain from capsules.jsonl to
 # the EvidenceBook shelf (ledger/shelf.db; a one-way migration at first start, `capsules export-flat` goes back);
 # 0.1.16 signs the evidence-commitment/1 profile, records failed exchanges (sealing one needs a host that sends
-# failure_class, mesh-llm#2852, which the lab host build lacks) and moves the staple to history_cards. v0.1.17 adds the signed commitment published
+# failure_class, mesh-llm#2852, which this lab host build has) and moves the staple to history_cards. v0.1.17 adds the signed commitment published
 # to Nostr relays when advertise_evidence_requests is on (#269), the peer's history_card/1 asked for at join (#273)
 # and agreement terms and records that cite the inference-deals digest (#274: both nodes need this release, an older
-# provider refuses the new terms member). Its INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
+# provider refuses the new terms member). v0.1.18 makes the 4.41 referee the default with a lowered-margin display (#282, #286) and
+# declares min_host_version 0.78.0 in plugin.toml (#283); its dependency pins are v0.1.17's. The INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
-capsules Mesh-LLM/capsules-plugin v0.1.17
+capsules Mesh-LLM/capsules-plugin v0.1.18
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
 evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.5.0
-# The evidence-request the plugin builds with at v0.1.17: crates.io 0.4.1, published from this tag (0.3.0 was the
+# The evidence-request the plugin builds with at v0.1.18 (unchanged from v0.1.17): crates.io 0.4.1, published from this tag (0.3.0 was the
 # plugin's at v0.1.6 to v0.1.8: the -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
 capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.4.1
 # The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), 0.0.12 in the
-# plugin's Cargo.lock at v0.1.17 (0.0.11 at v0.1.6 to v0.1.8); crates.io 0.0.12 is published from this tag.
+# plugin's Cargo.lock at v0.1.18 (0.0.11 at v0.1.6 to v0.1.8); crates.io 0.0.12 is published from this tag.
 evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.12
 # The daily reporter: scripts/daily_report.py as of this commit (main after #3).
 reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202

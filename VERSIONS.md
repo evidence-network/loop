@@ -28,6 +28,6 @@ is tagged:
 +capsules Mesh-LLM/capsules-plugin v0.1.7
 ```
 
-When mesh-llm #2620 merges, the lab host build becomes a single main commit:
-replace the `mesh-llm` SHA with that commit and delete the `mesh-llm-pr-2620`
-line.
+The lab host build is a lab build, not a release: mesh-llm main at the `mesh-llm` pin plus the open PRs
+pinned as `mesh-llm-pr-<N>` (number and head SHA). When a PR merges, rebuild on the main commit that contains it,
+replace the `mesh-llm` SHA with that commit and delete the PR's line.
