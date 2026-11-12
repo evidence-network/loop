@@ -100,7 +100,7 @@ class DryRunTest(unittest.TestCase):
     def test_prints_the_build_check_against_the_pins(self):
         pins = {l.split()[0]: l.split()[2] for l in (ROOT / "versions.lock").read_text().splitlines()
                 if l and not l.startswith("#")}
-        for name in ("mesh-llm", "mesh-llm-pr-2620"):
+        for name in ["mesh-llm"] + [n for n in pins if n.startswith("mesh-llm-pr-")]:
             self.assertIn(f"merge-base --is-ancestor {pins[name]} HEAD", self.out)
         self.assertIn("git -C /src/capsules rev-parse HEAD", self.out)
         self.assertIn("sha256sum /opt/mesh-llm /opt/capsules", self.out)

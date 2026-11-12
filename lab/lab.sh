@@ -183,6 +183,8 @@ read -r -d '' -a PAYS <<< "${LAB_PAYMENTS:-}" || true
 for n in "${PAYS[@]+"${PAYS[@]}"}"; do
   [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_PAYMENTS names $n, not a lab node"
 done
+PAY_PLUGIN=${LAB_PAY_PLUGIN:-}
+case $PAY_PLUGIN in "" | pay-lightning) ;; *) die "LAB_PAY_PLUGIN is empty (the legacy [payments] stanza) or pay-lightning, not $PAY_PLUGIN" ;; esac
 pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 # Two hosts (LAB-BRINGUP.md, "Two hosts"): REMOTE nodes run on the second host, ONLY is set there; MINE is what this host runs.
 in_list() { local x=$1 y; shift; for y in "$@"; do [ "$x" = "$y" ] && return 0; done; return 1; }
@@ -446,13 +448,17 @@ head_of() { [ -n "$1" ] && git -C "$1" rev-parse -q --verify 'HEAD^{commit}' 2> 
 record() { mkdir -p "$LAB_DIR" && python3 -B "$ROOT/lab/pack.py" record "$1" --lab-dir "$LAB_DIR"; }
 
 cmd_check() {
-  local mesh_pin pr_pin cap_pin
-  mesh_pin=$(pin mesh-llm) pr_pin=$(pin mesh-llm-pr-2620) cap_pin=$(pin capsules)
+  local mesh_pin cap_pin
+  mesh_pin=$(pin mesh-llm) cap_pin=$(pin capsules)
+  # The host tree is the main base plus each mesh-llm-pr-<N> pin: merged as is (the head is then an ancestor) or squashed into
+  # one commit whose message carries the head ("lab: ... @ <head>", as the daily lab branch does).
+  local -a mesh_pins=(mesh-llm)
+  mapfile -t -O 1 mesh_pins < <(awk '$1 ~ /^mesh-llm-pr-[0-9]+$/ { print $1 }' "$ROOT/versions.lock")
   if [ "$DRY" = 1 ]; then
     need MESH_LLM_SRC; need MESH_LLM_BIN; need CAPSULES_SRC; need CAPSULES_BIN
     say git -C "$MESH_LLM_SRC" rev-parse HEAD
     say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$mesh_pin" HEAD
-    [ -z "$pr_pin" ] || say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$pr_pin" HEAD
+    for name in "${mesh_pins[@]:1}"; do say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$(pin "$name")" HEAD; done
     say git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no
     say git -C "$CAPSULES_SRC" rev-parse HEAD
     if ! is_sha "$cap_pin"; then
@@ -475,12 +481,14 @@ cmd_check() {
   [ -n "$cap_pin" ] || fails+=("versions.lock has no capsules pin")
 
   if mesh_head=$(head_of "${MESH_LLM_SRC:-}"); then
-    for name in mesh-llm mesh-llm-pr-2620; do
+    for name in "${mesh_pins[@]}"; do
       p=$(pin "$name"); [ -n "$p" ] || continue
       if ! c=$(resolve_pin "$MESH_LLM_SRC" "$p"); then
         fails+=("the $name pin $p is not in the mesh-llm source"); continue
       fi
       rc=0; git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$c" HEAD 2> /dev/null || rc=$?
+      # A squashed PR: its head is in the message of a commit above the main base.
+      if [ "$rc" = 1 ] && [ "$name" != mesh-llm ] && git -C "$MESH_LLM_SRC" log --format=%B "$(pin mesh-llm)..HEAD" 2> /dev/null | grep -qF "$c"; then rc=0; fi
       case $rc in
         0) ;;
         1) fails+=("mesh-llm source $mesh_head does not contain the $name pin $p") ;;
@@ -522,19 +530,47 @@ cmd_check() {
     fi
   fi
 
-  python3 -B - "$mesh_head" "$mesh_pin" "$pr_pin" "$cap_head" "$cap_pin" "$cap_commit" "$mesh_sha" "$cap_sha" \
-    "$version" "${fails[@]+"${fails[@]}"}" << 'PY' | record check || die "cannot write $LAB_DIR/build.json"
+  # The payment plugin (pay-lightning) and the wallet plugin, when versions.lock pins them: their trees' commits and binaries.
+  local -a contains=() pay=()
+  for name in "${mesh_pins[@]}"; do contains+=("$name=$(pin "$name")"); done
+  local pay_base pay_pr lexe_pin
+  pay_base=$(pin pay-lightning) pay_pr=$(pin pay-lightning-pr-11) lexe_pin=$(pin lexe-wallet)
+  if [ -n "$pay_base" ]; then
+    local pay_head="" pay_sha="" lexe_sha=""
+    if [ -z "${PAY_LIGHTNING_SRC:-}" ] || ! pay_head=$(head_of "$PAY_LIGHTNING_SRC"); then
+      fails+=("PAY_LIGHTNING_SRC is not a git tree (versions.lock pins pay-lightning)")
+    else
+      for name in pay-lightning pay-lightning-pr-11; do
+        p=$(pin "$name"); [ -n "$p" ] || continue
+        git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || fails+=("pay-lightning source $pay_head does not contain the $name pin $p")
+      done
+      [ -z "$(git -C "$PAY_LIGHTNING_SRC" status --porcelain --untracked-files=no)" ] || fails+=("pay-lightning source has uncommitted changes")
+    fi
+    if [ -f "${PAY_LIGHTNING_BIN:-}" ]; then pay_sha=$(sha256sum < "$PAY_LIGHTNING_BIN" | cut -d' ' -f1); else fails+=("PAY_LIGHTNING_BIN is not a readable file"); fi
+    if [ -f "${LEXE_PLUGIN:-}" ]; then lexe_sha=$(sha256sum < "$LEXE_PLUGIN" | cut -d' ' -f1); else fails+=("LEXE_PLUGIN is not a readable file"); fi
+    pay=("$pay_head" "$pay_sha" "$lexe_sha" "$lexe_pin")
+  fi
+
+  python3 -B - "$mesh_head" "$cap_head" "$cap_pin" "$cap_commit" "$mesh_sha" "$cap_sha" "$version" "${#contains[@]}" "${#pay[@]}" \
+    "${contains[@]}" "${pay[@]+"${pay[@]}"}" "${fails[@]+"${fails[@]}"}" << 'PY' | record check || die "cannot write $LAB_DIR/build.json"
 import datetime as dt, json, sys
-mesh_head, mesh_pin, pr_pin, cap_head, cap_pin, cap_commit, mesh_sha, cap_sha, version, *fails = sys.argv[1:]
-print(json.dumps({
+mesh_head, cap_head, cap_pin, cap_commit, mesh_sha, cap_sha, version, n_contains, n_pay, *rest = sys.argv[1:]
+n_contains, n_pay = int(n_contains), int(n_pay)
+contains = dict(kv.split("=", 1) for kv in rest[:n_contains])
+pay, fails = rest[n_contains:n_contains + n_pay], rest[n_contains + n_pay:]
+doc = {
     "failures": fails,
     "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "mesh_llm": {"source_head": mesh_head or None, "contains": {"mesh-llm": mesh_pin or None, "mesh-llm-pr-2620": pr_pin or None},
+    "mesh_llm": {"source_head": mesh_head or None, "contains": {k: v or None for k, v in contains.items()},
                  "binary_sha256": mesh_sha or None, "version": version or None},
     "capsules": {"source_head": cap_head or None, "pin": cap_pin or None, "pin_commit": cap_commit or None,
                  "binary_sha256": cap_sha or None},
     "relay": "off (--disable-iroh-relays) until Mesh-LLM/capsules-plugin#48 is closed",
-}))
+}
+if pay:
+    doc["pay_lightning"] = {"source_head": pay[0] or None, "binary_sha256": pay[1] or None,
+                            "wallet_plugin": {"pin": pay[3] or None, "binary_sha256": pay[2] or None}}
+print(json.dumps(doc))
 PY
   cat "$LAB_DIR/build.json"
   local all
@@ -600,7 +636,10 @@ node_config() {
       printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
     fi
   fi
-  if pays "$name"; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
+  # Legacy host payments (the 11-11 lab: a mesh-llm build with the node's own payments feature). With LAB_PAY_PLUGIN=pay-lightning
+  # the node has no [payments] stanza: pay-lightning and a wallet plugin are installed into its home before start
+  # (lab/bin/lab-wallet-setup.sh) and bound by the host from their manifests; the wallet files stay where they were.
+  if pays "$name" && [ -z "$PAY_PLUGIN" ]; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
 }
 
 # The label comes from the config this node was started with, not from whatever `twins` is run with. A restart keeps
@@ -745,10 +784,18 @@ start_joined() {
 }
 # Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
 no_dropped_wallet() {
-  local n
+  local n p
   for n in "${MINE[@]}"; do
     if ! pays "$n" && grep -q '^\[payments\]' "$(home_of "$n")/config.toml" 2> /dev/null; then
       die "$n's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+    if ! pays "$n" && [ -n "$PAY_PLUGIN" ] && [ -d "$(home_of "$n")/payments/wallets" ]; then
+      die "$n has a wallet (payments/wallets) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+    if pays "$n" && [ -n "$PAY_PLUGIN" ] && [ "$DRY" = 0 ]; then
+      for p in pay-lightning lexe-wallet; do
+        [ -x "$(home_of "$n")/.mesh-llm/plugins/installed/$p/$p" ] || die "$n has no installed $p plugin: run lab/bin/lab-wallet-setup.sh ${n#lab-} first"
+      done
     fi
   done
 }
