@@ -1,0 +1,43 @@
+{
+  "asserts": "a capsule sealed by the Goose node (evidencebook's G1, loop_seal) with the node's key verifies Class 1 in the AAC Go verifier, its capsule_id recomputes, its key_id is the node's key, its producer signature verifies in the AAC Go verifier under that key (on a live node, the key its nodes/<node_id>.json publishes), its effect reads effect_attestation runtime_claimed (sealed in the producer's own process) and it carries model_attestation",
+  "detail": "node goose-2: Class 1 ok in Go, capsule_id recomputed, effect_attestation runtime_claimed, model_attestation present, key_id is the node's key; producer signature authored under 33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e, the key the node publishes; the sealed call is the step's placeholder model (rehearsal/rehearsal-model), not a real inference",
+  "finished": "2026-11-12T20:52:56Z",
+  "name": "seal",
+  "not_checked": [],
+  "pinned": {
+    "aac-go": {
+      "ref": "go/v0.21.0",
+      "repository": "action-state-group/agent-action-capsule"
+    },
+    "goose-g1": {
+      "ref": "a255d824eecd64e1269aa22f581b748f099d3805",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "capsule.json",
+      "sha256": "0533ec5dab349894f6a50494d55c665324a7ba5ac6fa9b3ab519f6ded9b71d1f"
+    },
+    {
+      "path": "verifier.json",
+      "sha256": "d08ee088d774468bcd12a2265fc1f289168610470e4aadb437f4d9c9846a2732"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "1cf19444d737b27846b134e3ff863d73aa9753331d07a64cd9b87c33f5a0806d"
+    },
+    {
+      "path": "node-key.pub.pem",
+      "sha256": "5024f88e638df6802b612c70c49b6439740fceed8e2ddb2d1103187c8ca010a0"
+    },
+    {
+      "path": "goose-run.log",
+      "sha256": "28f3cb5282de08e2067faffaf13feee136ea34c450d6fa36b24544c06cbd3830"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-12T20:52:55Z",
+  "step": "01"
+}
