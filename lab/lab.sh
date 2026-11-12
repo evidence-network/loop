@@ -937,8 +937,27 @@ cmd_start() {
     echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
     echo "advertised model name: $MODEL_NAME"
   fi
+  apply_pay_policy
   refresh_mirror
   cmd_status
+}
+
+# pay-lightning keeps the buyer policy in memory and its payment.json (free_only at first start), so every start sets it again
+# through each paying node's console: LAB_PAY_POLICY="lab-1=20000 lab-2=9000 lab-3=20000" (daily budget in msat, the 11-11
+# lab's values by default). A node that is not named keeps free_only and pays nothing.
+apply_pay_policy() {
+  [ "$PAY_PLUGIN" = pay-lightning ] || return 0
+  local spec n b
+  for spec in ${LAB_PAY_POLICY:-lab-1=20000 lab-2=9000 lab-3=20000}; do
+    n=${spec%%=*} b=${spec#*=}
+    [[ $b =~ ^[1-9][0-9]*$ ]] || die "LAB_PAY_POLICY: $spec is not <node>=<daily budget msat>"
+    pays "$n" || continue
+    if [ "$DRY" = 1 ]; then say curl -fsS -X POST "$(console "$n")/api/plugins/pay-lightning/tools/control" -d "{\"command\":\"policy\",\"value\":{\"mode\":\"automatic\",\"daily_budget_msat\":$b}}"; continue; fi
+    curl -fsS --max-time 60 -X POST -H 'Content-Type: application/json' "$(console "$n")/api/plugins/pay-lightning/tools/control" \
+      -d "{\"command\":\"policy\",\"value\":{\"mode\":\"automatic\",\"daily_budget_msat\":$b}}" > /dev/null \
+      || die "cannot set $n's buyer policy through its pay-lightning plugin"
+    echo "$n: buyer policy automatic, daily budget $b msat"
+  done
 }
 
 cmd_stop() {

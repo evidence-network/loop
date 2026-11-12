@@ -28,12 +28,13 @@
 #                  sha256 of that archive (required with LAB_PAY_PLUGIN)
 set -euo pipefail
 
-usage() { echo "usage: $0 N [--check|--balance]   (N = 1, 2 or 3)" >&2; exit 2; }
-[ $# -ge 1 ] && [ $# -le 2 ] || usage
+usage() { echo "usage: $0 N [--check|--balance|--policy DAILY_BUDGET_MSAT]   (N = 1, 2 or 3)" >&2; exit 2; }
+[ $# -ge 1 ] && [ $# -le 3 ] || usage
 N=$1
 case "$N" in 1 | 2 | 3) ;; *) usage ;; esac
 MODE=install
-case "${2:-}" in --check) MODE=check ;; --balance) MODE=balance ;; "") ;; *) usage ;; esac
+BUDGET=
+case "${2:-}" in --check) MODE=check ;; --balance) MODE=balance ;; --policy) MODE=policy; BUDGET=${3:-}; [[ $BUDGET =~ ^[1-9][0-9]*$ ]] || usage ;; "") ;; *) usage ;; esac
 
 LAB_DIR=${LAB_DIR:-$HOME/loop-lab}
 MESH_LLM_BIN=${MESH_LLM_BIN:-$HOME/lab-bin/mesh-llm}
@@ -63,6 +64,15 @@ if [ "$MODE" = balance ]; then
   fi
   grep -q '^\[payments\]' "$CONFIG" || die "$CONFIG has no [payments]: start the lab with LAB_PAYMENTS naming $NODE first"
   HOME=$HOME_N "$MESH_LLM_BIN" --config "$CONFIG" wallet --port "$PORT" get-balance
+  exit 0
+fi
+
+if [ "$MODE" = policy ]; then
+  # The buyer policy of pay-lightning (the legacy host kept it in the same ledger): automatic with a daily budget, as the
+  # 11-11 lab had it (lab-1 and lab-3 20000 msat, lab-2 9000). Needs the node running.
+  [ "$PAY_PLUGIN" = pay-lightning ] || die "--policy is for LAB_PAY_PLUGIN=pay-lightning"
+  HOME=$HOME_N "$MESH_LLM_BIN" plugins call pay-lightning control --port "$PORT" \
+    --input "{\"command\":\"policy\",\"value\":{\"mode\":\"automatic\",\"daily_budget_msat\":$BUDGET}}"
   exit 0
 fi
 
