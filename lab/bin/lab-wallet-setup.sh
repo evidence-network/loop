@@ -100,6 +100,10 @@ if [ "$PAY_PLUGIN" = pay-lightning ]; then
   HOME=$HOME_N MESH_LLM_NO_DEFAULT_PLUGINS=1 "$MESH_LLM_BIN" plugins install --name pay-lightning --version "$ver" \
     --archive "$PAY_LIGHTNING_ARCHIVE"
   HOME=$HOME_N "$MESH_LLM_BIN" plugins enable pay-lightning
+  # pay-lightning keeps its ledger and finds the wallet under $HOME/.mesh-llm/payments; this lab's node homes keep them in
+  # $HOME/payments (the layout the node's own payments feature used, schema 6 either way). One directory, two names: removing
+  # the link returns the node to the legacy host build.
+  [ -e "$HOME_N/.mesh-llm/payments" ] || ln -s ../payments "$HOME_N/.mesh-llm/payments"
 fi
 echo "Done: $NODE is ready for its wallet. When every paying node is ready and the lab is quiet:"
 echo "  lab/lab.sh stop && LAB_PAYMENTS=\"<the paying nodes>\" lab/lab.sh start"
