@@ -1,0 +1,19 @@
+{
+  "asserts": "step 12 holds for the goose ecosystem",
+  "detail": "The Goose live population has no input for step 12 (scripts/goose_live.py lists the steps it gives one); loop.sh ran nothing for it.",
+  "finished": "2026-11-12T20:52:58Z",
+  "name": "join",
+  "not_checked": [
+    {
+      "issue": "evidence-network/loop#330",
+      "what": "step 12 for the goose ecosystem",
+      "why": "scripts/goose_live.py gives step 12 no Goose input"
+    }
+  ],
+  "pinned": {},
+  "population": "live",
+  "proof": [],
+  "result": "NOT_CHECKED",
+  "started": "2026-11-12T20:52:58Z",
+  "step": "12"
+}
