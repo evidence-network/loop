@@ -34,7 +34,11 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # declares min_host_version 0.78.0 in plugin.toml (#283); its dependency pins are v0.1.17's. The INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
-capsules Mesh-LLM/capsules-plugin v0.1.18
+# LAB BUILD: capsules-plugin main 2713c41 (past v0.1.18) plus Mesh-LLM/capsules-plugin#292 @ 07976bd222940537529811c5efad81b7a722847d
+# (the PR head). #292 makes the settlement channel accept pay-lightning's own local
+# lifecycle relay (source "plugin:pay-lightning", a non-peer-id target still required), which v0.1.18 refuses, so step 06
+# had no preimage to check. The pin is the PR head, not a release; swap it for the release tag once #292 is released.
+capsules Mesh-LLM/capsules-plugin 07976bd222940537529811c5efad81b7a722847d
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
