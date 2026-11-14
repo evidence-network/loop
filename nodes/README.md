@@ -39,7 +39,7 @@ Open a pull request adding `nodes/<node_id>.json`:
 
   **Revision 2: the same statement with the step 13 sentences.** Step 13 (`ask-across`) has a party in another
   ecosystem ask a listed node for evidence about one interaction it took part in. The first statement does not
-  cover that (Steven's ruling on [loop#440](https://github.com/evidence-network/loop/issues/440)), so step 13 asks
+  cover that (the ruling recorded on [loop#440](https://github.com/evidence-network/loop/issues/440)), so step 13 asks
   only an entry that carries this revision, which adds three sentences right after "...answer or payment.". The check
   accepts either statement, word for word; an entry on the first statement keeps working and is reported by step 13 as
   not opted in, never failed. Consent is per revision: an operator moves an entry to this text by a pull request of

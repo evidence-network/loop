@@ -34,9 +34,9 @@ One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (d
   other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
   and run only under `cross`. The first is step 13, `ask-across` (below): an evidence request answered across
   ecosystems, `goose` to `mesh` and `mesh` to `goose` first. It runs as its own stage, `loop.sh --stage cross
-  --ecosystem cross`, and is `PASS` on the rehearsal population in both directions and `NOT_CHECKED` live, each live
-  cell naming the carrier gap that owns it ([loop#442](https://github.com/evidence-network/loop/issues/442),
-  [loop#443](https://github.com/evidence-network/loop/issues/443)). No other `cross` step exists yet.
+  --ecosystem cross`: on the rehearsal population a mesh node and a Goose node ask each other, and live no cross request is
+  exchanged yet, so each live cell names the carrier gap that owns it ([loop#442](https://github.com/evidence-network/loop/issues/442),
+  [loop#443](https://github.com/evidence-network/loop/issues/443)). Results are on the status page. No other `cross` step exists yet.
 
 The twelve steps, in the order `loop.sh` names them. Each asserts one fact and writes one finding. The Mesh and Goose columns say what the step checks in each ecosystem; whether a step passes today is on the status page ([status/README.md](status/README.md)), not here.
 
@@ -119,7 +119,7 @@ You do not need our runtime, our wallet or our book to take part. To be asked, o
    [steps/13-ask-across.md](steps/13-ask-across.md)).
 2. **Answer with records the open verifiers check.** An answer is a signed artifact (an evidence envelope) or a signed
    refusal, under the key your entry lists. An answer carries digests and signatures, never the body of a request, an
-   answer or a payment. A signed refusal under your own disclosure policy is a correct answer.
+   answer or a payment. A signed refusal is a correct answer when your advertised policy does not answer that asker for that subject.
 3. **List a key and a carrier** in a `nodes/` entry ([nodes/README.md](nodes/README.md)) and in the signed commitment's
    `ask` member: where your node is asked. The Nostr address lives in the commitment's `ask.nostr` (the mailbox key and
    the relays it reads); a mesh node's address is its `node_id`. The entry's `ask_route` (`mesh` or `nostr`) must agree

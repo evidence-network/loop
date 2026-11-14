@@ -6,7 +6,7 @@ Usage: 13-ask-across --population DIR --out DIR
 The first step of the across-ecosystems layer (loop#440): a party in one ecosystem asks a listed node of another for
 evidence about one interaction, through the carrier that node's own entry and signed commitment name, and the answer
 (signed records or a signed refusal) is verified under the key the node is listed with, offline, by the verifiers step 07
-already uses. It is about the evidence request, not a deal. Steven's ruling of 2026-11-12: "loop interop between
+already uses. It is about the evidence request, not a deal. The ruling recorded on loop#440 (2026-11-12): "loop interop between
 ecosystems is tested at the evidence request (cross step 13 ask-across, goose<->mesh first, then outside responders
 ...); each ecosystem runs only the steps that fit it; conforming = shareable evidence."
 
@@ -43,7 +43,7 @@ of any request, answer or payment". An answer in step 13 carries digests and sig
     (answer.json).
 
 A listed node is asked only if its entry carries the consent statement that covers this (check_nodes.CONSENT_ASK_ACROSS,
-Steven's ruling on loop#440: the first statement does not cover step 13). An entry on the first statement is skipped and
+the ruling recorded on loop#440: the first statement does not cover step 13). An entry on the first statement is skipped and
 reported as "not opted in" in pairs.json, a NOT_CHECKED cell naming why, never a FAIL.
 
 THE ECOSYSTEMS. The names the issue uses (mesh, muse, goose) and the `community` a history card carries (mesh-llm, muse,

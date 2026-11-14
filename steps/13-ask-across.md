@@ -4,7 +4,7 @@ Step 13 is the first step where two ecosystems meet at the evidence request. It 
 a listed node of another for evidence about one interaction, through the carrier that node names, and the answer is
 checked offline under the key the node is listed with. `goose` to `mesh` and `mesh` to `goose` come first; outside
 responders follow. Each ecosystem runs only the steps that fit it, and conforming means shareable evidence
-(Steven's ruling of 2026-11-12, [loop#440](https://github.com/evidence-network/loop/issues/440)).
+(the ruling recorded on [loop#440](https://github.com/evidence-network/loop/issues/440)).
 
 Run it as its own stage: `./loop.sh --stage cross --ecosystem cross [--population rehearsal|live] [--strict]`. The stage
 is steps `13` and `08`, because step 08 re-derives 13 from the same output.
