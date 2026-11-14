@@ -5,7 +5,7 @@ Usage: check_nodes.py [DIR]   (default: nodes)
 
 Refuses an entry whose node_id or key_id is not 64 lowercase hex, whose file name
 is not <node_id>.json, whose node_id or key_id repeats another entry's, that is
-missing a field, whose consent is not the published operator statement (CONSENT),
+missing a field, whose consent is not one of the published operator statements (CONSENTS),
 or whose operator is not a GitHub handle (an email address or a phone number is
 refused: the list holds no personal data). Also checks the leave marks in
 <DIR>/left/<node_id>.json and the twins-only lab nodes in <DIR>/twins/<node_id>.json
@@ -21,8 +21,11 @@ HEX64 = re.compile(r"^[0-9a-f]{64}$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 REQUIRED = ("node_id", "key_id", "operator", "consent", "mesh", "ask_route", "disclosure", "host_build",
             "plugin_version")
-# The operator statement every entry carries, word for word. Changing it is a
-# change to what operators agreed to: every listed entry must carry the new text.
+# The operator statements an entry may carry, word for word. Consent is per revision: an operator
+# moves an entry to a newer statement by a pull request of their own, so CONSENT (what the tools that
+# write entries, lab/pack.py and lab/goose.sh, still write) and CONSENT_ASK_ACROSS (Steven's ruling on
+# evidence-network/loop#440: the first statement does not cover step 13) are both accepted, and no
+# other text. Step 13 asks only an entry that carries CONSENT_ASK_ACROSS.
 CONSENT = (
     "I add this node to the evidence network to help improve the evidence layer. "
     "The network may ask it for its history summary, usually daily, and never for the "
@@ -34,6 +37,17 @@ CONSENT = (
     "so with few nodes listed they can show who dealt with whom. "
     "To leave, remove this entry: the asks stop on the next run, and past reports stay."
 )
+# CONSENT with the sentences of the ruling inserted right after "...answer or payment." (loop#440).
+ASK_ACROSS_SENTENCES = (
+    "A party in another ecosystem may also ask it, through the network, for evidence about one interaction it "
+    "took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and "
+    "never with the content of any request, answer or payment. Whether it answered, refused or did not answer, "
+    "and whether the answer verified, is published per ecosystem pair at "
+    "https://evidence-network.github.io/loop/stats/. "
+)
+_AFTER = "answer or payment. "
+CONSENT_ASK_ACROSS = CONSENT.replace(_AFTER, _AFTER + ASK_ACROSS_SENTENCES, 1)
+CONSENTS = (CONSENT, CONSENT_ASK_ACROSS)
 # Whether CONSENT names the /watch/ page's public pair edges (who dealt with whom). It does since Steven's ruling on
 # evidence-network/loop#77, so an entry may set disclosure.pair_edges to "public". This is a decision made with the
 # consent text, never a string match: a revision that drops the pair edges turns it off again.
@@ -84,8 +98,8 @@ def check_entry(path, entry):
         errs.append(f"{path.name}: file name must be <node_id>.json")
     if "operator" in entry:
         errs += [f"{path.name}: {e}" for e in check_operator(entry["operator"])]
-    if "consent" in entry and entry["consent"] != CONSENT:
-        errs.append(f"{path.name}: consent must be the operator statement in nodes/README.md, word for word")
+    if "consent" in entry and entry["consent"] not in CONSENTS:
+        errs.append(f"{path.name}: consent must be one of the operator statements in nodes/README.md, word for word")
     for field in ("mesh", "host_build", "plugin_version"):
         if field in entry and not (isinstance(entry[field], str) and entry[field].strip()):
             errs.append(f"{path.name}: {field} must be a non-empty string")

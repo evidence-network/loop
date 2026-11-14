@@ -9,9 +9,13 @@ and never gates. Stage 1 (M1) is steps 01 Seal, 02 Book,
 `--ecosystem` (default `mesh`) names what the steps run against; steps 01 to 12 are the
 same assertions in every ecosystem, and steps only one ecosystem needs are numbered 13
 and up. `mesh` is the loop as it has always run (`findings/<date>-<population>/`). `muse`
-and `cross` have no steps yet: loop.sh runs nothing and writes a `NOT_CHECKED` finding per
+has no steps yet: loop.sh runs nothing and writes a `NOT_CHECKED` finding per
 step (owner: loop#150) to `findings/<ecosystem>/<date>-<population>/`, with `ecosystem`
-added to `run.json`. `goose` covers all twelve rows: on the rehearsal population the steps with a Goose
+added to `run.json`. `cross` has one: step 13 `ask-across` ([13-ask-across.md](13-ask-across.md)) runs as its own stage,
+`./loop.sh --stage cross --ecosystem cross`, which runs `13 08` (08 re-derives 13 from the same output): on the rehearsal
+population a mesh node and a Goose node ask each other for evidence both ways (`scripts/cross_rehearsal.py`), on the live
+population nothing is exchanged and each cell is `NOT_CHECKED` naming its carrier gap. `--stage 1 --ecosystem cross` is still
+the `NOT_CHECKED` rows of loop#150. `goose` covers all twelve rows: on the rehearsal population the steps with a Goose
 input (01, 02, 03, 04, 05, 06, 07 and 12 today) run on two evidencebook Goose nodes (`scripts/goose_rehearsal.py`; a failed run is a FAIL
 with its log), and every other row is `NOT_CHECKED` citing the issue it waits on. `status/status_page.py --ecosystem NAME` builds that ecosystem's page.
 

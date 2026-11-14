@@ -32,7 +32,11 @@ One loop, two layers, picked with `loop.sh --ecosystem mesh|muse|cross|goose` (d
   Goose input run on it (today steps 01, 02, 03, 04, 05, 06, 07 and 12; 02, 04, 05, 07 and 12 also need capsulectl (steps/12-join.setup.sh), 03 and 12 the capsule-cli that verifies the stapled history_card/1 (steps/capsule-cli.setup.sh), and 02 the step 02 driver (steps/02-book.setup.sh)); every other row reads `NOT_CHECKED` naming the issue it waits on.
 - **Across ecosystems**: steps where two ecosystems meet (one side admits and deals with the
   other, both sides seal their half, an outside verifier checks the pair), numbered 13 and up
-  and run only under `cross`. None exist yet; `cross` reads `NOT_CHECKED` too.
+  and run only under `cross`. The first is step 13, `ask-across` (below): an evidence request answered across
+  ecosystems, `goose` to `mesh` and `mesh` to `goose` first. It runs as its own stage, `loop.sh --stage cross
+  --ecosystem cross`: on the rehearsal population a mesh node and a Goose node ask each other, and live no cross request is
+  exchanged yet, so each live cell names the carrier gap that owns it ([loop#442](https://github.com/evidence-network/loop/issues/442),
+  [loop#443](https://github.com/evidence-network/loop/issues/443)). Results are on the status page. No other `cross` step exists yet.
 
 The twelve steps, in the order `loop.sh` names them. Each asserts one fact and writes one finding. The Mesh and Goose columns say what the step checks in each ecosystem; whether a step passes today is on the status page ([status/README.md](status/README.md)), not here.
 
@@ -50,6 +54,12 @@ The twelve steps, in the order `loop.sh` names them. Each asserts one fact and w
 | 10 | `judge` | A deterministic pack runs over a window of the run's records, and its sealed Results cite every record in it. | The pack runs over the records step 08 reproduced; its Results verify offline. | Not wired for Goose yet: `NOT_CHECKED`, [loop#315](https://github.com/evidence-network/loop/issues/315). |
 | 11 | `report` | The report page renders only from verified inputs, every number has a denominator, and the page's digest is sealed in a book. | The page is built from steps 08 and 10, with no score; the node seals its digest. | Not wired for Goose yet: `NOT_CHECKED`, [loop#315](https://github.com/evidence-network/loop/issues/315). |
 | 12 | `join` | One command on the pinned release joins a node, and a stranger's probe of it verifies. | Rehearsal: `join.sh` binds the key, creates the book and commitment, and probes the node with `capsulectl book doctor --probe`. Live: the reporter probes each node as a stranger. | One command on the pinned Goose release (`loop_join`) opens the book and returns the signed commitment, then a stranger's `history_card/1` probe through the node's mailbox. The node's key is not bound to a controller. |
+
+Across ecosystems, one step so far:
+
+| # | Step | What it proves | Pairs |
+|---|---|---|---|
+| 13 | `ask-across` | A party in one ecosystem asks a listed node of another for evidence about one interaction, and the answer (signed records or a signed refusal) verifies under the key the node is listed with, or its absence is recorded by the request's own deadline. It is about the evidence request, not a deal. | `goose` to `mesh` and `mesh` to `goose`, one row each in `pairs.json`; the finding is the worst row. Step 07's judge decides each; step 08 re-derives every row. See [steps/13-ask-across](steps/13-ask-across) and [steps/13-ask-across.md](steps/13-ask-across.md). |
 
 The Goose column describes the rehearsal population (two Goose nodes on a mock rail). Steps 01, 03 and 07 also have a live Goose input; step 06 uses a real Lightning payment between lab wallets when the live run pays.
 
@@ -98,6 +108,25 @@ Nothing else is asked of your node, and no record is published: the reporter is 
 counterparty, so your node answers it only the two stranger-safe questions. To leave, remove
 your entry by pull request: the asks stop from the next run, and reports already published
 stay. See [nodes/README.md](nodes/README.md).
+
+## Joining as a responder or asker
+
+You do not need our runtime, our wallet or our book to take part. To be asked, or to ask, you need three things:
+
+1. **Understand the request.** An evidence request is the one in
+   [draft-mih-agent-evidence-request-02](https://datatracker.ietf.org/doc/draft-mih-agent-evidence-request/): a subject,
+   a coverage and, for step 13, the request's own `deadline` (the draft makes it optional; step 13 requires it, see
+   [steps/13-ask-across.md](steps/13-ask-across.md)).
+2. **Answer with records the open verifiers check.** An answer is a signed artifact (an evidence envelope) or a signed
+   refusal, under the key your entry lists. An answer carries digests and signatures, never the body of a request, an
+   answer or a payment. A signed refusal is a correct answer when your advertised policy does not answer that asker for that subject.
+3. **List a key and a carrier** in a `nodes/` entry ([nodes/README.md](nodes/README.md)) and in the signed commitment's
+   `ask` member: where your node is asked. The Nostr address lives in the commitment's `ask.nostr` (the mailbox key and
+   the relays it reads); a mesh node's address is its `node_id`. The entry's `ask_route` (`mesh` or `nostr`) must agree
+   with the commitment.
+
+Step 13 asks an entry only if it carries the consent statement that covers it (revision 2 in
+[nodes/README.md](nodes/README.md)); an entry on the first statement is reported as not opted in, never failed.
 
 ## Checking it yourself
 

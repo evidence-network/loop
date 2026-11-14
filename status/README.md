@@ -21,6 +21,9 @@ python3 -B status/status_page.py findings --lock versions.lock --out _site/statu
   its own badge (`badge-<ecosystem>.svg`). An ecosystem with no run keeps its
   column, `NOT_CHECKED` with the issue that owns it. Nothing is added across
   ecosystems.
+- `status_page.py --ecosystem cross` builds the across-ecosystems page, `_site/status-across/`: for each population, one cell per
+  (asker ecosystem, responder ecosystem) from the newest run's step 13 `pairs.json` (read only if it is the file the finding
+  cites), each cell the finding's own result with the issue that owns each gap. Cells are never added together.
 - Each column header (the steps table and the Ecosystems tables) states its run's date and age: "run dated
   <date> · N days old (UTC, as of <build date>)", counted in UTC dates from the run directory's name. A live
   run more than `STALE_AFTER_DAYS` (1) days old is marked stale in its header and in a notice at the top of the page;

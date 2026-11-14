@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # loop.sh: run one stage of the loop's steps, then check their findings.
 #
-#   ./loop.sh --stage 1 [--ecosystem mesh|muse|cross|goose] [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
+#   ./loop.sh --stage 1|cross [--ecosystem mesh|muse|cross|goose] [--population rehearsal|live] [--out DIR] [--steps 01,02,03,12] [--strict]
 #
 # Each step runs as `steps/<NN>-<name> --population population/<p> --out DIR/<NN>-<name>`
 # and writes one finding.json there (see steps/README.md). A step that is missing, or
@@ -25,7 +25,10 @@
 # other row is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools. With
 # --population live, lab/goose.sh run (loop#349) writes the population (LOOP_GOOSE_POPULATION): the nodes listed in
 # nodes/ and the steps it gives a Goose input (today 01, 03 and 07).
-# Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them.
+# Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them. --stage cross (with
+# --ecosystem cross, loop#440) runs the steps where two ecosystems meet, numbered 13 and up: 13 ask-across, then 08, which
+# re-derives it. On the rehearsal population scripts/cross_rehearsal.py runs a mesh and a Goose node that ask each other
+# for evidence both ways; on the live population no cross request is exchanged and 13 is NOT_CHECKED, naming its carrier gaps.
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
 # LOOP_STEP_TIMEOUT is each step's limit in seconds (default 1800).
@@ -52,12 +55,15 @@ export LOOP_TOOLS=${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}
 
 # The steps of each stage, and the name a step gets when it is missing.
 declare -A NAMES=([01]=seal [02]=book [03]=advertise [04]=admit [05]=deal [06]=settle [07]=ask [08]=verify
-                  [09]=dispute [10]=judge [11]=report [12]=join)
+                  [09]=dispute [10]=judge [11]=report [12]=join [13]=ask-across)
 # 07 asks after 12 joins the nodes and before 08 re-derives its finding (loop#62).
 STAGE_1="01 02 03 12 07 08"
 # The goose column covers all twelve rows (loop#315): each runs on the Goose rehearsal population when it has a Goose
 # input, else it is NOT_CHECKED naming what it waits on.
 GOOSE_STEPS="01 02 03 04 05 06 07 09 10 11 12 08"
+# Stage cross (loop#440): the steps where two ecosystems meet, numbered 13 and up, run only under --ecosystem cross. Step
+# 08 re-derives them from this list (steps/08-verify reads each STAGE_* line), so it runs after 13 on the same output.
+STAGE_cross="13 08"
 
 usage() { sed -n '4p' "$0" | sed 's/^#   //' >&2; exit 2; }
 die() { echo "loop.sh: $*" >&2; exit 2; }
@@ -78,6 +84,7 @@ done
 
 case "$stage" in
   1) steps=$STAGE_1; [ "$ecosystem" = goose ] && steps=$GOOSE_STEPS ;;
+  cross) steps=$STAGE_cross ;;
   "") usage ;;
   *) die "stage $stage has no steps yet" ;;
 esac
@@ -89,6 +96,8 @@ case "$ecosystem" in
   mesh|muse|cross|goose) ;;
   *) die "ecosystem is mesh, muse, cross or goose, not '$ecosystem'" ;;
 esac
+# Stage cross runs only with --ecosystem cross (stage 1 with --ecosystem cross is still the NOT_CHECKED rows of loop#150).
+{ [ "$stage" = cross ] && [ "$ecosystem" != cross ]; } && die "--stage cross runs with --ecosystem cross, not $ecosystem"
 pop_dir=$ROOT/population/$population
 [ "$ecosystem" = goose ] && [ "$population" = live ] && [ ! -f "${LOOP_GOOSE_POPULATION:-}/population.json" ] \
   && die "--ecosystem goose --population live needs LOOP_GOOSE_POPULATION, the population lab/goose.sh run wrote"
@@ -188,6 +197,23 @@ if [ "$ecosystem" = goose ] && [ "$population" = rehearsal ]; then
   [ "$goose_state" = ran ] || echo "loop.sh: the Goose rehearsal did not run ($goose_state); the steps it drives are not run" >&2
 fi
 
+# The cross rehearsal (loop#440): scripts/cross_rehearsal.py runs a mesh node and a Goose node that ask each other for
+# evidence, both ways, with rehearsal keys, and writes the population step 13 and step 08 judge it under. When the tools are
+# not installed (exit 3) step 13 reads NOT_CHECKED naming them; when they are and the run failed, it is a FAIL with the log.
+cross_state=none
+if [ "$stage" = cross ] && [ "$population" = rehearsal ]; then
+  cross_work=$(mktemp -d) && trap 'rm -rf "${goose_work:-}" "$cross_work"' EXIT
+  cross_log=$cross_work/cross-rehearsal.log
+  python3 -B "$ROOT/scripts/cross_rehearsal.py" --work "$cross_work/work" >"$cross_log" 2>&1
+  case $? in
+    0) cross_state=ran; pop_dir=$cross_work/work/population ;;
+    3) cross_state=no_tools ;;
+    *) cross_state=failed ;;
+  esac
+  cat "$cross_log" >&2
+  [ "$cross_state" = ran ] || echo "loop.sh: the cross rehearsal did not run ($cross_state); step 13 reads that" >&2
+fi
+
 # The Goose lab (lab/goose.sh run, loop#349): the population it wrote names the nodes listed in nodes/ and the steps
 # it gives a Goose input; the others are NOT_CHECKED below, naming what they wait on.
 if [ "$ecosystem" = goose ] && [ "$population" = live ]; then
@@ -218,9 +244,14 @@ for nn in $steps; do
     fail "$sdir" "$started" "the Goose rehearsal run failed before step $nn; its log is goose-rehearsal.log" goose-rehearsal.log
     continue
   fi
+  if [ "$cross_state" = failed ] && [ "$nn" = 13 ]; then
+    cp "$cross_log" "$sdir/cross-rehearsal.log"
+    fail "$sdir" "$started" "the cross rehearsal run failed before step 13; its log is cross-rehearsal.log" cross-rehearsal.log
+    continue
+  fi
   goose_note=""
   [ "$goose_state" = no_tools ] && [[ " $goose_driven " == *" $nn "* ]] && goose_note="step $nn has a Goose input, but the Goose tools are not installed on this host (steps/goose.setup.sh)"
-  if [ "$ecosystem" != mesh ] && ! { [ "$ecosystem" = goose ] && [[ " $goose_steps " == *" $nn "* ]]; }; then
+  if [ "$ecosystem" != mesh ] && [ "$stage" != cross ] && ! { [ "$ecosystem" = goose ] && [[ " $goose_steps " == *" $nn "* ]]; }; then
     python3 -B - "$ROOT" "$sdir" "$started" "$ecosystem" "$nn" "$population" "$goose_note" <<'PY'
 import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]

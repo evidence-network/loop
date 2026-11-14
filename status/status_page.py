@@ -57,6 +57,7 @@ ECOSYSTEMS = (
     ("goose", "goose", ("loop #315", "https://github.com/evidence-network/loop/issues/315"), "goose"),
 )
 LABELS = {name: label for name, _, _, label in ECOSYSTEMS}
+LABELS["cross"] = "across"  # --ecosystem cross: step 13's pairs, one cell per (asker ecosystem, responder ecosystem)
 
 NODE_SIDE = ("capsules-plugin #49", "https://github.com/Mesh-LLM/capsules-plugin/issues/49")
 VERIFY = ("loop #188", "https://github.com/evidence-network/loop/issues/188")  # 08: the live steps it can't re-derive yet
@@ -873,6 +874,64 @@ def build(findings_dir, lock_path, out, eco="mesh", now=None):
     return rs
 
 
+# --- The across-ecosystems page (loop#440): step 13's pairs.json, one cell per pair ----------------------------
+CROSS_PAIRS = ("13-ask-across", "pairs.json")
+
+
+def cross_cells(run):
+    """[(asker, responder, result, gaps, problem)] from a cross run's step 13 pairs.json, a finding's cited proof: the
+    file must match the digest the finding cites, else the cell is a problem, never a result."""
+    if run is None:
+        return []
+    d = Path(run) / CROSS_PAIRS[0]
+    try:
+        record = json.loads((d / "finding.json").read_text(encoding="utf-8"))
+        cited = {p["path"]: p["sha256"] for p in record["proof"]}
+        raw = (d / CROSS_PAIRS[1]).read_bytes()
+        if cited.get(CROSS_PAIRS[1]) != hashlib.sha256(raw).hexdigest():
+            return [("?", "?", None, [], "pairs.json is not the file step 13's finding cites")]
+        rows = json.loads(raw)["rows"]
+        return [(r["asker"], r["responder"], r["result"], r["not_checked"], None) for r in rows]
+    except (OSError, ValueError, KeyError, TypeError):
+        return [("?", "?", None, [], "step 13's finding or pairs.json is not readable")]
+
+
+def cross_page(findings_dir, out, now):
+    """_site/status-across/index.html: for each population, its newest run's cells from pairs.json. A cell is the finding's
+    own word (PASS, FAIL or NOT_CHECKED) with the issue that owns each gap; nothing is added across cells."""
+    runs = latest_runs(findings_dir)
+    out = Path(out)
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    sections = []
+    for population in POPULATIONS:
+        run = runs.get(population)
+        cells = cross_cells(run)
+        if run is not None:
+            shutil.copytree(run, out / FINDINGS / run.name)
+        rows = []
+        for asker, responder, result, gaps, problem in cells:
+            what = problem or "; ".join(sorted({g["issue"] for g in gaps})) or "no gap"
+            rows.append(f'<tr><td>{e(asker)}</td><td>{e(responder)}</td><td>{e(result or "not readable")}</td>'
+                        f'<td>{e(what)}</td></tr>')
+        body = ("".join(rows) or f'<tr><td colspan="4">no run: {code(NOT_CHECKED)}, '
+                f'{link("https://github.com/evidence-network/loop/issues/440", "loop #440")}</td></tr>')
+        src = (f' <a href="{e(FINDINGS)}/{e(run.name)}/{e(CROSS_PAIRS[0])}/{e(CROSS_PAIRS[1])}">pairs.json</a>'
+               if run is not None and cells else "")
+        sections.append(f'<h2>{e(population)}</h2><table><thead><tr><th scope="col">asker</th><th scope="col">responder</th>'
+                        f'<th scope="col">result</th><th scope="col">owner of each gap</th></tr></thead>'
+                        f'<tbody>{body}</tbody></table><p>{e(run.name if run else "no run")}{src}</p>')
+    page = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" '
+            'content="width=device-width,initial-scale=1"><title>Across ecosystems</title>'
+            '<style>body{font:16px/1.5 system-ui,sans-serif;max-width:60rem;margin:0 auto;padding:1rem}'
+            'table{border-collapse:collapse}td,th{border:1px solid #888;padding:.3rem .6rem;text-align:left}</style></head>'
+            '<body><h1>Across ecosystems</h1><p>Step 13, ask across: an evidence request answered across ecosystems. '
+            'One cell per (asker ecosystem, responder ecosystem); each cell is the finding\'s own result. The cells are '
+            'never added together.</p>' + "".join(sections) + '</body></html>')
+    (out / "index.html").write_text(page, encoding="utf-8")
+
+
 def main(argv):
     args = argv[1:]
     opts = {"--out": None, "--lock": LOCK, "--ecosystem": "mesh"}
@@ -887,6 +946,10 @@ def main(argv):
         return 2
     findings_dir = Path(args[0] if args else FINDINGS if eco == "mesh" else f"{FINDINGS}/{eco}")
     opts["--out"] = opts["--out"] or ("_site/status" if eco == "mesh" else f"_site/status-{LABELS[eco]}")
+    if eco == "cross":
+        cross_page(findings_dir, opts["--out"], dt.datetime.now(dt.timezone.utc))
+        print(f"{opts['--out']}/index.html")
+        return 0
     try:
         rs = build(findings_dir, opts["--lock"], opts["--out"], eco)
     except StatusError as err:

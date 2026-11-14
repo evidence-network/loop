@@ -48,7 +48,7 @@ jobs:
       - name: Step tests with the pinned tools
         env:
           LOOP_REQUIRE_TOOLS: "1"
-        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step07_ask tests.test_step08_verify tests.test_step09_dispute tests.test_step10_judge tests.test_step11_report tests.test_step12_join tests.test_goose_rehearsal tests.test_commitment1 tests.test_staple_verify tests.test_ledger_proof -v
+        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step07_ask tests.test_step08_verify tests.test_step09_dispute tests.test_step10_judge tests.test_step11_report tests.test_step12_join tests.test_step13_ask_across tests.test_goose_rehearsal tests.test_commitment1 tests.test_staple_verify tests.test_ledger_proof -v
       # --strict: a rehearsal FAIL or MALFORMED finding fails the job (exit 3, or 1 for a refused finding).
       - name: Run stage 1 on the rehearsal population
         run: |
@@ -57,6 +57,24 @@ jobs:
           out="findings/$(date -u +%F)-rehearsal"
           echo "LOOP_OUT=$out" >> "$GITHUB_ENV"
           ./loop.sh --stage 1 --population rehearsal --strict --out "$out" | tee loop-summary.txt
+      # Step 13 ask-across (loop#440): a mesh node and a Goose node ask each other for evidence both ways, on rehearsal keys; 08
+      # re-derives the finding. --strict fails a FAIL or MALFORMED but allows NOT_CHECKED, so check_cross_run.py then holds
+      # both rehearsal directions to PASS and 08-verify/verified.json to step 13 with status "reproduced": 08 not being FAIL
+      # is not enough, an unreproduced step only makes 08 NOT_CHECKED. The live cells are NOT_CHECKED (loop#442, loop#443)
+      # and are not run here.
+      - name: Run the cross stage (step 13) on the rehearsal population
+        run: |
+          set -o pipefail
+          cross="findings/cross/$(date -u +%F)-rehearsal"
+          echo "CROSS_OUT=$cross" >> "$GITHUB_ENV"
+          ./loop.sh --stage cross --ecosystem cross --population rehearsal --strict --out "$cross" | tee loop-summary-cross.txt
+          python3 -B scripts/check_cross_run.py "$cross"
+      # A FAIL line of the cross stage joins loop-summary.txt, which the nightly issue step reads (the line's last field is the directory).
+      - name: Add the cross stage's FAIL lines to the summary
+        if: always()
+        run: |
+          [ -f loop-summary-cross.txt ] || exit 0
+          awk -v d="${CROSS_OUT:-findings/cross}" '$3 == "FAIL" {print $1, $2, $3, d}' loop-summary-cross.txt >> loop-summary.txt
       # Steps 10 and 11 end to end (evidence-network/loop#206). Stage 1's run holds records of one of the pack's kinds
       # (07, loop#62), so 10 judges them: PASS, or NOT_CHECKED for the kinds with no record (05, 06, 09), and 11 carries that over.
       # A FAIL, a malformed finding or another result fails the job; a FAIL also goes into loop-summary.txt, so the nightly run
@@ -114,6 +132,7 @@ jobs:
             [rehearsal:02]=action-state-group/evidencebook
             [rehearsal:03]=evidence-network/loop
             [rehearsal:12]=action-state-group/evidencebook
+            [rehearsal:13]=evidence-network/loop
             [rehearsal:10]=evidence-network/loop
             [rehearsal:11]=evidence-network/loop
             [live:01]=action-state-group/agent-action-capsule

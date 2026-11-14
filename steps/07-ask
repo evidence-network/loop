@@ -498,8 +498,11 @@ class Verifier:
         if r.returncode == 0:
             r = self.cap("store", "init", "--profile", name)
         if r.returncode == 0:
+            # --sent: the request is already composed and was sent by another tool, so the verifier book records
+            # exactly its bytes (member for member) and adds no nonce or profile of its own: a request whose
+            # asker is not a capsulectl book (a Goose node's, or a cross asker's) verifies the same way.
             r = self.cap("book", "request", "--profile", name, "--request", str(request_path), "--responder",
-                         "asked", "--output", str(d / "request.json"))
+                         "asked", "--sent", "--output", str(d / "request.json"))
         if r.returncode != 0:
             raise RuntimeError(f"could not make a verifier book: {r.stderr.strip()}")
         if (d / "request.json").read_bytes() != Path(request_path).read_bytes():

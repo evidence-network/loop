@@ -64,7 +64,7 @@ witness in the population must carry `witnesses.json`.
    step's own judge decides again on them, with the step's pinned verifiers (all local), so the signature,
    checkpoint and inclusion checks run again on the cited bytes. The re-derived `result` and `not_checked` must
    equal the recorded ones (`not_checked` compared entry for entry, in any order). For the files the status page
-   reads a number from (04 `counts.json`, 06 `volume.json`, 07 `first-answered.json`), the re-derived bytes must
+   reads a number from (04 `counts.json`, 06 `volume.json`, 07 `first-answered.json`, 13 `pairs.json`), the re-derived bytes must
    equal the recorded ones. A mismatch is a FAIL naming the step.
 3. **Coverage.** A step whose result 08 does not re-derive here gets a not_checked entry `{what, why, issue}`. The
    trust roots above are what 08 takes as given.
@@ -87,6 +87,7 @@ not hold, and the sha256 of every file 08 read.
 | 07 Ask | `judge_run` and `conclude` | each `advertised/book.json` `node_key`, each advertised commitment's `key_id` | capsulectl, capsulectl-book |
 | 09 Dispute | `decide` | each announced key (alice, bob, the step09 referee and requester) | openssl |
 | 12 Join | `decide` on the cited proof (join.sh's kept exit code, the stranger's book) | each commitment's `key_id` | capsulectl; capsule-cli when the recorded finding pins it |
+| 13 Ask across | `decide` (step 13's own judge: `judge_cells`, step 07's `judge_pair` with `mailbox=True`, on every (asker, responder) cell of the cited tree) and the roll-up; `pairs.json` is written again, row by row, and must be the recorded bytes, so a swapped result, an edited gap or detail, a row left out (a pair the proof lost is a FAIL row) or a changed digest is a FAIL. 13 runs only in the `cross` stage (`loop.sh --stage cross --ecosystem cross`, `STAGE_cross="13 08"`), so 08 reads that stage's own step list | the population's listed keys (`cross.nodes` in `population.json`, which `scripts/cross_rehearsal.py` wrote outside the bundle): each node's advertised commitment `key_id` and its `entries/<key>.json` are that key, never one read from the bundle | capsulectl, capsulectl-book |
 
 ## The steps (live)
 
@@ -101,6 +102,11 @@ not hold, and the sha256 of every file 08 read.
 | 07 Ask (reporter backend) | `judge_reporter` and `conclude` on the copied proof: the attempts, each ask's `<stem>.ledger.json` extract, each node's `exchange-subject.json` and `commitment/` (the commitment its deadline came from, with its policy), and `ask.json` | each node's listed `key_id` (`nodes/<node_id>.json`), read by the judge itself; the kept commitment must be under it and verify | openssl (step 03's checker), the pinned capsulectl-book (each reply, recorded as sent and verified: loop#290) |
 | 06 Settle (Lightning) | 06's `main_lightning` on the copied proof: each node's `recorded.json` (06's reading of its ledger), then the ruled checks (reference, finality, band, rail_fee, exchange_match) again on them, and `counterparty_count` from `counterparty.json`'s rows by 06's rule (each row's status against the signed bundle, its sha256 and disclosed count are 06's word; 08 decides again that the paired count is the books' pair count); `checks.json` is written again and must be the cited bytes, `counterparty.json` is validated as rows and carried | none: nothing in the proof is signed by a key. A `recorded.json` for a name outside the population is a FAIL, and so is a counterparty row that is no check of one population node against another | nothing outside the repository |
 | 12 Join (reporter backend) | `judge_live` on the copied proof: `nodes.json` (the self node, whether a second console was given, which own consoles were held, the binding time and the main commit `nodes/revocations/` was read from), each node's reporter attempt, its plugin calls (`wire.json` and the reply bytes `doctor-probe.json`, `join.json`, `doctor-after.json`) and kept `controller-binding.json`; each kept verification line is computed again from its reply, join's commitment is verified under the listed key and written again, and a kept binding is checked again by `cross_language` | each node's listed `key_id`, read by the judge itself (`nodes/<node_id>.json`); the revocations commit is held to origin/main as live 05's (#281); doctor's findings and the fetch replies are console reads no key signs, and the replies' signatures are the pinned plugin's verification (both named on evidence-network/loop#193) | aac-go `cross_language` at the pin when a binding is kept, and capsule-cli when the recorded finding pins it (otherwise `not_reproduced`); `*/staple-verify.json` is written again and must be the cited bytes |
+
+Live 13 (the `cross` stage) has nothing to judge again: no cross request was exchanged, so each cell is `NOT_CHECKED` naming its
+carrier gap (evidence-network/loop#442, goose to mesh; evidence-network/loop#443, mesh to goose). 08 rebuilds the two cells from the
+repository's `nodes/` listing (T2) and holds `pairs.json` to the recorded bytes, and a reproduced live 13 adds one not_checked
+entry per gap to 08's finding, so 08 reads `NOT_CHECKED` on a live cross run.
 
 Live 06 is re-derived on the Lightning rail only (any other live rail is `not_reproduced`). A reproduced live 06 adds
 three not_checked entries to 08's finding: `recorded.json` is 06's reading of each ledger (capsules-plugin#175); the

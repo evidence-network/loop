@@ -88,10 +88,10 @@ ASSERTS = ("an outsider reproduces every finding of the run offline from the run
 # A finding loop.sh wrote because the step broke: there is no judge to run again.
 BROKE = "the step runs to the end and writes its finding"
 # Files a status-page number is read from: the re-derived bytes must be the recorded ones.
-NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"]}
+NUMBERS = {"04": ["counts.json"], "06": ["volume.json"], "07": ["first-answered.json"], "13": ["pairs.json"]}
 # On a live run, the files a step's judge writes again: removed from the copy before it runs, so each must be
 # written again and be the cited bytes (a copied file is never compared with itself).
-LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"], "12": ["*/commitment.json", "*/disclosure-policy.json", "*/staple-verify.json"]}
+LIVE_AGAIN = {"05": ["*/checks.json", "*/held-*.json"], "09": ["checks.json", "outcome.json"], "01": ["*/checks.json", "*/verifier.json"], "02": ["*/checks.json", "*/verify.json", "*/verify.stderr.txt"], "04": ["*/rows.json"], "07": ["first-answered.json"], "06": ["checks.json"], "13": ["pairs.json"], "12": ["*/commitment.json", "*/disclosure-policy.json", "*/staple-verify.json"]}
 # A live finding without the file its step's re-derivable proof always holds predates that shape (old_shape).
 OLD_SHAPE_ISSUE = "evidence-network/loop: a live run made after the step keeps its proof in the shape 08 re-derives"
 
@@ -242,6 +242,52 @@ def keys_07(c, m):
             bad.append(f"{n}/advertised/book.json node_key {got} is not the repository key of node {n}")
     bad += [f"the proof holds no book of node {n}" for n in sorted(pubs) if not (c.work / n / "advertised" / "book.json").is_file()]
     return bad + keys_commitments(c, "{n}/advertised/commitment.json")
+
+
+def keys_13(c, m=None):
+    """Step 13's keys are the population's (scripts/cross_rehearsal.py wrote them outside the bundle), never read from the
+    proof: each node's advertised commitment and its entry name exactly the listed key. Every pair is re-derived by
+    rederive_13, which also puts a FAIL row in place of a pair the proof lost, so a deleted direction cannot read PASS."""
+    pop = load(c.pop / "population.json")
+    cross = pop.get("cross")
+    if not isinstance(cross, dict) or not cross.get("nodes"):
+        raise Unreproducible("step 13: its judge, run again here",
+                             "the population names no cross run, so there are no listed keys to hold the proof to",
+                             "evidence-network/loop#440")
+    bad = []
+    for name, node in cross["nodes"].items():
+        f = c.work / name / "advertised" / "commitment.json"
+        got = load(f).get("key_id") if f.is_file() else None
+        if got != node["key_id"]:
+            bad.append(f"{name}/advertised/commitment.json key_id {got} is not the listed key of node {name}")
+        e = c.work / "entries" / f"{node['key_id']}.json"
+        entry = load(e) if e.is_file() else {}
+        if entry.get("key_id") != node["key_id"] or entry.get("node_id") != node["key_id"]:
+            bad.append(f"entries/{node['key_id']}.json is not the entry of node {name} under its listed key")
+    return bad
+
+
+def keys_13_live(c, m=None):
+    """Live 13 reads the repository's nodes/ listing itself (the entries and commitments listed there), nothing from the bundle."""
+    return []
+
+
+def rederive_13(m, c):
+    """Step 13 on the rehearsal: the same judge (step 07's judge_pair through step 13's judge_cells) runs again on every
+    cell of the cited tree under the population's keys, and pairs.json is written again, row by row: a recorded row
+    that differs in any member (a result, a gap, a digest) is a re-derived file that is not the recorded one."""
+    cap = need(m.step07.tools(), "step 13", "capsulectl")
+    need(m.step07.step12.book_plugin(cap), "step 13", "capsulectl-book")
+    pop = load(c.pop / "population.json")
+    d = m.decide(c.work, m.keys_of(pop), cap, c.tmp, c.started, asks=pop["cross"].get("asks"))
+    return {"result": d["result"], "not_checked": d["not_checked"], "detail": d["detail"]}
+
+
+def rederive_13_live(m, c):
+    """Live 13: no cross request was exchanged, so there is nothing to judge again; the two cells are rebuilt from the
+    repository's nodes/ listing (T2) and compared with the recorded pairs.json byte for byte."""
+    d = m.decide_live(c.work, Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes")))
+    return {"result": d["result"], "not_checked": d["not_checked"], "detail": d["detail"]}
 
 
 def keys_09(c, m):
@@ -407,6 +453,13 @@ LEDGER_ISSUE = "Mesh-LLM/capsules-plugin#175"  # node-signed checkpoints and ran
 # held, until the plugin signs over its ledgers (LEDGER_ISSUE). What a run records of its own state is named only
 # when the bundle cannot bear it out (each step's keys check adds that to c.relies).
 LIVE_RELIES_ON = {
+    "13": [{"what": "step 13: a goose node's evidence request to a mesh node, answered, live",
+            "why": "no live cross request was exchanged (nothing in the repository's listing or a node's carrier can "
+                   "answer one yet), so the cell stays NOT_CHECKED; 08 rebuilds the cells from nodes/ and holds them to "
+                   "the recorded ones", "issue": "evidence-network/loop#442"},
+           {"what": "step 13: a mesh node's evidence request to a goose node, answered, live",
+            "why": "no live cross request was exchanged, so the cell stays NOT_CHECKED; 08 rebuilds the cells from nodes/ "
+                   "and holds them to the recorded ones", "issue": "evidence-network/loop#443"}],
     "04": [{"what": "step 04: each node's plugin build mark in nodes.json, which decides the decisions judged",
             "why": "08 judges the decisions at or after the mark again, but since when the node ran its plugin "
                    "build ($LAB_DIR/run/<lab-N>.build.json) is 04's reading of the lab host",
@@ -1079,6 +1132,7 @@ STEPS = {
     "07": (rederive_07, keys_07),
     "09": (rederive_09, keys_09),
     "12": (rederive_12, lambda c: keys_commitments(c, "{n}/commitment.json")),
+    "13": (rederive_13, keys_13),
 }
 
 
@@ -1087,10 +1141,10 @@ STEPS = {
 LIVE_STEPS = {"05": (rederive_05_live, keys_05_live), "09": (rederive_09_live, keys_09_live),
               "01": (rederive_01_live, keys_01_live), "02": (rederive_02_live, keys_02_live), "03": (rederive_03_live, keys_03_live), "04": (rederive_04_live, keys_04_live), "07": (rederive_07_live, keys_07_live),
               "06": (rederive_06_live, keys_06_live),
-              "12": (rederive_12_live, keys_12_live)}
+              "12": (rederive_12_live, keys_12_live), "13": (rederive_13_live, keys_13_live)}
 
 # Key checks that read the step module too (its ASKS, its key_dir_of).
-NEEDS_MODULE = {"01", "02", "07", "09"}
+NEEDS_MODULE = {"01", "02", "07", "09", "13"}
 
 
 def canon(items):
