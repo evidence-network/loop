@@ -66,6 +66,7 @@ jobs:
         run: |
           set -o pipefail
           cross="findings/cross/$(date -u +%F)-rehearsal"
+          echo "CROSS_OUT=$cross" >> "$GITHUB_ENV"
           ./loop.sh --stage cross --ecosystem cross --population rehearsal --strict --out "$cross" | tee loop-summary-cross.txt
           python3 -B scripts/check_cross_run.py "$cross"
       # A FAIL line of the cross stage joins loop-summary.txt, which the nightly issue step reads (the line's last field is the directory).
@@ -73,7 +74,7 @@ jobs:
         if: always()
         run: |
           [ -f loop-summary-cross.txt ] || exit 0
-          awk -v d="findings/cross/$(date -u +%F)-rehearsal" '$3 == "FAIL" {print $1, $2, $3, d}' loop-summary-cross.txt >> loop-summary.txt
+          awk -v d="${CROSS_OUT:-findings/cross}" '$3 == "FAIL" {print $1, $2, $3, d}' loop-summary-cross.txt >> loop-summary.txt
       # Steps 10 and 11 end to end (evidence-network/loop#206). Stage 1's run holds records of one of the pack's kinds
       # (07, loop#62), so 10 judges them: PASS, or NOT_CHECKED for the kinds with no record (05, 06, 09), and 11 carries that over.
       # A FAIL, a malformed finding or another result fails the job; a FAIL also goes into loop-summary.txt, so the nightly run
