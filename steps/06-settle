@@ -80,6 +80,14 @@ assertion as the loop#243 ruling restates it for a rail that signs nothing
   check covers the two whole books and must PASS; then, like with like, the
   payments of the bundle's settlement records in the window must be exactly
   the payments the windowed books pair between the two nodes (loop#303).
+  With a window, an INCONCLUSIVE whole-book check whose only open cause is
+  settlements_unattributed (no unpaired or hashless settlement, every in-window
+  settlement of the node paired with a peer) is not held against the window when
+  the unattributed number no more than the node's settlement records dated before
+  it: they are reported as out of the window (the row's unattributed and
+  outside_window counts, and the detail), not counted. The window start is the
+  population's window.from, set from the recorded cutover of the build under test
+  (loop#436, mesh-llm#3066), never defaulted here.
 An invoice agreed but unsettled as of the books read (no book records a
 settlement, a delivery or an accounted bill for it) is set aside from finality
 and exchange_match, counted and named as a gap (unsettled_invoices, loop#303).
@@ -658,6 +666,40 @@ def bundle_settlements(doc, since):
     return hashes, undated
 
 
+def pre_window_unattributed(row, since):
+    """The number of this node's settlements the plugin's whole-book check could not attribute to a peer
+    (settlements_unattributed) that lie before the window, when that is the only thing keeping an INCONCLUSIVE
+    check from PASS; else 0. Only with a window; only when no pair is open or hashless and every settlement of the
+    node in the window pairs with a peer, so none of the unattributed can be in the window, and the unattributed
+    number no more than the node's settlement records dated before it (and none is undated). Rows from before this
+    scoping lack the fields and count 0."""
+    un = row.get("unattributed")
+    if since is None or row["status"] != "INCONCLUSIVE" or not (type(un) is int and un > 0):
+        return 0
+    if row["unpaired"] or row.get("hashless") != 0 or row.get("in_window_unpaired") != 0 or row.get("undated") != 0:
+        return 0
+    out = row.get("outside_window")
+    return un if type(out) is int and un <= out else 0
+
+
+def window_counts(mine, paired_hashes):
+    """The counts of one node's recorded book that pre_window_unattributed reads: its settlement records dated
+    before the window and with no date, and its in-window settlement hashes no peer pairs. None each for a node
+    whose book was not read (no exemption then)."""
+    if not isinstance(mine, dict) or "settlement_observations" not in mine:
+        return {"outside_window": None, "undated": None, "in_window_unpaired": None}
+    return {"outside_window": mine.get("outside_window"), "undated": mine.get("undated"),
+            "in_window_unpaired": len({o.get("payment_hash") for o in terminal(mine)} - paired_hashes)}
+
+
+def hashless_count(hashless):
+    """The check's settlements_without_payment_hash total (both sides), or None unless both are non-negative ints."""
+    if isinstance(hashless, dict) and all(type(hashless.get(k)) is int and hashless[k] >= 0
+                                          for k in ("this_node", "counterparty")):
+        return hashless["this_node"] + hashless["counterparty"]
+    return None
+
+
 def counterparty_verdict(row, n, since):
     """(ok, detail) of counterparty_count for one counterparty.json row whose books pair n payments in the window,
     once its bundle file was read: the decision steps/08-verify takes again from the proof. A whole-book FAIL is a
@@ -669,7 +711,8 @@ def counterparty_verdict(row, n, since):
     span = "in the window" if since is not None else "in all"
     if status == "FAIL":
         return False, f"{me}'s book contradicts {peer}'s signed bundle: {unpaired} unpaired"
-    if status != "PASS":
+    pre = pre_window_unattributed(row, since)
+    if status != "PASS" and not pre:
         return None, (f"{me}'s check of {peer}'s signed bundle over the whole books reads {status} with {paired} paired "
                       f"and {unpaired} unpaired")
     if row["bundle_undated"]:
@@ -680,8 +723,11 @@ def counterparty_verdict(row, n, since):
                       f"pair {n} payments between them there ({row['books_only']} not in the bundle, "
                       f"{row['bundle_only']} not paired in the books): the check predates a payment or a record sits "
                       "on the window's edge (run lab/lab.sh bundles)")
+    scoped = (f"{status} over the whole books only for {pre} settlements before the window from {since:%Y-%m-%dT%H:%M:%SZ} "
+              f"that no peer owns (out of the window, set aside), {paired} paired, {unpaired} unpaired"
+              if pre else f"PASS over the whole books, {paired} paired, {unpaired} unpaired")
     return True, (f"{me}'s {row['disclosed_settlements']} settlements against {peer}'s signed bundle (sha256 "
-                  f"{str(row['bundle_sha256'])[:12]}): PASS over the whole books, {paired} paired, {unpaired} unpaired; "
+                  f"{str(row['bundle_sha256'])[:12]}): {scoped}; "
                   f"the {n} payments the books pair between them {span} are exactly the bundle's")
 
 
@@ -803,6 +849,8 @@ def lightning_checks(found, ids, checks_dir, since=None):
         status, paired = cc.get("status"), cc.get("paired")
         disclosed = (doc["report"].get("disclosed_count") or {}).get("settlements")
         unpaired = len(cc.get("unpaired") or [])
+        paired_hashes = set(cross["paired"])
+        hashless = cc.get("settlements_without_payment_hash")
         expected = pair_hashes.get(tuple(sorted((me, peer))), set())
         rows.append({"node": me, "peer": peer, "status": status, "method": cc.get("method"), "paired": paired,
                      "unpaired": unpaired, "disclosed_settlements": disclosed, "bundle_sha256": doc.get("bundle_sha256"),
@@ -811,6 +859,9 @@ def lightning_checks(found, ids, checks_dir, since=None):
                      "bundle_only": len(held[0] - expected) if held else None,
                      "books_only": len(expected - held[0]) if held else None,
                      "window_from": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None})
+        if since is not None:  # what the window scoping of an INCONCLUSIVE check reads (pre_window_unattributed)
+            rows[-1].update(window_counts(found.get(me), paired_hashes), unattributed=cc.get("settlements_unattributed"),
+                            hashless=hashless_count(hashless))
         if status == "FAIL":
             put(what, *counterparty_verdict(rows[-1], len(expected), since))
         elif digest is None or digest != doc.get("bundle_sha256"):
