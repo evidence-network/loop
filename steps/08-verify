@@ -278,7 +278,8 @@ def rederive_13(m, c):
     that differs in any member (a result, a gap, a digest) is a re-derived file that is not the recorded one."""
     cap = need(m.step07.tools(), "step 13", "capsulectl")
     need(m.step07.step12.book_plugin(cap), "step 13", "capsulectl-book")
-    d = m.decide(c.work, m.keys_of(load(c.pop / "population.json")), cap, c.tmp, c.started)
+    pop = load(c.pop / "population.json")
+    d = m.decide(c.work, m.keys_of(pop), cap, c.tmp, c.started, asks=pop["cross"].get("asks"))
     return {"result": d["result"], "not_checked": d["not_checked"], "detail": d["detail"]}
 
 

@@ -68,6 +68,12 @@ jobs:
           cross="findings/cross/$(date -u +%F)-rehearsal"
           ./loop.sh --stage cross --ecosystem cross --population rehearsal --strict --out "$cross" | tee loop-summary-cross.txt
           python3 -B scripts/check_cross_run.py "$cross"
+      # A FAIL line of the cross stage joins loop-summary.txt, which the nightly issue step reads (the line's last field is the directory).
+      - name: Add the cross stage's FAIL lines to the summary
+        if: always()
+        run: |
+          [ -f loop-summary-cross.txt ] || exit 0
+          awk -v d="findings/cross/$(date -u +%F)-rehearsal" '$3 == "FAIL" {print $1, $2, $3, d}' loop-summary-cross.txt >> loop-summary.txt
       # Steps 10 and 11 end to end (evidence-network/loop#206). Stage 1's run holds records of one of the pack's kinds
       # (07, loop#62), so 10 judges them: PASS, or NOT_CHECKED for the kinds with no record (05, 06, 09), and 11 carries that over.
       # A FAIL, a malformed finding or another result fails the job; a FAIL also goes into loop-summary.txt, so the nightly run
@@ -125,6 +131,7 @@ jobs:
             [rehearsal:02]=action-state-group/evidencebook
             [rehearsal:03]=evidence-network/loop
             [rehearsal:12]=action-state-group/evidencebook
+            [rehearsal:13]=evidence-network/loop
             [rehearsal:10]=evidence-network/loop
             [rehearsal:11]=evidence-network/loop
             [live:01]=action-state-group/agent-action-capsule

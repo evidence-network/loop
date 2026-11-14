@@ -171,6 +171,30 @@ class RehearsalTest(Tmp):
         self.assertEqual(step.roll_up(rows("NOT_CHECKED", "FAIL", "PASS")), "FAIL")
         self.assertEqual(step.roll_up([]), "NOT_CHECKED")
 
+    def test_a_pair_emptied_of_its_asks_is_a_fail_row(self):
+        run = self.copy("good")
+        pair = run / "mesh" / "asks" / "goose"
+        for d in [x for x in pair.iterdir() if x.is_dir()]:
+            shutil.rmtree(d)
+        (pair / "carrier.jsonl").write_text("")
+        d = self.decide(run)
+        self.assertEqual(d["result"], "FAIL")
+        self.assertIn("holds no ask", self.row(d, "mesh", "goose")["detail"])
+
+    def test_a_missing_ask_is_a_fail_when_the_population_names_the_asks(self):
+        run = self.copy("good")
+        shutil.rmtree(run / "mesh" / "asks" / "goose" / "exchange_late")
+        d = step.decide(run, keys_of(run), CAPSULECTL, self.root / "w", finding.now(),
+                        asks=["exchange", "exchange_late", "history_card"])
+        self.assertIn("the pair holds no exchange_late ask", self.row(d, "mesh", "goose")["detail"])
+
+    def test_a_responder_commitment_under_another_key_than_the_listed_one_is_a_fail(self):
+        run = self.copy("good")
+        keys = keys_of(run)
+        keys["goose"] = "ab" * 32  # the listing names another key than the one that signed the commitment and the answers
+        d = step.decide(run, keys, CAPSULECTL, self.root / "w", finding.now())
+        self.assertIn("not its listed key", self.row(d, "mesh", "goose")["detail"])
+
     def test_a_pair_the_proof_lost_is_a_fail_row(self):
         run = self.copy("good")
         shutil.rmtree(run / "goose" / "asks")
@@ -226,13 +250,16 @@ class LiveTest(Tmp):
 class Setup(Tmp):
     """A finding directory for step 13 on a run, and the population step 08 takes the listed keys from."""
 
-    def make(self, name="good", population="rehearsal"):
+    def make(self, name="good", population="rehearsal", asks=("exchange", "exchange_late", "history_card"), edit=None):
         run = self.copy(name) if population == "rehearsal" else None
+        if run and edit:
+            edit(run)
+        asks = list(asks) if name == "good" else None
         pop = self.root / "pop"
         pop.mkdir()
         doc = {"population": population}
         if run:
-            doc["cross"] = {"run": str(run), "nodes": {n: {"key_id": k} for n, k in keys_of(run).items()}}
+            doc["cross"] = {"run": str(run), "asks": asks, "nodes": {n: {"key_id": k} for n, k in keys_of(run).items()}}
         (pop / "population.json").write_text(json.dumps(doc))
         findings = self.root / "findings"
         (findings / "13-ask-across").mkdir(parents=True)
@@ -273,6 +300,17 @@ class Step08Test(Setup):
         m = self.run08(pop, findings)
         self.assertEqual(self.entry13(m)["status"], "reproduced", self.entry13(m))
         self.assertEqual(m["result"], "PASS")
+
+    def test_an_entry_on_the_first_statement_is_reproduced_not_failed_by_08(self):
+        def old(run):
+            k = keys_of(run)["mesh"]
+            e = json.loads((run / "entries" / f"{k}.json").read_text())
+            e["consent"] = check_nodes.CONSENT
+            (run / "entries" / f"{k}.json").write_text(json.dumps(e))
+        pop, findings = self.make(edit=old)
+        self.assertEqual(json.loads((findings / "13-ask-across" / "finding.json").read_text())["result"], "NOT_CHECKED")
+        e = self.entry13(self.run08(pop, findings))
+        self.assertEqual(e["status"], "reproduced", e)
 
     def test_swapping_two_rows_results_makes_08_fail(self):
         pop, findings = self.make("wrong-key")

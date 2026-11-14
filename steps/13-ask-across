@@ -192,7 +192,7 @@ def advertised_proof(work, node):
     return names
 
 
-def judge_cells(work, keys, capsulectl, tmp):
+def judge_cells(work, keys, capsulectl, tmp, asks=None):
     """One row per (asker, responder) node pair of the run, each judged by step 07's judge_pair with mailbox=True.
 
     `keys` is {node name: listed key_id}, the repository's (the population's), never the bundle's. The entry of each
@@ -228,6 +228,9 @@ def judge_cells(work, keys, capsulectl, tmp):
                 if n in problems:
                     errs.append(problems[n])
             entry = entries.get(keys[asked])
+            if asked in commitments and commitments[asked].get("key_id") != keys[asked]:
+                errs.append(f"{asked}'s commitment is signed under {str(commitments[asked].get('key_id'))[:16]}, not "
+                            f"its listed key {keys[asked][:16]}")
             if entry is None:
                 errs.append(f"the run lists no entry for {asked} (entries/{keys[asked]}.json)")
             else:
@@ -239,7 +242,13 @@ def judge_cells(work, keys, capsulectl, tmp):
                     not_checked.append(gap(f"the {a_eco} -> {b_eco} ask of node {keys[asked][:12]}", NOT_OPTED_IN,
                                            OPT_IN_ISSUE))
                     result = "NOT_CHECKED"
+                    proof += advertised_proof(work, asked) + [f"entries/{keys[asked]}.json"]
             line = ""
+            if result is None:  # an opted-in node is asked: its pair must hold the asks
+                held = {d.name for d in pair_dir.iterdir() if d.is_dir()}
+                errs += [f"the pair holds no {n} ask" for n in sorted(set(asks or ()) - held)]
+                if not asks and not held:
+                    errs.append("the pair holds no ask")
             if result is None and not errs:
                 nc = []
                 e_, answered, p, line = step07.judge_pair(pair_dir, work / asked / "advertised", keys[asker], capsulectl,
@@ -262,10 +271,10 @@ def roll_up(rows):
     return "FAIL" if "FAIL" in results else ("NOT_CHECKED" if "NOT_CHECKED" in results or not rows else "PASS")
 
 
-def decide(work, keys, capsulectl, tmp, started, population="rehearsal", note=""):
+def decide(work, keys, capsulectl, tmp, started, population="rehearsal", asks=None):
     """Judge a run's tree again from its bytes and the listed keys: writes <work>/pairs.json and returns the finding's
     result, not_checked and detail (what the step writes, and what step 08 re-derives)."""
-    rows = judge_cells(work, keys, capsulectl, tmp)
+    rows = judge_cells(work, keys, capsulectl, tmp, asks)
     expected = {(a, b) for a in keys for b in keys if a != b}
     present = {(r["asker_node"], r["responder_node"]) for r in rows}
     missing = sorted(f"{a} asked {b}" for a, b in expected if (keys[a], keys[b]) not in present)
@@ -388,7 +397,7 @@ def main(argv=None):
         for p in Path(run).iterdir():
             shutil.copytree(p, a.out / p.name) if p.is_dir() else shutil.copyfile(p, a.out / p.name)
         with tempfile.TemporaryDirectory(prefix="13-ask-across-") as tmp:
-            d = decide(a.out, keys_of(pop), capsulectl, tmp, started)
+            d = decide(a.out, keys_of(pop), capsulectl, tmp, started, asks=pop["cross"].get("asks"))
         pinned = PINNED
     r = conclude(a.out, population, d, started, pinned)
     print(f"13-ask-across: {r['result']}: {r['detail']}", file=sys.stderr)

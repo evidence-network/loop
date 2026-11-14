@@ -53,7 +53,7 @@ def main(argv=None):
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
     doc = {"population": "rehearsal", "pinned": ["goose-g1"],
-           "cross": {"run": str(run), "log": str(work / "cross_session.log"),
+           "cross": {"run": str(run), "asks": ["exchange", "exchange_late", "history_card"], "log": str(work / "cross_session.log"),
                      "nodes": {n: {"key_id": v["key_id"], "ecosystem": v["ecosystem"]} for n, v in nodes.items()}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
     return 0
