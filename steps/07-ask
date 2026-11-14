@@ -164,7 +164,7 @@ BOOK_ISSUE = "evidence-network/loop#290"
 BOOK_MISSING = "capsulectl or capsulectl-book is not installed where 07 ran (steps/07-ask.setup.sh), so the reply was checked by openssl only"
 PINNED_BOOK = ["capsulectl", "capsulectl-book"]
 PINNED_GOOSE = ["capsulectl", "capsulectl-book", "goose-g1"]
-PINNED_REPORTER = ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "capsulectl", "capsulectl-book"]
+PINNED_REPORTER = ["capsules", "mesh-llm", *finding.mesh_pr_pins(), "reporter", "capsulectl", "capsulectl-book"]
 # Rehearsal nodes answer within a minute: the shortest window an absence may claim
 # (evidencebook MinimumAbsenceWindow), so the late ask's absence is recorded in this run.
 REHEARSAL_ANSWERS_WITHIN = "PT1M"

@@ -1625,7 +1625,7 @@ def conclude(out, population, failures, not_checked, proof, lines, started, whic
     """Write the finding: FAIL if a checked part did not hold, else NOT_CHECKED while any part is unchecked."""
     result = "FAIL" if failures else ("NOT_CHECKED" if not_checked else "PASS")
     pinned = (PINNED if which == "doctor" else GOOSE_PINNED if which == "goose"
-              else ["capsules", "mesh-llm", "mesh-llm-pr-2620", "reporter", "aac-go", "capsule-cli"])
+              else ["capsules", "mesh-llm", *finding.mesh_pr_pins(), "reporter", "aac-go", "capsule-cli"])
     shown = (failures + [x for x in lines if f": {CHANGED}: " in x]) if failures else lines
     detail = f"probe backend: {which}. " + "; ".join(shown) + "."
     return finding.write(out, result=result, population=population, asserts=GOOSE_ASSERTS if which == "goose" else ASSERTS,

@@ -58,7 +58,12 @@ class Wallet:
         self.port, self.name = port, name
 
     def call(self, command, timeout=30, **args):
-        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/wallet", method="POST",
+        # A host build without node payments (mesh-llm#2654): the wallet is pay-lightning's `control` operation, reached
+        # through the plugin route of the same local API (LAB_PAY_PLUGIN=pay-lightning, the lab's env file). The commands
+        # and their answers are the same ones `/api/wallet` took.
+        plugin = os.environ.get("LAB_PAY_PLUGIN") == "pay-lightning"
+        path = "/api/plugins/pay-lightning/tools/control" if plugin else "/api/wallet"
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", method="POST",
                                      data=json.dumps({"command": command, **args}).encode(),
                                      headers={"Content-Type": "application/json"})
         try:

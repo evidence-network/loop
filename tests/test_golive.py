@@ -52,7 +52,7 @@ def write_build_json(path, capsules=PINS["capsules"], failures=()):
         "capsules": {"pin": capsules, "pin_commit": capsules if len(capsules) == 40 else "5" * 40,
                      "source_head": capsules if len(capsules) == 40 else "5" * 40, "binary_sha256": "9" * 64},
         "mesh_llm": {"source_head": "3" * 40, "binary_sha256": "3" * 64, "version": "mesh-llm lab build",
-                     "contains": {n: PINS[n] for n in confidence.MESH_PINS}},
+                     "contains": {n: PINS[n] for n in confidence.mesh_pins(PINS)}},
     }))
     return path
 

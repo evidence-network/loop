@@ -65,12 +65,16 @@ The lab host build and the capsules plugin are built already. This runbook
 uses them; it builds nothing. They must be at the [`versions.lock`](versions.lock)
 pins:
 
-- `mesh-llm`: mesh-llm main at the `mesh-llm` pin, with PR #2620 at the
-  `mesh-llm-pr-2620` pin (#2620 is still open, so the build carries both);
-- `capsules`: the capsules plugin at the `capsules` pin.
+- `mesh-llm`: the lab host build, a lab build and not a release: mesh-llm main at the `mesh-llm` pin plus each open PR
+  pinned as `mesh-llm-pr-<N>` (each squashed to one commit whose message carries the PR's head SHA, or merged as is);
+- `capsules`: the capsules plugin at the `capsules` pin;
+- `pay-lightning` and `lexe-wallet` (when the lock pins them): the payment plugin (`pay-lightning`, the ln-payments-plugin
+  main commit, with `pay-lightning-pr-11` merged on it) and the wallet plugin it binds. A host build after mesh-llm#2654
+  has no payments of its own, so every node that pays or is paid needs both installed before it starts; set
+  `LAB_PAY_PLUGIN=pay-lightning`.
 
 ```sh
-grep -E '^(mesh-llm|mesh-llm-pr-2620|capsules) ' versions.lock
+grep -E '^(mesh-llm|mesh-llm-pr-[0-9]+|capsules|pay-lightning|pay-lightning-pr-11|lexe-wallet) ' versions.lock
 ```
 
 Tell `lab.sh` where they are:
@@ -81,6 +85,10 @@ export MESH_LLM_SRC=/path/to/mesh-llm/source   # the git tree it was built from
 export MESH_LLM_RUNTIME=/path/to/native-runtimes   # if the build keeps its runtimes beside it
 export CAPSULES_BIN=/path/to/capsules          # the plugin binary
 export CAPSULES_SRC=/path/to/capsules/source   # the git tree it was built from
+export LAB_PAY_PLUGIN=pay-lightning            # with a host build that has no node payments (see above)
+export PAY_LIGHTNING_SRC=/path/to/ln-payments-plugin   # its tree (main plus the pinned PR), BIN the built pay-lightning,
+export PAY_LIGHTNING_BIN=/path/to/pay-lightning        # LEXE_PLUGIN the wallet plugin binary: check records their sha256
+export LEXE_PLUGIN=/path/to/lexe-wallet
 export LAB_MODEL=/path/to/model.gguf           # any small GGUF chat model; lab-1 serves it
 export LAB_OPERATOR=<your GitHub handle>       # without @; goes into each nodes/ entry
 ```
@@ -91,11 +99,13 @@ export LAB_OPERATOR=<your GitHub handle>       # without @; goes into each nodes
 lab/lab.sh check
 ```
 
-It reads the three pins from `versions.lock` and checks, with git:
+It reads the pins from `versions.lock` and checks, with git:
 
 - the mesh-llm tree contains the `mesh-llm` pin
-  (`git merge-base --is-ancestor <pin> HEAD`) and the `mesh-llm-pr-2620` pin,
+  (`git merge-base --is-ancestor <pin> HEAD`) and every `mesh-llm-pr-<N>` pin (as an ancestor, or as the head
+  named in the message of a squash commit above the `mesh-llm` pin),
   and has no uncommitted changes to tracked files;
+- when the lock pins `pay-lightning`, the pay-lightning tree contains it and `pay-lightning-pr-11`;
 - the capsules tree is exactly at the `capsules` pin (`git rev-parse HEAD`),
   with no uncommitted changes;
 
@@ -127,6 +137,26 @@ Two cases that look like failures but are not:
 Point `MESH_LLM_SRC` and `CAPSULES_SRC` at the source trees the binaries
 were built from, not at a build manifest or a release bundle: `check` reads
 the trees.
+
+### Payments with a host build that has none (LAB_PAY_PLUGIN=pay-lightning, loop#436)
+
+A host build after mesh-llm#2654 has no payments of its own: `[payments] wallet = ...` is gone from `config.toml`, and
+the wallet is reached through the pay-lightning plugin's `control` operation (`mesh-llm plugins call pay-lightning control
+--input '{"command":"balance"}' --port <console>`, or `POST /api/plugins/pay-lightning/tools/control` on the console, which
+`scripts/goose_lightning.py` uses). Per node that pays or is paid, with the lab stopped and the wallet already created
+(`lab/bin/lab-wallet-create.sh`):
+
+```sh
+export LAB_PAY_PLUGIN=pay-lightning PAY_LIGHTNING_ARCHIVE=<pay-lightning.tar.gz> PAY_LIGHTNING_SHA256=<its sha256>
+lab/bin/lab-wallet-setup.sh 1        # installs lexe-wallet (the pinned build) and pay-lightning into lab-1's home and links
+                                     # .mesh-llm/payments to the node's payments/ directory, where the wallet and ledger stay
+```
+
+Start the lab with `LAB_PAYMENTS` naming those nodes as before (the config gets no stanza; the plugins are installed, not
+configured), then set each node's buyer policy once, with the node running:
+`lab/bin/lab-wallet-setup.sh 1 --policy 20000` (lab-1 and lab-3 20000 msat a day, lab-2 9000), and read a wallet with
+`lab/bin/lab-wallet-setup.sh 1 --balance`. A second host needs the same installs (run the script there as the lab user) and
+`LAB_PAY_PLUGIN`, `PAY_LIGHTNING_BIN` and `LEXE_PLUGIN` in its `~/.loop-lab-remote.env`.
 
 ### Tools
 

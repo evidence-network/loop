@@ -628,7 +628,7 @@ def live5_07(dst):
     dump(dst / "ask.json", {"self_node": "stevenmih-3", "second_console": True, "nodes": nodes})
     proof = ["first-answered.json", "ask.json"] + sorted(
         str(f.relative_to(dst)) for f in dst.rglob("*") if f.is_file() and f.parent != dst)
-    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(rec["pinned"]),
+    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(n for n in rec["pinned"] if n in finding.pins()),
                   proof=proof, detail=rec["detail"], not_checked=rec["not_checked"], started=rec["started"])
     return rec
 
@@ -859,7 +859,7 @@ def live2_04(dst):
                 kept.append(next(keys) if rows else (kept[-1] + 1 if kept else 1))
         nodes[name] = {"read": "ok", "records": int(total), "kept": kept}
     dump(dst / "nodes.json", nodes)
-    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(rec["pinned"]),
+    finding.write(dst, result=rec["result"], population="live", asserts=rec["asserts"], pinned=sorted(n for n in rec["pinned"] if n in finding.pins()),
                   proof=["nodes.json"] + [p["path"] for p in rec["proof"]], detail=rec["detail"],
                   not_checked=rec["not_checked"], started=rec["started"])
     return rec
@@ -942,7 +942,7 @@ class Step08Live04Test(unittest.TestCase):
         lock = finding.pins()
         for d in ("04-admit", "07-ask"):
             rec = load(run / d / "finding.json")
-            rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"]}
+            rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"] if n in lock}
             dump(run / d / "finding.json", rec)
         write_run_json(run, ["04", "07", "08"], "live", stage="1")
         step.main(["--population", str(LIVE_POPULATION), "--out", str(run / "08-verify")])
@@ -1490,7 +1490,7 @@ class Step08Live01Test(unittest.TestCase):
         # The old shape alone, at today's pins: a finding pinned to an older release fails its integrity check first.
         record = load(self.run / "01-seal" / "finding.json")
         record["pinned"] = {n: {"repository": finding.pins()[n][0], "ref": finding.pins()[n][1]}
-                            for n in record["pinned"]}
+                            for n in record["pinned"] if n in finding.pins()}
         dump(self.run / "01-seal" / "finding.json", record)
         f, entries = self.verify()
         self.assertEqual(entries["01-seal"]["status"], "not_reproduced")
@@ -1655,7 +1655,7 @@ class Step08Live09Test(unittest.TestCase):
         # are set to today's lock (pinned is not proof).
         lock = finding.pins()
         rec = load(self.run / "09-dispute" / "finding.json")
-        rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"]}
+        rec["pinned"] = {n: {"repository": lock[n][0], "ref": lock[n][1]} for n in rec["pinned"] if n in lock}
         dump(self.run / "09-dispute" / "finding.json", rec)
         f, entries = self.verify()
         self.assertEqual(entries["09-dispute"]["status"], "not_reproduced")
