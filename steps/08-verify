@@ -816,6 +816,11 @@ def rederive_06_live(m, c):
         for (me, peer), r in sorted(pairs.items()):
             what = f"counterparty_count:{me}:{peer}"
             n = expected.get(tuple(sorted((me, peer))), 0)
+            if "unattributed" in r:  # the counts 06 took from the node's book must be what that book (recorded.json) says
+                want = m.window_counts(found.get(me), set(cross["paired"]))
+                if any(r[k] != v for k, v in want.items()):
+                    raise Mismatch(f"counterparty.json's row for {me} against {peer} carries window counts "
+                                   f"{ {k: r[k] for k in want} } that {me}'s recorded book gives as {want}")
             ok, detail = m.counterparty_verdict(r, n, since)
             kept = recorded_checks.get(what)
             if ok is not False and isinstance(kept, dict) and kept.get("ok") is None and str(kept.get("detail")).startswith(

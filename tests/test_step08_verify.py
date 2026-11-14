@@ -1870,6 +1870,25 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.verify(live06.population)
         self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
 
+    def test_window_counts_forged_to_set_aside_unattributed_settlements_fail(self):
+        # The row says 1 unattributed settlement lies before the window; the node's recorded book dates none there.
+        shutil.rmtree(self.run / "06-settle")
+        scratch = Path(self.tmp.name) / "scoped2"
+        scratch.mkdir()
+        window = "2026-11-01T01:38:00Z"
+        stamps = ["2026-11-01T01:40:00Z", "2026-11-01T01:41:00Z"]  # both in the window
+        self.recorded = live06(self.run / "06-settle", scratch, status="INCONCLUSIVE", unattributed=1, window=window,
+                               stamps=stamps)
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            for r in rows:
+                r["outside_window"] = 1
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge, live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertIn("window counts", " ".join(entries["06-settle"]["problems"]))
+
     def test_an_honest_fail_row_is_reproduced_as_fail(self):
         f, entries = self.honest(status="FAIL")
         self.assertEqual(self.recorded["result"], "FAIL")

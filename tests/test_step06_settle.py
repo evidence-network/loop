@@ -583,6 +583,28 @@ class Step06SettleTest(unittest.TestCase):
                 self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
                 self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
 
+    def test_lightning_a_window_needs_both_hashless_counts_and_every_book_to_set_aside(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        for name, hashless in (("empty", {}), ("null side", {"this_node": None, "counterparty": 0}),
+                               ("a hashless settlement", {"this_node": 1, "counterparty": 0})):
+            with self.subTest(name=name):
+                d = self.checks_dir(status="INCONCLUSIVE", records=records, unattributed=1)
+                for f in d.glob("check.*.json"):
+                    doc = json.loads(f.read_text())
+                    doc["report"]["counterparty_count"]["settlements_without_payment_hash"] = hashless
+                    f.write_text(json.dumps(doc))
+                r = self.lightning(self.stamped(self.paid(), times), d, window="2026-11-01T01:38:00Z")
+                self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+
+    def test_window_counts_of_a_book_that_was_not_read_are_unknown(self):
+        # A node whose ledger was unreadable has no recorded book: its counts are None, so nothing is set aside.
+        unknown = {"outside_window": None, "undated": None, "in_window_unpaired": None}
+        self.assertEqual(step.window_counts(None, set()), unknown)
+        self.assertEqual(step.window_counts({}, set()), unknown)
+        self.assertEqual(step.hashless_count({"this_node": 0, "counterparty": 0}), 0)
+        self.assertIsNone(step.hashless_count({}))
+
     def test_lightning_a_window_does_not_set_aside_unattributed_next_to_an_unpaired_hash(self):
         times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
         records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
