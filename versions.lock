@@ -14,9 +14,9 @@
 mesh-llm Mesh-LLM/mesh-llm e1b0128bf022a3fa0374a016fc05b3bbebafa27e
 mesh-llm-pr-3008 Mesh-LLM/mesh-llm 98016e56019064e5d0328d9abb750c761b722ea3
 mesh-llm-pr-3040 Mesh-LLM/mesh-llm c6e754563bcf2330e0eebc7b9b499738b35cada2
-# mesh-llm#3066: openai.exchange.v1 exchange_id on the raw-proxy, plugin and remote-mesh routes equals the ingress request id that
-# pay-lightning's payer events carry, so capsules can join the payer's terms leg to the exchange (step 06 counterparty_count).
-mesh-llm-pr-3066 Mesh-LLM/mesh-llm 93f9279665bcd233615bb9765d9c4295bbeee54f
+# mesh-llm#3066: the host's exchange id is a node-made id (hash of boot id, request seq, dispatch) that the terminal keeps, so the
+# payer's pay-lightning events and the openai.exchange.v1 envelopes share one id and capsules can join the terms leg (step 06 counterparty_count).
+mesh-llm-pr-3066 Mesh-LLM/mesh-llm 1681652152192559edace4351dfd91c4edfbbae8
 # The payment plugin: Mesh-LLM/ln-payments-plugin main at 14a5f97 plus #11 (a settled payment's preimage on
 # payment.lifecycle.v1, which the capsules plugin's settlement check reads), merged on the lab host; lab/lab.sh check
 # requires both. The host passes the event on unchanged (payment.lifecycle.v1 is a local channel it broadcasts without reading),
