@@ -215,13 +215,21 @@ class Pair:
         for name in names:
             d = self.m2g / name
             d.mkdir(parents=True)
-            # the request's own deadline: the commitment's answers_within after it is sealed (a second more, so
-            # the window a book records is not shorter than the minute it must be)
-            deadline = (now() + WITHIN + dt.timedelta(seconds=1)).replace(microsecond=0)
-            (d / "request.in.json").write_text(json.dumps(request_map(name, self.mesh.node.first_record, deadline)))
-            r = self.mesh.node.cap("book", "request", "--request", str(d / "request.in.json"), "--responder",
-                                   self.gkey, "--sent", "--output", str(d / "request.json"))
-            (d / "request.in.json").unlink()
+            # The request's own deadline: the commitment's answers_within after it is sealed, and a book records no
+            # waiting window shorter than a minute after the request. So the deadline is composed a second over the
+            # minute, and a seal that took long enough to leave less than a minute before it is made again (a slow
+            # host, as on CI), never recorded with a window the book refuses.
+            for attempt in range(5):
+                deadline = (now() + WITHIN + dt.timedelta(seconds=2)).replace(microsecond=0)
+                (d / "request.in.json").write_text(json.dumps(request_map(name, self.mesh.node.first_record, deadline)))
+                r = self.mesh.node.cap("book", "request", "--request", str(d / "request.in.json"), "--responder",
+                                       self.gkey, "--sent", "--output", str(d / "request.json"))
+                (d / "request.in.json").unlink()
+                if deadline - now() >= WITHIN + dt.timedelta(seconds=0.25):
+                    break
+                (d / "request.json").unlink()
+            else:
+                raise SystemExit(f"mesh -> goose {name}: five seals each left less than a minute before the deadline")
             data = (d / "request.json").read_bytes()
             event = mb.sign_event(mb.new_secret(), mb.REQUEST_KIND,
                                   [("p", self.gmailbox), ("m", MEDIA), ("expiration", str(int(deadline.timestamp())))],
