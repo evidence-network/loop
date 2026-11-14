@@ -1,0 +1,8 @@
+{
+  "outcome": "refusal",
+  "reason": "deadline_unmet",
+  "record_id": "a159b0a81d1d3ef9eceeaf503ad8af288d0dfe5a336508737fffbbd4ec9aefd9",
+  "request_digest": "ac51be66f1d67f90dc3b51ff846794b906f48c617a52bef65ebfa6a5c1697fb4",
+  "spec_version": "capsule-cli-result/v1",
+  "voice": "silent"
+}

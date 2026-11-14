@@ -1,0 +1,15 @@
+{
+  "key_id": "d2d86e3c287c61bd36f335dc1ce7596afff6d9c85b710067b3876cdffff243ee",
+  "policy": {
+    "share_deal_half": "counterparty",
+    "stranger_safe": [
+      "history_card/1"
+    ]
+  },
+  "profile": "disclosure-policy/0",
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "MpYEo_qZXMGfs6DZ6iJvUJK3Kg3BuLI_bGFXQzJVslxUnN5lE3fUpyRdQDHsDkJseUvNWWLbiBqwOk35GCLMAA"
+  }
+}

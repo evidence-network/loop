@@ -1,0 +1,55 @@
+{
+  "answers": {
+    "derivations": [
+      "history_card/1"
+    ],
+    "subjects": [
+      "checkpoints"
+    ]
+  },
+  "answers_within": "PT1M",
+  "ask": {
+    "bindings": [
+      "capsulectl-book/respond"
+    ],
+    "endpoint": "book:mesh-book",
+    "nostr": {
+      "mailbox_key": "ff762718bbf79b43a9a34521f37b287b1d895a6effdd69e2dced58f613480c29",
+      "relays": [
+        "wss://relay.rehearsal.example"
+      ]
+    }
+  },
+  "checkpoint": {
+    "bytes": "ewogICJib29rX2lkIjogIm1lc2gtYm9vayIsCiAgImNoZWNrcG9pbnRfa2V5IjogIjUyOTgzM2ExZDVkZDg1MzU4OGYxYTcyZmYxOTMyNmMzNDZhZmFkNWMzYjE1MDZmNTUwOThlODhmNmZiM2MzOGEiLAogICJzdGF0ZW1lbnQiOiAiMG9SWVlxUUJKd040SDJGd2NHeHBZMkYwYVc5dUwyTnNiQzFqYUdWamEzQnZhVzUwSzJOaWIzSUVXQ0JTbURPaDFkMkZOWWp4cHkveGt5YkRScSt0WERzVkJ2VlFtT2lQYjdQRGlnK2lBV2x0WlhOb0xXSnZiMnNDYTIxbGMyZ3RZbTl2YXlNMG9GaXhwbVJyYVc1a2JtTnNiQzFqYUdWamEzQnZhVzUwYUd4dloxOXphWHBsQkdscGMzTjFaV1JmWVhSNEdESXdNall0TVRFdE1UUlVNVGc2TXprNk1UY3VNelEzV21sd2NtVjJYM05wZW1VQWFtTnZiVzFwZEcxbGJuUllSWUpZSUFZd291U1hCU0VieWxsRUtwY1dkRFRoRm1TalNEbVhUTUVsM3lFUGk2NnRXQ0F3ZjArU2trWDQ1NmFackFMckZyYUxYR1hSRnV5c3FQNEl6SHRwZ3lBNTNHOXdjbVYyWDJOdmJXMXBkRzFsYm5SQVdFRGtaRTBXRkg5azVGbGdwSnhpaDhGeHlwazNDaVN2b3Q4alU1dndubmVrSzVwYzZXcEhndmJPcC9vc1V0aFA3TTFWL2JkSk40dUVYcnM0MDhHTVNnQVAiCn0K",
+    "sha256": "864a37d3178fc2c6c6b9950fd7863d27aeeafa2ebefec10fef0a717461038035"
+  },
+  "history_cards": [
+    {
+      "bytes": "eyJhbmNob3IiOnsiZGlnZXN0IjoiMTlmZjc1MThiZjQ2NTA1NGU3YzNkOTE2MjFjNjYwMmM1YzM1ZWU5NDEyN2U3ZjQ3M2Q0NzdiYWY0OGUzMDY5YiIsImZyZXNobmVzcyI6NH0sImFydGlmYWN0IjoiZXlKaGJtTm9iM0lpT2lJeE9XWm1OelV4T0dKbU5EWTFNRFUwWlRkak0yUTVNVFl5TVdNMk5qQXlZelZqTXpWbFpUazBNVEkzWlRkbU5EY3paRFEzTjJKaFpqUTRaVE13TmpsaUlpd2laR1Z5YVhaaGRHbHZiaUk2SW1ocGMzUnZjbmxmWTJGeVpDOHhJaXdpWlhacFpHVnVZMlZmYzNSeVpXRnRJam9pYldWemFDMWliMjlySWl3aWFHbHpkRzl5ZVNJNlczc2lZMmhsWTJ0d2IybHVkQ0k2SW1ReU9EUTFPRFl5WVRRd01USTNNRE0zT0RGbU5qRTNNRGN3Tm1NMk9UWXpOakUzTkRZNU5tWTJaVEptTmpNMll6WmpNbVEyTXpZNE5qVTJNelppTnpBMlpqWTVObVUzTkRKaU5qTTJNalptTnpJd05EVTRNakExTWprNE16TmhNV1ExWkdRNE5UTTFPRGhtTVdFM01tWm1NVGt6TWpaak16UTJZV1poWkRWak0ySXhOVEEyWmpVMU1EazRaVGc0WmpabVlqTmpNemhoTUdaaE1qQXhOamsyWkRZMU56TTJPREprTmpJMlpqWm1ObUl3TWpaaU5tUTJOVGN6TmpneVpEWXlObVkyWmpaaU1qTXpOR0V3TlRoaU1XRTJOalEyWWpZNU5tVTJORFpsTmpNMll6WmpNbVEyTXpZNE5qVTJNelppTnpBMlpqWTVObVUzTkRZNE5tTTJaalkzTldZM016WTVOMkUyTlRBME5qazJPVGN6TnpNM05UWTFOalExWmpZeE56UTNPREU0TXpJek1ETXlNell5WkRNeE16RXlaRE14TXpRMU5ETXhNemd6WVRNek16a3pZVE14TXpjeVpUTXpNelF6TnpWaE5qazNNRGN5TmpVM05qVm1Oek0yT1RkaE5qVXdNRFpoTmpNMlpqWmtObVEyT1RjME5tUTJOVFpsTnpRMU9EUTFPREkxT0RJd01EWXpNR0V5WlRRNU56QTFNakV4WW1OaE5UazBOREpoT1RjeE5qYzBNelJsTVRFMk5qUmhNelE0TXprNU56UmpZekV5TldSbU1qRXdaamhpWVdWaFpEVTRNakF6TURkbU5HWTVNamt5TkRWbU9HVTNZVFk1T1dGak1ESmxZakUyWWpZNFlqVmpOalZrTVRFMlpXTmhZMkU0Wm1Vd09HTmpOMkkyT1Rnek1qQXpPV1JqTm1ZM01EY3lOalUzTmpWbU5qTTJaalprTm1RMk9UYzBObVEyTlRabE56UTBNRFU0TkRCbE5EWTBOR1F4TmpFME4yWTJOR1UwTlRrMk1HRTBPV00yTWpnM1l6RTNNV05oT1Rrek56QmhNalJoWm1FeVpHWXlNelV6T1dKbU1EbGxOemRoTkRKaU9XRTFZMlU1Tm1FME56Z3laalpqWldFM1ptRXlZelV5WkRnMFptVmpZMlExTldaa1lqYzBPVE0zT0dJNE5EVmxZbUl6T0dRell6RTRZelJoTURBd1ppSXNJbU52Ym5OcGMzUmxibU41WDJaeWIyMWZjSEpsZG1sdmRYTWlPbTUxYkd4OVhTd2ljM1ZpYW1WamRDSTZleUpqYUdWamEzQnZhVzUwY3lJNmJuVnNiSDE5IiwiYXJ0aWZhY3RfZGlnZXN0IjoiMmYwMDIwZmUyMGJjNTUzMTBlMWExMjc0YTRmYWQxZWQ5MjMxNWE5ZjEwNzFiZWM2MDUwODA3Mjg0ZDEwNDU2MiIsImRlcml2YXRpb24iOiJoaXN0b3J5X2NhcmQvMSIsImlzc3VlZF9hdCI6IjIwMjYtMTEtMTRUMTg6Mzk6MTdaIiwicHJvZmlsZSI6ImV2aWRlbmNlLWludGVyb3AvMCIsInJlcXVlc3RfZGlnZXN0IjoiYTY2OTlhODFlOTNlZjYxOTM4ODNkMDg5YmNiY2UxMzlhOTc5NTNiNzBmNjkwZGRjOGI0N2JlYTY1MmVmY2FlMSIsInJlc3BvbmRlciI6IjVjMTU3MmE0YWI3Zjc1MDFmNTI0NGZjNjEwMWRjZjJmODBhYTcxZTdmYzY0MjU0MTc4Mzc2MjhkM2RhYjRlYTgiLCJzaWciOiI5NDlkZjAwOWFlYjFhYmRlNTgzM2ZlZmZjOTkyMWUwNDIyMWZkNzkzNmIwMmZhNDc3NTZlN2ExNzMxZDg3NTc3NGQzYWMzYzI2OGY3OWRjMzdkNzlmYzM3MjYzZmUwYTYwODQ4MGVjZGE5ODU4MjMyZjIxZjg3NDM3NDZkNTYwNSIsInN1YmplY3QiOnsiY2hlY2twb2ludHMiOm51bGx9fQ==",
+      "checkpoint_key": "MCowBQYDK2VwAyEAUpgzodXdhTWI8acv8ZMmw0avrVw7FQb1UJjoj2-zw4o",
+      "community": "mesh-llm",
+      "derivation": "history_card/1",
+      "sha256": "96dbf2b1f5dfcecc136116e7fa31263d25ce02add8a19003788acaa01ef29bf0",
+      "stream": "mesh-book"
+    }
+  ],
+  "human_gated": false,
+  "issued_at": "2026-11-14T18:39:16Z",
+  "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+  "lcap": {
+    "policy_digest": "c4b4f26a83dc7e926a9bda78d2d7d0bbb813f62077197d019a5277f46e52c869",
+    "policy_uri": "disclosure-policy.json",
+    "predicate_classes": [
+      "recorded:self_attested"
+    ]
+  },
+  "node_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+  "profile": "evidence-commitment/1",
+  "sig": {
+    "alg": "Ed25519",
+    "canon": "jcs",
+    "value": "HMsF3QkyMbpWrCXTRz52YeqCZzmCE82sFJxBGjpqGaGv6jrxPHsv-FyfyI6QMhhrDRglsaMegUobY8mfmzZlAw"
+  },
+  "spki": "MCowBQYDK2VwAyEAXBVypKt/dQH1JE/GEB3PL4Cqcef8ZCVBeDdijT2rTqg="
+}

@@ -1,0 +1,98 @@
+{
+  "rows": [
+    {
+      "asker": "goose",
+      "asker_node": "d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6",
+      "detail": "exchange refusal",
+      "not_checked": [],
+      "proof": [
+        {
+          "path": "entries/5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8.json",
+          "sha256": "5148bbad02ade208b5beb0d2d0c7b143ed806ec2df4f18c4b98c7d8ec87b385d"
+        },
+        {
+          "path": "goose/asks/mesh/carrier.jsonl",
+          "sha256": "e67b6326276d64cf38f2a7baae6a9361bd9555d3de864a1e7a903193ee6ee373"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/answer.json",
+          "sha256": "02c0114ffbb7e0931e8a83d1ab5fcc7ad8746d2c03eb7b55397bfb8e3f9b8a20"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/outcome.bundle.checkpoint.cose",
+          "sha256": "1b1f0cd7f7884052169fa57b94ff4ea00f385a446be62d4aa22670f30186f92f"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/outcome.bundle.json",
+          "sha256": "f11fde02dbbe5fc318270e4c9a544c3fd67850758f74f2862c7278bff606e42c"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/request.json",
+          "sha256": "20dbc00e9c4d05b57961c6ba3b6b2c95208c43b0093ea8c916046bb4a5d386a4"
+        },
+        {
+          "path": "mesh/advertised/book.json",
+          "sha256": "741d5a3a4818bc5d7d9992104b7fbc4b3a4313d6ea317bf4edb91d77e85561d5"
+        },
+        {
+          "path": "mesh/advertised/commitment.json",
+          "sha256": "89133e2ec2a54db159bfd93ac815722aa5eccfe24c4dd35c5b47ef4e24fbb4d2"
+        },
+        {
+          "path": "mesh/advertised/disclosure-policy.json",
+          "sha256": "c4b4f26a83dc7e926a9bda78d2d7d0bbb813f62077197d019a5277f46e52c869"
+        },
+        {
+          "path": "mesh/advertised/policy.json",
+          "sha256": "2bbac8bb1c69ae0d891010fe089554999f141a98eb359dd322057ec964c64f5d"
+        }
+      ],
+      "responder": "mesh",
+      "responder_node": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+      "result": "PASS"
+    },
+    {
+      "asker": "mesh",
+      "asker_node": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+      "detail": "exchange: the answer is recorded under key a3c1ee148733b357, not the listed key d4dbc3fd0f9311a3 and its advertised checkpoint key; exchange: the reply does not verify again under the listed key: capsulectl-book: invalid input or profile configuration: the evidence book refused this as invalid: evidencerequest: invalid: refusal is not for this request under the pinned responder key",
+      "not_checked": [],
+      "proof": [
+        {
+          "path": "entries/d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6.json",
+          "sha256": "e936e75f79c556ce7ad2a2b68436641691733e7f11b4f0adb717547d17e8908e"
+        },
+        {
+          "path": "goose/advertised/commitment.json",
+          "sha256": "83cc0b8cf989eed6f8e5f0723a1e962ac9d4c3ecf0313e1ea45e00ea4dc32995"
+        },
+        {
+          "path": "goose/advertised/policies/d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6.json",
+          "sha256": "f5b1ea7aa8826d439e476b5e0d8694e900b3900b69fe851622ac9e75e56c2945"
+        },
+        {
+          "path": "mesh/asks/goose/carrier.jsonl",
+          "sha256": "5d8adea59ee2ef96b396c6084aeff6e30ea2b9de955015fb7faebe309326608c"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/answer.json",
+          "sha256": "2060fc337a7d252e55b9b7125ef4b6c4006d36b6583c47820f2d7b4a0221778b"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/outcome.bundle.json",
+          "sha256": "1d4b25e503b3d19f4945635ebe862009cfdc405a9e24e534215d36e54ea9be7d"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/outcome.json",
+          "sha256": "389a1357710b47e14302325c2df299681b67018272fe9c3c72da820dfa4168dc"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/request.json",
+          "sha256": "ac51be66f1d67f90dc3b51ff846794b906f48c617a52bef65ebfa6a5c1697fb4"
+        }
+      ],
+      "responder": "goose",
+      "responder_node": "d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6",
+      "result": "FAIL"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "rows": [
+    {
+      "asker": "goose",
+      "asker_node": "87fe4454da5e8f08b060cf42c526b8b7a88350042e5c4cf5e56d867c3e8bfcc0",
+      "detail": "exchange: the reply was delivered by the deadline 2026-11-14T18:40:18.000000Z, but the outcome is an absence",
+      "not_checked": [],
+      "proof": [
+        {
+          "path": "entries/5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8.json",
+          "sha256": "5148bbad02ade208b5beb0d2d0c7b143ed806ec2df4f18c4b98c7d8ec87b385d"
+        },
+        {
+          "path": "goose/asks/mesh/carrier.jsonl",
+          "sha256": "b42d8b480a335d5fa84f3c5926f4e90761998b95f73a0fb5205d97d5df24f414"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/answer.json",
+          "sha256": "c516e8435d613e824896455bc298fabae3702db22325747269e5221d28618dc7"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/outcome.bundle.checkpoint.cose",
+          "sha256": "f91f416c7ace149aef68bdafaa1d3258fd48af59f92c1f8f5dda0ec2325bf77a"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/outcome.bundle.json",
+          "sha256": "4cea56c90962b49b6f3577b315439f2c7325bdc7054e832d9a9b87b2dba35066"
+        },
+        {
+          "path": "goose/asks/mesh/exchange/request.json",
+          "sha256": "73bc7a2309f43ea1f258fd75d886d44c1ffc02f50d0ea879fb1af97215409082"
+        },
+        {
+          "path": "mesh/advertised/book.json",
+          "sha256": "c68f70c600dd6b1f9d57000751be763900c33002368642c26a82719d9b8600f2"
+        },
+        {
+          "path": "mesh/advertised/commitment.json",
+          "sha256": "21b7b09f5865c7b846514dd7da718e5bf2fbc6d83042f0955266ca916ac8d92d"
+        },
+        {
+          "path": "mesh/advertised/disclosure-policy.json",
+          "sha256": "c4b4f26a83dc7e926a9bda78d2d7d0bbb813f62077197d019a5277f46e52c869"
+        },
+        {
+          "path": "mesh/advertised/policy.json",
+          "sha256": "2bbac8bb1c69ae0d891010fe089554999f141a98eb359dd322057ec964c64f5d"
+        }
+      ],
+      "responder": "mesh",
+      "responder_node": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+      "result": "FAIL"
+    },
+    {
+      "asker": "mesh",
+      "asker_node": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
+      "detail": "exchange refusal",
+      "not_checked": [],
+      "proof": [
+        {
+          "path": "entries/87fe4454da5e8f08b060cf42c526b8b7a88350042e5c4cf5e56d867c3e8bfcc0.json",
+          "sha256": "c9c9a753faf2577e617862b8e4513d0d64b1544a0c0f92f46caafa75a212a86a"
+        },
+        {
+          "path": "goose/advertised/commitment.json",
+          "sha256": "d3eebd5e88c9348f40312a2cbf4d868221a32bc4c94dd49c048ec5105750bed4"
+        },
+        {
+          "path": "goose/advertised/policies/87fe4454da5e8f08b060cf42c526b8b7a88350042e5c4cf5e56d867c3e8bfcc0.json",
+          "sha256": "617d6e1d1b9a70dc87b2e3222d5e45c4e8bb4620dd9b5633f3b2295878aaa168"
+        },
+        {
+          "path": "mesh/asks/goose/carrier.jsonl",
+          "sha256": "06b63bf7068315bf664b94bb137605d4add5747d5c44febabb68c08a39374646"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/answer.json",
+          "sha256": "f375bd1a2e8731abe02b71a8f5a755290706a1596899dc12d94a315753159fc2"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/outcome.bundle.json",
+          "sha256": "26d0b3831e21896c5973f3d0fa322a2d74c48eab193dba43b0d65433e94c5bd0"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/outcome.json",
+          "sha256": "8afc54540b862b8413fa2ddf6ece9514a71a68632ff00008ad8225990f93881f"
+        },
+        {
+          "path": "mesh/asks/goose/exchange/request.json",
+          "sha256": "ac51be66f1d67f90dc3b51ff846794b906f48c617a52bef65ebfa6a5c1697fb4"
+        }
+      ],
+      "responder": "goose",
+      "responder_node": "87fe4454da5e8f08b060cf42c526b8b7a88350042e5c4cf5e56d867c3e8bfcc0",
+      "result": "PASS"
+    }
+  ]
+}

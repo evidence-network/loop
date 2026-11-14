@@ -1,0 +1,17 @@
+{
+  "ask_route": "nostr",
+  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and never with the content of any request, answer or payment. Whether it answered, refused or did not answer, and whether the answer verified, is published per ecosystem pair at https://evidence-network.github.io/loop/stats/. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
+  "disclosure": {
+    "policy": "counterparties",
+    "stranger_safe": [
+      "checkpoints",
+      "history_card/1"
+    ]
+  },
+  "host_build": "rehearsal",
+  "key_id": "d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6",
+  "mesh": "rehearsal",
+  "node_id": "d4dbc3fd0f9311a3bf0c8889ef8b427a8c8224ff7373bd8f6be8ce93bfc5b8c6",
+  "operator": "loop-rehearsal",
+  "plugin_version": "rehearsal"
+}
