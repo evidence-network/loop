@@ -784,6 +784,8 @@ def rederive_06_live(m, c):
     rows = load(c.bundle / "counterparty.json")
     keys = {"books_only", "books_pair", "bundle_only", "bundle_settlements", "bundle_sha256", "bundle_undated",
             "disclosed_settlements", "method", "node", "paired", "peer", "status", "unpaired", "window_from"}
+    # With a window, 06 adds what its window scoping of an INCONCLUSIVE check reads (pre_window_unattributed).
+    scoped = {"hashless", "in_window_unpaired", "outside_window", "undated", "unattributed"}
     since = m.window_from(pop)
     window = since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None
     if isinstance(rows, list) and rows and all(isinstance(r, dict) and "books_pair" not in r for r in rows):
@@ -792,7 +794,7 @@ def rederive_06_live(m, c):
                              "08 re-derives (loop#303)", OLD_SHAPE_ISSUE)
     pairs = {}
     for r in rows if isinstance(rows, list) else [None]:
-        if not (isinstance(r, dict) and set(r) == keys and r["node"] in ids and r["peer"] in ids
+        if not (isinstance(r, dict) and set(r) in (keys, keys | scoped) and r["node"] in ids and r["peer"] in ids
                 and r["node"] != r["peer"] and (r["node"], r["peer"]) not in pairs
                 and all(type(r[k]) is int for k in ("paired", "unpaired")) and isinstance(r["status"], str)
                 and isinstance(r["bundle_sha256"], str)):

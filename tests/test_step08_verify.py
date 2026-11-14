@@ -1662,7 +1662,7 @@ class Step08Live09Test(unittest.TestCase):
         self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
 
 
-def lightning_ledgers(lab, n=2):
+def lightning_ledgers(lab, n=2, stamps=None):
     """lab/lab-1..3 ledgers: n payments lab-2 -> lab-1, each with the payer's preimage. The preimages exist only in
     this temp dir, as step 06 reads them; step 06's proof keeps their outcome, never the value."""
     import hashlib
@@ -1673,7 +1673,8 @@ def lightning_ledgers(lab, n=2):
                  "segment": 1, "payment_hash": h, "amount_msat": 1000000000, **more}
         if pre:
             block["preimage"] = pre
-        return {"capsule_id": cid, "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": block}}}
+        return {"capsule_id": cid, **({"timestamp": stamps[int(cid[1:])]} if stamps else {}),
+                "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": block}}}
     rows = {1: [], 2: [], 3: []}
     for k in range(n):
         pre = f"{k + 1:02x}" * 32
@@ -1686,12 +1687,13 @@ def lightning_ledgers(lab, n=2):
 
 
 def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False,
-           bundle_first=1):
+           bundle_first=1, stamps=None, window=None, unattributed=None):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
-    out dir being dst: the proof 08 re-derives. Returns the finding."""
+    out dir being dst: the proof 08 re-derives. Returns the finding. stamps: each payment's record time; window:
+    the population's window start; unattributed: the check's settlements_unattributed."""
     import hashlib
     lab = Path(tmp) / "lab"
-    lightning_ledgers(lab, n)
+    lightning_ledgers(lab, n, stamps)
     if drop_node:
         shutil.rmtree(lab / f"lab-{drop_node}")
     doc = load(LIVE_POPULATION / "population.json")
@@ -1702,7 +1704,7 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
     ids = {node["name"]: node["node_id"] for node in doc["nodes"]}
     for me, peer in (("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")):
         bundle = bundles / f"{peer}.for.{me}.json"
-        held = [{"capsule_id": f"b{k}", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
+        held = [{"capsule_id": f"b{k}", **({"timestamp": stamps[k]} if stamps else {}), "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
             "phase": "output_settlement_observed", "observed_by": "payer",
             "payment_hash": hashlib.sha256(bytes.fromhex(f"{k + bundle_first:02x}" * 32)).hexdigest()}}}}
                 for k in range(n if paired is None else paired)]  # the bundle's settlements, as many as the check paired
@@ -1711,14 +1713,20 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
             "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
             "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
             "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": n if paired is None else paired,
-                                                 "unpaired": []},
+                                                 "unpaired": [],
+                                                 **({} if unattributed is None else {
+                                                     "settlements_unattributed": unattributed,
+                                                     "settlements_without_payment_hash": {"this_node": 0, "counterparty": 0}})},
                        "disclosed_count": {"settlements": n}}})
         if tamper_bundle:
             bundle.write_text("changed")
     doc["settlement_checks"] = str(bundles)
+    if window:
+        doc["window"] = {"from": window}
     pop = Path(tmp) / "pop"
     pop.mkdir()
     dump(pop / "population.json", doc)
+    live06.population = pop
     r = subprocess.run([str(STEPS / "06-settle"), "--population", str(pop), "--out", str(dst)],
                        capture_output=True, text=True, env=dict(os.environ, STEP06_LAB=str(lab)), timeout=300, cwd=ROOT)
     if r.returncode != 0:
@@ -1848,6 +1856,19 @@ class Step08Live06Test(unittest.TestCase):
         scratch.mkdir()
         self.recorded = live06(self.run / "06-settle", scratch, **kw)
         return self.verify()
+
+    def test_an_honest_window_scoped_check_is_reproduced_as_pass(self):
+        # The check reads INCONCLUSIVE for 1 unattributed settlement; the first payment is before the window, the
+        # second in it: 06 sets the unattributed one aside, and 08 decides the same from the row's counts.
+        shutil.rmtree(self.run / "06-settle")
+        scratch = Path(self.tmp.name) / "scoped"
+        scratch.mkdir()
+        window = "2026-11-01T01:38:00Z"
+        self.recorded = live06(self.run / "06-settle", scratch, status="INCONCLUSIVE", unattributed=1, window=window,
+                               stamps=["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"])
+        self.assertEqual(self.recorded["result"], "PASS", self.recorded["detail"])
+        f, entries = self.verify(live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
 
     def test_an_honest_fail_row_is_reproduced_as_fail(self):
         f, entries = self.honest(status="FAIL")

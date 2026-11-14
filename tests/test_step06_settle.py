@@ -452,7 +452,7 @@ class Step06SettleTest(unittest.TestCase):
                                      "preimage": "SECRET-IN-BUNDLE"}}}}
 
     def checks_dir(self, status="PASS", paired=2,
-                   pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")), records=None):
+                   pairs=(("stevenmih-1", "stevenmih-2"), ("stevenmih-2", "stevenmih-1")), records=None, unattributed=None):
         """lab.sh bundles' output: per (node, peer), the peer's bundle file and the node's check of it. The bundle
         holds `records` (default: one terminal settlement per payment the pair made, paired of them, as paid() and
         two_payers() number them)."""
@@ -468,7 +468,9 @@ class Step06SettleTest(unittest.TestCase):
             dump(d / f"check.{ids[me]}.{ids[peer]}.json", {
                 "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
                 "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
-                "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": paired, "unpaired": []},
+                "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": paired, "unpaired": [],
+                                                  **({} if unattributed is None else {"settlements_unattributed": unattributed,
+                                                     "settlements_without_payment_hash": {"this_node": 0, "counterparty": 0}})},
                            "disclosed_count": {"settlements": paired},
                            "settlements": [{"preimage": "SECRET-IN-BUNDLE-REPORT"}]}})
         return d
@@ -550,6 +552,47 @@ class Step06SettleTest(unittest.TestCase):
                 r = self.lightning(self.stamped(self.paid(), times), self.checks_dir(records=records), window=window)
                 self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
                 self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
+
+    def test_lightning_a_window_sets_aside_unattributed_settlements_from_before_it(self):
+        # The plugin's whole-book check reads INCONCLUSIVE only because 1 settlement of the node belongs to no peer;
+        # the window starts after the first payment, so that cannot be an in-window one: it is out of the window.
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        r = self.lightning(self.stamped(self.paid(), times),
+                           self.checks_dir(status="INCONCLUSIVE", records=records, unattributed=1),
+                           window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        detail = self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"]
+        self.assertIn("only for 1 settlements before the window from 2026-11-01T01:38:00Z", detail)
+        self.assertIn("the 1 payments the books pair between them in the window are exactly the bundle's", detail)
+        row = json.loads((self.out / "counterparty.json").read_text())[0]
+        self.assertEqual((row["unattributed"], row["outside_window"], row["in_window_unpaired"], row["books_pair"]),
+                         (1, 1, 0, 1))
+
+    def test_lightning_a_window_does_not_set_aside_what_it_cannot_place_before_it(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        for name, window, unattributed in (
+                ("more unattributed than records before the window", "2026-11-01T01:38:00Z", 3),
+                ("no window", None, 1),
+                ("a window before every record", "2026-11-01T00:00:00Z", 1)):
+            with self.subTest(name=name):
+                r = self.lightning(self.stamped(self.paid(), times),
+                                   self.checks_dir(status="INCONCLUSIVE", records=records, unattributed=unattributed),
+                                   window=window)
+                self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+                self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
+
+    def test_lightning_a_window_does_not_set_aside_unattributed_next_to_an_unpaired_hash(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        d = self.checks_dir(status="INCONCLUSIVE", records=records, unattributed=1)
+        for f in d.glob("check.*.json"):
+            doc = json.loads(f.read_text())
+            doc["report"]["counterparty_count"]["unpaired"] = [{"payment_hash": "ab" * 32, "reason": "one book only"}]
+            f.write_text(json.dumps(doc))
+        r = self.lightning(self.stamped(self.paid(), times), d, window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
 
     def test_lightning_a_window_never_hides_a_whole_book_failure(self):
         times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
