@@ -78,17 +78,38 @@ class EntryRulesTest(unittest.TestCase):
         self.assertEqual(errors(CASES / "phone-contact"),
                          [f"{name}: operator looks like a phone number; give a GitHub handle (no personal data)"])
 
-    def test_consent_is_the_published_statement_word_for_word(self):
+    def test_consent_is_a_published_statement_word_for_word(self):
         self.assertEqual(self.check(), [])
         for consent in ("yes", "", True, check_nodes.CONSENT.replace("usually daily", "twice daily"),
-                        check_nodes.CONSENT + " "):
+                        check_nodes.CONSENT + " ", check_nodes.CONSENT_ASK_ACROSS + " ",
+                        check_nodes.CONSENT_ASK_ACROSS.replace("one interaction", "any interaction"),
+                        check_nodes.CONSENT_ASK_ACROSS.replace("signed refusal", "refusal")):
             self.assertEqual(self.check(consent=consent),
-                             [f"{'a' * 64}.json: consent must be the operator statement in nodes/README.md, word for word"],
+                             [f"{'a' * 64}.json: consent must be one of the operator statements in nodes/README.md, word for word"],
                              consent)
+
+    def test_the_first_statement_is_accepted(self):
+        self.assertEqual(self.check(consent=check_nodes.CONSENT), [])
+
+    def test_the_statement_with_the_ask_across_sentences_is_accepted(self):
+        # Steven's ruling on loop#440: the first statement does not cover step 13; the revision adds these sentences
+        # right after "...answer or payment.", and nothing else changes.
+        self.assertEqual(self.check(consent=check_nodes.CONSENT_ASK_ACROSS), [])
+        added = check_nodes.ASK_ACROSS_SENTENCES
+        self.assertTrue(added.startswith("A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in."))
+        self.assertEqual(check_nodes.CONSENT_ASK_ACROSS.replace(added, ""), check_nodes.CONSENT)
+        i = check_nodes.CONSENT_ASK_ACROSS.index(added)
+        self.assertTrue(check_nodes.CONSENT_ASK_ACROSS[:i].endswith("answer or payment. "))
+
+    def test_new_entries_are_still_written_with_the_first_statement(self):
+        # lab/pack.py and lab/goose.sh write check_nodes.CONSENT: consent is per revision, so no tool opts an operator
+        # in to the newer statement.
+        self.assertEqual(check_nodes.CONSENT, check_nodes.CONSENTS[0])
 
     def test_the_readme_carries_the_statement(self):
         readme = (ROOT / "nodes" / "README.md").read_text()
-        self.assertIn(json.dumps(check_nodes.CONSENT), readme)  # the JSON value, as it goes in an entry
+        for statement in check_nodes.CONSENTS:
+            self.assertIn(json.dumps(statement), readme)  # the JSON value, as it goes in an entry
 
     def test_contact_is_a_github_handle_and_nothing_personal(self):
         for ok in ("octocat", "a", "node-op-2", "A1-b2", "x" * 39):

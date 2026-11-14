@@ -37,6 +37,20 @@ Open a pull request adding `nodes/<node_id>.json`:
   "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay."
   ```
 
+  **Revision 2: the same statement with the step 13 sentences.** Step 13 (`ask-across`) has a party in another
+  ecosystem ask a listed node for evidence about one interaction it took part in. The first statement does not
+  cover that (Steven's ruling on [loop#440](https://github.com/evidence-network/loop/issues/440)), so step 13 asks
+  only an entry that carries this revision, which adds three sentences right after "...answer or payment.". The check
+  accepts either statement, word for word; an entry on the first statement keeps working and is reported by step 13 as
+  not opted in, never failed. Consent is per revision: an operator moves an entry to this text by a pull request of
+  their own (or one they approve), and nobody does it for them.
+
+  > I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and never with the content of any request, answer or payment. Whether it answered, refused or did not answer, and whether the answer verified, is published per ecosystem pair at https://evidence-network.github.io/loop/stats/. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to "public". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.
+
+  ```
+  "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and never with the content of any request, answer or payment. Whether it answered, refused or did not answer, and whether the answer verified, is published per ecosystem pair at https://evidence-network.github.io/loop/stats/. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay."
+  ```
+
 - `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`. `ask_route: nostr` means: ask through the
   Nostr mailbox the node's commitment names (`ask.nostr`); a Goose node hosts no server, so it answers the asks it finds
   by polling that mailbox. The daily reporter asks `mesh` entries only.
@@ -171,7 +185,7 @@ ask it and the pages do not show it. Step 08 holds the key step 09 announced for
 - whose `node_id` or `key_id` is not 64 lowercase hex, or whose file name is not `<node_id>.json`;
 - that repeats another entry's `node_id` or `key_id`;
 - that has a missing or unknown field;
-- whose `consent` is not the operator statement, word for word;
+- whose `consent` is not one of the two operator statements above, word for word;
 - whose `operator` is not a GitHub handle, or looks like an email address or a phone number.
 
 It also refuses a leave mark that is not `{"node_id", "left"}` with a real date,

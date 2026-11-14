@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""Step 13, Ask across: an evidence request is answered across ecosystems (goose <-> mesh first).
+
+Usage: 13-ask-across --population DIR --out DIR
+
+The first step of the across-ecosystems layer (loop#440): a party in one ecosystem asks a listed node of another for
+evidence about one interaction, through the carrier that node's own entry and signed commitment name, and the answer
+(signed records or a signed refusal) is verified under the key the node is listed with, offline, by the verifiers step 07
+already uses. It is about the evidence request, not a deal. Steven's ruling of 2026-11-12: "loop interop between
+ecosystems is tested at the evidence request (cross step 13 ask-across, goose<->mesh first, then outside responders
+...); each ecosystem runs only the steps that fit it; conforming = shareable evidence."
+
+THE JUDGE IS STEP 07's: steps/07-ask's judge_pair (loaded the way step 08 loads a step module), run with `mailbox=True`,
+the variant 07 uses for a Goose node: the request carries its own `deadline`, which must be the commitment's
+answers_within after the request was sealed, and the asker is a stranger on a mailbox. So it checks, for each ask: the
+outcome bundle verifies, both records are signed by the asker's key, the request was sealed before it was sent and is
+the bytes sent, the answer is a signed artifact or a signed refusal recorded under the listed key and checkpoint key, in
+time, and verifies again in a fresh verifier book; a late answer counts as an absence; a refusal for a reason the
+advertised policy does not allow is a FAIL. Nothing is copied from 07.
+
+THE DEADLINE IS THIS STEP'S REQUIREMENT, NOT THE DRAFT'S. draft-mih-agent-evidence-request-02 §3.4 makes the request's
+`deadline` OPTIONAL. Step 13 requires it, because a request carried over a mailbox has no other window (the binding's
+§5.3 measures an absence against it): a request without one is a FAIL here. The loop makes this requirement; it does
+not change the draft or the request format.
+
+A SIGNED REFUSAL IS A CORRECT ANSWER. A node whose advertised `disclosure.policy` is `counterparties` refuses an exchange
+request from an asker that is not its counterparty, with a refusal signed under its listed key. Step 07's refusal rules
+already score that as answered; here it is a PASS case, not a FAIL. An unsigned refusal, a refusal under another key, or
+one for a subject the policy answers to anyone is a FAIL.
+
+WHAT AN ANSWER CARRIES. The consent statement every listed operator accepts says the network never asks for "the content
+of any request, answer or payment". An answer in step 13 carries digests and signatures, never the bodies:
+
+  - the request, which is the asker's own evidence_request: the subject the asker names (a record id or a bare
+    checkpoints subject), the coverage, and the deadline; the responder's book holds its digest;
+  - the answer: a signed evidence envelope or a signed refusal. The envelope names the request digest, the subject, the
+    anchor (the responder's checkpoint, signed under the listed checkpoint key), and the artifact by its digest; the
+    refusal names the request digest and a reason from the profile's list. Neither carries the body of a request, an
+    answer or a payment, and no payment amount appears in either (a payment is a separate record that is not an
+    answer to an evidence request);
+  - the outcome record in the asker's book, disclosed as an Evidence Bundle (outcome.bundle.json): the header of the
+    request and of the outcome, and the digest of the reply bytes the outcome keeps, which are the reply's own bytes
+    (answer.json).
+
+A listed node is asked only if its entry carries the consent statement that covers this (check_nodes.CONSENT_ASK_ACROSS,
+Steven's ruling on loop#440: the first statement does not cover step 13). An entry on the first statement is skipped and
+reported as "not opted in" in pairs.json, a NOT_CHECKED cell naming why, never a FAIL.
+
+THE ECOSYSTEMS. The names the issue uses (mesh, muse, goose) and the `community` a history card carries (mesh-llm, muse,
+goose) meet in ONE map, ECOSYSTEM_OF_COMMUNITY below; a community the map does not list is a refusal to guess, never a
+default. A /0 commitment's card reads as mesh-llm (history_cards.py).
+
+THE CARRIER comes from the entry, none is hard-coded. The entry's `ask_route` (`mesh` or `nostr`) must agree with the
+signed commitment's `ask` member (`ask.nostr` is there exactly for `nostr`); a pair whose two disagree is a FAIL. The
+address is read from the commitment: a mesh node's address is its node_id, a Goose node's is `ask.nostr.mailbox_key`
+with its relays.
+
+pairs.json holds one row per (asker ecosystem, responder ecosystem), each in the shape of a step's finding (`result`,
+`detail`, `not_checked` entries {what, why, issue}, `proof` with each file's sha256), and no time. The finding rolls up to
+the worst row: FAIL if any row fails, else NOT_CHECKED if any is, else PASS; step 08 re-derives every row.
+
+REHEARSAL. scripts/cross_rehearsal.py runs scripts/cross_ask_session.py (in the Goose venv) with rehearsal keys only: a
+mesh node (a capsulectl book node, steps/07-ask's join) and a Goose node (evidencebook's G1) that ask each other, three
+asks each way, as step 07 does, and the run waits out the one-minute deadline of the late ask. The mesh node's mailbox
+is the loop's adapter (scripts/cross_ask_session.py), not the mesh plugin, and the mesh rehearsal listing is an entry
+with `ask_route: nostr` made together with its re-signed commitment; so the PASS means: request and answer bytes verify
+across ecosystems under the listed keys. Outside this step's assertion: the mesh plugin's own mailbox
+(loop#442, loop#443), below.
+
+LIVE. No cross request is exchanged live, so there is nothing to re-derive, and each live cell stays NOT_CHECKED naming
+the carrier gap that owns it: loop#442 (a goose node asking a mesh node: the listed mesh commitments carry no ask.nostr
+and the plugin does not read a Nostr mailbox) and loop#443 (a mesh node asking a goose node: the plugin sends asks only
+over the mesh, and the lab Goose relay is reachable only from the lab host). A listed entry on the first consent statement
+is also named, as not opted in.
+"""
+import argparse
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(ROOT / "scripts"))
+import check_nodes  # noqa: E402
+import finding  # noqa: E402
+import history_cards  # noqa: E402
+
+
+def _load(base):
+    loader = importlib.machinery.SourceFileLoader(f"step13_{base.replace('-', '_')}", str(HERE / base))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+step07 = _load("07-ask")
+
+ASSERTS = ("an evidence request is answered across ecosystems: each (asker ecosystem, responder ecosystem) cell is "
+           "sealed before it is sent, carries its own deadline, and is answered with a signed artifact or a signed "
+           "refusal under the responder's listed key, or recorded as an absence; a signed refusal under the "
+           "responder's advertised policy counts as an answer, and an answer after the deadline counts as an absence")
+PINNED = ["capsulectl", "capsulectl-book", "goose-g1"]
+# The one map between the ecosystem names the issue uses and a history card's `community` (nodes/README.md,
+# history_cards.COMMUNITIES). A community it does not list is refused, never defaulted.
+ECOSYSTEM_OF_COMMUNITY = {"mesh-llm": "mesh", "muse": "muse", "goose": "goose"}
+ISSUE_GOOSE_TO_MESH = "evidence-network/loop#442"
+ISSUE_MESH_TO_GOOSE = "evidence-network/loop#443"
+# The two cells, with the live carrier gap that owns each: (asker ecosystem, responder ecosystem) -> (issue, why).
+CELLS = {
+    ("goose", "mesh"): (ISSUE_GOOSE_TO_MESH,
+                        "no live cross request was exchanged: the listed mesh commitments carry no ask.nostr, and the "
+                        "mesh plugin does not read a Nostr mailbox, so an ask sent there is not answered"),
+    ("mesh", "goose"): (ISSUE_MESH_TO_GOOSE,
+                        "no live cross request was exchanged: the mesh plugin sends asks over the mesh only, nothing "
+                        "sends on a Nostr mailbox, and the lab Goose relay is reachable only from the lab host"),
+}
+OPT_IN_ISSUE = "evidence-network/loop#440"
+NOT_OPTED_IN = ("not opted in: the entry carries the first operator statement, which does not cover step 13 "
+                "(it moves to the newer statement by a pull request of its operator)")
+OUTSIDE = [("the mesh node's mailbox in the rehearsal is the loop's adapter, not the mesh plugin; a live goose node "
+            "asking a mesh node", ISSUE_GOOSE_TO_MESH),
+           ("the mesh node sends its request through the loop's adapter in the rehearsal; a live mesh node asking a "
+            "goose node", ISSUE_MESH_TO_GOOSE)]
+PAIRS = "pairs.json"
+ADVERTISED = step07.ADVERTISED
+
+
+def load(path):
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def write_json(path, data):
+    Path(path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def ecosystem_of(commitment):
+    """The ecosystem name of a node, from the community its commitment's history cards carry; ValueError when the
+    cards name none, or two, or one the map does not list. The step never guesses."""
+    found = {c.get("community") for c in history_cards.entries(commitment)}
+    if len(found) != 1:
+        raise ValueError(f"the commitment's history cards name {sorted(map(str, found)) or 'no'} communit"
+                         f"{'ies' if len(found) != 1 else 'y'}, not exactly one")
+    (community,) = found
+    if community not in ECOSYSTEM_OF_COMMUNITY:
+        raise ValueError(f"community {community!r} is not one the ecosystem map lists "
+                         f"({', '.join(sorted(ECOSYSTEM_OF_COMMUNITY))})")
+    return ECOSYSTEM_OF_COMMUNITY[community]
+
+
+def route_errors(entry, commitment):
+    """What disagrees between a node's entry (ask_route) and its signed commitment (ask): none hard-coded."""
+    nostr = isinstance(commitment.get("ask"), dict) and "nostr" in commitment["ask"]
+    route = entry.get("ask_route")
+    if route == "nostr" and not nostr:
+        return ["the entry's ask_route is nostr, but the signed commitment names no ask.nostr mailbox"]
+    if route == "mesh" and nostr:
+        return ["the entry's ask_route is mesh, but the signed commitment names an ask.nostr mailbox"]
+    if route not in ("mesh", "nostr"):
+        return [f"the entry's ask_route is {route!r}, which names no carrier"]
+    return []
+
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def gap(what, why, issue):
+    return {"what": what, "why": why, "issue": issue}
+
+
+def row_of(asker_eco, responder_eco, asker_node, responder_node, result, detail, not_checked, proof, base):
+    return {"asker": asker_eco, "responder": responder_eco, "asker_node": asker_node, "responder_node": responder_node,
+            "result": result, "detail": detail, "not_checked": not_checked,
+            "proof": [{"path": p, "sha256": sha(Path(base) / p)} for p in proof]}
+
+
+# --- Rehearsal: the run's proof tree, judged with step 07's judge ----------------------------------------------------
+def advertised_proof(work, node):
+    """The files a node's advertisement is judged from, relative to the run's tree."""
+    adv = Path(work) / node / "advertised"
+    names = [f"{node}/advertised/{f}" for f in ADVERTISED if (adv / f).is_file()]
+    names += [f"{node}/advertised/{p.relative_to(adv)}" for p in sorted((adv / "policies").glob("*.json"))
+              ] if (adv / "policies").is_dir() else []
+    return names
+
+
+def judge_cells(work, keys, capsulectl, tmp):
+    """One row per (asker, responder) node pair of the run, each judged by step 07's judge_pair with mailbox=True.
+
+    `keys` is {node name: listed key_id}, the repository's (the population's), never the bundle's. The entry of each
+    node is the run's entries/<node_id>.json; the asked node's must carry the step 13 consent statement."""
+    work = Path(work)
+    rows = []
+    entries = {}
+    for p in sorted((work / "entries").glob("*.json")):
+        try:
+            e = load(p)
+        except (OSError, ValueError):
+            continue
+        if isinstance(e, dict) and isinstance(e.get("node_id"), str):
+            entries[e["node_id"]] = (p, e)
+    commitments, ecos, problems = {}, {}, {}
+    for name in keys:
+        try:
+            commitments[name] = load(work / name / "advertised" / "commitment.json")
+            ecos[name] = ecosystem_of(commitments[name])
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            problems[name] = f"{name}'s commitment names no ecosystem ({e})"
+    for asker in sorted(keys):
+        for asked in sorted(keys):
+            if asker == asked:
+                continue
+            pair_dir = work / asker / "asks" / asked
+            if not pair_dir.is_dir():
+                continue
+            a_eco, b_eco = ecos.get(asker, asker), ecos.get(asked, asked)
+            proof = [f"{asker}/asks/{asked}/carrier.jsonl"]
+            errs, not_checked, result = [], [], None
+            for n in (asker, asked):
+                if n in problems:
+                    errs.append(problems[n])
+            entry = entries.get(keys[asked])
+            if entry is None:
+                errs.append(f"the run lists no entry for {asked} (entries/{keys[asked]}.json)")
+            else:
+                path, e = entry
+                errs += [x.split(": ", 1)[-1] for x in check_nodes.check_entry(path.with_name(f"{keys[asked]}.json"), e)]
+                if not errs and asked in commitments:
+                    errs += route_errors(e, commitments[asked])
+                if not errs and e.get("consent") != check_nodes.CONSENT_ASK_ACROSS:
+                    not_checked.append(gap(f"the {a_eco} -> {b_eco} ask of node {keys[asked][:12]}", NOT_OPTED_IN,
+                                           OPT_IN_ISSUE))
+                    result = "NOT_CHECKED"
+            line = ""
+            if result is None and not errs:
+                nc = []
+                e_, answered, p, line = step07.judge_pair(pair_dir, work / asked / "advertised", keys[asker], capsulectl,
+                                                          Path(tmp) / f"verify-{asker}-{asked}", nc, mailbox=True)
+                errs += e_
+                not_checked += nc
+                proof = [f"{asker}/asks/{asked}/{x}" for x in p] + advertised_proof(work, asked)
+                proof.append(f"entries/{keys[asked]}.json")
+            if result is None:
+                result = "FAIL" if errs else ("NOT_CHECKED" if not_checked else "PASS")
+            detail = "; ".join(errs) if errs else (line or "not asked")
+            rows.append(row_of(a_eco, b_eco, keys[asker], keys[asked], result, detail, not_checked,
+                               sorted(set(proof)), work))
+    return rows
+
+
+def roll_up(rows):
+    """FAIL if any row fails, else NOT_CHECKED if any is, else PASS: one worse cell never sits under a PASS."""
+    results = {r["result"] for r in rows}
+    return "FAIL" if "FAIL" in results else ("NOT_CHECKED" if "NOT_CHECKED" in results or not rows else "PASS")
+
+
+def decide(work, keys, capsulectl, tmp, started, population="rehearsal", note=""):
+    """Judge a run's tree again from its bytes and the listed keys: writes <work>/pairs.json and returns the finding's
+    result, not_checked and detail (what the step writes, and what step 08 re-derives)."""
+    rows = judge_cells(work, keys, capsulectl, tmp)
+    expected = {(a, b) for a in keys for b in keys if a != b}
+    present = {(r["asker_node"], r["responder_node"]) for r in rows}
+    missing = sorted(f"{a} asked {b}" for a, b in expected if (keys[a], keys[b]) not in present)
+    if missing:
+        for what in missing:
+            a, b = what.split(" asked ")
+            rows.append(row_of(a, b, keys[a], keys[b], "FAIL", f"{what}: the run holds no asks of this pair", [], [], work))
+    rows.sort(key=lambda r: (r["asker"], r["responder"], r["asker_node"], r["responder_node"]))
+    write_json(Path(work) / PAIRS, {"rows": rows})
+    result = roll_up(rows)
+    not_checked = [x for r in rows for x in r["not_checked"]]
+    lines = [f"{r['asker']} -> {r['responder']}: {r['result']} ({r['detail']})" for r in rows]
+    detail = "ask backend: cross. " + "; ".join(lines) + "."
+    if result == "PASS":
+        detail += "".join(" " + finding.outside(what, issue) for what, issue in OUTSIDE)
+    return {"result": result, "not_checked": not_checked, "detail": detail, "rows": rows}
+
+
+# --- Live: no cross request was exchanged ----------------------------------------------------------------------------
+def listed(nodes_dir):
+    """[(node_id, entry, commitment or None, ecosystem or None, error)] for each entry listed under nodes_dir."""
+    out = []
+    for p in sorted(Path(nodes_dir).glob("*.json")):
+        try:
+            entry = load(p)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("node_id"), str):
+            continue
+        c, eco, err = None, None, None
+        try:
+            c = load(Path(nodes_dir) / "commitments" / p.name)
+            eco = ecosystem_of(c)
+        except OSError:
+            err = "no signed commitment is published for the entry"
+        except (ValueError, KeyError, TypeError) as e:
+            err = str(e)
+        out.append((entry["node_id"], entry, c, eco, err))
+    return out
+
+
+def live_rows(nodes_dir):
+    """The two cells of the live population: each NOT_CHECKED naming its carrier gap, and each listed entry of the
+    responder's ecosystem named as not opted in when it carries the first statement. Nothing was sent."""
+    rows = []
+    nodes = listed(nodes_dir)
+    for (asker, responder), (issue, why) in sorted(CELLS.items()):
+        nc = [gap(f"a {asker} node's evidence request to a {responder} node, answered", why, issue)]
+        for node_id, entry, c, eco, err in nodes:
+            if eco == responder and entry.get("consent") != check_nodes.CONSENT_ASK_ACROSS:
+                nc.append(gap(f"the {asker} -> {responder} ask of node {node_id[:12]}", NOT_OPTED_IN, OPT_IN_ISSUE))
+            if err:
+                nc.append(gap(f"the ecosystem of node {node_id[:12]}", err, OPT_IN_ISSUE))
+        rows.append({"asker": asker, "responder": responder, "asker_node": None, "responder_node": None,
+                     "result": "NOT_CHECKED", "detail": "no cross request was exchanged; nothing was sent",
+                     "not_checked": nc, "proof": []})
+    return rows
+
+
+def decide_live(work, nodes_dir):
+    rows = live_rows(nodes_dir)
+    write_json(Path(work) / PAIRS, {"rows": rows})
+    lines = [f"{r['asker']} -> {r['responder']}: {r['result']} ({r['detail']})" for r in rows]
+    return {"result": "NOT_CHECKED", "not_checked": [x for r in rows for x in r["not_checked"]],
+            "detail": "ask backend: cross, live. " + "; ".join(lines) + ".", "rows": rows}
+
+
+# --- main ------------------------------------------------------------------------------------------------------------
+def proof_of(work, rows):
+    """The files the finding cites: pairs.json and every file a row cites."""
+    paths = {PAIRS}
+    for r in rows:
+        paths.update(x["path"] for x in r["proof"])
+    return sorted(paths)
+
+
+def conclude(out, population, d, started, pinned=PINNED):
+    proof = proof_of(out, d["rows"])
+    result, nc = d["result"], d["not_checked"]
+    return finding.write(out, result=result, population=population, asserts=ASSERTS, pinned=pinned, proof=proof,
+                         detail=d["detail"], not_checked=nc if result != "PASS" else [], started=started)
+
+
+def keys_of(pop):
+    return {name: n["key_id"] for name, n in pop["cross"]["nodes"].items()}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    ap.add_argument("--population", required=True, type=Path)
+    ap.add_argument("--out", required=True, type=Path)
+    a = ap.parse_args(argv)
+    started = finding.now()
+    pop = load(a.population / "population.json")
+    a.out.mkdir(parents=True, exist_ok=True)
+    population = pop["population"]
+    if population == "live":
+        nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+        d = decide_live(a.out, nodes_dir)
+        pinned = []
+    else:
+        run = (pop.get("cross") or {}).get("run")
+        if not run or not (Path(run) / "nodes.json").is_file():
+            d = {"result": "NOT_CHECKED", "rows": [], "not_checked": [gap(
+                "the cross rehearsal", "the population names no cross run (scripts/cross_rehearsal.py writes one; it "
+                "needs the Goose tools, steps/goose.setup.sh)", "evidence-network/loop#440")],
+                "detail": "the population holds no cross run, so no request was asked across ecosystems."}
+            write_json(a.out / PAIRS, {"rows": []})
+            r = finding.write(a.out, result="NOT_CHECKED", population=population, asserts="step 13 holds for the cross "
+                              "ecosystem population", pinned=[], proof=[PAIRS], detail=d["detail"],
+                              not_checked=d["not_checked"], started=started)
+            print(f"13-ask-across: {r['result']}: {r['detail']}", file=sys.stderr)
+            return 0
+        capsulectl = step07.tools()
+        if not capsulectl.is_file():
+            raise SystemExit(f"13-ask-across: no capsulectl at {capsulectl}; run steps/07-ask.setup.sh")
+        for p in list(a.out.iterdir()):  # a rerun into the same --out starts clean
+            if p.name not in ("loop-step.log",):
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+        for p in Path(run).iterdir():
+            shutil.copytree(p, a.out / p.name) if p.is_dir() else shutil.copyfile(p, a.out / p.name)
+        with tempfile.TemporaryDirectory(prefix="13-ask-across-") as tmp:
+            d = decide(a.out, keys_of(pop), capsulectl, tmp, started)
+        pinned = PINNED
+    r = conclude(a.out, population, d, started, pinned)
+    print(f"13-ask-across: {r['result']}: {r['detail']}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
