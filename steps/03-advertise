@@ -85,12 +85,11 @@ ASSERTS_NOSTR = (", and, for a node advertising on Nostr, the announce event rea
 # (capsule-cli takes no keys for it; the plain rehearsal harness builds only /0, so its stand-in staples are this case,
 # loop#407) or a card entry without a checkpoint_key (an allowed shape, not refused).
 # loop#410 owns every unchecked history_card/1 staple signature: a keyless entry, a capsule-cli that is not installed or
-# gave no report, and the /0 case above (the standard_history/1 staple is loop#413). A /0 is built by the rehearsal
+# gave no report, and the /0 case above. A /0 is built by the rehearsal
 # harness (the stand-in staples) or signed by a plugin whose pin predates /1 (capsules-plugin#266, closed, shipped /1 in
 # v0.1.16; loop#416 moves the pin); it closes when the pin is on /1 and no rehearsal node stays on /0 (loop#418).
 STAPLE_ISSUE = "evidence-network/loop#410"
-# A standard_history/1 staple is verified like a card (loop#408); a live run keeps no staple bytes (loop#413).
-STANDARD_LIVE_ISSUE = "evidence-network/loop#413"
+# A standard_history/1 staple is verified like a card (loop#408), on the git carrier's bytes in a live run too (loop#413).
 # The node signs and serves its commitment on the pinned plugin (capsules-plugin PR #75, in the pin).
 # What is still open for a live node is publishing it to the carrier, and no open issue names that yet.
 LIVE_GAP = ("the pinned capsules plugin signs and serves the node's commitment and returns it to its operator "
@@ -384,11 +383,11 @@ def verify_node(out, name, rec, key_id, read, live):
         staple_bytes = {}
 
         def fetch_staple(part):
-            got = read(f"nodes/commitments/standard_history/{rec['node_id']}.{part}.json")
+            got = read(staple_path(rec["node_id"], part))
             staple_bytes[part] = got
             if got is not None:
-                (out / f"{name}.standard_history.{part}.json").write_bytes(got)
-                proofs.append(f"{name}.standard_history.{part}.json")
+                (out / staple_file(name, part)).write_bytes(got)
+                proofs.append(staple_file(name, part))
             return got
         errs, notes = cc.verify(doc, fetch_policy, fetch_staple)
         if key_id is None:
@@ -423,7 +422,7 @@ def verify_node(out, name, rec, key_id, read, live):
         rec["policy_digest"] = doc["lcap"]["policy_digest"]
         rec["history_cards"] = hc.history_cards(doc)
         if "standard_history" in doc:
-            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes), "live": live,
+            rec["standard_history"] = {**doc["standard_history"], "bytes_checked": not any(n.startswith(cc.STD_NOT_SUPPLIED) for n in notes),
                                        "verified": rec.get("standard_verify", {}).get("state") == "PASS"}
     return rec, proofs
 
@@ -431,8 +430,6 @@ def verify_node(out, name, rec, key_id, read, live):
 def standard_why(r):
     """Why a standard_history/1 staple's signature was not verified: no bytes published, or what capsule-cli said."""
     if not r["standard_history"]["bytes_checked"]:
-        if r["standard_history"]["live"]:
-            return "the live collector keeps no staple bytes, so capsule-cli had nothing to verify"
         return "its bytes were not published, so capsule-cli had nothing to verify"
     return "; ".join(r.get("standard_verify", {}).get("not_checked") or ["capsule-cli did not run on it"])
 
@@ -446,9 +443,7 @@ def standard_coverage(group):
         said.append("the digests, the answer's responder and its request were checked from the published "
                     f"bytes ({', '.join(with_bytes)})")
     if shape_only:
-        why = "the bytes were not held" if any(r["standard_history"]["live"] for r in group if r["name"] in shape_only) \
-            else "the bytes were not published"
-        said.append(f"{why}, so only the member's shape was checked ({', '.join(shape_only)})")
+        said.append(f"the bytes were not published, so only the member's shape was checked ({', '.join(shape_only)})")
     return "; ".join(said)
 
 
@@ -502,6 +497,14 @@ def main(argv=None):
 
 
 # --- Live: what the carrier held, kept in the proof so step 08 runs the judge again on it (loop#188) ---------
+def staple_path(node_id, part):
+    return f"nodes/commitments/standard_history/{node_id}.{part}.json"
+
+
+def staple_file(name, part):
+    return f"{name}.standard_history.{part}.json"
+
+
 CARRIER_FILE = "carrier.json"  # the carrier's HEAD commit, and per node its listed key_id and what HEAD held
 
 
@@ -510,7 +513,7 @@ def collect_live(pop, out, carrier):
     (carrier.json, <name>.commitment.json, <name>.policy.json). The harness never signs for a live node."""
     out = Path(out)
     for p in [out / CARRIER_FILE, out / "verification.json", out / "finding.json",
-              *out.glob("*.commitment.json"), *out.glob("*.policy.json")]:
+              *out.glob("*.commitment.json"), *out.glob("*.policy.json"), *out.glob("*.standard_history.*.json")]:
         p.unlink(missing_ok=True)
     rev = git(carrier, "rev-parse", "HEAD", check=False)
     head = rev.stdout.decode().strip() if rev.returncode == 0 else None
@@ -528,8 +531,19 @@ def collect_live(pop, out, carrier):
             continue
         (out / f"{node['name']}.commitment.json").write_bytes(got)
         try:
-            uri = json.loads(got)["lcap"]["policy_uri"]
-        except (ValueError, KeyError, TypeError):
+            parsed = json.loads(got)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict) and "standard_history" in parsed:  # a commitment naming a staple: both parts, same commit
+            for part in STAPLE_PARTS:
+                spath = staple_path(node["node_id"], part)
+                raw = fetch(carrier, spath, ref)
+                entry["paths"][spath] = raw is not None
+                if raw is not None:
+                    (out / staple_file(node["name"], part)).write_bytes(raw)
+        try:
+            uri = parsed["lcap"]["policy_uri"]
+        except (KeyError, TypeError):
             continue
         if isinstance(uri, str) and not ("://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]):
             pol = fetch(carrier, f"nodes/commitments/{uri}", ref)
@@ -563,7 +577,8 @@ def judge_live(pop, out, started):
                             "errors": [f"{CARRIER_FILE} does not record this node as the population names it"]})
             continue
         rec["key_id"] = entry.get("key_id")
-        files = {f"nodes/commitments/{node.get('node_id')}.json": out / f"{name}.commitment.json"}
+        files = {f"nodes/commitments/{node.get('node_id')}.json": out / f"{name}.commitment.json",
+                 **{staple_path(node.get("node_id"), part): out / staple_file(name, part) for part in STAPLE_PARTS}}
 
         def read(path, entry=entry, files=files, name=name):
             if not entry["paths"].get(path):
@@ -577,7 +592,8 @@ def judge_live(pop, out, started):
                                 "errors": [f"a file carrier.json says HEAD held is not in the proof ({e})"]}, []
         records.append(r)
         # Every file collect_live kept for the node is cited, even one the checker stopped before reading.
-        proof += files_written + [f for f in (f"{name}.commitment.json", f"{name}.policy.json")
+        proof += files_written + [f for f in (f"{name}.commitment.json", f"{name}.policy.json",
+                                              *(staple_file(name, part) for part in STAPLE_PARTS))
                                   if f not in files_written and (out / f).is_file()]
     extra = sorted(set(held) - set(names))
     if extra:
@@ -620,7 +636,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                             "why": "its two digests " + ("and its answer's responder and request are checked" if r["standard_history"]["bytes_checked"]
                                                          else "are shape-checked, the bytes were not supplied")
                                    + "; its signature, anchor and nonce are not verified: " + standard_why(r),
-                            "issue": STANDARD_LIVE_ISSUE if r["standard_history"]["live"] else STAPLE_ISSUE})
+                            "issue": STAPLE_ISSUE})
         for n in r["notes"]:
             if n.startswith(cc.STD_NOT_SUPPLIED):
                 continue
@@ -675,7 +691,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
                     f"the standard_history/1 staple of {', '.join(r['name'] for r in unverified)}: its signature, anchor "
                     "and nonce are not verified (" + "; ".join(standard_why(r) for r in unverified) + "); "
                     + standard_coverage(unverified),
-                    STANDARD_LIVE_ISSUE if all(r["standard_history"]["live"] for r in unverified) else STAPLE_ISSUE)
+                    STAPLE_ISSUE)
     else:
         not_checked += outside
     ran = any(r.get("staple_verify", {}).get("ran") or r.get("standard_verify", {}).get("ran") for r in records)
