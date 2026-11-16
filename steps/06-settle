@@ -686,7 +686,7 @@ def pre_window_unattributed(row, since):
     if since is None or row["status"] != "INCONCLUSIVE" or not (type(un) is int and un >= 0 and un + up > 0):
         return 0, 0
     if row.get("hashless") != 0 or row.get("in_window_unpaired") != 0 or row.get("undated") != 0 \
-            or row.get("unpaired_outside_window") != up:
+            or row.get("unpaired_outside_window", 0) != up:
         return 0, 0
     out = row.get("outside_window")
     return (un, up) if type(out) is int and un + up <= out else (0, 0)
