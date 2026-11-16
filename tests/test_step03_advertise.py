@@ -326,17 +326,6 @@ class NodeSignedTest(unittest.TestCase):
         self.assertIn("its signature, anchor and nonce are not verified", f["detail"])
         self.assertEqual(finding.check(out.parent), [])
 
-    def test_a_live_run_does_not_claim_the_staple_bytes_were_unpublished(self):
-        # collect_live keeps no staple parts, so a live record cannot say the node did not publish them.
-        r = {"standard_history": {"bytes_checked": False, "live": True}}
-        self.assertIn("live collector keeps no staple bytes", self.step.standard_why(r))
-        r["standard_history"]["live"] = False
-        self.assertIn("were not published", self.step.standard_why(r))
-        live = {"name": "alice", "standard_history": {"bytes_checked": False, "live": True}}
-        self.assertNotIn("published", self.step.standard_coverage([live]))
-        live["standard_history"]["live"] = False
-        self.assertIn("not published", self.step.standard_coverage([live]))
-
     def test_a_standard_history_property_capsule_cli_does_not_find_present_is_refused(self):
         with unittest.mock.patch.dict("os.environ", {"STUB_MODE": "notpresent"}):
             errs = self.refusals(lambda req, rep: (req, rep))
@@ -536,6 +525,63 @@ class LiveTest(unittest.TestCase):
         node = json.loads((out / "verification.json").read_text())["nodes"][0]
         self.assertEqual(node["errors"], ["the commitment is not under this node's key"])
 
+
+    def stapled_carrier(self, standard, drop=()):
+        """A carrier where alice's key published a commitment naming a standard_history/1 staple, with the parts
+        `standard` makes (a part it returns as None is not published) and none of those named in `drop`."""
+        repo = self.published_carrier()
+        signed = goose_commitment(ALICE_KEY, self.tmp / "signed", standard)
+        node_id = alice_node_id()
+        tree = repo / "nodes" / "commitments"
+        shutil.copyfile(signed["commitment"], tree / f"{node_id}.json")
+        shutil.copyfile(signed["policy"], tree / "policies" / f"{node_id}.json")
+        (tree / "standard_history").mkdir()
+        for part in ("request", "reply"):
+            if part not in drop and f"standard_history_{part}" in signed:
+                shutil.copyfile(signed[f"standard_history_{part}"], tree / "standard_history" / f"{node_id}.{part}.json")
+        subprocess.run(["git", "-C", str(repo), *self.step.GIT_ID, "add", "nodes"], check=True)
+        subprocess.run(["git", "-C", str(repo), *self.step.GIT_ID, "commit", "-qm", "stapled"], check=True)
+        return repo
+
+    def test_live_standard_history_staple_is_kept_and_verified(self):
+        carrier = self.stapled_carrier(lambda req, rep: (req, rep))
+        f, out = self.run_live("live-published", carrier)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        held = json.loads((out / "carrier.json").read_text())["nodes"]["lab-1"]["paths"]
+        node_id = alice_node_id()
+        for part in ("request", "reply"):
+            self.assertTrue(held[f"nodes/commitments/standard_history/{node_id}.{part}.json"])
+            self.assertIn(f"lab-1.standard_history.{part}.json", [x["path"] for x in f["proof"]])
+        node = json.loads((out / "verification.json").read_text())["nodes"][0]
+        self.assertTrue(node["standard_history"]["bytes_checked"])
+        self.assertEqual(node["standard_verify"]["state"], "PASS")
+
+    def test_live_tampered_standard_history_staple_fails(self):
+        carrier = self.stapled_carrier(lambda req, rep: (req, rep.replace(b"test", b"evil")))
+        f, out = self.run_live("live-published", carrier)
+        self.assertEqual(f["result"], "FAIL")
+        node = json.loads((out / "verification.json").read_text())["nodes"][0]
+        self.assertTrue(any("standard_history" in e for e in node["errors"]), node["errors"])
+
+    def test_live_one_part_standard_history_staple_fails(self):
+        carrier = self.stapled_carrier(lambda req, rep: (req, rep), drop=("reply",))
+        f, out = self.run_live("live-published", carrier)
+        self.assertEqual(f["result"], "FAIL")
+        node = json.loads((out / "verification.json").read_text())["nodes"][0]
+        self.assertTrue(any("only the staple's request is published" in e for e in node["errors"]), node["errors"])
+        held = json.loads((out / "carrier.json").read_text())["nodes"]["lab-1"]["paths"]
+        self.assertTrue(held[f"nodes/commitments/standard_history/{alice_node_id()}.request.json"])
+        self.assertFalse(held[f"nodes/commitments/standard_history/{alice_node_id()}.reply.json"])
+
+    def test_live_standard_history_staple_with_no_bytes_published_says_they_were_not_published(self):
+        carrier = self.stapled_carrier(lambda req, rep: (req, rep), drop=("request", "reply"))
+        f, out = self.run_live("live-published", carrier)
+        self.assertEqual(f["result"], "PASS", f["detail"])
+        node = json.loads((out / "verification.json").read_text())["nodes"][0]
+        self.assertFalse(node["standard_history"]["bytes_checked"])
+        self.assertIn("were not published", f["detail"])
+        self.assertNotIn("live collector", f["detail"])
+        self.assertNotIn("evidence-network/loop#413", f["detail"])
 
     def commit_change(self, repo, path, edit):
         doc = json.loads((repo / path).read_text())

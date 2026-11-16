@@ -1025,7 +1025,7 @@ def keys_03_live(c):
     here; otherwise not_reproduced (a key rotated since, or one never listed, loop#193). When carrier.json's head
     is a full commit id that this checkout holds, 08 works out each node's paths itself from that commit (its
     listing, its commitment and the policy the commitment names) and every one must be what carrier.json says HEAD
-    held, byte for byte; a path carrier.json leaves out is checked too. Otherwise the bytes are not compared, and
+    held, byte for byte (a commitment naming a standard_history/1 staple adds that staple's two parts, loop#413); a path carrier.json leaves out is checked too. Otherwise the bytes are not compared, and
     that is a not_checked entry on loop#193. That the commit was current when 03 ran is the run's own reading, a
     declared trust root (steps/08-verify.md, T4), not a not_checked entry."""
     if "carrier.json" not in {p["path"] for p in c.record["proof"]}:
@@ -1076,6 +1076,15 @@ def keys_03_live(c):
             uri = None
         if isinstance(uri, str) and not ("://" in uri or uri.startswith("/") or ":" in uri.split("/")[0]):
             expect[f"nodes/commitments/{uri}"] = (at(f"nodes/commitments/{uri}"), c.work / f"{name}.policy.json")
+        try:
+            names_staple = isinstance(json.loads(expect[commitment][0]), dict) and "standard_history" in json.loads(expect[commitment][0])
+        except (ValueError, TypeError):
+            names_staple = False
+        if names_staple:  # a commitment naming a standard_history/1 staple: both parts at that commit (loop#413)
+            for part in ("request", "reply"):
+                expect[f"nodes/commitments/standard_history/{node_id}.{part}.json"] = (
+                    at(f"nodes/commitments/standard_history/{node_id}.{part}.json"),
+                    c.work / f"{name}.standard_history.{part}.json")
         for path, (then, mine) in sorted(expect.items()):
             if bool(paths.get(path)) != (then is not None) or (then is not None and (
                     not mine.is_file() or mine.read_bytes() != then)):

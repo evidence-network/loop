@@ -971,6 +971,64 @@ class Step08Live04Test(unittest.TestCase):
         self.assertIn("recorded PASS, re-derived NOT_CHECKED", f["detail"])
 
 
+@unittest.skipUnless(shutil.which("git"), "SKIPPED LOUDLY: live 03's byte check reads the carrier's commit with git")
+class Step08Live03StapleTest(unittest.TestCase):
+    """keys_03_live holds a standard_history/1 staple's two parts to the carrier's commit, byte for byte (loop#413)."""
+
+    NODE = "ab" * 32
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.repo, self.work = root / "repo", root / "work"
+        tree = self.repo / "nodes" / "commitments"
+        (tree / "policies").mkdir(parents=True)
+        (tree / "standard_history").mkdir()
+        (self.repo / "nodes" / f"{self.NODE}.json").write_text(json.dumps({"key_id": self.NODE}))
+        (tree / f"{self.NODE}.json").write_text(json.dumps({"lcap": {"policy_uri": f"policies/{self.NODE}.json"},
+                                                            "standard_history": {}}))
+        (tree / "policies" / f"{self.NODE}.json").write_text("{}")
+        for part in ("request", "reply"):
+            (tree / "standard_history" / f"{self.NODE}.{part}.json").write_text(part)
+        g = ["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+        subprocess.run([*g, "init", "-q"], check=True)
+        subprocess.run([*g, "add", "."], check=True)
+        subprocess.run([*g, "commit", "-qm", "c"], check=True)
+        head = subprocess.run([*g, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        self.work.mkdir()
+        paths = {f"nodes/commitments/{self.NODE}.json": True, f"nodes/commitments/policies/{self.NODE}.json": True,
+                 **{f"nodes/commitments/standard_history/{self.NODE}.{p}.json": True for p in ("request", "reply")}}
+        (self.work / "carrier.json").write_text(json.dumps({"head": head, "nodes": {"n": {
+            "node_id": self.NODE, "key_id": self.NODE, "paths": paths}}}))
+        shutil.copyfile(tree / f"{self.NODE}.json", self.work / "n.commitment.json")
+        shutil.copyfile(tree / "policies" / f"{self.NODE}.json", self.work / "n.policy.json")
+        for part in ("request", "reply"):
+            shutil.copyfile(tree / "standard_history" / f"{self.NODE}.{part}.json", self.work / f"n.standard_history.{part}.json")
+
+    def check(self):
+        c = mock.Mock(work=self.work, relies=[], record={"proof": [{"path": "carrier.json"}]})
+        with mock.patch.object(step, "ROOT", self.repo), mock.patch.dict(os.environ, {"LOOP_NODES_DIR": str(self.repo / "nodes")}):
+            return step.keys_03_live(c)
+
+    def test_the_staple_parts_as_the_commit_held_them_pass(self):
+        self.assertEqual(self.check(), [])
+
+    def test_a_staple_part_that_is_not_what_the_commit_held_fails(self):
+        (self.work / "n.standard_history.reply.json").write_text("forged")
+        bad = self.check()
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn(f"standard_history/{self.NODE}.reply.json is not what the carrier's commit", bad[0])
+
+    def test_a_staple_part_carrier_json_leaves_out_fails(self):
+        doc = json.loads((self.work / "carrier.json").read_text())
+        del doc["nodes"]["n"]["paths"][f"nodes/commitments/standard_history/{self.NODE}.request.json"]
+        (self.work / "carrier.json").write_text(json.dumps(doc))
+        bad = self.check()
+        self.assertEqual(len(bad), 1, bad)
+        self.assertIn("standard_history", bad[0])
+
+
 @unittest.skipUnless(step.openssl_ed25519() and shutil.which("git"), "SKIPPED LOUDLY: live 03 verifies with OpenSSL 3+ "
                                                                   "and reads this repository's HEAD with git")
 class Step08Live03Test(unittest.TestCase):

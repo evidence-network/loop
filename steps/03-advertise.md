@@ -32,6 +32,11 @@ read back. The finding names the carrier.
   nothing, and requires the commitment to be under the `key_id` that
   `nodes/<node_id>.json` lists. A node with no node id or no commitment there
   is `NOT_CHECKED`.
+  When the commitment names a `standard_history/1` staple, the step also
+  reads its two parts (`nodes/commitments/standard_history/<node_id>.request.json`
+  and `.reply.json`) at the same commit, keeps them in the proof and verifies
+  them as the rehearsal path does; step 08 holds them to that commit byte for
+  byte.
 
 Only the rehearsal harness holds signing keys, and those are test keys. The
 field names and canonicalization below are what this repository checks; a
