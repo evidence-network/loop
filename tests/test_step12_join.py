@@ -700,6 +700,27 @@ class ReporterBackendTest(Tmp):
         self.assertIsNone(named)
         self.assertIn("answers as no node", nc["why"])
 
+    def test_a_plugin_error_from_the_own_commitment_is_reported_as_that_error(self):
+        # A console that answers {"error": ...} is right, and the commitment could not be built (capsules-plugin
+        # commitment.rs fits(): larger than a peer reads); it must not be reported as "answers as no node" (loop#436).
+        err = "Plugin 'capsules' failed 'invoke_service' (code -32603): the commitment would be 1135361 bytes, larger than a peer reads (1048576)"
+        real = step.post_json
+        step.post_json = lambda url, body, timeout: {"error": err}
+        try:
+            fail, nc, _, _, named = step.check_binding("lab-3", "3" * 64, LISTED, "http://x", "http://y", 1)
+        finally:
+            step.post_json = real
+        self.assertIsNone(fail)
+        self.assertIsNone(named)
+        self.assertIn("larger than a peer reads (1048576)", nc["why"])
+        self.assertNotIn("answers as", nc["why"])
+
+    def test_wrong_console_names_the_node_it_answered_as_or_none(self):
+        self.assertIn("answers as " + "9" * 64 + ", not as " + "1" * 64,
+                      step.wrong_console({"commitment": {"node_id": "9" * 64}}, "1" * 64))
+        for own in ({}, None, {"commitment": [1]}, {"error": ""}, {"error": 5}):
+            self.assertIn("answers as no node", step.wrong_console(own, "1" * 64), own)
+
     def test_a_malformed_node_console_is_refused(self):
         self.assertEqual(step.main(["--population", str(self.out), "--out", str(self.out), "--node-console", "lab-1"]), 2)
 

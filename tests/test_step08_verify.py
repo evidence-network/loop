@@ -1662,7 +1662,7 @@ class Step08Live09Test(unittest.TestCase):
         self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
 
 
-def lightning_ledgers(lab, n=2, stamps=None):
+def lightning_ledgers(lab, n=2, stamps=None, final_bill=()):
     """lab/lab-1..3 ledgers: n payments lab-2 -> lab-1, each with the payer's preimage. The preimages exist only in
     this temp dir, as step 06 reads them; step 06's proof keeps their outcome, never the value."""
     import hashlib
@@ -1680,20 +1680,21 @@ def lightning_ledgers(lab, n=2, stamps=None):
         pre = f"{k + 1:02x}" * 32
         h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
         rows[2].append(obs("payer", f"p{k}", h, pre))
-        rows[1].append(obs("provider", f"s{k}", h, None, credited_msat=999999000, fee_msat=1000))
+        rows[1].append(obs("provider", f"s{k}", h, None) if k in final_bill  # a final settlement: no wallet amounts
+                       else obs("provider", f"s{k}", h, None, credited_msat=999999000, fee_msat=1000))
     for i, lines in rows.items():
         (lab / f"lab-{i}" / "ledger").mkdir(parents=True)
         (lab / f"lab-{i}" / "ledger" / "capsules.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
 
 
 def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False,
-           bundle_first=1, stamps=None, window=None, unattributed=None, unpaired=()):
+           bundle_first=1, stamps=None, window=None, unattributed=None, unpaired=(), final_bill=()):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
     out dir being dst: the proof 08 re-derives. Returns the finding. stamps: each payment's record time; window:
     the population's window start; unattributed: the check's settlements_unattributed."""
     import hashlib
     lab = Path(tmp) / "lab"
-    lightning_ledgers(lab, n, stamps)
+    lightning_ledgers(lab, n, stamps, final_bill)
     if drop_node:
         shutil.rmtree(lab / f"lab-{drop_node}")
     doc = load(LIVE_POPULATION / "population.json")
@@ -1882,6 +1883,17 @@ class Step08Live06Test(unittest.TestCase):
         self.recorded = live06(self.run / "06-settle", scratch, status="INCONCLUSIVE", unattributed=0,
                                window="2026-11-01T01:38:00Z", unpaired=unpaired,
                                stamps=["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"])
+
+    def test_a_final_settlement_without_wallet_amounts_is_reproduced_as_not_checked(self):
+        # 06 reads a provider's final settlement (no credited_msat or fee_msat, by design) as open for rail_fee and
+        # exchange_match; 08 runs the same checks again on recorded.json and reproduces that, not a FAIL (loop#436).
+        shutil.rmtree(self.run / "06-settle")
+        scratch = Path(self.tmp.name) / "finalbill"
+        scratch.mkdir()
+        self.recorded = live06(self.run / "06-settle", scratch, final_bill=(1,))
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED", self.recorded["detail"])
+        f, entries = self.verify(live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
 
     def test_an_unpaired_settlement_set_aside_before_the_window_is_reproduced_as_pass(self):
         self.scoped_unpaired("unp1", [self.payment_hash(0)])

@@ -860,6 +860,56 @@ class Step06SettleTest(unittest.TestCase):
                 self.assertEqual(r["result"], "FAIL", r["detail"])
                 self.assertIs(self.judged()[failed]["ok"], False, self.judged()[failed])
 
+    def final_bill(self, k=0, rows=None, phase="output_settlement_observed"):
+        """paid() with payment k's provider observation made a final settlement: no credited_msat, no fee_msat."""
+        rows = rows or self.paid()
+        block = rows[1][k]["model_attestation"]["compute_attestation"]["x-mesh-settlement-v1"]
+        block.pop("credited_msat"), block.pop("fee_msat")
+        block["phase"] = phase
+        return rows
+
+    def test_a_final_settlement_without_wallet_amounts_is_not_checked_not_failed(self):
+        # A warm peer pays no deposit, so its payment is only the final bill, which carries no credited_msat or
+        # fee_msat by design (ln-payments-plugin docs/lightning-payments.md:936-937): rail_fee and exchange_match
+        # are open for that payment, never a FAIL and never unpaired (loop#436).
+        h = self.paid_hash(1)
+        r = self.lightning(self.final_bill(1), self.checks_dir())
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        checks = self.judged()
+        self.assertIsNone(checks["rail_fee"]["ok"])
+        self.assertIsNone(checks["exchange_match"]["ok"])
+        for k in ("reference", "finality", "band"):
+            self.assertIs(checks[k]["ok"], True, checks[k])
+        for k in ("rail_fee", "exchange_match"):
+            self.assertIn(h, checks[k]["detail"])
+            self.assertIn("docs/lightning-payments.md:936-937", checks[k]["detail"])
+            self.assertIn("final settlement (output_settlement_observed)", checks[k]["detail"])
+        whats = {n["what"] for n in r["not_checked"]}
+        self.assertLessEqual({"step 06 exchange_match on the Lightning rail", "step 06 rail_fee on the Lightning rail"}, whats)
+        # the payment the books cannot pair is not counted: the bundles hold 2 and the books pair 1, so each
+        # counterparty_count is open too (not a FAIL)
+        self.assertTrue(all(w.endswith("on the Lightning rail") for w in whats), whats)
+        self.assertNotIn(False, [c["ok"] for c in checks.values() if isinstance(c, dict) and "ok" in c])
+        self.assert_clean()
+
+    def test_a_deposit_settlement_without_wallet_amounts_still_fails_rail_fee(self):
+        # Only the final settlement is excused: an input_settlement_observed (the deposit, which does carry them)
+        # with no fee_msat is a wallet that reported nothing, and the fee check still fails on it.
+        r = self.lightning(self.final_bill(1, phase="input_settlement_observed"), self.checks_dir())
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIs(self.judged()["rail_fee"]["ok"], False)
+        self.assertIsNone(self.judged()["exchange_match"]["ok"])
+        self.assertNotIn("final settlement", self.judged()["exchange_match"]["detail"])
+        self.assertIn("carries no credited_msat or fee_msat", self.judged()["exchange_match"]["detail"])
+
+    def test_a_final_settlement_beside_a_numbered_payment_with_no_fee_still_fails(self):
+        rows = self.final_bill(1, self.paid(payee_fee=0, credited=1000))  # payment 0: numbers, fee 0; payment 1: final
+        r = self.lightning(rows, self.checks_dir())
+        self.assertEqual(r["result"], "FAIL", r["detail"])
+        self.assertIs(self.judged()["rail_fee"]["ok"], False)
+        self.assertIn(self.paid_hash(0), self.judged()["rail_fee"]["detail"])
+        self.assertNotIn(self.paid_hash(1), self.judged()["rail_fee"]["detail"])
+
     def test_lightning_does_not_pass_on_a_check_older_than_the_books(self):
         # A third payment after lab.sh bundles: the check files still pair 2, so counterparty_count is not checked.
         r = self.lightning(self.paid(n=3), self.checks_dir(paired=2))
