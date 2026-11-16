@@ -563,11 +563,47 @@ class Step06SettleTest(unittest.TestCase):
                            window="2026-11-01T01:38:00Z")
         self.assertEqual(r["result"], "PASS", r["detail"])
         detail = self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"]
-        self.assertIn("only for 1 settlements before the window from 2026-11-01T01:38:00Z", detail)
+        self.assertIn("only for 1 settlements and 0 unpaired payments before the window from 2026-11-01T01:38:00Z", detail)
         self.assertIn("the 1 payments the books pair between them in the window are exactly the bundle's", detail)
         row = json.loads((self.out / "counterparty.json").read_text())[0]
         self.assertEqual((row["unattributed"], row["outside_window"], row["in_window_unpaired"], row["books_pair"]),
                          (1, 1, 0, 1))
+
+    def unpaired_checks(self, records, hashes, unattributed=0):
+        d = self.checks_dir(status="INCONCLUSIVE", records=records, unattributed=unattributed)
+        for f in d.glob("check.*.json"):
+            doc = json.loads(f.read_text())
+            doc["report"]["counterparty_count"]["unpaired"] = [
+                {"payment_hash": h, "reason": "a provider observation has no wallet-reported credited_msat and fee_msat"}
+                for h in hashes]
+            f.write_text(json.dumps(doc))
+        return d
+
+    def test_lightning_a_window_sets_aside_an_unpaired_settlement_from_before_it(self):
+        # loop#436: the check leaves the first payment's hash unpaired; the book dates it before the window, so it is
+        # out of the window, set aside and counted; the in-window payment pairs.
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        d = self.unpaired_checks(records, [self.paid_hash(0)])
+        r = self.lightning(self.stamped(self.paid(), times), d, window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        detail = self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"]
+        self.assertIn("only for 0 settlements and 1 unpaired payments before the window", detail)
+        self.assertIn("0 unpaired in the window", detail)
+        row = json.loads((self.out / "counterparty.json").read_text())[0]
+        self.assertEqual((row["unpaired"], row["unpaired_outside_window"], row["in_window_unpaired"]), (1, 1, 0))
+
+    def test_lightning_a_window_does_not_set_aside_an_unpaired_settlement_in_it(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        for name, hashes in (("dated in the window", [self.paid_hash(1)]),
+                             ("not in the book", ["ab" * 32]),
+                             ("one before, one in", [self.paid_hash(0), self.paid_hash(1)])):
+            with self.subTest(name=name):
+                r = self.lightning(self.stamped(self.paid(), times), self.unpaired_checks(records, hashes),
+                                   window="2026-11-01T01:38:00Z")
+                self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+                self.assertIsNone(self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["ok"])
 
     def test_lightning_a_window_does_not_set_aside_what_it_cannot_place_before_it(self):
         times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
@@ -599,7 +635,8 @@ class Step06SettleTest(unittest.TestCase):
 
     def test_window_counts_of_a_book_that_was_not_read_are_unknown(self):
         # A node whose ledger was unreadable has no recorded book: its counts are None, so nothing is set aside.
-        unknown = {"outside_window": None, "undated": None, "in_window_unpaired": None}
+        unknown = {"outside_window": None, "undated": None, "in_window_unpaired": None,
+                   "unpaired_outside_window": None}
         self.assertEqual(step.window_counts(None, set()), unknown)
         self.assertEqual(step.window_counts({}, set()), unknown)
         self.assertEqual(step.hashless_count({"this_node": 0, "counterparty": 0}), 0)
