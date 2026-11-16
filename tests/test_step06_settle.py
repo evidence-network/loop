@@ -593,6 +593,62 @@ class Step06SettleTest(unittest.TestCase):
         row = json.loads((self.out / "counterparty.json").read_text())[0]
         self.assertEqual((row["unpaired"], row["unpaired_outside_window"], row["in_window_unpaired"]), (1, 1, 0))
 
+    def peer_only(self, times=("2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z")):
+        """paid() stamped with times, with payment 0 missing from lab-2's book (its events were lost there): lab-1's
+        book holds it, dated before the window."""
+        rows = self.stamped(self.paid(), list(times))
+        rows[2] = [x for x in rows[2] if x["capsule_id"] != "p0"]
+        return rows
+
+    def test_lightning_a_window_sets_aside_an_unpaired_payment_only_the_peer_recorded_and_dated_before_it(self):
+        # loop#436: lab-2's book never recorded payment 0; lab-1's book dates it before the window. The check leaves
+        # it unpaired in both rows; each row sets it aside and counts it, and says which book dated it.
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        r = self.lightning(self.peer_only(), self.unpaired_checks(records, [self.paid_hash(0)]),
+                           window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "PASS", r["detail"])
+        rows = {(x["node"], x["peer"]): x for x in json.loads((self.out / "counterparty.json").read_text())}
+        mine, theirs = rows[("stevenmih-2", "stevenmih-1")], rows[("stevenmih-1", "stevenmih-2")]
+        self.assertEqual((mine["unpaired"], mine["unpaired_outside_window"], mine["unpaired_peer_dated"]), (1, 0, 1))
+        self.assertEqual((theirs["unpaired"], theirs["unpaired_outside_window"], theirs["unpaired_peer_dated"]), (1, 1, 0))
+        detail = self.judged()["counterparty_count:stevenmih-2:stevenmih-1"]["detail"]
+        self.assertIn("1 unpaired payments before the window", detail)
+        self.assertIn("1 of the unpaired payments are recorded only in stevenmih-1's book, which dates them before the window",
+                      detail)
+        self.assertNotIn("recorded only in", self.judged()["counterparty_count:stevenmih-1:stevenmih-2"]["detail"])
+
+    def test_lightning_a_window_does_not_set_aside_an_unpaired_payment_the_peer_dates_in_it(self):
+        # The peer's book dates the payment inside the window, or neither book dates it, or it is not a hash the
+        # peer holds: nothing is set aside.
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        late = self.stamped(self.paid(), list(times))
+        late[2] = [x for x in late[2] if x["capsule_id"] != "p1"]  # payment 1 (in the window) missing from lab-2's book
+        for name, rows, hashes in (("peer dates it in the window", late, [self.paid_hash(1)]),
+                                   ("neither book holds it", self.peer_only(), ["ab" * 32]),
+                                   ("one set aside, one not", self.peer_only(), [self.paid_hash(0), "ab" * 32])):
+            with self.subTest(name=name):
+                r = self.lightning(rows, self.unpaired_checks(records, hashes), window="2026-11-01T01:38:00Z")
+                self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+                self.assertIsNone(self.judged()["counterparty_count:stevenmih-2:stevenmih-1"]["ok"])
+
+    def test_lightning_the_peer_dated_rule_needs_the_peers_book_and_a_window(self):
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        r = self.lightning(self.peer_only(), self.unpaired_checks(records, [self.paid_hash(0)]))  # no window
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        counts = step.window_counts({"settlement_observations": [], "outside_hashes": []}, set(), ["h"], None)
+        self.assertEqual(counts["unpaired_peer_dated"], 0)  # no peer book: nothing is peer-dated
+        counts = step.window_counts({"settlement_observations": [], "outside_hashes": []}, set(), ["h"], {})
+        self.assertEqual(counts["unpaired_peer_dated"], 0)  # an unread peer book: nothing is peer-dated
+        peer = {"settlement_observations": [], "settlement_legs": [], "outside_hashes": ["h"]}
+        self.assertEqual(step.window_counts({"settlement_observations": [], "settlement_legs": [], "outside_hashes": []},
+                                            set(), ["h"], peer)["unpaired_peer_dated"], 1)
+        # a hash this book dates or holds is its own, not peer-dated
+        self.assertEqual(step.window_counts({"settlement_observations": [], "settlement_legs": [], "outside_hashes": ["h"]},
+                                            set(), ["h"], peer)["unpaired_peer_dated"], 0)
+
     def test_lightning_a_window_does_not_set_aside_an_unpaired_settlement_in_it(self):
         times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
         records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
@@ -636,7 +692,7 @@ class Step06SettleTest(unittest.TestCase):
     def test_window_counts_of_a_book_that_was_not_read_are_unknown(self):
         # A node whose ledger was unreadable has no recorded book: its counts are None, so nothing is set aside.
         unknown = {"outside_window": None, "undated": None, "in_window_unpaired": None,
-                   "unpaired_outside_window": None}
+                   "unpaired_outside_window": None, "unpaired_peer_dated": None}
         self.assertEqual(step.window_counts(None, set()), unknown)
         self.assertEqual(step.window_counts({}, set()), unknown)
         self.assertEqual(step.hashless_count({"this_node": 0, "counterparty": 0}), 0)
