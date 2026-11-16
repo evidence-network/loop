@@ -89,12 +89,14 @@ assertion as the loop#243 ruling restates it for a rail that signs nothing
   With a window, an INCONCLUSIVE whole-book check whose only open causes are
   settlements_unattributed and unpaired payment hashes (no hashless settlement,
   every in-window settlement of the node paired with a peer, every unpaired hash
-  one the node's book dates only before the window) is not held against the
-  window when the two numbers together are no more than the node's settlement
-  records dated before it: they are reported as out of the window (the row's
-  unattributed, unpaired_outside_window and outside_window counts, and the
-  detail), not counted. An unpaired hash dated in the window, or one the node's
-  book does not date, still blocks. The window start is the population's
+  one the node's book dates only before the window, or one the node's book never
+  recorded that the counterparty's book dates only before it) is not held
+  against the window when the unattributed settlements and the hashes the node
+  dates are together no more than the node's settlement records dated before
+  it: they are reported as out of the window (the row's unattributed,
+  unpaired_outside_window, unpaired_peer_dated and outside_window counts, and
+  the detail), not counted. An unpaired hash dated in the window, or one no book
+  dates before it, still blocks. The window start is the population's
   window.from, set from the recorded cutover of the build under test
   (loop#436, mesh-llm#3066), never defaulted here.
 An invoice agreed but unsettled as of the books read (no book records a
@@ -702,31 +704,44 @@ def pre_window_unattributed(row, since):
     window, when they are the only thing keeping an INCONCLUSIVE check from PASS; else (0, 0). Only with a window;
     only when no settlement is hashless or undated and every settlement of the node in the window pairs with a peer,
     so none of them can be in the window. Every unpaired hash must be one this node's book dates only before the
-    window (unpaired_outside_window), and the two numbers together no more than the node's settlement records dated
-    before it. An unpaired hash in the window, or one this book does not date, sets nothing aside. Rows from before
-    this scoping lack the fields and count 0."""
+    window (unpaired_outside_window), or one this node's book never recorded that the counterparty's book dates only
+    before it (unpaired_peer_dated: a payment the node lost the events of, which the peer recorded: counted and
+    reported, never silently); the unattributed settlements and the hashes this book dates are together no more than
+    the node's settlement records dated before the window. An unpaired hash in the window, or one neither book dates
+    before it, sets nothing aside. Rows from before this scoping lack the fields and count 0."""
     un, up = row.get("unattributed"), row["unpaired"]
     if since is None or row["status"] != "INCONCLUSIVE" or not (type(un) is int and un >= 0 and un + up > 0):
         return 0, 0
+    own, theirs = row.get("unpaired_outside_window", 0), row.get("unpaired_peer_dated", 0)
     if row.get("hashless") != 0 or row.get("in_window_unpaired") != 0 or row.get("undated") != 0 \
-            or row.get("unpaired_outside_window", 0) != up:
+            or not (type(theirs) is int and theirs >= 0) or own + theirs != up:
         return 0, 0
     out = row.get("outside_window")
-    return (un, up) if type(out) is int and un + up <= out else (0, 0)
+    return (un, up) if type(out) is int and un + own <= out else (0, 0)
 
 
-def window_counts(mine, paired_hashes, unpaired_hashes=()):
+def window_counts(mine, paired_hashes, unpaired_hashes=(), theirs=None):
     """The counts of one node's recorded book that pre_window_unattributed reads: its settlement records dated
     before the window and with no date, its in-window settlement hashes no peer pairs, and how many of the check's
-    unpaired hashes its book dates only before the window. None each for a node whose book was not read (no
-    exemption then)."""
+    unpaired hashes its book dates only before the window, and how many it never recorded that `theirs` (the
+    counterparty's recorded book) dates only before it (unpaired_peer_dated). None each for a node whose book was
+    not read (no exemption then); no peer book counts 0 peer-dated."""
     if not isinstance(mine, dict) or "settlement_observations" not in mine:
-        return {"outside_window": None, "undated": None, "in_window_unpaired": None, "unpaired_outside_window": None}
+        return {"outside_window": None, "undated": None, "in_window_unpaired": None, "unpaired_outside_window": None,
+                "unpaired_peer_dated": None}
     inside = {o.get("payment_hash") for o in terminal(mine)}
     before = set(mine.get("outside_hashes") or ())
+    peer_dated = 0
+    if isinstance(theirs, dict) and "settlement_observations" in theirs:
+        theirs_before = set(theirs.get("outside_hashes") or ())
+        theirs_inside = {o.get("payment_hash") for o in terminal(theirs)}
+        recorded_here = set(mine.get("named_hashes") or ()) | payment_hashes(mine)  # any record of its whole ledger
+        peer_dated = len({h for h in unpaired_hashes if h not in before and h not in recorded_here
+                          and h in theirs_before and h not in theirs_inside})
     return {"outside_window": mine.get("outside_window"), "undated": mine.get("undated"),
             "in_window_unpaired": len(inside - paired_hashes),
-            "unpaired_outside_window": len({h for h in unpaired_hashes if h in before and h not in inside})}
+            "unpaired_outside_window": len({h for h in unpaired_hashes if h in before and h not in inside}),
+            "unpaired_peer_dated": peer_dated}
 
 
 def hashless_count(hashless):
@@ -761,9 +776,12 @@ def counterparty_verdict(row, n, since):
                       f"pair {n} payments between them there ({row['books_only']} not in the bundle, "
                       f"{row['bundle_only']} not paired in the books): the check predates a payment or a record sits "
                       "on the window's edge (run lab/lab.sh bundles)")
+    peer_dated = row.get("unpaired_peer_dated") or 0
     scoped = (f"{status} over the whole books only for {pre_un} settlements and {pre_up} unpaired payments before the "
-              f"window from {since:%Y-%m-%dT%H:%M:%SZ} that no peer owns (out of the window, set aside), {paired} paired, "
-              f"{unpaired - pre_up} unpaired in the window"
+              f"window from {since:%Y-%m-%dT%H:%M:%SZ} that no peer owns (out of the window, set aside"
+              + (f"; {peer_dated} of the unpaired payments are recorded only in {peer}'s book, which dates them before "
+                 "the window" if peer_dated else "")
+              + f"), {paired} paired, {unpaired - pre_up} unpaired in the window"
               if pre else f"PASS over the whole books, {paired} paired, {unpaired} unpaired")
     return True, (f"{me}'s {row['disclosed_settlements']} settlements against {peer}'s signed bundle (sha256 "
                   f"{str(row['bundle_sha256'])[:12]}): {scoped}; "
@@ -909,7 +927,7 @@ def lightning_checks(found, ids, checks_dir, since=None):
                      "books_only": len(expected - held[0]) if held else None,
                      "window_from": since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None})
         if since is not None:  # what the window scoping of an INCONCLUSIVE check reads (pre_window_unattributed)
-            rows[-1].update(window_counts(found.get(me), paired_hashes, unpaired_hashes),
+            rows[-1].update(window_counts(found.get(me), paired_hashes, unpaired_hashes, found.get(peer)),
                             unattributed=cc.get("settlements_unattributed"), hashless=hashless_count(hashless),
                             unpaired_hashes=unpaired_hashes)
         if status == "FAIL":

@@ -840,6 +840,7 @@ def rederive_06_live(m, c):
     # With a window, 06 adds what its window scoping of an INCONCLUSIVE check reads (pre_window_unattributed).
     scoped_v1 = {"hashless", "in_window_unpaired", "outside_window", "undated", "unattributed"}  # rows of loop#444
     scoped = scoped_v1 | {"unpaired_outside_window", "unpaired_hashes"}
+    scoped_v3 = scoped | {"unpaired_peer_dated"}  # rows of loop#436's peer-dated rule (older rows lack it: 0)
     since = m.window_from(pop)
     window = since.strftime("%Y-%m-%dT%H:%M:%SZ") if since is not None else None
     if isinstance(rows, list) and rows and all(isinstance(r, dict) and "books_pair" not in r for r in rows):
@@ -848,7 +849,7 @@ def rederive_06_live(m, c):
                              "08 re-derives (loop#303)", OLD_SHAPE_ISSUE)
     pairs = {}
     for r in rows if isinstance(rows, list) else [None]:
-        if not (isinstance(r, dict) and set(r) in (keys, keys | scoped_v1, keys | scoped) and r["node"] in ids and r["peer"] in ids
+        if not (isinstance(r, dict) and set(r) in (keys, keys | scoped_v1, keys | scoped, keys | scoped_v3) and r["node"] in ids and r["peer"] in ids
                 and r["node"] != r["peer"] and (r["node"], r["peer"]) not in pairs
                 and all(type(r[k]) is int for k in ("paired", "unpaired")) and isinstance(r["status"], str)
                 and isinstance(r["bundle_sha256"], str)):
@@ -875,7 +876,7 @@ def rederive_06_live(m, c):
                 if not (isinstance(hashes, list) and all(isinstance(h, str) for h in hashes) and len(hashes) <= r["unpaired"]):
                     raise Mismatch(f"counterparty.json's row for {me} against {peer} lists unpaired hashes that are not "
                                    f"{r['unpaired']} payment hashes")
-                want = m.window_counts(found.get(me), set(cross["paired"]), hashes)
+                want = m.window_counts(found.get(me), set(cross["paired"]), hashes, found.get(peer))
                 if any(r[k] != v for k, v in want.items() if k in r):
                     raise Mismatch(f"counterparty.json's row for {me} against {peer} carries window counts "
                                    f"{ {k: r[k] for k in want} } that {me}'s recorded book gives as {want}")
