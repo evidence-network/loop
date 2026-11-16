@@ -77,9 +77,9 @@ capsulectl-book action-state-group/evidencebook v0.13.1
 # v0.1.0-rc38 is the latest on 2026-11-06.
 capsule-cli action-state-group/capsule-cli v0.1.0-rc38
 # step 01 seal
-# The sealer (Python, PyPI capsule-emit 0.13.0) and the second-language Class 1
+# The sealer (Python, PyPI capsule-emit 0.16.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).
-capsule-emit action-state-group/capsule-emit python/v0.13.0
+capsule-emit action-state-group/capsule-emit python/v0.16.0
 aac-go action-state-group/agent-action-capsule go/v0.21.0
 # step 10 judge
 # The inference-deals Terms Pack (evidencebook-skills#71): main at the commit that carries it with Steven's
