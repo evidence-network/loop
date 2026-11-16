@@ -1662,7 +1662,7 @@ class Step08Live09Test(unittest.TestCase):
         self.assertIn("its proof holds no nodes.json", entries["09-dispute"]["not_checked"]["why"])
 
 
-def lightning_ledgers(lab, n=2, stamps=None, final_bill=(), lost=()):
+def lightning_ledgers(lab, n=2, stamps=None, final_bill=(), lost=(), named=()):
     """lab/lab-1..3 ledgers: n payments lab-2 -> lab-1, each with the payer's preimage. The preimages exist only in
     this temp dir, as step 06 reads them; step 06's proof keeps their outcome, never the value."""
     import hashlib
@@ -1681,6 +1681,8 @@ def lightning_ledgers(lab, n=2, stamps=None, final_bill=(), lost=()):
         h = hashlib.sha256(bytes.fromhex(pre)).hexdigest()
         if k not in lost:  # the payer's book never recorded these payments (their events were lost there)
             rows[2].append(obs("payer", f"p{k}", h, pre))
+        if k in named:  # a lost payment the payer's book still names, in an invoice record (not a settlement)
+            rows[2].append(obs("payer", f"i{k}", h, None, phase="input_invoice_issued"))
         rows[1].append(obs("provider", f"s{k}", h, None) if k in final_bill  # a final settlement: no wallet amounts
                        else obs("provider", f"s{k}", h, None, credited_msat=999999000, fee_msat=1000))
     for i, lines in rows.items():
@@ -1689,13 +1691,13 @@ def lightning_ledgers(lab, n=2, stamps=None, final_bill=(), lost=()):
 
 
 def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False,
-           bundle_first=1, stamps=None, window=None, unattributed=None, unpaired=(), final_bill=(), lost=()):
+           bundle_first=1, stamps=None, window=None, unattributed=None, unpaired=(), final_bill=(), lost=(), named=()):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
     out dir being dst: the proof 08 re-derives. Returns the finding. stamps: each payment's record time; window:
     the population's window start; unattributed: the check's settlements_unattributed."""
     import hashlib
     lab = Path(tmp) / "lab"
-    lightning_ledgers(lab, n, stamps, final_bill, lost)
+    lightning_ledgers(lab, n, stamps, final_bill, lost, named)
     if drop_node:
         shutil.rmtree(lab / f"lab-{drop_node}")
     doc = load(LIVE_POPULATION / "population.json")
@@ -1902,12 +1904,12 @@ class Step08Live06Test(unittest.TestCase):
         f, entries = self.verify(live06.population)
         self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
 
-    def peer_dated(self, name):
+    def peer_dated(self, name, named=()):
         shutil.rmtree(self.run / "06-settle")
         scratch = Path(self.tmp.name) / name
         scratch.mkdir()
         self.recorded = live06(self.run / "06-settle", scratch, status="INCONCLUSIVE", unattributed=0,
-                               window="2026-11-01T01:38:00Z", unpaired=[self.payment_hash(0)], lost=(0,),
+                               window="2026-11-01T01:38:00Z", unpaired=[self.payment_hash(0)], lost=(0,), named=named,
                                stamps=["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"])
 
     def test_an_unpaired_payment_only_the_peer_recorded_before_the_window_is_reproduced_as_pass(self):
@@ -1917,6 +1919,15 @@ class Step08Live06Test(unittest.TestCase):
         self.assertEqual(self.recorded["result"], "PASS", self.recorded["detail"])
         rows = load(self.run / "06-settle" / "counterparty.json")
         self.assertIn(1, [r.get("unpaired_peer_dated") for r in rows])
+        f, entries = self.verify(live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_a_payment_the_payers_book_names_in_an_invoice_record_is_not_peer_dated(self):
+        # lab-2's book names payment 0 (an invoice record dated before the window), so it did record it: 06 sets
+        # nothing aside, the row says 0, and 08 reproduces the NOT_CHECKED.
+        self.peer_dated("named", named=(0,))
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED", self.recorded["detail"])
+        self.assertNotIn(1, [r.get("unpaired_peer_dated") for r in load(self.run / "06-settle" / "counterparty.json")])
         f, entries = self.verify(live06.population)
         self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
 

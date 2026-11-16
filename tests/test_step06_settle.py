@@ -633,6 +633,24 @@ class Step06SettleTest(unittest.TestCase):
                 self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
                 self.assertIsNone(self.judged()["counterparty_count:stevenmih-2:stevenmih-1"]["ok"])
 
+    def test_lightning_a_hash_the_book_names_in_any_record_is_not_peer_dated(self):
+        # lab-2's book holds an invoice record for payment 0 (not a settlement, so not listed), dated before the
+        # window: its book did record the payment, so the peer-dated rule does not apply (named_hashes, whole ledger).
+        times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
+        records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]
+        rows = self.peer_only()
+        inv = self.observation(None, self.paid_hash(0), cid="i0", phase="input_invoice_issued", settlement=None)
+        inv["timestamp"] = times[0]
+        rows[2].append(inv)
+        r = self.lightning(rows, self.unpaired_checks(records, [self.paid_hash(0)]), window="2026-11-01T01:38:00Z")
+        self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
+        row = {(x["node"], x["peer"]): x for x in json.loads((self.out / "counterparty.json").read_text())}[
+            ("stevenmih-2", "stevenmih-1")]
+        self.assertEqual(row["unpaired_peer_dated"], 0)
+        mine = {"settlement_observations": [], "settlement_legs": [], "outside_hashes": [], "named_hashes": ["h"]}
+        peer = {"settlement_observations": [], "settlement_legs": [], "outside_hashes": ["h"]}
+        self.assertEqual(step.window_counts(mine, set(), ["h"], peer)["unpaired_peer_dated"], 0)
+
     def test_lightning_the_peer_dated_rule_needs_the_peers_book_and_a_window(self):
         times = ["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"]
         records = [self.bundle_record(self.paid_hash(k), t) for k, t in enumerate(times)]

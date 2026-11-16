@@ -735,7 +735,7 @@ def window_counts(mine, paired_hashes, unpaired_hashes=(), theirs=None):
     if isinstance(theirs, dict) and "settlement_observations" in theirs:
         theirs_before = set(theirs.get("outside_hashes") or ())
         theirs_inside = {o.get("payment_hash") for o in terminal(theirs)}
-        recorded_here = payment_hashes(mine)
+        recorded_here = set(mine.get("named_hashes") or ()) | payment_hashes(mine)  # any record of its whole ledger
         peer_dated = len({h for h in unpaired_hashes if h not in before and h not in recorded_here
                           and h in theirs_before and h not in theirs_inside})
     return {"outside_window": mine.get("outside_window"), "undated": mine.get("undated"),
