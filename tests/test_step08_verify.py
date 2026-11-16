@@ -1687,7 +1687,7 @@ def lightning_ledgers(lab, n=2, stamps=None):
 
 
 def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bundle=False, rows_only_peer=False,
-           bundle_first=1, stamps=None, window=None, unattributed=None):
+           bundle_first=1, stamps=None, window=None, unattributed=None, unpaired=()):
     """Step 06 run on a synthetic live Lightning population (ledgers and signed-bundle checks made here), its
     out dir being dst: the proof 08 re-derives. Returns the finding. stamps: each payment's record time; window:
     the population's window start; unattributed: the check's settlements_unattributed."""
@@ -1713,7 +1713,7 @@ def live06(dst, tmp, n=2, status="PASS", paired=None, drop_node=None, tamper_bun
             "node_id": ids[me], "peer_node_id": ids[peer], "bundle_file": bundle.name,
             "bundle_sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
             "report": {"counterparty_count": {"status": status, "method": "pairs", "paired": n if paired is None else paired,
-                                                 "unpaired": [],
+                                                 "unpaired": [{"payment_hash": h, "reason": "one book only"} for h in unpaired],
                                                  **({} if unattributed is None else {
                                                      "settlements_unattributed": unattributed,
                                                      "settlements_without_payment_hash": {"this_node": 0, "counterparty": 0}})},
@@ -1869,6 +1869,37 @@ class Step08Live06Test(unittest.TestCase):
         self.assertEqual(self.recorded["result"], "PASS", self.recorded["detail"])
         f, entries = self.verify(live06.population)
         self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    @staticmethod
+    def payment_hash(k):
+        import hashlib
+        return hashlib.sha256(bytes.fromhex(f"{k + 1:02x}" * 32)).hexdigest()
+
+    def scoped_unpaired(self, name, unpaired):
+        shutil.rmtree(self.run / "06-settle")
+        scratch = Path(self.tmp.name) / name
+        scratch.mkdir()
+        self.recorded = live06(self.run / "06-settle", scratch, status="INCONCLUSIVE", unattributed=0,
+                               window="2026-11-01T01:38:00Z", unpaired=unpaired,
+                               stamps=["2026-11-01T01:00:00Z", "2026-11-01T01:40:00Z"])
+
+    def test_an_unpaired_settlement_set_aside_before_the_window_is_reproduced_as_pass(self):
+        self.scoped_unpaired("unp1", [self.payment_hash(0)])
+        self.assertEqual(self.recorded["result"], "PASS", self.recorded["detail"])
+        f, entries = self.verify(live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "reproduced", entries["06-settle"]["problems"])
+
+    def test_an_unpaired_count_forged_for_a_hash_in_the_window_fails(self):
+        self.scoped_unpaired("unp2", [self.payment_hash(1)])  # the in-window payment: 06 keeps it
+        self.assertEqual(self.recorded["result"], "NOT_CHECKED")
+        def forge(d):
+            rows = load(d / "counterparty.json")
+            for r in rows:
+                r["unpaired_outside_window"] = 1
+            dump(d / "counterparty.json", rows)
+        f, entries = self.plant(forge, live06.population)
+        self.assertEqual(entries["06-settle"]["status"], "failed")
+        self.assertIn("window counts", " ".join(entries["06-settle"]["problems"]))
 
     def test_window_counts_forged_to_set_aside_unattributed_settlements_fail(self):
         # The row says 1 unattributed settlement lies before the window; the node's recorded book dates none there.
