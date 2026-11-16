@@ -73,6 +73,12 @@ assertion as the loop#243 ruling restates it for a rail that signs nothing
 - rail_fee: each payment carries a fee paid to a third party (fee_msat > 0);
 - exchange_match: the payer's amount equals the payee's credit plus fee, for
   every hash two nodes hold (loop#183's pairing rule);
+  A payment whose only provider observation is a final settlement
+  (phase output_settlement_observed) carries no credited_msat or fee_msat by design: the plugin
+  observes it from the stored bill, and only the deposit settlement, asked of a peer the provider process has not
+  settled with yet, carries them (Mesh-LLM/ln-payments-plugin#11, docs/lightning-payments.md:936-937 and
+  :120-125). rail_fee and exchange_match are then open for that payment (NOT_CHECKED, naming that doc), never a
+  FAIL and never unpaired (loop#436).
 - counterparty_count:<node>: for each pair of nodes that settled together, the
   node's settlement_check of its book against the other's checkpoint-signed
   settlement bundle, read from the population's settlement_checks dir
@@ -531,6 +537,20 @@ def is_int(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+# A provider's final settlement (phase output_settlement_observed) is observed from the stored bill, not from the
+# wallet's transaction, so by design it carries no credited_msat, fee_msat or preimage; only the deposit settlement
+# (input_settlement_observed) does, and a warm peer pays no deposit (Mesh-LLM/ln-payments-plugin#11 at 8ff201b,
+# docs/lightning-payments.md:936-937 and :68-70). Such a payment cannot be checked for its fee or its credit.
+FINAL_BILL_WHY = ("is a final settlement (output_settlement_observed), which carries no credited_msat or fee_msat by "
+                  "design (Mesh-LLM/ln-payments-plugin#11, docs/lightning-payments.md:936-937)")
+
+
+def final_bill(o):
+    """True for a provider terminal observation of a final settlement that carries no wallet amounts."""
+    return (o.get("observed_by") == "provider" and o.get("phase") == "output_settlement_observed"
+            and o.get("credited_msat") is None and o.get("fee_msat") is None)
+
+
 def crosscheck(found, every_node=True):
     """Compare the payment hashes the nodes recorded. found: {node: recorded()}. With every_node a hash every node
     did not record is unpaired (the demo's two nodes share every payment); without it, two nodes holding it suffice
@@ -546,7 +566,7 @@ def crosscheck(found, every_node=True):
             seen.setdefault(h, []).append(name)
     paired, unpaired = {}, {}
     for h, names in sorted(seen.items()):
-        payers, payees, malformed, unnumbered = set(), set(), [], []
+        payers, payees, malformed, unnumbered, final_only = set(), set(), [], [], True
         for name, f in found.items():
             for o in f["settlement_observations"]:
                 if o.get("payment_hash") != h:
@@ -558,6 +578,7 @@ def crosscheck(found, every_node=True):
                     payees.add((name, o["credited_msat"] + o["fee_msat"]))
                 elif role == "provider" and all(o.get(k) is None or is_int(o.get(k)) for k in ("credited_msat", "fee_msat")):
                     unnumbered.append(name)  # the receiving wallet gave no numbers (lightning-v0: not present)
+                    final_only = final_only and final_bill(o)
                 else:
                     malformed.append(name)  # no role, or a role without integer amounts
         payer_nodes, payee_nodes = sorted({n for n, _ in payers}), sorted({n for n, _ in payees})
@@ -568,7 +589,9 @@ def crosscheck(found, every_node=True):
             unpaired[h] = (f"an observation on {', '.join(sorted(set(malformed)))} has no payer or provider role "
                            "or no integer amounts")
         elif unnumbered and not payees:
-            unpaired[h] = f"a provider observation on {', '.join(sorted(set(unnumbered)))} carries no credited_msat or fee_msat"
+            where = ', '.join(sorted(set(unnumbered)))
+            unpaired[h] = (f"a provider observation on {where} {FINAL_BILL_WHY}" if final_only else
+                           f"a provider observation on {where} carries no credited_msat or fee_msat")
         elif not payers or not payees:
             unpaired[h] = "no payer observation or no provider observation, with amounts"
         elif len(payer_nodes) > 1 or len(payee_nodes) > 1:
@@ -806,10 +829,18 @@ def lightning_checks(found, ids, checks_dir, since=None):
         ", ".join(f"{b['node']} {b['side']} {b['band']['currency']} decade {b['band']['decade']}" for b in bands)
         if bands else "no side settled")
     # 4. A fee paid to a third party, per payment: some observation of the hash reports fee_msat > 0.
-    unpaid = [h for h in hashes if not any(o.get("payment_hash") == h and is_int(o.get("fee_msat")) and o["fee_msat"] > 0
-                                           for f in found.values() for o in terminal(f))]
-    put("rail_fee", False if unpaid else True if hashes else None,
+    # A payment whose only provider observation is a final settlement carries no fee to read (final_bill): it is not
+    # checked, not a FAIL, while a payment with some other observation and no fee stays a FAIL.
+    nofee = [h for h in hashes if not any(o.get("payment_hash") == h and is_int(o.get("fee_msat")) and o["fee_msat"] > 0
+                                          for f in found.values() for o in terminal(f))]
+    unread = [h for h in nofee if any(o.get("payment_hash") == h and final_bill(o)
+                                      for f in found.values() for o in terminal(f))
+              and not any(o.get("payment_hash") == h and o.get("observed_by") == "provider" and not final_bill(o)
+                          for f in found.values() for o in terminal(f))]
+    unpaid = [h for h in nofee if h not in unread]
+    put("rail_fee", False if unpaid else None if unread else True if hashes else None,
         f"payments with no fee paid to a third party: {', '.join(unpaid)}" if unpaid else
+        f"{', '.join(unread)}: the provider's observation {FINAL_BILL_WHY}" if unread else
         f"each of {len(hashes)} payments carries a wallet provider's fee (fee_msat > 0)" if hashes else "no payment")
     # 5. The two books agree: the payer's amount equals the payee's credit plus fee (loop#183's pairing rule).
     cross = crosscheck(found, every_node=False)

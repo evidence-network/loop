@@ -784,6 +784,18 @@ class Wire:
         return (reply, raw, None) if isinstance(reply, dict) else (None, raw, "the reply is not a JSON object")
 
 
+def wrong_console(own, node_id):
+    """Why a node's own console did not answer as the node: the plugin's error when it answered with one (the console
+    is right and the commitment could not be built, for example one larger than a peer reads), else the node it
+    answered as, or none."""
+    err = own.get("error") if isinstance(own, dict) else None
+    if isinstance(err, str) and err.strip() and not isinstance(own.get("commitment"), dict):
+        return f"the console given for it answered with the plugin's error, not a commitment: {err.strip()[:300]}"
+    mine = own.get("commitment") if isinstance(own, dict) else None
+    answered_as = mine.get("node_id") if isinstance(mine, dict) else None
+    return f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}"
+
+
 def check_binding(name, node_id, key_id, doctor_console, commitment_console, timeout=30, wire=None):
     """(failure or None, not_checked or None, line, held digest or None, named) for the controller binding of one
     node. `named` is what the fetched commitment was read to name: its binding digest, "" for none, or None when it
@@ -808,7 +820,7 @@ def check_binding(name, node_id, key_id, doctor_console, commitment_console, tim
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != node_id:
-        return unreadable(f"the console given for it answers as {answered_as or 'no node'}, not as {node_id}")
+        return unreadable(wrong_console(own, node_id))
     doctor = wire.post_json("binding-doctor", doctor_console, DOCTOR_ROUTE, {})
     state = binding_state(doctor)
     if state is None:
@@ -1036,7 +1048,7 @@ def check_node_tools(name, entry, console, node_dir, timeout=30, fetched=None, w
     mine = own.get("commitment") if isinstance(own, dict) else None
     answered_as = mine.get("node_id") if isinstance(mine, dict) else None
     if answered_as != entry["node_id"]:
-        why = f"the console given for it answers as {answered_as or 'no node'}, not as {entry['node_id']}"
+        why = wrong_console(own, entry["node_id"])
         return [], [nc_("the plugin's doctor --probe and join", why)], [], [f"{name}: doctor and join not asked"], None
     fails, nc, proof, lines, signed = [], [], [], [], None
     doc, holds = None, False
