@@ -132,8 +132,9 @@ A node still stapling a `standard_history/1` card keeps v1's check of it.
   act.
 - **LIMIT.** The act stays within the limit the decision states.
 
-The four outcomes are the admission pack profile's (GO, ASK, LIMIT, NO; admission pack profile v0,
-[evidencebook-skills#51](https://github.com/action-state-group/evidencebook-skills/issues/51)). v1, which judges the plugin-shaped GO or NO decisions
+The four outcomes are the admission packs' (`outcomes: ["GO", "ASK", "LIMIT", "NO"]` in
+[`packs/admission-baseline/pack-source.yaml`](https://github.com/action-state-group/evidencebook-skills/blob/a24b28f5b77212c77cdc92f8c394ca8df47bef55/packs/admission-baseline/pack-source.yaml#L43)
+at evidencebook-skills `a24b28f5`). v1, which judges the plugin-shaped GO or NO decisions
 the step reads today (Steven's ruling evidence-network u140: step 04 judges sealed decisions only), stays for every
 node whose release seals only those; v2 does not reverse it. A demo that lets a pick follow a NO,
 as an assessment rather than a gate, is not a loop population and is not judged by this step.
