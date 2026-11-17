@@ -145,7 +145,7 @@ that gap.
   sets. The order EvidenceBook's target proposes: the acceptor stamps right after its agreement and
   sends the proof with it, and the offerer verifies it before its first act and does not act
   without it; the offerer stamps after its own agreement and first act. The planted failure: an
-  acceptor that sends no stamp proof, and an offerer that then makes no act. This part follows the
+  offerer that acts without a verified stamp proof from the acceptor FAILs. This part follows the
   profile version that is released; if it sets another order, this part is amended before it is
   switched on.
 
@@ -189,7 +189,7 @@ a proposal.
 
 | | Asserts | Proposed home |
 |---|---|---|
-| (a) whole-shelf replay and card recompute | handed every entry of the shelf log up to a card's anchor, with every fact's bytes and the opening of each book fact's status commitment (journal facts stay closed): there are exactly as many entries as the anchor's size states and they hash to its root; each opening recomputes its fact's status commitment; each `book_id`'s consecutive facts are joined by a consistency proof, or carry the same checkpoint when only received material changed; the card counted again from each `book_id`'s latest fact equals the card, and the verifier reports the **Recomputed** level. The card and the result state the shelf's coverage start (a shelf migrated from today's layout starts at its migration marker), and no completeness is claimed before it. Planted failures: an entry held back, a dropped book, a replaced book and a changed opening each FAIL. The checks cover books, not the journal | 03 Advertise, beside the staple it recomputes |
+| (a) whole-shelf replay and card recompute | handed every entry of the shelf log up to a card's anchor, with every fact's bytes and the opening of each book fact's status commitment (journal facts stay closed): there are exactly as many entries as the anchor's size states and they hash to its root; each opening recomputes its fact's status commitment; each `book_id`'s consecutive facts are joined by a consistency proof, or carry the same checkpoint when only received material changed; the card counted again from each `book_id`'s latest fact equals the card, and the verifier reports the **Recomputed** level. The card and the result state the shelf's coverage start, and no completeness is claimed before it: for a shelf migrated from today's layout that is its migration marker's checkpoint, or the shelf's first entry when the holder also handed over the material to recompute the old tree roots and it verified. Planted failures: an entry held back, a dropped book, a replaced book and a changed opening each FAIL. The checks cover books, not the journal | 03 Advertise, beside the staple it recomputes |
 | (b) the write rule | between two stamps, a fact appears only for a book whose checkpoint grew or that received new material from the other side; a quiet book gets none; every stamp still ends with a shelf checkpoint, even when no book changed | 02 Book |
 | (c) the computed status | the status each side computes from the term rows of the reference example deal matches the expected table that EvidenceBook publishes with its row status function (evidencebook#461, acceptance 6), at each of the deal's dates | 05 Deal |
 
