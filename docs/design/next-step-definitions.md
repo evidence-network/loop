@@ -48,7 +48,12 @@ written here first, reviewed here, and switched on only once a pinned release ca
 - Each ecosystem switches on its own. An ecosystem whose pinned product does not support a
   definition keeps v1 for that step: the Mesh plugin has no shelf yet, and the evidencebook item
   leaves the Mesh shelf to a last, optional step, so on `mesh` steps 02, 03, 04, 05 and 12 stay at
-  v1 until it does. The Goose nodes run on EvidenceBook and are where most v2 definitions go first.
+  v1 until it does. For 03 and 12 there is a second reason: a node that serves the
+  inference-service history profile does not also serve `standard_history/1` under the same key
+  (Steven's ruling spec u508, the profile's §6.1 item 8), and whether a Mesh node may carry a
+  `standard_history/3` card is open (evidencebook#461, its Mesh card question); these
+  definitions do not assume it. The Goose nodes run on EvidenceBook and are where most v2
+  definitions go first.
 - One pin can serve both versions. `versions.lock` is one file: the `evidencebook` pin, for one,
   is what step 02's and step 05's drivers build with in every ecosystem. So a release a switch-on
   pull request pins must still meet v1 in each ecosystem that still runs that step's v1, or the
@@ -127,9 +132,17 @@ A node still stapling a `standard_history/1` card keeps v1's check of it.
   act.
 - **LIMIT.** The act stays within the limit the decision states.
 
+The four outcomes are the admission packs' (`outcomes: ["GO", "ASK", "LIMIT", "NO"]` in
+[`packs/admission-baseline/pack-source.yaml`](https://github.com/action-state-group/evidencebook-skills/blob/a24b28f5b77212c77cdc92f8c394ca8df47bef55/packs/admission-baseline/pack-source.yaml#L43)
+at evidencebook-skills `a24b28f5`). v1, which judges the plugin-shaped GO or NO decisions
+the step reads today (Steven's ruling evidence-network u140: step 04 judges sealed decisions only), stays for every
+node whose release seals only those; v2 does not reverse it. A demo that lets a pick follow a NO,
+as an assessment rather than a gate, is not a loop population and is not judged by this step.
+
 The journal is the owner's. The step reads it the way step 04 reads a live node's ledger today,
-through the node's own console; a node whose journal the run cannot read is `NOT_CHECKED` naming
-that gap.
+through the node's own console, as the owner and never as a stranger; so this part is not one a
+stranger can check, and a node whose journal the run cannot read is `NOT_CHECKED` naming that
+gap.
 
 ### 05 Deal v2
 
@@ -149,8 +162,20 @@ that gap.
   profile version that is released; if it sets another order, this part is amended before it is
   switched on.
 
-v1's "the receiver ... seals a record citing them" is dropped. On Mesh v1 stays until the plugin
-has a shelf: the plugin's citing record is today's link between the two books.
+What becomes of each part of v1's assertion (`steps/05-deal`, `ASSERTS`):
+
+| v1 part | In v2 |
+|---|---|
+| both sides seal halves of one deal | kept: each side's records in its own deal book |
+| each citing the other half | replaced by the seen field: each record names the latest record held from the other side |
+| and the other side's checkpoint | replaced by the stamp proofs above, which carry the other side's book checkpoint to its shelf checkpoint |
+| each pushes its half at completion with `share_record_at_completion` on | replaced: each record is sent as soon as it is sealed |
+| the receiver holds the foreign bytes by digest | kept: in its store, by digest |
+| and seals a record citing them | dropped: the receiver seals nothing for a received record |
+| acceptance is keyed on the evidence key under a controller declaration | kept unchanged: the receiver accepts the other side's records under that side's evidence key as v1 checks it, controller declaration and binding included |
+
+On Mesh v1 stays until the plugin has a shelf: the plugin's citing record is today's link between
+the two books.
 
 ### 09 Dispute v2
 
@@ -191,7 +216,7 @@ a proposal.
 |---|---|---|
 | (a) whole-shelf replay and card recompute | handed every entry of the shelf log up to a card's anchor, with every fact's bytes and the opening of each book fact's status commitment (journal facts stay closed): there are exactly as many entries as the anchor's size states and they hash to its root; each opening recomputes its fact's status commitment; each `book_id`'s consecutive facts are joined by a consistency proof, or carry the same checkpoint when only received material changed; the card counted again from each `book_id`'s latest fact equals the card, and the verifier reports the **Recomputed** level. The card and the result state the shelf's coverage start, and no completeness is claimed before it: for a shelf migrated from today's layout that is its migration marker's checkpoint, or the shelf's first entry when the holder also handed over the material to recompute the old tree roots and it verified. Planted failures: an entry held back, a dropped book, a replaced book and a changed opening each FAIL. The checks cover books, not the journal | 03 Advertise, beside the staple it recomputes |
 | (b) the write rule | between two stamps, a fact appears only for a book whose checkpoint grew or that received new material from the other side; a quiet book gets none; every stamp still ends with a shelf checkpoint, even when no book changed | 02 Book |
-| (c) the computed status | the status each side computes from the term rows of the reference example deal matches the expected table that EvidenceBook publishes with its row status function (evidencebook#461, acceptance 6), at each of the deal's dates | 05 Deal |
+| (c) the computed status | the status each side computes from the term rows of the reference example deal matches the loop's own expected table, at each of the deal's dates. The table is the loop's: it is added to this repository by the pull request that switches (c) on, written from the example deal of EvidenceBook's target design (the one evidencebook#461 follows), and changed only through a reviewed loop pull request, never taken from the product's vectors. Where the product's result and the table differ, the step FAILs | 05 Deal |
 
 Each comes with the planted failure test every step has, and is switched on with the EvidenceBook
 release that implements it, as above.
