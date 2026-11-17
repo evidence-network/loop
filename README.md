@@ -61,6 +61,10 @@ Across ecosystems, one step so far:
 |---|---|---|---|
 | 13 | `ask-across` | A party in one ecosystem asks a listed node of another for evidence about one interaction, and the answer (signed records or a signed refusal) verifies under the key the node is listed with, or its absence is recorded by the request's own deadline. It is about the evidence request, not a deal. | `goose` to `mesh` and `mesh` to `goose`, one row each in `pairs.json`; the finding is the worst row. Step 07's judge decides each; step 08 re-derives every row. See [steps/13-ask-across](steps/13-ask-across) and [steps/13-ask-across.md](steps/13-ask-across.md). |
 
+The next definitions of steps 02, 03, 04, 05, 09 and 12, for books on a shelf of facts, are in
+[docs/design/next-step-definitions.md](docs/design/next-step-definitions.md). None is switched on yet;
+each is switched on with the release that supports it.
+
 The Goose column describes the rehearsal population (two Goose nodes on a mock rail). Steps 01, 03 and 07 also have a live Goose input; step 06 uses a real Lightning payment between lab wallets when the live run pays.
 
 Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03, 12, 07 and 08)
