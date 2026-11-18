@@ -103,6 +103,12 @@ def verify(commitment_path, node_key_id, binary_path=None):
         return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
     if not entries:
         return unchecked("the commitment staples no history_card/1")
+    # No pinned capsule-cli evaluates a history_card/2 staple (rc38 refuses "staples no history_card/1"; rc42 names no /2),
+    # and it judges the whole commitment, so a /2 card in it is not checked here rather than failed or skipped.
+    twos = [str(e.get("stream")) for e in entries if e.get("derivation") == "history_card/2"]
+    if twos:
+        return unchecked(f"the commitment staples history_card/2 for {', '.join(twos)}: the pinned capsule-cli {pinned_version()} "
+                         "verifies history_card/1 staples only, so the signature, digest and anchors of a /2 card are not checked")
     # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
     # accepts a card signed by any key it is given, so a union would let one entry's key vouch for another's card.
     by_key = {}

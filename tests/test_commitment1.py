@@ -66,21 +66,24 @@ def load(name, path):
     return mod
 
 
-def answer(stream, responder, receipts=None):
-    """A history_card/1 answer in the plugin's evidence-interop/0 shape; receipts per checkpoint, or none."""
+def answer(stream, responder, receipts=None, derivation="history_card/1"):
+    """A history_card/1 (or /2) answer in the plugin's evidence-interop/0 shape; receipts per checkpoint, or none."""
     history = [{"checkpoint": "00", "consistency_from_previous": None}, {"checkpoint": "01",
                                                                         "consistency_from_previous": "ab"}]
-    for entry, r in zip(history, receipts or []):
+    for i, (entry, r) in enumerate(zip(history, receipts or [])):
         entry["receipts"] = r
-    artifact = json.dumps({"derivation": "history_card/1", "evidence_stream": stream, "history": history}).encode()
-    return {"profile": cc.STAPLE_PROFILE, "derivation": "history_card/1", "responder": responder,
+    if derivation == "history_card/2":
+        for i, entry in enumerate(history):
+            entry["position"] = i
+    artifact = json.dumps({"derivation": derivation, "evidence_stream": stream, "history": history}).encode()
+    return {"profile": cc.STAPLE_PROFILE, "derivation": derivation, "responder": responder,
             "artifact": cc.b64url(artifact), "artifact_digest": hashlib.sha256(artifact).hexdigest(),
             "subject": {"checkpoints": None}, "sig": "unverified"}
 
 
-def entry(stream, card, community="mesh-llm"):
+def entry(stream, card, community="mesh-llm", derivation="history_card/1"):
     raw = json.dumps(card).encode()
-    return {"stream": stream, "community": community, "derivation": "history_card/1",
+    return {"stream": stream, "community": community, "derivation": derivation,
             "sha256": hashlib.sha256(raw).hexdigest(), "bytes": base64.b64encode(raw).decode()}
 
 
@@ -95,6 +98,47 @@ class TwoBooks(unittest.TestCase):
         doc = copy.deepcopy(self.doc)
         change(doc)
         return cc.sign(doc, KEY)
+
+
+@unittest.skipUnless(OPENSSL, NO_OPENSSL)
+class HistoryCard2Test(TwoBooks):
+    """A commitment may staple history_card/2 (ER -03 §8.1.2) beside or instead of /1 (loop#436, capsules-plugin#302)."""
+
+    def stapling_2(self, doc):
+        key = doc["key_id"]
+        doc["history_cards"][1] = entry("alice-ledger", answer("alice-ledger", key, derivation="history_card/2"),
+                                        derivation="history_card/2")
+        doc["answers"]["derivations"] = sorted(set(doc["answers"]["derivations"]) | {"history_card/2"})
+
+    def test_a_commitment_stapling_a_2_card_beside_a_1_card_verifies(self):
+        self.assertEqual(self.verify(self.resigned(self.stapling_2)), ([], []))
+
+    def test_a_2_card_needs_its_derivation_advertised(self):
+        def not_advertised(doc):
+            self.stapling_2(doc)
+            doc["answers"]["derivations"] = [d for d in doc["answers"]["derivations"] if d != "history_card/2"]
+        errs, _ = self.verify(self.resigned(not_advertised))
+        self.assertIn("answers.derivations must include history_card/2, the derivation stapled", errs)
+
+    def test_a_card_answering_another_derivation_than_its_entry_names_is_refused(self):
+        def mismatch(doc):
+            self.stapling_2(doc)
+            doc["history_cards"][1] = entry("alice-ledger", answer("alice-ledger", doc["key_id"]), derivation="history_card/2")
+        errs, _ = self.verify(self.resigned(mismatch))
+        self.assertTrue([e for e in errs if e.startswith(cc.CARD_DERIVATION + ":")], errs)
+
+    def test_the_card_evidencebook_0_0_21_serves_reads_as_a_2_card_of_its_holder(self):
+        fix = json.loads((FIX / "history-card-2-staple.json").read_text())
+        raw = fix["reply"].encode()
+        member = {"stream": "book-sh-log", "derivation": "history_card/2", "sha256": hashlib.sha256(raw).hexdigest(),
+                  "bytes": base64.b64encode(raw).decode()}
+        found, card = cc.card_errors(member, "history_cards[0]", fix["holder"])
+        self.assertEqual(found, [])
+        self.assertEqual(hc.card_stream(card), "book-sh-log")
+        # The same bytes presented by another key, or entered as a /1 card, are refused by name.
+        self.assertTrue([c for c, _ in cc.card_errors(member, "history_cards[0]", "0" * 64)[0] if c == cc.CARD_NOT_SUBJECT])
+        self.assertTrue([c for c, _ in cc.card_errors(dict(member, derivation="history_card/1"), "history_cards[0]",
+                                                      fix["holder"])[0] if c == cc.CARD_DERIVATION])
 
 
 @unittest.skipUnless(OPENSSL, NO_OPENSSL)

@@ -124,6 +124,8 @@ STD_NOT_SUPPLIED = "standard_history staple bytes not supplied"
 OPAQUE = {("checkpoint", "bytes"), ("history_card", "bytes")}
 
 # The named refusals of a /1 card.
+# The card derivations a commitment may staple: /1 lists every checkpoint, /2 a sample (ER -03 §8.1.2) that stays small as a log grows.
+CARD_DERIVATIONS = ("history_card/1", "history_card/2")
 CARD_EMPTY = "history_cards.empty"
 CARD_SHAPE = "history_cards.malformed"
 CARD_DERIVATION = "history_cards.derivation"
@@ -319,8 +321,8 @@ def card_field_errors(cards):
                         "each starting with a letter or digit) joined by '/'")
         if not HEX64.fullmatch(c["sha256"]):
             errs.append(f"{CARD_SHAPE}: {name}.sha256 is not 64 lowercase hex")
-        if c["derivation"] != "history_card/1":
-            errs.append(f"{CARD_DERIVATION}: {name}.derivation must be history_card/1")
+        if c["derivation"] not in CARD_DERIVATIONS:
+            errs.append(f"{CARD_DERIVATION}: {name}.derivation must be {' or '.join(CARD_DERIVATIONS)}")
         if c["community"] not in hc.COMMUNITIES:
             errs.append(f"{CARD_COMMUNITY}: {name}.community {c['community']!r} is not one of "
                         f"{', '.join(hc.COMMUNITIES)}")
@@ -478,10 +480,13 @@ def field_errors(doc):
         errs.append("answers_within must be an ISO 8601 duration (PnD, PTnH, PTnM, PTnS)")
     if doc["profile"] == PROFILE_1:
         errs += card_field_errors(doc["history_cards"])
-    elif doc["history_card"]["derivation"] != "history_card/1":
-        errs.append("history_card.derivation must be history_card/1")
-    if "history_card/1" not in doc["answers"]["derivations"]:
-        errs.append("answers.derivations must include history_card/1, the derivation stapled")
+    elif doc["history_card"]["derivation"] not in CARD_DERIVATIONS:
+        errs.append(f"history_card.derivation must be {' or '.join(CARD_DERIVATIONS)}")
+    stapled = ({c["derivation"] for c in doc["history_cards"] if isinstance(c, dict) and isinstance(c.get("derivation"), str)}
+               if doc["profile"] == PROFILE_1 else {doc["history_card"]["derivation"]}) & set(CARD_DERIVATIONS)
+    for d in sorted(stapled or {"history_card/1"}):
+        if d not in doc["answers"]["derivations"]:
+            errs.append(f"answers.derivations must include {d}, the derivation stapled")
     return errs
 
 
@@ -509,7 +514,7 @@ def _decoded(member, name):
 
 
 def card_errors(member, name, key_id):
-    """One stapled history_card/1: its bytes match, it is the plugin's answer format, presented by its subject.
+    """One stapled history_card/1 or /2: its bytes match, it is the plugin's answer format, presented by its subject.
 
     Returns (errors as (code, text), the decoded answer or None). Its signature
     is not verified here: steps 03 and 12 run the pinned capsule-cli on it (scripts/staple_verify.py).
@@ -524,8 +529,9 @@ def card_errors(member, name, key_id):
     if not isinstance(card, dict) or card.get("profile") != STAPLE_PROFILE:
         return [(CARD_NOT_ANSWER, f"{name} is not an {STAPLE_PROFILE} answer")], None
     found = []
-    if card.get("derivation") != "history_card/1":
-        found.append((CARD_DERIVATION, f"{name} answer's derivation is not history_card/1"))
+    if card.get("derivation") not in CARD_DERIVATIONS or card.get("derivation") != member.get("derivation"):
+        found.append((CARD_DERIVATION, f"{name} answer's derivation is not the stapled {member.get('derivation')} "
+                                       f"(one of {', '.join(CARD_DERIVATIONS)})"))
     if card.get("responder") != key_id:
         found.append((CARD_NOT_SUBJECT, f"{name} is not presented by its subject: its responder is not key_id"))
     try:

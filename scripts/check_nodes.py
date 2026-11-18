@@ -61,6 +61,8 @@ PHONE = re.compile(r"^\+?[\d\s().-]{7,}$")
 ASK_ROUTES = ("mesh", "nostr")
 POLICIES = ("counterparties",)
 STRANGER_SAFE = ("checkpoints", "history_card/1")
+# A plugin that answers history_card/2 (capsules-plugin#302) names it beside /1 in the policy it advertises.
+STRANGER_SAFE_WITH_2 = ("checkpoints", "history_card/1", "history_card/2")
 
 
 def check_operator(operator):
@@ -113,8 +115,9 @@ def check_entry(path, entry):
         else:
             if disc["policy"] not in POLICIES:
                 errs.append(f"{path.name}: disclosure.policy must be one of {', '.join(POLICIES)}")
-            if not isinstance(disc["stranger_safe"], list) or sorted(disc["stranger_safe"]) != sorted(STRANGER_SAFE):
-                errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)}")
+            if not isinstance(disc["stranger_safe"], list) or sorted(disc["stranger_safe"]) not in (
+                    sorted(STRANGER_SAFE), sorted(STRANGER_SAFE_WITH_2)):
+                errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)} or {list(STRANGER_SAFE_WITH_2)}")
             # Opting in to public pair edges on /watch/ (who dealt with whom, evidence-network/loop#77) needs a
             # consent that names them (Sherlock2, Buzz d15c87ad); CONSENT does, since Steven's ruling.
             if "pair_edges" in disc and (disc["pair_edges"] != "public" or not CONSENT_NAMES_PAIR_EDGES):
