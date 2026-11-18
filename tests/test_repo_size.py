@@ -48,7 +48,7 @@ class MeasureTest(unittest.TestCase):
         self.assertEqual(measured[1]["tree"], sum(p.stat().st_size for p in daily.rglob("*") if p.is_file()))
         for i in range(2):
             d = self.node_dir("2027-01-01", i)
-            self.assertEqual((d / "NODE").read_text(), "discloses: checkpoints, history_card/1\n")
+            self.assertEqual((d / "NODE").read_text(), "discloses: checkpoints, history_card/2\n")
             reply = json.loads((d / "checkpoints.response.json").read_bytes())
             self.assertEqual(reply["verification"]["checkpoints"], 3)
             self.assertEqual(len(json.loads(unb64(reply["answer"]["artifact"]))["checkpoints"]), 3)
