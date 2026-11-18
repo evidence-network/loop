@@ -61,6 +61,13 @@ class EntryRulesTest(unittest.TestCase):
             self.assertEqual(len(errs), 1, errs)
             self.assertIn("pair_edges", errs[0])
 
+    def test_stranger_safe_is_the_two_answers_or_those_with_history_card_2(self):
+        for safe, ok in ((["checkpoints", "history_card/1"], True), (["history_card/2", "checkpoints", "history_card/1"], True),
+                         (["checkpoints", "history_card/2"], False), (["checkpoints", "history_card/1", "record"], False)):
+            with self.subTest(safe=safe):
+                errs = self.check(disclosure={"policy": "counterparties", "stranger_safe": safe})
+                self.assertEqual(errs == [], ok, errs)
+
     def test_the_lab_nodes_opt_in_to_pair_edges(self):
         # Steven's ruling on loop#77: his three lab node entries set pair_edges "public".
         entries = [json.loads(p.read_text()) for p in sorted((ROOT / "nodes").glob("*.json"))]

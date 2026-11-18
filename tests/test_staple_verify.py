@@ -142,6 +142,15 @@ class MappingTest(unittest.TestCase):
         self.assertTrue(got["errors"])
         self.assertTrue(any("gave no report" in m for m in got["not_checked"]), got["not_checked"])
 
+    def test_a_history_card_2_staple_is_not_checked_and_capsule_cli_is_not_run(self):
+        doc = commitment()
+        doc["history_cards"][0]["derivation"] = "history_card/2"
+        self.path.write_text(json.dumps(doc))
+        got = staple_verify.verify(self.path, doc["key_id"], STUB)
+        self.assertEqual((got["state"], got["errors"], got["legacy"]), ("NOT_CHECKED", [], False))
+        self.assertIn("history_card/2", got["not_checked"][0])
+        self.assertFalse(self.log.exists())
+
     def test_a_legacy_commitment_is_not_checked_and_marked_legacy(self):
         doc = commitment()
         doc["profile"] = "evidence-commitment/0"

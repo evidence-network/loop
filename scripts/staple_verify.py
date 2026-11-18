@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Verify the history_card/1 a commitment staples with the pinned capsule-cli (`capsulectl verify --history`).
 
+A commitment that staples any history_card/2 card is NOT_CHECKED, without a capsule-cli run (a mixed /1 and /2 commitment
+included): no pinned capsule-cli evaluates /2, and it judges the whole commitment.
+
 Usage: staple_verify.py COMMITMENT.json NODE_KEY_ID_HEX
 
 Steps 03 and 12 call verify(). The binary is the capsule-cli release versions.lock pins, built by
@@ -88,7 +91,8 @@ def unchecked(why, legacy=False):
 
 def verify(commitment_path, node_key_id, binary_path=None):
     """{"state": PASS|FAIL|NOT_CHECKED, "errors": [...], "not_checked": [...], "outside": [...], "report": dict|None}
-    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given."""
+    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given. A /2 card makes it
+    NOT_CHECKED before any capsule-cli run (see the module docstring)."""
     try:
         doc = json.loads(Path(commitment_path).read_text())
         entries = hc.entries(doc)
@@ -103,6 +107,12 @@ def verify(commitment_path, node_key_id, binary_path=None):
         return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
     if not entries:
         return unchecked("the commitment staples no history_card/1")
+    # No pinned capsule-cli evaluates a history_card/2 staple (rc38 refuses "staples no history_card/1"; rc42 names no /2),
+    # and it judges the whole commitment, so a /2 card in it is not checked here rather than failed or skipped.
+    twos = [str(e.get("stream")) for e in entries if e.get("derivation") == "history_card/2"]
+    if twos:
+        return unchecked(f"the commitment staples history_card/2 for {', '.join(twos)}: the pinned capsule-cli {pinned_version()} "
+                         "verifies history_card/1 staples only, so the signature, digest and anchors of a /2 card are not checked")
     # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
     # accepts a card signed by any key it is given, so a union would let one entry's key vouch for another's card.
     by_key = {}
