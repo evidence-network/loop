@@ -804,6 +804,17 @@ class PayCheckTest(LabRoot):
         self.assertEqual(r.returncode, 1, r.stderr)
         self.assertTrue(any("pay-lightning-pr-11" in f for f in self.build()["failures"]), self.build()["failures"])
 
+    def test_a_fork_pr_merged_as_one_commit_is_accepted_by_the_head_its_message_names(self):
+        head = "3a" * 20
+        with open(self.root / "versions.lock", "a") as f:
+            f.write(f"pay-lightning-pr-18-19 someone/ln-payments-plugin {head}\n")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)  # its head is in no commit of the tree
+        self.assertTrue(any("pay-lightning-pr-18-19" in f for f in self.build()["failures"]), self.build()["failures"])
+        git(self.tmp / "pay-lightning", "commit", "-q", "--allow-empty", "-m", f"lab: fork branch @ {head}")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_a_missing_binary_fails(self):
         for var in ("PAY_LIGHTNING_BIN", "LEXE_PLUGIN"):
             r = self.run_lab("check", **{var: str(self.tmp / "bin/none")})

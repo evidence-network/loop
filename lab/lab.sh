@@ -541,9 +541,12 @@ cmd_check() {
     if [ -z "${PAY_LIGHTNING_SRC:-}" ] || ! pay_head=$(head_of "$PAY_LIGHTNING_SRC"); then
       fails+=("PAY_LIGHTNING_SRC is not a git tree (versions.lock pins pay-lightning)")
     else
-      for name in pay-lightning pay-lightning-pr-11; do
+      for name in pay-lightning pay-lightning-pr-11 pay-lightning-pr-18-19; do
         p=$(pin "$name"); [ -n "$p" ] || continue
-        git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || fails+=("pay-lightning source $pay_head does not contain the $name pin $p")
+        rc=0; git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || rc=$?
+        # A PR merged onto the lab tree as one commit: its head is in the message of a commit above the base pin.
+        if [ "$rc" != 0 ] && [ "$name" != pay-lightning ] && git -C "$PAY_LIGHTNING_SRC" log --format=%B "$(pin pay-lightning)..HEAD" 2> /dev/null | grep -qF "$p"; then rc=0; fi
+        [ "$rc" = 0 ] || fails+=("pay-lightning source $pay_head does not contain the $name pin $p")
       done
       [ -z "$(git -C "$PAY_LIGHTNING_SRC" status --porcelain --untracked-files=no)" ] || fails+=("pay-lightning source has uncommitted changes")
     fi

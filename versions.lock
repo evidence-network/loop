@@ -24,6 +24,11 @@ mesh-llm-pr-3066 Mesh-LLM/mesh-llm 1681652152192559edace4351dfd91c4edfbbae8
 # SDK's payment preimage, which pay-lightning carries; the lab has run this build since the 11-06 wallet setup.
 pay-lightning Mesh-LLM/ln-payments-plugin 14a5f977cc713f2ab3f1876b9286477524c71a33
 pay-lightning-pr-11 Mesh-LLM/ln-payments-plugin 8ff201b5ece2dd65a2c3cc579adc208ea4ace74d
+# The lab also runs the pay-events fixes that are not merged upstream: ln-payments-plugin#18 (a payer pays only for the models it asks a seller for)
+# and #19 (payer lifecycle events survive a restart), as the fork branch ethanyzhang/ln-payments-plugin lab/pay-events-18-19 at 3ab65a2, merged onto the
+# lab tree above as one commit whose message names that head. Without them the payers paid a second deposit for a model lab-1 never served and lost
+# their lifecycle events (step 06). Replaced by the upstream merge commits when #18 and #19 merge.
+pay-lightning-pr-18-19 ethanyzhang/ln-payments-plugin 3ab65a2ae730aa4392b72014bd485e9184d2f466
 lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.18 release (tag on 6d54aba), ten releases after the
 # previous pin v0.1.8 (cc21587). Breaking or visible changes on the way: 0.1.9 retires served_summary/1 and turns
