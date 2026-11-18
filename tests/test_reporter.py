@@ -239,7 +239,25 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(self.derivations_asked(), ["history_card/2", "history_card/1"])
         self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
         self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/1")
+        kept = json.loads(next(d.rglob("history_card.first-ask.json")).read_text())  # the signed refusal that earned /1
+        self.assertEqual(kept["request"]["derivation"], "history_card/2")
+        self.assertEqual(kept["reply"]["verification"]["reason"], "derivation_unsupported")
+        self.assertTrue((d / "history_card.first-ask.json").is_file())  # and in the settled day
         self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_a_kept_first_ask_that_is_not_the_signed_unsupported_refusal_is_refused_by_the_checker(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        kept = d / "history_card.first-ask.json"
+        good = kept.read_text()
+        for bad in (good.replace("derivation_unsupported", "policy_declined"), good.replace("history_card/2", "history_card/1"),
+                    "not json"):
+            kept.write_text(bad)
+            self.assertTrue([e for e in check_reports.check(self.out)[0] if "first-ask.json must be" in e], bad[:40])
+        kept.write_text(good)
+        (d / "checkpoints.first-ask.json").write_text(good)
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "only kept for history_card" in e])
 
     def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
         d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",

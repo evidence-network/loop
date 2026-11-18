@@ -143,6 +143,8 @@ def asked_name(stem, request):
 # u562/u563), and the verification line a /1-only plugin's signed refusal of it gives.
 FIRST_ASKS = {"history_card": dict(QUESTIONS["history_card"], derivation="history_card/2")}
 UNSUPPORTED_PREFIX = "refusal reason=derivation_unsupported"
+# The kept /2 ask a plugin without #302 refused (a history_card attempt answered by /1 may hold it): {stem}.first-ask.json.
+FIRST_ASK_FILE = "first-ask.json"
 TOOL_ROUTE = "/api/plugins/capsules/tools/mesh_evidence_request"
 PEER_KEY_ROUTE = "/api/plugins/capsules/http/peer-key"
 # The plugin's own ledger route; its node_pub_key_pem is the key the running
@@ -303,6 +305,10 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
             first = ask_once(preferred)
             if not first[4].startswith(UNSUPPORTED_PREFIX):
                 request = preferred
+            else:
+                # The signed refusal is the evidence the /1 ask was earned: kept beside the answer that counted.
+                write_new(d / f"{stem}.{FIRST_ASK_FILE}", json.dumps(
+                    {"request": preferred, "status": first[0], "reply": json.loads(first[1])}, indent=2, sort_keys=True) + "\n")
         write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
         status, body, error, timed_out, line = (first if preferred is not None and request is preferred
                                                 else ask_once(request))
@@ -326,7 +332,7 @@ def settle(node_dir):
         first = a["attempt"] if a["attempt"] is not None else a["tried"][0][0]
         write_new(node_dir / f"{stem}.request.json", (first / f"{stem}.request.json").read_bytes())
         if a["attempt"] is not None:
-            for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification"):
+            for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification", f"{stem}.{FIRST_ASK_FILE}"):
                 if (a["attempt"] / name).is_file():
                     write_new(node_dir / name, (a["attempt"] / name).read_bytes())
             line = a["line"]
@@ -562,7 +568,7 @@ def run(args, now, sleep):
              else f"# Daily report {name}")
     readme = [title, "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
-              " `checkpoints` and `history_card/2` (`history_card/1` for a node whose plugin does not answer /2). Nodes are listed by node id; the order means nothing.",
+              " `checkpoints` and `history_card/2` (`history_card/1` for a node whose plugin refuses /2 as derivation_unsupported). Nodes are listed by node id; the order means nothing.",
               f"A question with no answer was asked again at {again} after the run started;"
               " each node's `attempts/` holds every time it was asked.", ""]
     if ondemand:

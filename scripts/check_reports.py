@@ -63,6 +63,32 @@ def check_answer(where, d, stem, states):
     return errs
 
 
+FIRST_ASK = "first-ask.json"
+
+
+def check_first_ask(where, d, stem):
+    """The history_card/2 ask a plugin refused as derivation_unsupported, kept beside the history_card/1 answer that
+    followed it: only for history_card, only with a /1 request, and the kept reply is that signed refusal."""
+    path = d / f"{stem}.{FIRST_ASK}"
+    if not path.exists():
+        return []
+    name = f"{where}: {stem}.{FIRST_ASK}"
+    if stem != "history_card":
+        return [f"{name} is only kept for history_card"]
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+        asked = json.loads((d / f"{stem}.request.json").read_text(encoding="utf-8"))
+        verification = (kept["reply"].get("verification") or {})
+        ok = (isinstance(kept, dict) and set(kept) == {"request", "status", "reply"} and kept["status"] == 200
+              and kept["request"].get("derivation") == "history_card/2"
+              and asked.get("derivation") == "history_card/1"
+              and verification.get("state") == "refusal" and verification.get("reason") == "derivation_unsupported")
+    except (OSError, ValueError, KeyError, AttributeError, TypeError):
+        ok = False
+    return [] if ok else [f"{name} must be the history_card/2 request and its signed derivation_unsupported refusal, "
+                          "beside a history_card/1 request"]
+
+
 def check_attempt(where, a):
     """One attempt: ATTEMPT naming its own time, peer-key.json, the questions it asked."""
     where = f"{where}/{layout.ATTEMPTS}/{a.name}"
@@ -80,10 +106,11 @@ def check_attempt(where, a):
     asked = 0
     for stem in STEMS:
         files = {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
-        allowed |= files
+        allowed |= files | {f"{stem}.{FIRST_ASK}"}
         if any((a / f).exists() for f in files):
             asked += 1
             errs += check_answer(where, a, stem, layout.ATTEMPT_STATES)
+            errs += check_first_ask(where, a, stem)
     if not asked:
         errs.append(f"{where}: asks no question")
     extra = sorted(p.name for p in a.iterdir() if p.name not in allowed)
@@ -106,8 +133,10 @@ def check_node(day, node_dir):
         errs += check_attempt(where, a)
     day_answers = layout.answers(node_dir)
     for stem in STEMS:
-        allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
+        allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt",
+                    f"{stem}.{FIRST_ASK}"}
         errs += check_answer(where, node_dir, stem, STATES)
+        errs += check_first_ask(where, node_dir, stem)
         settled = node_dir / f"{stem}.response.json"
         if settled.is_file() and not any(
             (a / f"{stem}.response.json").is_file()

@@ -39,7 +39,12 @@ say why no answer came:
 - `absence`: no reply, for another reason.
 
 Beside `attempts/`, the day as the run settled it after its last attempt, for
-each question (`checkpoints`, `history_card` for `history_card/2`, or `history_card/1` for a node whose plugin does not answer `/2`):
+each question (`checkpoints`, `history_card`). The reporter asks `history_card/2` first; only a signed
+`derivation_unsupported` refusal of it (a plugin without `/2`) makes it ask `history_card/1`, and that refusal is kept
+as `history_card.first-ask.json` beside the `/1` answer; no reply or another refusal is the answer, and `/1` is not
+asked. The `derivation` in a node's `history_card.request.json` says which one it was asked; `RUN.json`'s `questions`
+names the first ask, not each node's. A `/2` line does not mean a node lacks `/1`: the line names what the reporter
+asked and was answered, and a node that answers `/2` also answers `/1` within its caps:
 
 - `<q>.request.json`: what the reporter asked;
 - `<q>.response.json`: the bytes its node's plugin returned, the node's answer
@@ -83,7 +88,7 @@ each answer is in the tree twice: in the attempt that got it
 (`attempts/<time>/`) and byte-copied into the settled day. Git stores the two
 copies as one blob, so they double the checkout, not the history:
 
-- about 2.4 KB per checkpoint for `checkpoints` and 2.7 KB for `history_card/1`;
+- about 2.4 KB per checkpoint for `checkpoints` and 2.7 KB for `history_card/1` (a `history_card/2` answer is not measured yet: no plugin that answers it has been asked);
   a node cutting 12 checkpoints a day adds about 61 KB a day to its two answers;
 - at most 1 MiB per answer (capsules refuses a larger one): past about 380
   checkpoints (`checkpoints`) and 350 (`history_card/1`) the node signs a
