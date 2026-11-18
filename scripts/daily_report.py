@@ -12,10 +12,13 @@ Usage:
                         [--second-console URL] [--population FILE]
   daily_report.py prove --date D [--out DIR]
 
-`run` asks each node in nodes/ `checkpoints` and `history_card/1` over the mesh
+`run` asks each node in nodes/ `checkpoints` and `history_card/2` over the mesh
 evidence request, through the reporter node's own capsules plugin
 (POST <console>/api/plugins/capsules/tools/mesh_evidence_request), and writes
-what came back under <out>/<date>/<node_id>/. It asks those two and nothing else.
+what came back under <out>/<date>/<node_id>/. It asks those two and nothing else,
+except that a node whose plugin refuses `history_card/2` as `derivation_unsupported`
+(one without capsules-plugin#302) is asked `history_card/1` instead; the files keep
+the request and answer that counted.
 A question that got no answer (the node unreachable, or no answer in time) is
 asked again at the times in the reporter file's `retry_after_s` (seconds after
 the run starts; none, one attempt). An answer, a signed refusal included, is
@@ -129,6 +132,15 @@ QUESTIONS = {
     },
 }
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
+# The question asked first, where it differs from the one in QUESTIONS (history_card/2: capsules-plugin#302, Steven's ruling
+# u562/u563), and the verification line a /1-only plugin's signed refusal of it gives.
+def asked_name(stem, request):
+    """What the question is called in a line: the derivation actually asked, else the stem's name."""
+    return request.get("derivation") or QUESTION_NAMES[stem]
+
+
+FIRST_ASKS = {"history_card": dict(QUESTIONS["history_card"], derivation="history_card/2")}
+UNSUPPORTED_PREFIX = "refusal reason=derivation_unsupported"
 TOOL_ROUTE = "/api/plugins/capsules/tools/mesh_evidence_request"
 PEER_KEY_ROUTE = "/api/plugins/capsules/http/peer-key"
 # The plugin's own ledger route; its node_pub_key_pem is the key the running
@@ -264,10 +276,8 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
     except (OSError, ValueError) as e:
         if not (d / "peer-key.json").exists():
             write_new(d / "peer-key.json", json.dumps({"error": str(e)}) + "\n")
-    lines = {}
-    for stem in stems:
-        request = QUESTIONS[stem]
-        write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
+    def ask_once(request):
+        """(status, body, error, timed_out, line) of one request to the node."""
         status, body, error, timed_out = None, b"", None, False
         wait = timeout()
         try:
@@ -278,12 +288,28 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
                 error = f"no reply from the reporter's node within {wait:g}s: {e}"
             else:
                 error = f"the reporter's node did not take the request: {e}"
+        return status, body, error, timed_out, verification_line(status, body, error, announced, listed, timed_out)
+
+    lines = {}
+    for stem in stems:
+        request = QUESTIONS[stem]
+        preferred = FIRST_ASKS.get(stem)
+        if preferred is not None:
+            # history_card/2 first (it stays small however long the log grows); a node whose plugin does not answer it
+            # refuses it derivation_unsupported, signed, and is asked history_card/1 instead. Only the answer that counts
+            # is kept: a published attempt holds no other files (check_reports.py).
+            first = ask_once(preferred)
+            if not first[4].startswith(UNSUPPORTED_PREFIX):
+                request = preferred
+        write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
+        status, body, error, timed_out, line = (first if preferred is not None and request is preferred
+                                                else ask_once(request))
         if error is None and status == 200:
             write_new(d / f"{stem}.response.json", body)
         else:
             write_new(d / f"{stem}.absence.txt",
                       (error or f"http {status}\n{body.decode('utf-8', 'replace')}").rstrip("\n") + "\n")
-        lines[stem] = verification_line(status, body, error, announced, listed, timed_out)
+        lines[stem] = line
         write_new(d / f"{stem}.verification", lines[stem] + "\n")
     return lines
 
@@ -306,7 +332,7 @@ def settle(node_dir):
             line = layout.absence_line(a["tried"])
             write_new(node_dir / f"{stem}.verification", line + "\n")
         if line.startswith("verified "):
-            disclosed.append(QUESTION_NAMES[stem])
+            disclosed.append(asked_name(stem, json.loads((node_dir / f"{stem}.request.json").read_text())))
         waiting = waiting or line.startswith("no_checkpoint_yet ")
     write_new(node_dir / "peer-key.json", (layout.attempts(node_dir)[-1] / "peer-key.json").read_bytes())
     if disclosed:
@@ -519,7 +545,7 @@ def run(args, now, sleep):
         "reporter": {"node_id": reporter["node_id"], "key_id": reporter["key_id"]},
         "started": layout.iso(start),
         "finished": layout.iso(now()),
-        "questions": [QUESTION_NAMES[s] for s in QUESTIONS],
+        "questions": [QUESTION_NAMES[s] if s not in FIRST_ASKS else FIRST_ASKS[s]["derivation"] for s in QUESTIONS],
         "asked": sorted(lines),
         "versions_lock_sha256": versions_lock_sha256(),
     }
@@ -533,7 +559,7 @@ def run(args, now, sleep):
              else f"# Daily report {name}")
     readme = [title, "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
-              " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.",
+              " `checkpoints` and `history_card/2` (`history_card/1` for a node whose plugin does not answer /2). Nodes are listed by node id; the order means nothing.",
               f"A question with no answer was asked again at {again} after the run started;"
               " each node's `attempts/` holds every time it was asked.", ""]
     if ondemand:

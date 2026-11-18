@@ -218,8 +218,8 @@ class OfflineRetryTest(unittest.TestCase):
             self.assertEqual((self.node(1) / f"{stem}.response.json").read_bytes(),
                              (FIXTURES / "verified.json").read_bytes())
         self.assertEqual(self.clock.slept, [3600, 7200])  # answered at +3 h: no fourth attempt
-        self.assertEqual((self.node(1) / "NODE").read_text(), "discloses: checkpoints, history_card/1\n")
-        self.assertEqual(self.readme_line(1), f"- `{node_id(1)}`: discloses: checkpoints, history_card/1")
+        self.assertEqual((self.node(1) / "NODE").read_text(), "discloses: checkpoints, history_card/2\n")
+        self.assertEqual(self.readme_line(1), f"- `{node_id(1)}`: discloses: checkpoints, history_card/2")
         self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_offline_all_day_is_an_absence_listing_each_attempt_time(self):
@@ -359,7 +359,7 @@ class OfflineRetryTest(unittest.TestCase):
             self.run_day(day)
         self.assertEqual(self.readme_line(1, "2026-10-26"), f"- `{node_id(1)}`: joined, discloses nothing; absent today")
         self.assertEqual(self.readme_line(1), f"- `{node_id(1)}`: joined, discloses nothing; absent 3 days running")
-        self.assertEqual(self.readme_line(2), f"- `{node_id(2)}`: discloses: checkpoints, history_card/1")
+        self.assertEqual(self.readme_line(2), f"- `{node_id(2)}`: discloses: checkpoints, history_card/2")
         readme = (self.out / DAY / "README.md").read_text().lower()
         for word in ("score", "rank", "total", "%"):
             self.assertNotIn(word, readme)

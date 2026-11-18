@@ -77,6 +77,10 @@ class FakeConsole:
                     return self.reply(404, b"Not found")
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 what = fake.behaviour[body["peer_id"]][stem]
+                # A node's "history_card_2" behaviour answers a history_card/2 ask on its own; without it a /2 ask gets
+                # the stem's behaviour, as a plugin that answers both would.
+                if body["request"].get("derivation") == "history_card/2":
+                    what = fake.behaviour[body["peer_id"]].get("history_card_2", what)
                 if what == "timeout":
                     time.sleep(fake.delay)  # the reporter has given up; send nothing
                     return
@@ -202,7 +206,7 @@ class ReporterTest(unittest.TestCase):
         self.assertFalse((self.out / d / node_id(4) / "history_card.response.json").exists())
         self.assertIn("could not reach peer", (self.out / d / node_id(4) / "history_card.absence.txt").read_text())
 
-        self.assertEqual(self.node_line(d, 1), "discloses: checkpoints, history_card/1")
+        self.assertEqual(self.node_line(d, 1), "discloses: checkpoints, history_card/2")
         self.assertEqual(self.node_line(d, 4), "discloses: checkpoints")
         for n in (2, 3, 5, 6):
             self.assertEqual(self.node_line(d, n), "joined, discloses nothing")
@@ -210,9 +214,44 @@ class ReporterTest(unittest.TestCase):
 
         run = json.loads((self.out / d / "RUN.json").read_text())
         self.assertEqual(run["reporter"], REPORTER)
-        self.assertEqual(run["questions"], ["checkpoints", "history_card/1"])
+        self.assertEqual(run["questions"], ["checkpoints", "history_card/2"])
         self.assertEqual(run["asked"], sorted(node_id(n) for n in range(1, 9)))
         self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def one_node(self, behaviour):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): behaviour}, {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        return self.out / "2026-10-28" / node_id(1)
+
+    def derivations_asked(self):
+        return [b["request"].get("derivation") for _, b in self.console.asked if b["request"].get("derivation")]
+
+    def test_a_node_that_answers_history_card_2_is_asked_only_that(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/2")
+        self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/2")
+
+    def test_a_plugin_without_history_card_2_is_asked_history_card_1_after_its_signed_refusal(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2", "history_card/1"])
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
+        self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/1")
+        self.assertFalse(list(d.rglob("*first-try*")))  # a published attempt holds only the answer that counts
+        self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
+        self.assertTrue((d / "history_card.verification").read_text().startswith("refusal reason=policy_declined"))
+
+    def test_a_node_that_does_not_reply_to_history_card_2_is_not_asked_again_with_history_card_1(self):
+        self.one_node({"checkpoints": "verified", "history_card": "verified_history_card", "history_card_2": "absence"})
+        self.assertEqual(self.derivations_asked()[0], "history_card/2")
+        self.assertNotIn("history_card/1", self.derivations_asked()[:1])
 
     def test_it_asks_the_two_questions_and_nothing_else(self):
         self.every_outcome()
@@ -221,7 +260,8 @@ class ReporterTest(unittest.TestCase):
         for n in range(1, 9):
             asked = [body for _, body in self.console.asked if body["peer_id"] == node_id(n)]
             self.assertEqual(sorted(json.dumps(b["request"], sort_keys=True) for b in asked),
-                             sorted(json.dumps(q, sort_keys=True) for q in daily_report.QUESTIONS.values()))
+                             sorted(json.dumps(q, sort_keys=True) for q in
+                                    (daily_report.QUESTIONS["checkpoints"], daily_report.FIRST_ASKS["history_card"])))
             for body in asked:
                 self.assertEqual(set(body), {"peer_id", "request"})  # never verify: false
 
@@ -423,7 +463,7 @@ class ReporterTest(unittest.TestCase):
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
                                    {node_id(1): key_id(1)})
         self.assertEqual(self.run_reporter("2026-10-28"), 0)
-        self.assertEqual(self.node_line("2026-10-28", 1), "discloses: checkpoints, history_card/1")
+        self.assertEqual(self.node_line("2026-10-28", 1), "discloses: checkpoints, history_card/2")
         self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_reporter_key_writes_the_public_identity_only(self):

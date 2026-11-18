@@ -178,7 +178,7 @@ class ScrubTest(unittest.TestCase):
         self.assertEqual(day["versions_lock_sha256"], daily_report.versions_lock_sha256())
         self.assertEqual([n["node_id"] for n in day["nodes"]], sorted((N1, N2, N3)))
         n1 = self.node("2026-10-20", N1)
-        self.assertEqual(n1["node_line"], "discloses: checkpoints, history_card/1")
+        self.assertEqual(n1["node_line"], "discloses: checkpoints, history_card/2")
         self.assertEqual(n1["questions"]["checkpoints"]["log_size_at_checkpoint"],
                          {"mmr_size": 41, "timestamp": "2026-10-19T23:55:00Z"})
         self.assertEqual(n1["questions"]["checkpoints"]["records_at_checkpoint"], 22)  # 2*22 - popcount(22) = 41

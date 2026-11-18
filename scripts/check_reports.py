@@ -37,7 +37,7 @@ import report_layout as layout  # noqa: E402
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 STEMS = layout.STEMS
 STATES = layout.DAY_STATES
-NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/1)(, history_card/1)?)$")
+NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/[12])(, history_card/[12])?)$")
 DAY_FILES = {"RUN.json", "README.md"}
 
 
