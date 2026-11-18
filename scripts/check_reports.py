@@ -67,8 +67,10 @@ FIRST_ASK = "first-ask.json"
 
 
 def check_first_ask(where, d, stem):
-    """The history_card/2 ask a plugin refused as derivation_unsupported, kept beside the history_card/1 answer that
-    followed it: only for history_card, only with a /1 request, and the kept reply is that signed refusal."""
+    """The history_card/2 ask a plugin refused as derivation_unsupported, kept beside the history_card/1 request that
+    followed it, whether or not that was answered. Only for history_card; the kept reply is the plugin's reply holding
+    that refusal (the signed answer with its reason and signature members, and the verification saying refusal). The
+    signature itself is not checked here, as no answer's is: steps 07 and 12 do that with the node's key."""
     path = d / f"{stem}.{FIRST_ASK}"
     if not path.exists():
         return []
@@ -78,10 +80,12 @@ def check_first_ask(where, d, stem):
     try:
         kept = json.loads(path.read_text(encoding="utf-8"))
         asked = json.loads((d / f"{stem}.request.json").read_text(encoding="utf-8"))
-        verification = (kept["reply"].get("verification") or {})
+        answer, verification = kept["reply"]["answer"], kept["reply"]["verification"]
         ok = (isinstance(kept, dict) and set(kept) == {"request", "status", "reply"} and kept["status"] == 200
               and kept["request"].get("derivation") == "history_card/2"
               and asked.get("derivation") == "history_card/1"
+              and answer.get("reason") == "derivation_unsupported" and isinstance(answer.get("sig"), str) and answer["sig"]
+              and isinstance(answer.get("request_digest"), str) and answer["request_digest"]
               and verification.get("state") == "refusal" and verification.get("reason") == "derivation_unsupported")
     except (OSError, ValueError, KeyError, AttributeError, TypeError):
         ok = False
@@ -110,7 +114,7 @@ def check_attempt(where, a):
         if any((a / f).exists() for f in files):
             asked += 1
             errs += check_answer(where, a, stem, layout.ATTEMPT_STATES)
-            errs += check_first_ask(where, a, stem)
+        errs += check_first_ask(where, a, stem)
     if not asked:
         errs.append(f"{where}: asks no question")
     extra = sorted(p.name for p in a.iterdir() if p.name not in allowed)
@@ -137,6 +141,12 @@ def check_node(day, node_dir):
                     f"{stem}.{FIRST_ASK}"}
         errs += check_answer(where, node_dir, stem, STATES)
         errs += check_first_ask(where, node_dir, stem)
+        source = day_answers[stem]["attempt"] or (day_answers[stem]["tried"][0][0] if day_answers[stem]["tried"] else None)
+        kept_day = node_dir / f"{stem}.{FIRST_ASK}"
+        kept_src = source / f"{stem}.{FIRST_ASK}" if source else None
+        if (kept_src is not None and kept_src.is_file()) != kept_day.is_file() or (
+                kept_day.is_file() and kept_day.read_bytes() != kept_src.read_bytes()):
+            errs.append(f"{where}: {stem}.{FIRST_ASK} is not the one the attempt that counts holds")
         settled = node_dir / f"{stem}.response.json"
         if settled.is_file() and not any(
             (a / f"{stem}.response.json").is_file()

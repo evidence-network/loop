@@ -331,8 +331,10 @@ def settle(node_dir):
         # The request the counting answer was given to (a retry may have fallen back from /2 to /1); with no answer, the first try's.
         first = a["attempt"] if a["attempt"] is not None else a["tried"][0][0]
         write_new(node_dir / f"{stem}.request.json", (first / f"{stem}.request.json").read_bytes())
+        if (first / f"{stem}.{FIRST_ASK_FILE}").is_file():  # the refused /2 ask that earned this /1 request, answered or not
+            write_new(node_dir / f"{stem}.{FIRST_ASK_FILE}", (first / f"{stem}.{FIRST_ASK_FILE}").read_bytes())
         if a["attempt"] is not None:
-            for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification", f"{stem}.{FIRST_ASK_FILE}"):
+            for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification"):
                 if (a["attempt"] / name).is_file():
                     write_new(node_dir / name, (a["attempt"] / name).read_bytes())
             line = a["line"]

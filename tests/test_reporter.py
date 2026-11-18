@@ -259,6 +259,36 @@ class ReporterTest(unittest.TestCase):
         (d / "checkpoints.first-ask.json").write_text(good)
         self.assertTrue([e for e in check_reports.check(self.out)[0] if "only kept for history_card" in e])
 
+    def test_the_day_keeps_the_refusal_that_earned_history_card_1_even_when_that_is_unanswered(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "absence",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
+        self.assertTrue((d / "history_card.first-ask.json").is_file())
+        self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_the_checker_refuses_a_first_ask_that_is_orphaned_or_not_the_counting_attempts(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        day_copy = d / "history_card.first-ask.json"
+        good = day_copy.read_text()
+        day_copy.write_text(good.replace('"status": 200', '"status": 200 '))  # a copy that is not the attempt's bytes
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "is not the one the attempt that counts holds" in e])
+        day_copy.write_text(good)
+        day_copy.unlink()  # the copy removed
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "is not the one the attempt that counts holds" in e])
+        day_copy.write_text(good)
+        # An attempt that answered only checkpoints cannot carry a history_card first-ask: it is orphaned there.
+        attempt = next((d / "attempts").iterdir())
+        (attempt / "history_card.request.json").unlink()
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "history_card.first-ask.json must be" in e])
+        # A reply without the signed answer's members is not a refusal to keep.
+        (attempt / "history_card.request.json").write_text((d / "history_card.request.json").read_text())
+        kept = attempt / "history_card.first-ask.json"
+        broken = json.loads(good); del broken["reply"]["answer"]["sig"]
+        kept.write_text(json.dumps(broken))
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "history_card.first-ask.json must be" in e])
+
     def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
         d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
                            "history_card_2": "refusal"})
