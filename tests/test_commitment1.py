@@ -70,7 +70,7 @@ def answer(stream, responder, receipts=None, derivation="history_card/1"):
     """A history_card/1 (or /2) answer in the plugin's evidence-interop/0 shape; receipts per checkpoint, or none."""
     history = [{"checkpoint": "00", "consistency_from_previous": None}, {"checkpoint": "01",
                                                                         "consistency_from_previous": "ab"}]
-    for i, (entry, r) in enumerate(zip(history, receipts or [])):
+    for entry, r in zip(history, receipts or []):
         entry["receipts"] = r
     if derivation == "history_card/2":
         for i, entry in enumerate(history):

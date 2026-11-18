@@ -153,7 +153,7 @@ these members; any other is refused.
 | `human_gated` | boolean | true when a person must approve each answer |
 | `answers_within` | ISO 8601 duration | how long an asker should wait before recording absence, e.g. `PT24H` |
 | `history_card.derivation` | string | `history_card/1` or `history_card/2` |
-| `history_card.bytes` | base64 | the stapled `history_card/1` answer, whole, in the capsules plugin's `evidence-interop/0` answer format |
+| `history_card.bytes` | base64 | the stapled `history_card/1` or `history_card/2` answer, whole, in the capsules plugin's `evidence-interop/0` answer format |
 | `history_card.sha256` | 64 hex | sha256 of those bytes |
 | `controller_binding.digest` | 64 hex | optional: the binding digest (AAC Controller Binding v0 §4) of the record that binds the node key to its operator's key. Only the digest: the record, which names the operator's key, goes only to the counterparties that verify it. A node with no binding leaves the member out |
 | `sig.alg` | string | `Ed25519` |

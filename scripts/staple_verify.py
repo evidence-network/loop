@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Verify the history_card/1 a commitment staples with the pinned capsule-cli (`capsulectl verify --history`).
 
+A commitment that staples any history_card/2 card is NOT_CHECKED, without a capsule-cli run (a mixed /1 and /2 commitment
+included): no pinned capsule-cli evaluates /2, and it judges the whole commitment.
+
 Usage: staple_verify.py COMMITMENT.json NODE_KEY_ID_HEX
 
 Steps 03 and 12 call verify(). The binary is the capsule-cli release versions.lock pins, built by
@@ -88,7 +91,8 @@ def unchecked(why, legacy=False):
 
 def verify(commitment_path, node_key_id, binary_path=None):
     """{"state": PASS|FAIL|NOT_CHECKED, "errors": [...], "not_checked": [...], "outside": [...], "report": dict|None}
-    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given."""
+    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given. A /2 card makes it
+    NOT_CHECKED before any capsule-cli run (see the module docstring)."""
     try:
         doc = json.loads(Path(commitment_path).read_text())
         entries = hc.entries(doc)
