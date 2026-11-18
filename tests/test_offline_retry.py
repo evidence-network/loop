@@ -117,6 +117,8 @@ class FakeConsole:
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 fake.asked.append((body["peer_id"], stem))
                 what = fake.behaviour[body["peer_id"]][stem]
+                if body["request"].get("derivation") == "history_card/2":  # a node's own answer to a /2 ask, if it has one
+                    what = fake.behaviour[body["peer_id"]].get("history_card_2", what)
                 if what == "hang":
                     time.sleep(0.6)  # past the reporter's 0.2 s timeout: nothing comes back
                     return
@@ -220,6 +222,21 @@ class OfflineRetryTest(unittest.TestCase):
         self.assertEqual(self.clock.slept, [3600, 7200])  # answered at +3 h: no fourth attempt
         self.assertEqual((self.node(1) / "NODE").read_text(), "discloses: checkpoints, history_card/2\n")
         self.assertEqual(self.readme_line(1), f"- `{node_id(1)}`: discloses: checkpoints, history_card/2")
+        self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_a_retry_that_falls_back_to_history_card_1_publishes_the_request_that_was_answered(self):
+        # Pass 1 finds the node offline (its /2 ask is the request that day's first try holds); pass 2 meets a plugin
+        # without /2 and asks /1: the day's request, answer and NODE line are the /1 ones, not the first try's /2.
+        self.setup_nodes({node_id(1): both("unreachable")})
+        flip = lambda: self.console.behaviour.update({node_id(1): {  # noqa: E731
+            "checkpoints": "verified", "history_card": "verified_history_card",
+            "history_card_2": "refusal_derivation_unsupported"}})
+        self.clock.at += [(self.clock.t + dt.timedelta(hours=1), flip)]
+        self.run_day()
+        request = json.loads((self.node(1) / "history_card.request.json").read_text())
+        self.assertEqual(request["derivation"], "history_card/1")
+        self.assertEqual((self.node(1) / "NODE").read_text(), "discloses: checkpoints, history_card/1\n")
+        self.assertEqual(self.readme_line(1), f"- `{node_id(1)}`: discloses: checkpoints, history_card/1")
         self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_offline_all_day_is_an_absence_listing_each_attempt_time(self):

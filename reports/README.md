@@ -39,7 +39,7 @@ say why no answer came:
 - `absence`: no reply, for another reason.
 
 Beside `attempts/`, the day as the run settled it after its last attempt, for
-each question (`checkpoints`, `history_card` for `history_card/1`):
+each question (`checkpoints`, `history_card` for `history_card/2`, or `history_card/1` for a node whose plugin does not answer `/2`):
 
 - `<q>.request.json`: what the reporter asked;
 - `<q>.response.json`: the bytes its node's plugin returned, the node's answer

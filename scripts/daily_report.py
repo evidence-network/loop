@@ -320,7 +320,8 @@ def settle(node_dir):
     disclosed, waiting = [], False
     for stem in QUESTIONS:
         a = day[stem]
-        first = a["tried"][0][0]
+        # The request the counting answer was given to (a retry may have fallen back from /2 to /1); with no answer, the first try's.
+        first = a["attempt"] if a["attempt"] is not None else a["tried"][0][0]
         write_new(node_dir / f"{stem}.request.json", (first / f"{stem}.request.json").read_bytes())
         if a["attempt"] is not None:
             for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification"):
@@ -613,7 +614,9 @@ def ask(args, now):
             continue
         lines = ask_attempt(via.get(node_id, console), listed[node_id], day_dir / node_id, stems, now(), "by=ask",
                             args.timeout)
-        print(f"{node_id}: " + "; ".join(f"{QUESTION_NAMES[s]}: {l}" for s, l in lines.items()))
+        asked_in = layout.attempts(day_dir / node_id)[-1]
+        print(f"{node_id}: " + "; ".join(
+            f"{asked_name(s, json.loads((asked_in / f'{s}.request.json').read_text()))}: {l}" for s, l in lines.items()))
     return 0
 
 
@@ -625,7 +628,9 @@ def prove(args):
         hc = (node_dir / "history_card.verification").read_text().split() or ["missing"]
         count = next((int(t.split("=", 1)[1]) for t in cp if re.fullmatch(r"^checkpoints=\d+$", t)), 0)
         ok = cp[0] == "verified" and count >= 1 and hc[0] == "verified"
-        print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; history_card/1: {hc[0]})")
+        asked = asked_name("history_card", json.loads((node_dir / "history_card.request.json").read_text())
+                           if (node_dir / "history_card.request.json").is_file() else {})
+        print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; {asked}: {hc[0]})")
         if ok:
             passing.append(node_dir.name)
     print(f"day-one proof {'holds' if len(passing) >= 2 else 'does not hold'} for {args.date}")
