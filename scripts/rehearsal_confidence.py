@@ -105,6 +105,11 @@ def judge(slot_dir, nodes, lock):
         who = "the reporter's own node" if node_id == me else "node"
         for stem, name in QUESTION_NAMES.items():
             a = day[stem]
+            asked_file = slot_dir / node_id / f"{stem}.request.json"  # the card question is history_card/2 or, without it, /1
+            try:
+                name = json.loads(asked_file.read_text()).get("derivation") or name
+            except (OSError, ValueError, AttributeError):
+                pass
             if a["state"] != "verified":
                 return f"{who} {short(node_id)} {name}: {a['state']}"
             if "listed_key=match" not in a["line"].split():

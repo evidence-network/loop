@@ -1140,6 +1140,11 @@ def check_listing(name, entry, signed):
             fails.append(f"{name}: nodes/ lists {question} as stranger-safe, but the node's signed commitment does "
                          f"not advertise it (subjects {subjects}" + (f", derivation {derivation})" if derivation
                                                                        else ")"))
+    # history_card/2 (capsules-plugin#302): a node that lists it as stranger-safe must advertise it too.
+    for stem, q in daily_report.FIRST_ASKS.items():
+        if q["derivation"] in listed and q["derivation"] not in signed["derivations"]:
+            fails.append(f"{name}: nodes/ lists {q['derivation']} as stranger-safe, but the node's signed commitment "
+                         f"does not advertise it (derivation {q['derivation']})")
     return fails
 
 

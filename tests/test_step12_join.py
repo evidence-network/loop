@@ -1563,6 +1563,18 @@ class PluginToolsRunTest(Tmp):
         self.assertIn("alice: nodes/ lists history_card/1 as stranger-safe, but the node's signed commitment does not "
                       "advertise it (subjects ['full_history'], derivation history_card/1)", r["detail"])
 
+    def test_a_node_listing_history_card_2_must_advertise_it(self):
+        safe = ["checkpoints", "history_card/1", "history_card/2"]
+        entry = {"disclosure": {"policy": "counterparties", "stranger_safe": safe}}
+        signed = {"stranger_safe": safe, "subjects": ["checkpoints", "full_history"],
+                  "derivations": ["checkpoints", "history_card/1"]}
+        fails = step.check_listing("alice", entry, signed)
+        self.assertEqual(len(fails), 1, fails)
+        self.assertIn("alice: nodes/ lists history_card/2 as stranger-safe, but the node's signed commitment does not "
+                      "advertise it", fails[0])
+        signed["derivations"].append("history_card/2")
+        self.assertEqual(step.check_listing("alice", entry, signed), [])
+
     def test_a_signed_policy_other_than_the_listing_is_a_fail(self):
         r = self.run_one(join=signed_pair(stranger_safe=("checkpoints",)))
         self.assertEqual(r["result"], "FAIL", r["detail"])
