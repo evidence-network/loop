@@ -815,12 +815,12 @@ cmd_node_start() {
   start_joined "$n"
 }
 cmd_node_id() { node_id "${1:-}"; }
-# What both hosts must agree on for the second host's nodes: roles, model, ports, fault, and which of them share and pay. The
+# What both hosts must agree on for the second host's nodes: roles, model, ports, fault, the payment plugin mode, and which of them share and pay. The
 # driver sends its value with its sha256 of this script to `running` there, which refuses a mismatch (a stale tree or env file).
 config_digest() {
   local n; local -a nodes=(${REMOTE[@]+"${REMOTE[@]}"} ${ONLY[@]+"${ONLY[@]}"})
   {
-    printf 'twins=%s a=%s b=%s referee=%s requester=%s model=%s base=%s fault=%s\n' "$TWINS" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$MODEL_REF" "$BASE" "$FAULT_PROMPT"
+    printf 'twins=%s a=%s b=%s referee=%s requester=%s model=%s base=%s fault=%s paymentplugin=%s\n' "$TWINS" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$MODEL_REF" "$BASE" "$FAULT_PROMPT" "$PAY_PLUGIN"
     for n in "${nodes[@]}"; do
       printf '%s share=%s pays=%s\n' "$n" "$(shares "$n" && echo 1 || echo 0)" "$(pays "$n" && echo 1 || echo 0)"
     done

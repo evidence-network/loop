@@ -769,6 +769,55 @@ class SquashedPrPinTest(LabRoot):
         self.assertTrue(any("mesh-llm-pr-2620" in f for f in self.build()["failures"]), self.build()["failures"])
 
 
+class PayCheckTest(LabRoot):
+    """`check` with the payment pins: the pay-lightning tree holds the base and #11 commits, and the binaries are recorded."""
+
+    def setUp(self):
+        super().setUp()
+        self.pay = new_tree(self.tmp / "pay-lightning", 2)
+        for name in ("pay-lightning", "lexe-wallet"):
+            f = self.tmp / "bin" / name
+            f.write_text(f"{name} plugin\n")
+            f.chmod(0o755)
+        self.lexe_pin = "9f" * 20
+        self.set_lock(self.pay[0], self.pay[1])
+        self.env.update({"PAY_LIGHTNING_SRC": str(self.tmp / "pay-lightning"), "PAY_LIGHTNING_BIN": str(self.tmp / "bin/pay-lightning"),
+                         "LEXE_PLUGIN": str(self.tmp / "bin/lexe-wallet")})
+
+    def set_lock(self, base, pr):
+        self.lock(self.mesh[0], self.mesh[1], "v0.1.5")
+        with open(self.root / "versions.lock", "a") as f:
+            f.write(f"pay-lightning Mesh-LLM/ln-payments-plugin {base}\npay-lightning-pr-11 Mesh-LLM/ln-payments-plugin {pr}\n"
+                    f"lexe-wallet Mesh-LLM/lexe-wallet-plugin {self.lexe_pin}\n")
+
+    def test_the_tree_and_binaries_are_recorded(self):
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = self.build()["pay_lightning"]
+        self.assertEqual(rec["source_head"], self.pay[1])
+        self.assertEqual(rec["binary_sha256"], hashlib.sha256((self.tmp / "bin/pay-lightning").read_bytes()).hexdigest())
+        self.assertEqual(rec["wallet_plugin"], {"pin": self.lexe_pin, "binary_sha256": hashlib.sha256((self.tmp / "bin/lexe-wallet").read_bytes()).hexdigest()})
+
+    def test_a_tree_without_the_pr_commit_fails(self):
+        self.set_lock(self.pay[0], "cd" * 20)
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("pay-lightning-pr-11" in f for f in self.build()["failures"]), self.build()["failures"])
+
+    def test_a_missing_binary_fails(self):
+        for var in ("PAY_LIGHTNING_BIN", "LEXE_PLUGIN"):
+            r = self.run_lab("check", **{var: str(self.tmp / "bin/none")})
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertTrue(any(f"{var} is not a readable file" in f for f in self.build()["failures"]), self.build()["failures"])
+
+    def test_a_dirty_tree_fails(self):
+        (self.tmp / "pay-lightning" / "f.txt").write_text("x")
+        git(self.tmp / "pay-lightning", "add", "f.txt")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("pay-lightning source has uncommitted changes" in f for f in self.build()["failures"]), self.build()["failures"])
+
+
 @unittest.skipUnless(Path("/proc/self/exe").exists(), "lab.sh reads /proc: Linux only")
 class RunningPaymentPluginsTest(LabRoot):
     """`running` on a paying node: its pay-lightning and wallet plugin processes run the checked bytes (loop#436)."""

@@ -144,6 +144,11 @@ class WrapperTest(RemoteBase):
         self.assertIn("not the driver's", r.stderr)
         self.assertIn("config digest", r.stderr)
 
+    def test_the_payment_plugin_mode_is_part_of_the_config_digest(self):
+        base = self.lab_sh("config-digest", LAB_PAY_PLUGIN="pay-lightning").stdout.strip()
+        self.assertEqual(len(base), 64)
+        self.assertNotEqual(base, self.lab_sh("config-digest").stdout.strip())  # a host whose env lacks the mode disagrees
+
 
 class MirrorTest(RemoteBase):
     def second_host_node(self, name="lab-2"):
