@@ -133,6 +133,10 @@ class WrapperTest(RemoteBase):
     def test_running_needs_four_digests_and_a_matching_script_and_config(self):
         a = "a" * 64
         self.assertEqual(self.wrapper(f"running {a} {a}").returncode, 2)
+        self.assertEqual(self.wrapper(f"running {a} {a} {a} {a} {a}").returncode, 2)  # the plugin digests come as a pair
+        self.assertEqual(self.wrapper(f"running {a} {a} {a} {a} {a} zz").returncode, 2)
+        r = self.wrapper(f"running {a} {a} {a} {a} {a} {a}")  # the pay-lightning and wallet digests: reaches lab.sh
+        self.assertIn("not the driver's", r.stderr)
         r = self.wrapper(f"running {a} {a} {a} {a}")  # runs lab.sh running with the wrong script digest
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("not the driver's", r.stderr)

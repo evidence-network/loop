@@ -488,7 +488,8 @@ cmd_check() {
       fi
       rc=0; git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$c" HEAD 2> /dev/null || rc=$?
       # A squashed PR: its head is in the message of a commit above the main base.
-      if [ "$rc" = 1 ] && [ "$name" != mesh-llm ] && git -C "$MESH_LLM_SRC" log --format=%B "$(pin mesh-llm)..HEAD" 2> /dev/null | grep -qF "$c"; then rc=0; fi
+      # The head need not be in the tree (git exits 128 then): the squashed commit says which PR head it carries.
+      if [ "$rc" != 0 ] && [ "$name" != mesh-llm ] && git -C "$MESH_LLM_SRC" log --format=%B "$(pin mesh-llm)..HEAD" 2> /dev/null | grep -qF "$c"; then rc=0; fi
       case $rc in
         0) ;;
         1) fails+=("mesh-llm source $mesh_head does not contain the $name pin $p") ;;
@@ -998,7 +999,7 @@ cmd_stop() {
 }
 
 cmd_running() {
-  local n p c fails=() mesh_sha cap_sha found
+  local n p c c_sha fails=() mesh_sha cap_sha found
   need MESH_LLM_BIN; need CAPSULES_BIN
   if [ "$DRY" = 1 ]; then
     say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
@@ -1011,6 +1012,14 @@ cmd_running() {
   cap_sha=$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1) || die "cannot read CAPSULES_BIN"
   # On the second host the driver's checked binaries are the reference: its nodes must run exactly those bytes.
   mesh_sha=${LAB_EXPECT_MESH_SHA256:-$mesh_sha}; cap_sha=${LAB_EXPECT_CAPSULES_SHA256:-$cap_sha}
+  # A paying node also loads pay-lightning and a wallet plugin: those processes must run the checked bytes too (`check`
+  # records the staged binaries; the installed copy comes from a separate archive, so only the running process says which).
+  local pay_sha="" lexe_sha=""
+  if [ "$PAY_PLUGIN" = pay-lightning ] && [ "${#PAYS[@]}" -gt 0 ]; then
+    pay_sha=${LAB_EXPECT_PAY_SHA256:-}; lexe_sha=${LAB_EXPECT_LEXE_SHA256:-}
+    if [ -z "$pay_sha" ]; then need PAY_LIGHTNING_BIN; pay_sha=$(sha256sum < "$PAY_LIGHTNING_BIN" | cut -d' ' -f1) || die "cannot read PAY_LIGHTNING_BIN"; fi
+    if [ -z "$lexe_sha" ]; then need LEXE_PLUGIN; lexe_sha=$(sha256sum < "$LEXE_PLUGIN" | cut -d' ' -f1) || die "cannot read LEXE_PLUGIN"; fi
+  fi
   # On the second host, its copy of this script and its environment must be the driver's.
   if [ -n "${LAB_EXPECT_LAB_SH_SHA256:-}" ]; then
     [ "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" = "$LAB_EXPECT_LAB_SH_SHA256" ] || fails+=("lab/lab.sh here is not the driver's: copy lab/ from the driver's commit")
@@ -1026,6 +1035,16 @@ cmd_running() {
       [ "$(sha256sum < "/proc/$c/exe" 2> /dev/null | cut -d' ' -f1)" = "$cap_sha" ] && found=1
     done
     [ "$found" = 1 ] || fails+=("$n (pid $p) runs no CAPSULES_BIN plugin process")
+    if [ -n "$pay_sha" ] && [[ " ${PAYS[*]} " == *" $n "* ]]; then
+      local have_pay=0 have_lexe=0
+      for c in $(pgrep -P "$p"); do
+        c_sha=$(sha256sum < "/proc/$c/exe" 2> /dev/null | cut -d' ' -f1)
+        [ "$c_sha" = "$pay_sha" ] && have_pay=1
+        [ "$c_sha" = "$lexe_sha" ] && have_lexe=1
+      done
+      [ "$have_pay" = 1 ] || fails+=("$n (pid $p) runs no PAY_LIGHTNING_BIN plugin process")
+      [ "$have_lexe" = 1 ] || fails+=("$n (pid $p) runs no LEXE_PLUGIN wallet process")
+    fi
   done
   # The witness is no node, so `start` and a node restart never bring it back; a lab that had one must say when it is gone.
   # A pid file outlives a crash or a reboot and its pid can be reused, so the port it serves is checked too.
@@ -1034,7 +1053,7 @@ cmd_running() {
   fi
   # The second host's nodes, against the bytes checked here.
   if [ "${#REMOTE[@]}" -gt 0 ]; then
-    rcmd running "$mesh_sha" "$cap_sha" "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" "$(config_digest)" > /dev/null || fails+=("${REMOTE[*]} on $REMOTE_SSH: not all running the checked build (run: ssh ... running)")
+    rcmd running "$mesh_sha" "$cap_sha" "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" "$(config_digest)" ${pay_sha:+"$pay_sha" "$lexe_sha"} > /dev/null || fails+=("${REMOTE[*]} on $REMOTE_SSH: not all running the checked build (run: ssh ... running)")
   fi
   if [ "${#fails[@]}" -gt 0 ]; then
     printf 'lab.sh: running: %s\n' "${fails[@]}" >&2

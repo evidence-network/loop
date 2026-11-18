@@ -143,8 +143,9 @@ the trees.
 A host build after mesh-llm#2654 has no payments of its own: `[payments] wallet = ...` is gone from `config.toml`, and
 the wallet is reached through the pay-lightning plugin's `control` operation (`mesh-llm plugins call pay-lightning control
 --input '{"command":"balance"}' --port <console>`, or `POST /api/plugins/pay-lightning/tools/control` on the console, which
-`scripts/goose_lightning.py` uses). Per node that pays or is paid, with the lab stopped and the wallet already created
-(`lab/bin/lab-wallet-create.sh`):
+`scripts/goose_lightning.py` uses). Per node that pays or is paid, with the lab stopped and its wallet already created
+(the lab's wallets were; `lab/bin/lab-wallet-create.sh` still runs `mesh-llm wallet`, which this host build no longer has, so
+creating a new wallet on it is not supported yet):
 
 ```sh
 export LAB_PAY_PLUGIN=pay-lightning PAY_LIGHTNING_ARCHIVE=<pay-lightning.tar.gz> PAY_LIGHTNING_SHA256=<its sha256>
@@ -156,7 +157,9 @@ Start the lab with `LAB_PAYMENTS` naming those nodes as before (the config gets 
 configured), then set each node's buyer policy once, with the node running:
 `lab/bin/lab-wallet-setup.sh 1 --policy 20000` (lab-1 and lab-3 20000 msat a day, lab-2 9000), and read a wallet with
 `lab/bin/lab-wallet-setup.sh 1 --balance`. A second host needs the same installs (run the script there as the lab user) and
-`LAB_PAY_PLUGIN`, `PAY_LIGHTNING_BIN` and `LEXE_PLUGIN` in its `~/.loop-lab-remote.env`.
+`LAB_PAY_PLUGIN`, `PAY_LIGHTNING_BIN` and `LEXE_PLUGIN` in its `~/.loop-lab-remote.env`. `lab/lab.sh running` then also
+compares each paying node's pay-lightning and wallet plugin processes with those two files (the installed copy comes from the
+archive, so only the running process says which bytes it is), on both hosts; a node that runs another build fails it.
 
 ### Tools
 

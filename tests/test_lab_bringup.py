@@ -719,6 +719,71 @@ class CheckTest(LabRoot):
         self.assert_fails_with(self.run_lab("check"), "v9.9.9")
 
 
+class SquashedPrPinTest(LabRoot):
+    """A PR pin whose head is not in the mesh-llm tree: the squashed commit's message carries it (lab/lab.sh check)."""
+
+    HEAD = "ab" * 20
+
+    def test_a_squashed_pr_is_accepted_by_the_head_its_message_names(self):
+        git(self.tmp / "mesh-llm", "commit", "-q", "--allow-empty", "-m", f"squashed #2620\n\nhead {self.HEAD}")
+        self.lock(self.mesh[0], self.HEAD, "v0.1.5")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIs(self.build()["ok"], True, self.build()["failures"])
+
+    def test_a_pr_head_in_no_message_and_not_in_the_tree_fails(self):
+        self.lock(self.mesh[0], self.HEAD, "v0.1.5")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("mesh-llm-pr-2620" in f for f in self.build()["failures"]), self.build()["failures"])
+
+
+@unittest.skipUnless(Path("/proc/self/exe").exists(), "lab.sh reads /proc: Linux only")
+class RunningPaymentPluginsTest(LabRoot):
+    """`running` on a paying node: its pay-lightning and wallet plugin processes run the checked bytes (loop#436)."""
+
+    def binary(self, name, base, tail):
+        f = self.tmp / "bin" / name
+        shutil.copy(shutil.which(base), f)
+        f.write_bytes(f.read_bytes() + tail)  # trailing bytes: a different sha256, still the same program
+        f.chmod(0o755)
+        return f
+
+    def start_node(self, caps, pay, lexe):
+        mesh = self.binary("mesh-llm", "bash", b"mesh")
+        proc = subprocess.Popen([str(mesh), "-c", f"{caps} 60 & {pay} 60 & {lexe} 60 & wait"])
+        self.addCleanup(lambda: (subprocess.run(["pkill", "-P", str(proc.pid)]), proc.kill(), proc.wait()))
+        for _ in range(100):
+            if len(subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True).stdout.split()) == 3:
+                break
+            time.sleep(0.05)
+        (self.lab / "run").mkdir(parents=True, exist_ok=True)
+        (self.lab / "run" / "lab-1.pid").write_text(f"{proc.pid}\n")
+        return mesh
+
+    def test_running_names_a_payment_plugin_that_is_not_the_checked_binary(self):
+        caps = self.binary("capsules", "sleep", b"caps")
+        pay = self.binary("pay-lightning", "sleep", b"pay")
+        lexe = self.binary("lexe-wallet", "sleep", b"lexe")
+        mesh = self.start_node(caps, pay, lexe)
+        env = {"MESH_LLM_BIN": str(mesh), "CAPSULES_BIN": str(caps), "LAB_ONLY": "lab-1", "LAB_PAYMENTS": "lab-1",
+               "LAB_PAY_PLUGIN": "pay-lightning", "PAY_LIGHTNING_BIN": str(pay), "LEXE_PLUGIN": str(lexe)}
+        r = self.run_lab("running", **env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        other = self.binary("pay-lightning-other", "sleep", b"other")
+        r = self.run_lab("running", **{**env, "PAY_LIGHTNING_BIN": str(other)})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runs no PAY_LIGHTNING_BIN plugin process", r.stderr)
+        r = self.run_lab("running", **{**env, "LEXE_PLUGIN": str(other)})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runs no LEXE_PLUGIN wallet process", r.stderr)
+        # The driver's checked sha256 values are the reference on the second host, whatever its own files say.
+        sha = lambda f: hashlib.sha256(Path(f).read_bytes()).hexdigest()
+        r = self.run_lab("running", **{**env, "PAY_LIGHTNING_BIN": str(other), "LAB_EXPECT_PAY_SHA256": sha(pay),
+                                       "LAB_EXPECT_LEXE_SHA256": sha(lexe)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
 class ToolsTest(LabRoot):
     def test_every_setup_runs_and_each_failure_is_recorded(self):
         self.assertEqual(self.run_lab("check").returncode, 0)
