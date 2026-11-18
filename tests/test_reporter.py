@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -288,6 +289,18 @@ class ReporterTest(unittest.TestCase):
         broken = json.loads(good); del broken["reply"]["answer"]["sig"]
         kept.write_text(json.dumps(broken))
         self.assertTrue([e for e in check_reports.check(self.out)[0] if "history_card.first-ask.json must be" in e])
+
+    def test_a_history_card_1_day_from_the_cutoff_on_must_keep_the_refused_first_ask(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        day = d.parent.name  # 2026-10-28: before the cutoff, a /1 day needs no first-ask
+        (d / "history_card.first-ask.json").unlink()
+        for a in (d / "attempts").iterdir():
+            (a / "history_card.first-ask.json").unlink()
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        with mock.patch.object(check_reports, "FIRST_ASK_REQUIRED_FROM", day):
+            errs = check_reports.check(self.out)[0]
+        self.assertTrue([e for e in errs if "history_card was asked as /1" in e], errs)
 
     def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
         d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",

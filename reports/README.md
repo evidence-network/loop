@@ -44,7 +44,7 @@ each question (`checkpoints`, `history_card`). The reporter asks `history_card/2
 as `history_card.first-ask.json` beside the `/1` answer; no reply or another refusal is the answer, and `/1` is not
 asked. The `derivation` in a node's `history_card.request.json` says which one it was asked; `RUN.json`'s `questions`
 names the first ask, not each node's. A `/2` line does not mean a node lacks `/1`: the line names what the reporter
-asked and was answered, and a node that answers `/2` also answers `/1` within its caps:
+asked and was answered, and a node that answers `/2` may also answer `/1` within its caps (capsules-plugin#302 leaves `/1` and its caps unchanged):
 
 - `<q>.request.json`: what the reporter asked;
 - `<q>.response.json`: the bytes its node's plugin returned, the node's answer

@@ -64,6 +64,9 @@ def check_answer(where, d, stem, states):
 
 
 FIRST_ASK = "first-ask.json"
+# From this day on, a settled history_card/1 request means the reporter asked /2 first and was refused: the signed refusal
+# must be kept beside it. Earlier days asked /1 only (loop#460 sets the date to its merge day).
+FIRST_ASK_REQUIRED_FROM = "2026-11-19"
 
 
 def check_first_ask(where, d, stem):
@@ -141,6 +144,16 @@ def check_node(day, node_dir):
                     f"{stem}.{FIRST_ASK}"}
         errs += check_answer(where, node_dir, stem, STATES)
         errs += check_first_ask(where, node_dir, stem)
+        settled_req = node_dir / f"{stem}.request.json"
+        if (stem == "history_card" and str(day) >= FIRST_ASK_REQUIRED_FROM and settled_req.is_file()
+                and not (node_dir / f"{stem}.{FIRST_ASK}").is_file()):
+            try:
+                asked_1 = json.loads(settled_req.read_text(encoding="utf-8")).get("derivation") == "history_card/1"
+            except (OSError, ValueError, AttributeError):
+                asked_1 = False
+            if asked_1:
+                errs.append(f"{where}: history_card was asked as /1 from {FIRST_ASK_REQUIRED_FROM} on, but "
+                            f"{stem}.{FIRST_ASK} (the refused /2 ask) is not kept")
         source = day_answers[stem]["attempt"] or (day_answers[stem]["tried"][0][0] if day_answers[stem]["tried"] else None)
         kept_day = node_dir / f"{stem}.{FIRST_ASK}"
         kept_src = source / f"{stem}.{FIRST_ASK}" if source else None
