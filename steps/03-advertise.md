@@ -144,7 +144,7 @@ these members; any other is refused.
 | `ask.endpoint` | string | where an ask is sent, e.g. `mesh:<node_id>` |
 | `ask.bindings` | list of names | the bindings an ask may use at that endpoint, e.g. `capsules-evidence-request/iroh` |
 | `answers.subjects` | list of names | the kinds of subject the node answers about, e.g. `record` |
-| `answers.derivations` | list of names | the derivations it answers, e.g. `checkpoints`, `history_card/1`; must include `history_card/1` |
+| `answers.derivations` | list of names | the derivations it answers, e.g. `checkpoints`, `history_card/1`, `history_card/2`; must include the derivation stapled |
 | `lcap.policy_digest` | 64 hex | sha256 of the published policy file's bytes |
 | `lcap.policy_uri` | string | where the signed policy is published; a relative path resolves against the commitment's directory |
 | `lcap.predicate_classes` | list of `<kind>:<source>` | the kinds of claim the node can answer, e.g. `performed:counterparty_half` |
@@ -152,7 +152,7 @@ these members; any other is refused.
 | `checkpoint.sha256` | 64 hex | sha256 of those bytes |
 | `human_gated` | boolean | true when a person must approve each answer |
 | `answers_within` | ISO 8601 duration | how long an asker should wait before recording absence, e.g. `PT24H` |
-| `history_card.derivation` | string | `history_card/1` |
+| `history_card.derivation` | string | `history_card/1` or `history_card/2` |
 | `history_card.bytes` | base64 | the stapled `history_card/1` answer, whole, in the capsules plugin's `evidence-interop/0` answer format |
 | `history_card.sha256` | 64 hex | sha256 of those bytes |
 | `controller_binding.digest` | 64 hex | optional: the binding digest (AAC Controller Binding v0 §4) of the record that binds the node key to its operator's key. Only the digest: the record, which names the operator's key, goes only to the counterparties that verify it. A node with no binding leaves the member out |
@@ -177,7 +177,7 @@ is replaced by:
 | `history_cards[].stream` | string | the log id of the book the card covers: plain names (letters, digits, `.`, `_`, `-`, each starting with a letter or digit) joined by `/`, e.g. `alice-book` or `goose/node` |
 | `history_cards[].community` | string | the community the stream belongs to: `mesh-llm`, `muse` or `goose` (a closed list); `join.sh` writes `mesh-llm`, and evidencebook's Goose node `goose` |
 | `history_cards[].checkpoint_key` | base64url, optional | the SPKI (DER) of that stream's checkpoint signer; with it, a verifier can check the card's signature |
-| `history_cards[].derivation` | string | `history_card/1` |
+| `history_cards[].derivation` | string | `history_card/1` or `history_card/2` (a sample of the stream's checkpoints that stays small as the log grows; its signature is not checked yet, as the pinned capsule-cli verifies `/1` only) |
 | `history_cards[].bytes` | base64 | the card's `evidence-interop/0` answer, whole, as `history_card.bytes` in /0 |
 | `history_cards[].sha256` | 64 hex | sha256 of those bytes |
 
