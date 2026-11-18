@@ -719,6 +719,37 @@ class CheckTest(LabRoot):
         self.assert_fails_with(self.run_lab("check"), "v9.9.9")
 
 
+class PayPluginStartTest(unittest.TestCase):
+    """LAB_PAY_PLUGIN=pay-lightning (loop#436): the host build has no [payments]; the buyer policy is set after each start."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.env = {"LAB_DIR": str(self.tmp / "lab"), "LAB_OPERATOR": "lab-operator", "MESH_LLM_BIN": "/opt/mesh-llm",
+                    "CAPSULES_BIN": "/opt/capsules", "LAB_MODEL": "/opt/model.gguf", "MESH_LLM_SRC": "/src/mesh-llm",
+                    "CAPSULES_SRC": "/src/capsules", "LAB_PAYMENTS": "lab-1 lab-2 lab-3", "PAY_LIGHTNING_BIN": "/opt/pay",
+                    "LEXE_PLUGIN": "/opt/lexe", "PAY_LIGHTNING_ARCHIVE": "/opt/pay.tgz"}
+
+    def test_the_config_has_no_payments_stanza_and_each_payer_gets_its_policy(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAY_PLUGIN": "pay-lightning"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("[payments]", r.stdout)
+        # lab-1 and lab-3 20,000 msat a day, lab-2 9,000, each through the node's console control tool.
+        for port, budget in ((9811, 20000), (9812, 9000), (9813, 20000)):
+            self.assertRegex(r.stdout, rf"http://127\.0\.0\.1:{port}/api/plugins/pay-lightning/tools/control .*daily_budget_msat.*{budget}")
+
+    def test_without_the_plugin_the_legacy_stanza_stays_and_no_policy_is_set(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[payments]", r.stdout)
+        self.assertNotIn("tools/control", r.stdout)
+
+    def test_another_plugin_name_is_refused(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAY_PLUGIN": "other"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("LAB_PAY_PLUGIN", r.stderr)
+
+
 class SquashedPrPinTest(LabRoot):
     """A PR pin whose head is not in the mesh-llm tree: the squashed commit's message carries it (lab/lab.sh check)."""
 
