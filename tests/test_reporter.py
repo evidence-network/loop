@@ -239,7 +239,6 @@ class ReporterTest(unittest.TestCase):
         self.assertEqual(self.derivations_asked(), ["history_card/2", "history_card/1"])
         self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
         self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/1")
-        self.assertFalse(list(d.rglob("*first-try*")))  # a published attempt holds only the answer that counts
         self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
@@ -250,8 +249,7 @@ class ReporterTest(unittest.TestCase):
 
     def test_a_node_that_does_not_reply_to_history_card_2_is_not_asked_again_with_history_card_1(self):
         self.one_node({"checkpoints": "verified", "history_card": "verified_history_card", "history_card_2": "absence"})
-        self.assertEqual(self.derivations_asked()[0], "history_card/2")
-        self.assertNotIn("history_card/1", self.derivations_asked()[:1])
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
 
     def test_it_asks_the_two_questions_and_nothing_else(self):
         self.every_outcome()

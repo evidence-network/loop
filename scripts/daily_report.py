@@ -92,7 +92,7 @@ days running that is ("absent 3 days running"), a fact about that node only.
 
 `prove` is the day-one acceptance check, printed, never written to the repo:
 exit 0 when at least two nodes answered `checkpoints` verified with at least
-one checkpoint, and `history_card/1` verified.
+one checkpoint, and `history_card/2` (`history_card/1` after the fallback) verified.
 
 Standard library only. Exit 0 = done, 1 = refused (bad input), 2 = missed day.
 """
@@ -132,13 +132,15 @@ QUESTIONS = {
     },
 }
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
-# The question asked first, where it differs from the one in QUESTIONS (history_card/2: capsules-plugin#302, Steven's ruling
-# u562/u563), and the verification line a /1-only plugin's signed refusal of it gives.
+
+
 def asked_name(stem, request):
     """What the question is called in a line: the derivation actually asked, else the stem's name."""
     return request.get("derivation") or QUESTION_NAMES[stem]
 
 
+# The question asked first, where it differs from the one in QUESTIONS (history_card/2: capsules-plugin#302, Steven's ruling
+# u562/u563), and the verification line a /1-only plugin's signed refusal of it gives.
 FIRST_ASKS = {"history_card": dict(QUESTIONS["history_card"], derivation="history_card/2")}
 UNSUPPORTED_PREFIX = "refusal reason=derivation_unsupported"
 TOOL_ROUTE = "/api/plugins/capsules/tools/mesh_evidence_request"
@@ -546,7 +548,7 @@ def run(args, now, sleep):
         "reporter": {"node_id": reporter["node_id"], "key_id": reporter["key_id"]},
         "started": layout.iso(start),
         "finished": layout.iso(now()),
-        "questions": [QUESTION_NAMES[s] if s not in FIRST_ASKS else FIRST_ASKS[s]["derivation"] for s in QUESTIONS],
+        "questions": [asked_name(s, FIRST_ASKS.get(s, QUESTIONS[s])) for s in QUESTIONS],
         "asked": sorted(lines),
         "versions_lock_sha256": versions_lock_sha256(),
     }
