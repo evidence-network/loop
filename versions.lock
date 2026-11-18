@@ -42,10 +42,11 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # declares min_host_version 0.78.0 in plugin.toml (#283); its dependency pins are v0.1.17's. The INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
-# LAB BUILD: capsules-plugin main at the merge of Mesh-LLM/capsules-plugin#294 (64c518e, merged 2026-11-17). It carries #292 (the settlement channel accepts pay-lightning's own
-# local lifecycle relay, source "plugin:pay-lightning"; v0.1.18 refuses it, so step 06 had no preimage to check) and #294 (a commitment/1 reply is read up to 2 MiB; at about 300
-# checkpoints lab-3's commitment was 1,135,361 bytes and step 12 could not read it). Unreleased: swap for the release tag.
-capsules Mesh-LLM/capsules-plugin 64c518e02e8fa2e2c6e32c4638f18874f9f89bf7
+# LAB BUILD: capsules-plugin main at the merge of Mesh-LLM/capsules-plugin#304 (d75403b, 2026-11-18). It carries #292 (the settlement channel accepts pay-lightning's own
+# local lifecycle relay; v0.1.18 refuses it, so step 06 had no preimage to check), #294 (a 2 MiB commitment read) and #302 (history_card/2 answered and stapled in commitment/1,
+# which a node past about 350 checkpoints needs: its /1 card passes the 1 MiB answer cap, capsules-plugin#70/#76) and #304 (the History page verifies a /2 card). Moving a ledger to it
+# is one way: the previous plugin fails to start on it (capsules-plugin#308), so back the ledger up first. Unreleased: swap for the release tag.
+capsules Mesh-LLM/capsules-plugin d75403b445e722274fa651a561014c24d70be7e6
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
