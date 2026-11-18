@@ -842,7 +842,9 @@ class RunningPaymentPluginsTest(LabRoot):
 
     def start_node(self, caps, pay, lexe):
         mesh = self.binary("mesh-llm", "bash", b"mesh")
-        proc = subprocess.Popen([str(mesh), "-c", f"{caps} 60 & {pay} 60 & {lexe} 60 & wait"])
+        # Copies of bash, never of a multi-call binary like coreutils' sleep, which refuses to run under another name.
+        idle = "'sleep 60; :'"  # the `; :` keeps bash from exec-ing sleep, which would replace the copy's exe
+        proc = subprocess.Popen([str(mesh), "-c", f"{caps} -c {idle} & {pay} -c {idle} & {lexe} -c {idle} & wait"])
         self.addCleanup(lambda: (subprocess.run(["pkill", "-P", str(proc.pid)]), proc.kill(), proc.wait()))
         for _ in range(100):
             if len(subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True).stdout.split()) == 3:
@@ -853,15 +855,15 @@ class RunningPaymentPluginsTest(LabRoot):
         return mesh
 
     def test_running_names_a_payment_plugin_that_is_not_the_checked_binary(self):
-        caps = self.binary("capsules", "sleep", b"caps")
-        pay = self.binary("pay-lightning", "sleep", b"pay")
-        lexe = self.binary("lexe-wallet", "sleep", b"lexe")
+        caps = self.binary("capsules", "bash", b"caps")
+        pay = self.binary("pay-lightning", "bash", b"pay")
+        lexe = self.binary("lexe-wallet", "bash", b"lexe")
         mesh = self.start_node(caps, pay, lexe)
         env = {"MESH_LLM_BIN": str(mesh), "CAPSULES_BIN": str(caps), "LAB_ONLY": "lab-1", "LAB_PAYMENTS": "lab-1",
                "LAB_PAY_PLUGIN": "pay-lightning", "PAY_LIGHTNING_BIN": str(pay), "LEXE_PLUGIN": str(lexe)}
         r = self.run_lab("running", **env)
         self.assertEqual(r.returncode, 0, r.stderr)
-        other = self.binary("pay-lightning-other", "sleep", b"other")
+        other = self.binary("pay-lightning-other", "bash", b"other")
         r = self.run_lab("running", **{**env, "PAY_LIGHTNING_BIN": str(other)})
         self.assertEqual(r.returncode, 1)
         self.assertIn("runs no PAY_LIGHTNING_BIN plugin process", r.stderr)
