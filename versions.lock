@@ -31,11 +31,7 @@ mesh-llm-pr-2748 Mesh-LLM/mesh-llm 7d65930414576a075c8ee9012cb5e90a9c971787
 # provider refuses the new terms member). Its INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
-# v0.1.19 (tag on 452ab55, two releases later; v0.1.18 is 8655a98) answers the evidence requests sent to its Nostr
-# mailbox when advertise_evidence_requests is on (#293, loop#442) and adds the nostr_evidence_request tool and
-# CAPSULES_NOSTR_RELAY_MAP for a relay both ecosystems reach (#295, loop#443): step 13's two live cells. It also
-# accepts pay-lightning's settlement events (#292) and serves a long ledger's commitment (#294).
-capsules Mesh-LLM/capsules-plugin v0.1.19
+capsules Mesh-LLM/capsules-plugin v0.1.17
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.

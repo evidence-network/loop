@@ -276,7 +276,32 @@ def roll_up(rows):
     return "FAIL" if "FAIL" in results else ("NOT_CHECKED" if "NOT_CHECKED" in results or not rows else "PASS")
 
 
-def decide(work, keys, capsulectl, tmp, started, population="rehearsal", asks=None):
+def LIVE_NODES_DIR():
+    return Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+
+
+def listing_problems(work, keys, nodes_dir):
+    """What disagrees between a live run's entries/ and the repository's listing: each listed key has exactly one entry
+    in the run, and every entry the run holds is nodes/<its name> byte for byte (the run supplies no entry of its own)."""
+    out = []
+    held = []
+    for e in sorted((Path(work) / "entries").glob("*.json")):
+        try:
+            held.append((e, load(e)))
+        except (OSError, ValueError):
+            out.append(f"entries/{e.name} is not readable JSON")
+    for name, key in sorted(keys.items()):
+        n = sum(1 for _, d in held if isinstance(d, dict) and d.get("key_id") == key)
+        if n != 1:
+            out.append(f"entries/ holds {n} entries under the listed key of node {name}, not one")
+    for e, _ in held:
+        listed = Path(nodes_dir) / e.name
+        if not listed.is_file() or listed.read_bytes() != e.read_bytes():
+            out.append(f"entries/{e.name} is not the repository's nodes/{e.name}")
+    return out
+
+
+def decide(work, keys, capsulectl, tmp, started, population="rehearsal", asks=None, nodes_dir=None):
     """Judge a run's tree again from its bytes and the listed keys: writes <work>/pairs.json and returns the finding's
     result, not_checked and detail (what the step writes, and what step 08 re-derives)."""
     rows = judge_cells(work, keys, capsulectl, tmp, asks)
@@ -287,7 +312,15 @@ def decide(work, keys, capsulectl, tmp, started, population="rehearsal", asks=No
         for what in missing:
             a, b = what.split(" asked ")
             rows.append(row_of(a, b, keys[a], keys[b], "FAIL", f"{what}: the run holds no asks of this pair", [], [], work))
-    rows.sort(key=lambda r: (r["asker"], r["responder"], r["asker_node"], r["responder_node"]))
+    if population == "live":
+        for what in listing_problems(work, keys, nodes_dir or LIVE_NODES_DIR()):
+            rows.append(row_of("live", "live", None, None, "FAIL", what, [], [], work))
+    if population == "live":  # a live PASS needs both directions between the two ecosystems, whatever nodes the run names
+        for asker, responder in sorted(CELLS):
+            if not any((r["asker"], r["responder"]) == (asker, responder) for r in rows):
+                rows.append(row_of(asker, responder, None, None, "FAIL", f"the run holds no {asker} -> {responder} ask: "
+                                   "a live run needs a node of each ecosystem asking the other", [], [], work))
+    rows.sort(key=lambda r: (r["asker"], r["responder"], str(r["asker_node"]), str(r["responder_node"])))
     write_json(Path(work) / PAIRS, {"rows": rows})
     result = roll_up(rows)
     not_checked = [x for r in rows for x in r["not_checked"]]
@@ -377,7 +410,7 @@ def main(argv=None):
     a.out.mkdir(parents=True, exist_ok=True)
     population = pop["population"]
     run = (pop.get("cross") or {}).get("run")
-    if population == "live" and not run:  # no live cross run: the cells are NOT_CHECKED, naming what is missing
+    if population == "live" and not (run and (Path(run) / "nodes.json").is_file()):  # no live cross run: the cells are NOT_CHECKED, naming what is missing
         nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
         d = decide_live(a.out, nodes_dir)
         pinned = []

@@ -89,7 +89,8 @@ missing:
 
 When the live population names a cross run, the run's tree (laid out as the rehearsal's, with the real nodes' entries) is
 judged as the rehearsal's is, under the population's listed keys, and step 08 judges it again; a PASS then says a live Mesh
-node and a live Goose node answered each other over a lab relay, and carries the caveat that the relay is the lab's and a
+node and a live Goose node each asked the other over a lab relay and the recorded outcomes (a signed answer, a signed
+refusal or an absence at the deadline) verify; a live run lacking either direction is a FAIL. It carries the caveat that the relay is the lab's and a
 mailbox is readable by whoever reads it (nostr-mailbox-v0 §8). Each listed entry on the first consent statement is also named
 in its cell, as not opted in.
 

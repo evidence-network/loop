@@ -377,8 +377,38 @@ class LiveRunTest(Setup):
         self.assertNotIn("loop's adapter", rec["detail"])
         self.assertIn("the lab's", rec["detail"])
         m = self.run08(pop, findings)
-        self.assertEqual(self.entry13(m)["status"], "reproduced", self.entry13(m))
+        self.assertEqual(self.entry13(m)["status"], "reproduced", self.entry13(m)["problems"])
         self.assertEqual(self.entry13(m)["relies_on"], [])
+
+    def test_a_live_run_without_a_node_of_each_ecosystem_is_a_fail_not_a_pass(self):
+        run = self.copy("good")
+        keys = {"goose": keys_of(run)["goose"]}  # one ecosystem only: no cross pair exists
+        d = step.decide(run, keys, CAPSULECTL, self.root / "w", finding.now(), population="live",
+                        nodes_dir=run / "entries")
+        self.assertEqual(d["result"], "FAIL", d["detail"])
+        self.assertEqual({(r["asker"], r["responder"]) for r in d["rows"]}, {("goose", "mesh"), ("mesh", "goose")})
+
+    def test_step_13_alone_fails_an_entry_the_repository_does_not_list(self):
+        run = self.copy("good")
+        listing = self.root / "listing"
+        shutil.copytree(run / "entries", listing)
+        victim = sorted(listing.glob("*.json"))[0]
+        victim.write_text(victim.read_text().replace('"consent"', '"consent_"'))
+        d = step.decide(run, keys_of(run), CAPSULECTL, self.root / "w", finding.now(), population="live",
+                        nodes_dir=listing)
+        self.assertEqual(d["result"], "FAIL", d["detail"])
+        self.assertIn("is not the repository's", d["detail"])
+
+    def test_a_live_population_naming_a_run_with_no_tree_stays_not_checked_and_08_reproduces_it(self):
+        pop, findings = self.make(population="live")
+        doc = json.loads((pop / "population.json").read_text())
+        doc["cross"] = {"run": str(self.root / "nowhere"), "nodes": {}}
+        (pop / "population.json").write_text(json.dumps(doc))
+        self.assertEqual(step.main(["--population", str(pop), "--out", str(findings / "13-ask-across")]), 0)
+        rec = json.loads((findings / "13-ask-across" / "finding.json").read_text())
+        self.assertEqual(rec["result"], "NOT_CHECKED")
+        self.assertIn("loop#442", rec["detail"] + json.dumps(rec["not_checked"]))
+        self.assertEqual(self.entry13(self.run08(pop, findings))["status"], "reproduced")
 
     def test_editing_a_live_run_row_makes_08_fail(self):
         pop, findings = self.make(population="live", live_run=True)
