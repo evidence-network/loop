@@ -189,12 +189,13 @@ gap.
   no layer, has no witnessed checkpoint to ask for: this part does not apply to it, and how such a
   deal counts on a card is the card's rule (`standard_history/3`), not this step's. The planted
   failure: a side whose sealed report says the deal is settled without having verified that
-  checkpoint FAILs. The record the step reads to see that a side verified it is defined by the pull
-  request that switches this part on, together with the wire form. No wire form carries the receipts
-  and the shelf consistency proof between the sides yet (that design note's Q8;
-  agent-action-capsule#621 closed with the record push and stamp proof forms only), so this part is
-  switched on in its own pull request once a form exists and a pinned release asks for the
-  checkpoint. Until then 05 v2's `asserts` text does not claim it, so 05 v2 can PASS without it.
+  checkpoint FAILs. Relying on the other side's card without it is not asserted yet. The record the
+  step reads to see that a side verified it is defined by the pull request that switches this part
+  on, together with the wire form. No wire form carries the receipts and the shelf consistency proof
+  between the sides yet (that design note's Q8; agent-action-capsule#621 closed with the record push
+  and stamp proof forms only), so this part is switched on in its own pull request once a form
+  exists and a pinned release asks for the checkpoint. Until then 05 v2's `asserts` text does not
+  claim it, so 05 v2 can PASS without it.
 
 What becomes of each part of v1's assertion (`steps/05-deal`, `ASSERTS`):
 
