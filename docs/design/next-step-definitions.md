@@ -74,7 +74,7 @@ written here first, reviewed here, and switched on only once a pinned release ca
 | 03 Advertise | the commitment is published, fetched and verifies; no stapled `history_card/1` or `standard_history/1` fails its checks (`steps/03-advertise`, `ASSERTS`, `ASSERTS_STAPLE`) | as v1, and the staple is a `standard_history/3` card **anchored at a shelf checkpoint**, whose stated level matches its anchor | a Go card builder that writes a `standard_history/3` card |
 | 04 Admit | the decision is exactly one of GO or NO, sealed in the buyer's book before the deal record that cites it; no deal record cites a NO (`steps/04-admit`, `ASSERTS`) | four outcomes; the decision is a **journal** record; the agreement cites the digest of the final decision that allowed it; ASK and LIMIT have their own checks | the deal plugin release that seals admission in the journal |
 | 05 Deal | both sides seal halves citing each other; each pushes its half at completion; the receiver holds the foreign bytes and **seals a record citing them** (`steps/05-deal`, `ASSERTS`) | each record is **sent when sealed**; the receiver holds it in its store and **seals nothing** for it; its next record names it in its **seen** field; both agreements name the same witnesses; each side's **first act waits on the other side's stamp proof** | the x-deal-v1 deal profile (evidencebook#461, its deal profile step), from the EvidenceBook release with its first-act gate |
-| 09 Dispute | the referee's Result on a pair of twins is held by each node it concerns with the same bytes (`steps/09-dispute`, `ASSERTS`) | v1 stays the Mesh path; v2 adds the **personal-deal path**: dispute, ruling, the note that the ruling arrived, remedy | the new deal profile version |
+| 09 Dispute | the referee's Result on a pair of twins is held by each node it concerns with the same bytes (`steps/09-dispute`, `ASSERTS`) | v1 stays the Mesh path; v2 adds the **personal-deal path**: dispute, ruling, the note that the ruling arrived, remedy | the x-deal-v1 deal profile, which defines the dispute and ruling records |
 | 12 Join | one command joins the node; a stranger's probe (`checkpoints`, then `history_card/1`) verifies and matches the advertised policy (`steps/12-join`, `ASSERTS`) | the commitment's staple is the `standard_history/3` card **of the shelf**, anchored at a shelf checkpoint, and the stranger's probe compares against **that card** | the same release as 03 v2 |
 
 Steps 01, 06, 07, 10, 11 and 13 do not change. Step 08 keeps its definition and its open gap: it
@@ -170,24 +170,31 @@ gap.
   The planted failures: an offerer whose first act comes before it holds a verified stamp proof
   covering the acceptor's agreement FAILs, and so does an acceptor whose first act comes before
   it holds one covering the offerer's agreement. A payee leg sealed before the other side's proof
-  is not a failure. With a counterparty that runs no shelf layer (its agreement's
-  `counterparty_layer` is `false`), the first act goes ahead and is not refused, and the holder's
+  is not a failure. With a counterparty that runs no shelf layer (the holder's agreement says
+  `counterparty_layer` `false`), the first act goes ahead and is not refused, and the holder's
   receipt and card say that the other side sent no stamp proof and the deal is counted from the
   holder's receipt only (the sealed report's `counterparty_proof` is `no_layer`); a receipt or
-  card that leaves this out FAILs. Both sides of a loop deal run the layer, so a population with no
-  such counterparty does not exercise that last case, and the finding says so.
+  card that leaves this out FAILs. Both sides of a loop deal run the layer, so the pull request
+  that switches 05 v2 on plants one counterparty that runs none, and this case is checked, not
+  only described.
 
 - **The witnessed checkpoint.** Before either side treats the deal as settled, or relies on the
   other side's card, it asks for, and verifies, the other side's witnessed checkpoint: a shelf
   checkpoint with a witness receipt from a witness the agreements name, which verifies under
   `witnesses.json` as 02 v2 says; the consistency proof from the shelf checkpoint it kept to that
   one; and the stamp proof for the deal book's newest fact under it (evidencebook
-  `docs/design/461-deal-profile.md` §7.2, "Later"; evidencebook#461's design §4.3). The planted failure: a side whose sealed report says the deal is settled, or whose
-  admission relies on the other side's card, without having verified that checkpoint FAILs. No
-  wire form carries the receipts and the shelf consistency proof between the sides yet (that design
-  note's Q8; agent-action-capsule#621 closed with the record push and stamp proof forms only), so
-  this part is switched on in its own pull request once a form exists and a pinned release asks for
-  the checkpoint. Until then 05 v2's `asserts` text does not claim it, so 05 v2 can PASS without it.
+  `docs/design/461-deal-profile.md` §7.2, "Later"; EvidenceBook's target design §4.3, "The witnessed
+  checkpoint"). This part applies to a deal whose agreements name at least one witness and whose
+  counterparty runs the layer. A deal whose agreements name no witness, or whose counterparty runs
+  no layer, has no witnessed checkpoint to ask for: this part does not apply to it, and how such a
+  deal counts on a card is the card's rule (`standard_history/3`), not this step's. The planted
+  failure: a side whose sealed report says the deal is settled without having verified that
+  checkpoint FAILs. The record the step reads to see that a side verified it is defined by the pull
+  request that switches this part on, together with the wire form. No wire form carries the receipts
+  and the shelf consistency proof between the sides yet (that design note's Q8;
+  agent-action-capsule#621 closed with the record push and stamp proof forms only), so this part is
+  switched on in its own pull request once a form exists and a pinned release asks for the
+  checkpoint. Until then 05 v2's `asserts` text does not claim it, so 05 v2 can PASS without it.
 
 What becomes of each part of v1's assertion (`steps/05-deal`, `ASSERTS`):
 
@@ -235,7 +242,8 @@ asks for that card and compares its answer against it. v1's `STAPLE_ASSERT` (no 
 ## New assertions
 
 Three facts the new layout makes checkable that no step asserts today. Each sits in the existing
-step named below, as a part of that step's v2, and no new step is added after 12 (decided on
+step named below, as a part of that step's v2, and no new step is added after 12. This is the loop maintainers' call and carries no product
+meaning (Sherlock2's door confirmation, recorded on
 [loop#456](https://github.com/evidence-network/loop/issues/456)). A new step would have needed a
 number of its own, since steps numbered 13 and up are cross-ecosystem steps, and each of the three
 checks what its home step already handles: the card 03 fetches, the stamps 02 reads and the rows 05
