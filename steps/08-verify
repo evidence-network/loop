@@ -260,16 +260,33 @@ def keys_13(c, m=None):
         got = load(f).get("key_id") if f.is_file() else None
         if got != node["key_id"]:
             bad.append(f"{name}/advertised/commitment.json key_id {got} is not the listed key of node {name}")
-        e = c.work / "entries" / f"{node['key_id']}.json"
-        entry = load(e) if e.is_file() else {}
-        if entry.get("key_id") != node["key_id"] or entry.get("node_id") != node["key_id"]:
-            bad.append(f"entries/{node['key_id']}.json is not the entry of node {name} under its listed key")
+        # An entry is <node_id>.json; a mesh node's node_id is its endpoint, so it is found by its key_id.
+        found = [load(e) for e in sorted((c.work / "entries").glob("*.json"))]
+        found = [e for e in found if isinstance(e, dict) and e.get("key_id") == node["key_id"]]
+        if len(found) != 1:
+            bad.append(f"entries/ holds {len(found)} entries under the listed key of node {name}, not one")
+        elif (c.work / "entries" / f"{found[0].get('node_id')}.json").is_file() is False:
+            bad.append(f"the entry of node {name} is not named <node_id>.json")
     return bad
 
 
+def live_run_13(c):
+    """Whether the live population names a cross run: then 13 is judged from that tree, as on the rehearsal. With none, the two cells are rebuilt from the repository's nodes/ listing."""
+    return bool((load(c.pop / "population.json").get("cross") or {}).get("run"))
+
+
 def keys_13_live(c, m=None):
-    """Live 13 reads the repository's nodes/ listing itself (the entries and commitments listed there), nothing from the bundle."""
-    return []
+    """A live run's keys are the population's, as the rehearsal's. With no run, 13 reads the repository's nodes/ listing
+    itself (the entries and commitments listed there), nothing from the bundle."""
+    if not live_run_13(c):
+        return []
+    bad = keys_13(c, m)
+    nodes_dir = Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes"))
+    for e in sorted((c.work / "entries").glob("*.json")):  # each entry the run holds is the one the repository lists
+        listed = nodes_dir / e.name
+        if not listed.is_file() or listed.read_bytes() != e.read_bytes():
+            bad.append(f"entries/{e.name} is not the repository's nodes/{e.name}")
+    return bad
 
 
 def rederive_13(m, c):
@@ -279,13 +296,16 @@ def rederive_13(m, c):
     cap = need(m.step07.tools(), "step 13", "capsulectl")
     need(m.step07.step12.book_plugin(cap), "step 13", "capsulectl-book")
     pop = load(c.pop / "population.json")
-    d = m.decide(c.work, m.keys_of(pop), cap, c.tmp, c.started, asks=pop["cross"].get("asks"))
+    d = m.decide(c.work, m.keys_of(pop), cap, c.tmp, c.started, population=pop["population"], asks=pop["cross"].get("asks"))
     return {"result": d["result"], "not_checked": d["not_checked"], "detail": d["detail"]}
 
 
 def rederive_13_live(m, c):
     """Live 13: no cross request was exchanged, so there is nothing to judge again; the two cells are rebuilt from the
-    repository's nodes/ listing (T2) and compared with the recorded pairs.json byte for byte."""
+    repository's nodes/ listing (T2) and compared with the recorded pairs.json byte for byte. A live run's tree is
+    judged again as the rehearsal's is."""
+    if live_run_13(c):
+        return rederive_13(m, c)
     d = m.decide_live(c.work, Path(os.environ.get("LOOP_NODES_DIR", ROOT / "nodes")))
     return {"result": d["result"], "not_checked": d["not_checked"], "detail": d["detail"]}
 
@@ -1274,7 +1294,7 @@ def verify_step(d, pop_dir, population, tmp):
 
     entry["rederived"] = {"result": again["result"], "not_checked": again["not_checked"]}
     if population != "rehearsal":
-        entry["relies_on"] = LIVE_RELIES_ON.get(nn, []) + c.relies
+        entry["relies_on"] = ([] if nn == "13" and live_run_13(c) else LIVE_RELIES_ON.get(nn, [])) + c.relies
     entry["problems"] += mismatches(record, again)
     # Each cited file the judge writes again (a pattern may match one per node) must be the recorded bytes.
     entry["problems"] += [f"{n} re-derived is not the recorded {n}" for n in again_files
