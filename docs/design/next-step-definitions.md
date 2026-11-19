@@ -73,8 +73,8 @@ written here first, reviewed here, and switched on only once a pinned release ca
 | 02 Book | the record is in the book under a signed checkpoint, and the **book checkpoint's** witness receipt verifies (`steps/02-book`, `ASSERTS`) | the record is in the book under a signed book checkpoint, and a **stamp proof** carries that checkpoint to a **witnessed shelf checkpoint** | the EvidenceBook release with the shelf of facts (evidencebook#461, its library step) |
 | 03 Advertise | the commitment is published, fetched and verifies; no stapled `history_card/1` or `standard_history/1` fails its checks (`steps/03-advertise`, `ASSERTS`, `ASSERTS_STAPLE`) | as v1, and the staple is a `standard_history/3` card **anchored at a shelf checkpoint**, whose stated level matches its anchor | a Go card builder that writes a `standard_history/3` card |
 | 04 Admit | the decision is exactly one of GO or NO, sealed in the buyer's book before the deal record that cites it; no deal record cites a NO (`steps/04-admit`, `ASSERTS`) | four outcomes; the decision is a **journal** record; the agreement cites the digest of the final decision that allowed it; ASK and LIMIT have their own checks | the deal plugin release that seals admission in the journal |
-| 05 Deal | both sides seal halves citing each other; each pushes its half at completion; the receiver holds the foreign bytes and **seals a record citing them** (`steps/05-deal`, `ASSERTS`) | each record is **sent when sealed**; the receiver holds it in its store and **seals nothing** for it; its next record names it in its **seen** field; both agreements name the same witnesses, and the **stamp proofs** travel in the order the profile sets | the new deal profile version (evidencebook#461, its deal profile step) |
-| 09 Dispute | the referee's Result on a pair of twins is held by each node it concerns with the same bytes (`steps/09-dispute`, `ASSERTS`) | v1 stays the Mesh path; v2 adds the **personal-deal path**: dispute, ruling, the note that the ruling arrived, remedy | the new deal profile version |
+| 05 Deal | both sides seal halves citing each other; each pushes its half at completion; the receiver holds the foreign bytes and **seals a record citing them** (`steps/05-deal`, `ASSERTS`) | each record is **sent when sealed**; the receiver holds it in its store and **seals nothing** for it; its next record names it in its **seen** field; both agreements name the same witnesses; each side's **first act waits on the other side's stamp proof** | the x-deal-v1 deal profile (evidencebook#461, its deal profile step), from the EvidenceBook release with its first-act gate |
+| 09 Dispute | the referee's Result on a pair of twins is held by each node it concerns with the same bytes (`steps/09-dispute`, `ASSERTS`) | v1 stays the Mesh path; v2 adds the **personal-deal path**: dispute, ruling, the note that the ruling arrived, remedy | the x-deal-v1 deal profile, which defines the dispute and ruling records |
 | 12 Join | one command joins the node; a stranger's probe (`checkpoints`, then `history_card/1`) verifies and matches the advertised policy (`steps/12-join`, `ASSERTS`) | the commitment's staple is the `standard_history/3` card **of the shelf**, anchored at a shelf checkpoint, and the stranger's probe compares against **that card** | the same release as 03 v2 |
 
 Steps 01, 06, 07, 10, 11 and 13 do not change. Step 08 keeps its definition and its open gap: it
@@ -147,20 +147,55 @@ gap.
 ### 05 Deal v2
 
 - Both sides seal their records of one deal in their own deal books, and the two agreements cite the
-  same offer and the same rows digest, and name the same witnesses.
+  same offer and the same rows digest, and name the same witnesses, each by its key id (x-deal-v1
+  `PROFILE.md` §5; Steven's ruling u604).
 - Each side sends each record to the other **as soon as it has sealed it**, not only at completion.
 - The receiver holds the received bytes in its store by digest and seals **nothing** for them. Its
   next record in that deal book names the latest record it held from the other side, by digest, in
   its **seen** field.
 
-- **Stamp proofs.** Each side sends the other a stamp proof for its deal book (02 v2's parts),
-  which the receiver verifies against the records it holds, in the order the deal profile version
-  sets. The order EvidenceBook's target proposes: the acceptor stamps right after its agreement and
-  sends the proof with it, and the offerer verifies it before its first act and does not act
-  without it; the offerer stamps after its own agreement and first act. The planted failure: an
-  offerer that acts without a verified stamp proof from the acceptor FAILs. This part follows the
-  profile version that is released; if it sets another order, this part is amended before it is
-  switched on.
+- **Stamp proofs and the first-act gate.** Each side sends the other a stamp proof for its deal
+  book (02 v2's parts), which the receiver verifies against the records it holds. The order is the
+  one the released x-deal-v1 profile sets (`PROFILE.md` §8, "The first-act gate";
+  `xdealv1.ReceiveProfile.GateAct`; Steven's rulings u610 and u611):
+  - each side's **first** `perform` or payer `settle` of the deal is made only after it holds a
+    verified stamp proof from the other side that covers the other side's agreement. This holds on
+    both sides, whether or not the agreements name a witness;
+  - a payee leg, a statement and any act after the first are not gated, and may come before the
+    other side's proof;
+  - the acceptor stamps right after its agreement and sends the proof with it; the offerer stamps
+    its agreement at once when its first act waits on the acceptor's, so neither waits on the
+    other.
+
+  The planted failures: an offerer whose first act comes before it holds a verified stamp proof
+  covering the acceptor's agreement FAILs, and so does an acceptor whose first act comes before
+  it holds one covering the offerer's agreement. A payee leg sealed before the other side's proof
+  is not a failure. With a counterparty that runs no shelf layer (the holder's agreement says
+  `counterparty_layer` `false`), the first act goes ahead and is not refused, and the holder's
+  receipt and card say that the other side sent no stamp proof and the deal is counted from the
+  holder's receipt only (the sealed report's `counterparty_proof` is `no_layer`); a receipt or
+  card that leaves this out FAILs. Both sides of a loop deal run the layer, so the pull request
+  that switches 05 v2 on plants one counterparty that runs none, and this case is checked, not
+  only described.
+
+- **The witnessed checkpoint.** Before either side treats the deal as settled, or relies on the
+  other side's card, it asks for, and verifies, the other side's witnessed checkpoint: a shelf
+  checkpoint with a witness receipt from a witness the agreements name, which verifies under
+  `witnesses.json` as 02 v2 says; the consistency proof from the shelf checkpoint it kept to that
+  one; and the stamp proof for the deal book's newest fact under it (evidencebook
+  `docs/design/461-deal-profile.md` §7.2, "Later"; EvidenceBook's target design §4.3, "The witnessed
+  checkpoint"). This part applies to a deal whose agreements name at least one witness and whose
+  counterparty runs the layer. A deal whose agreements name no witness, or whose counterparty runs
+  no layer, has no witnessed checkpoint to ask for: this part does not apply to it, and how such a
+  deal counts on a card is the card's rule (`standard_history/3`), not this step's. The planted
+  failure: a side whose sealed report says the deal is settled without having verified that
+  checkpoint FAILs. Relying on the other side's card without it is not asserted yet. The record the
+  step reads to see that a side verified it is defined by the pull request that switches this part
+  on, together with the wire form. No wire form carries the receipts and the shelf consistency proof
+  between the sides yet (that design note's Q8; agent-action-capsule#621 closed with the record push
+  and stamp proof forms only), so this part is switched on in its own pull request once a form
+  exists and a pinned release asks for the checkpoint. Until then 05 v2's `asserts` text does not
+  claim it, so 05 v2 can PASS without it.
 
 What becomes of each part of v1's assertion (`steps/05-deal`, `ASSERTS`):
 
@@ -207,12 +242,15 @@ asks for that card and compares its answer against it. v1's `STAPLE_ASSERT` (no 
 
 ## New assertions
 
-Three facts the new layout makes checkable that no step asserts today. Each can sit in an existing
-step or in a new step after 12. Steps numbered 13 and up are cross-ecosystem steps, so a new
-per-ecosystem step would need a number of its own; the maintainers decide. The placement below is
-a proposal.
+Three facts the new layout makes checkable that no step asserts today. Each sits in the existing
+step named below, as a part of that step's v2, and no new step is added after 12. This is the loop maintainers' call and carries no product
+meaning (Sherlock2's door confirmation, recorded on
+[loop#456](https://github.com/evidence-network/loop/issues/456)). A new step would have needed a
+number of its own, since steps numbered 13 and up are cross-ecosystem steps, and each of the three
+checks what its home step already handles: the card 03 fetches, the stamps 02 reads and the rows 05
+seals.
 
-| | Asserts | Proposed home |
+| | Asserts | Home |
 |---|---|---|
 | (a) whole-shelf replay and card recompute | handed every entry of the shelf log up to a card's anchor, with every fact's bytes and the opening of each book fact's status commitment (journal facts stay closed): there are exactly as many entries as the anchor's size states and they hash to its root; each opening recomputes its fact's status commitment; each `book_id`'s consecutive facts are joined by a consistency proof, or carry the same checkpoint when only received material changed; the card counted again from each `book_id`'s latest fact equals the card, and the verifier reports the **Recomputed** level. The card and the result state the shelf's coverage start, and no completeness is claimed before it: for a shelf migrated from today's layout that is its migration marker's checkpoint, or the shelf's first entry when the holder also handed over the material to recompute the old tree roots and it verified. Planted failures: an entry held back, a dropped book, a replaced book and a changed opening each FAIL. The checks cover books, not the journal | 03 Advertise, beside the staple it recomputes |
 | (b) the write rule | between two stamps, a fact appears only for a book whose checkpoint grew or that received new material from the other side; a quiet book gets none; every stamp still ends with a shelf checkpoint, even when no book changed | 02 Book |
