@@ -8,7 +8,7 @@ policy: a record is answered to the counterparty of that exchange, and to nobody
 questions are safe to answer to anyone, and every listed node answers them:
 
 - `checkpoints`: the checkpoints the node has cut over its book; they show no record;
-- `history_card/1`: the node's history card.
+- `history_card/2` (`history_card/1` for a node whose plugin refuses `/2` as `derivation_unsupported`): the node's history card. `/2` stays small however long the log grows; `/1` is the whole card, which a node refuses once it passes 1 MiB.
 
 An answer is either an artifact or a refusal the node signed over that request, so whoever
 asked can check it under the key the node announces on the mesh.
@@ -105,7 +105,7 @@ What joining publishes, in this repository and from then on in its history:
 
 - your entry: the node's id, its plugin key, the host build and plugin version, and the GitHub
   handle you give as its operator (a handle only: never an email address or a phone number);
-- each day, your node's answers to `checkpoints` and `history_card/1`, or the fact that it did
+- each day, your node's answers to `checkpoints` and `history_card/2` (`history_card/1` where your plugin refuses `/2` as `derivation_unsupported`; the refusal is kept as `history_card.first-ask.json`), or the fact that it did
   not answer.
 
 Nothing else is asked of your node, and no record is published: the reporter is not your

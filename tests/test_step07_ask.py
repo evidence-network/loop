@@ -556,6 +556,19 @@ class LiveCommitmentTest(Tmp):
                 step.step12.checkpoint_member(doc)
 
 
+class ExpectedQuestionTest(unittest.TestCase):
+    """The reporter asks history_card/2 first and history_card/1 for a plugin without it: either is the question this step asks."""
+
+    def test_the_card_question_is_either_derivation_and_nothing_else(self):
+        two, one = step.daily_report.FIRST_ASKS["history_card"], step.daily_report.QUESTIONS["history_card"]
+        self.assertEqual((two["derivation"], one["derivation"]), ("history_card/2", "history_card/1"))
+        for asked in (two, one):
+            self.assertEqual(step.expected_question("history_card", None, asked), asked)
+        other = dict(one, derivation="history_card/3")
+        self.assertNotEqual(step.expected_question("history_card", None, other), other)
+        self.assertEqual(step.expected_question("checkpoints", None, {}), step.daily_report.QUESTIONS["checkpoints"])
+
+
 class ReporterBackendTest(Tmp):
     def setUp(self):
         super().setUp()
@@ -677,7 +690,7 @@ class ReporterBackendTest(Tmp):
         self.assertIn("Mesh-LLM/capsules-plugin#114", self.issues(r))
         # an unjudged refusal is not an answer: the first answer is the history card's
         first = json.loads((self.out / "first-answered.json").read_text())
-        self.assertEqual(first["ask"], "lab-1 history_card/1")
+        self.assertEqual(first["ask"], "lab-1 history_card/2")
 
     def test_a_refusal_signed_under_a_key_other_than_the_listed_one_is_a_fail(self):
         r = self.run_live({"checkpoints": "refusal_withheld", "history_card": "verified_history_card"},

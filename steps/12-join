@@ -1140,6 +1140,11 @@ def check_listing(name, entry, signed):
             fails.append(f"{name}: nodes/ lists {question} as stranger-safe, but the node's signed commitment does "
                          f"not advertise it (subjects {subjects}" + (f", derivation {derivation})" if derivation
                                                                        else ")"))
+    # history_card/2 (capsules-plugin#302): a node that lists it as stranger-safe must advertise it too.
+    for stem, q in daily_report.FIRST_ASKS.items():
+        if q["derivation"] in listed and q["derivation"] not in signed["derivations"]:
+            fails.append(f"{name}: nodes/ lists {q['derivation']} as stranger-safe, but the node's signed commitment "
+                         f"does not advertise it (derivation {q['derivation']})")
     return fails
 
 
@@ -1153,10 +1158,11 @@ def listed_entry(node):
 PROBE_ISSUE = "evidence-network/loop: the daily reporter's ask (scripts/daily_report.py)"
 
 
-def judge_reporter_line(stem, line, entry, signed=None):
+def judge_reporter_line(stem, line, entry, signed=None, request=None):
     """(failure or None, not_checked or None) for one reporter verification line. `signed` is the node's verified
-    signed terms (signed_terms): its policy's stranger_safe then decides which refusal fails, not the entry's."""
-    name = daily_report.QUESTION_NAMES[stem]
+    signed terms (signed_terms): its policy's stranger_safe then decides which refusal fails, not the entry's.
+    `request` is the one asked (history_card/2 or /1 for the card question): the answer is named and judged by it."""
+    name = daily_report.asked_name(stem, request or {})
     state = line.split(" ", 1)[0]
     safe = signed["stranger_safe"] if signed else \
         entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
@@ -1369,8 +1375,10 @@ def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_cons
                                         "which this run does not hold, so the answers are matched against the nodes/ "
                                         "entry",
                                  "issue": NODE_CONSOLE_ISSUE}])
+        asked_requests = {stem: load(attempt / f"{stem}.request.json") for stem in result
+                          if (attempt / f"{stem}.request.json").is_file()}
         for stem, line in result.items():
-            fail, nc = judge_reporter_line(stem, line, entry, signed)
+            fail, nc = judge_reporter_line(stem, line, entry, signed, asked_requests.get(stem))
             if fail:
                 bad.append(f"{name}: {fail}")
             if nc:
@@ -1378,7 +1386,7 @@ def run_reporter(pop, out, console=None, timeout=30, self_node=None, second_cons
         failures += bad
         asked = f" (asked through {via})" if self_node else ""
         lines.append(f"{name}{asked}: " +
-                     "; ".join(f"{daily_report.QUESTION_NAMES[k]} {said(v)}" for k, v in result.items()))
+                     "; ".join(f"{daily_report.asked_name(k, asked_requests.get(k) or {})} {said(v)}" for k, v in result.items()))
     if not replay:
         (out / NODES_FILE).write_text(json.dumps({"self_node": self_node, "second_console": bool(second_console),
                                                   "node_consoles": owns, "bind_at": bind_at, "revocations_main": snap},

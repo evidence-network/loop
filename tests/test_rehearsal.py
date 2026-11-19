@@ -236,7 +236,7 @@ class RehearsalRunTest(unittest.TestCase):
             for stem in ("checkpoints", "history_card"):
                 self.assertTrue((node / f"{stem}.verification").read_text().startswith("verified "), slot)
                 self.assertIn("listed_key=match", (node / f"{stem}.verification").read_text())
-            self.assertEqual((node / "NODE").read_text(), "discloses: checkpoints, history_card/1\n")
+            self.assertEqual((node / "NODE").read_text(), "discloses: checkpoints, history_card/2\n")
             run = json.loads((self.out / slot / "RUN.json").read_text())
             self.assertEqual(run["asked"], sorted([retry.node_id(1), SELF]))
             self.assertEqual(run["asked_through_second_console"], [SELF])

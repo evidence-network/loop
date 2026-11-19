@@ -504,7 +504,7 @@ class ReporterBackendTest(Tmp):
         self.assertEqual(set(self.asked["reporter"]), {"1" * 64, "2" * 64})
         for n in ("lab-1", "lab-2"):
             self.assertIn(f"{n} (asked through the reporter's console): checkpoints answered under the listed key; "
-                          "history_card/1 answered under the listed key", r["detail"])
+                          "history_card/2 answered under the listed key", r["detail"])
         self.assertIn("lab-3 (asked through a second node's console): checkpoints answered under the listed key",
                       r["detail"])
         self.assertNotIn("127.0.0.1", r["detail"])
@@ -527,7 +527,7 @@ class ReporterBackendTest(Tmp):
         self.assertNotIn("asked through", r["detail"])
         # lab-3 is asked through its own console, which does not answer for it, as on the first lab run.
         self.assertEqual([i["what"] for i in self.per_node(r)],
-                         ["lab-3: the checkpoints probe answer", "lab-3: the history_card/1 probe answer"])
+                         ["lab-3: the checkpoints probe answer", "lab-3: the history_card/2 probe answer"])
 
     def test_a_self_node_not_in_the_population_is_refused(self):
         # A stale or misspelt name (a host name in place of the operator's label) would quietly ask
@@ -1562,6 +1562,18 @@ class PluginToolsRunTest(Tmp):
         self.assertEqual(r["result"], "FAIL", r["detail"])
         self.assertIn("alice: nodes/ lists history_card/1 as stranger-safe, but the node's signed commitment does not "
                       "advertise it (subjects ['full_history'], derivation history_card/1)", r["detail"])
+
+    def test_a_node_listing_history_card_2_must_advertise_it(self):
+        safe = ["checkpoints", "history_card/1", "history_card/2"]
+        entry = {"disclosure": {"policy": "counterparties", "stranger_safe": safe}}
+        signed = {"stranger_safe": safe, "subjects": ["checkpoints", "full_history"],
+                  "derivations": ["checkpoints", "history_card/1"]}
+        fails = step.check_listing("alice", entry, signed)
+        self.assertEqual(len(fails), 1, fails)
+        self.assertIn("alice: nodes/ lists history_card/2 as stranger-safe, but the node's signed commitment does not "
+                      "advertise it", fails[0])
+        signed["derivations"].append("history_card/2")
+        self.assertEqual(step.check_listing("alice", entry, signed), [])
 
     def test_a_signed_policy_other_than_the_listing_is_a_fail(self):
         r = self.run_one(join=signed_pair(stranger_safe=("checkpoints",)))

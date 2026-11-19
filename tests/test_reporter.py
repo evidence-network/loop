@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -77,6 +78,10 @@ class FakeConsole:
                     return self.reply(404, b"Not found")
                 stem = "history_card" if body["request"].get("derivation") else "checkpoints"
                 what = fake.behaviour[body["peer_id"]][stem]
+                # A node's "history_card_2" behaviour answers a history_card/2 ask on its own; without it a /2 ask gets
+                # the stem's behaviour, as a plugin that answers both would.
+                if body["request"].get("derivation") == "history_card/2":
+                    what = fake.behaviour[body["peer_id"]].get("history_card_2", what)
                 if what == "timeout":
                     time.sleep(fake.delay)  # the reporter has given up; send nothing
                     return
@@ -202,7 +207,7 @@ class ReporterTest(unittest.TestCase):
         self.assertFalse((self.out / d / node_id(4) / "history_card.response.json").exists())
         self.assertIn("could not reach peer", (self.out / d / node_id(4) / "history_card.absence.txt").read_text())
 
-        self.assertEqual(self.node_line(d, 1), "discloses: checkpoints, history_card/1")
+        self.assertEqual(self.node_line(d, 1), "discloses: checkpoints, history_card/2")
         self.assertEqual(self.node_line(d, 4), "discloses: checkpoints")
         for n in (2, 3, 5, 6):
             self.assertEqual(self.node_line(d, n), "joined, discloses nothing")
@@ -210,9 +215,102 @@ class ReporterTest(unittest.TestCase):
 
         run = json.loads((self.out / d / "RUN.json").read_text())
         self.assertEqual(run["reporter"], REPORTER)
-        self.assertEqual(run["questions"], ["checkpoints", "history_card/1"])
+        self.assertEqual(run["questions"], ["checkpoints", "history_card/2"])
         self.assertEqual(run["asked"], sorted(node_id(n) for n in range(1, 9)))
         self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def one_node(self, behaviour):
+        self.list_nodes(entry(node_id(1), key_id(1)))
+        self.console = FakeConsole({node_id(1): behaviour}, {node_id(1): key_id(1)})
+        self.assertEqual(self.run_reporter("2026-10-28"), 0)
+        return self.out / "2026-10-28" / node_id(1)
+
+    def derivations_asked(self):
+        return [b["request"].get("derivation") for _, b in self.console.asked if b["request"].get("derivation")]
+
+    def test_a_node_that_answers_history_card_2_is_asked_only_that(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/2")
+        self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/2")
+
+    def test_a_plugin_without_history_card_2_is_asked_history_card_1_after_its_signed_refusal(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2", "history_card/1"])
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
+        self.assertEqual((d / "NODE").read_text().strip(), "discloses: checkpoints, history_card/1")
+        kept = json.loads(next(d.rglob("history_card.first-ask.json")).read_text())  # the signed refusal that earned /1
+        self.assertEqual(kept["request"]["derivation"], "history_card/2")
+        self.assertEqual(kept["reply"]["verification"]["reason"], "derivation_unsupported")
+        self.assertTrue((d / "history_card.first-ask.json").is_file())  # and in the settled day
+        self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_a_kept_first_ask_that_is_not_the_signed_unsupported_refusal_is_refused_by_the_checker(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        kept = d / "history_card.first-ask.json"
+        good = kept.read_text()
+        for bad in (good.replace("derivation_unsupported", "policy_declined"), good.replace("history_card/2", "history_card/1"),
+                    "not json"):
+            kept.write_text(bad)
+            self.assertTrue([e for e in check_reports.check(self.out)[0] if "first-ask.json must be" in e], bad[:40])
+        kept.write_text(good)
+        (d / "checkpoints.first-ask.json").write_text(good)
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "only kept for history_card" in e])
+
+    def test_the_day_keeps_the_refusal_that_earned_history_card_1_even_when_that_is_unanswered(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "absence",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(json.loads((d / "history_card.request.json").read_text())["derivation"], "history_card/1")
+        self.assertTrue((d / "history_card.first-ask.json").is_file())
+        self.assertEqual(check_reports.check(self.out)[0], [])
+
+    def test_the_checker_refuses_a_first_ask_that_is_orphaned_or_not_the_counting_attempts(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        day_copy = d / "history_card.first-ask.json"
+        good = day_copy.read_text()
+        day_copy.write_text(good.replace('"status": 200', '"status": 200 '))  # a copy that is not the attempt's bytes
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "is not the one the attempt that counts holds" in e])
+        day_copy.write_text(good)
+        day_copy.unlink()  # the copy removed
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "is not the one the attempt that counts holds" in e])
+        day_copy.write_text(good)
+        # An attempt that answered only checkpoints cannot carry a history_card first-ask: it is orphaned there.
+        attempt = next((d / "attempts").iterdir())
+        (attempt / "history_card.request.json").unlink()
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "history_card.first-ask.json must be" in e])
+        # A reply without the signed answer's members is not a refusal to keep.
+        (attempt / "history_card.request.json").write_text((d / "history_card.request.json").read_text())
+        kept = attempt / "history_card.first-ask.json"
+        broken = json.loads(good); del broken["reply"]["answer"]["sig"]
+        kept.write_text(json.dumps(broken))
+        self.assertTrue([e for e in check_reports.check(self.out)[0] if "history_card.first-ask.json must be" in e])
+
+    def test_a_history_card_1_day_from_the_cutoff_on_must_keep_the_refused_first_ask(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal_derivation_unsupported"})
+        day = d.parent.name  # 2026-10-28: before the cutoff, a /1 day needs no first-ask
+        (d / "history_card.first-ask.json").unlink()
+        for a in (d / "attempts").iterdir():
+            (a / "history_card.first-ask.json").unlink()
+        self.assertEqual(check_reports.check(self.out)[0], [])
+        with mock.patch.object(check_reports, "FIRST_ASK_REQUIRED_FROM", day):
+            errs = check_reports.check(self.out)[0]
+        self.assertTrue([e for e in errs if "history_card was asked as /1" in e], errs)
+
+    def test_another_refusal_of_history_card_2_is_the_answer_and_history_card_1_is_not_asked(self):
+        d = self.one_node({"checkpoints": "verified", "history_card": "verified_history_card",
+                           "history_card_2": "refusal"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
+        self.assertTrue((d / "history_card.verification").read_text().startswith("refusal reason=policy_declined"))
+
+    def test_a_node_that_does_not_reply_to_history_card_2_is_not_asked_again_with_history_card_1(self):
+        self.one_node({"checkpoints": "verified", "history_card": "verified_history_card", "history_card_2": "absence"})
+        self.assertEqual(self.derivations_asked(), ["history_card/2"])
 
     def test_it_asks_the_two_questions_and_nothing_else(self):
         self.every_outcome()
@@ -221,7 +319,8 @@ class ReporterTest(unittest.TestCase):
         for n in range(1, 9):
             asked = [body for _, body in self.console.asked if body["peer_id"] == node_id(n)]
             self.assertEqual(sorted(json.dumps(b["request"], sort_keys=True) for b in asked),
-                             sorted(json.dumps(q, sort_keys=True) for q in daily_report.QUESTIONS.values()))
+                             sorted(json.dumps(q, sort_keys=True) for q in
+                                    (daily_report.QUESTIONS["checkpoints"], daily_report.FIRST_ASKS["history_card"])))
             for body in asked:
                 self.assertEqual(set(body), {"peer_id", "request"})  # never verify: false
 
@@ -423,7 +522,7 @@ class ReporterTest(unittest.TestCase):
         self.console = FakeConsole({node_id(1): {"checkpoints": "verified", "history_card": "verified"}},
                                    {node_id(1): key_id(1)})
         self.assertEqual(self.run_reporter("2026-10-28"), 0)
-        self.assertEqual(self.node_line("2026-10-28", 1), "discloses: checkpoints, history_card/1")
+        self.assertEqual(self.node_line("2026-10-28", 1), "discloses: checkpoints, history_card/2")
         self.assertEqual(check_reports.check(self.out)[0], [])
 
     def test_reporter_key_writes_the_public_identity_only(self):

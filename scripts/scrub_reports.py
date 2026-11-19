@@ -64,7 +64,7 @@ ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$")
 # A run of base64/base64url characters this long in free text is a blob, not words.
 BLOB = re.compile(r"[A-Za-z0-9+/_=-]{24,}")
 MAX_STRING = 200
-NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/1)(, history_card/1)?)$")
+NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/[12])(, history_card/[12])?)$")
 
 DAY_KEYS = {"date", "run", "missed_reason", "versions_lock_sha256", "reporter_key_id", "listed", "nodes"}
 NODE_KEYS = {"node_id", "node_line", "absent_days_running", "left_on", "questions"}

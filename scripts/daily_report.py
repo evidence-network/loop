@@ -12,10 +12,13 @@ Usage:
                         [--second-console URL] [--population FILE]
   daily_report.py prove --date D [--out DIR]
 
-`run` asks each node in nodes/ `checkpoints` and `history_card/1` over the mesh
+`run` asks each node in nodes/ `checkpoints` and `history_card/2` over the mesh
 evidence request, through the reporter node's own capsules plugin
 (POST <console>/api/plugins/capsules/tools/mesh_evidence_request), and writes
-what came back under <out>/<date>/<node_id>/. It asks those two and nothing else.
+what came back under <out>/<date>/<node_id>/. It asks those two and nothing else,
+except that a node whose plugin refuses `history_card/2` as `derivation_unsupported`
+(one without capsules-plugin#302) is asked `history_card/1` instead; the files keep
+the request and answer that counted.
 A question that got no answer (the node unreachable, or no answer in time) is
 asked again at the times in the reporter file's `retry_after_s` (seconds after
 the run starts; none, one attempt). An answer, a signed refusal included, is
@@ -89,7 +92,7 @@ days running that is ("absent 3 days running"), a fact about that node only.
 
 `prove` is the day-one acceptance check, printed, never written to the repo:
 exit 0 when at least two nodes answered `checkpoints` verified with at least
-one checkpoint, and `history_card/1` verified.
+one checkpoint, and `history_card/2` (`history_card/1` after the fallback) verified.
 
 Standard library only. Exit 0 = done, 1 = refused (bad input), 2 = missed day.
 """
@@ -129,6 +132,19 @@ QUESTIONS = {
     },
 }
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
+
+
+def asked_name(stem, request):
+    """What the question is called in a line: the derivation actually asked, else the stem's name."""
+    return request.get("derivation") or QUESTION_NAMES[stem]
+
+
+# The question asked first, where it differs from the one in QUESTIONS (history_card/2: capsules-plugin#302, Steven's ruling
+# u562/u563), and the verification line a /1-only plugin's signed refusal of it gives.
+FIRST_ASKS = {"history_card": dict(QUESTIONS["history_card"], derivation="history_card/2")}
+UNSUPPORTED_PREFIX = "refusal reason=derivation_unsupported"
+# The kept /2 ask a plugin without #302 refused (a history_card attempt answered by /1 may hold it): {stem}.first-ask.json.
+FIRST_ASK_FILE = "first-ask.json"
 TOOL_ROUTE = "/api/plugins/capsules/tools/mesh_evidence_request"
 PEER_KEY_ROUTE = "/api/plugins/capsules/http/peer-key"
 # The plugin's own ledger route; its node_pub_key_pem is the key the running
@@ -264,10 +280,8 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
     except (OSError, ValueError) as e:
         if not (d / "peer-key.json").exists():
             write_new(d / "peer-key.json", json.dumps({"error": str(e)}) + "\n")
-    lines = {}
-    for stem in stems:
-        request = QUESTIONS[stem]
-        write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
+    def ask_once(request):
+        """(status, body, error, timed_out, line) of one request to the node."""
         status, body, error, timed_out = None, b"", None, False
         wait = timeout()
         try:
@@ -278,12 +292,32 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
                 error = f"no reply from the reporter's node within {wait:g}s: {e}"
             else:
                 error = f"the reporter's node did not take the request: {e}"
+        return status, body, error, timed_out, verification_line(status, body, error, announced, listed, timed_out)
+
+    lines = {}
+    for stem in stems:
+        request = QUESTIONS[stem]
+        preferred = FIRST_ASKS.get(stem)
+        if preferred is not None:
+            # history_card/2 first (it stays small however long the log grows); a node whose plugin does not answer it
+            # refuses it derivation_unsupported, signed, and is asked history_card/1 instead. Only the answer that counts
+            # is kept: a published attempt holds no other files (check_reports.py).
+            first = ask_once(preferred)
+            if not first[4].startswith(UNSUPPORTED_PREFIX):
+                request = preferred
+            else:
+                # The signed refusal is the evidence the /1 ask was earned: kept beside the answer that counted.
+                write_new(d / f"{stem}.{FIRST_ASK_FILE}", json.dumps(
+                    {"request": preferred, "status": first[0], "reply": json.loads(first[1])}, indent=2, sort_keys=True) + "\n")
+        write_new(d / f"{stem}.request.json", json.dumps(request, indent=2, sort_keys=True) + "\n")
+        status, body, error, timed_out, line = (first if preferred is not None and request is preferred
+                                                else ask_once(request))
         if error is None and status == 200:
             write_new(d / f"{stem}.response.json", body)
         else:
             write_new(d / f"{stem}.absence.txt",
                       (error or f"http {status}\n{body.decode('utf-8', 'replace')}").rstrip("\n") + "\n")
-        lines[stem] = verification_line(status, body, error, announced, listed, timed_out)
+        lines[stem] = line
         write_new(d / f"{stem}.verification", lines[stem] + "\n")
     return lines
 
@@ -294,8 +328,11 @@ def settle(node_dir):
     disclosed, waiting = [], False
     for stem in QUESTIONS:
         a = day[stem]
-        first = a["tried"][0][0]
+        # The request the counting answer was given to (a retry may have fallen back from /2 to /1); with no answer, the first try's.
+        first = a["attempt"] if a["attempt"] is not None else a["tried"][0][0]
         write_new(node_dir / f"{stem}.request.json", (first / f"{stem}.request.json").read_bytes())
+        if (first / f"{stem}.{FIRST_ASK_FILE}").is_file():  # the refused /2 ask that earned this /1 request, answered or not
+            write_new(node_dir / f"{stem}.{FIRST_ASK_FILE}", (first / f"{stem}.{FIRST_ASK_FILE}").read_bytes())
         if a["attempt"] is not None:
             for name in (f"{stem}.response.json", f"{stem}.absence.txt", f"{stem}.verification"):
                 if (a["attempt"] / name).is_file():
@@ -306,7 +343,7 @@ def settle(node_dir):
             line = layout.absence_line(a["tried"])
             write_new(node_dir / f"{stem}.verification", line + "\n")
         if line.startswith("verified "):
-            disclosed.append(QUESTION_NAMES[stem])
+            disclosed.append(asked_name(stem, json.loads((node_dir / f"{stem}.request.json").read_text())))
         waiting = waiting or line.startswith("no_checkpoint_yet ")
     write_new(node_dir / "peer-key.json", (layout.attempts(node_dir)[-1] / "peer-key.json").read_bytes())
     if disclosed:
@@ -519,7 +556,7 @@ def run(args, now, sleep):
         "reporter": {"node_id": reporter["node_id"], "key_id": reporter["key_id"]},
         "started": layout.iso(start),
         "finished": layout.iso(now()),
-        "questions": [QUESTION_NAMES[s] for s in QUESTIONS],
+        "questions": [asked_name(s, FIRST_ASKS.get(s, QUESTIONS[s])) for s in QUESTIONS],
         "asked": sorted(lines),
         "versions_lock_sha256": versions_lock_sha256(),
     }
@@ -533,7 +570,7 @@ def run(args, now, sleep):
              else f"# Daily report {name}")
     readme = [title, "",
               f"Reporter `{reporter['node_id']}` (key `{reporter['key_id']}`) asked each node in `nodes/`"
-              " `checkpoints` and `history_card/1`. Nodes are listed by node id; the order means nothing.",
+              " `checkpoints` and `history_card/2` (`history_card/1` for a node whose plugin refuses /2 as derivation_unsupported). Nodes are listed by node id; the order means nothing.",
               f"A question with no answer was asked again at {again} after the run started;"
               " each node's `attempts/` holds every time it was asked.", ""]
     if ondemand:
@@ -587,7 +624,9 @@ def ask(args, now):
             continue
         lines = ask_attempt(via.get(node_id, console), listed[node_id], day_dir / node_id, stems, now(), "by=ask",
                             args.timeout)
-        print(f"{node_id}: " + "; ".join(f"{QUESTION_NAMES[s]}: {l}" for s, l in lines.items()))
+        asked_in = layout.attempts(day_dir / node_id)[-1]
+        print(f"{node_id}: " + "; ".join(
+            f"{asked_name(s, json.loads((asked_in / f'{s}.request.json').read_text()))}: {l}" for s, l in lines.items()))
     return 0
 
 
@@ -599,7 +638,9 @@ def prove(args):
         hc = (node_dir / "history_card.verification").read_text().split() or ["missing"]
         count = next((int(t.split("=", 1)[1]) for t in cp if re.fullmatch(r"^checkpoints=\d+$", t)), 0)
         ok = cp[0] == "verified" and count >= 1 and hc[0] == "verified"
-        print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; history_card/1: {hc[0]})")
+        asked = asked_name("history_card", json.loads((node_dir / "history_card.request.json").read_text())
+                           if (node_dir / "history_card.request.json").is_file() else {})
+        print(f"{node_dir.name}: {'yes' if ok else 'no'} (checkpoints: {' '.join(cp[:2])}; {asked}: {hc[0]})")
         if ok:
             passing.append(node_dir.name)
     print(f"day-one proof {'holds' if len(passing) >= 2 else 'does not hold'} for {args.date}")

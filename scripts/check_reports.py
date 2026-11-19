@@ -37,7 +37,7 @@ import report_layout as layout  # noqa: E402
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 STEMS = layout.STEMS
 STATES = layout.DAY_STATES
-NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/1)(, history_card/1)?)$")
+NODE_LINE = re.compile(r"^(joined, discloses nothing|joined, no checkpoint yet|discloses: (checkpoints|history_card/[12])(, history_card/[12])?)$")
 DAY_FILES = {"RUN.json", "README.md"}
 
 
@@ -63,6 +63,39 @@ def check_answer(where, d, stem, states):
     return errs
 
 
+FIRST_ASK = "first-ask.json"
+# From this day on, a settled history_card/1 request means the reporter asked /2 first and was refused: the signed refusal
+# must be kept beside it. Earlier days asked /1 only (loop#460 sets the date to its merge day).
+FIRST_ASK_REQUIRED_FROM = "2026-11-19"
+
+
+def check_first_ask(where, d, stem):
+    """The history_card/2 ask a plugin refused as derivation_unsupported, kept beside the history_card/1 request that
+    followed it, whether or not that was answered. Only for history_card; the kept reply is the plugin's reply holding
+    that refusal (the signed answer with its reason and signature members, and the verification saying refusal). The
+    signature itself is not checked here, as no answer's is: steps 07 and 12 do that with the node's key."""
+    path = d / f"{stem}.{FIRST_ASK}"
+    if not path.exists():
+        return []
+    name = f"{where}: {stem}.{FIRST_ASK}"
+    if stem != "history_card":
+        return [f"{name} is only kept for history_card"]
+    try:
+        kept = json.loads(path.read_text(encoding="utf-8"))
+        asked = json.loads((d / f"{stem}.request.json").read_text(encoding="utf-8"))
+        answer, verification = kept["reply"]["answer"], kept["reply"]["verification"]
+        ok = (isinstance(kept, dict) and set(kept) == {"request", "status", "reply"} and kept["status"] == 200
+              and kept["request"].get("derivation") == "history_card/2"
+              and asked.get("derivation") == "history_card/1"
+              and answer.get("reason") == "derivation_unsupported" and isinstance(answer.get("sig"), str) and answer["sig"]
+              and isinstance(answer.get("request_digest"), str) and answer["request_digest"]
+              and verification.get("state") == "refusal" and verification.get("reason") == "derivation_unsupported")
+    except (OSError, ValueError, KeyError, AttributeError, TypeError):
+        ok = False
+    return [] if ok else [f"{name} must be the history_card/2 request and its signed derivation_unsupported refusal, "
+                          "beside a history_card/1 request"]
+
+
 def check_attempt(where, a):
     """One attempt: ATTEMPT naming its own time, peer-key.json, the questions it asked."""
     where = f"{where}/{layout.ATTEMPTS}/{a.name}"
@@ -80,10 +113,11 @@ def check_attempt(where, a):
     asked = 0
     for stem in STEMS:
         files = {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
-        allowed |= files
+        allowed |= files | {f"{stem}.{FIRST_ASK}"}
         if any((a / f).exists() for f in files):
             asked += 1
             errs += check_answer(where, a, stem, layout.ATTEMPT_STATES)
+        errs += check_first_ask(where, a, stem)
     if not asked:
         errs.append(f"{where}: asks no question")
     extra = sorted(p.name for p in a.iterdir() if p.name not in allowed)
@@ -106,8 +140,26 @@ def check_node(day, node_dir):
         errs += check_attempt(where, a)
     day_answers = layout.answers(node_dir)
     for stem in STEMS:
-        allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt"}
+        allowed |= {f"{stem}.request.json", f"{stem}.verification", f"{stem}.response.json", f"{stem}.absence.txt",
+                    f"{stem}.{FIRST_ASK}"}
         errs += check_answer(where, node_dir, stem, STATES)
+        errs += check_first_ask(where, node_dir, stem)
+        settled_req = node_dir / f"{stem}.request.json"
+        if (stem == "history_card" and str(day) >= FIRST_ASK_REQUIRED_FROM and settled_req.is_file()
+                and not (node_dir / f"{stem}.{FIRST_ASK}").is_file()):
+            try:
+                asked_1 = json.loads(settled_req.read_text(encoding="utf-8")).get("derivation") == "history_card/1"
+            except (OSError, ValueError, AttributeError):
+                asked_1 = False
+            if asked_1:
+                errs.append(f"{where}: history_card was asked as /1 from {FIRST_ASK_REQUIRED_FROM} on, but "
+                            f"{stem}.{FIRST_ASK} (the refused /2 ask) is not kept")
+        source = day_answers[stem]["attempt"] or (day_answers[stem]["tried"][0][0] if day_answers[stem]["tried"] else None)
+        kept_day = node_dir / f"{stem}.{FIRST_ASK}"
+        kept_src = source / f"{stem}.{FIRST_ASK}" if source else None
+        if (kept_src is not None and kept_src.is_file()) != kept_day.is_file() or (
+                kept_day.is_file() and kept_day.read_bytes() != kept_src.read_bytes()):
+            errs.append(f"{where}: {stem}.{FIRST_ASK} is not the one the attempt that counts holds")
         settled = node_dir / f"{stem}.response.json"
         if settled.is_file() and not any(
             (a / f"{stem}.response.json").is_file()

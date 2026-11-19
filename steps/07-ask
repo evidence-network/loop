@@ -838,13 +838,13 @@ def ask_posted(console, entry, node_dir, stem, at, timeout, posted):
         daily_report.http = real
 
 
-def judge_live_line(stem, line, entry, profile=PROFILE_V0):
+def judge_live_line(stem, line, entry, profile=PROFILE_V0, request=None):
     """step 12's verdict on a reporter line, except a refusal of a stranger-safe question: that is judged by its
-    reason (refusal_verdict), as the book backend judges it."""
-    qname = daily_report.QUESTION_NAMES[stem]
+    reason (refusal_verdict), as the book backend judges it. `request` is the one asked (history_card/2 or /1)."""
+    qname = daily_report.asked_name(stem, request or {})
     safe = entry.get("disclosure", {}).get("stranger_safe", list(daily_report.QUESTION_NAMES.values()))
     if line.split(" ", 1)[0] != "refusal":
-        return step12.judge_reporter_line(stem, line, entry)
+        return step12.judge_reporter_line(stem, line, entry, None, request)
     if "listed_key=match" not in line.split():  # a refusal is signed too: under the listed key, like an artifact
         return f"the {qname} refusal is signed under a key that is not the listed key: {line}", None
     if qname not in safe:
@@ -1152,7 +1152,9 @@ def expected_question(stem, half, request):
     if stem == EXCHANGE:
         recorded = request.get("profile") if isinstance(request, dict) else None
         return exchange_question(half, recorded if recorded in (PROFILE_V0, PROFILE_V1) else PROFILE_V1)
-    return daily_report.QUESTIONS[stem]
+    # The card question is asked history_card/2 first, history_card/1 for a plugin without it (daily_report.ask_attempt).
+    asked = daily_report.FIRST_ASKS.get(stem)
+    return asked if asked is not None and request == asked else daily_report.QUESTIONS[stem]
 
 
 class exchange_registered:
@@ -1282,7 +1284,7 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 result = ask_posted(asker, entry, node_dir, stem, at, timeout, posted)
                 back = now()
                 attempt = layout.attempts(node_dir)[-1]
-                sent = posted[0] if posted else at  # the request's own send time, not the key lookup before it
+                sent = posted[-1] if posted else at  # the answered request's own send time (a /2 ask refused as unsupported came before it)
                 sent_at = sent if sent.tzinfo else sent.replace(tzinfo=dt.timezone.utc)
                 write_json(attempt / "timing.json", {
                     "asked_at": stamp(sent_at), "back_at": stamp(back),
@@ -1293,7 +1295,8 @@ def run_reporter(pop, out, console, timeout=30, self_node=None, second_console=N
                 for stem, line in result.items():
                     saw = line.split(" ", 1)[0]
                     write_json(attempt / f"{stem}.ledger.json", ledger_extract(
-                        Path(ledger) / "ledger" if ledger else None, entry["node_id"], daily_report.QUESTIONS[stem],
+                        Path(ledger) / "ledger" if ledger else None, entry["node_id"],
+                        load(attempt / f"{stem}.request.json"),
                         sent_at, back, saw if saw in ("verified", "refusal") else None,
                         adv["within"] if adv else None))
                     if ledger:  # after the ask's outcome is sealed (the extract's last read): the asker's checkpoint
@@ -1570,6 +1573,7 @@ def judge_reporter_in(pop, out, book_tool, book_work):
                 qname = daily_report.QUESTION_NAMES[stem]
                 try:
                     request = load(attempt / f"{stem}.request.json")
+                    qname = daily_report.asked_name(stem, request)
                     timing = load(attempt / "timing.json")
                     sent_at, back = utc(timing["asked_at"]), utc(timing["back_at"])
                 except (OSError, ValueError, KeyError, TypeError) as e:
@@ -1611,7 +1615,7 @@ def judge_reporter_in(pop, out, book_tool, book_work):
                     failures += [f"{name}: {qname}: {e}" for e in perrs]
                     merge(not_checked, pnotes)
                 fail, nc2 = (judge_exchange_line(line, entry, request_profile(request)) if stem == EXCHANGE
-                             else judge_live_line(stem, line, entry, request_profile(request)))
+                             else judge_live_line(stem, line, entry, request_profile(request), request))
                 cited_ok = True
                 if stem == EXCHANGE and not fail and saw == "verified":
                     cite_errs, cite_notes = exchange_records_cite(attempt / f"{stem}.response.json", half)
