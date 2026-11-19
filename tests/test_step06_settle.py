@@ -385,7 +385,7 @@ class Step06SettleTest(unittest.TestCase):
         self.assertIn(step.WALLET_ISSUE, issues)   # node 2 recorded none: no wallet yet
         # a node recorded legs, so the closing rail entry is not appended
         self.assertFalse([n for n in r["not_checked"] if n["what"].startswith("the live rail's")])
-        self.assertEqual(set(r["pinned"]), {"capsules", "mesh-llm-pr-2620"})
+        self.assertEqual(set(r["pinned"]), set(step.LIVE_PINNED))
         self.assert_clean()
 
     def test_the_preimage_check_needs_lowercase_hex_that_hashes_to_the_payment_hash(self):

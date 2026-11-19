@@ -100,7 +100,7 @@ class DryRunTest(unittest.TestCase):
     def test_prints_the_build_check_against_the_pins(self):
         pins = {l.split()[0]: l.split()[2] for l in (ROOT / "versions.lock").read_text().splitlines()
                 if l and not l.startswith("#")}
-        for name in ("mesh-llm", "mesh-llm-pr-2620"):
+        for name in ["mesh-llm"] + [n for n in pins if n.startswith("mesh-llm-pr-")]:
             self.assertIn(f"merge-base --is-ancestor {pins[name]} HEAD", self.out)
         self.assertIn("git -C /src/capsules rev-parse HEAD", self.out)
         self.assertIn("sha256sum /opt/mesh-llm /opt/capsules", self.out)
@@ -717,6 +717,164 @@ class CheckTest(LabRoot):
         self.assertEqual(self.run_lab("check").returncode, 0)
         self.lock(self.mesh[0], self.mesh[1], "v9.9.9")
         self.assert_fails_with(self.run_lab("check"), "v9.9.9")
+
+
+class PayPluginStartTest(unittest.TestCase):
+    """LAB_PAY_PLUGIN=pay-lightning (loop#436): the host build has no [payments]; the buyer policy is set after each start."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.env = {"LAB_DIR": str(self.tmp / "lab"), "LAB_OPERATOR": "lab-operator", "MESH_LLM_BIN": "/opt/mesh-llm",
+                    "CAPSULES_BIN": "/opt/capsules", "LAB_MODEL": "/opt/model.gguf", "MESH_LLM_SRC": "/src/mesh-llm",
+                    "CAPSULES_SRC": "/src/capsules", "LAB_PAYMENTS": "lab-1 lab-2 lab-3", "PAY_LIGHTNING_BIN": "/opt/pay",
+                    "LEXE_PLUGIN": "/opt/lexe", "PAY_LIGHTNING_ARCHIVE": "/opt/pay.tgz"}
+
+    def test_the_config_has_no_payments_stanza_and_each_payer_gets_its_policy(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAY_PLUGIN": "pay-lightning"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("[payments]", r.stdout)
+        # lab-1 and lab-3 20,000 msat a day, lab-2 9,000, each through the node's console control tool.
+        for port, budget in ((9811, 20000), (9812, 9000), (9813, 20000)):
+            self.assertRegex(r.stdout, rf"http://127\.0\.0\.1:{port}/api/plugins/pay-lightning/tools/control .*daily_budget_msat.*{budget}")
+
+    def test_without_the_plugin_the_legacy_stanza_stays_and_no_policy_is_set(self):
+        r = lab_sh("--dry-run", "start", env=self.env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[payments]", r.stdout)
+        self.assertNotIn("tools/control", r.stdout)
+
+    def test_another_plugin_name_is_refused(self):
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_PAY_PLUGIN": "other"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("LAB_PAY_PLUGIN", r.stderr)
+
+
+class SquashedPrPinTest(LabRoot):
+    """A PR pin whose head is not in the mesh-llm tree: the squashed commit's message carries it (lab/lab.sh check)."""
+
+    HEAD = "ab" * 20
+
+    def test_a_squashed_pr_is_accepted_by_the_head_its_message_names(self):
+        git(self.tmp / "mesh-llm", "commit", "-q", "--allow-empty", "-m", f"squashed #2620\n\nhead {self.HEAD}")
+        self.lock(self.mesh[0], self.HEAD, "v0.1.5")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIs(self.build()["ok"], True, self.build()["failures"])
+
+    def test_a_pr_head_in_no_message_and_not_in_the_tree_fails(self):
+        self.lock(self.mesh[0], self.HEAD, "v0.1.5")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("mesh-llm-pr-2620" in f for f in self.build()["failures"]), self.build()["failures"])
+
+
+class PayCheckTest(LabRoot):
+    """`check` with the payment pins: the pay-lightning tree holds the base and #11 commits, and the binaries are recorded."""
+
+    def setUp(self):
+        super().setUp()
+        self.pay = new_tree(self.tmp / "pay-lightning", 2)
+        for name in ("pay-lightning", "lexe-wallet"):
+            f = self.tmp / "bin" / name
+            f.write_text(f"{name} plugin\n")
+            f.chmod(0o755)
+        self.lexe_pin = "9f" * 20
+        self.set_lock(self.pay[0], self.pay[1])
+        self.env.update({"PAY_LIGHTNING_SRC": str(self.tmp / "pay-lightning"), "PAY_LIGHTNING_BIN": str(self.tmp / "bin/pay-lightning"),
+                         "LEXE_PLUGIN": str(self.tmp / "bin/lexe-wallet")})
+
+    def set_lock(self, base, pr):
+        self.lock(self.mesh[0], self.mesh[1], "v0.1.5")
+        with open(self.root / "versions.lock", "a") as f:
+            f.write(f"pay-lightning Mesh-LLM/ln-payments-plugin {base}\npay-lightning-pr-11 Mesh-LLM/ln-payments-plugin {pr}\n"
+                    f"lexe-wallet Mesh-LLM/lexe-wallet-plugin {self.lexe_pin}\n")
+
+    def test_the_tree_and_binaries_are_recorded(self):
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        rec = self.build()["pay_lightning"]
+        self.assertEqual(rec["source_head"], self.pay[1])
+        self.assertEqual(rec["binary_sha256"], hashlib.sha256((self.tmp / "bin/pay-lightning").read_bytes()).hexdigest())
+        self.assertEqual(rec["wallet_plugin"], {"pin": self.lexe_pin, "binary_sha256": hashlib.sha256((self.tmp / "bin/lexe-wallet").read_bytes()).hexdigest()})
+
+    def test_a_tree_without_the_pr_commit_fails(self):
+        self.set_lock(self.pay[0], "cd" * 20)
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("pay-lightning-pr-11" in f for f in self.build()["failures"]), self.build()["failures"])
+
+    def test_a_fork_pr_merged_as_one_commit_is_accepted_by_the_head_its_message_names(self):
+        head = "3a" * 20
+        with open(self.root / "versions.lock", "a") as f:
+            f.write(f"pay-lightning-pr-18-19 someone/ln-payments-plugin {head}\n")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)  # its head is in no commit of the tree
+        self.assertTrue(any("pay-lightning-pr-18-19" in f for f in self.build()["failures"]), self.build()["failures"])
+        git(self.tmp / "pay-lightning", "commit", "-q", "--allow-empty", "-m", f"lab: fork branch @ {head}")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_missing_binary_fails(self):
+        for var in ("PAY_LIGHTNING_BIN", "LEXE_PLUGIN"):
+            r = self.run_lab("check", **{var: str(self.tmp / "bin/none")})
+            self.assertEqual(r.returncode, 1, r.stderr)
+            self.assertTrue(any(f"{var} is not a readable file" in f for f in self.build()["failures"]), self.build()["failures"])
+
+    def test_a_dirty_tree_fails(self):
+        (self.tmp / "pay-lightning" / "f.txt").write_text("x")
+        git(self.tmp / "pay-lightning", "add", "f.txt")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("pay-lightning source has uncommitted changes" in f for f in self.build()["failures"]), self.build()["failures"])
+
+
+@unittest.skipUnless(Path("/proc/self/exe").exists(), "lab.sh reads /proc: Linux only")
+class RunningPaymentPluginsTest(LabRoot):
+    """`running` on a paying node: its pay-lightning and wallet plugin processes run the checked bytes (loop#436)."""
+
+    def binary(self, name, base, tail):
+        f = self.tmp / "bin" / name
+        shutil.copy(shutil.which(base), f)
+        f.write_bytes(f.read_bytes() + tail)  # trailing bytes: a different sha256, still the same program
+        f.chmod(0o755)
+        return f
+
+    def start_node(self, caps, pay, lexe):
+        mesh = self.binary("mesh-llm", "bash", b"mesh")
+        # Copies of bash, never of a multi-call binary like coreutils' sleep, which refuses to run under another name.
+        idle = "'sleep 60; :'"  # the `; :` keeps bash from exec-ing sleep, which would replace the copy's exe
+        proc = subprocess.Popen([str(mesh), "-c", f"{caps} -c {idle} & {pay} -c {idle} & {lexe} -c {idle} & wait"])
+        self.addCleanup(lambda: (subprocess.run(["pkill", "-P", str(proc.pid)]), proc.kill(), proc.wait()))
+        for _ in range(100):
+            if len(subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True).stdout.split()) == 3:
+                break
+            time.sleep(0.05)
+        (self.lab / "run").mkdir(parents=True, exist_ok=True)
+        (self.lab / "run" / "lab-1.pid").write_text(f"{proc.pid}\n")
+        return mesh
+
+    def test_running_names_a_payment_plugin_that_is_not_the_checked_binary(self):
+        caps = self.binary("capsules", "bash", b"caps")
+        pay = self.binary("pay-lightning", "bash", b"pay")
+        lexe = self.binary("lexe-wallet", "bash", b"lexe")
+        mesh = self.start_node(caps, pay, lexe)
+        env = {"MESH_LLM_BIN": str(mesh), "CAPSULES_BIN": str(caps), "LAB_ONLY": "lab-1", "LAB_PAYMENTS": "lab-1",
+               "LAB_PAY_PLUGIN": "pay-lightning", "PAY_LIGHTNING_BIN": str(pay), "LEXE_PLUGIN": str(lexe)}
+        r = self.run_lab("running", **env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        other = self.binary("pay-lightning-other", "bash", b"other")
+        r = self.run_lab("running", **{**env, "PAY_LIGHTNING_BIN": str(other)})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runs no PAY_LIGHTNING_BIN plugin process", r.stderr)
+        r = self.run_lab("running", **{**env, "LEXE_PLUGIN": str(other)})
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runs no LEXE_PLUGIN wallet process", r.stderr)
+        # The driver's checked sha256 values are the reference on the second host, whatever its own files say.
+        sha = lambda f: hashlib.sha256(Path(f).read_bytes()).hexdigest()
+        r = self.run_lab("running", **{**env, "PAY_LIGHTNING_BIN": str(other), "LAB_EXPECT_PAY_SHA256": sha(pay),
+                                       "LAB_EXPECT_LEXE_SHA256": sha(lexe)})
+        self.assertEqual(r.returncode, 0, r.stderr)
 
 
 class ToolsTest(LabRoot):

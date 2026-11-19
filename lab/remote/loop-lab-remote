@@ -7,8 +7,8 @@
 #   node-start NODE      lab.sh node-start NODE
 #   node-id NODE         print NODE's node id
 #   mirror NODE          a tar of NODE's ledger, self-peer-id, binding, sharing report and build mark on stdout (no key, no payments)
-#   running MESH CAPS LABSH DIGEST   lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin, of lab/lab.sh,
-#                        and its digest of the roles and settings both hosts must share
+#   running MESH CAPS LABSH DIGEST [PAY WALLET]   lab.sh running, against the driver's checked sha256 of mesh-llm and the capsules plugin, of lab/lab.sh,
+#                        and its digest of the roles and settings both hosts must share; with a paying lab also the pay-lightning and wallet plugin sha256
 #   stop                 lab.sh stop (this host's nodes only)
 #
 # The environment file (default ~/.loop-lab-remote.env, owned by this user, mode 0600) sets: LOOP_LAB_SH (a copy of
@@ -42,11 +42,12 @@ case "$verb" in
     exec "$LOOP_LAB_SH" "$verb" "${argv[1]}"
     ;;
   running)
-    [ "${#argv[@]}" = 5 ] || { echo "loop-lab-remote: running takes four sha256 values" >&2; exit 2; }
-    sha_ok "${argv[1]:-}" && sha_ok "${argv[2]:-}" && sha_ok "${argv[3]:-}" && sha_ok "${argv[4]:-}" \
-      || { echo "loop-lab-remote: running needs four sha256 values" >&2; exit 2; }
+    [ "${#argv[@]}" = 5 ] || [ "${#argv[@]}" = 7 ] || { echo "loop-lab-remote: running takes four sha256 values, and optionally the pay-lightning and wallet plugin sha256 values" >&2; exit 2; }
+    for i in "${!argv[@]}"; do
+      [ "$i" = 0 ] || sha_ok "${argv[$i]}" || { echo "loop-lab-remote: running needs sha256 values" >&2; exit 2; }
+    done
     LAB_EXPECT_MESH_SHA256=${argv[1]} LAB_EXPECT_CAPSULES_SHA256=${argv[2]} LAB_EXPECT_LAB_SH_SHA256=${argv[3]} \
-      LAB_EXPECT_CONFIG_DIGEST=${argv[4]} exec "$LOOP_LAB_SH" running
+      LAB_EXPECT_CONFIG_DIGEST=${argv[4]} LAB_EXPECT_PAY_SHA256=${argv[5]:-} LAB_EXPECT_LEXE_SHA256=${argv[6]:-} exec "$LOOP_LAB_SH" running
     ;;
   stop)
     [ "${#argv[@]}" = 1 ] || exit 2
