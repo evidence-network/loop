@@ -18,7 +18,7 @@ Goose node) point at the lab's relay. Nothing is paid and no node is restarted o
   goose -> mesh  the Goose node asks through loop_ask_mailbox the mailbox the Mesh node's commitment names; the Mesh plugin reads
                  and answers it. The proof is the Goose node's Evidence Bundle (loop_book_bundle), as the rehearsal's.
 
-Asks: history_card/1 each way (stranger-safe, so a signed artifact is the answer; a refusal's policy check against a commitment
+Asks: a history card each way (history_card/1 from the Mesh node, history_card/2 where the Goose node's v0.20.1 library finds it listed; stranger-safe, so a signed artifact is the answer; a refusal's policy check against a commitment
 the plugin does not hold would be NOT_CHECKED). The relay's own log (lab/relay.py) is the carrier log: when it received each request
 and reply. Writes OUT (the run tree laid out as scripts/cross_ask_session.py's) and OUT/population/population.json, whose
 directory is LOOP_CROSS_POPULATION for ./loop.sh --stage cross --ecosystem cross --population live.
@@ -219,12 +219,14 @@ async def run(a):
             d = g2m / ASK
             d.mkdir(parents=True)
             t0 = now() - dt.timedelta(seconds=1)
+            # No derivation named: evidencebook v0.20.1 asks history_card/2 on checkpoints where the commitment lists it
+            # (the lab nodes' history_card/1 outgrew a websocket frame of 1 MiB), else history_card/1.
             tool = await goose.call("loop_ask_mailbox", commitment_file=str(m_commit_file), subject_form="checkpoints",
-                                    derivation="history_card/1", min_freshness="1")
+                                    min_freshness="1")
             polled = {}
             for _ in range(60):  # the plugin reads its mailbox every five seconds; the window is the request's deadline
                 polled = await goose.call("loop_ask_mailbox_poll", request_event_id=tool["request_event_id"])
-                if polled["status"] in ("answered", "absent"):
+                if polled["status"] in ("answered", "absent"):  # transport_error and pending: poll again
                     break
                 await asyncio.sleep(2)
             at, req = request_event(log, mbox, t0)
