@@ -34,6 +34,7 @@ import os
 import shutil
 import sys
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -112,8 +113,11 @@ def mailbox_of(commitment):
 def post(console, body, timeout=90):
     req = urllib.request.Request(console + TOOL, data=json.dumps(body).encode(), method="POST",
                                  headers={"content-type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:600]}") from None
 
 
 class Carrier:
