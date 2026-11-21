@@ -1,6 +1,6 @@
 {
-  "ask_route": "mesh",
-  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
+  "ask_route": "nostr",
+  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and never with the content of any request, answer or payment. Whether it answered, refused or did not answer, and whether the answer verified, is published per ecosystem pair at https://evidence-network.github.io/loop/stats/. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
   "disclosure": {
     "pair_edges": "public",
     "policy": "counterparties",
@@ -14,5 +14,5 @@
   "mesh": "lab",
   "node_id": "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864",
   "operator": "StevenMih",
-  "plugin_version": "capsules v0.1.17 (3480a3673996bd9cdbb3d1e7cc47c9bbb6695086), binary sha256 feb3f602291d4c23cceef271710f58639fb7d307c60096fdd8e729baf2457af7"
+  "plugin_version": "capsules v0.1.20 (212d93f30d1eafd10b8d16490b4e3e13e755cb23), binary sha256 d16b635002c4cf23a04dd1cbb4c31b6836177732a87fe884df424265dd1dd73e"
 }
