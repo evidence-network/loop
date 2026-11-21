@@ -42,21 +42,24 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # declares min_host_version 0.78.0 in plugin.toml (#283); its dependency pins are v0.1.17's. The INFERENCE_DEALS_DIGEST equals the pack_source_digest of the
 # inference-deals pin below. The ledger-checkpoint console route and `capsules ledger-check` (loop#276) remain; the lab
 # leaves CAPSULES_CHECKPOINT_CADENCE unset, so the cadence is on and a ledger-checkpoint ask is served.
-# LAB BUILD: capsules-plugin main at the merge of Mesh-LLM/capsules-plugin#304 (d75403b, 2026-11-18). It carries #292 (the settlement channel accepts pay-lightning's own
-# local lifecycle relay; v0.1.18 refuses it, so step 06 had no preimage to check), #294 (a 2 MiB commitment read) and #302 (history_card/2 answered and stapled in commitment/1,
-# which a node past about 350 checkpoints needs: its /1 card passes the 1 MiB answer cap, capsules-plugin#70/#76) and #304 (the History page verifies a /2 card). Moving a ledger to it
-# is one way: the previous plugin fails to start on it (capsules-plugin#308), so back the ledger up first. Unreleased: swap for the release tag.
-capsules Mesh-LLM/capsules-plugin d75403b445e722274fa651a561014c24d70be7e6
+# v0.1.20 (Mesh-LLM/capsules-plugin, tag 2026-11-20), three releases after v0.1.17: 0.1.19 answers the node's own Nostr mailbox when
+# advertise_evidence_requests is on (#293, the responder of loop#442) and asks one with the `nostr_evidence_request` tool
+# (#295, loop#443), and CAPSULES_NOSTR_RELAY_MAP points the relay a commitment names at a lab's own (lab.sh LAB_NOSTR_NODES);
+# 0.1.20 moves the plugin to the checkpointed-local-log 0.6 stack (#301: a checkpoint carries the bare log id as the CWT sub, so
+# every checkpoint, anchor digest and signature differs; a witness must accept both sub forms; NO DOWNGRADE, the earlier plugin
+# stops on the ledger, so a lab node's data directory is copied before the first start), answers history_card/2 and staples it in
+# the commitment (#302, #304), counts referee verdicts in service_history/2 (#299) and marks the ledger's format (#309).
+capsules Mesh-LLM/capsules-plugin v0.1.20
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
 evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.5.0
-# The evidence-request the plugin builds with at v0.1.18 (unchanged from v0.1.17): crates.io 0.4.1, published from this tag (0.3.0 was the
-# plugin's at v0.1.6 to v0.1.8: the -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
-capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.4.1
-# The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), 0.0.12 in the
-# plugin's Cargo.lock at v0.1.18 (0.0.11 at v0.1.6 to v0.1.8); crates.io 0.0.12 is published from this tag.
-evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.12
+# The evidence-request the plugin builds with at v0.1.20: crates.io 0.7.0, published from this tag (0.4.1 was v0.1.17's, 0.3.0
+# the plugin's at v0.1.6 to v0.1.8: the -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
+capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.7.0
+# The evidencebook crate the plugin builds its evidence answers on (#87, #89 to #94), `=0.0.21` in the plugin's
+# crates/evidence-plugin/Cargo.toml at v0.1.20 (0.0.12 at v0.1.17, 0.0.11 at v0.1.6 to v0.1.8); crates.io 0.0.21 is published from this tag.
+evidencebook-crate action-state-group/evidencebook crates/evidencebook-v0.0.21
 # The daily reporter: scripts/daily_report.py as of this commit (main after #3).
 reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # What a verifier re-checks saved answers with, offline: evidencebook (the Rust crate steps 02 and 05
