@@ -197,6 +197,77 @@ def advertised_proof(work, node):
     return names
 
 
+ASK_PREFIX = "ask"  # a live mesh asker's files beside its ask: ask.request.json, ask.answer.json, ask.ledger.json, ask.checkpoint.json
+ASKER_LEDGER = step07.ASKER_LEDGER
+
+
+def is_ledger_pair(pair_dir):
+    """Whether this pair was asked by a live mesh node, whose proof is its own ledger (the sealed request and outcome
+    records, shown whole by its signed ledger checkpoint) rather than a capsulectl book's Evidence Bundle."""
+    return any((d / f"{ASK_PREFIX}.ledger.json").is_file() for d in Path(pair_dir).iterdir() if d.is_dir())
+
+
+def judge_ledger_pair(work, asker, asked, asker_key, asked_key, capsulectl, vwork, nc):
+    """(errors, [], proof paths relative to the pair's directory, line) for a live mesh asker's asks of one node.
+
+    Step 07's live judge, on the asker's ledger (steps/07-ask judge_sealed and judge_ledger_proof): the request is in
+    the asker's book sealed before it was sent, the outcome record (a response or an absence) cites it and the digest of
+    its bytes, a reply verifies again under the asked node's listed key for exactly the bytes the relay carried, and the
+    extract is the one the asker's signed ledger checkpoint shows. The carrier log says when the relay received each
+    event; the request's own deadline is the window (nostr-mailbox-v0)."""
+    pair_dir = Path(work) / asker / "asks" / asked
+    adv, errs = step07.advertisement(Path(work) / asked / "advertised")
+    proof = ["carrier.jsonl"]
+    if adv is None:
+        return errs, [], proof, "the asked node's advertisement does not verify"
+    events = [json.loads(line) for line in (pair_dir / "carrier.jsonl").read_text().splitlines()]
+    verifier = step07.Verifier(vwork, capsulectl)
+    outcomes = []
+    for d in sorted(x for x in pair_dir.iterdir() if x.is_dir()):
+        name = d.name
+        proof += [f"{name}/{f.name}" for f in sorted(d.iterdir()) if f.is_file()]
+        try:
+            request_bytes = (d / f"{ASK_PREFIX}.request.json").read_bytes()
+            request, extract = json.loads(request_bytes), load(d / f"{ASK_PREFIX}.ledger.json")
+        except (OSError, ValueError) as e:
+            errs.append(f"{name}: the ask's request or ledger extract is not readable ({e})")
+            continue
+        mine = [e for e in events if e["ask"] == name]
+        sent = [e for e in mine if e["event"] == "sent"]
+        if len(sent) != 1:
+            errs.append(f"{name}: the carrier log has {len(sent)} sends of this ask, not one")
+            continue
+        if sent[0].get("request_sha256") != hashlib.sha256(request_bytes).hexdigest():
+            errs.append(f"{name}: the carrier sent other bytes than the request file holds")
+        posted = step07.utc(sent[0]["at"])
+        saw = None
+        reply = d / f"{ASK_PREFIX}.answer.json"
+        delivered = [step07.utc(e["at"]) for e in mine if e["event"] == "delivered"]
+        try:
+            deadline = step07.utc(request.get("deadline"))
+        except ValueError:
+            errs.append(f"{name}: the request carries no deadline in its own bytes")
+            continue
+        if reply.is_file() and delivered and min(delivered) <= deadline:
+            outcome, refused = verifier.check(d / f"{ASK_PREFIX}.request.json", reply, adv["node_key"], adv["checkpoint_key"])
+            saw = {"artifact": "verified", "refusal": "refusal"}.get(outcome)
+            if saw is None:
+                errs.append(f"{name}: the reply does not verify under the listed key: {refused or outcome}")
+        e_, notes = step07.judge_sealed(extract, asked_key, request, posted, posted, saw, adv["within"],
+                                        adv.get("policy_digest"))
+        errs += [f"{name}: {x}" for x in e_]
+        for note in notes:
+            nc.append(gap(f"the {asker} -> {asked} {name} ask's sealed record", note, OPT_IN_ISSUE))
+        # The ask's records are the asker's ledger as its own signed checkpoint shows it.
+        node = {"name": asker, "node_id": asker_key, "key_id": asker_key}
+        e_, ncs = step07.judge_ledger_proof(work, {"nodes": [node]}, {"asker": asker}, d, ASK_PREFIX, extract,
+                                            asked_key, request, posted, posted)
+        errs += [f"{name}: {x}" for x in e_]
+        nc.extend(ncs)
+        outcomes.append(f"{name} {(extract.get('outcomes') or [{}])[0].get('header', {}).get('statement', {}).get('outcome', 'no outcome')}")
+    return errs, [], proof, ", ".join(outcomes)
+
+
 def judge_cells(work, keys, capsulectl, tmp, asks=None):
     """One row per (asker, responder) node pair of the run, each judged by step 07's judge_pair with mailbox=True.
 
@@ -256,11 +327,18 @@ def judge_cells(work, keys, capsulectl, tmp, asks=None):
                     errs.append("the pair holds no ask")
             if result is None and not errs:
                 nc = []
-                e_, answered, p, line = step07.judge_pair(pair_dir, work / asked / "advertised", keys[asker], capsulectl,
-                                                          Path(tmp) / f"verify-{asker}-{asked}", nc, mailbox=True)
+                if is_ledger_pair(pair_dir):
+                    e_, answered, p, line = judge_ledger_pair(work, asker, asked, keys[asker], keys[asked], capsulectl,
+                                                              Path(tmp) / f"verify-{asker}-{asked}", nc)
+                else:
+                    e_, answered, p, line = step07.judge_pair(pair_dir, work / asked / "advertised", keys[asker],
+                                                              capsulectl, Path(tmp) / f"verify-{asker}-{asked}", nc,
+                                                              mailbox=True)
                 errs += e_
                 not_checked += nc
                 proof = [f"{asker}/asks/{asked}/{x}" for x in p] + advertised_proof(work, asked)
+                if is_ledger_pair(pair_dir):  # the asker's chain the checkpoint covers, kept whole by the driver
+                    proof.append(f"{ASKER_LEDGER}/{asker}/{step07.ledger_proof.CHAIN}")
                 proof.append(f"entries/{path.name}")
             if result is None:
                 result = "FAIL" if errs else ("NOT_CHECKED" if not_checked else "PASS")
