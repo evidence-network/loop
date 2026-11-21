@@ -51,9 +51,9 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # the commitment (#302, #304), counts referee verdicts in service_history/2 (#299) and marks the ledger's format (#309).
 capsules Mesh-LLM/capsules-plugin v0.1.20
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
-# (steps/02-book.setup.sh). crates.io 0.5.0 is published from this tag. The driver's Cargo.lock also carries
+# (steps/02-book.setup.sh). crates.io 0.7.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.5.0
+evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.7.0
 # The evidence-request the plugin builds with at v0.1.20: crates.io 0.7.0, published from this tag (0.4.1 was v0.1.17's, 0.3.0
 # the plugin's at v0.1.6 to v0.1.8: the -02 refusal reasons and evidence-interop/1, agent-action-capsule #481, #483).
 capsules-evidence-request action-state-group/agent-action-capsule crates/evidence-request-v0.7.0
@@ -69,12 +69,12 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 capsulectl action-state-group/evidencebook v0.15.0
 # The evidencebook Rust crate steps 02 and 05 build with: crates.io 0.0.15, published from this tag (evidence-request
 # 0.5.0, checkpointed-local-log 0.5, agent-action-capsule 0.10.0). The drivers take it from crates.io, not a git tag.
-evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.15
+evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.21
 # step 02 book
 # The log evidencebook 0.0.15's Rust crate embeds, as its Cargo.lock and step 02's driver lock it.
 checkpointed-local-log action-state-group/checkpointed-local-log crates/checkpointed-local-log-v0.6.0
 # AAC's Rust crate, whose witness receipt verifier evidencebook 0.0.15's crate calls.
-aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.10.0
+aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.12.0
 # step 12 join
 # The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
 # built from the evidencebook tag's capsulectl/ module.
