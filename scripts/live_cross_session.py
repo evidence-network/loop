@@ -25,7 +25,6 @@ directory is LOOP_CROSS_POPULATION for ./loop.sh --stage cross --ecosystem cross
 """
 import argparse
 import asyncio
-import base64
 import datetime as dt
 import hashlib
 import importlib.machinery
@@ -46,6 +45,7 @@ SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
 sys.path.insert(0, str(SRC))
 
 import daily_report  # noqa: E402
+import check_commitment  # noqa: E402
 import goose_live  # noqa: E402
 import nostr_mailbox as mb  # noqa: E402
 from goose_ask_session import Goose, stamp, unb64  # noqa: E402
@@ -185,6 +185,7 @@ async def run(a):
             def ask():
                 try:
                     result.update(post(a.console, {"mailbox_key": gbox, "relays": grelays, "responder_key": gkey,
+                                                   "commitment": check_commitment.commitment_input(g_commit_file),
                                                    "request": REQUEST}))
                 except Exception as e:  # noqa: BLE001
                     err.append(f"{type(e).__name__}: {e}")

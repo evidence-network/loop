@@ -611,6 +611,15 @@ def policy_errors(doc, policy_bytes, spki_der):
     return []
 
 
+def commitment_input(commitment_file):
+    """The `commitment` input of nostr_evidence_request (capsules-plugin 0.1.21): the responder's signed commitment and the
+    bytes of the policy at lcap.policy_uri, base64. The plugin reads the checkpoint key from the stapled history cards."""
+    commitment_file = Path(commitment_file)
+    doc = json.loads(commitment_file.read_text())
+    policy = (commitment_file.parent / doc["lcap"]["policy_uri"]).read_bytes()
+    return {"commitment": doc, "policy": base64.b64encode(policy).decode()}
+
+
 def verify(doc, fetch_policy, fetch_staple=None):
     """Every check on a parsed commitment. fetch_policy(uri) returns the bytes, or None if it cannot fetch.
     fetch_staple(part) returns the standard_history staple's "request" or "reply" bytes, or None if it has none.
