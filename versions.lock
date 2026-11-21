@@ -66,7 +66,7 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # build on), and capsulectl built from an evidencebook tag. v0.13.1 is the first tag whose capsulectl
 # stamps SOURCE_DATE_EPOCH on every book record, Result and checkpoint (evidencebook#330), which
 # step 10 sets to the window end so two runs over one 08 manifest give the same digests (loop#177).
-capsulectl action-state-group/evidencebook v0.15.0
+capsulectl action-state-group/evidencebook v0.21.0
 # The evidencebook Rust crate steps 02 and 05 build with: crates.io 0.0.15, published from this tag (evidence-request
 # 0.5.0, checkpointed-local-log 0.5, agent-action-capsule 0.10.0). The drivers take it from crates.io, not a git tag.
 evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.21
@@ -78,13 +78,14 @@ aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.
 # step 12 join
 # The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
 # built from the evidencebook tag's capsulectl/ module.
-capsulectl-book action-state-group/evidencebook v0.15.0
+capsulectl-book action-state-group/evidencebook v0.21.0
 # The capsule-cli release whose `capsulectl verify --history` checks the history_card/1 a commitment staples
 # (steps 03 and 12; scripts/staple_verify.py, steps/capsule-cli.setup.sh builds it from this tag). Not the capsulectl
-# pin above, which is the core evidencebook v0.13.1 builds with (v0.1.0-rc30, without that check). Every capsule-cli
+# pin above, which is the core evidencebook builds with. Every capsule-cli
 # release is a pre-release: the stapled-card verifier first shipped in v0.1.0-rc33 (agent-action-capsule#430), and
-# v0.1.0-rc38 is the latest on 2026-11-06.
-capsule-cli action-state-group/capsule-cli v0.1.0-rc38
+# rc45 (2026-11-21) is the first whose reader accepts the bare checkpoint CWT sub capsules v0.1.20 signs (CLL -02; rc38 refuses it as "checkpoint CWT subject is invalid"), checks a staple of history_card/2 (rc42) and
+# is the capsulectl core evidencebook v0.21.0 builds with, which delivers the selected checkpoint to a witness past an older unreceipted row (capsule-cli#590).
+capsule-cli action-state-group/capsule-cli v0.1.0-rc45
 # step 01 seal
 # The sealer (Python, PyPI capsule-emit 0.16.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).
