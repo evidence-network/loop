@@ -51,7 +51,7 @@ sys.path.insert(0, str(HERE.parent / "stats"))
 import finding  # noqa: E402
 from make_fixtures import KEY, at, day, node, q, size  # noqa: E402
 
-CONSENT = json.loads((ROOT / "nodes" / "16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json")
+CONSENT = json.loads((ROOT / "nodes" / "91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json")
                      .read_text(encoding="utf-8"))["consent"]
 NAMES = {1: "node-one", 2: "node-two", 3: "node-three", 4: "node-four"}
 
