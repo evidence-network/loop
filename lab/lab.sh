@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|running|tools|start|node-start|node-id|mirror|guard-moved|refresh-mirror|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|running|tools|start|node-start|node-id|mirror|guard-moved|refresh-mirror|status|exchange|join|witness|relay|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -74,6 +74,9 @@
 #   refresh-mirror [NODE]   (driver) read the remote nodes' ledgers into their mirrors now (the steps call it between a checkpoint ask and the read)
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
+#   relay     the lab's standing NIP-01 relay (lab/relay.py, loop#442): 127.0.0.1 port base+40, run under the Goose venv's
+#             python, every event it receives also written to $LAB_DIR/relay/events.jsonl. LAB_NOSTR_NODES' plugins and the
+#             Goose nodes of a live cross run (GOOSE_RELAY_MAP) reach it; start it before the nodes that advertise
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, commitments, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
@@ -120,6 +123,13 @@
 #             alone gets `system_prompt = LAB_FAULT_SYSTEM_PROMPT` (default: reply with the single word PINEAPPLE) in its
 #             config.toml [models.request_defaults]: LAB-ONLY FAULT INJECTION, so the pair differs under
 #             the same model hash and weights digest. No temperature, seed or sampler override. Read by start
+#   LAB_NOSTR_NODES     the nodes that advertise (advertise_evidence_requests on) and read and answer their Nostr mailbox on the
+#             lab's relay (loop#442): space separated, off when unset; on this host only (the relay listens on 127.0.0.1).
+#             Their launchers get CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on, CAPSULES_NOSTR_RELAYS=$LAB_NOSTR_RELAY and
+#             CAPSULES_NOSTR_RELAY_MAP={"$LAB_NOSTR_RELAY": "ws://127.0.0.1:<base+40>"}, so their commitments carry ask.nostr.
+#             Read by start: stop and start the lab to change it
+#   LAB_NOSTR_RELAY     the wss:// URL the commitments name (default wss://relay.loop-lab.example, which resolves nowhere:
+#             only the map reaches the lab's relay)
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
 #   LAB_OUT             where loop, admit, deal, settle, dispute and ask write (default findings/<UTC date>-live)
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
@@ -190,6 +200,15 @@ pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && retu
 in_list() { local x=$1 y; shift; for y in "$@"; do [ "$x" = "$y" ] && return 0; done; return 1; }
 REMOTE=(); read -r -d '' -a REMOTE <<< "${LAB_REMOTE_NODES:-}" || true
 ONLY=(); read -r -d '' -a ONLY <<< "${LAB_ONLY:-}" || true
+# The nodes that advertise evidence requests and answer a Nostr mailbox (loop#442).
+NOSTR=()
+read -r -d '' -a NOSTR <<< "${LAB_NOSTR_NODES:-}" || true
+NOSTR_RELAY=${LAB_NOSTR_RELAY:-wss://relay.loop-lab.example}
+for n in "${NOSTR[@]+"${NOSTR[@]}"}"; do
+  [[ " ${NODES[*]} lab-4 " == *" $n "* ]] || die "LAB_NOSTR_NODES names $n, not a lab node"
+  ! in_list "$n" "${REMOTE[@]+"${REMOTE[@]}"}" || die "LAB_NOSTR_NODES names $n, which runs on the second host: the relay listens on this host only"
+done
+nostr() { local n; for n in "${NOSTR[@]+"${NOSTR[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 REMOTE_SSH=${LAB_REMOTE_SSH:-}
 if [ "${#REMOTE[@]}" -gt 0 ]; then
   [ "${#ONLY[@]}" = 0 ] || die "LAB_ONLY (the second host) and LAB_REMOTE_NODES (the driver) are not set together"
@@ -680,6 +699,11 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   # The plugin reads share_record_at_completion from this env var before its config
   # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
   shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
+  # The node advertises its commitment on the lab's relay, reads its Nostr mailbox there and answers it (capsules-plugin
+  # v0.1.19, #293: advertise_evidence_requests on). The commitment names NOSTR_RELAY, which resolves nowhere; the map points
+  # the plugin at the relay on this host (#295).
+  nostr "$name" && envs+=(CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on CAPSULES_NOSTR_RELAYS="$NOSTR_RELAY"
+    CAPSULES_NOSTR_RELAY_MAP="{\"$NOSTR_RELAY\":\"ws://127.0.0.1:$(relay_port)\"}")
   # The referee's re-answer goes to the plugin's OpenAI endpoint, 127.0.0.1:9337 unless told (referee/live.rs): the
   # requester's own API, never whatever else listens on that port.
   [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on
@@ -978,7 +1002,7 @@ cmd_stop() {
     p=$(pid_of "$n") || continue
     kill -TERM "$p" 2> /dev/null || true
   done
-  [ "${#ONLY[@]}" = 0 ] && [ "$DRY" = 1 ] && say kill -TERM "<pid in $(pidfile witness)>"
+  [ "${#ONLY[@]}" = 0 ] && [ "$DRY" = 1 ] && { say kill -TERM "<pid in $(pidfile witness)>"; say kill -TERM "<pid in $(pidfile relay)>"; }
   [ "$DRY" = 1 ] && [ "${#REMOTE[@]}" -gt 0 ] && rcmd stop
   [ "$DRY" = 1 ] && { echo "  (wait up to 30s for the shutdown checkpoints, then kill -KILL what is left)"; return 0; }
   local _ any
@@ -993,11 +1017,12 @@ cmd_stop() {
     rm -f "$(pidfile "$n")"
   done
   [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile witness)"; }
+  [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of relay) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile relay)"; }
   tmux kill-session -t "$SESSION" 2> /dev/null || true
   # The second host's nodes last: a failure there leaves this host stopped and is said loudly.
   local rrc=0
   if [ "${#REMOTE[@]}" -gt 0 ]; then rcmd stop || rrc=$?; close_tunnel; fi
-  echo "stopped ${NODES[*]}${ONLY[*]:+ (on this host)} and the witness"
+  echo "stopped ${NODES[*]}${ONLY[*]:+ (on this host)}, the witness and the relay"
   [ "$rrc" = 0 ] || die "could not stop ${REMOTE[*]} on $REMOTE_SSH (exit $rrc): stop them there before starting anything"
 }
 
@@ -1159,6 +1184,7 @@ cmd_bind() {
 # this tree. Its listing in lab/witness/witnesses.json only grows: a new key is a new entry with its
 # not_before, and old entries stay so old receipts still verify.
 witness_port() { echo $((BASE + 30)); }
+relay_port() { echo $((BASE + 40)); }
 witness_driver() { echo "${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/02-book/bin/loop-step02-book"; }
 capsulectl_bin() { echo "${CAPSULECTL:-${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/bin/capsulectl}"; }
 
@@ -1218,6 +1244,40 @@ cmd_witness() {
   fi
   still_up witness || die "the witness exited at once"
   echo "started the lab test witness $pub on port $(witness_port); commit lab/witness/witnesses.json"
+}
+
+# The lab's standing NIP-01 relay (lab/relay.py): the one both ecosystems of a live cross run reach (loop#442).
+cmd_relay() {
+  local dir=$LAB_DIR/relay launcher=$LAB_DIR/run/relay.sh py="${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/goose/venv/bin/python"
+  [ "$DRY" = 1 ] || [ -x "$py" ] || die "no $py (websockets): run lab/goose.sh tools first"
+  if [ "$DRY" = 0 ] && alive relay && ! port_free "$(relay_port)"; then
+    echo "relay already running (pid $(pid_of relay))"; return 0
+  fi
+  [ "$DRY" = 1 ] || port_free "$(relay_port)" || die "port $(relay_port) is in use: pick another LAB_PORT_BASE"
+  run mkdir -p "$dir" "$LAB_DIR/run" "$LAB_DIR/logs"
+  run chmod 700 "$dir" "$LAB_DIR/run"
+  local body
+  body=$(
+    echo '#!/usr/bin/env bash'
+    echo "# the lab's standing Nostr relay: started by lab/lab.sh relay. 127.0.0.1 only."
+    printf 'echo $$ > %q\n' "$(pidfile relay)"
+    printf 'exec %q -B %q serve --port %q --log %q' "$py" "$ROOT/lab/relay.py" "$(relay_port)" "$dir/events.jsonl"
+    printf ' < /dev/null >> %q 2>&1\n' "$(logfile relay)"
+  )
+  if [ "$DRY" = 1 ]; then
+    echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
+  else
+    printf '%s\n' "$body" > "$launcher" && chmod 700 "$launcher"
+  fi
+  local cmd
+  cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile relay)")
+  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "$SESSION" -n relay "$cmd"
+  else
+    run tmux new-session -d -s "$SESSION" -n relay "$cmd"
+  fi
+  still_up relay || die "the relay exited at once"
+  echo "started the lab relay on 127.0.0.1:$(relay_port), events in $dir/events.jsonl"
 }
 
 # The live judge key (evidence-network/loop#189, Steven's GO Buzz 23c5f8fd): on the lab host, never any node's key,
@@ -1532,7 +1592,7 @@ case "$cmd" in
   node-start | node-id | mirror | config-digest) "cmd_$(printf %s "$cmd" | tr - _)" "${2:-}" ;;
   refresh-mirror) refresh_mirror "${2:-}" ;;
   guard-moved) is_remote "${2:-}" || die "guard-moved: ${2:-} is not in LAB_REMOTE_NODES"; guard_moved "$2"; echo "guard-moved: $2 may start on $REMOTE_SSH" ;;
-  check | running | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | running | tools | start | status | exchange | join | witness | relay | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

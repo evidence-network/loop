@@ -186,6 +186,28 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("tmux new-window -d -t loop-lab -n witness", r.stdout)
         self.assertIn(f"LOOP_WITNESS_CA={self.lab}/witness/tls-cert.pem", self.out)
 
+    def test_relay_is_the_lab_hosts_own_standing_relay_in_the_goose_venv(self):
+        r = lab_sh("--dry-run", "relay", env={**self.env, "LOOP_TOOLS": "/t"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"exec /t/goose/venv/bin/python -B {ROOT}/lab/relay.py serve --port 9840 --log {self.lab}/relay/events.jsonl",
+                      r.stdout)
+        self.assertIn("tmux new-window -d -t loop-lab -n relay", r.stdout)
+
+    def test_advertising_nodes_get_the_relay_map_and_the_switch_and_no_other_node_does(self):
+        env = {**self.env, "LAB_NOSTR_NODES": "lab-1 lab-3"}
+        r = lab_sh("--dry-run", "start", env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for line in (l for l in r.stdout.splitlines() if " serve --config " in l):
+            n = next(x for x in ("lab-1", "lab-2", "lab-3") if f"HOME={self.lab}/nodes/{x} " in line)
+            on = n != "lab-2"
+            self.assertEqual("CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on" in line, on, line)
+            self.assertEqual("CAPSULES_NOSTR_RELAYS=wss://relay.loop-lab.example" in line, on, line)
+            self.assertEqual("ws://127.0.0.1:9840" in line, on, line)
+        r = lab_sh("--dry-run", "start", env={**self.env, "LAB_NOSTR_NODES": "lab-2", "LAB_REMOTE_NODES": "lab-2",
+                                              "LAB_REMOTE_SSH": "x"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("second host", r.stderr)
+
     def test_bind_covers_every_node_but_the_reporter_and_keeps_its_key_in_the_lab_dir(self):
         r = lab_sh("--dry-run", "bind", env=self.env)
         self.assertEqual(r.returncode, 0, r.stderr)
