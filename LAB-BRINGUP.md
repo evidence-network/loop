@@ -982,3 +982,24 @@ one that returns: copy it back to `nodes/lab-2` on the driver (tar, compare sha2
 `lab-2.moved-<date>` copy as `lab-2.mirror` and `lab-2.premove`, never in place of it. Steps 01 and 02 sealed into the mirror's `join-book` during the remote period (it is the `book_dir` the population names), so copy that `join-book` over the restored home's too, or keep it as the book of record. Remove `.mirror`, unset `LAB_REMOTE_NODES`
 and `LAB_REMOTE_SSH`, and `start` with the same environment as before. Only if the second host's home is lost does the
 `premove` copy return, which rolls the chain and the wallet back to the time of the move.
+
+## The standing Nostr relay and a live cross run (evidence-network/loop#442, #443)
+
+`lab/lab.sh relay` starts `lab/relay.py`, the lab's one NIP-01 relay, on 127.0.0.1 port base+40 (9840), in the Goose venv's python
+(`lab/goose.sh tools` installs it), with every event it receives also appended to `$LAB_DIR/relay/events.jsonl`. `lab.sh stop` stops it.
+Start it before the nodes. `LAB_NOSTR_NODES="lab-1 lab-3"` (nodes on the relay's host only) gives those nodes
+`CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on`, `CAPSULES_NOSTR_RELAYS=wss://relay.loop-lab.example` and
+`CAPSULES_NOSTR_RELAY_MAP={"wss://relay.loop-lab.example":"ws://127.0.0.1:9840"}`; `lab.sh commitments` then writes commitments that
+carry `ask.nostr`, and their `nodes/` entries move to `ask_route: nostr` and the step 13 consent statement by a pull request of the
+entry's operator. The Goose nodes reach the relay through `GOOSE_RELAY_MAP`, which `scripts/live_cross_session.py` sets.
+
+The run, on the lab host as the lab operator, with the lab up and `lab/goose.sh init`, `entries` and `commitments` done:
+
+```bash
+LOOP_GOOSE_SRC=$LOOP_TOOLS/goose/src $LOOP_TOOLS/goose/venv/bin/python -B scripts/live_cross_session.py \
+  --out $LAB_DIR/cross/<name> --mesh-node-id <lab-1 node id> --lab-dir $LAB_DIR
+LOOP_CROSS_POPULATION=$LAB_DIR/cross/<name>/population ./loop.sh --stage cross --ecosystem cross --population live --out <dir>
+```
+
+It pays nothing, restarts nothing and changes no node's configuration. The kept chain of the asking Mesh node is in the run tree: keep
+the finding on the lab host, not in the repository, unless it has gone through the privacy checks `live_daily.sh` makes.
