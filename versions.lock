@@ -49,7 +49,10 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # every checkpoint, anchor digest and signature differs; a witness must accept both sub forms; NO DOWNGRADE, the earlier plugin
 # stops on the ledger, so a lab node's data directory is copied before the first start), answers history_card/2 and staples it in
 # the commitment (#302, #304), counts referee verdicts in service_history/2 (#299) and marks the ledger's format (#309).
-capsules Mesh-LLM/capsules-plugin v0.1.20
+# v0.1.21 (tag 2026-11-21): nostr_evidence_request takes an optional `commitment` ({commitment, policy}, the responder's own signed
+# commitment/1; the checkpoint key is read from its stapled history_cards[].checkpoint_key) so a node whose checkpoint key differs
+# from its envelope key can be asked (#316, caps-70); a node past the 1 MiB answer cap no longer names history_card/1 (/2 stays).
+capsules Mesh-LLM/capsules-plugin v0.1.21
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.7.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
