@@ -486,8 +486,14 @@ def block_problems(blk):
     # was unreadable first; every other decision cites the policy's digest.
     unread = blk.get("source") in ("unreadable_policy", "unreadable_target") and blk.get("verdict") == "NO" \
         and pol.get("digest") is None
-    if pol.get("kind") != "operator_policy" or set(pol) != {"kind", "policy", "digest"} \
-            or not (unread or digest_ok(pol.get("digest"))):
+    # capsules-plugin v0.1.20 (#312) adds the policy-profile/v0 the console's lists and default make: the read then also
+    # carries `profile`, a salted commitment to its digest (a peer is in it only as a fingerprint, never a node id).
+    profile = pol.get("profile", ABSENT)
+    profile_ok = profile is ABSENT or (isinstance(profile, dict) and set(profile) == {"alg", "commitment"}
+                                       and profile["alg"] == "SHA-256" and isinstance(profile["commitment"], str)
+                                       and bool(HEX64.fullmatch(profile["commitment"])))
+    if pol.get("kind") != "operator_policy" or not {"kind", "policy", "digest"} <= set(pol) <= {"kind", "policy", "digest", "profile"} \
+            or not (unread or digest_ok(pol.get("digest"))) or not profile_ok:
         errs.append("reads does not cite the operator policy by digest")
     pc = blk.get("peer_commitment", ABSENT)
     # The plugin names no peer only for a NO on a target it could not read.
