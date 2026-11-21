@@ -31,19 +31,19 @@
       "repository": "action-state-group/agent-action-capsule"
     },
     "capsulectl": {
-      "ref": "v0.13.1",
+      "ref": "v0.21.0",
       "repository": "action-state-group/evidencebook"
     },
     "capsulectl-book": {
-      "ref": "v0.13.1",
+      "ref": "v0.21.0",
       "repository": "action-state-group/evidencebook"
     },
     "checkpointed-local-log": {
-      "ref": "crates/checkpointed-local-log-v0.5.0",
+      "ref": "crates/checkpointed-local-log-v0.6.0",
       "repository": "action-state-group/checkpointed-local-log"
     },
     "evidencebook": {
-      "ref": "crates/evidencebook-v0.0.15",
+      "ref": "crates/evidencebook-v0.0.21",
       "repository": "action-state-group/evidencebook"
     }
   },
@@ -51,7 +51,7 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "a005a2b184bb145d2b52a85119f9a58ee311cc1c2c17709678bd6dfd76529342"
+      "sha256": "85f0a9f24456cd6728c5c42c810973ba08dcd8ec57d24cbda820d21da0040e6a"
     }
   ],
   "result": "NOT_CHECKED",

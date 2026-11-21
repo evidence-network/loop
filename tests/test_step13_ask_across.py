@@ -103,6 +103,7 @@ class LedgerPairTest(Tmp):
         self.assertEqual(proof, ["carrier.jsonl"])
 
 
+@needs_capsulectl
 class RehearsalTest(Tmp):
     def test_the_good_run_passes_in_both_directions(self):
         d = self.decide(self.copy("good"))
