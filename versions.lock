@@ -52,7 +52,9 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # v0.1.21 (tag 2026-11-21): nostr_evidence_request takes an optional `commitment` ({commitment, policy}, the responder's own signed
 # commitment/1; the checkpoint key is read from its stapled history_cards[].checkpoint_key) so a node whose checkpoint key differs
 # from its envelope key can be asked (#316, caps-70); a node past the 1 MiB answer cap no longer names history_card/1 (/2 stays).
-capsules Mesh-LLM/capsules-plugin v0.1.21
+# v0.1.22 (tag 2026-11-21): the commitment check behind nostr_evidence_request's `commitment` accepts a peer card in community
+# mesh-llm, muse or goose, so a Goose node's card (community goose) no longer gets HTTP 400 "not a known community" (#321, loop#443).
+capsules Mesh-LLM/capsules-plugin v0.1.22
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.7.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
