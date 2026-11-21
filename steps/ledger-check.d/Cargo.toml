@@ -15,7 +15,7 @@ path = "src/main.rs"
 # this check reads 0.4.0 checkpoints with 0.5.0; live run 2026-11-09-live-3 (step 04 PASS, the kept ledger copies checked
 # with this tool) shows that it verifies them. Cargo.lock is committed; steps/ledger-check.setup.sh builds with --locked.
 [dependencies]
-checkpointed-local-log = "=0.5.0"
+checkpointed-local-log = "=0.6.0"
 serde_json = "1"
 hex = "0.4"
 sha2 = "0.10"
