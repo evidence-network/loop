@@ -1,12 +1,12 @@
 {
-  "ask_route": "mesh",
-  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
+  "ask_route": "nostr",
+  "consent": "I add this node to the evidence network to help improve the evidence layer. The network may ask it for its history summary, usually daily, and never for the content of any request, answer or payment. A party in another ecosystem may also ask it, through the network, for evidence about one interaction it took part in. It answers under its own disclosure policy, with signed records or a signed refusal, and never with the content of any request, answer or payment. Whether it answered, refused or did not answer, and whether the answer verified, is published per ecosystem pair at https://evidence-network.github.io/loop/stats/. A summary of its answers, or that it did not answer, is published at https://evidence-network.github.io/loop/stats/. The page https://evidence-network.github.io/loop/watch/ shows it day by day, and on a day a finding shows it dealt with another listed node it draws a line between the two, but only when both entries set disclosure.pair_edges to \"public\". The page's counts include its dealings even when no line is drawn, so with few nodes listed they can show who dealt with whom. To leave, remove this entry: the asks stop on the next run, and past reports stay.",
   "disclosure": {
     "pair_edges": "public",
     "policy": "counterparties",
     "stranger_safe": [
       "checkpoints",
-      "history_card/1"
+      "history_card/2"
     ]
   },
   "host_build": "mesh-llm 175a31dc443daa04b0b89bbac4b7d68a7b7e73c0 (contains mesh-llm c86f58e58de7bf02bce52a390a144413d8d99183, mesh-llm-pr-2620 1d96a0205ed77959485159d2110259fd32ccb35e), binary sha256 9e83e10566a0fd0c0c07db08e71083f90b6d3218015761c4f793a6d463b321b4; no relay until Mesh-LLM/capsules-plugin#48 is closed",
@@ -14,5 +14,5 @@
   "mesh": "lab",
   "node_id": "2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac",
   "operator": "StevenMih",
-  "plugin_version": "capsules v0.1.17 (3480a3673996bd9cdbb3d1e7cc47c9bbb6695086), binary sha256 feb3f602291d4c23cceef271710f58639fb7d307c60096fdd8e729baf2457af7"
+  "plugin_version": "capsules v0.1.22 (e4db314804d17849bc22529fa0d2b48967e358cb), binary sha256 652c25e4f184382bd75f1b376bd4916b67870fdb2321e9f94cf5a8f59a767f09"
 }

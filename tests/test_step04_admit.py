@@ -778,6 +778,21 @@ class Rows(unittest.TestCase):
             _, f = self.run_blocks(b)
             self.assertEqual(f["result"], "FAIL", card)
 
+    def test_the_policy_profile_commitment_of_capsules_v0_1_20_is_accepted_and_checked(self):
+        # #312: the operator-policy read carries `profile`, a salted commitment to the policy-profile/v0's digest.
+        b = case("all-pass")
+        b["reads"][0]["profile"] = {"alg": "SHA-256", "commitment": "a" * 64}
+        _, f = self.run_blocks(b)
+        self.assertNotEqual(f["result"], "FAIL", f["detail"])
+        self.assertNotIn("operator policy by digest", f["detail"])
+        for bad in ({"alg": "SHA-256", "commitment": "nothex"}, {"alg": "MD5", "commitment": "a" * 64},
+                    {"alg": "SHA-256", "commitment": "a" * 64, "extra": 1}, "a" * 64):
+            b = case("all-pass")
+            b["reads"][0]["profile"] = bad
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL", bad)
+            self.assertIn("operator policy by digest", f["detail"])
+
     def test_base_1_naming_a_peer_without_rows_is_a_fail(self):
         dropped = json.loads(json.dumps(ROWS116["all-pass"]))
         del dropped["rows"]

@@ -87,6 +87,14 @@ missing:
 - mesh asking goose: [loop#443](https://github.com/evidence-network/loop/issues/443). A Mesh node asks a mailbox from
   v0.1.19 (`nostr_evidence_request`), but the lab Goose relay is reachable only from the lab host.
 
+A live cross run is made on the lab host by `scripts/live_cross_session.py` (loop#442, loop#443), against the lab's standing relay
+(`lab/lab.sh relay`, `lab/relay.py`; LAB_NOSTR_NODES names the Mesh nodes that advertise and answer their mailbox, whose commitments
+then carry `ask.nostr`): the Mesh plugin's `nostr_evidence_request` tool asks the Goose node's mailbox and the Goose node asks the
+mailbox the Mesh commitment names, one `history_card/1` each way. The Mesh asker's proof is its own ledger, judged as step 07's live
+ask is (the sealed request and the outcome record that cites it, the reply verified again under the listed key, and the asker's
+signed ledger checkpoint over the kept chain); the Goose asker's proof is its Evidence Bundle, as in the rehearsal. The run's
+population is given to `loop.sh` as LOOP_CROSS_POPULATION.
+
 When the live population names a cross run, the run's tree (laid out as the rehearsal's, with the real nodes' entries) is
 judged as the rehearsal's is, under the population's listed keys, and step 08 judges it again; a PASS then says a live Mesh
 node and a live Goose node each asked the other over a lab relay and the recorded outcomes (a signed answer, a signed

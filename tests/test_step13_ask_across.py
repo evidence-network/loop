@@ -76,6 +76,34 @@ class Tmp(unittest.TestCase):
 
 
 @needs_capsulectl
+class LedgerPairTest(Tmp):
+    """A live Mesh asker's pair (loop#442, #443): its proof is the asker's own ledger, not a capsulectl bundle."""
+
+    def pair(self, files=("ask.request.json", "ask.ledger.json")):
+        d = self.root / "lab-1" / "asks" / "goose-1" / "history_card"
+        d.mkdir(parents=True)
+        for f in files:
+            (d / f).write_text("{}")
+        (d.parent / "carrier.jsonl").write_text("")
+        return d.parent
+
+    def test_a_pair_with_an_ask_ledger_extract_is_a_ledger_pair_and_a_bundle_pair_is_not(self):
+        self.assertTrue(step.is_ledger_pair(self.pair()))
+        shutil.rmtree(self.root / "lab-1")
+        self.assertFalse(step.is_ledger_pair(self.pair(files=("request.json", "outcome.bundle.json"))))
+
+    def test_a_ledger_pair_whose_asked_node_advertises_nothing_verifiable_is_a_fail_not_a_pass(self):
+        self.pair()
+        (self.root / "goose-1" / "advertised").mkdir(parents=True)
+        nc = []
+        errs, answered, proof, line = step.judge_ledger_pair(self.root, "lab-1", "goose-1", "a" * 64, "b" * 64,
+                                                             Path("/nonexistent"), self.root / "v", nc)
+        self.assertTrue(errs, "an unreadable advertisement must be an error")
+        self.assertEqual(answered, [])
+        self.assertEqual(proof, ["carrier.jsonl"])
+
+
+@needs_capsulectl
 class RehearsalTest(Tmp):
     def test_the_good_run_passes_in_both_directions(self):
         d = self.decide(self.copy("good"))

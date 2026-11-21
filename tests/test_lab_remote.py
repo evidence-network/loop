@@ -53,7 +53,9 @@ exec env -i PATH="$PATH" HOME="$HOME" SSH_ORIGINAL_COMMAND="$cmd" LOOP_LAB_REMOT
         fake.chmod(0o755)
 
     def lab_sh(self, *args, **env):
+        # A tmux session of its own: `lab.sh stop` kills the session by name, and the lab's own is loop-lab.
         e = clean_env({"PATH": f"{self.bin}:{os.environ['PATH']}", "LAB_DIR": str(self.lab), "LAB_PORT_BASE": "29800",
+                       "LAB_TMUX_SESSION": f"loop-lab-test-{os.getpid()}",
                        "LAB_REMOTE_NODES": "lab-2 lab-4", "LAB_REMOTE_SSH": "labprov", "LAB_TWINS": "1",
                        "LAB_MODEL_REF": "o/r/m.gguf", "MESH_LLM_BIN": TRUE, "CAPSULES_BIN": TRUE, **env})
         return subprocess.run(["bash", str(LAB), *args], capture_output=True, text=True, env=e, cwd=ROOT)
@@ -133,10 +135,19 @@ class WrapperTest(RemoteBase):
     def test_running_needs_four_digests_and_a_matching_script_and_config(self):
         a = "a" * 64
         self.assertEqual(self.wrapper(f"running {a} {a}").returncode, 2)
+        self.assertEqual(self.wrapper(f"running {a} {a} {a} {a} {a}").returncode, 2)  # the plugin digests come as a pair
+        self.assertEqual(self.wrapper(f"running {a} {a} {a} {a} {a} zz").returncode, 2)
+        r = self.wrapper(f"running {a} {a} {a} {a} {a} {a}")  # the pay-lightning and wallet digests: reaches lab.sh
+        self.assertIn("not the driver's", r.stderr)
         r = self.wrapper(f"running {a} {a} {a} {a}")  # runs lab.sh running with the wrong script digest
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("not the driver's", r.stderr)
         self.assertIn("config digest", r.stderr)
+
+    def test_the_payment_plugin_mode_is_part_of_the_config_digest(self):
+        base = self.lab_sh("config-digest", LAB_PAY_PLUGIN="pay-lightning").stdout.strip()
+        self.assertEqual(len(base), 64)
+        self.assertNotEqual(base, self.lab_sh("config-digest").stdout.strip())  # a host whose env lacks the mode disagrees
 
 
 class MirrorTest(RemoteBase):

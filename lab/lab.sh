@@ -3,7 +3,7 @@
 # what goes back into this repository. LAB-BRINGUP.md is the runbook: run the commands in its
 # order, from a clone of this repository on the lab host.
 #
-#   lab/lab.sh [--dry-run] check|running|tools|start|node-start|node-id|mirror|guard-moved|refresh-mirror|status|exchange|join|witness|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
+#   lab/lab.sh [--dry-run] check|running|tools|start|node-start|node-id|mirror|guard-moved|refresh-mirror|status|exchange|join|witness|relay|bind|entries|judge-key|commitments|loop|admit|deal|bundles|settle|twins|dispute|ask|pack|stop|all
 #
 #   check     confirm the host build and the plugin against versions.lock; writes $LAB_DIR/build.json
 #             on every outcome, and exits 1 naming each failure
@@ -74,6 +74,9 @@
 #   refresh-mirror [NODE]   (driver) read the remote nodes' ledgers into their mirrors now (the steps call it between a checkpoint ask and the read)
 #   pack      one tarball of what goes back: $LAB_DIR/out/loop-lab-<date>.tgz
 #   stop      SIGTERM every node and the witness, and wait for each node's shutdown checkpoint
+#   relay     the lab's standing NIP-01 relay (lab/relay.py, loop#442): 127.0.0.1 port base+40, run under the Goose venv's
+#             python, every event it receives also written to $LAB_DIR/relay/events.jsonl. LAB_NOSTR_NODES' plugins and the
+#             Goose nodes of a live cross run (GOOSE_RELAY_MAP) reach it; start it before the nodes that advertise
 #   all       check, tools, start, exchange, wait for the first checkpoints, join, witness, bind, entries, commitments, loop, pack
 #
 # --dry-run prints every command it would run (and, for pack, every file it would take) and
@@ -120,6 +123,13 @@
 #             alone gets `system_prompt = LAB_FAULT_SYSTEM_PROMPT` (default: reply with the single word PINEAPPLE) in its
 #             config.toml [models.request_defaults]: LAB-ONLY FAULT INJECTION, so the pair differs under
 #             the same model hash and weights digest. No temperature, seed or sampler override. Read by start
+#   LAB_NOSTR_NODES     the nodes that advertise (advertise_evidence_requests on) and read and answer their Nostr mailbox on the
+#             lab's relay (loop#442): space separated, off when unset; on this host only (the relay listens on 127.0.0.1).
+#             Their launchers get CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on, CAPSULES_NOSTR_RELAYS=$LAB_NOSTR_RELAY and
+#             CAPSULES_NOSTR_RELAY_MAP={"$LAB_NOSTR_RELAY": "ws://127.0.0.1:<base+40>"}, so their commitments carry ask.nostr.
+#             Read by start: stop and start the lab to change it
+#   LAB_NOSTR_RELAY     the wss:// URL the commitments name (default wss://relay.loop-lab.example, which resolves nowhere:
+#             only the map reaches the lab's relay)
 #   LAB_CHECKPOINT_WAIT seconds `all` waits after the exchange for each first checkpoint (default 360)
 #   LAB_OUT             where loop, admit, deal, settle, dispute and ask write (default findings/<UTC date>-live)
 #   LAB_SHARE_AT_COMPLETION  the nodes whose plugin is told to push its record of each completed
@@ -183,11 +193,22 @@ read -r -d '' -a PAYS <<< "${LAB_PAYMENTS:-}" || true
 for n in "${PAYS[@]+"${PAYS[@]}"}"; do
   [[ " ${NODES[*]} " == *" $n "* ]] || die "LAB_PAYMENTS names $n, not a lab node"
 done
+PAY_PLUGIN=${LAB_PAY_PLUGIN:-}
+case $PAY_PLUGIN in "" | pay-lightning) ;; *) die "LAB_PAY_PLUGIN is empty (the legacy [payments] stanza) or pay-lightning, not $PAY_PLUGIN" ;; esac
 pays() { local n; for n in "${PAYS[@]+"${PAYS[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 # Two hosts (LAB-BRINGUP.md, "Two hosts"): REMOTE nodes run on the second host, ONLY is set there; MINE is what this host runs.
 in_list() { local x=$1 y; shift; for y in "$@"; do [ "$x" = "$y" ] && return 0; done; return 1; }
 REMOTE=(); read -r -d '' -a REMOTE <<< "${LAB_REMOTE_NODES:-}" || true
 ONLY=(); read -r -d '' -a ONLY <<< "${LAB_ONLY:-}" || true
+# The nodes that advertise evidence requests and answer a Nostr mailbox (loop#442).
+NOSTR=()
+read -r -d '' -a NOSTR <<< "${LAB_NOSTR_NODES:-}" || true
+NOSTR_RELAY=${LAB_NOSTR_RELAY:-wss://relay.loop-lab.example}
+for n in "${NOSTR[@]+"${NOSTR[@]}"}"; do
+  [[ " ${NODES[*]} lab-4 " == *" $n "* ]] || die "LAB_NOSTR_NODES names $n, not a lab node"
+  ! in_list "$n" "${REMOTE[@]+"${REMOTE[@]}"}" || die "LAB_NOSTR_NODES names $n, which runs on the second host: the relay listens on this host only"
+done
+nostr() { local n; for n in "${NOSTR[@]+"${NOSTR[@]}"}"; do [ "$n" = "$1" ] && return 0; done; return 1; }
 REMOTE_SSH=${LAB_REMOTE_SSH:-}
 if [ "${#REMOTE[@]}" -gt 0 ]; then
   [ "${#ONLY[@]}" = 0 ] || die "LAB_ONLY (the second host) and LAB_REMOTE_NODES (the driver) are not set together"
@@ -446,13 +467,17 @@ head_of() { [ -n "$1" ] && git -C "$1" rev-parse -q --verify 'HEAD^{commit}' 2> 
 record() { mkdir -p "$LAB_DIR" && python3 -B "$ROOT/lab/pack.py" record "$1" --lab-dir "$LAB_DIR"; }
 
 cmd_check() {
-  local mesh_pin pr_pin cap_pin
-  mesh_pin=$(pin mesh-llm) pr_pin=$(pin mesh-llm-pr-2620) cap_pin=$(pin capsules)
+  local mesh_pin cap_pin
+  mesh_pin=$(pin mesh-llm) cap_pin=$(pin capsules)
+  # The host tree is the main base plus each mesh-llm-pr-<N> pin: merged as is (the head is then an ancestor) or squashed into
+  # one commit whose message carries the head ("lab: ... @ <head>", as the daily lab branch does).
+  local -a mesh_pins=(mesh-llm)
+  mapfile -t -O 1 mesh_pins < <(awk '$1 ~ /^mesh-llm-pr-[0-9]+$/ { print $1 }' "$ROOT/versions.lock")
   if [ "$DRY" = 1 ]; then
     need MESH_LLM_SRC; need MESH_LLM_BIN; need CAPSULES_SRC; need CAPSULES_BIN
     say git -C "$MESH_LLM_SRC" rev-parse HEAD
     say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$mesh_pin" HEAD
-    [ -z "$pr_pin" ] || say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$pr_pin" HEAD
+    for name in "${mesh_pins[@]:1}"; do say git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$(pin "$name")" HEAD; done
     say git -C "$MESH_LLM_SRC" status --porcelain --untracked-files=no
     say git -C "$CAPSULES_SRC" rev-parse HEAD
     if ! is_sha "$cap_pin"; then
@@ -475,12 +500,15 @@ cmd_check() {
   [ -n "$cap_pin" ] || fails+=("versions.lock has no capsules pin")
 
   if mesh_head=$(head_of "${MESH_LLM_SRC:-}"); then
-    for name in mesh-llm mesh-llm-pr-2620; do
+    for name in "${mesh_pins[@]}"; do
       p=$(pin "$name"); [ -n "$p" ] || continue
       if ! c=$(resolve_pin "$MESH_LLM_SRC" "$p"); then
         fails+=("the $name pin $p is not in the mesh-llm source"); continue
       fi
       rc=0; git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$c" HEAD 2> /dev/null || rc=$?
+      # A squashed PR: its head is in the message of a commit above the main base.
+      # The head need not be in the tree (git exits 128 then): the squashed commit says which PR head it carries.
+      if [ "$rc" != 0 ] && [ "$name" != mesh-llm ] && git -C "$MESH_LLM_SRC" log --format=%B "$(pin mesh-llm)..HEAD" 2> /dev/null | grep -qF "$c"; then rc=0; fi
       case $rc in
         0) ;;
         1) fails+=("mesh-llm source $mesh_head does not contain the $name pin $p") ;;
@@ -522,19 +550,50 @@ cmd_check() {
     fi
   fi
 
-  python3 -B - "$mesh_head" "$mesh_pin" "$pr_pin" "$cap_head" "$cap_pin" "$cap_commit" "$mesh_sha" "$cap_sha" \
-    "$version" "${fails[@]+"${fails[@]}"}" << 'PY' | record check || die "cannot write $LAB_DIR/build.json"
+  # The payment plugin (pay-lightning) and the wallet plugin, when versions.lock pins them: their trees' commits and binaries.
+  local -a contains=() pay=()
+  for name in "${mesh_pins[@]}"; do contains+=("$name=$(pin "$name")"); done
+  local pay_base pay_pr lexe_pin
+  pay_base=$(pin pay-lightning) pay_pr=$(pin pay-lightning-pr-11) lexe_pin=$(pin lexe-wallet)
+  if [ -n "$pay_base" ]; then
+    local pay_head="" pay_sha="" lexe_sha=""
+    if [ -z "${PAY_LIGHTNING_SRC:-}" ] || ! pay_head=$(head_of "$PAY_LIGHTNING_SRC"); then
+      fails+=("PAY_LIGHTNING_SRC is not a git tree (versions.lock pins pay-lightning)")
+    else
+      for name in pay-lightning pay-lightning-pr-11 pay-lightning-pr-18-19; do
+        p=$(pin "$name"); [ -n "$p" ] || continue
+        rc=0; git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || rc=$?
+        # A PR merged onto the lab tree as one commit: its head is in the message of a commit above the base pin.
+        if [ "$rc" != 0 ] && [ "$name" != pay-lightning ] && git -C "$PAY_LIGHTNING_SRC" log --format=%B "$(pin pay-lightning)..HEAD" 2> /dev/null | grep -qF "$p"; then rc=0; fi
+        [ "$rc" = 0 ] || fails+=("pay-lightning source $pay_head does not contain the $name pin $p")
+      done
+      [ -z "$(git -C "$PAY_LIGHTNING_SRC" status --porcelain --untracked-files=no)" ] || fails+=("pay-lightning source has uncommitted changes")
+    fi
+    if [ -f "${PAY_LIGHTNING_BIN:-}" ]; then pay_sha=$(sha256sum < "$PAY_LIGHTNING_BIN" | cut -d' ' -f1); else fails+=("PAY_LIGHTNING_BIN is not a readable file"); fi
+    if [ -f "${LEXE_PLUGIN:-}" ]; then lexe_sha=$(sha256sum < "$LEXE_PLUGIN" | cut -d' ' -f1); else fails+=("LEXE_PLUGIN is not a readable file"); fi
+    pay=("$pay_head" "$pay_sha" "$lexe_sha" "$lexe_pin")
+  fi
+
+  python3 -B - "$mesh_head" "$cap_head" "$cap_pin" "$cap_commit" "$mesh_sha" "$cap_sha" "$version" "${#contains[@]}" "${#pay[@]}" \
+    "${contains[@]}" "${pay[@]+"${pay[@]}"}" "${fails[@]+"${fails[@]}"}" << 'PY' | record check || die "cannot write $LAB_DIR/build.json"
 import datetime as dt, json, sys
-mesh_head, mesh_pin, pr_pin, cap_head, cap_pin, cap_commit, mesh_sha, cap_sha, version, *fails = sys.argv[1:]
-print(json.dumps({
+mesh_head, cap_head, cap_pin, cap_commit, mesh_sha, cap_sha, version, n_contains, n_pay, *rest = sys.argv[1:]
+n_contains, n_pay = int(n_contains), int(n_pay)
+contains = dict(kv.split("=", 1) for kv in rest[:n_contains])
+pay, fails = rest[n_contains:n_contains + n_pay], rest[n_contains + n_pay:]
+doc = {
     "failures": fails,
     "checked_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "mesh_llm": {"source_head": mesh_head or None, "contains": {"mesh-llm": mesh_pin or None, "mesh-llm-pr-2620": pr_pin or None},
+    "mesh_llm": {"source_head": mesh_head or None, "contains": {k: v or None for k, v in contains.items()},
                  "binary_sha256": mesh_sha or None, "version": version or None},
     "capsules": {"source_head": cap_head or None, "pin": cap_pin or None, "pin_commit": cap_commit or None,
                  "binary_sha256": cap_sha or None},
     "relay": "off (--disable-iroh-relays) until Mesh-LLM/capsules-plugin#48 is closed",
-}))
+}
+if pay:
+    doc["pay_lightning"] = {"source_head": pay[0] or None, "binary_sha256": pay[1] or None,
+                            "wallet_plugin": {"pin": pay[3] or None, "binary_sha256": pay[2] or None}}
+print(json.dumps(doc))
 PY
   cat "$LAB_DIR/build.json"
   local all
@@ -600,7 +659,10 @@ node_config() {
       printf '\n[models.request_defaults]\nsystem_prompt = "%s"\n' "$FAULT_PROMPT"
     fi
   fi
-  if pays "$name"; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
+  # Legacy host payments (the 11-11 lab: a mesh-llm build with the node's own payments feature). With LAB_PAY_PLUGIN=pay-lightning
+  # the node has no [payments] stanza: pay-lightning and a wallet plugin are installed into its home before start
+  # (lab/bin/lab-wallet-setup.sh) and bound by the host from their manifests; the wallet files stay where they were.
+  if pays "$name" && [ -z "$PAY_PLUGIN" ]; then printf '\n[payments]\nwallet = "lexe-wallet"\n'; fi
 }
 
 # The label comes from the config this node was started with, not from whatever `twins` is run with. A restart keeps
@@ -637,6 +699,11 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   # The plugin reads share_record_at_completion from this env var before its config
   # (capsules-plugin share_policy.rs), so a named node pushes whatever its config says.
   shares "$name" && envs+=(CAPSULES_SHARE_RECORD_AT_COMPLETION=counterparty)
+  # The node advertises its commitment on the lab's relay, reads its Nostr mailbox there and answers it (capsules-plugin
+  # v0.1.19, #293: advertise_evidence_requests on). The commitment names NOSTR_RELAY, which resolves nowhere; the map points
+  # the plugin at the relay on this host (#295).
+  nostr "$name" && envs+=(CAPSULES_ADVERTISE_EVIDENCE_REQUESTS=on CAPSULES_NOSTR_RELAYS="$NOSTR_RELAY"
+    CAPSULES_NOSTR_RELAY_MAP="{\"$NOSTR_RELAY\":\"ws://127.0.0.1:$(relay_port)\"}")
   # The referee's re-answer goes to the plugin's OpenAI endpoint, 127.0.0.1:9337 unless told (referee/live.rs): the
   # requester's own API, never whatever else listens on that port.
   [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on
@@ -745,10 +812,18 @@ start_joined() {
 }
 # Before any node starts: a config with a wallet LAB_PAYMENTS does not name would lose it (step 06).
 no_dropped_wallet() {
-  local n
+  local n p
   for n in "${MINE[@]}"; do
     if ! pays "$n" && grep -q '^\[payments\]' "$(home_of "$n")/config.toml" 2> /dev/null; then
       die "$n's config.toml has a wallet ([payments]) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+    if ! pays "$n" && [ -n "$PAY_PLUGIN" ] && [ -d "$(home_of "$n")/payments/wallets" ]; then
+      die "$n has a wallet (payments/wallets) but LAB_PAYMENTS does not name it: set LAB_PAYMENTS to keep it"
+    fi
+    if pays "$n" && [ -n "$PAY_PLUGIN" ] && [ "$DRY" = 0 ]; then
+      for p in pay-lightning lexe-wallet; do
+        [ -x "$(home_of "$n")/.mesh-llm/plugins/installed/$p/$p" ] || die "$n has no installed $p plugin: run lab/bin/lab-wallet-setup.sh ${n#lab-} first"
+      done
     fi
   done
 }
@@ -767,12 +842,12 @@ cmd_node_start() {
   start_joined "$n"
 }
 cmd_node_id() { node_id "${1:-}"; }
-# What both hosts must agree on for the second host's nodes: roles, model, ports, fault, and which of them share and pay. The
+# What both hosts must agree on for the second host's nodes: roles, model, ports, fault, the payment plugin mode, and which of them share and pay. The
 # driver sends its value with its sha256 of this script to `running` there, which refuses a mismatch (a stale tree or env file).
 config_digest() {
   local n; local -a nodes=(${REMOTE[@]+"${REMOTE[@]}"} ${ONLY[@]+"${ONLY[@]}"})
   {
-    printf 'twins=%s a=%s b=%s referee=%s requester=%s model=%s base=%s fault=%s\n' "$TWINS" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$MODEL_REF" "$BASE" "$FAULT_PROMPT"
+    printf 'twins=%s a=%s b=%s referee=%s requester=%s model=%s base=%s fault=%s paymentplugin=%s\n' "$TWINS" "$TWIN_A" "$TWIN_B" "$REFEREE" "$REQUESTER" "$MODEL_REF" "$BASE" "$FAULT_PROMPT" "$PAY_PLUGIN"
     for n in "${nodes[@]}"; do
       printf '%s share=%s pays=%s\n' "$n" "$(shares "$n" && echo 1 || echo 0)" "$(pays "$n" && echo 1 || echo 0)"
     done
@@ -890,8 +965,27 @@ cmd_start() {
     echo "$MODEL_NAME" > "$LAB_DIR/run/model-name"
     echo "advertised model name: $MODEL_NAME"
   fi
+  apply_pay_policy
   refresh_mirror
   cmd_status
+}
+
+# pay-lightning keeps the buyer policy in memory and its payment.json (free_only at first start), so every start sets it again
+# through each paying node's console: LAB_PAY_POLICY="lab-1=20000 lab-2=9000 lab-3=20000" (daily budget in msat, the 11-11
+# lab's values by default). A node that is not named keeps free_only and pays nothing.
+apply_pay_policy() {
+  [ "$PAY_PLUGIN" = pay-lightning ] || return 0
+  local spec n b
+  for spec in ${LAB_PAY_POLICY:-lab-1=20000 lab-2=9000 lab-3=20000}; do
+    n=${spec%%=*} b=${spec#*=}
+    [[ $b =~ ^[1-9][0-9]*$ ]] || die "LAB_PAY_POLICY: $spec is not <node>=<daily budget msat>"
+    pays "$n" || continue
+    if [ "$DRY" = 1 ]; then say curl -fsS -X POST "$(console "$n")/api/plugins/pay-lightning/tools/control" -d "{\"command\":\"policy\",\"value\":{\"mode\":\"automatic\",\"daily_budget_msat\":$b}}"; continue; fi
+    curl -fsS --max-time 60 -X POST -H 'Content-Type: application/json' "$(console "$n")/api/plugins/pay-lightning/tools/control" \
+      -d "{\"command\":\"policy\",\"value\":{\"mode\":\"automatic\",\"daily_budget_msat\":$b}}" > /dev/null \
+      || die "cannot set $n's buyer policy through its pay-lightning plugin"
+    echo "$n: buyer policy automatic, daily budget $b msat"
+  done
 }
 
 cmd_stop() {
@@ -908,7 +1002,7 @@ cmd_stop() {
     p=$(pid_of "$n") || continue
     kill -TERM "$p" 2> /dev/null || true
   done
-  [ "${#ONLY[@]}" = 0 ] && [ "$DRY" = 1 ] && say kill -TERM "<pid in $(pidfile witness)>"
+  [ "${#ONLY[@]}" = 0 ] && [ "$DRY" = 1 ] && { say kill -TERM "<pid in $(pidfile witness)>"; say kill -TERM "<pid in $(pidfile relay)>"; }
   [ "$DRY" = 1 ] && [ "${#REMOTE[@]}" -gt 0 ] && rcmd stop
   [ "$DRY" = 1 ] && { echo "  (wait up to 30s for the shutdown checkpoints, then kill -KILL what is left)"; return 0; }
   local _ any
@@ -923,16 +1017,17 @@ cmd_stop() {
     rm -f "$(pidfile "$n")"
   done
   [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile witness)"; }
+  [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of relay) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile relay)"; }
   tmux kill-session -t "$SESSION" 2> /dev/null || true
   # The second host's nodes last: a failure there leaves this host stopped and is said loudly.
   local rrc=0
   if [ "${#REMOTE[@]}" -gt 0 ]; then rcmd stop || rrc=$?; close_tunnel; fi
-  echo "stopped ${NODES[*]}${ONLY[*]:+ (on this host)} and the witness"
+  echo "stopped ${NODES[*]}${ONLY[*]:+ (on this host)}, the witness and the relay"
   [ "$rrc" = 0 ] || die "could not stop ${REMOTE[*]} on $REMOTE_SSH (exit $rrc): stop them there before starting anything"
 }
 
 cmd_running() {
-  local n p c fails=() mesh_sha cap_sha found
+  local n p c c_sha fails=() mesh_sha cap_sha found
   need MESH_LLM_BIN; need CAPSULES_BIN
   if [ "$DRY" = 1 ]; then
     say sha256sum "$MESH_LLM_BIN" "$CAPSULES_BIN"
@@ -945,6 +1040,14 @@ cmd_running() {
   cap_sha=$(sha256sum < "$CAPSULES_BIN" | cut -d' ' -f1) || die "cannot read CAPSULES_BIN"
   # On the second host the driver's checked binaries are the reference: its nodes must run exactly those bytes.
   mesh_sha=${LAB_EXPECT_MESH_SHA256:-$mesh_sha}; cap_sha=${LAB_EXPECT_CAPSULES_SHA256:-$cap_sha}
+  # A paying node also loads pay-lightning and a wallet plugin: those processes must run the checked bytes too (`check`
+  # records the staged binaries; the installed copy comes from a separate archive, so only the running process says which).
+  local pay_sha="" lexe_sha=""
+  if [ "$PAY_PLUGIN" = pay-lightning ] && [ "${#PAYS[@]}" -gt 0 ]; then
+    pay_sha=${LAB_EXPECT_PAY_SHA256:-}; lexe_sha=${LAB_EXPECT_LEXE_SHA256:-}
+    if [ -z "$pay_sha" ]; then need PAY_LIGHTNING_BIN; pay_sha=$(sha256sum < "$PAY_LIGHTNING_BIN" | cut -d' ' -f1) || die "cannot read PAY_LIGHTNING_BIN"; fi
+    if [ -z "$lexe_sha" ]; then need LEXE_PLUGIN; lexe_sha=$(sha256sum < "$LEXE_PLUGIN" | cut -d' ' -f1) || die "cannot read LEXE_PLUGIN"; fi
+  fi
   # On the second host, its copy of this script and its environment must be the driver's.
   if [ -n "${LAB_EXPECT_LAB_SH_SHA256:-}" ]; then
     [ "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" = "$LAB_EXPECT_LAB_SH_SHA256" ] || fails+=("lab/lab.sh here is not the driver's: copy lab/ from the driver's commit")
@@ -960,6 +1063,16 @@ cmd_running() {
       [ "$(sha256sum < "/proc/$c/exe" 2> /dev/null | cut -d' ' -f1)" = "$cap_sha" ] && found=1
     done
     [ "$found" = 1 ] || fails+=("$n (pid $p) runs no CAPSULES_BIN plugin process")
+    if [ -n "$pay_sha" ] && [[ " ${PAYS[*]} " == *" $n "* ]]; then
+      local have_pay=0 have_lexe=0
+      for c in $(pgrep -P "$p"); do
+        c_sha=$(sha256sum < "/proc/$c/exe" 2> /dev/null | cut -d' ' -f1)
+        [ "$c_sha" = "$pay_sha" ] && have_pay=1
+        [ "$c_sha" = "$lexe_sha" ] && have_lexe=1
+      done
+      [ "$have_pay" = 1 ] || fails+=("$n (pid $p) runs no PAY_LIGHTNING_BIN plugin process")
+      [ "$have_lexe" = 1 ] || fails+=("$n (pid $p) runs no LEXE_PLUGIN wallet process")
+    fi
   done
   # The witness is no node, so `start` and a node restart never bring it back; a lab that had one must say when it is gone.
   # A pid file outlives a crash or a reboot and its pid can be reused, so the port it serves is checked too.
@@ -968,7 +1081,7 @@ cmd_running() {
   fi
   # The second host's nodes, against the bytes checked here.
   if [ "${#REMOTE[@]}" -gt 0 ]; then
-    rcmd running "$mesh_sha" "$cap_sha" "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" "$(config_digest)" > /dev/null || fails+=("${REMOTE[*]} on $REMOTE_SSH: not all running the checked build (run: ssh ... running)")
+    rcmd running "$mesh_sha" "$cap_sha" "$(sha256sum < "${BASH_SOURCE[0]}" | cut -d' ' -f1)" "$(config_digest)" ${pay_sha:+"$pay_sha" "$lexe_sha"} > /dev/null || fails+=("${REMOTE[*]} on $REMOTE_SSH: not all running the checked build (run: ssh ... running)")
   fi
   if [ "${#fails[@]}" -gt 0 ]; then
     printf 'lab.sh: running: %s\n' "${fails[@]}" >&2
@@ -1071,6 +1184,7 @@ cmd_bind() {
 # this tree. Its listing in lab/witness/witnesses.json only grows: a new key is a new entry with its
 # not_before, and old entries stay so old receipts still verify.
 witness_port() { echo $((BASE + 30)); }
+relay_port() { echo $((BASE + 40)); }
 witness_driver() { echo "${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/02-book/bin/loop-step02-book"; }
 capsulectl_bin() { echo "${CAPSULECTL:-${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/bin/capsulectl}"; }
 
@@ -1130,6 +1244,40 @@ cmd_witness() {
   fi
   still_up witness || die "the witness exited at once"
   echo "started the lab test witness $pub on port $(witness_port); commit lab/witness/witnesses.json"
+}
+
+# The lab's standing NIP-01 relay (lab/relay.py): the one both ecosystems of a live cross run reach (loop#442).
+cmd_relay() {
+  local dir=$LAB_DIR/relay launcher=$LAB_DIR/run/relay.sh py="${LOOP_TOOLS:-$HOME/.cache/evidence-network-loop}/goose/venv/bin/python"
+  [ "$DRY" = 1 ] || [ -x "$py" ] || die "no $py (websockets): run lab/goose.sh tools first"
+  if [ "$DRY" = 0 ] && alive relay && ! port_free "$(relay_port)"; then
+    echo "relay already running (pid $(pid_of relay))"; return 0
+  fi
+  [ "$DRY" = 1 ] || port_free "$(relay_port)" || die "port $(relay_port) is in use: pick another LAB_PORT_BASE"
+  run mkdir -p "$dir" "$LAB_DIR/run" "$LAB_DIR/logs"
+  run chmod 700 "$dir" "$LAB_DIR/run"
+  local body
+  body=$(
+    echo '#!/usr/bin/env bash'
+    echo "# the lab's standing Nostr relay: started by lab/lab.sh relay. 127.0.0.1 only."
+    printf 'echo $$ > %q\n' "$(pidfile relay)"
+    printf 'exec %q -B %q serve --port %q --log %q' "$py" "$ROOT/lab/relay.py" "$(relay_port)" "$dir/events.jsonl"
+    printf ' < /dev/null >> %q 2>&1\n' "$(logfile relay)"
+  )
+  if [ "$DRY" = 1 ]; then
+    echo "  > $launcher:"; sed 's/^/    /' <<< "$body"
+  else
+    printf '%s\n' "$body" > "$launcher" && chmod 700 "$launcher"
+  fi
+  local cmd
+  cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile relay)")
+  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "$SESSION" -n relay "$cmd"
+  else
+    run tmux new-session -d -s "$SESSION" -n relay "$cmd"
+  fi
+  still_up relay || die "the relay exited at once"
+  echo "started the lab relay on 127.0.0.1:$(relay_port), events in $dir/events.jsonl"
 }
 
 # The live judge key (evidence-network/loop#189, Steven's GO Buzz 23c5f8fd): on the lab host, never any node's key,
@@ -1444,7 +1592,7 @@ case "$cmd" in
   node-start | node-id | mirror | config-digest) "cmd_$(printf %s "$cmd" | tr - _)" "${2:-}" ;;
   refresh-mirror) refresh_mirror "${2:-}" ;;
   guard-moved) is_remote "${2:-}" || die "guard-moved: ${2:-} is not in LAB_REMOTE_NODES"; guard_moved "$2"; echo "guard-moved: $2 may start on $REMOTE_SSH" ;;
-  check | running | tools | start | status | exchange | join | witness | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
+  check | running | tools | start | status | exchange | join | witness | relay | bind | entries | commitments | loop | admit | deal | bundles | settle | twins | dispute | ask | pack | stop | all) "cmd_$cmd" ;;
   judge-key) cmd_judge_key ;;
   *) sed -n '6p' "$0" | sed 's/^#   //' >&2; exit 2 ;;
 esac

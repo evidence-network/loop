@@ -28,7 +28,8 @@
 # Steps 01-12 are the same per ecosystem, so the gate compares the same assertion across them. --stage cross (with
 # --ecosystem cross, loop#440) runs the steps where two ecosystems meet, numbered 13 and up: 13 ask-across, then 08, which
 # re-derives it. On the rehearsal population scripts/cross_rehearsal.py runs a mesh and a Goose node that ask each other
-# for evidence both ways; on the live population no cross request is exchanged and 13 is NOT_CHECKED, naming its carrier gaps.
+# for evidence both ways; on the live population no cross request is exchanged and 13 is NOT_CHECKED, naming its carrier gaps, unless LOOP_CROSS_POPULATION names the
+# population a live cross run wrote (scripts/live_cross_session.py, loop#442).
 #
 # LOOP_STEPS_DIR runs the steps from another directory (tests use it).
 # LOOP_STEP_TIMEOUT is each step's limit in seconds (default 1800).
@@ -222,6 +223,13 @@ if [ "$ecosystem" = goose ] && [ "$population" = live ]; then
   goose_steps=$(python3 -B -c 'import json, sys; print(" ".join(json.load(open(sys.argv[1]))["goose"]["steps"]))' "$pop_dir/population.json") \
     || die "cannot read the steps $pop_dir/population.json gives a Goose input"
   goose_driven=$goose_steps goose_state=ran
+fi
+
+# A live cross run (loop#442, loop#443): scripts/live_cross_session.py on the lab host writes the run tree and the population
+# naming it; LOOP_CROSS_POPULATION is that population's directory, which step 13 judges and step 08 judges again.
+if [ "$stage" = cross ] && [ "$population" = live ] && [ -n "${LOOP_CROSS_POPULATION:-}" ]; then
+  [ -f "$LOOP_CROSS_POPULATION/population.json" ] || die "LOOP_CROSS_POPULATION $LOOP_CROSS_POPULATION holds no population.json"
+  pop_dir=$LOOP_CROSS_POPULATION
 fi
 
 ran=()
