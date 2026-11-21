@@ -79,14 +79,20 @@ The rehearsal mesh node's mailbox is the loop's adapter, not the mesh plugin, an
 with `ask_route: nostr` made together with a commitment re-signed to carry `ask.nostr`. So a `PASS` says: request and answer
 bytes verify across ecosystems under the listed keys. It does not say a live mesh node answers on a Nostr mailbox.
 
-**Live.** No cross request is exchanged, so each live cell stays `NOT_CHECKED`, naming the gap that owns it:
+**Live.** With no cross run in the population nothing was exchanged, so each live cell stays `NOT_CHECKED`, naming what is
+missing:
 
-- goose asking mesh: [loop#442](https://github.com/evidence-network/loop/issues/442). The listed mesh commitments carry no
-  `ask.nostr`, and the mesh plugin does not read a Nostr mailbox.
-- mesh asking goose: [loop#443](https://github.com/evidence-network/loop/issues/443). The mesh plugin sends asks over the mesh
-  only, and the lab Goose relay is reachable only from the lab host.
+- goose asking mesh: [loop#442](https://github.com/evidence-network/loop/issues/442). A Mesh node answers a Nostr mailbox
+  from capsules v0.1.19 when its commitment advertises `ask.nostr`, but the listed mesh commitments carry none yet.
+- mesh asking goose: [loop#443](https://github.com/evidence-network/loop/issues/443). A Mesh node asks a mailbox from
+  v0.1.19 (`nostr_evidence_request`), but the lab Goose relay is reachable only from the lab host.
 
-Each listed entry on the first consent statement is also named in its cell, as not opted in.
+When the live population names a cross run, the run's tree (laid out as the rehearsal's, with the real nodes' entries) is
+judged as the rehearsal's is, under the population's listed keys, and step 08 judges it again; a PASS then says a live Mesh
+node and a live Goose node each asked the other over a lab relay and the recorded outcomes (a signed answer, a signed
+refusal or an absence at the deadline) verify; a live run lacking either direction is a FAIL. It carries the caveat that the relay is the lab's and a
+mailbox is readable by whoever reads it (nostr-mailbox-v0 §8). Each listed entry on the first consent statement is also named
+in its cell, as not opted in.
 
 ## Needs
 

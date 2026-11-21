@@ -250,8 +250,9 @@ class LiveTest(Tmp):
 class Setup(Tmp):
     """A finding directory for step 13 on a run, and the population step 08 takes the listed keys from."""
 
-    def make(self, name="good", population="rehearsal", asks=("exchange", "exchange_late", "history_card"), edit=None):
-        run = self.copy(name) if population == "rehearsal" else None
+    def make(self, name="good", population="rehearsal", asks=("exchange", "exchange_late", "history_card"), edit=None,
+             live_run=False):
+        run = self.copy(name) if population == "rehearsal" or live_run else None
         if run and edit:
             edit(run)
         asks = list(asks) if name == "good" else None
@@ -266,7 +267,8 @@ class Setup(Tmp):
         stage = ["13", "08"]
         (findings / "run.json").write_text(json.dumps({"stage": "cross", "population": population, "ecosystem": "cross",
                                                        "started": finding.now(), "steps": stage}))
-        os.environ["LOOP_NODES_DIR"] = str(ROOT / "nodes")
+        # A live run's entries are held to the repository's listing: the test's listing is the run's own entries.
+        os.environ["LOOP_NODES_DIR"] = str(run / "entries" if live_run else ROOT / "nodes")
         self.addCleanup(os.environ.pop, "LOOP_NODES_DIR", None)
         self.assertEqual(step.main(["--population", str(pop), "--out", str(findings / "13-ask-across")]), 0)
         return pop, findings
@@ -361,6 +363,83 @@ class Step08Test(Setup):
         self.run08(pop, findings)
         errs = check_cross_run.problems(findings)
         self.assertTrue(any("mesh -> goose" in e for e in errs), errs)
+
+
+@needs_capsulectl
+class LiveRunTest(Setup):
+    """A live population that names a run (the lab's tree, laid out as the rehearsal's) is judged as the rehearsal is."""
+
+    def test_a_live_run_passes_and_08_reproduces_it_with_the_live_caveat_not_the_adapters(self):
+        pop, findings = self.make(population="live", live_run=True)
+        rec = json.loads((findings / "13-ask-across" / "finding.json").read_text())
+        self.assertEqual(rec["result"], "PASS", rec["detail"])
+        self.assertEqual(rec["population"], "live")
+        self.assertNotIn("loop's adapter", rec["detail"])
+        self.assertIn("the lab's", rec["detail"])
+        m = self.run08(pop, findings)
+        self.assertEqual(self.entry13(m)["status"], "reproduced", self.entry13(m)["problems"])
+        self.assertEqual(self.entry13(m)["relies_on"], [])
+
+    def test_a_live_run_without_a_node_of_each_ecosystem_is_a_fail_not_a_pass(self):
+        run = self.copy("good")
+        keys = {"goose": keys_of(run)["goose"]}  # one ecosystem only: no cross pair exists
+        d = step.decide(run, keys, CAPSULECTL, self.root / "w", finding.now(), population="live",
+                        nodes_dir=run / "entries")
+        self.assertEqual(d["result"], "FAIL", d["detail"])
+        self.assertEqual({(r["asker"], r["responder"]) for r in d["rows"]}, {("goose", "mesh"), ("mesh", "goose")})
+
+    def test_step_13_alone_fails_an_entry_the_repository_does_not_list(self):
+        run = self.copy("good")
+        listing = self.root / "listing"
+        shutil.copytree(run / "entries", listing)
+        victim = sorted(listing.glob("*.json"))[0]
+        victim.write_text(victim.read_text().replace('"consent"', '"consent_"'))
+        d = step.decide(run, keys_of(run), CAPSULECTL, self.root / "w", finding.now(), population="live",
+                        nodes_dir=listing)
+        self.assertEqual(d["result"], "FAIL", d["detail"])
+        self.assertIn("is not the repository's", d["detail"])
+
+    def test_a_live_population_naming_a_run_with_no_tree_stays_not_checked_and_08_reproduces_it(self):
+        pop, findings = self.make(population="live")
+        doc = json.loads((pop / "population.json").read_text())
+        doc["cross"] = {"run": str(self.root / "nowhere"), "nodes": {}}
+        (pop / "population.json").write_text(json.dumps(doc))
+        self.assertEqual(step.main(["--population", str(pop), "--out", str(findings / "13-ask-across")]), 0)
+        rec = json.loads((findings / "13-ask-across" / "finding.json").read_text())
+        self.assertEqual(rec["result"], "NOT_CHECKED")
+        self.assertIn("loop#442", rec["detail"] + json.dumps(rec["not_checked"]))
+        self.assertEqual(self.entry13(self.run08(pop, findings))["status"], "reproduced")
+
+    def test_editing_a_live_run_row_makes_08_fail(self):
+        pop, findings = self.make(population="live", live_run=True)
+
+        def edit(p):
+            p["rows"][0]["result"] = "NOT_CHECKED"
+        self.retell(findings, edit)
+        self.assertEqual(self.entry13(self.run08(pop, findings))["status"], "failed")
+
+    def test_an_entry_the_repository_does_not_list_as_the_run_holds_it_makes_08_fail(self):
+        pop, findings = self.make(population="live", live_run=True)
+        listing = Path(os.environ["LOOP_NODES_DIR"])
+        entry = sorted(listing.glob("*.json"))[0]
+        d = json.loads(entry.read_text())
+        d["operator"] = "someone-else"
+        entry.write_text(json.dumps(d, indent=2, sort_keys=True))
+        e = self.entry13(self.run08(pop, findings))
+        self.assertEqual(e["status"], "failed")
+        self.assertTrue(any("not the repository's" in p for p in e["problems"]), e["problems"])
+
+    def test_a_mesh_entry_whose_node_id_is_not_its_key_is_found_by_its_key(self):
+        def mesh_endpoint(run):
+            k = keys_of(run)["mesh"]
+            e = json.loads((run / "entries" / f"{k}.json").read_text())
+            e["node_id"] = "ab" * 32
+            (run / "entries" / f"{k}.json").unlink()
+            (run / "entries" / f"{e['node_id']}.json").write_text(json.dumps(e, indent=2, sort_keys=True))
+        pop, findings = self.make(population="live", live_run=True, edit=mesh_endpoint)
+        rec = json.loads((findings / "13-ask-across" / "finding.json").read_text())
+        self.assertNotIn("run lists no entry", rec["detail"])
+        self.assertNotEqual(self.entry13(self.run08(pop, findings))["status"], "failed")
 
 
 class LiveStep08Test(Setup):
