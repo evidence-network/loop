@@ -75,6 +75,7 @@ rehearsal's is, under the population's listed keys; a mesh entry is found by its
 The live caveat replaces the rehearsal's: the relay is the lab's and a mailbox is readable by whoever reads it.
 """
 import argparse
+import datetime as dt
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -207,6 +208,42 @@ def is_ledger_pair(pair_dir):
     return any((d / f"{ASK_PREFIX}.ledger.json").is_file() for d in Path(pair_dir).iterdir() if d.is_dir())
 
 
+def ledger_ask_errors(name, request, extract, posted, deadline, within, delivered, reply_bytes):
+    """The errors the ledger path owes step 07's bundle path (steps/07-ask judge_bundle_pair, mailbox): the request was
+    sealed before the relay carried it, its own deadline is the commitment's answers_within after the seal, the send
+    was not after that deadline, and the reply file is the bytes the relay carried and the response record cites
+    (response_digest). `delivered` is the carrier log's "delivered" events of this ask; `reply_bytes` the kept reply or None."""
+    errs = []
+    try:
+        req_h = extract["requests"][0]["header"]
+        sealed = step07.utc(req_h["committed_at"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        sealed = None  # step07.judge_sealed names a malformed extract
+    if sealed is not None:
+        if not sealed < posted:
+            errs.append(f"{name}: the request was sealed at {step07.stamp(sealed)}, not before it was sent at {step07.stamp(posted)}")
+        if abs((deadline - sealed) - within) > dt.timedelta(seconds=2):
+            errs.append(f"{name}: the request's deadline {step07.stamp(deadline)} is not the commitment's answers_within "
+                        f"after it was sealed at {step07.stamp(sealed)}")
+    if not posted <= deadline:
+        errs.append(f"{name}: the request was sent at {step07.stamp(posted)}, after its own deadline")
+    if reply_bytes is not None:
+        got = hashlib.sha256(reply_bytes).hexdigest()
+        carried = [e.get("reply_sha256") for e in delivered]
+        if got not in carried:
+            errs.append(f"{name}: the kept reply is not the bytes the relay carried")
+        try:
+            outcomes = extract["outcomes"]
+        except (KeyError, TypeError):
+            outcomes = []
+        for o in outcomes if isinstance(outcomes, list) else []:
+            header = o.get("header") if isinstance(o, dict) else None
+            statement = (header or {}).get("statement") or {}
+            if (header or {}).get("record_type") == "evidence_response" and statement.get("response_digest") != got:
+                errs.append(f"{name}: the response record cites other reply bytes than the kept reply")
+    return errs
+
+
 def judge_ledger_pair(work, asker, asked, asker_key, asked_key, capsulectl, vwork, nc):
     """(errors, [], proof paths relative to the pair's directory, line) for a live mesh asker's asks of one node.
 
@@ -248,6 +285,9 @@ def judge_ledger_pair(work, asker, asked, asker_key, asked_key, capsulectl, vwor
         except ValueError:
             errs.append(f"{name}: the request carries no deadline in its own bytes")
             continue
+        errs += ledger_ask_errors(name, request, extract, posted, deadline, adv["within"],
+                                  [e for e in mine if e["event"] == "delivered"],
+                                  reply.read_bytes() if reply.is_file() and delivered else None)
         if reply.is_file() and delivered and min(delivered) <= deadline:
             outcome, refused = verifier.check(d / f"{ASK_PREFIX}.request.json", reply, adv["node_key"], adv["checkpoint_key"])
             saw = {"artifact": "verified", "refusal": "refusal"}.get(outcome)

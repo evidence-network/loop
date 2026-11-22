@@ -37,10 +37,13 @@ class Relay:
             try:
                 msg = json.loads(raw)
                 kind = msg[0]
-            except (ValueError, IndexError, TypeError):
+            except (ValueError, IndexError, TypeError, KeyError):  # not JSON, or not a NIP-01 frame (an object has no [0])
                 continue
             if kind == "EVENT" and len(msg) > 1 and isinstance(msg[1], dict):
                 ev = msg[1]
+                if not isinstance(ev.get("id"), str):  # NIP-01: an event has an id; answer, do not drop the connection
+                    ws.send(json.dumps(["OK", None, False, "invalid: the event has no id"]))
+                    continue
                 with self.lock:
                     new = ev.get("id") not in self.events
                     if new:

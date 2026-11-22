@@ -94,6 +94,21 @@ class ReporterListTest(unittest.TestCase):
                 (Path(d) / f"{node}.json").write_text(json.dumps({"node_id": node, "ask_route": route}))
             self.assertEqual(sorted(confidence.listed(d)), ["a" * 64])
 
+    def test_a_capsules_node_listed_nostr_is_still_asked_over_the_mesh_and_a_goose_node_is_not(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import daily_report
+        import rehearsal_confidence as confidence
+        mesh_nostr = {"ask_route": "nostr", "plugin_version": "capsules v0.1.23 (54420bc), binary sha256 aa"}
+        goose = {"ask_route": "nostr", "plugin_version": "loop_server.py of goose-g1 a255d824"}
+        self.assertTrue(daily_report.asked_over_mesh({"ask_route": "mesh"}))
+        self.assertTrue(daily_report.asked_over_mesh(mesh_nostr))
+        self.assertFalse(daily_report.asked_over_mesh(goose))
+        with tempfile.TemporaryDirectory() as d:
+            for node, entry in (("a" * 64, mesh_nostr), ("b" * 64, goose)):
+                (Path(d) / f"{node}.json").write_text(json.dumps({"node_id": node, **entry}))
+            self.assertEqual(sorted(confidence.listed(d)), ["a" * 64])
+
 
 class LoopShGooseLiveTest(unittest.TestCase):
     def test_loop_sh_needs_the_population_the_driver_wrote(self):

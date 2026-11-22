@@ -42,6 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_reports  # noqa: E402
+import daily_report  # noqa: E402
 import report_layout as layout  # noqa: E402
 
 Rehearsal = layout.Rehearsal
@@ -77,7 +78,7 @@ def listed(nodes_dir):
     out = {}
     for p in sorted(Path(nodes_dir).glob("*.json")):
         e = json.loads(p.read_text(encoding="utf-8"))
-        if e.get("ask_route", "mesh") == "mesh":
+        if daily_report.asked_over_mesh({"ask_route": "mesh", **e}):
             out[e["node_id"]] = e
     return out
 

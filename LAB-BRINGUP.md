@@ -69,12 +69,12 @@ pins:
   pinned as `mesh-llm-pr-<N>` (each squashed to one commit whose message carries the PR's head SHA, or merged as is);
 - `capsules`: the capsules plugin at the `capsules` pin;
 - `pay-lightning` and `lexe-wallet` (when the lock pins them): the payment plugin (`pay-lightning`, the ln-payments-plugin
-  main commit, with `pay-lightning-pr-11` merged on it) and the wallet plugin it binds. A host build after mesh-llm#2654
+  main commit, with every `pay-lightning-pr-*` pin merged on it) and the wallet plugin it binds. A host build after mesh-llm#2654
   has no payments of its own, so every node that pays or is paid needs both installed before it starts; set
   `LAB_PAY_PLUGIN=pay-lightning`.
 
 ```sh
-grep -E '^(mesh-llm|mesh-llm-pr-[0-9]+|capsules|pay-lightning|pay-lightning-pr-11|lexe-wallet) ' versions.lock
+grep -E '^(mesh-llm|mesh-llm-pr-[0-9]+|capsules|pay-lightning|pay-lightning-pr-[0-9-]+|lexe-wallet) ' versions.lock
 ```
 
 Tell `lab.sh` where they are:
@@ -105,7 +105,7 @@ It reads the pins from `versions.lock` and checks, with git:
   (`git merge-base --is-ancestor <pin> HEAD`) and every `mesh-llm-pr-<N>` pin (as an ancestor, or as the head
   named in the message of a squash commit above the `mesh-llm` pin),
   and has no uncommitted changes to tracked files;
-- when the lock pins `pay-lightning`, the pay-lightning tree contains it and `pay-lightning-pr-11`;
+- when the lock pins `pay-lightning`, the pay-lightning tree contains it and every `pay-lightning-pr-*` pin (a PR merged as one commit counts when its head is in a commit message above the base);
 - the capsules tree is exactly at the `capsules` pin (`git rev-parse HEAD`),
   with no uncommitted changes;
 

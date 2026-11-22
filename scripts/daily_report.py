@@ -116,6 +116,13 @@ import report_layout as layout  # noqa: E402
 import reporter_key  # noqa: E402
 
 PROFILE = "evidence-interop/0"
+
+
+def asked_over_mesh(entry):
+    """Whether the daily reporter asks this nodes/ entry over the mesh: an entry listed `mesh`, and a capsules plugin node
+    listed `nostr` (it advertises ask.nostr for step 13 and still answers over the mesh); a Goose node, which hosts no
+    server, is asked through its mailbox only."""
+    return entry.get("ask_route") == "mesh" or str(entry.get("plugin_version", "")).startswith("capsules ")
 # The two stranger-safe questions, as the capsules Evidence page asks them
 # (web-ui evidenceRequestClient.ts). Keyed by the file-name stem.
 QUESTIONS = {
@@ -525,7 +532,7 @@ def run(args, now, sleep):
 
     entries = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(Path(args.nodes).glob("*.json"))]
     # The reporter asks over the mesh: a node listed with another ask_route (nostr, a Goose node) is asked another way.
-    entries = [e for e in entries if e["ask_route"] == "mesh"]
+    entries = [e for e in entries if asked_over_mesh(e)]
     # The reporter's own node is asked only through a second console, never its own.
     entries = [e for e in entries if e["node_id"] != reporter["node_id"] or second]
     via = {reporter["node_id"]: second} if second else {}
@@ -619,7 +626,7 @@ def ask(args, now):
     listed = {}
     for p in sorted(Path(args.nodes).glob("*.json")):
         e = json.loads(p.read_text(encoding="utf-8"))
-        if e["ask_route"] == "mesh":  # the reporter asks mesh nodes only
+        if asked_over_mesh(e):  # the reporter asks mesh plugin nodes only
             listed[e["node_id"]] = e
     missing = [n for n in targets if n not in listed]
     if missing:

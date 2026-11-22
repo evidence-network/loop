@@ -553,14 +553,16 @@ cmd_check() {
   # The payment plugin (pay-lightning) and the wallet plugin, when versions.lock pins them: their trees' commits and binaries.
   local -a contains=() pay=()
   for name in "${mesh_pins[@]}"; do contains+=("$name=$(pin "$name")"); done
-  local pay_base pay_pr lexe_pin
-  pay_base=$(pin pay-lightning) pay_pr=$(pin pay-lightning-pr-11) lexe_pin=$(pin lexe-wallet)
+  local pay_base lexe_pin
+  local -a pay_pins=(pay-lightning)  # the base, then every PR merged on it (pay-lightning-pr-*)
+  pay_base=$(pin pay-lightning) lexe_pin=$(pin lexe-wallet)
+  mapfile -t -O 1 pay_pins < <(awk '$1 ~ /^pay-lightning-pr-/ { print $1 }' "$ROOT/versions.lock")
   if [ -n "$pay_base" ]; then
     local pay_head="" pay_sha="" lexe_sha=""
     if [ -z "${PAY_LIGHTNING_SRC:-}" ] || ! pay_head=$(head_of "$PAY_LIGHTNING_SRC"); then
       fails+=("PAY_LIGHTNING_SRC is not a git tree (versions.lock pins pay-lightning)")
     else
-      for name in pay-lightning pay-lightning-pr-11 pay-lightning-pr-18-19 pay-lightning-pr-23; do
+      for name in "${pay_pins[@]}"; do
         p=$(pin "$name"); [ -n "$p" ] || continue
         rc=0; git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || rc=$?
         # A PR merged onto the lab tree as one commit: its head is in the message of a commit above the base pin.
