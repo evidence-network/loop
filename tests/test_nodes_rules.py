@@ -63,7 +63,10 @@ class EntryRulesTest(unittest.TestCase):
 
     def test_stranger_safe_is_the_two_answers_or_those_with_history_card_2(self):
         for safe, ok in ((["checkpoints", "history_card/1"], True), (["history_card/2", "checkpoints", "history_card/1"], True),
-                         (["checkpoints", "history_card/2"], True), (["checkpoints", "history_card/1", "record"], False)):
+                         (["checkpoints", "history_card/2"], True), (["checkpoints", "history_card/1", "record"], False),
+                         (["checkpoint_range", "history_card/2"], True), (["checkpoint_range", "checkpoints", "history_card/2"], True),
+                         (["checkpoint_range", "history_card/1", "history_card/2", "checkpoints"], True),
+                         (["checkpoint_range", "history_card/1"], False)):
             with self.subTest(safe=safe):
                 errs = self.check(disclosure={"policy": "counterparties", "stranger_safe": safe})
                 self.assertEqual(errs == [], ok, errs)

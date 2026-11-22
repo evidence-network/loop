@@ -65,6 +65,11 @@ STRANGER_SAFE = ("checkpoints", "history_card/1")
 STRANGER_SAFE_WITH_2 = ("checkpoints", "history_card/1", "history_card/2")
 # capsules-plugin 0.1.21 leaves history_card/1 out of a node whose answer passes the 1 MiB cap (/2 stays).
 STRANGER_SAFE_2_ONLY = ("checkpoints", "history_card/2")
+# capsules-plugin 0.1.23 names a range of checkpoints `checkpoint_range` beside `checkpoints`, and a node past the answer
+# cap drops the unranged `checkpoints` and keeps the range (#317); a node past the cap for history_card/1 leaves /1 out too.
+STRANGER_SAFE_RANGE = (("checkpoint_range", "checkpoints", "history_card/1", "history_card/2"),
+                       ("checkpoint_range", "checkpoints", "history_card/2"),
+                       ("checkpoint_range", "history_card/2"))
 
 
 def check_operator(operator):
@@ -118,9 +123,10 @@ def check_entry(path, entry):
             if disc["policy"] not in POLICIES:
                 errs.append(f"{path.name}: disclosure.policy must be one of {', '.join(POLICIES)}")
             if not isinstance(disc["stranger_safe"], list) or sorted(disc["stranger_safe"]) not in (
-                    sorted(STRANGER_SAFE), sorted(STRANGER_SAFE_WITH_2), sorted(STRANGER_SAFE_2_ONLY)):
+                    sorted(STRANGER_SAFE), sorted(STRANGER_SAFE_WITH_2), sorted(STRANGER_SAFE_2_ONLY),
+                    *(sorted(r) for r in STRANGER_SAFE_RANGE)):
                 errs.append(f"{path.name}: disclosure.stranger_safe must be {list(STRANGER_SAFE)}, {list(STRANGER_SAFE_WITH_2)} "
-                            f"or {list(STRANGER_SAFE_2_ONLY)}")
+                            f"{list(STRANGER_SAFE_2_ONLY)}, or one of {[list(r) for r in STRANGER_SAFE_RANGE]}")
             # Opting in to public pair edges on /watch/ (who dealt with whom, evidence-network/loop#77) needs a
             # consent that names them (Sherlock2, Buzz d15c87ad); CONSENT does, since Steven's ruling.
             if "pair_edges" in disc and (disc["pair_edges"] != "public" or not CONSENT_NAMES_PAIR_EDGES):

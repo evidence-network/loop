@@ -132,10 +132,24 @@ QUESTIONS = {
     },
 }
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
+# A node past the answer cap no longer names `checkpoints` (capsules-plugin 0.1.23, #317): it is asked the first checkpoint
+# as a range, the `checkpoint_range` subject (Evidence Request -03 3.1), the form `capsules doctor --probe` asks.
+RANGE_ASK = dict(QUESTIONS["checkpoints"], subject={"checkpoint_range": [0, 0]})
+
+
+def ask_for(stem, entry):
+    """The question to ask a node first: the range ask for the checkpoints question where its nodes/ entry lists
+    checkpoint_range but not checkpoints, else the question in QUESTIONS."""
+    safe = (entry.get("disclosure") or {}).get("stranger_safe") or []
+    if stem == "checkpoints" and "checkpoint_range" in safe and "checkpoints" not in safe:
+        return RANGE_ASK
+    return QUESTIONS[stem]
 
 
 def asked_name(stem, request):
     """What the question is called in a line: the derivation actually asked, else the stem's name."""
+    if "checkpoint_range" in (request.get("subject") or {}):
+        return "checkpoint_range"
     return request.get("derivation") or QUESTION_NAMES[stem]
 
 
@@ -296,7 +310,7 @@ def ask_attempt(console, entry, node_dir, stems, at, by, timeout, left=None):
 
     lines = {}
     for stem in stems:
-        request = QUESTIONS[stem]
+        request = ask_for(stem, entry)
         preferred = FIRST_ASKS.get(stem)
         if preferred is not None:
             # history_card/2 first (it stays small however long the log grows); a node whose plugin does not answer it

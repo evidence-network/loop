@@ -1154,6 +1154,8 @@ def expected_question(stem, half, request):
         return exchange_question(half, recorded if recorded in (PROFILE_V0, PROFILE_V1) else PROFILE_V1)
     # The card question is asked history_card/2 first, history_card/1 for a plugin without it (daily_report.ask_attempt).
     asked = daily_report.FIRST_ASKS.get(stem)
+    if stem == "checkpoints" and request == daily_report.RANGE_ASK:  # a node past the answer cap (capsules-plugin 0.1.23)
+        return daily_report.RANGE_ASK
     return asked if asked is not None and request == asked else daily_report.QUESTIONS[stem]
 
 

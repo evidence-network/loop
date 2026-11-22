@@ -5,6 +5,7 @@
     "pair_edges": "public",
     "policy": "counterparties",
     "stranger_safe": [
+      "checkpoint_range",
       "checkpoints",
       "history_card/1",
       "history_card/2"
