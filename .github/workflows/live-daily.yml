@@ -34,7 +34,7 @@ jobs:
     environment: live-lab
     permissions:
       contents: read # the App token, not this one, pushes the findings branch and creates the release
-      issues: write # the loop-live-failed issue
+      issues: write # the loop-live-failed issue: opened, labelled, commented on and closed
       actions: write # dispatching the required checks on the findings branch
       id-token: write # the OIDC token for the cloud exchange
     # Environment secrets, not variables: a secret is masked in every log line, step headers included, so the host,
@@ -95,7 +95,7 @@ jobs:
         run: source ops/live-ci/ci.sh && wait_run 50
       - name: Out of time
         if: env.LIVE_STATE == 'waiting'
-        run: echo "LIVE_STATE=timeout" >> "$GITHUB_ENV"
+        run: source ops/live-ci/ci.sh && out_of_time
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         if: env.LIVE_STATE == 'done'
         with:
@@ -123,6 +123,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: source ops/live-ci/ci.sh && report_failure "${LIVE_STATE}"
+      - name: Close the failure issue on a green run
+        if: success() && env.LIVE_STATE == 'done'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: source ops/live-ci/ci.sh && close_failure
       - name: Fail the run when the live run did
         if: env.LIVE_STATE == 'failed' || env.LIVE_STATE == 'timeout'
         run: exit 1
