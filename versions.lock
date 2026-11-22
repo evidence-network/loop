@@ -29,6 +29,12 @@ pay-lightning-pr-11 Mesh-LLM/ln-payments-plugin 8ff201b5ece2dd65a2c3cc579adc208e
 # lab tree above as one commit whose message names that head. Without them the payers paid a second deposit for a model lab-1 never served and lost
 # their lifecycle events (step 06). Replaced by the upstream merge commits when #18 and #19 merge.
 pay-lightning-pr-18-19 ethanyzhang/ln-payments-plugin 3ab65a2ae730aa4392b72014bd485e9184d2f466
+# ln-payments-plugin#22 / #23 (not merged upstream yet): the provider's final settlement (a warm peer pays no deposit, so it is the only provider
+# settlement of its exchange) carried an empty SettledReceived, so no credited_msat, fee_msat or preimage and no payee leg in the provider's book (step 06 stayed
+# NOT_CHECKED on every run after the first one in a provider process). #23 gives it the receiving wallet's numbers and verified preimage. Fork head of
+# ethanyzhang/ln-payments-plugin lnp-22-final-settlement-wallet-numbers; its commits b1145a0, a0e8b49 and 4ade61b are cherry-picked onto the lab tree after #18/#19
+# (a commit whose message names that head). Replaced by the upstream merge when #23 merges.
+pay-lightning-pr-23 ethanyzhang/ln-payments-plugin 4ade61b3ed007788e9b7c48b20a6810ee1903150
 lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # The capsules plugin (the repo was Mesh-LLM/capsules): the v0.1.18 release (tag on 6d54aba), ten releases after the
 # previous pin v0.1.8 (cc21587). Breaking or visible changes on the way: 0.1.9 retires served_summary/1 and turns

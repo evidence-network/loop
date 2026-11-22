@@ -837,6 +837,17 @@ class PayCheckTest(LabRoot):
         r = self.run_lab("check")
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_the_final_settlement_fork_pr_pin_is_held_to_the_tree_like_the_others(self):
+        head = "4a" * 20
+        with open(self.root / "versions.lock", "a") as f:
+            f.write(f"pay-lightning-pr-23 someone/ln-payments-plugin {head}\n")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertTrue(any("pay-lightning-pr-23" in f for f in self.build()["failures"]), self.build()["failures"])
+        git(self.tmp / "pay-lightning", "commit", "-q", "--allow-empty", "-m", f"lab: fork branch @ {head}")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_a_missing_binary_fails(self):
         for var in ("PAY_LIGHTNING_BIN", "LEXE_PLUGIN"):
             r = self.run_lab("check", **{var: str(self.tmp / "bin/none")})

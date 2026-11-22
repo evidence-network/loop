@@ -560,7 +560,7 @@ cmd_check() {
     if [ -z "${PAY_LIGHTNING_SRC:-}" ] || ! pay_head=$(head_of "$PAY_LIGHTNING_SRC"); then
       fails+=("PAY_LIGHTNING_SRC is not a git tree (versions.lock pins pay-lightning)")
     else
-      for name in pay-lightning pay-lightning-pr-11 pay-lightning-pr-18-19; do
+      for name in pay-lightning pay-lightning-pr-11 pay-lightning-pr-18-19 pay-lightning-pr-23; do
         p=$(pin "$name"); [ -n "$p" ] || continue
         rc=0; git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || rc=$?
         # A PR merged onto the lab tree as one commit: its head is in the message of a commit above the base pin.
