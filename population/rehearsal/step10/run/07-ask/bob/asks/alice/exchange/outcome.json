@@ -1,8 +1,8 @@
 {
   "outcome": "refusal",
   "reason": "policy_declined",
-  "record_id": "8bda52aa91024f745d95a8253bf67bccd6e535939e1c151bbb0f490106b88a02",
-  "request_digest": "a26963eae1db97da7e272dec70511b30e80956f9538cd8204d39e7a9d84b80b5",
+  "record_id": "c55a958e79a19010eb9604d5630d64a21ef89f10ce3594907cb7a09f3943a662",
+  "request_digest": "7deb0e1ede8acc61d17c655c00a1fcbd68a4112bcef7cecfc3563c3ec6024faf",
   "spec_version": "capsule-cli-result/v1",
   "voice": "silent"
 }

@@ -1,7 +1,7 @@
 {
   "outcome": "recorded_absence",
-  "record_id": "ba987691ae3600e405c33a097f5f1f9c0016d4552f725d064ca47edb0cd92981",
-  "request_digest": "b1661d36a9747e11f6bd263e9acf1c1d85f5fb1f9685e7f32b45d16b82757268",
+  "record_id": "c4313c2cc68776de8a7d551f3556be2ad2febfabba8e9a09a4ad09da5b124f41",
+  "request_digest": "a5933619fa5e1877423aaa858d937416f0641b8259794f7e99fefb9bd3c436cd",
   "spec_version": "capsule-cli-result/v1",
   "voice": "silent"
 }

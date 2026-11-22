@@ -31,11 +31,11 @@
       "repository": "action-state-group/agent-action-capsule"
     },
     "capsulectl": {
-      "ref": "v0.21.0",
+      "ref": "v0.24.0",
       "repository": "action-state-group/evidencebook"
     },
     "capsulectl-book": {
-      "ref": "v0.21.0",
+      "ref": "v0.24.0",
       "repository": "action-state-group/evidencebook"
     },
     "checkpointed-local-log": {
@@ -51,7 +51,7 @@
   "proof": [
     {
       "path": "verified.json",
-      "sha256": "85f0a9f24456cd6728c5c42c810973ba08dcd8ec57d24cbda820d21da0040e6a"
+      "sha256": "3f886fb232c3bb0e0e26da35d15774cb2180aab9fc03d68088315ac1faaae5d3"
     }
   ],
   "result": "NOT_CHECKED",

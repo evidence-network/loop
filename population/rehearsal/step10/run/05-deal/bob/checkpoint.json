@@ -3,10 +3,10 @@
   "kind": "mmr_checkpoint",
   "log_id": "rehearsal-bob-deal",
   "mmr_size": 4,
-  "root": "e40dcd13511b08d6b271827f3c946ac69c21c52da0dff0a718b32ab5f6cca686",
+  "root": "faf760a282667307276f075f76808400c626bd892e39348f063431942f3de106",
   "prev_size": 3,
-  "prev_root": "a092c926f8c02e49b76cdc2592a66b8dadddeff7ef3468dbd40fa5e60c73afa7",
+  "prev_root": "342e8d02d7fe4979ef375a44253bfbb96830cf99eb22000b7894db2946dfd6c3",
   "key_id": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
-  "timestamp": "2026-11-21T12:44:45Z",
-  "signature": "ca823c0f63a9a6b1097f022b044a9ac9e6353fbe90730f4461ed6fbced9546afb433609f2ffa208839faf301b0e8888fc0fb8b736abbbb376666a2a285ec4f0a"
+  "timestamp": "2026-11-22T01:02:25Z",
+  "signature": "796ad697da74ce726311fc270fe75be552b1fb680febccde1a4004e6750fdfd2f61d2447e5cb26b388f42be3bb88e36be9b246bc0dc10631eb70f22c482e0308"
 }

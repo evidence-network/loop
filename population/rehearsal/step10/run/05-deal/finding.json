@@ -1,6 +1,6 @@
 {
   "asserts": "both sides seal halves of one deal, each citing the other half and the other side's checkpoint; each pushes its half at completion with share_record_at_completion on; the receiver holds the foreign bytes by digest and seals a record citing them; acceptance is keyed on the evidence key under a controller declaration",
-  "detail": "deal rehearsal-deal-2026-11-21T12:44:45Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers; the 2 bindings accepted under apply in a second language (cross_language binding, aac-go go/v0.21.0: form, both signatures and window PASS, revocation PASS on the empty list). Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
+  "detail": "deal rehearsal-deal-2026-11-22T01:02:25Z between books rehearsal-alice-deal, rehearsal-bob-deal: evidencebook found these held on the proof bytes, for both sides: accepted_under_controller_declaration, cites_foreign_half, counterparty_distinct, half_cites_counterparty_checkpoint, half_in_book, half_names_the_deal, half_sealed, halves_of_one_exchange, holds_foreign_half, pushed_at_completion, share_record_at_completion. Each push was accepted on the sender's evidence key under a controller declaration (rehearsal TEST controller keys) that binds it, and the two keys are under different controllers; the 2 bindings accepted under apply in a second language (cross_language binding, aac-go go/v0.21.0: form, both signatures and window PASS, revocation PASS on the empty list). Spend: none; this step starts no exchange and pays nothing (would spend 0 USD).",
   "finished": "2026-09-14T10:00:30Z",
   "name": "deal",
   "not_checked": [],
@@ -22,19 +22,19 @@
   "proof": [
     {
       "path": "deal.json",
-      "sha256": "97a84f7db9970b7c955c9081b554a6543057e544a9a85e296de6e0eea32ca01d"
+      "sha256": "07e98e06935c34352d158ecc2e69d4ca13f1e97023d5da7d276104ee8464343d"
     },
     {
       "path": "declarations.json",
-      "sha256": "52082b0edfbdf0b2440687a4639c559a2bec426599e1b403bfaa2021c3373702"
+      "sha256": "7a0b15ad2e63cbc2a166b71e82387083ba4ffc64ee395403a9ca6cbe27fbbda3"
     },
     {
       "path": "verify.json",
-      "sha256": "f72c1c8d709c74799fb201df79d18fe8ee5c852fcb280ccaea5cdb625799bfa5"
+      "sha256": "d6d835a05177a5e08709fabcfa1c9cd35fce8b724d85f468c2f80e21b6b85c5f"
     },
     {
       "path": "alice/checkpoint-open.json",
-      "sha256": "b01d4577556b5312194a2fdf819adbe248a393ecd4d30beca2c98a50d075bf45"
+      "sha256": "19c76f4d45724faaf8d49dcd75332ca79be1c0820493c73bd3f5e567623f8ef0"
     },
     {
       "path": "alice/settings.json",
@@ -42,51 +42,51 @@
     },
     {
       "path": "alice/half.json",
-      "sha256": "6ec33e5e3c6f99458fe45aa5d19b44b2ff74298229bd3612e2a9e4b9d1aa4771"
+      "sha256": "bed33592853e29ff8dc6dde7265296e9dfe0c94d7435a7cdd1a918f40f33dfcd"
     },
     {
       "path": "alice/half-checkpoint.json",
-      "sha256": "248c129116238abfe73564cd4ec6312adb4038585a9e01461b6550b3fc9d39b3"
+      "sha256": "88d65bfb32c144ed746499f9b7f8e0d0c997b57db342d522a381a3c5b8616357"
     },
     {
       "path": "alice/half-inclusion.json",
-      "sha256": "e0975ba769679cf2e5a43fdf2f949524624b03eeb5ce5f73a2a834d14f7d86c8"
+      "sha256": "c2b97492b88c01ec8db7d90f198ae90520e82c5396b5730c8e9c410ebdf75ddb"
     },
     {
       "path": "alice/push.json",
-      "sha256": "4d4eba1ac47db0e6e4a21d0e965656a90fc5c4848224c1e98d647812ef98cfea"
+      "sha256": "0dd0f9f8fcd102398340ac9f6980d98f878b5486ef892afc1c1c3a71ea429da6"
     },
     {
       "path": "alice/held/received-records.jsonl",
-      "sha256": "70c26d4f3daecdaf6adfa000e3838a427af11c89dab687a3dfc2fd0d966e5627"
+      "sha256": "db09815ac2b7b08377e97626bfb4cb227b01d9d75ad6479ded0e04642375e06f"
     },
     {
       "path": "alice/held/received-provenance.jsonl",
-      "sha256": "f2d024cdf98506d804c442a80e8e63b5baf60de34e299335efa2fbac6a6adca0"
+      "sha256": "574bda3a786ecb9ed572885a6eb88c05c57401928bdfd746f84584069388cb95"
     },
     {
       "path": "alice/held/received-inclusion.jsonl",
-      "sha256": "aa42d75d7fc9d3ee34ec792b97f23ee3aa9b47584772e50c1a3c30ca29a0cae7"
+      "sha256": "5c057e7dcb96dfeb00099100d7fb72a0b550b5bc09ab703528fa728405130fea"
     },
     {
       "path": "alice/citing.json",
-      "sha256": "89a491dd257c649548c8a003e2ec79c6e94bf368749d01c8f933db8aa1f4c26d"
+      "sha256": "269889776bb113d6bc9c63f81f39e81d49ffe360e6251f13c8b714a849b66932"
     },
     {
       "path": "alice/citing-inclusion.json",
-      "sha256": "eb87f3debf8704cb3109042694337c705d3d8ba547a94ca2d044750076570b72"
+      "sha256": "1b52e24f5f8e1296d0627715b6c4565d7f05fe2dfe643ce3e46e4061c019ffc4"
     },
     {
       "path": "alice/checkpoint.json",
-      "sha256": "1cfdcd13c27344d50f92950f0099cf40a1e166fec51b91e5e316991e671fb7ab"
+      "sha256": "6a2f0f173c0d29506a4d79a36cea2786a546aad129dbcd6ddb3b5a2b4083149e"
     },
     {
       "path": "alice/placement.json",
-      "sha256": "71665851dc0f0e6fefb63f054ad669f1f3c9a98eaf525e5d9c08262eb9f28fb4"
+      "sha256": "435b85164f36b0da935d91cb123d224af14f1fb2e5f7a0458d4e6581790b166d"
     },
     {
       "path": "bob/checkpoint-open.json",
-      "sha256": "01c4abc41ec1da3ccf47bc4a3c658f09d4bd54e04f912fcbb039f75af3ac3a81"
+      "sha256": "452adcca91f00a45ab7de8c6b47820f780d163c2977e74e70fa0f64c0a084925"
     },
     {
       "path": "bob/settings.json",
@@ -94,47 +94,47 @@
     },
     {
       "path": "bob/half.json",
-      "sha256": "82d6346183527fb726892d0639af80fc461d86ec97915261ccc1bf89776251a4"
+      "sha256": "c86e186ea0c879092e67830ed7a282d8976e534cb7254ddee956c2e75ce24c37"
     },
     {
       "path": "bob/half-checkpoint.json",
-      "sha256": "81129b12985efad514250f8d799eed169d23c906be0d29b8a71fea8dcd5f7e29"
+      "sha256": "8ecaeac4457b1824c89a3d505c29b192541004c915206109c967fe40f38338f0"
     },
     {
       "path": "bob/half-inclusion.json",
-      "sha256": "d92be7498e0563d7858ef966780c3f837853b3346e65a4773982c4922f851034"
+      "sha256": "70f9cd47235763a981f224254eaee1f0227132b6d234072806b761dc675ca729"
     },
     {
       "path": "bob/push.json",
-      "sha256": "864acbeca627a564e4ebcae2292b704dbbfc28129d7a5281a89ba29b91c3dedd"
+      "sha256": "3fbea017f5448029c7cecab041407db8af01bdc53d9ead792cb216e123440c2b"
     },
     {
       "path": "bob/held/received-records.jsonl",
-      "sha256": "0f87e9e9b1ae50b2c89d34dbe046adfd6ccb75a16ae06d73c53986c5146d5ad4"
+      "sha256": "26613099dcceebde0f7b7a2d6346a7343c94f13af0827b09c015adc83bc026dd"
     },
     {
       "path": "bob/held/received-provenance.jsonl",
-      "sha256": "cf82870bafd5cb83c24d7a30925c603cdc961452d9d7c4ba809c55d0c49c65fa"
+      "sha256": "ab6055e367c224da540fdf7857ae452917ed6a2a5dde2282b27838f520ec475d"
     },
     {
       "path": "bob/held/received-inclusion.jsonl",
-      "sha256": "5b5066d2cf6147af3d4d774f637c505993ebeb7ee1ef4c6079ea31b935697f63"
+      "sha256": "d0f5d5a3ab37372e9ce5fefb4b5166893fc48e35f13185a3074d92733db7c644"
     },
     {
       "path": "bob/citing.json",
-      "sha256": "f9c6ce4af72daa470d00347e1fce071e2ab1acf50353cf6685bed9e5d3792c93"
+      "sha256": "d4001efa4167e1925de2b1a41bf95f031e23b35f101d0955e99f1d50e910fc2c"
     },
     {
       "path": "bob/citing-inclusion.json",
-      "sha256": "e2c994558eaae4f89c23d9902ae96d650748ce92616d59dac5de51cb4d5fca4b"
+      "sha256": "99db222372f256ea8224b56090cf9fe6d942104419c36434f5bf8e8ff325aa9c"
     },
     {
       "path": "bob/checkpoint.json",
-      "sha256": "87176d914de31a3fe8866e275c90114d117c4c1cc6a92a4c60034f5a897fe17d"
+      "sha256": "70429395beddd6f1754e3e56b0878a262497b52b6ab936834686349f517353c2"
     },
     {
       "path": "bob/placement.json",
-      "sha256": "ff57f41b3d7431dc105028b58ab95e3f21037335b5661a748590341a25b6ea5e"
+      "sha256": "a3895dc33a22934517f12e73f1e8a5301dde39789d622700891d6863c0c2015d"
     }
   ],
   "result": "PASS",

@@ -7,11 +7,11 @@
       "seq": 2,
       "record_type": "deal_half",
       "epistemic_type": "producer_claim",
-      "committed_at": "2026-11-21T12:44:45Z",
+      "committed_at": "2026-11-22T01:02:25Z",
       "links": [],
       "counterparty_ref": "5902784addfedf93856e12553e360f3e9b8b6c10f18941f7bc99a7ea66a5eba9",
       "correlation": {
-        "deal_id": "rehearsal-deal-2026-11-21T12:44:45Z",
+        "deal_id": "rehearsal-deal-2026-11-22T01:02:25Z",
         "request_digest": "ddef36b9358a6ee32e50a2558f9c575631c2c976db7ee75927a6c4cd7a287482",
         "response_digest": "b711c02f51c7fb4cc15bbb0e7dbac5dd8126af882d9c9c80f68712ff95f07b67"
       },
@@ -20,14 +20,14 @@
         "counterparty_checkpoint": {
           "log_id": "rehearsal-bob-deal",
           "mmr_size": 1,
-          "digest": "7161396edf11f08d224646b63e864396e04aeff67891d981c55284231f9a1035"
+          "digest": "4f90112a35c73005c3b5900bf8df9d07d2d12611d6c1bc34ebc12da0b74202f6"
         }
       }
     },
     "seal": {
       "alg": "Ed25519",
       "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
-      "signature": "21b86d3a6c286285440548dc2bff1058ae83be9a8f9c4def78cebc5c648b1402f8c542dffaf171f36a7cb988dd0ab731fe5cddd49258b83604456a621f5fd00e"
+      "signature": "6c96685cc50115bdf95e55691fd51b7d42d8c6fe23daa79d7beb96d74c7659dcb039c22cbb397d8eeb2155334f24df8c900e1b3f89c7fa6c27c940f35fab0704"
     }
   },
   "inclusion": {
@@ -38,7 +38,7 @@
       "size": 3,
       "leaf_index": 1,
       "witness": [
-        "03c793fc1b1e4937fdcde57565d781e06eb30d383d338b4a179793fdb1918b9a"
+        "c75e22de4cdf1a50cca6065cb1161a0b4d76f93eb450d67c6bec3fed3456b4b9"
       ],
       "peaks_left": [],
       "peaks_right": []
@@ -49,11 +49,11 @@
     "kind": "mmr_checkpoint",
     "log_id": "rehearsal-alice-deal",
     "mmr_size": 3,
-    "root": "52740a77bf4676307f32b40f7118771a5172fd4753b46e9cc37992a33ec6b0fd",
+    "root": "7ef09c9d451f30540b19718d41a0df99577505735f8c88c1fcf9bf55f2a91048",
     "prev_size": 1,
-    "prev_root": "03c793fc1b1e4937fdcde57565d781e06eb30d383d338b4a179793fdb1918b9a",
+    "prev_root": "c75e22de4cdf1a50cca6065cb1161a0b4d76f93eb450d67c6bec3fed3456b4b9",
     "key_id": "5c1572a4ab7f7501f5244fc6101dcf2f80aa71e7fc6425417837628d3dab4ea8",
-    "timestamp": "2026-11-21T12:44:45Z",
-    "signature": "8143a949366b7f3610dc3ff49db2fbaed39e96dcf71cde6d9b06a0984ea269ec446a4b7b3a36d2c581d877d239b30048ecffcf25ab90265f678ccd3485881409"
+    "timestamp": "2026-11-22T01:02:25Z",
+    "signature": "afa8f48c2817e1b0b7b43c16d7e989913cb80077ef8d0a27459136a936345e1a5cd59201b1d57819b73ff4b8c3b9ac2a91608a308a879f5f998c48b6bf6de10f"
   }
 }
