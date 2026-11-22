@@ -23,12 +23,12 @@ class ReportFailureTest(unittest.TestCase):
         self.log = self.tmp / "log"
         self.log.write_text("")
 
-    def report(self, open_issue="", fail="", fn="report_failure failed", step="", notes=""):
+    def report(self, open_issue="", fail="", fn="report_failure failed", step="", notes="", check=True):
         env = {**os.environ, "PATH": f"{self.tmp}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_OPEN": open_issue, "STUB_FAIL": fail, "STUB_STEP": step, "RUNNER_TEMP": str(self.tmp),
                "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u", "GITHUB_ENV": str(self.tmp / "env"),
                "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "7"}
         pre = notes and f"{notes}; "
-        subprocess.run(["bash", "-c", f"source {ROOT}/ops/live-ci/ci.sh && {pre}{fn}"], env=env, check=True,
+        subprocess.run(["bash", "-e", "-c", f"source {ROOT}/ops/live-ci/ci.sh && {pre}{fn}"], env=env, check=check,
                        stdin=subprocess.DEVNULL, capture_output=True)
         return [x.rstrip() for x in self.log.read_text().splitlines()]
 
@@ -79,6 +79,30 @@ class ReportFailureTest(unittest.TestCase):
     def test_green_run_with_no_open_failure_issue_does_nothing(self):
         c = self.report(fn="close_failure")
         self.assertEqual([x for x in c if not x.startswith("issue list")], [])
+
+
+    def test_stage_failure_never_quotes_the_host_text(self):
+        # entry.sh's install and setfacl errors exit 23 with a path in their text
+        c = self.report(notes='note_call "stage" 23 "install: cannot stat /srv/lab/out/live/x.tgz: No such file"')
+        create = [x for x in c if x.startswith("issue create")][0]
+        self.assertIn("stage: exit 23", create)
+        self.assertNotIn("/srv/lab", create)
+
+    def test_failure_paths_without_a_host_answer_still_leave_a_note(self):
+        for fn, text in [("out_of_time", "no result after four waits"),
+                         ('GH_TOKEN= ; harvest', "no App token minted")]:
+            self.log.write_text("")
+            c = self.report(notes=fn + " || true")
+            create = [x for x in c if x.startswith("issue create")][0]
+            self.assertIn(text, create, fn)
+
+    def test_a_cancelled_step_is_named_too(self):
+        script = (ROOT / "ops/live-ci/ci.sh").read_text()
+        self.assertIn('.conclusion == "cancelled"', script)
+
+    def test_a_failed_close_comment_does_not_close_the_issue(self):
+        c = self.report("41", fail="issue comment", fn="close_failure", check=False)  # under bash -e the step stops
+        self.assertFalse(any(x.startswith("issue close") for x in c))
 
 
 if __name__ == "__main__":

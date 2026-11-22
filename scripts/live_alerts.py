@@ -51,20 +51,20 @@ OWNER = {
 # `live-failure-pickup` is never put on a loop-step issue; ops/live-ci/ci.sh puts it on the lab's own run failure only.
 OWN_OPERATORS = {"stevenmih", "ethanyzhang"}
 NODES_DIR = ROOT / "nodes"
-HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
+HEX = re.compile(r"\b[0-9a-f]{12,64}\b")  # steps 12 and 13 name a node by its id or a 12 to 16 character prefix of it
 
 
 def outside_operators(why, nodes=None):
     """Sorted handles of outside operators whose listed node (node_id or key_id) a failure text names."""
     nodes = nodes or NODES_DIR
-    ids = set(HEX64.findall(why))
+    ids = set(HEX.findall(why))
     found = set()
     for f in nodes.glob("*.json") if ids else []:
         try:
             e = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             continue
-        if isinstance(e, dict) and isinstance(e.get("operator"), str) and ids & {e.get("node_id"), e.get("key_id")} \
+        if isinstance(e, dict) and isinstance(e.get("operator"), str) and any(str(e.get(k)).startswith(i) for i in ids for k in ("node_id", "key_id")) \
                 and e["operator"].lower() not in OWN_OPERATORS:
             found.add(e["operator"])
     return sorted(found)
@@ -94,7 +94,7 @@ def judge(step_dir, digest_only):
         return "MALFORMED", f"finding.json has a field of the wrong type ({type(e).__name__}: {e})"
     if errs:
         return "MALFORMED", "; ".join(errs)[:600]
-    return r["result"], str(r["detail"])[:600]
+    return r["result"], str(r["detail"])
 
 
 def failing(run):
@@ -131,7 +131,7 @@ def alert_run(run, run_url):
         raise_issue(f"loop-step-{nn}", "B60205", f"loop step {nn} failed",
                     f"loop step {nn} ({name}) fails",
                     f"Step {nn} ({name}) is {result} on the live {'Goose ' if 'goose' in run.parts else ''}run {run.name}: {run_url}\n"
-                    f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why}\n"
+                    f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why[:600]}\n"
                     f"Owning component repository: {owner}."
                     + "".join(f"\nThis names a node run by outside operator {o}; we do not fix someone else's node from our lab, "
                               f"so contact {o}." for o in outside_operators(why)))

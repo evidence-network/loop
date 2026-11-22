@@ -87,6 +87,19 @@ class AlertsTest(unittest.TestCase):
         self.assertFalse(any("live-failure-pickup" in x for x in self.calls()))
         self.assertEqual(live_alerts.outside_operators("no node here", nodes), [])
 
+    def test_operator_is_found_by_a_short_prefix_and_past_the_display_cut(self):
+        # steps 12 and 13 name a node by 12 to 16 characters of its key, and a long detail is cut only for display
+        nodes = self.tmp / "nodes2"
+        key = "e" * 64
+        self.entry(nodes, "f" * 64, key, "someoneelse")
+        old, live_alerts.NODES_DIR = live_alerts.NODES_DIR, nodes
+        self.addCleanup(setattr, live_alerts, "NODES_DIR", old)
+        write_step(self.findings / "r-live-2", "13-ask-across", "FAIL", detail="x" * 700 + f" node {key[:12]} did not answer")
+        live_alerts.alert_run(self.findings / "r-live-2", "")
+        create = [x for x in self.calls() if x.startswith("issue create")][0]
+        self.assertIn("outside operator someoneelse", create)
+        self.assertNotIn("x" * 700, create)
+
     def test_open_issue_gets_a_comment_not_a_second_issue(self):
         os.environ["STUB_OPEN"] = "41"
         run = self.run_dir(**{"01_seal": "FAIL"})
