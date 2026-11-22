@@ -98,9 +98,9 @@ wait_run() {
 # The pull request is opened with the App token, whose events start the pull_request checks. Until that is shown to
 # work alone, also start each required check by dispatch on the harvest branch with the job's own token.
 dispatch_checks() { # BRANCH
-  local wf failed=0
+  local wf failed=0 r
   for wf in nodes reports personal-data leak-lint dco stats harvest-allowlist ecosystem-gate versions; do
-    GH_TOKEN=${WORKFLOW_TOKEN:-${GH_TOKEN:-}} gh workflow run "$wf.yml" --ref "$1" || { echo "::error::could not dispatch $wf on $1"; echo "harvest: could not dispatch the $wf check" >> "$LIVE_NOTES"; failed=1; }
+    GH_TOKEN=${WORKFLOW_TOKEN:-${GH_TOKEN:-}} gh workflow run "$wf.yml" --ref "$1" || { r=$?; echo "::error::could not dispatch $wf on $1"; echo "harvest: could not dispatch the $wf check: exit $r" >> "$LIVE_NOTES"; failed=1; }
   done
   return $failed
 }
@@ -108,7 +108,7 @@ dispatch_checks() { # BRANCH
 harvest() {
   local out name rc auth
   # The App token pushes the branch and opens the pull request, so the pull request starts its own checks (loop#395).
-  [ -n "${GH_TOKEN:-}" ] || { setstate harvest-failed; echo "harvest: no App token minted (HARVEST_APP_* secrets)" >> "$LIVE_NOTES"; echo "::error::no harvest App token (HARVEST_APP_* secrets)"; return 1; }
+  [ -n "${GH_TOKEN:-}" ] || { setstate harvest-failed; echo "harvest: no App token minted (HARVEST_APP_* secrets): exit 1" >> "$LIVE_NOTES"; echo "::error::no harvest App token (HARVEST_APP_* secrets)"; return 1; }
   auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
   echo "::add-mask::$auth"
   export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
@@ -116,7 +116,7 @@ harvest() {
   echo "$out"
   [ "$rc" = 0 ] || { setstate failed; note_call "stage" "$rc" "$out"; echo "::error::stage failed (exit $rc)"; return 1; }
   name=$(sed -n 's/^name=\([^ ]*\) .*/\1/p' <<< "$out")
-  [[ $name =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-live-[1-9][0-9]*$ ]] || { setstate failed; echo "stage: the host named no valid run" >> "$LIVE_NOTES"; echo "::error::bad run name"; return 1; }
+  [[ $name =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-live-[1-9][0-9]*$ ]] || { setstate failed; echo "stage: the host named no valid run: exit 1" >> "$LIVE_NOTES"; echo "::error::bad run name"; return 1; }
   git config user.name "github-actions[bot]"
   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
   rc=0
@@ -142,7 +142,7 @@ harvest() {
 PICKUP_LABEL="live-failure-pickup"
 
 # The wait steps ran out of time: no step failed, so the state itself is the note.
-out_of_time() { setstate timeout; echo "wait: no result after four waits of 50 minutes" >> "$LIVE_NOTES"; }
+out_of_time() { setstate timeout; echo "wait: no result after four waits of 50 minutes: exit 22" >> "$LIVE_NOTES"; }
 
 FAILURE_TITLE="loop-live-failed"
 

@@ -82,14 +82,17 @@ class ReportFailureTest(unittest.TestCase):
 
 
     def test_stage_failure_never_quotes_the_host_text(self):
-        # entry.sh's install and setfacl errors exit 23 with a path in their text
-        c = self.report(notes='note_call "stage" 23 "install: cannot stat /srv/lab/out/live/x.tgz: No such file"')
+        # entry.sh's install and setfacl errors exit 23 with a path in their text; run the real harvest against a gcloud stand-in
+        g = self.tmp / "gcloud"
+        g.write_text('#!/usr/bin/env bash\necho "install: cannot stat /srv/lab/out/live/x.tgz: No such file"\nexit 23\n')
+        g.chmod(0o755)
+        c = self.report(notes="GH_TOKEN=t harvest || true")
         create = [x for x in c if x.startswith("issue create")][0]
         self.assertIn("stage: exit 23", create)
         self.assertNotIn("/srv/lab", create)
 
     def test_failure_paths_without_a_host_answer_still_leave_a_note(self):
-        for fn, text in [("out_of_time", "no result after four waits"),
+        for fn, text in [("out_of_time", "no result after four waits of 50 minutes: exit 22"),
                          ('GH_TOKEN= ; harvest', "no App token minted")]:
             self.log.write_text("")
             c = self.report(notes=fn + " || true")

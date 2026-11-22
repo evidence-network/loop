@@ -51,13 +51,25 @@ OWNER = {
 # `live-failure-pickup` is never put on a loop-step issue; ops/live-ci/ci.sh puts it on the lab's own run failure only.
 OWN_OPERATORS = {"stevenmih", "ethanyzhang"}
 NODES_DIR = ROOT / "nodes"
+POPULATION = ROOT / "population" / "live" / "population.json"
 HEX = re.compile(r"\b[0-9a-f]{12,64}\b")  # steps 12 and 13 name a node by its id or a 12 to 16 character prefix of it
 
 
+def named_node_ids(why, population=None):
+    """node_ids of the live population's nodes that a failure text names as `<name>:`, the way steps 12 and 13 write them."""
+    try:
+        listed = json.loads((population or POPULATION).read_text(encoding="utf-8"))["nodes"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
+    return {n["node_id"] for n in listed if isinstance(n, dict) and isinstance(n.get("name"), str)
+            and isinstance(n.get("node_id"), str) and re.search(rf"(?<![\w-]){re.escape(n['name'])}:", why)}
+
+
 def outside_operators(why, nodes=None):
-    """Sorted handles of outside operators whose listed node (node_id or key_id) a failure text names."""
+    """Sorted handles of outside operators whose listed node (node_id or key_id) a failure text names, by id, by a prefix
+    of it, or by its population name."""
     nodes = nodes or NODES_DIR
-    ids = set(HEX.findall(why))
+    ids = set(HEX.findall(why)) | named_node_ids(why)
     found = set()
     for f in nodes.glob("*.json") if ids else []:
         try:

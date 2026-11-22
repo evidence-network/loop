@@ -100,6 +100,22 @@ class AlertsTest(unittest.TestCase):
         self.assertIn("outside operator someoneelse", create)
         self.assertNotIn("x" * 700, create)
 
+    def test_operator_is_found_by_the_population_name_steps_12_and_13_write(self):
+        nodes = self.tmp / "nodes3"
+        nid = "9" * 64
+        self.entry(nodes, nid, "8" * 64, "someoneelse")
+        pop = self.tmp / "population.json"
+        pop.write_text(json.dumps({"nodes": [{"name": "brattain", "node_id": nid}, {"name": "ours-1", "node_id": "7" * 64}]}))
+        self.assertEqual(live_alerts.named_node_ids("brattain: join.sh did not complete (exit 3)", pop), {nid})
+        self.assertEqual(live_alerts.named_node_ids("not-brattain: x; mybrattain: y", pop), set())
+        olds = live_alerts.NODES_DIR, live_alerts.POPULATION
+        live_alerts.NODES_DIR, live_alerts.POPULATION = nodes, pop
+        self.addCleanup(lambda: (setattr(live_alerts, "NODES_DIR", olds[0]), setattr(live_alerts, "POPULATION", olds[1])))
+        write_step(self.findings / "r-live-3", "12-join", "FAIL", detail="brattain: join.sh did not complete (exit 3)")
+        live_alerts.alert_run(self.findings / "r-live-3", "")
+        create = [x for x in self.calls() if x.startswith("issue create")][0]
+        self.assertIn("outside operator someoneelse", create)
+
     def test_open_issue_gets_a_comment_not_a_second_issue(self):
         os.environ["STUB_OPEN"] = "41"
         run = self.run_dir(**{"01_seal": "FAIL"})
