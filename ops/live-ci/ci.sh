@@ -124,10 +124,16 @@ harvest() {
   [ "$rc" -le 1 ] || { setstate harvest-failed; return 1; }
 }
 
+# The label the coordinator's watchdog scans to route a failure to a fixing lane (loop#467). It goes only on this issue:
+# live-daily.yml runs from main against our own lab nodes, so every failure reported here is ours to fix. A failed step from
+# an outside operator's node is a loop-step-NN issue (live-alerts.yml), which never carries it.
+PICKUP_LABEL="live-failure-pickup"
+
 report_failure() { # STATE
   local title="loop-live-failed" n body
   body="The daily live run on $(date -u +%F) did not complete: state \`$1\`. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+  gh label create "$PICKUP_LABEL" --color D93F0B --description "a live-daily failure on our own lab nodes; an agent picks it up and fixes it" 2>/dev/null || true
   n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
-  if [ -n "$n" ]; then gh issue comment "$n" --body "$body"
-  else gh issue create --title "$title" --body "$body"; fi
+  if [ -n "$n" ]; then gh issue edit "$n" --add-label "$PICKUP_LABEL"; gh issue comment "$n" --body "$body"
+  else gh issue create --title "$title" --label "$PICKUP_LABEL" --body "$body"; fi
 }
