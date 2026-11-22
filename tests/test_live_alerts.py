@@ -60,6 +60,7 @@ class AlertsTest(unittest.TestCase):
         self.assertEqual(sum(x.startswith("issue create") for x in c), 1)
         self.assertTrue(any("--label loop-step-06" in x and "loop step 06 (settle) fails" in x for x in c))
         self.assertTrue(any("repository: unknown" in x for x in c))
+        self.assertFalse(any("live-failure-pickup" in x for x in c))  # an outside node's step failure is never picked up (loop#467)
 
     def test_open_issue_gets_a_comment_not_a_second_issue(self):
         os.environ["STUB_OPEN"] = "41"
