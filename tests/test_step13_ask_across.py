@@ -140,6 +140,16 @@ class LedgerAskChecksTest(unittest.TestCase):
         errs = self.check(extract=self.extract(digest="0" * 64))
         self.assertTrue(any("cites other reply bytes" in e for e in errs), errs)
 
+    def test_a_reply_is_on_time_by_the_delivery_of_its_own_bytes_not_of_another_reply(self):
+        good = hashlib.sha256(self.REPLY).hexdigest()
+        early_other = {"event": "delivered", "at": "2026-11-21T12:00:00Z", "reply_sha256": "0" * 64}
+        late_own = {"event": "delivered", "at": "2026-11-21T12:00:40Z", "reply_sha256": good}
+        arrived = step.reply_arrival([early_other, late_own], self.REPLY)
+        self.assertEqual(arrived, step.step07.utc("2026-11-21T12:00:40Z"))
+        self.assertGreater(arrived, step.step07.utc("2026-11-21T12:00:31Z"))  # after the deadline: not on time
+        self.assertIsNone(step.reply_arrival([early_other], self.REPLY))
+        self.assertIsNone(step.reply_arrival([late_own], None))
+
     def test_an_ask_with_no_reply_has_nothing_to_bind(self):
         self.assertEqual(self.check(reply=None, carried=[]), [])
 

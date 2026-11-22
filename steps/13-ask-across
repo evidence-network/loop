@@ -244,6 +244,16 @@ def ledger_ask_errors(name, request, extract, posted, deadline, within, delivere
     return errs
 
 
+def reply_arrival(delivered, reply_bytes):
+    """When the relay first delivered exactly these reply bytes (the "delivered" events whose reply_sha256 is theirs), or
+    None: a different reply delivered earlier does not make this one on time."""
+    if reply_bytes is None:
+        return None
+    got = hashlib.sha256(reply_bytes).hexdigest()
+    times = [step07.utc(e["at"]) for e in delivered if e.get("reply_sha256") == got]
+    return min(times) if times else None
+
+
 def judge_ledger_pair(work, asker, asked, asker_key, asked_key, capsulectl, vwork, nc):
     """(errors, [], proof paths relative to the pair's directory, line) for a live mesh asker's asks of one node.
 
@@ -285,10 +295,11 @@ def judge_ledger_pair(work, asker, asked, asker_key, asked_key, capsulectl, vwor
         except ValueError:
             errs.append(f"{name}: the request carries no deadline in its own bytes")
             continue
-        errs += ledger_ask_errors(name, request, extract, posted, deadline, adv["within"],
-                                  [e for e in mine if e["event"] == "delivered"],
-                                  reply.read_bytes() if reply.is_file() and delivered else None)
-        if reply.is_file() and delivered and min(delivered) <= deadline:
+        carried = [e for e in mine if e["event"] == "delivered"]
+        reply_bytes = reply.read_bytes() if reply.is_file() and delivered else None
+        errs += ledger_ask_errors(name, request, extract, posted, deadline, adv["within"], carried, reply_bytes)
+        arrived = reply_arrival(carried, reply_bytes)
+        if arrived is not None and arrived <= deadline:
             outcome, refused = verifier.check(d / f"{ASK_PREFIX}.request.json", reply, adv["node_key"], adv["checkpoint_key"])
             saw = {"artifact": "verified", "refusal": "refusal"}.get(outcome)
             if saw is None:
