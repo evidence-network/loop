@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GH = '#!/usr/bin/env bash\necho "$*" >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\nexit 0\n'
+GH = '#!/usr/bin/env bash\necho "$*" >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\n[ "$1 $2" = "${STUB_FAIL:-}" ] && { [ "$1 $2" != "issue create" ] || [[ "$*" == *--label* ]]; } && exit 1\nexit 0\n'
 
 
 class ReportFailureTest(unittest.TestCase):
@@ -23,8 +23,8 @@ class ReportFailureTest(unittest.TestCase):
         self.log = self.tmp / "log"
         self.log.write_text("")
 
-    def report(self, open_issue=""):
-        env = {**os.environ, "PATH": f"{self.tmp}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_OPEN": open_issue,
+    def report(self, open_issue="", fail=""):
+        env = {**os.environ, "PATH": f"{self.tmp}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_OPEN": open_issue, "STUB_FAIL": fail,
                "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u", "GITHUB_ENV": str(self.tmp / "env"),
                "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "7"}
         subprocess.run(["bash", "-c", f"source {ROOT}/ops/live-ci/ci.sh && report_failure failed"], env=env, check=True,
@@ -44,6 +44,17 @@ class ReportFailureTest(unittest.TestCase):
         self.assertIn("issue edit 41 --add-label live-failure-pickup", c)
         self.assertTrue(any(x.startswith("issue comment 41") for x in c))
         self.assertFalse(any(x.startswith("issue create") for x in c))
+
+    def test_failed_label_edit_still_records_the_failure(self):
+        c = self.report("41", fail="issue edit")
+        self.assertTrue(any(x.startswith("issue comment 41") for x in c))
+
+    def test_failed_labelled_create_opens_the_issue_without_the_label(self):
+        # the stub fails an "issue create" that has --label, so the retry without it is the second logged call
+        creates = [x for x in self.report(fail="issue create") if x.startswith("issue create")]
+        self.assertEqual(len(creates), 2)
+        self.assertIn("--label", creates[0])
+        self.assertNotIn("--label", creates[1])
 
 
 if __name__ == "__main__":

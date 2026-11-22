@@ -134,6 +134,13 @@ report_failure() { # STATE
   body="The daily live run on $(date -u +%F) did not complete: state \`$1\`. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
   gh label create "$PICKUP_LABEL" --color D93F0B --description "a live-daily failure on our own lab nodes; an agent picks it up and fixes it" 2>/dev/null || true
   n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
-  if [ -n "$n" ]; then gh issue edit "$n" --add-label "$PICKUP_LABEL"; gh issue comment "$n" --body "$body"
-  else gh issue create --title "$title" --label "$PICKUP_LABEL" --body "$body"; fi
+  # The record comes first and the label is best effort: the step runs under bash -e, and a failed label call must not
+  # lose the failure report or stop the issue from being opened.
+  if [ -n "$n" ]; then
+    gh issue comment "$n" --body "$body"
+    gh issue edit "$n" --add-label "$PICKUP_LABEL" || echo "::warning::could not add $PICKUP_LABEL to #$n"
+  else
+    gh issue create --title "$title" --label "$PICKUP_LABEL" --body "$body" ||
+      { echo "::warning::could not open the issue with $PICKUP_LABEL; opening it without"; gh issue create --title "$title" --body "$body"; }
+  fi
 }
