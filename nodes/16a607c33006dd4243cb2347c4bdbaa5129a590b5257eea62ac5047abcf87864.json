@@ -6,7 +6,6 @@
     "policy": "counterparties",
     "stranger_safe": [
       "checkpoint_range",
-      "checkpoints",
       "history_card/2"
     ]
   },
