@@ -568,6 +568,17 @@ class ExpectedQuestionTest(unittest.TestCase):
         self.assertNotEqual(step.expected_question("history_card", None, other), other)
         self.assertEqual(step.expected_question("checkpoints", None, {}), step.daily_report.QUESTIONS["checkpoints"])
 
+    def test_a_node_past_the_answer_cap_is_asked_the_first_checkpoint_as_a_range(self):
+        rep = step.daily_report
+        over_cap = {"disclosure": {"stranger_safe": ["checkpoint_range", "history_card/2"]}}
+        both = {"disclosure": {"stranger_safe": ["checkpoint_range", "checkpoints", "history_card/2"]}}
+        self.assertEqual(rep.ask_for("checkpoints", over_cap), rep.RANGE_ASK)
+        self.assertEqual(rep.ask_for("checkpoints", both), rep.QUESTIONS["checkpoints"])
+        self.assertEqual(rep.ask_for("history_card", over_cap), rep.QUESTIONS["history_card"])
+        self.assertEqual(rep.RANGE_ASK["subject"], {"checkpoint_range": [0, 0]})
+        self.assertEqual(rep.asked_name("checkpoints", rep.RANGE_ASK), "checkpoint_range")
+        self.assertEqual(step.expected_question("checkpoints", None, rep.RANGE_ASK), rep.RANGE_ASK)
+
 
 class ReporterBackendTest(Tmp):
     def setUp(self):
@@ -637,8 +648,8 @@ class ReporterBackendTest(Tmp):
         r = self.run_live(VERIFIED)
         self.assertEqual(r["result"], "NOT_CHECKED", r["detail"])
         self.assertEqual(self.issues(r), sorted([step.SEAL_ISSUE, step.EXCHANGE_ISSUE]))
-        self.assertEqual(sorted(r["pinned"]), ["capsulectl", "capsulectl-book", "capsules", "mesh-llm",
-                                                 "mesh-llm-pr-2620", "reporter"])
+        self.assertEqual(sorted(r["pinned"]), sorted(["capsulectl", "capsulectl-book", "capsules", "mesh-llm",
+                                                      "reporter", *step.finding.mesh_pr_pins()]))
         first = json.loads((self.out / "first-answered.json").read_text())
         self.assertTrue(first["answered_at"])
         self.assertIn(first["ask"], ("lab-1 checkpoints", "lab-1 history_card/1"))

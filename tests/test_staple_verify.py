@@ -142,14 +142,14 @@ class MappingTest(unittest.TestCase):
         self.assertTrue(got["errors"])
         self.assertTrue(any("gave no report" in m for m in got["not_checked"]), got["not_checked"])
 
-    def test_a_history_card_2_staple_is_not_checked_and_capsule_cli_is_not_run(self):
+    def test_a_history_card_2_staple_is_run_through_capsule_cli_and_judged_by_its_properties(self):
+        # capsule-cli rc42 and later evaluate a /2 staple, and report it as they do a /1's (capsules v0.1.20's commitments).
         doc = commitment()
         doc["history_cards"][0]["derivation"] = "history_card/2"
         self.path.write_text(json.dumps(doc))
         got = staple_verify.verify(self.path, doc["key_id"], STUB)
-        self.assertEqual((got["state"], got["errors"], got["legacy"]), ("NOT_CHECKED", [], False))
-        self.assertIn("history_card/2", got["not_checked"][0])
-        self.assertFalse(self.log.exists())
+        self.assertEqual((got["state"], got["errors"]), ("PASS", []), got)
+        self.assertTrue(self.log.exists(), "capsule-cli was not run on the /2 staple")
 
     def test_a_legacy_commitment_is_not_checked_and_marked_legacy(self):
         doc = commitment()

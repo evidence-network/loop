@@ -66,6 +66,18 @@ def pins(path=ROOT / "versions.lock"):
     return out
 
 
+def mesh_pr_pins(path=ROOT / "versions.lock"):
+    """The lab host build's PR pins in versions.lock (mesh-llm-pr-<N>), in number order: the open PRs the build carries
+    on top of its main base. Empty when the build is a plain main commit."""
+    return sorted((n for n in pins(path) if re.fullmatch(r"mesh-llm-pr-\d+", n)), key=lambda n: int(n.rsplit("-", 1)[1]))
+
+
+def pay_pr_pins(path=ROOT / "versions.lock"):
+    """The payment plugin's PR pins in versions.lock (pay-lightning-pr-<id>): the PRs merged on the lab's pay-lightning tree,
+    in the file's order. Empty when the lab runs the plain base."""
+    return [n for n in pins(path) if n.startswith("pay-lightning-pr-")]
+
+
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 

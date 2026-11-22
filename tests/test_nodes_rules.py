@@ -63,7 +63,10 @@ class EntryRulesTest(unittest.TestCase):
 
     def test_stranger_safe_is_the_two_answers_or_those_with_history_card_2(self):
         for safe, ok in ((["checkpoints", "history_card/1"], True), (["history_card/2", "checkpoints", "history_card/1"], True),
-                         (["checkpoints", "history_card/2"], False), (["checkpoints", "history_card/1", "record"], False)):
+                         (["checkpoints", "history_card/2"], True), (["checkpoints", "history_card/1", "record"], False),
+                         (["checkpoint_range", "history_card/2"], True), (["checkpoint_range", "checkpoints", "history_card/2"], True),
+                         (["checkpoint_range", "history_card/1", "history_card/2", "checkpoints"], True),
+                         (["checkpoint_range", "history_card/1"], False)):
             with self.subTest(safe=safe):
                 errs = self.check(disclosure={"policy": "counterparties", "stranger_safe": safe})
                 self.assertEqual(errs == [], ok, errs)
@@ -71,7 +74,7 @@ class EntryRulesTest(unittest.TestCase):
     def test_the_lab_nodes_opt_in_to_pair_edges(self):
         # Steven's ruling on loop#77: his three lab node entries set pair_edges "public".
         entries = [json.loads(p.read_text()) for p in sorted((ROOT / "nodes").glob("*.json"))]
-        entries = [e for e in entries if e["ask_route"] == "mesh"]  # the Goose nodes (nostr) do not opt in
+        entries = [e for e in entries if e["operator"] == "StevenMih"]  # the Goose nodes do not opt in
         self.assertEqual(len(entries), 3)
         self.assertEqual({e["operator"] for e in entries}, {"StevenMih"})
         self.assertEqual([e["disclosure"].get("pair_edges") for e in entries], ["public"] * 3)
@@ -168,6 +171,8 @@ class LeaveTest(unittest.TestCase):
         for n, route in ((1, "mesh"), (2, "nostr")):
             e = tr.entry(tr.node_id(n), tr.key_id(n))
             e["ask_route"] = route
+            if route == "nostr":
+                e["plugin_version"] = "loop_server.py of goose-g1 a255d824eecd64e1269aa22f581b748f"  # a Goose node
             (self.nodes / f"{e['node_id']}.json").write_text(json.dumps(e))
         self.assertEqual(errors(self.nodes), [])
         self.console = tr.FakeConsole({tr.node_id(n): BOTH for n in (1, 2)}, {tr.node_id(n): tr.key_id(n) for n in (1, 2)})
@@ -177,6 +182,22 @@ class LeaveTest(unittest.TestCase):
             self.assertEqual(tr.daily_report.main(argv), 0)
         self.assertEqual({b["peer_id"] for _, b in self.console.asked}, {tr.node_id(1)})
         self.assertEqual(json.loads((out / "2026-10-28" / "RUN.json").read_text())["asked"], [tr.node_id(1)])
+
+    def test_a_capsules_node_listed_nostr_is_asked_over_the_mesh_too(self):
+        """A mesh plugin node advertises ask.nostr for step 13 (entry ask_route nostr) and still answers over the mesh."""
+        out = self.dir / "reports" / "daily"
+        reporter = self.dir / "reporter.json"
+        reporter.write_text(json.dumps(tr.REPORTER))
+        for n, route in ((1, "mesh"), (2, "nostr")):
+            e = tr.entry(tr.node_id(n), tr.key_id(n))
+            e["ask_route"] = route  # tr.entry's plugin_version is a capsules one
+            (self.nodes / f"{e['node_id']}.json").write_text(json.dumps(e))
+        self.console = tr.FakeConsole({tr.node_id(n): BOTH for n in (1, 2)}, {tr.node_id(n): tr.key_id(n) for n in (1, 2)})
+        argv = ["daily_report.py", "run", "--date", "2026-10-28", "--console", self.console.url, "--nodes", str(self.nodes),
+                "--out", str(out), "--reporter", str(reporter), "--timeout", "0.5"]
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(tr.daily_report.main(argv), 0)
+        self.assertEqual({b["peer_id"] for _, b in self.console.asked}, {tr.node_id(1), tr.node_id(2)})
 
     def test_a_removed_node_is_not_asked_from_the_next_run_and_its_past_reports_stay(self):
         out = self.dir / "reports" / "daily"

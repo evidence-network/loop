@@ -812,8 +812,9 @@ class WatchTest(unittest.TestCase):
             self.assertIn(c["profile"], ("evidence-commitment/0", "evidence-commitment/1"))
             cards = watch.history_cards(c)
             self.assertEqual(len(cards), 1, nid_)
-            self.assertEqual(cards[0]["derivation"], "history_card/1")
-            goose = by_id[nid_]["ask_route"] == "nostr"  # a Goose node (loop#349): its own community and stream name
+            goose = by_id[nid_]["operator"] != "StevenMih"  # a Goose reference node; the lab's Mesh nodes (any ask_route) are Steven's
+            # the Goose reference nodes answer history_card/1; a Mesh node of capsules 0.1.20+ answers history_card/2
+            self.assertIn(cards[0]["derivation"], ("history_card/1", "history_card/2"))
             self.assertEqual((cards[0]["community"], cards[0]["history"]), ("goose" if goose else "mesh-llm", True))
             self.assertRegex(cards[0]["stream"], r"^goose/node$" if goose else r"^capsules/[0-9a-f]{16}$")  # the stream name
             self.assertEqual(cards[0]["witnesses"], [])  # the lab books are unwitnessed

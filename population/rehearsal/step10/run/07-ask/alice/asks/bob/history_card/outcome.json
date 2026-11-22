@@ -1,7 +1,7 @@
 {
   "outcome": "artifact",
-  "record_id": "256ceb9b2a9d0ca4bcd527e6b43c496ccc819ed0302c3b923d48cb6fda17282d",
-  "request_digest": "78d1517b7a635c68b6778ee633001bb55bef8e1fa2bafe26f1573afb04f4d1a7",
+  "record_id": "f5f14aa4c22e19b79fd0ca3c2e65bb356c4df58b2a6bcbfe4f581dcb90a31511",
+  "request_digest": "c34384eabf6d0833d6788dcf13ee6ae3f4da78d31d6d5422b2be428716ca615c",
   "spec_version": "capsule-cli-result/v1",
   "voice": "silent",
   "witness": "unwitnessed"

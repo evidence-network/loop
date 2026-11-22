@@ -42,12 +42,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_reports  # noqa: E402
+import daily_report  # noqa: E402
 import report_layout as layout  # noqa: E402
 
 Rehearsal = layout.Rehearsal
 QUESTION_NAMES = {"checkpoints": "checkpoints", "history_card": "history_card/1"}
 SHA = re.compile(r"^[0-9a-f]{40}$")
-MESH_PINS = ("mesh-llm", "mesh-llm-pr-2620")
 
 
 def short(node_id):
@@ -68,12 +68,17 @@ def pins(path):
     return out
 
 
+def mesh_pins(lock_pins):
+    """The lab build's host pins in the lock: mesh-llm and every mesh-llm-pr-<N> (a lab build carries the open PRs)."""
+    return ["mesh-llm", *sorted(n for n in lock_pins if n.startswith("mesh-llm-pr-"))]
+
+
 def listed(nodes_dir):
     """{node_id: entry} for each node in nodes/ the mesh reporter asks (ask_route mesh; a Goose node is asked another way)."""
     out = {}
     for p in sorted(Path(nodes_dir).glob("*.json")):
         e = json.loads(p.read_text(encoding="utf-8"))
-        if e.get("ask_route", "mesh") == "mesh":
+        if daily_report.asked_over_mesh({"ask_route": "mesh", **e}):
             out[e["node_id"]] = e
     return out
 
@@ -159,7 +164,7 @@ def check_build(path, lock_pins):
     if not want or cap.get("source_head") != want:
         problems.append(f"{path}: capsules {cap.get('pin') or cap.get('source_head')} "
                         f"({str(cap.get('source_head'))[:12]}), versions.lock pins {pin}")
-    for name in MESH_PINS:
+    for name in mesh_pins(lock_pins):
         if lock_pins.get(name) and (mesh.get("contains") or {}).get(name) != lock_pins[name]:
             problems.append(f"{path}: mesh-llm {str(mesh.get('source_head'))[:12]} was not checked to contain "
                             f"the {name} pin {lock_pins[name]}")
@@ -174,7 +179,7 @@ def declared(nodes, lock_pins):
         out[node_id] = {
             "host_build": host, "plugin_version": plugin,
             "names_capsules_pin": bool(lock_pins.get("capsules")) and lock_pins["capsules"] in plugin,
-            "names_mesh_llm_pins": all(lock_pins[n] in host for n in MESH_PINS if lock_pins.get(n)),
+            "names_mesh_llm_pins": all(lock_pins[n] in host for n in mesh_pins(lock_pins) if lock_pins.get(n)),
         }
     return out
 

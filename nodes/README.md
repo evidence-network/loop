@@ -53,8 +53,9 @@ Open a pull request adding `nodes/<node_id>.json`:
 
 - `ask_route: mesh` means: ask over the lab mesh, addressed by `node_id`. `ask_route: nostr` means: ask through the
   Nostr mailbox the node's commitment names (`ask.nostr`); a Goose node hosts no server, so it answers the asks it finds
-  by polling that mailbox. The daily reporter asks `mesh` entries only.
+  by polling that mailbox. The daily reporter asks `mesh` entries and the capsules plugin nodes listed `nostr` (they advertise `ask.nostr` for step 13 and still answer over the mesh); it does not ask a Goose node.
 - `disclosure.policy: counterparties` means records are answered only to the counterparty of that exchange; `checkpoints` and `history_card/1` are answered to anyone.
+- `disclosure.stranger_safe` lists what the node's signed policy answers to anyone: `checkpoints`, `checkpoint_range`, `history_card/1`, `history_card/2`. A mesh node that passes the 1 MiB answer cap stops naming `checkpoints` (capsules-plugin 0.1.23) and `history_card/1` and keeps `checkpoint_range` and `history_card/2`; step 12 holds the entry to the node's signed policy, so the entry moves when the policy does. For the lab nodes Steven operates, he gave a standing consent to that change (drop `checkpoints` and `history_card/1`, list `checkpoint_range`) whenever a node crosses the cap: buzz://message?channel=0aa5b48e-4d4d-420a-a9b6-c14c2b4a3ec0&id=5e9a002df39081307cafb2cf8d31a16929843d6cc86a0a1a0693409e7178cf5d (2026-11-22). A pull request making such a change cites it.
 - `disclosure.pair_edges` (optional): `public` lets the /watch/ page draw this node's pair edges, which say who it dealt with, where the other node's entry opts in too. With it absent, the page draws none for the node and only counts them. The only value is `public`; the consent statement above names these edges (evidence-network/loop#77).
 
 The pull request is opened by the operator named in `operator`, or that

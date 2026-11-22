@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Verify the history_card/1 a commitment staples with the pinned capsule-cli (`capsulectl verify --history`).
 
-A commitment that staples any history_card/2 card is NOT_CHECKED, without a capsule-cli run (a mixed /1 and /2 commitment
-included): no pinned capsule-cli evaluates /2, and it judges the whole commitment.
+A commitment that staples a history_card/2 card is run through the same check: capsule-cli v0.1.0-rc42 and later evaluate it
+(ER -03 section 8.1.2: the card's window, positions, checkpoint signatures, consistency proofs and anchor), and rc45, the pin, reports
+it under the same per-property report. A capsule-cli that cannot (rc38 refuses "staples no history_card/1") gives no report, which is
+NOT_CHECKED with its own words.
 
 Usage: staple_verify.py COMMITMENT.json NODE_KEY_ID_HEX
 
@@ -107,12 +109,6 @@ def verify(commitment_path, node_key_id, binary_path=None):
         return unchecked(f"the pinned capsule-cli {pinned_version()} is not installed ({SETUP})")
     if not entries:
         return unchecked("the commitment staples no history_card/1")
-    # No pinned capsule-cli evaluates a history_card/2 staple (rc38 refuses "staples no history_card/1"; rc42 names no /2),
-    # and it judges the whole commitment, so a /2 card in it is not checked here rather than failed or skipped.
-    twos = [str(e.get("stream")) for e in entries if e.get("derivation") == "history_card/2"]
-    if twos:
-        return unchecked(f"the commitment staples history_card/2 for {', '.join(twos)}: the pinned capsule-cli {pinned_version()} "
-                         "verifies history_card/1 staples only, so the signature, digest and anchors of a /2 card are not checked")
     # One run per distinct checkpoint key, each card judged by the run that holds only its own entry's key: capsulectl
     # accepts a card signed by any key it is given, so a union would let one entry's key vouch for another's card.
     by_key = {}

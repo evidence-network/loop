@@ -7,6 +7,8 @@ a misbehaving asker or responder during the run, except "another request", which
 the good run. Step 08's re-derivation of every row is tested here as well, and the CI check scripts/check_cross_run.py.
 """
 import copy
+import datetime as dt
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -73,6 +75,83 @@ class Tmp(unittest.TestCase):
     def row(d, asker, responder):
         (r,) = [r for r in d["rows"] if (r["asker"], r["responder"]) == (asker, responder)]
         return r
+
+
+class LedgerPairTest(Tmp):
+    """A live Mesh asker's pair (loop#442, #443): its proof is the asker's own ledger, not a capsulectl bundle."""
+
+    def pair(self, files=("ask.request.json", "ask.ledger.json")):
+        d = self.root / "lab-1" / "asks" / "goose-1" / "history_card"
+        d.mkdir(parents=True)
+        for f in files:
+            (d / f).write_text("{}")
+        (d.parent / "carrier.jsonl").write_text("")
+        return d.parent
+
+    def test_a_pair_with_an_ask_ledger_extract_is_a_ledger_pair_and_a_bundle_pair_is_not(self):
+        self.assertTrue(step.is_ledger_pair(self.pair()))
+        shutil.rmtree(self.root / "lab-1")
+        self.assertFalse(step.is_ledger_pair(self.pair(files=("request.json", "outcome.bundle.json"))))
+
+    def test_a_ledger_pair_whose_asked_node_advertises_nothing_verifiable_is_a_fail_not_a_pass(self):
+        self.pair()
+        (self.root / "goose-1" / "advertised").mkdir(parents=True)
+        nc = []
+        errs, answered, proof, line = step.judge_ledger_pair(self.root, "lab-1", "goose-1", "a" * 64, "b" * 64,
+                                                             Path("/nonexistent"), self.root / "v", nc)
+        self.assertTrue(errs, "an unreadable advertisement must be an error")
+        self.assertEqual(answered, [])
+        self.assertEqual(proof, ["carrier.jsonl"])
+
+
+class LedgerAskChecksTest(unittest.TestCase):
+    """What a live mesh asker's ask owes that step 07's bundle path checks too: seal before send, deadline from the seal,
+    and the reply bytes the relay carried and the response record cites."""
+    SEALED, SENT, WITHIN = "2026-11-21T11:59:31Z", "2026-11-21T11:59:32Z", dt.timedelta(seconds=60)
+    REPLY = b'{"reply":"bytes"}'
+
+    def extract(self, sealed=None, digest=None):
+        d = hashlib.sha256(self.REPLY).hexdigest() if digest is None else digest
+        return {"requests": [{"header": {"committed_at": sealed or self.SEALED}}],
+                "outcomes": [{"header": {"record_type": "evidence_response", "statement": {"response_digest": d}}}]}
+
+    def check(self, extract=None, sent=None, deadline="2026-11-21T12:00:31Z", reply=REPLY, carried=None):
+        carried = [{"reply_sha256": hashlib.sha256(self.REPLY).hexdigest()}] if carried is None else carried
+        return step.ledger_ask_errors("history_card", {}, extract or self.extract(), step.step07.utc(sent or self.SENT),
+                                      step.step07.utc(deadline), self.WITHIN, carried, reply)
+
+    def test_a_request_sealed_before_it_was_sent_with_its_deadline_and_reply_bound_passes(self):
+        self.assertEqual(self.check(), [])
+
+    def test_a_request_sealed_after_it_was_sent_fails(self):
+        self.assertTrue(any("not before it was sent" in e for e in self.check(extract=self.extract(sealed=self.SENT))))
+
+    def test_a_deadline_that_is_not_the_commitments_window_after_the_seal_fails(self):
+        errs = self.check(deadline="2026-11-21T12:05:31Z")
+        self.assertTrue(any("answers_within" in e for e in errs), errs)
+
+    def test_a_send_after_the_requests_own_deadline_fails(self):
+        errs = self.check(sent="2026-11-21T12:01:00Z")
+        self.assertTrue(any("after its own deadline" in e for e in errs), errs)
+
+    def test_a_reply_the_relay_did_not_carry_or_the_response_record_does_not_cite_fails(self):
+        self.assertTrue(any("not the bytes the relay carried" in e for e in self.check(reply=b"other")))
+        self.assertTrue(any("not the bytes the relay carried" in e for e in self.check(carried=[])))
+        errs = self.check(extract=self.extract(digest="0" * 64))
+        self.assertTrue(any("cites other reply bytes" in e for e in errs), errs)
+
+    def test_a_reply_is_on_time_by_the_delivery_of_its_own_bytes_not_of_another_reply(self):
+        good = hashlib.sha256(self.REPLY).hexdigest()
+        early_other = {"event": "delivered", "at": "2026-11-21T12:00:00Z", "reply_sha256": "0" * 64}
+        late_own = {"event": "delivered", "at": "2026-11-21T12:00:40Z", "reply_sha256": good}
+        arrived = step.reply_arrival([early_other, late_own], self.REPLY)
+        self.assertEqual(arrived, step.step07.utc("2026-11-21T12:00:40Z"))
+        self.assertGreater(arrived, step.step07.utc("2026-11-21T12:00:31Z"))  # after the deadline: not on time
+        self.assertIsNone(step.reply_arrival([early_other], self.REPLY))
+        self.assertIsNone(step.reply_arrival([late_own], None))
+
+    def test_an_ask_with_no_reply_has_nothing_to_bind(self):
+        self.assertEqual(self.check(reply=None, carried=[]), [])
 
 
 @needs_capsulectl
