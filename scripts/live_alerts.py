@@ -61,8 +61,13 @@ def named_node_ids(why, population=None):
         listed = json.loads((population or POPULATION).read_text(encoding="utf-8"))["nodes"]
     except (OSError, ValueError, KeyError, TypeError):
         return set()
-    return {n["node_id"] for n in listed if isinstance(n, dict) and isinstance(n.get("name"), str)
-            and isinstance(n.get("node_id"), str) and re.search(rf"(?<![\w-]){re.escape(n['name'])}:", why)}
+    found = set()
+    for n in listed:
+        if isinstance(n, dict) and isinstance(n.get("name"), str) and isinstance(n.get("node_id"), str):
+            named = re.compile(rf"(?<![\w-]){re.escape(n['name'])}:")  # compiled first: tests/test_trailing_newline.py audits re.search
+            if named.search(why):
+                found.add(n["node_id"])
+    return found
 
 
 def outside_operators(why, nodes=None):
