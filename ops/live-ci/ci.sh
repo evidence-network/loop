@@ -12,6 +12,17 @@ export CLOUDSDK_CORE_PROJECT=$LIVE_PROJECT CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 setstate() { echo "LIVE_STATE=$1" >> "$GITHUB_ENV"; LIVE_STATE=$1; }
 
+# What a failure issue says besides the run link (loop#467): where the run failed and with which exit code. LIVE_NOTES lives
+# for the job only. A host-side status or stage answer (entry.sh) is public by design, states and exit codes only, so its last
+# lines may be quoted; any other failed call (gcloud, ssh) is reduced to the fixed keywords, as unreachable_reason says.
+LIVE_NOTES=${RUNNER_TEMP:-${TMPDIR:-/tmp}}/live-fail-notes
+note_host() { # WHERE EXIT-CODE ENTRY-OUTPUT
+  { echo "$1: exit $2"; tail -n 5 <<< "$3" | cut -c1-300; } >> "$LIVE_NOTES"
+}
+note_call() { # WHERE EXIT-CODE FAILED-CALL-OUTPUT
+  echo "$1: exit $2; $(unreachable_reason "$3")" >> "$LIVE_NOTES"
+}
+
 vm() { # SUBCOMMAND: start | status | stage; `cd /` first, or the lab user's find reports the CI account's home path in the public log
   timeout 150 gcloud compute ssh "$LIVE_VM" --zone "$LIVE_ZONE" --tunnel-through-iap --quiet --verbosity=error --strict-host-key-checking=no --ssh-flag=-q \
     --command "cd / && sudo -n -u $LIVE_LAB_USER /usr/local/sbin/loop-live-ci-entry $1" < /dev/null
@@ -53,30 +64,31 @@ start_run() {
   case $rc in
     0) setstate waiting ;;
     10 | 11) setstate skipped; echo "::notice::live run not started: $(echo "$out" | grep -a -E '^(skipped|refused):' | head -1)" ;;
-    *) setstate failed; echo "::error::the run did not start (exit $rc)"; return 1 ;;
+    *) setstate failed; note_call "start" "$rc" "$out"; echo "::error::the run did not start (exit $rc)"; return 1 ;;
   esac
 }
 
 # Poll for up to MINUTES; one transient ssh failure (255) is tolerated five times in a row.
 wait_run() {
-  local end=$((SECONDS + $1 * 60)) bad=0 out rc
+  local end=$((SECONDS + $1 * 60)) bad=0 out rc live_rc
   while [ "$SECONDS" -lt "$end" ]; do
     out=$(vm status 2>&1) && rc=0 || rc=$?
     case $rc in
       20) bad=0 ;;
       0) echo "$out"
          # live_daily.sh's own exit code: 0, 1 and 8 are packed runs; 3 is a busy lab (a skip); the rest ran and packed nothing.
-         case $(sed -n 's/^rc=//p' <<< "$out" | tail -1) in
+         live_rc=$(sed -n 's/^rc=//p' <<< "$out" | tail -1)
+         case $live_rc in
            0 | 1 | 8) setstate done ;;
            3) setstate skipped; echo "::notice::the lab was busy" ;;
-           *) setstate failed; echo "::error::the run ended without a pack"; return 1 ;;
+           *) setstate failed; note_host "live_daily.sh ended without a pack" "$live_rc" "$out"; echo "::error::the run ended without a pack"; return 1 ;;
          esac
          return 0 ;;
-      21) echo "$out"; setstate failed; return 1 ;;
-      22) echo "$out"; setstate timeout; return 1 ;;
+      21) echo "$out"; setstate failed; note_host "the run died without a result" 21 "$out"; return 1 ;;
+      22) echo "$out"; setstate timeout; note_host "the run passed 3 hours and was killed" 22 "$out"; return 1 ;;
       *) bad=$((bad + 1)); echo "::warning::status unreachable (rc=$rc, try $bad): $(unreachable_reason "$out")"
          [ "$bad" -eq 1 ] && probe_access
-         [ "$bad" -ge 5 ] && { setstate failed; echo "::error::status unreachable"; return 1; } ;;
+         [ "$bad" -ge 5 ] && { setstate failed; note_call "status unreachable five times" "$rc" "$out"; echo "::error::status unreachable"; return 1; } ;;
     esac
     sleep 120
   done
@@ -102,7 +114,7 @@ harvest() {
   export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
   out=$(vm stage 2>&1) && rc=0 || rc=$?
   echo "$out"
-  [ "$rc" = 0 ] || { setstate failed; echo "::error::stage failed (exit $rc)"; return 1; }
+  [ "$rc" = 0 ] || { setstate failed; if [ "$rc" = 23 ]; then note_host "stage" 23 "$out"; else note_call "stage" "$rc" "$out"; fi; echo "::error::stage failed (exit $rc)"; return 1; }
   name=$(sed -n 's/^name=\([^ ]*\) .*/\1/p' <<< "$out")
   [[ $name =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-live-[1-9][0-9]*$ ]] || { echo "::error::bad run name"; return 1; }
   git config user.name "github-actions[bot]"
@@ -121,7 +133,7 @@ harvest() {
   # exit 0: PR open and the baseline moved; 1: PR open, baseline unmoved (a regression or a refused payment)
   if [ "$rc" = 0 ] || [ "$rc" = 1 ]; then dispatch_checks "live-harvest/$name" || { setstate harvest-failed; return 1; }; fi
   [ "$rc" = 1 ] && echo "::warning::findings PR opened; the baseline did not move (regression or refused payment)"
-  [ "$rc" -le 1 ] || { setstate harvest-failed; return 1; }
+  [ "$rc" -le 1 ] || { setstate harvest-failed; echo "harvest: exit $rc (live_harvest.py; its output is in the run log)" >> "$LIVE_NOTES"; return 1; }
 }
 
 # The label the coordinator's watchdog scans to route a failure to a fixing lane (loop#467). It goes only on this issue:
@@ -129,18 +141,44 @@ harvest() {
 # an outside operator's node is a loop-step-NN issue (live-alerts.yml), which never carries it.
 PICKUP_LABEL="live-failure-pickup"
 
+FAILURE_TITLE="loop-live-failed"
+
+open_failure_issue() { gh issue list --state open --search "\"$FAILURE_TITLE\" in:title" --json number --jq '.[0].number // empty'; }
+
+# The workflow step that failed, from the run's own job record; best effort, empty when the API says nothing.
+failed_step() {
+  gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" \
+    --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | join(", ")' 2> /dev/null || true
+}
+
 report_failure() { # STATE
-  local title="loop-live-failed" n body
-  body="The daily live run on $(date -u +%F) did not complete: state \`$1\`. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+  local n body step notes=""
+  step=$(failed_step)
+  [ -s "$LIVE_NOTES" ] && notes=$(head -c 1500 "$LIVE_NOTES")
+  body="The daily live run on $(date -u +%F) did not complete: state \`$1\`. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+Failed workflow step: ${step:-not recorded (see the run)}.${notes:+
+Exit codes and last lines the run recorded:
+\`\`\`
+$notes
+\`\`\`}"
   gh label create "$PICKUP_LABEL" --color D93F0B --description "a live-daily failure on our own lab nodes; an agent picks it up and fixes it" 2>/dev/null || true
-  n=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+  n=$(open_failure_issue)
   # The record comes first and the label is best effort: the step runs under bash -e, and a failed label call must not
   # lose the failure report or stop the issue from being opened.
   if [ -n "$n" ]; then
     gh issue comment "$n" --body "$body"
     gh issue edit "$n" --add-label "$PICKUP_LABEL" || echo "::warning::could not add $PICKUP_LABEL to #$n"
   else
-    gh issue create --title "$title" --label "$PICKUP_LABEL" --body "$body" ||
-      { echo "::warning::could not open the issue with $PICKUP_LABEL; opening it without"; gh issue create --title "$title" --body "$body"; }
+    gh issue create --title "$FAILURE_TITLE" --label "$PICKUP_LABEL" --body "$body" ||
+      { echo "::warning::could not open the issue with $PICKUP_LABEL; opening it without"; gh issue create --title "$FAILURE_TITLE" --body "$body"; }
   fi
+}
+
+# A green run (the findings pull request is open) closes the open failure issue and links itself there (loop#467).
+close_failure() {
+  local n
+  n=$(open_failure_issue)
+  [ -n "$n" ] || return 0
+  gh issue comment "$n" --body "The daily live run on $(date -u +%F) completed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Closing; the next failure opens a new issue."
+  gh issue close "$n"
 }

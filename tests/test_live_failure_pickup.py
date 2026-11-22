@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GH = '#!/usr/bin/env bash\necho "$*" >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\n[ "$1 $2" = "${STUB_FAIL:-}" ] && { [ "$1 $2" != "issue create" ] || [[ "$*" == *--label* ]]; } && exit 1\nexit 0\n'
+GH = '#!/usr/bin/env bash\necho "$*" | tr "\\n" " " >> "$STUB_LOG"; echo >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\n[ "$1" = api ] && echo "${STUB_STEP:-}"\n[ "$1 $2" = "${STUB_FAIL:-}" ] && { [ "$1 $2" != "issue create" ] || [[ "$*" == *--label* ]]; } && exit 1\nexit 0\n'
 
 
 class ReportFailureTest(unittest.TestCase):
@@ -23,13 +23,14 @@ class ReportFailureTest(unittest.TestCase):
         self.log = self.tmp / "log"
         self.log.write_text("")
 
-    def report(self, open_issue="", fail=""):
-        env = {**os.environ, "PATH": f"{self.tmp}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_OPEN": open_issue, "STUB_FAIL": fail,
+    def report(self, open_issue="", fail="", fn="report_failure failed", step="", notes=""):
+        env = {**os.environ, "PATH": f"{self.tmp}:{os.environ['PATH']}", "STUB_LOG": str(self.log), "STUB_OPEN": open_issue, "STUB_FAIL": fail, "STUB_STEP": step, "RUNNER_TEMP": str(self.tmp),
                "LIVE_VM": "vm", "LIVE_PROJECT": "p", "LIVE_ZONE": "z", "LIVE_LAB_USER": "u", "GITHUB_ENV": str(self.tmp / "env"),
                "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "o/r", "GITHUB_RUN_ID": "7"}
-        subprocess.run(["bash", "-c", f"source {ROOT}/ops/live-ci/ci.sh && report_failure failed"], env=env, check=True,
+        pre = notes and f"{notes}; "
+        subprocess.run(["bash", "-c", f"source {ROOT}/ops/live-ci/ci.sh && {pre}{fn}"], env=env, check=True,
                        stdin=subprocess.DEVNULL, capture_output=True)
-        return self.log.read_text().splitlines()
+        return [x.rstrip() for x in self.log.read_text().splitlines()]
 
     def test_new_failure_issue_carries_the_label_and_the_label_is_ensured(self):
         c = self.report()
@@ -55,6 +56,29 @@ class ReportFailureTest(unittest.TestCase):
         self.assertEqual(len(creates), 2)
         self.assertIn("--label", creates[0])
         self.assertNotIn("--label", creates[1])
+
+    def test_body_names_the_failed_step_exit_code_and_last_lines(self):
+        # the host's status answer is public by design: its last lines are quoted
+        c = self.report(step="Wait (2)", notes='note_host "live_daily.sh ended without a pack" 4 "$(printf "a\nb\nsettle refused")"')
+        create = [x for x in c if x.startswith("issue create")][0]
+        self.assertIn("Failed workflow step: Wait (2).", create)
+        self.assertIn("live_daily.sh ended without a pack: exit 4", create)
+        self.assertIn("settle refused", create)
+
+    def test_a_failed_gcloud_call_reports_keywords_not_its_text(self):
+        c = self.report(notes='note_call "start" 255 "ERROR: secret-host.example PERMISSION_DENIED for alice"')
+        create = [x for x in c if x.startswith("issue create")][0]
+        self.assertIn("start: exit 255; PERMISSION_DENIED", create)
+        self.assertNotIn("secret-host", create)
+
+    def test_green_run_closes_the_open_failure_issue_with_its_run_link(self):
+        c = self.report("41", fn="close_failure")
+        self.assertTrue(any(x.startswith("issue comment 41") and "actions/runs/7" in x for x in c))
+        self.assertIn("issue close 41", c)
+
+    def test_green_run_with_no_open_failure_issue_does_nothing(self):
+        c = self.report(fn="close_failure")
+        self.assertEqual([x for x in c if not x.startswith("issue list")], [])
 
 
 if __name__ == "__main__":

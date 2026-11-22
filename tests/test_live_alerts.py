@@ -18,15 +18,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import finding  # noqa: E402
 import live_alerts  # noqa: E402
 
-GH = '#!/usr/bin/env bash\necho "$*" >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\nexit 0\n'
+GH = '#!/usr/bin/env bash\necho "$*" | tr "\\n" " " >> "$STUB_LOG"; echo >> "$STUB_LOG"\n[ "$1 $2" = "issue list" ] && echo "${STUB_OPEN:-}"\nexit 0\n'
 
 
-def write_step(run, step, result):
+def write_step(run, step, result, detail="stub"):
     d = Path(run) / step
     d.mkdir(parents=True)
     (d / "proof.txt").write_text("proof\n")
     nc = [{"what": "x", "why": "budget", "issue": "evidence-network/loop#193"}] if result == "NOT_CHECKED" else []
-    finding.write(d, result=result, population="live", asserts=f"stub {step}", pinned=[], proof=["proof.txt"], detail="stub",
+    finding.write(d, result=result, population="live", asserts=f"stub {step}", pinned=[], proof=["proof.txt"], detail=detail,
                   not_checked=nc, started="2026-11-01T00:00:00Z")
 
 
@@ -61,6 +61,31 @@ class AlertsTest(unittest.TestCase):
         self.assertTrue(any("--label loop-step-06" in x and "loop step 06 (settle) fails" in x for x in c))
         self.assertTrue(any("repository: unknown" in x for x in c))
         self.assertFalse(any("live-failure-pickup" in x for x in c))  # an outside node's step failure is never picked up (loop#467)
+
+    def test_issue_body_carries_the_error_lines(self):
+        write_step(self.findings / "2026-11-02-live-1", "06-settle", "FAIL", detail="settle refused: invoice expired (exit 3)")
+        live_alerts.alert_run(self.findings / "2026-11-02-live-1", "https://run")
+        create = [x for x in self.calls() if x.startswith("issue create")][0]
+        self.assertIn("settle refused: invoice expired (exit 3)", create)
+
+    def entry(self, d, node, key, operator):
+        d.mkdir(exist_ok=True)
+        (d / f"{node}.json").write_text(json.dumps({"node_id": node, "key_id": key, "operator": operator}))
+
+    def test_outside_operator_is_named_and_own_operator_is_not(self):
+        nodes = self.tmp / "nodes"
+        outside, own = "a" * 64, "b" * 64
+        self.entry(nodes, outside, "c" * 64, "someoneelse")
+        self.entry(nodes, own, "d" * 64, "StevenMih")
+        old, live_alerts.NODES_DIR = live_alerts.NODES_DIR, nodes
+        self.addCleanup(setattr, live_alerts, "NODES_DIR", old)
+        write_step(self.findings / "r-live-1", "12-join", "FAIL", detail=f"probe of {outside} failed; {own} ok")
+        live_alerts.alert_run(self.findings / "r-live-1", "")
+        create = [x for x in self.calls() if x.startswith("issue create")][0]
+        self.assertIn("outside operator someoneelse", create)
+        self.assertNotIn("StevenMih", create)
+        self.assertFalse(any("live-failure-pickup" in x for x in self.calls()))
+        self.assertEqual(live_alerts.outside_operators("no node here", nodes), [])
 
     def test_open_issue_gets_a_comment_not_a_second_issue(self):
         os.environ["STUB_OPEN"] = "41"

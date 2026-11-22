@@ -15,7 +15,8 @@ A step is FAIL when its finding.json says so and MALFORMED when it is missing, n
 (check_record). NOT_CHECKED, PASS and a budget refusal open nothing: they are not a regression. An issue is labelled
 loop-step-NN, the label loop.yml's nightly rehearsal job uses too, and its title and body follow that job's, so a step
 that fails in both runs shares one open issue. An open issue gets a comment instead of a second issue. Issues are only
-opened or commented on, never closed. GH names the gh binary (a stand-in in tests); it needs GH_TOKEN and GH_REPO.
+opened or commented on, never closed. A failure that names a listed node of an outside operator (nodes/) says so and names
+them; no loop-step issue carries the `live-failure-pickup` label (loop#467). GH names the gh binary (a stand-in in tests); it needs GH_TOKEN and GH_REPO.
 .github/workflows/live-alerts.yml runs it.
 """
 import argparse
@@ -43,6 +44,30 @@ OWNER = {
     "03": "Mesh-LLM/capsules-plugin",
     "12": "Mesh-LLM/capsules-plugin",
 }
+
+
+# The operators of our own lab nodes (nodes/README.md: `operator` is a GitHub handle). A listed node of anyone else is an
+# outside operator's: a step that fails on it is that operator's to fix, so its issue names them (loop#467). The pickup label
+# `live-failure-pickup` is never put on a loop-step issue; ops/live-ci/ci.sh puts it on the lab's own run failure only.
+OWN_OPERATORS = {"stevenmih", "ethanyzhang"}
+NODES_DIR = ROOT / "nodes"
+HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
+
+
+def outside_operators(why, nodes=None):
+    """Sorted handles of outside operators whose listed node (node_id or key_id) a failure text names."""
+    nodes = nodes or NODES_DIR
+    ids = set(HEX64.findall(why))
+    found = set()
+    for f in nodes.glob("*.json") if ids else []:
+        try:
+            e = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if isinstance(e, dict) and isinstance(e.get("operator"), str) and ids & {e.get("node_id"), e.get("key_id")} \
+                and e["operator"].lower() not in OWN_OPERATORS:
+            found.add(e["operator"])
+    return sorted(found)
 
 
 def gh(*args):
@@ -107,7 +132,9 @@ def alert_run(run, run_url):
                     f"loop step {nn} ({name}) fails",
                     f"Step {nn} ({name}) is {result} on the live {'Goose ' if 'goose' in run.parts else ''}run {run.name}: {run_url}\n"
                     f"The finding is {where.as_posix()}/{nn}-{name}/finding.json. {why}\n"
-                    f"Owning component repository: {owner}.")
+                    f"Owning component repository: {owner}."
+                    + "".join(f"\nThis names a node run by outside operator {o}; we do not fix someone else's node from our lab, "
+                              f"so contact {o}." for o in outside_operators(why)))
     print(f"live_alerts: {run.name}: {len(alerts)} FAIL or MALFORMED step(s)")
     return len(alerts)
 
