@@ -208,6 +208,14 @@ class EntrySh(unittest.TestCase):
         self.assertIn("rc=5", out)
         self.assertNotIn("secret", out)
         self.assertNotIn(str(self.home), out)
+        for line, reason in (("lab.sh tools exited 1: a step's pinned tool did not install in /x", "pinned tool did not install"),
+                             ("lab.sh running failed: a node is down (see its stderr)", "lab.sh running failed"),
+                             ("lab.sh check exited 2", "lab.sh check itself failed"),
+                             ("LOOP_LIVE_ENV /x/env is not readable", "env file could not be read")):
+            (state / "log").write_text(f"live_daily: {line}\n")
+            out = self.call("status")[1]
+            self.assertIn(reason, out)
+            self.assertNotIn("/x", out)
         (state / "log").write_text("live_daily: something unknown with /private/path\n")
         code, out = self.call("status")
         self.assertNotIn("reason:", out)
