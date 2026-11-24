@@ -1,0 +1,75 @@
+{
+  "asserts": "each paid exchange's settlement is referenced by the payment_hash its payer sealed with the exchange id, no hash under two exchanges, and is final by preimage (sha256 of the payer's preimage equals the payment_hash); one value band per side per exchange, from the capsules adapter's band(); each payment carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's settlements with a counterparty equal that counterparty's checkpoint-signed settlement bundle (counterparty_count)",
+  "detail": "node stevenmih-1: window from 2026-11-24T01:16:00Z: 149 settlement records before it and 0 without a timestamp left out; node stevenmih-1: 2 settlement legs and 2 wallet-reported settlement observations recorded, 2 with a preimage that hashes to its payment_hash; node stevenmih-2: window from 2026-11-24T01:16:00Z: 186 settlement records before it and 0 without a timestamp left out; node stevenmih-2: 3 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; node stevenmih-3: window from 2026-11-24T01:16:00Z: 120 settlement records before it and 0 without a timestamp left out; node stevenmih-3: 3 settlement legs and 1 wallet-reported settlement observations recorded, 1 with a preimage that hashes to its payment_hash; band: stevenmih-1 provider BTC decade -8, stevenmih-1 provider BTC decade -8, stevenmih-2 payer BTC decade -8, stevenmih-3 payer BTC decade -8; counterparty_count:stevenmih-1:stevenmih-2: stevenmih-1's 88 settlements against stevenmih-2's signed bundle (sha256 a669e94604c2): INCONCLUSIVE over the whole books only for 3 settlements and 11 unpaired payments before the window from 2026-11-24T01:16:00Z that no peer owns (out of the window, set aside), 40 paired, 0 unpaired in the window; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-1:stevenmih-3: stevenmih-1's 88 settlements against stevenmih-3's signed bundle (sha256 253979d5f062): INCONCLUSIVE over the whole books only for 3 settlements and 9 unpaired payments before the window from 2026-11-24T01:16:00Z that no peer owns (out of the window, set aside), 25 paired, 0 unpaired in the window; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-2:stevenmih-1: stevenmih-2's 51 settlements against stevenmih-1's signed bundle (sha256 4863dd102f06): INCONCLUSIVE over the whole books only for 3 settlements and 11 unpaired payments before the window from 2026-11-24T01:16:00Z that no peer owns (out of the window, set aside; 3 of the unpaired payments are recorded only in stevenmih-1's book, which dates them before the window), 40 paired, 0 unpaired in the window; the 1 payments the books pair between them in the window are exactly the bundle's; counterparty_count:stevenmih-3:stevenmih-1: stevenmih-3's 32 settlements against stevenmih-1's signed bundle (sha256 a2dbdd26e0d1): INCONCLUSIVE over the whole books only for 0 settlements and 9 unpaired payments before the window from 2026-11-24T01:16:00Z that no peer owns (out of the window, set aside; 2 of the unpaired payments are recorded only in stevenmih-1's book, which dates them before the window), 25 paired, 0 unpaired in the window; the 1 payments the books pair between them in the window are exactly the bundle's; exchange_match: 2 payments paired: the payer's amount equals the payee's credit plus fee; finality: 2 of 2 payment hashes final by the payer's preimage; rail_fee: each of 2 payments carries a wallet provider's fee (fee_msat > 0); reference: 2 payments, each referenced by one payment_hash under one exchange in each book. Spend: none; this step reads settlements and never pays, with or without LOOP_LIVE_SPEND (the live run's spend is recorded by the run that pays). Outside this step's assertion: a public ledger's count of each node's settlements (Lightning has none; the counterparty's signed book stands in): evidence-network/loop#247.",
+  "finished": "2026-11-24T01:23:41Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "capsules": {
+      "ref": "v0.1.23",
+      "repository": "Mesh-LLM/capsules-plugin"
+    },
+    "lexe-wallet": {
+      "ref": "9f830c181b4042a81069df50752cf19d035a5047",
+      "repository": "Mesh-LLM/lexe-wallet-plugin"
+    },
+    "mesh-llm": {
+      "ref": "e1b0128bf022a3fa0374a016fc05b3bbebafa27e",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-3008": {
+      "ref": "98016e56019064e5d0328d9abb750c761b722ea3",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-3040": {
+      "ref": "c6e754563bcf2330e0eebc7b9b499738b35cada2",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "mesh-llm-pr-3066": {
+      "ref": "1681652152192559edace4351dfd91c4edfbbae8",
+      "repository": "Mesh-LLM/mesh-llm"
+    },
+    "pay-lightning": {
+      "ref": "14a5f977cc713f2ab3f1876b9286477524c71a33",
+      "repository": "Mesh-LLM/ln-payments-plugin"
+    },
+    "pay-lightning-pr-11": {
+      "ref": "8ff201b5ece2dd65a2c3cc579adc208ea4ace74d",
+      "repository": "Mesh-LLM/ln-payments-plugin"
+    },
+    "pay-lightning-pr-18-19": {
+      "ref": "3ab65a2ae730aa4392b72014bd485e9184d2f466",
+      "repository": "ethanyzhang/ln-payments-plugin"
+    },
+    "pay-lightning-pr-23": {
+      "ref": "4ade61b3ed007788e9b7c48b20a6810ee1903150",
+      "repository": "ethanyzhang/ln-payments-plugin"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "stevenmih-1/recorded.json",
+      "sha256": "d14eae157c3ca63950c4346357132f4a791e9a73fb6272c327d9932500ecb757"
+    },
+    {
+      "path": "stevenmih-2/recorded.json",
+      "sha256": "c9b92d93a81110ef3ef396d29a4b3976cc1fcd912e9076aeade914ce41ae9a11"
+    },
+    {
+      "path": "stevenmih-3/recorded.json",
+      "sha256": "9f0eadf6fd3f6f3178e4526fad003e4848726ee27a104251863134e9742085d7"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "31556238bcb2d68796969829683bba6d7e4af7b134ecee0e31b3951081e2aa82"
+    },
+    {
+      "path": "counterparty.json",
+      "sha256": "cb12a3d7a4eebdcff67a9239a76bd9a12ca3b14f22d23281471ce81d8ef0333d"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-24T01:23:38Z",
+  "step": "06"
+}

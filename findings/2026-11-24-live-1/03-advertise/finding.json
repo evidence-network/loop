@@ -1,0 +1,63 @@
+{
+  "asserts": "the node's commitment is published to a carrier (a signed file in nodes/commitments/ of a git repository), fetched back from that repository's HEAD, and verifies: every required field, no count, an Ed25519 signature under its SPKI key over its JCS form, a policy digest matching the signed policy's bytes, and, where the pinned capsule-cli is installed, no stapled history_card/1 fails its checks (digest, envelope and checkpoint signatures, checkpoint key, responder) and no published standard_history/1 staple fails its signature, anchor or request binding",
+  "detail": "stevenmih-1: PASS via git repository HEAD:nodes/commitments/16a607c33006dd4243cb2347c4bdbaa5129a590b5257eea62ac5047abcf87864.json; stevenmih-2: PASS via git repository HEAD:nodes/commitments/91abddbcdf24bfa5920edb467fa125a4506f8a7bad204880b68f92675f62e2d9.json; stevenmih-3: PASS via git repository HEAD:nodes/commitments/2b800a2158c380666493fe83faddccfd882fae61af37639a168c6361704f03ac.json. Runner tools: OpenSSL 3.0.13 30 Jan 2024 (Library: OpenSSL 3.0.13 30 Jan 2024) and git version 2.43.0 (not versions.lock components). The stapled checkpoint attestation is step 02's assertion; here (stevenmih-1, stevenmih-2, stevenmih-3) only its bytes are matched to the committed digest. The stapled history_card/1 of stevenmih-1, stevenmih-2, stevenmih-3 verifies with capsule-cli v0.1.0-rc45 (a pre-release; every capsule-cli release is one) `verify --history`, under the node key and the checkpoint key each card entry names: digest, envelope and checkpoint signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a commitment carries no request, and no second caller's answer is held).",
+  "finished": "2026-11-24T01:24:02Z",
+  "name": "advertise",
+  "not_checked": [],
+  "pinned": {
+    "capsule-cli": {
+      "ref": "v0.1.0-rc45",
+      "repository": "action-state-group/capsule-cli"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "carrier.json",
+      "sha256": "47d83c509fccca4b23b7510c5c83cf2bd7edea69fea3981f0f43991b3142c2ff"
+    },
+    {
+      "path": "stevenmih-1.commitment.json",
+      "sha256": "5d3296ea2b43a4f8a4ade2ba938caa04dd0b394852c9102516e4ae4ed91ab5ac"
+    },
+    {
+      "path": "stevenmih-1.policy.json",
+      "sha256": "c0d4120d09b478e391dd53727b513898dbc6f9491a0aead9917ce8502c92ebec"
+    },
+    {
+      "path": "stevenmih-1.staple-verify.json",
+      "sha256": "e6cc55cf498da3c20cb797f233d8839e0182da321dd31e7fbdc0706ab72b739a"
+    },
+    {
+      "path": "stevenmih-2.commitment.json",
+      "sha256": "c329eb054bb6ead1a345a5198c1344eb11add6c50064994d78eaaa7d1b1c887f"
+    },
+    {
+      "path": "stevenmih-2.policy.json",
+      "sha256": "a9def294d1a14aafa664e9a8cb97bc7748412a39c3e081f5ec70641bd499af78"
+    },
+    {
+      "path": "stevenmih-2.staple-verify.json",
+      "sha256": "3579627bece2f99a404583e811838819daeba11262d6fa9f1c9af269e0b63389"
+    },
+    {
+      "path": "stevenmih-3.commitment.json",
+      "sha256": "aafc4a2df330052bc7f443468ce261325ac14f3724549df78f4f101e8fcf1104"
+    },
+    {
+      "path": "stevenmih-3.policy.json",
+      "sha256": "fc6e35c75177ea86402c7f5b410801091b3abbefc87b8c59362a6cb7c57c0f5c"
+    },
+    {
+      "path": "stevenmih-3.staple-verify.json",
+      "sha256": "6a3a6f6abbcbd4dd7f9f38fdf61c5a76c568b69384a59b6857584a8670b74399"
+    },
+    {
+      "path": "verification.json",
+      "sha256": "2c18060907e9588cb01889a5c2852bc0e507874698dd2094ad62f25049d3013b"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-24T01:24:02Z",
+  "step": "03"
+}
