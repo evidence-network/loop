@@ -196,6 +196,23 @@ class EntrySh(unittest.TestCase):
         self.assertIn("rc=", out)
         self.assertEqual(self.call("stage")[0], 23)  # the stub packed nothing
 
+    def test_status_names_a_lab_refusal_by_a_fixed_reason_and_prints_no_log_text(self):
+        state = self.home / ".loop-live-ci"
+        state.mkdir(exist_ok=True)
+        (state / "log").write_text(f"live_daily: run x\nlab.sh: NOT the pinned build:\nmesh-llm source {self.home}/src/secret does not contain the pin\n"
+                                   "live_daily: lab.sh check failed: pin drift against versions.lock (see /x/build.json)\n")
+        (state / "rc").write_text("5\n")
+        code, out = self.call("status")
+        self.assertEqual(code, 0)
+        self.assertIn("reason: lab.sh check found pin drift", out)
+        self.assertIn("rc=5", out)
+        self.assertNotIn("secret", out)
+        self.assertNotIn(str(self.home), out)
+        (state / "log").write_text("live_daily: something unknown with /private/path\n")
+        code, out = self.call("status")
+        self.assertNotIn("reason:", out)
+        self.assertNotIn("/private/path", out)
+
     def test_only_the_three_subcommands(self):
         self.assertEqual(self.call("bogus")[0], 2)
         self.assertEqual(subprocess.run([str(self.entry), "start", "x"], capture_output=True).returncode, 1)
