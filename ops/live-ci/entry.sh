@@ -34,7 +34,19 @@ STATE=$LIVE_HOME/.loop-live-ci
 umask 022
 mkdir -p "$STATE"
 clean() { sed -e "s#$LIVE_HOME#~#g" -e "s#$LAB_DIR#\$LAB_DIR#g"; }
-reasons() { :; } # the run's log is not printed: read it on the host
+# The log itself is never printed (paths, names). A refusal at the lab step is named by a fixed phrase of ours, so the failure issue
+# says why without a trip to the host; any other line stays on the host.
+reasons() { # LOG
+  local log=$1 k
+  for k in "pin drift against versions.lock|reason: lab.sh check found pin drift against versions.lock (the lab env file or the lab build differs from the pins)" \
+           "did not install in|reason: lab.sh tools: a step's pinned tool did not install" \
+           "lab.sh running failed|reason: lab.sh running failed (a node or the test witness is down, or a node runs another build)" \
+           "lab.sh check exited|reason: lab.sh check itself failed" \
+           "LOOP_LIVE_ENV|reason: the lab env file could not be read or sourced"; do
+    grep -qF -- "${k%%|*}" "$log" 2> /dev/null && { echo "${k#*|}"; return 0; }
+  done
+  return 0
+}
 
 start() {
   local day pid p
