@@ -52,6 +52,10 @@ STEPS = ["01", "03", "07"]  # the steps a session gives a Goose input; `session 
 # admission pack (capsule-engine's ladder test pack) gives a deal in BTC no GO; 50 cents is a GO under it. The rail is
 # lightning: the payment the lab wallets make is what the legs reference, by its payment hash.
 PRICE_MINOR, CURRENCY = 50, "USD"
+# When the lab nodes' capsulectl-deal profiles started: the start of the lab cutover (its backup,
+# goose-cutover-20261125T130714Z, loop#477). The lab payment log is older; each node's settlement disclosure counts only
+# its profile's deals, so the wallets' count (step 06's ledger_count) starts here too. A home made again moves it.
+COUNT_SINCE = "2026-11-25T13:07:14Z"
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose" if "LOOP_GOOSE_SRC" in os.environ else None
 # The tools steps/goose.setup.sh installed: LOOP_GOOSE_SRC is <tools>/goose/src.
 TOOLS = Path(os.environ["LOOP_GOOSE_SRC"]).parent if "LOOP_GOOSE_SRC" in os.environ else None
@@ -131,7 +135,9 @@ async def pay_deal(nodes, ids, step06, pay_one, settled, ctl):
     leg carry its payment_hash as their payment reference. The final reviews pause, and are answered "proceed": the lab
     operator who runs `lab/goose.sh pay` asked for this payment. `ctl(name, *args)` runs one capsulectl-deal verb on that
     node's own profile: the node's loop_settle seals `--sent` and the settled leg in one call, so the driver runs `--sent`
-    itself before the wallet sends (below). Writes DIR (step06): buyer-leg.json, seller-leg.json and lightning.json."""
+    itself before the wallet sends (below). Writes DIR (step06): buyer-leg.json, seller-leg.json, each node's signed
+    settlement disclosure (disclosure-<node name>.json, loop_settlement_disclosure on rail lightning, which has no
+    ledger sequence: through_sequence 0) and lightning.json."""
     buyer, seller = nodes["goose-2"], nodes["goose-1"]
     b, s = ids["goose-2"], ids["goose-1"]
     step06.mkdir(parents=True, exist_ok=True)
@@ -198,6 +204,9 @@ async def pay_deal(nodes, ids, step06, pay_one, settled, ctl):
     for me, peer in ((buyer, seller), (seller, buyer)):
         await peer.call("loop_deal_reconcile", peer_file=str(tmp / f"{me.name}-statement.json"))
     record["payments_recorded"] = settled(ref, deal_id)  # both books hold the deal now
+    for node in (buyer, seller):
+        await node.call("loop_settlement_disclosure", rail="lightning", through_sequence=0,
+                        out_path=str(step06 / f"disclosure-{node.name}.json"))
     shutil.rmtree(tmp)
     (step06 / "lightning.json").write_text(json.dumps({**record, "deal_id": deal_id}, indent=2, sort_keys=True) + "\n")
     return deal_id
@@ -287,7 +296,7 @@ def cmd_session(a):
 
             async def deal(nodes):
                 return await pay_deal(nodes, node_ids, pop / "step06", lambda before_send: gl.pay(payer, payee, log, before_send=before_send),
-                                      lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"),
+                                      lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}", since=COUNT_SINCE),
                                       lambda name, *args: profile_ctl(a.homes, name).run(*args))
             asyncio.run(with_nodes(a.homes, deal))
             steps.append("06")

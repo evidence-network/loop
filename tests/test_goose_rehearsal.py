@@ -813,23 +813,60 @@ class GooseRehearsalTest(unittest.TestCase):
         edit(pop / "step06")
         return pop
 
-    def test_step_06_passes_on_the_exchange_read_from_the_two_legs_and_names_d1_outside(self):
+    def test_step_06_passes_on_the_exchange_read_from_the_two_legs_and_each_nodes_signed_count(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())
         found, checks, out = self.judge06(self.pop)
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertTrue(all(c["ok"] for c in checks.values()), checks)
-        self.assertEqual(sorted(checks), ["adapter", "band", "exchange_match", "finality", "ledger", "legs", "legs_signed",
-                                          "rail_fee", "reference"])
+        self.assertEqual(sorted(checks), ["adapter", "band", "exchange_match", "finality", "ledger", "ledger_count:buyer",
+                                          "ledger_count:seller", "legs", "legs_signed", "rail_fee", "reference"])
         # no exchange file is the driver's: the step derived the exchange from the nodes' signed legs
         self.assertFalse((self.pop / "step06" / "exchange.json").exists())
         exchange = json.loads((out / "exchange.json").read_text())
         self.assertEqual((exchange["exchange_id"], exchange["payer"], exchange["payee"]),
                          (deal["deal_id"], deal["buyer"], deal["seller"]))
         self.assertEqual(exchange["settlement_ref"]["settlement_id"], deal["settlement_id"])
-        # a node's own count of its settlements is not exported (D1): outside the assertion, named, never a check
-        self.assertNotIn("disclosed settlement count", found["asserts"])
-        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
-        self.assertIn("action-state-group/evidencebook#624", found["detail"])
+        # each node's own signed count of its settlements is inside the assertion (evidencebook#920)
+        self.assertIn("disclosed settlement count", found["asserts"])
+        self.assertNotIn("D1", found["detail"])
+        self.assertLessEqual({"disclosure-buyer.json", "disclosure-seller.json"}, {x["path"] for x in found["proof"]})
+
+    def _resign_disclosure(self, d, name, edit):
+        """Re-sign `name`'s disclosure after `edit(doc)`, with the node's own key (the rehearsal's TEST profile)."""
+        import base64
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import check_commitment as cc
+        seed = bytes.fromhex((self.work / "run" / name / "deal" / "signing.seed").read_text().strip())
+        pem = Path(tempfile.mkdtemp(dir=self.work)) / "key.pem"
+        der = bytes.fromhex("302e020100300506032b657004220420") + seed  # Ed25519 PKCS#8
+        pem.write_text("-----BEGIN PRIVATE KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PRIVATE KEY-----\n")
+        doc = json.loads((d / f"disclosure-{name}.json").read_text())
+        edit(doc)
+        (d / f"disclosure-{name}.json").write_text(json.dumps(cc.sign(doc, pem)))
+
+    def test_step_06_fails_a_count_that_is_missing_wrong_or_labelled_off_the_ledger(self):
+        def resigned(edit):
+            return lambda d: self._resign_disclosure(d, "buyer", edit)
+        cases = {
+            "missing": lambda d: (d / "disclosure-buyer.json").unlink(),
+            "unsigned change": lambda d: (d / "disclosure-buyer.json").write_text(json.dumps(
+                {**json.loads((d / "disclosure-buyer.json").read_text()), "settlements": 2})),
+            "count": resigned(lambda doc: doc.update(settlements=2)),
+            "rail mock": resigned(lambda doc: doc.update(rail="mock")),
+            "stale label": resigned(lambda doc: doc.update(through_sequence=0)),
+            "future label": resigned(lambda doc: doc.update(through_sequence=2)),
+            "boolean label": resigned(lambda doc: doc.update(through_sequence=True)),
+            "boolean count": resigned(lambda doc: doc.update(settlements=True)),
+        }
+        # the re-signing itself keeps a correct disclosure passing
+        found, checks, _ = self.judge06(self.tampered_population(resigned(lambda doc: None)))
+        self.assertEqual(found["result"], "PASS", found["detail"])
+        for what, edit in cases.items():
+            with self.subTest(what):
+                found, checks, _ = self.judge06(self.tampered_population(edit))
+                self.assertEqual(found["result"], "FAIL")
+                self.assertFalse(checks["ledger_count:buyer"]["ok"], checks["ledger_count:buyer"])
+                self.assertTrue(checks["ledger_count:seller"]["ok"])
 
     def _legs(self, d, edit):
         for name in ("buyer-leg.json", "seller-leg.json"):

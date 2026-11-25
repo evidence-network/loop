@@ -21,6 +21,17 @@ TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-net
 PY = TOOLS / "goose" / "venv" / "bin" / "python"
 
 
+def resign(doc, seed_file, tmp_dir):
+    """doc signed again (scripts/check_commitment.py sign) with the Ed25519 key whose hex seed is in seed_file."""
+    import base64
+    import check_commitment as cc
+    seed = bytes.fromhex(Path(seed_file).read_text().strip())
+    pem = Path(tempfile.mkdtemp(dir=tmp_dir)) / "key.pem"
+    der = bytes.fromhex("302e020100300506032b657004220420") + seed  # Ed25519 PKCS#8
+    pem.write_text("-----BEGIN PRIVATE KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PRIVATE KEY-----\n")
+    return cc.sign(doc, pem)
+
+
 class GuardTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -65,6 +76,18 @@ class GuardTest(unittest.TestCase):
                 gl.pay(*self.wallets(lab), self.log, wait=3)
             self.assertEqual(lab.sent, 1)
         self.assertEqual(gl.read_log(self.log)[0]["status"], "reserved")  # the reservation stays
+
+    def test_the_settled_count_starts_at_the_profiles_start_and_keeps_every_later_payment(self):
+        entries = [{"day": "2026-11-24", "direction": "lab-1>lab-2", "payment_hash": f"{i:064x}", "amount_msat": 1000,
+                    "status": "settled", "at": at, "deal_id": f"deal-{i}"}
+                   for i, at in enumerate(("2026-11-24T22:00:00Z", "2026-11-25T13:07:13Z", "2026-11-25T13:07:14Z",
+                                           "2026-11-26T13:00:00Z"))]
+        entries.append({**entries[-1], "payment_hash": "f" * 64, "status": "succeeded", "at": "2026-11-27T13:00:00Z"})
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        gl.rewrite_log(self.log, entries)
+        # the payment being closed now, and a later one no node may hold any more: both count; the two before do not
+        self.assertEqual(gl.mark_settled(self.log, "f" * 64, "deal-5", "lab-1>lab-2", since="2026-11-25T13:07:14Z"), 3)
+        self.assertEqual(gl.mark_settled(self.log, "f" * 64, "deal-5", "lab-1>lab-2"), 5)  # unbounded: the whole log
 
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
         with FakeLab() as lab:
@@ -253,14 +276,16 @@ class PaidSessionTest(unittest.TestCase):
         found, out = self.step06(pop_dir, "ok")
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertIn("lab wallet lab-1 to lab-2", found["detail"])
-        # the two legs carry the payment's hash, signed by the nodes; a node's own settlement count is D1, outside
+        # the two legs carry the payment's hash, signed by the nodes; each node's own signed count is ledger_count
         legs = {s: json.loads((pop_dir / "step06" / f"{s}-leg.json").read_text())["record"]["record"] for s in ("buyer", "seller")}
         self.assertEqual({legs[s]["settlement"]["payment_ref"]["value"] for s in legs},
                          {json.loads((pop_dir / "step06" / "lightning.json").read_text())["payment_hash"]})
         self.assertEqual((legs["buyer"]["key_id"], legs["seller"]["key_id"]),
                          (self.ids["goose-2"]["key_id"], self.ids["goose-1"]["key_id"]))
-        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
-        self.assertNotIn("ledger_count", json.loads((out / "checks.json").read_text())["checks"])
+        checks = json.loads((out / "checks.json").read_text())["checks"]
+        self.assertTrue(checks["ledger_count:goose-1"]["ok"] and checks["ledger_count:goose-2"]["ok"], checks)
+        self.assertNotIn("D1", found["detail"])
+        self.assertLessEqual({"disclosure-goose-1.json", "disclosure-goose-2.json"}, {x["path"] for x in found["proof"]})
         for f in out.iterdir():  # nothing the step wrote holds the preimage
             self.assertNotIn(pre, f.read_text())
         # each tamper is a FAIL naming the check
@@ -270,7 +295,8 @@ class PaidSessionTest(unittest.TestCase):
                 ("fee", lambda d: d["payee"].update(fee_msat=0), "rail_fee"),
                 ("match", lambda d: d["payee"].update(amount_msat=900), "exchange_match"),
                 ("hash", lambda d: d.update(payment_hash="1" * 64), "reference"),
-                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference")):
+                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference"),
+                ("count", lambda d: d.update(payments_recorded=ln["payments_recorded"] + 1), "ledger_count")):
             d = json.loads(json.dumps(ln))
             mutate(d)
             (pop_dir / "step06" / "lightning.json").write_text(json.dumps(d))
@@ -278,6 +304,26 @@ class PaidSessionTest(unittest.TestCase):
             self.assertEqual(found["result"], "FAIL", what)
             self.assertIn(check, found["detail"], what)
         (pop_dir / "step06" / "lightning.json").write_text(json.dumps(ln))
+        # a node's disclosure that is missing, on the wrong rail, or labelled off Lightning's sequence 0 (re-signed with
+        # the node's own key, so only the rule fails): a FAIL of that node's ledger_count alone
+        disc = pop_dir / "step06" / "disclosure-goose-2.json"
+        good = disc.read_text()
+        seed = self.lab / "goose" / "homes" / "goose-2" / "deal" / "signing.seed"
+        for what, edit in (("missing", None), ("unsigned", "unsigned"), ("rail mock", {"rail": "mock"}),
+                           ("label 1", {"through_sequence": 1}), ("label False", {"through_sequence": False}),
+                           ("count True", {"settlements": True})):
+            if edit is None:
+                disc.unlink()
+            elif edit == "unsigned":
+                disc.write_text(json.dumps({**json.loads(good), "settlements": json.loads(good)["settlements"] + 1}))
+            else:
+                disc.write_text(json.dumps(resign({**json.loads(good), **edit}, seed, self.lab)))
+            found, out = self.step06(pop_dir, f"bad-disclosure-{what.replace(' ', '-')}")
+            checks = json.loads((out / "checks.json").read_text())["checks"]
+            self.assertEqual(found["result"], "FAIL", what)
+            self.assertFalse(checks["ledger_count:goose-2"]["ok"], what)
+            self.assertTrue(checks["ledger_count:goose-1"]["ok"], what)
+            disc.write_text(good)
 
     def test_a_guard_refusal_runs_the_session_without_06_and_says_why(self):
         lab = self.lab / "goose"
