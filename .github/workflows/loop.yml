@@ -1,6 +1,6 @@
-# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on a push to main that changes its
-# inputs (the paths below), and by hand. Pull requests do not run it (about 50 minutes): `scripts/check.sh --full` runs
-# it before a push that changes those paths (CONTRIBUTING.md).
+# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on a push to main that changes
+# anything outside the paths-ignore list below, and by hand. Pull requests do not run it (about 50 minutes):
+# `scripts/check.sh --full` runs it before such a push (CONTRIBUTING.md).
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -11,22 +11,28 @@ name: loop
 on:
   schedule:
     - cron: "0 2 * * *"
-  # The loop's inputs; CONTRIBUTING.md points here for when `scripts/check.sh --full` is due before a push.
+  # Fail-safe: a push to main runs the loop unless it changes only paths shown never to be read by the loop (its steps,
+  # scripts and tests read no top-level Markdown file and nothing under docs/, and no other workflow file). When in
+  # doubt a path stays off this list. CONTRIBUTING.md points here for when `scripts/check.sh --full` is due.
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/loop.yml"
-      - ".github/scripts/report-failure.sh"
-      - "loop.sh"
-      - "join.sh"
-      - "versions.lock"
-      - "steps/**"
-      - "population/**"
-      - "lab/**"
-      - "scripts/*.py"
-      - "status/**"
-      - "tests/**"
-      - "nodes/revocations/**"
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - ".github/workflows/commitments.yml"
+      - ".github/workflows/dco.yml"
+      - ".github/workflows/direct-push.yml"
+      - ".github/workflows/ecosystem-gate.yml"
+      - ".github/workflows/harvest-allowlist.yml"
+      - ".github/workflows/harvest-app-check.yml"
+      - ".github/workflows/leak-lint.yml"
+      - ".github/workflows/live-alerts.yml"
+      - ".github/workflows/live-daily.yml"
+      - ".github/workflows/nodes.yml"
+      - ".github/workflows/personal-data.yml"
+      - ".github/workflows/reports.yml"
+      - ".github/workflows/stats.yml"
+      - ".github/workflows/versions.yml"
   workflow_dispatch:
 
 permissions:

@@ -8,8 +8,8 @@
 #                             LOOP_REQUIRE_TOOLS=1, stage 1, the cross stage, steps 10 and 11)
 #
 # The exception: the default tier skips the loop job (about 51 min in CI, 79 min on a Mac). Run --full before a push
-# that changes a path in loop.yml's push paths list; CI runs the job nightly and on such a push to main, and a
-# failure there opens a ci-red issue (CONTRIBUTING.md).
+# that changes anything outside loop.yml's push paths-ignore list; CI runs the job nightly and on such a push to
+# main, and a failure there opens a ci-red issue (CONTRIBUTING.md).
 #
 # Exits non-zero on the first failure. Runs from any directory; writes nothing into the checkout (the rehearsal
 # runs, the site and the summaries go to a temporary directory). The step tools install under LOOP_TOOLS
