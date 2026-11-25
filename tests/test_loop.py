@@ -69,11 +69,11 @@ class LoopTest(unittest.TestCase):
             if how.get(name) != "missing":
                 self.step(name, how.get(name, "pass"))
 
-    def loop(self, *args, env=None):
+    def loop(self, *args, env=None, timeout=120):
         e = dict(os.environ, LOOP_STEPS_DIR=str(self.steps), LOOP_FINDINGS=str(self.dir / "findings"))
         e.update(env or {})
         return subprocess.run([str(LOOP), "--stage", "1", *args], capture_output=True, text=True, env=e,
-                              timeout=120)
+                              timeout=timeout)
 
     def finding(self, base, out=None):
         return json.loads(((out or self.out) / base / "finding.json").read_text())
@@ -185,7 +185,10 @@ class LoopTest(unittest.TestCase):
         tools = self.dir / "tools" / "goose"
         (tools / "venv" / "bin").mkdir(parents=True)
         (tools / "src" / "python" / "examples" / "goose").mkdir(parents=True)
-        (tools / "src" / "python" / "examples" / "goose" / "scripted_run.py").write_text("")
+        (tools / "src" / "python" / "examples" / "goose" / "loop_server.py").write_text("")
+        (tools / "bin").mkdir()
+        for b in ("capsulectl-deal", "capsule-engine"):
+            (tools / "bin" / b).write_text("")
         python = tools / "venv" / "bin" / "python"
         python.write_text("#!/bin/sh\necho 'planted: the deal failed' >&2\nexit 1\n")
         python.chmod(0o755)
@@ -200,6 +203,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(self.finding("09-dispute", out)["result"], "NOT_CHECKED")  # 09 has none yet
 
     @unittest.skipUnless((GOOSE_TOOLS / "venv" / "bin" / "python").is_file()
+                         and (GOOSE_TOOLS / "bin" / "capsulectl-deal").is_file()
                          and (GOOSE_TOOLS.parent / "01-seal" / "bin" / "cross_language").is_file()
                          and (GOOSE_TOOLS.parent / "bin" / "capsulectl").is_file()
                          and (GOOSE_TOOLS.parent / "capsule-cli" / "bin" / "capsulectl").is_file(),
@@ -207,19 +211,20 @@ class LoopTest(unittest.TestCase):
                          "steps/capsule-cli.setup.sh")
     def test_goose_with_its_tools_passes_steps_01_03_04_05_06_07_12_and_02_when_its_driver_is_there_and_keeps_every_other_row_not_checked(self):
         r = self.loop("--ecosystem", "goose", "--strict", env={"LOOP_STEPS_DIR": str(ROOT / "steps"),
-                                                               "LOOP_TOOLS": str(GOOSE_TOOLS.parent)})
+                                                               "LOOP_TOOLS": str(GOOSE_TOOLS.parent)},
+                      timeout=1500)  # the rehearsal waits for the nodes' cadence tick and asks within PT2M
         self.assertEqual(r.returncode, 0, r.stderr)
         results = dict(line.split()[::2] for line in r.stdout.splitlines())
         # 01 passes on the capsule the Goose node sealed (loop_seal), 03 on the commitments the nodes signed
-        # (loop_advertise); 06 reads G1's pay record and the nodes' own disclosures against the mock rail
+        # (loop_advertise); 06 reads the nodes' payer and payee legs against the mock rail
         self.assertEqual(results.pop("01"), "PASS")
         self.assertEqual(results.pop("03"), "PASS")
         # 02 judges the book bundle the node wrote, with the step 02 driver, capsulectl and openssl; without them it says so
         self.assertIn(results.pop("02"), ("PASS", "NOT_CHECKED"))
         self.assertEqual(results.pop("04"), "PASS")  # on the admissions and the deal opening the buyer sealed
-        self.assertEqual(results.pop("12"), "PASS")  # the joined nodes' commitments and a stranger's history_card/1 probe
-        self.assertEqual(results.pop("05"), "PASS")  # on the halves the nodes pushed and the records that hold them
-        self.assertEqual(results.pop("06"), "PASS")  # on the buyer's pay record and each node's own signed count
+        self.assertEqual(results.pop("12"), "PASS")  # the joined nodes' commitments and a stranger's history_card/2 probe
+        self.assertEqual(results.pop("05"), "PASS")  # on each side's x-deal-v1 report, capsulectl-deal verify --bundle
+        self.assertEqual(results.pop("06"), "PASS")  # on the payer and payee legs; the settlement count is outside (D1)
         self.assertEqual(results.pop("07"), "PASS")  # on the asks the nodes answered by polling their mailboxes
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
@@ -229,11 +234,11 @@ class LoopTest(unittest.TestCase):
         # capsule-cli is pinned too when it is installed where this runs (the signed staples are then verified with it)
         self.assertEqual(sorted(set(self.finding("03-advertise", out)["pinned"]) - {"capsule-cli"}), ["goose-g1"])
         six = self.finding("06-settle", out)
-        self.assertIn("the exchange read from G1's pay record", six["detail"])
-        self.assertIn("each node's own signed disclosure", six["detail"])
+        self.assertIn("the exchange read from the Goose nodes' payer and payee legs", six["detail"])
+        self.assertIn("ledger_count", six["detail"])  # outside the assertion, named: D1 is not built
         self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
-        self.assertIn("buyer-pay-opening.json", [x["path"] for x in six["proof"]])
-        self.assertEqual(list(six["pinned"]), ["goose-g1"])
+        self.assertLessEqual({"buyer-leg.json", "seller-leg.json"}, {x["path"] for x in six["proof"]})
+        self.assertEqual(sorted(six["pinned"]), ["capsule-engine", "goose-g1"])
 
     def test_muse_runs_the_live_population_without_a_population_directory(self):
         r = self.loop("--ecosystem", "muse", "--population", "live")
