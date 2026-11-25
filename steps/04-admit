@@ -35,13 +35,16 @@ counts.json holds the decisions that were NO out of all decisions, for the
 status page.
 
 Goose rehearsal (`goose.admit` in population.json; scripts/goose_rehearsal.py). The step seals nothing: it judges the
-Evidence Bundles the Goose buyer wrote with loop_book_bundle (G1), the GO rooted at the deal's opening and the NO rooted at the
-refused admission, each of the node book up to a checkpoint with the headers of the root and of the records it cites disclosed,
-the deal's first half (checked by G1's own verify_half and tied to the opening by its deal id, first step and peer), and the refusal
-the node gave when asked to open a deal with the refused peer (`deal-refused.json`). The checks are the ones above for the Goose shape: the decision is a `goose_admitted` record with
-exactly the members peer, checkpoint_key_id, decision, reason; the opening (`goose_deal_opened`) and the first step of the deal's
-half cite the GO; no record up to the end of the session cites the NO, and the gate refuses a deal with the refused peer. With no admission bundles, capsulectl missing or another
-goose-g1 than the pin, it is NOT_CHECKED, naming what.
+Evidence Bundles the Goose buyer wrote, the GO bundle rooted at the deal's context (loop_deal_bundle: the
+`goose_deal_context` record and the `goose_admitted` GO it cites, both disclosed) and the NO bundle rooted at the refused
+admission (loop_book_bundle, the node book up to the end of the session, the NO disclosed), the deal's offer (the x-deal-v1
+file the buyer signed) and the refusal the node gave when asked to open a deal with the refused peer (`deal-refused.json`).
+The checks are the ones above for the Goose shape: the decision is a `goose_admitted` record with exactly the members
+peer, decision, reason; the deal's context comes after the GO and cites it, and commits the offer: the step recomputes the
+offer's digest itself (SHA-256 of the JCS form of its agent_input), which must equal the one the context names and the one
+the offer's record commits, and checks the offer's record in aac-go (Class 1, capsule_id, producer signature) under the
+buyer's key; no record up to the end of the session cites the NO, and the gate refuses a deal with the refused peer. With
+no admission bundles, capsulectl or aac-go missing or another goose-g1 than the pin, it is NOT_CHECKED, naming what.
 
 `--plant` makes the buyer seal one wrong thing, for the tests:
 ask-outcome, limit-outcome, unsealed, sealed-after, deal-after-no.
@@ -110,6 +113,7 @@ step itself broke (capsulectl not installed, unreadable population).
 """
 import argparse
 import datetime as dt
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -1071,24 +1075,56 @@ def judge_live(pop, out, started):
                              f"{NO_SPEND}", **base)
 
 
-# --- The Goose rehearsal: the admission and the deal opening the Goose node wrote (loop#330, evidencebook#302) ----
-# G1 seals the buyer's GO or NO as a `goose_admitted` record of its node book; the deal's opening (`goose_deal_opened`)
-# cites the GO, and so does the deal's first step. The node writes the Evidence Bundle of the book up to a checkpoint,
-# with the headers of the root and of the records it cites disclosed (loop_book_bundle): one root on the GO (the
-# opening, which cites the admission, cut when the opening was sealed) and one on the NO (cut at the end of the session, so
-# no record sealed after it is left out). The deal's first half is checked by G1's own verify_half. The NO is also put to the
-# gate directly: the node is asked to open a deal with the refused peer and its refusal is kept. The step seals nothing and
-# judges those bytes with the checks above, for the Goose shape of the decision.
-GOOSE_DECISION, GOOSE_DEAL = "goose_admitted", "goose_deal_opened"
-GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book"]
-GOOSE_ASSERTS = ASSERTS.replace("in the shape the capsules plugin seals", "in the shape the Goose node seals (goose_admitted)", 1)
-assert GOOSE_ASSERTS != ASSERTS
-GOOSE_SHAPE = {"peer", "checkpoint_key_id", "decision", "reason"}
+# --- The Goose rehearsal: the admission and the deal context the Goose node wrote (loop#330, evidencebook#624) ----
+# The node seals the buyer's GO or NO as a `goose_admitted` record of its node book ({peer, decision, reason}). Opening a
+# deal writes the offer (an x-deal-v1 file the buyer signs, for the seller) and seals the buyer's record of the deal's
+# context (`goose_deal_context`), which cites the GO and commits the offer by its digest. The node writes the Evidence
+# Bundle of that context record with the GO it cites, both disclosed (loop_deal_bundle), and the bundle of the NO with the
+# book up to the end of the session (loop_book_bundle). The NO is also put to the gate directly: the node is asked to open
+# a deal with the refused peer and its refusal is kept. The step seals nothing. It judges those bytes with the checks
+# above for the Goose shape of the decision and, on the offer, recomputes the offer's digest itself (RFC 8785 JCS of its
+# agent_input, SHA-256) and checks the buyer's signature on it in aac-go (step 01's checks) under the buyer's key.
+GOOSE_DECISION, GOOSE_DEAL = "goose_admitted", "goose_deal_context"
+GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book", "aac-go"]
+GOOSE_ASSERTS = ASSERTS.replace("in the shape the capsules plugin seals", "in the shape the Goose node seals (goose_admitted)", 1) \
+    .replace("before the deal record that cites it", "before the deal record that cites it (the deal's context, which "
+             "commits the offer the buyer signed)", 1)
+assert GOOSE_ASSERTS.count("Goose") == 1 and "commits the offer" in GOOSE_ASSERTS
+GOOSE_SHAPE = {"peer", "decision", "reason"}
 
 
-def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusal, expect):
+def offer_digest(offer):
+    """The digest x-deal-v1 gives an offer, recomputed here: SHA-256 of the RFC 8785 (JCS) form of its agent_input."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import check_commitment as cc
+    return hashlib.sha256(cc.canonical(offer["agent_input"])).hexdigest()
+
+
+def goose_offer(offer, verifier, buyer):
+    """(ok, detail, facts) for the offer file: its digest recomputed here, its record's agent_input_digest equal to it, and
+    the record's Class 1, capsule_id and producer signature in aac-go under the buyer's key. facts: {digest, deal_id, to}."""
+    try:
+        digest = offer_digest(offer)
+        record = offer["record"]
+        carried = record["model_attestation"]["compute_attestation"]["agent_input_digest"]
+        facts = {"digest": digest, "deal_id": offer["agent_input"]["x-deal-v1"]["deal_id"],
+                 "to": offer["agent_input"]["body"]["to"]}
+    except (KeyError, TypeError, ValueError, AttributeError) as e:
+        return False, f"the offer does not read as an x-deal-v1 offer ({type(e).__name__}: {e})", {}
+    raw = json.dumps(record).encode()
+    outputs = {}
+    checks, _ = seal01.id_checks(raw, verifier, outputs)
+    sig = seal01.signature_check(raw, verifier, record.get("key_id"), buyer, True, outputs)
+    ok = (carried == digest and all(c["ok"] for c in checks.values()) and sig["ok"] and sig["state"] == "ok"
+          and record.get("key_id") == buyer)
+    return ok, (f"offer digest recomputed {digest}, its record commits {carried}; aac-go: "
+                + ", ".join(f"{n} {'ok' if c['ok'] else c['detail']}" for n, c in checks.items())
+                + f", signature {sig['detail']}; signer {record.get('key_id')}, the buyer's key {buyer}"), facts
+
+
+def goose_judge(name, bundle, verdict, buyer, seller, offer_check, refusal, expect):
     """[{check, ok, detail}] for one Goose scenario's bundle (`name` is "go" or "no"; expect is the decision wanted), and the
-    decision block."""
+    decision block. offer_check is goose_offer's (ok, detail, facts) for the deal's offer."""
     checks = []
 
     def check(n, ok, detail):
@@ -1126,10 +1162,9 @@ def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusa
     outcome = block.get("decision")
     check("one_outcome", outcome in VERDICTS and outcome == expect, f"decision {outcome!r}, expected {expect!r}")
     hex64 = lambda v: isinstance(v, str) and HEX64.fullmatch(v)  # noqa: E731
-    shape = (set(block) == GOOSE_SHAPE and hex64(block.get("peer")) and hex64(block.get("checkpoint_key_id"))
-             and isinstance(block.get("reason"), str))
-    check("goose_shape", shape, f"members {sorted(block)} (wanted {sorted(GOOSE_SHAPE)}); peer {block.get('peer')!r}, "
-          f"checkpoint key {block.get('checkpoint_key_id')!r} ({'64-hex' if hex64(block.get('peer')) and hex64(block.get('checkpoint_key_id')) else 'not both 64-hex'})")
+    shape = set(block) == GOOSE_SHAPE and hex64(block.get("peer")) and isinstance(block.get("reason"), str)
+    check("goose_shape", shape, f"members {sorted(block)} (wanted {sorted(GOOSE_SHAPE)}); peer {block.get('peer')!r} "
+          f"({'64-hex' if hex64(block.get('peer')) else 'not 64-hex'})")
     if name == "go":
         check("peer_named", block.get("peer") == seller,
               f"the decision names peer {block.get('peer')}; the seller's key is {seller}")
@@ -1137,26 +1172,22 @@ def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusa
         dst = dh.get("statement") or {}
         opened = kind(root) == GOOSE_DEAL and status.get(root) == "disclosure_match" and records.get(root, {}).get("key_id") == buyer
         check("deal_sealed", opened,
-              "the deal's opening is a goose_deal_opened record, signed by the buyer's key, disclosed and matched" if opened
-              else f"the root {str(root)[:12]} is not a goose_deal_opened record signed by the buyer's key, disclosed and "
+              "the deal's context is a goose_deal_context record, signed by the buyer's key, disclosed and matched" if opened
+              else f"the root {str(root)[:12]} is not a goose_deal_context record signed by the buyer's key, disclosed and "
               f"matched (record type {kind(root)}, disclosure {status.get(root)})")
         if kind(root) == GOOSE_DEAL:
             check("sealed_before_deal", head["seq"] < dh["seq"] and when(head["committed_at"]) < when(dh["committed_at"]),
-                  f"decision at seq {head['seq']} ({head['committed_at']}), opening at seq {dh['seq']} ({dh['committed_at']})")
+                  f"decision at seq {head['seq']} ({head['committed_at']}), deal context at seq {dh['seq']} "
+                  f"({dh['committed_at']})")
             by_header, by_capsule = cites(root)
-            check("deal_cites_decision", by_header == by_capsule == [dec_id] and dst.get("admission") == dec_id,
-                  f"the opening cites {by_header} in its header and {by_capsule} in its capsule; its statement names "
-                  f"{dst.get('admission')}")
-        first = (half.get("steps") or [{}])[0].get("capsule", {})
-        refs = [ln.get("target") for ln in (first.get("evidence_record_header") or {}).get("links", [])
-                if ln.get("type") == "cites"]
-        check("first_step_cites_decision",
-              half_verdict.get("ok") is True and half_verdict.get("key_id") == buyer and dec_id in refs
-              and half_verdict.get("deal_id") == half.get("deal_id") == dst.get("deal_id")
-              and first.get("capsule_id") == dst.get("first_step") and dst.get("peer") == seller,
-              f"G1's verify_half on the deal's first half: {half_verdict.get('error') or 'holds'}; its first step "
-              f"{str(first.get('capsule_id'))[:12]} cites {refs}; the opening's statement names deal "
-              f"{dst.get('deal_id')}, first step {str(dst.get('first_step'))[:12]} and peer {dst.get('peer')}")
+            check("deal_cites_decision", by_header == by_capsule == [dec_id],
+                  f"the deal's context cites {by_header} in its header and {by_capsule} in its capsule")
+        ok, why, facts = offer_check
+        check("deal_commits_offer",
+              ok and dst.get("offer") == facts.get("digest") and dst.get("deal_id") == facts.get("deal_id")
+              and dst.get("peer") == seller == facts.get("to") and dst.get("role") == "buyer",
+              f"{why}; the deal's context names offer {dst.get('offer')}, deal {dst.get('deal_id')} (the offer's is "
+              f"{facts.get('deal_id')}), peer {dst.get('peer')} (the offer is to {facts.get('to')}), role {dst.get('role')}")
     else:
         complete, why = to_the_checkpoint(bundle)
         citing = [cid for cid in records if cid != dec_id and dec_id in set(cites(cid)[1])]
@@ -1170,38 +1201,39 @@ def goose_judge(name, bundle, verdict, buyer, seller, half, half_verdict, refusa
 
 def main_goose(pop, out, started):
     """Judge the admission bundles the Goose rehearsal's buyer wrote (population.json `goose.admit`)."""
-    sys.path.insert(0, str(HERE))
-    import goose_half
     population, admit = pop["population"], pop["goose"].get("admit")
     bin_ = capsulectl()
-    for f in ("finding.json", "checks.json", "counts.json"):
+    verifier = seal01.tools()[1]
+    for f in ("finding.json", "checks.json", "counts.json", "offer.json", "offer.verify.json", "deal-refused.json"):
         (out / f).unlink(missing_ok=True)
     shutil.rmtree(out / "scenarios", ignore_errors=True)
     want = finding.pins()["goose-g1"][1]
-    if admit is None or not bin_.is_file() or pop["goose"]["rev"] != want:
+    if admit is None or not bin_.is_file() or not verifier.is_file() or pop["goose"]["rev"] != want:
         why = ("the run wrote no admission bundles" if admit is None else f"{bin_} is not installed" if not bin_.is_file()
+               else f"{verifier} (aac-go) is not installed" if not verifier.is_file()
                else f"installed goose-g1 {pop['goose']['rev']}, versions.lock pins {want}")
         finding.write(out, result="NOT_CHECKED", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED,
                       proof=[], detail=f"not checked: {why}", started=started,
                       not_checked=[{"what": "the Goose node's admission bundles", "why": why,
-                                    "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh"}])
+                                    "issue": "evidence-network/loop: steps/goose.setup.sh, steps/12-join.setup.sh, "
+                                             "steps/01-seal.setup.sh"}])
         return 0
-    keys = {n["name"]: goose_half.key_of(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
+    keys = {n["name"]: seal01.raw_public_hex(Path(n["key_dir"]) / "node-key.pub.pem") for n in pop["nodes"]}
     buyer, seller = keys[admit["node"]], keys[admit["peer"]]
+
     def readable(path):  # an input that does not read as JSON is an empty object: the checks then fail on it
         try:
             return load(path)
         except (OSError, ValueError):
             return {}
 
-    half = readable(admit["half"])
-    cp_key = pop["goose"]["verify"]["checkpoint_keys"][admit["node"]]
-    half_verdict = goose_half.verify(pop["goose"]["verify"], admit["half"], buyer, cp_key)
+    offer_check = goose_offer(readable(admit["offer"]), verifier, buyer)
     refusal = readable(admit["refused"])
     results, proof, outcomes = {}, [], {}
-    shutil.copyfile(admit["half"], out / "deal-half.json")
+    shutil.copyfile(admit["offer"], out / "offer.json")
     shutil.copyfile(admit["refused"], out / "deal-refused.json")
-    (out / "deal-half.verify.json").write_text(json.dumps(half_verdict, indent=2, sort_keys=True) + "\n")
+    (out / "offer.verify.json").write_text(json.dumps({"ok": offer_check[0], "detail": offer_check[1], **offer_check[2]},
+                                                      indent=2, sort_keys=True) + "\n")
     with tempfile.TemporaryDirectory(prefix="04-admit-") as tmp:
         for name, expect in (("go", "GO"), ("no", "NO")):
             sd = out / "scenarios" / name
@@ -1210,7 +1242,7 @@ def main_goose(pop, out, started):
             verdict = verify_bundle(bin_, tmp, sd / "bundle.json")
             (sd / "verify.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
             try:
-                checks, block = goose_judge(name, load(sd / "bundle.json"), verdict, buyer, seller, half, half_verdict,
+                checks, block = goose_judge(name, load(sd / "bundle.json"), verdict, buyer, seller, offer_check,
                                             refusal, expect)
             except (OSError, KeyError, TypeError, ValueError, AttributeError, IndexError) as e:  # a bundle that does not read
                 checks, block = [{"check": "bundle_reads", "ok": False,
@@ -1223,18 +1255,20 @@ def main_goose(pop, out, started):
     counts = {"decisions": len(outcomes), "refused": sum(1 for o in outcomes.values() if o == "NO"),
               "by_outcome": {o: sum(1 for x in outcomes.values() if x == o) for o in VERDICTS}}
     (out / "counts.json").write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
-    proof += ["deal-half.json", "deal-half.verify.json", "deal-refused.json", "checks.json", "counts.json"]
+    proof += ["offer.json", "offer.verify.json", "deal-refused.json", "checks.json", "counts.json"]
     failed = [f"{n}: {c['check']} ({c['detail']})" for n, cs in results.items() for c in cs if not c["ok"]]
     if failed:
         finding.write(out, result="FAIL", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                       detail=f"did not hold: {'; '.join(failed)}. {NO_SPEND}", started=started)
         return 0
     detail = (f"2 admission decisions sealed in the Goose buyer's node book (TEST key): the GO is sealed before the deal's "
-              f"opening, which cites it, as does the deal's first step (G1's verify_half holds on that half); the NO is "
-              f"cited by no record up to the end of the session, and a deal opened with the refused peer was refused. "
-              f"For each, capsulectl found the bundle VALID and the judge found every check held (checks.json); "
-              f"{counts['refused']} of {counts['decisions']} decisions were NO. The records are what the Goose node wrote "
-              f"(loop_admit, loop_deal_open, loop_book_bundle, goose-g1 {pop['goose']['rev']}). {NO_SPEND}")
+              f"context, which cites it and commits the offer: the offer's digest, recomputed here, is the one the "
+              f"context names, and the offer's record verifies in aac-go (Class 1, capsule_id, producer signature) under "
+              f"the buyer's key; the NO is cited by no record up to the end of the session, and a deal opened with the "
+              f"refused peer was refused. For each, capsulectl found the bundle VALID and the judge found every check held "
+              f"(checks.json); {counts['refused']} of {counts['decisions']} decisions were NO. The records are what the "
+              f"Goose node wrote (loop_admit, loop_deal_open, loop_deal_bundle, loop_book_bundle, goose-g1 "
+              f"{pop['goose']['rev']}). {NO_SPEND}")
     finding.write(out, result="PASS", population=population, asserts=GOOSE_ASSERTS, pinned=GOOSE_PINNED, proof=proof,
                   detail=detail, started=started)
     return 0

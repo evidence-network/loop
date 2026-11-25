@@ -1,15 +1,15 @@
 {
   "key_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
   "policy": {
-    "share_deal_half": "counterparty",
+    "share_deal_file": "counterparty",
     "stranger_safe": [
-      "history_card/1"
+      "history_card/2"
     ]
   },
   "profile": "disclosure-policy/0",
   "sig": {
     "alg": "Ed25519",
     "canon": "jcs",
-    "value": "D3Jv2ep9qUOqlty-HckSxEA0D7iSQflkTswKq5TE97_yVY_CccvLHeKT5fDfQ2JRo1NqcVCDf4lTFCxS3xkPBw"
+    "value": "YAyixJCL78be1BvEmyBC18D70oU6MwQAbmz0x9YKZHGMzXSFqavY1sS5saF7p1R_Oyvlj4nqYMbqrFXV9J8FDQ"
   }
 }

@@ -43,6 +43,29 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(gl.read_log(self.log)[0]["status"], "settled")
         self.assertNotIn(pre, json.dumps(rec) + self.log.read_text())
 
+    def test_the_payers_review_runs_with_the_invoices_hash_before_anything_is_sent(self):
+        seen = []
+        with FakeLab() as lab:
+            rec = gl.pay(*self.wallets(lab), self.log, wait=5, before_send=lambda h: seen.append((h, lab.sent)))
+        self.assertEqual(seen, [(rec["payment_hash"], 0)])
+
+    def test_a_review_that_refuses_stops_the_payment_with_nothing_sent_or_reserved(self):
+        def refuse(h):
+            raise RuntimeError("the node's check denied the payment")
+        with FakeLab() as lab:
+            with self.assertRaisesRegex(RuntimeError, "denied"):
+                gl.pay(*self.wallets(lab), self.log, wait=5, before_send=refuse)
+            self.assertEqual(lab.sent, 0)
+        self.assertEqual(gl.read_log(self.log) if self.log.exists() else [], [])
+
+    def test_a_refused_query_after_the_send_is_an_unknown_outcome_never_a_failure(self):
+        with FakeLab() as lab:
+            lab.query_http_after_send = 500
+            with self.assertRaisesRegex(gl.Unknown, "transaction query was refused"):
+                gl.pay(*self.wallets(lab), self.log, wait=3)
+            self.assertEqual(lab.sent, 1)
+        self.assertEqual(gl.read_log(self.log)[0]["status"], "reserved")  # the reservation stays
+
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
         with FakeLab() as lab:
             with self.assertRaisesRegex(gl.Refused, "3000"):
@@ -107,6 +130,85 @@ class DriverTest(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in Path(lab).iterdir()), [])
 
 
+# pay_deal (scripts/goose_live.py) with stand-in nodes: what runs before the wallet sends. It imports mcp, so it runs in
+# the Goose venv.
+PAY_ORDER = r"""
+import asyncio, json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import goose_live, goose_lightning as gl
+mode, out = sys.argv[2], Path(sys.argv[3])
+events = []
+
+class Node:
+    def __init__(self, name):
+        self.name = name
+    async def call(self, tool, **kw):
+        events.append([self.name, tool])
+        if tool == "loop_deal_open":
+            return {"deal_id": "deal-1"}
+        if tool in ("loop_settle", "loop_deal_deliver") and not kw.get("check_id"):
+            return {"paused": True, "verdict": "pause", "check_id": "c" * 64}
+        return {}
+
+def ctl(name, *args):
+    events.append([name, "ctl", *[a for a in args if a in ("--sent", "failed")]])
+    if mode == "sent-refused" and "--sent" in args:
+        raise RuntimeError("refused at send: the approval is stale")
+
+def pay_one(before_send):
+    before_send("ab" * 32)
+    if mode == "wallet-failed":
+        raise gl.Refused("the payment failed in lab-1's wallet")
+    if mode == "wallet-unknown":
+        raise gl.Unknown("a transaction query was refused after the send")
+    events.append(["wallet", "send"])
+    return {"payment_hash": "ab" * 32}
+
+nodes = {"goose-1": Node("goose-1"), "goose-2": Node("goose-2")}
+ids = {n: {"key_id": n} for n in nodes}
+try:
+    asyncio.run(goose_live.pay_deal(nodes, ids, out / "step06", pay_one, lambda h, d: 1, ctl))
+    events.append(["done"])
+except Exception as e:
+    events.append(["raised", type(e).__name__])
+print(json.dumps(events))
+"""
+
+
+@unittest.skipUnless(PY.is_file(), "run steps/goose.setup.sh to install the Goose tools")
+class PayOrderTest(unittest.TestCase):
+    def run_mode(self, mode):
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run([str(PY), "-B", "-c", PAY_ORDER, str(ROOT / "scripts"), mode, d], stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, env={**os.environ, "LOOP_GOOSE_SRC": str(TOOLS / "goose" / "src")})
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        return json.loads(r.stdout.strip().splitlines()[-1])
+
+    def test_the_check_approval_and_sent_run_before_the_wallet_sends(self):
+        ev = self.run_mode("ok")
+        order = [e for e in ev if len(e) > 1 and e[1] in ("loop_settle", "loop_deal_approve", "ctl", "send")]
+        self.assertEqual(order[:4], [["goose-2", "loop_settle"], ["goose-2", "loop_deal_approve"],
+                                     ["goose-2", "ctl", "--sent"], ["wallet", "send"]])
+        self.assertEqual(order[4], ["goose-2", "loop_settle"])  # the settled leg, after the rail answered
+        self.assertEqual(ev[-1], ["done"])
+
+    def test_a_refusal_at_send_leaves_the_wallet_untouched(self):
+        ev = self.run_mode("sent-refused")
+        self.assertNotIn(["wallet", "send"], ev)
+        self.assertEqual(ev[-1], ["raised", "RuntimeError"])
+
+    def test_an_unknown_outcome_after_sent_leaves_the_payment_in_flight(self):
+        ev = self.run_mode("wallet-unknown")
+        self.assertNotIn(["goose-2", "ctl", "failed"], ev)
+        self.assertEqual(ev[-1], ["raised", "Unknown"])
+
+    def test_a_wallet_failure_after_sent_records_the_payment_failed(self):
+        ev = self.run_mode("wallet-failed")
+        self.assertIn(["goose-2", "ctl", "failed"], ev)
+        self.assertEqual(ev[-1], ["raised", "Refused"])
+
+
 @unittest.skipUnless(PY.is_file(), "run steps/goose.setup.sh to install the Goose tools")
 class PaidSessionTest(unittest.TestCase):
     @classmethod
@@ -151,6 +253,14 @@ class PaidSessionTest(unittest.TestCase):
         found, out = self.step06(pop_dir, "ok")
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertIn("lab wallet lab-1 to lab-2", found["detail"])
+        # the two legs carry the payment's hash, signed by the nodes; a node's own settlement count is D1, outside
+        legs = {s: json.loads((pop_dir / "step06" / f"{s}-leg.json").read_text())["record"]["record"] for s in ("buyer", "seller")}
+        self.assertEqual({legs[s]["settlement"]["payment_ref"]["value"] for s in legs},
+                         {json.loads((pop_dir / "step06" / "lightning.json").read_text())["payment_hash"]})
+        self.assertEqual((legs["buyer"]["key_id"], legs["seller"]["key_id"]),
+                         (self.ids["goose-2"]["key_id"], self.ids["goose-1"]["key_id"]))
+        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
+        self.assertNotIn("ledger_count", json.loads((out / "checks.json").read_text())["checks"])
         for f in out.iterdir():  # nothing the step wrote holds the preimage
             self.assertNotIn(pre, f.read_text())
         # each tamper is a FAIL naming the check
@@ -160,7 +270,7 @@ class PaidSessionTest(unittest.TestCase):
                 ("fee", lambda d: d["payee"].update(fee_msat=0), "rail_fee"),
                 ("match", lambda d: d["payee"].update(amount_msat=900), "exchange_match"),
                 ("hash", lambda d: d.update(payment_hash="1" * 64), "reference"),
-                ("count", lambda d: d.update(payments_recorded=2), "ledger_count")):
+                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference")):
             d = json.loads(json.dumps(ln))
             mutate(d)
             (pop_dir / "step06" / "lightning.json").write_text(json.dumps(d))

@@ -20,7 +20,7 @@
 # run: findings in findings/<date>-<population>/, run.json as above. muse and cross have no steps yet: each step
 # gets a NOT_CHECKED finding saying so (owned by loop#150), written to findings/<ecosystem>/<date>-<population>/
 # with "ecosystem" added to run.json, and nothing runs. goose (ecosystem 2, loop#315) covers all twelve rows: on the
-# rehearsal population scripts/goose_rehearsal.py runs two G1 Goose nodes (tools: steps/goose.setup.sh) and each step
+# rehearsal population scripts/goose_rehearsal.py runs two evidencebook Goose nodes (tools: steps/goose.setup.sh) and each step
 # it drives (today 01, 02, 03, 04, 05, 06, 07 and 12) runs on the population it wrote, FAIL with the run's log when that run fails; every
 # other row is NOT_CHECKED citing the issue it waits on, and so are the driven rows on a host without the tools. With
 # --population live, lab/goose.sh run (loop#349) writes the population (LOOP_GOOSE_POPULATION): the nodes listed in
@@ -179,7 +179,7 @@ with open(path, "w") as f:
     f.write(json.dumps(run, indent=2, sort_keys=True) + "\n")
 PY
 
-# The Goose rehearsal: G1's two nodes, run by scripts/goose_rehearsal.py when its tools are installed (steps/goose.setup.sh);
+# The Goose rehearsal: the Goose node's two capsulectl-deal profiles, run by scripts/goose_rehearsal.py when its tools are installed (steps/goose.setup.sh);
 # a step it lists (population.json "goose".steps) then runs on the population it wrote, the rest are NOT_CHECKED below.
 # The steps with a Goose input are the driver's (--steps). When the tools are not installed (exit 3) such a step is
 # NOT_CHECKED; when they are and the run failed, it is a FAIL with the run's log, never a quiet NOT_CHECKED.
@@ -264,8 +264,8 @@ for nn in $steps; do
 import sys
 root, step_dir, started, ecosystem, nn, population, note = sys.argv[1:]
 # The issue that owns a step with no run yet: loop#150 for muse and cross. For goose (loop#315: its steps 01-12 are
-# the same assertions as mesh's, run on evidencebook's G1 node) each step names what it waits on in G1 or in the
-# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 a live book bundle (the rehearsal runs it), 08 loop#193; 04, 05 and 12 a live deal and join (the rehearsal runs them), 06 the live rail; 09, 10 and 11 loop#315 (steps/09-dispute exists, and G1 has loop_dispute_ask and loop_dispute_poll, but the Goose drivers (scripts/goose_rehearsal.py, scripts/goose_live.py) give step 09 no input; 10 and 11 likewise).
+# the same assertions as mesh's, run on evidencebook's Goose node) each step names what it waits on in that node or in the
+# loop: 01, 03 and 07 a live Goose population (loop#330; the rehearsal runs them), 02 a live book bundle (the rehearsal runs it), 08 loop#193; 04, 05 and 12 a live deal and join (the rehearsal runs them), 06 the live rail; 09, 10 and 11 loop#315 (steps/09-dispute exists, but the Goose node has no dispute on x-deal-v1 yet (evidencebook#830), so the Goose drivers (scripts/goose_rehearsal.py, scripts/goose_live.py) give step 09 no input; 10 and 11 likewise).
 GOOSE = {"01": "evidence-network/loop#330", "02": "evidence-network/loop#330",
          "03": "evidence-network/loop#330", "04": "evidence-network/loop#330",
          "05": "evidence-network/loop#330", "06": "evidence-network/loop#315",

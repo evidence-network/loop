@@ -18,7 +18,9 @@ Goose node) point at the lab's relay. Nothing is paid and no node is restarted o
   goose -> mesh  the Goose node asks through loop_ask_mailbox the mailbox the Mesh node's commitment names; the Mesh plugin reads
                  and answers it. The proof is the Goose node's Evidence Bundle (loop_book_bundle), as the rehearsal's.
 
-Asks: a history card each way (history_card/1 from the Mesh node, history_card/2 where the Goose node's v0.20.1 library finds it listed; stranger-safe, so a signed artifact is the answer; a refusal's policy check against a commitment
+Asks: a history card each way (history_card/2 from the Goose node, which advertises /2 (u539); from the Mesh node, history_card/2
+where its commitment lists it, else history_card/1; stranger-safe, so a signed artifact is the answer; a refusal's policy check
+against a commitment
 the plugin does not hold would be NOT_CHECKED). The relay's own log (lab/relay.py) is the carrier log: when it received each request
 and reply. Writes OUT (the run tree laid out as scripts/cross_ask_session.py's) and OUT/population/population.json, whose
 directory is LOOP_CROSS_POPULATION for ./loop.sh --stage cross --ecosystem cross --population live.
@@ -54,7 +56,8 @@ from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
 
 ASK = "history_card"
-REQUEST = {"subject": {"checkpoints": None}, "derivation": "history_card/1", "coverage": {"min_freshness": 1}}
+# The Mesh node's probe of the Goose node: history_card/2, the card a Goose node advertises (u539).
+REQUEST = {"subject": {"checkpoints": None}, "derivation": "history_card/2", "coverage": {"min_freshness": 1}}
 TOOL = "/api/plugins/capsules/tools/nostr_evidence_request"
 
 
@@ -168,8 +171,12 @@ async def run(a):
     (out / "nodes.json").write_text(json.dumps(nodes, indent=2, sort_keys=True) + "\n")
 
     homes = a.lab_dir / "goose" / "homes"
+    if not goose_live.has_profile(homes / a.goose_name):
+        # The node would make a profile with new keys, and the old key files are read only on that first `deal init`:
+        # `lab/goose.sh init` carries them over first (scripts/goose_live.py).
+        raise SystemExit(f"{homes / a.goose_name} has no capsulectl-deal profile yet: run lab/goose.sh init first")
     env = {**os.environ, "GOOSE_HOME": str(homes / a.goose_name), "GOOSE_OPERATOR": a.goose_name,
-           "GOOSE_RELAY_MAP": json.dumps({a.relay_name: a.relay_addr})}
+           "GOOSE_RELAY_MAP": json.dumps({a.relay_name: a.relay_addr}), **goose_live.node_env(goose_live.TOOLS)}
     params = StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
     m2g, g2m = out / a.mesh_name / "asks" / a.goose_name, out / a.goose_name / "asks" / a.mesh_name
     m2g_log, g2m_log = Carrier(m2g / "carrier.jsonl"), Carrier(g2m / "carrier.jsonl")
@@ -224,8 +231,9 @@ async def run(a):
             d = g2m / ASK
             d.mkdir(parents=True)
             t0 = now() - dt.timedelta(seconds=1)
-            # No derivation named: evidencebook v0.20.1 asks history_card/2 on checkpoints where the commitment lists it
-            # (the lab nodes' history_card/1 outgrew a websocket frame of 1 MiB), else history_card/1.
+            # No derivation named: the Goose node asks history_card/2 on checkpoints where the commitment lists it
+            # (the lab nodes' history_card/1 outgrew a websocket frame of 1 MiB), else history_card/1. The Mesh node's
+            # commitment must answer within PT2M or longer: the Goose node asks through no window under 90 seconds.
             tool = await goose.call("loop_ask_mailbox", commitment_file=str(m_commit_file), subject_form="checkpoints",
                                     min_freshness="1")
             polled = {}
@@ -251,7 +259,7 @@ async def run(a):
     pop = out / "population"
     pop.mkdir()
     rev = os.popen(f"git -C {ROOT} rev-parse HEAD").read().strip()
-    doc = {"population": "live", "pinned": ["goose-g1"],
+    doc = {"population": "live", "pinned": ["goose-g1", "capsule-engine"],
            "cross": {"run": str(out), "asks": [ASK], "head": rev,
                      "nodes": {n: {"key_id": v["key_id"], "ecosystem": v["ecosystem"]} for n, v in nodes.items()}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

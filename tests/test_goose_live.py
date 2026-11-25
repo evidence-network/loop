@@ -144,7 +144,7 @@ class SessionTest(unittest.TestCase):
             self.assertRegex(d["node_id"], r"^[0-9a-f]{64}$")
             self.assertTrue((self.lab / "goose" / "keys" / name / "node-key.pub.pem").is_file())
             self.assertFalse((self.lab / "goose" / "keys" / name / "node-key.pem").exists())
-            self.assertEqual(oct((self.lab / "goose" / "homes" / name / "producer.key").stat().st_mode & 0o777), "0o600")
+            self.assertEqual(oct((self.lab / "goose" / "homes" / name / "deal" / "signing.seed").stat().st_mode & 0o777), "0o600")
         self.assertNotIn("PRIVATE", self.init.stdout + self.init.stderr)
         self.assertEqual(oct((self.lab / "goose" / "homes").stat().st_mode & 0o777), "0o700")
 
@@ -152,6 +152,71 @@ class SessionTest(unittest.TestCase):
         again = goose("init", LAB_DIR=str(self.lab), LOOP_TOOLS=str(TOOLS))
         self.assertEqual(again.returncode, 0, again.stderr)
         self.assertEqual(json.loads((self.lab / "goose" / "ids.json").read_text()), self.ids)
+
+    def test_a_cutover_home_keeps_both_key_ids_and_joins_again(self):
+        """An old Python node's home (producer.key and checkpoint.key, PKCS#8 PEM, and no capsulectl-deal profile) gets a
+        profile made from those keys, so its key ids stay, and init joins it again and rewrites its ids.json entry."""
+        import shutil
+        lab = self.lab / "cutover"
+        homes = lab / "goose" / "homes"
+        keys = {}
+        for name in ("goose-1", "goose-2"):
+            home = homes / name
+            home.mkdir(parents=True)
+            for f in ("producer.key", "checkpoint.key"):
+                subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(home / f)], check=True,
+                               capture_output=True)
+                (home / f).chmod(0o600)
+            keys[name] = {f: subprocess.run(["openssl", "pkey", "-in", str(home / f), "-pubout", "-outform", "DER"],
+                                            capture_output=True, check=True).stdout[-32:].hex()
+                          for f in ("producer.key", "checkpoint.key")}
+            (home / "shelf.db").write_text("the old node's store, kept as an archive")
+        old = {n: {"node_id": k["producer.key"], "key_id": k["producer.key"], "record_id": "88" * 32} for n, k in keys.items()}
+        (lab / "goose" / "ids.json").write_text(json.dumps(old))
+        r = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        ids = json.loads((lab / "goose" / "ids.json").read_text())
+        py = TOOLS / "goose" / "venv" / "bin" / "python"
+        for name, k in keys.items():
+            with self.subTest(name):
+                # the signing key id (the node id nodes/ lists) and the checkpoint key id are the old node's
+                self.assertEqual((ids[name]["node_id"], ids[name]["key_id"]), (k["producer.key"], k["producer.key"]))
+                seed = (homes / name / "deal" / "checkpoint.seed").read_text().strip()
+                got = subprocess.run([str(py), "-c", "import sys; from cryptography.hazmat.primitives.asymmetric.ed25519 "
+                                      "import Ed25519PrivateKey as K; print(K.from_private_bytes(bytes.fromhex(sys.argv[1]))"
+                                      ".public_key().public_bytes_raw().hex())", seed], capture_output=True, text=True)
+                self.assertEqual(got.stdout.strip(), k["checkpoint.key"])
+                # joined again: a new join record of the new profile replaces the old one in ids.json
+                self.assertRegex(ids[name]["record_id"], r"^[0-9a-f]{64}$")
+                self.assertNotEqual(ids[name]["record_id"], old[name]["record_id"])
+                self.assertTrue((homes / name / "shelf.db").is_file())  # the old store stays, untouched
+        # init again: each node's join is found, not sealed again, so the ids stay
+        again = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(again.returncode, 0, again.stderr[-2000:])
+        self.assertEqual(json.loads((lab / "goose" / "ids.json").read_text()), ids)
+        # an init that stopped after the profiles were made but before ids.json was rewritten: the retry still gives
+        # the profile's own join record, not the stale pre-cutover one
+        (lab / "goose" / "ids.json").write_text(json.dumps(old))
+        r = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        self.assertEqual(json.loads((lab / "goose" / "ids.json").read_text()), ids)
+        shutil.rmtree(lab)
+
+    def test_a_home_with_a_profile_but_no_id_joins_again_and_keeps_its_keys(self):
+        lab = self.lab / "lost-ids"
+        homes = lab / "goose" / "homes"
+        r = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        first = json.loads((lab / "goose" / "ids.json").read_text())
+        partial = {"goose-1": first["goose-1"], "goose-2": {k: v for k, v in first["goose-2"].items() if k != "record_id"}}
+        (lab / "goose" / "ids.json").write_text(json.dumps(partial))
+        r = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        ids = json.loads((lab / "goose" / "ids.json").read_text())
+        self.assertEqual(ids["goose-1"], first["goose-1"])  # a node with its profile and its id keeps its join record
+        self.assertEqual(ids["goose-2"]["key_id"], first["goose-2"]["key_id"])
+        self.assertRegex(ids["goose-2"]["record_id"], r"^[0-9a-f]{64}$")
+        self.assertTrue((homes / "goose-2" / "deal" / "signing.seed").is_file())
 
     def drive(self, *args):
         py = TOOLS / "goose" / "venv" / "bin" / "python"
@@ -186,7 +251,7 @@ class SessionTest(unittest.TestCase):
         found7 = json.loads((out7 / "finding.json").read_text())
         self.assertEqual(found7["result"], "PASS")
         self.assertIn("wss://relay.loop-lab.example) is the lab's, reachable only from the lab host", found7["detail"])
-        self.assertIn("(PT1M) holds during a run only", found7["detail"])
+        self.assertIn("(PT2M) holds during a run only", found7["detail"])
         self.assertIn("the askers are the lab's persistent nodes, no deal to compare them with", found7["detail"])
         # step 01 holds the sealing node to the key nodes/<node_id>.json lists
         if not (TOOLS / "01-seal").is_dir():

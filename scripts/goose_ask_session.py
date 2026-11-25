@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Step 07 on the Goose rehearsal: the deal's two G1 nodes ask each other through the mailbox their commitments advertise (loop#330, loop#399).
+"""Step 07 on the Goose rehearsal: the deal's two Goose nodes ask each other through the mailbox their commitments advertise (loop#330, loop#399).
 
 Usage (in the Goose venv, which has `mcp` and `websockets`): goose_ask_session.py OUT DEAL_RUN
 
@@ -11,7 +11,7 @@ mailbox (loop_mailbox_poll), never serving:
   exchange        an exchange request about the asker's own join record: the asker is a stranger on a mailbox
                   (its carriage key says nothing about who it is), so the node's disclosure policy refuses it with
                   a signed refusal
-  history_card    history_card/1, which the node advertises to anyone: a signed artifact
+  history_card    history_card/2, which the node advertises to anyone: a signed artifact
   exchange_late   the same exchange request, whose answer the node posts only after the deadline: the asker records
                   an absence at the deadline and keeps the late reply
 
@@ -45,7 +45,10 @@ from websockets.sync.server import serve
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
 ADVERTISED_RELAY = "wss://relay.rehearsal.example"
-ANSWERS_WITHIN = "PT1M"  # the shortest window an absence may claim, so the late ask's absence is recorded in this run
+# The node's asker refuses a window under 90 seconds (the shortest absence window, a minute, and the time to seal the
+# request: mailbox_exchange.MINIMUM_ABSENCE_WINDOW + SEAL_MARGIN); PT2M is the shortest whole-minute window above it, so
+# the late ask's absence is recorded in this run.
+ANSWERS_WITHIN = "PT2M"
 POLL_INTERVAL = 30
 NAMES = ("buyer", "seller")
 REQUEST_KIND, REPLY_KIND = 4700, 4701
@@ -114,18 +117,20 @@ class Goose:
         return out
 
 
-async def run(out, relay, homes, published, joined, names=NAMES, relay_name=ADVERTISED_RELAY):
+async def run(out, relay, homes, published, joined, names=NAMES, relay_name=ADVERTISED_RELAY, operator="goose-{}"):
     """Two existing nodes ask each other. `homes` is the GOOSE_HOME root of nodes that already exist (a directory per
     name: the rehearsal's deal parties, or the live lab's persistent nodes), `published` the directory holding the
     commitments they already published (<key_id>.json, policies/): the nodes keep their keys and ask through the
     commitment each published, advertising nothing new. `relay_name` is the relay those name. `joined`
-    ({name: {key_id, record_id}}, from the nodes' first join) keeps a node's book at one join record, not one per run."""
+    ({name: {key_id, record_id}}, from the nodes' first join) keeps a node's book at one join record, not one per run.
+    `operator` formats a node's operator from its name: the capsulectl-deal profile is named after it, so it must be the
+    one the node was created with (the rehearsal's goose-<name>; the lab's nodes are named for their operator, "{}")."""
     shutil.rmtree(out, ignore_errors=True)  # a rerun starts clean: the carrier log is appended to
     out.mkdir(parents=True)
     relay_map = json.dumps({relay_name: relay.address})
 
     def params(name):
-        env = {**os.environ, "GOOSE_HOME": str(Path(homes) / name), "GOOSE_OPERATOR": f"goose-{name}",
+        env = {**os.environ, "GOOSE_HOME": str(Path(homes) / name), "GOOSE_OPERATOR": operator.format(name),
                "GOOSE_RELAY_MAP": relay_map}
         return StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
 
@@ -152,7 +157,7 @@ async def run(out, relay, homes, published, joined, names=NAMES, relay_name=ADVE
                 spec = {"subject_form": "exchange", "subject_value": json.dumps(joined[asker]["record_id"]),
                         "min_freshness": "1"}
                 if name == "history_card":
-                    spec = {"subject_form": "checkpoints", "derivation": "history_card/1", "min_freshness": "1"}
+                    spec = {"subject_form": "checkpoints", "derivation": "history_card/2", "min_freshness": "1"}
                 node_id = joined[asked]["key_id"]
                 sent[asker, asked, name] = await nodes[asker].call(
                     "loop_ask_mailbox", commitment_file=str(out / asked / "advertised" / f"{node_id}.json"), **spec)

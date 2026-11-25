@@ -70,10 +70,12 @@ map, `ECOSYSTEM_OF_COMMUNITY` in `steps/13-ask-across`: `mesh-llm` is `mesh`, `m
 ## Rehearsal and live
 
 **Rehearsal.** `scripts/cross_rehearsal.py` runs `scripts/cross_ask_session.py` with rehearsal keys made for the run (no
-live key, wallet or lab VM): a mesh node (a `capsulectl book` node joined by `join.sh`) and a Goose node (evidencebook's G1),
-asking each other three questions each way through an in-memory relay: an exchange request (refused with a signed refusal
-under the counterparties policy), `history_card/1` (answered with a signed artifact) and the same exchange request whose
-answer is posted only after the deadline (an absence). The run waits out the one-minute deadline, as step 07 does.
+live key, wallet or lab VM): a mesh node (a `capsulectl book` node joined by `join.sh`) and a Goose node (evidencebook's
+python/examples/goose, a capsulectl-deal profile), asking each other three questions each way through an in-memory relay:
+an exchange request (refused with a signed refusal under the counterparties policy), a history card (answered with a
+signed artifact: `history_card/2` of the Goose node, which advertises /2, and `history_card/1` of the mesh node) and the
+same exchange request whose answer is posted only after the deadline (an absence). Both nodes answer within two minutes
+(`PT2M`: the Goose node asks through no window under 90 seconds), and the run waits out that deadline, as step 07 does.
 
 The rehearsal mesh node's mailbox is the loop's adapter, not the mesh plugin, and its listing is a rehearsal-only entry
 with `ask_route: nostr` made together with a commitment re-signed to carry `ask.nostr`. So a `PASS` says: request and answer

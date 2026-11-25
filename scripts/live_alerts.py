@@ -143,7 +143,7 @@ def alert_run(run, run_url):
     alerts = failing(run)
     where = run.relative_to(ROOT) if run.is_absolute() and run.is_relative_to(ROOT) else run
     for nn, name, result, why in alerts:
-        # OWNER names Mesh's components; Goose steps run on evidencebook's G1 node (loop#315).
+        # OWNER names Mesh's components; Goose steps run on evidencebook's Goose node (loop#315).
         owner = "evidence-network/loop#315 (the Goose pass)" if "goose" in run.parts else OWNER.get(nn, "unknown")
         raise_issue(f"loop-step-{nn}", "B60205", f"loop step {nn} failed",
                     f"loop step {nn} ({name}) fails",

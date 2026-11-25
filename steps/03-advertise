@@ -17,7 +17,7 @@ stapled card's stream (scripts/history_cards.py).
   nodes/ list holds no rehearsal node); it is kept as carrier.bundle, a proof
   file, so `git show` can be re-run on exactly what was fetched. On the Goose
   rehearsal population (scripts/goose_rehearsal.py), each node's commitment is
-  the one the node signed itself with G1's loop_advertise, published byte for
+  the one the node signed itself with its loop_advertise, published byte for
   byte; the harness signs nothing, and the commitment must be under the node's
   own key.
 - live: the harness never signs for a live node. A live commitment is one the
@@ -40,7 +40,7 @@ advertise_evidence_requests switch is on (Mesh-LLM/capsules-plugin#212); the liv
 
 Per-node inputs come from DIR/advertise/<name>/ (commitment.json,
 history_card.json, checkpoint.json) when present. Without them a rehearsal
-node gets stand-ins, named as such in the finding. The stapled history_card/1 is
+node gets stand-ins, named as such in the finding. The stapled history_card/1 (a Goose node's history_card/2, u539) is
 verified by the pinned capsule-cli (`capsulectl verify --history`, scripts/staple_verify.py, installed by
 steps/capsule-cli.setup.sh) under the node key and each card entry's checkpoint_key: a failing property fails the
 node, a stand-in staple (the harness builds an evidence-commitment/0, loop#407), a missing binary or an entry
@@ -201,7 +201,7 @@ def fetch(carrier, path, ref="HEAD"):
 
 
 def node_signed(node, signed, carrier, key_id, key_dir=None, out=None, rev=None):
-    """Publish the commitment and policy the node signed itself (the Goose rehearsal: G1's loop_advertise), byte for
+    """Publish the commitment and policy the node signed itself (the Goose rehearsal: the node's loop_advertise), byte for
     byte; the harness signs nothing. Returns (record, key_id): the key is the node's own, from its key_dir, so a
     commitment under another key fails the check."""
     raw = Path(signed["commitment"]).read_bytes()
@@ -476,7 +476,7 @@ def main(argv=None):
     goose = pop.get("goose") or {}
     signed = goose.get("commitments") or {}
     pinned, gaps = [], []
-    if signed:  # the Goose rehearsal: the commitments are G1's, so the finding pins goose-g1 and names the revision
+    if signed:  # the Goose rehearsal: the commitments are the node's, so the finding pins goose-g1 and names the revision
         pinned = ["goose-g1"]
         if goose.get("rev") != finding.pins()["goose-g1"][1]:
             gaps.append({"what": "goose-g1", "why": f"installed {goose.get('rev')}, versions.lock pins "
@@ -602,6 +602,13 @@ def judge_live(pop, out, started):
     return conclude(out, "live", records, proof, started)
 
 
+def card_kind(r):
+    """The history card derivation(s) a record's commitment staples, for the finding's words (a Goose node staples
+    history_card/2, u539; a mesh node history_card/1)."""
+    kinds = sorted({str(c.get("derivation")) for c in r.get("history_cards") or [] if c.get("derivation")})
+    return " and ".join(kinds) or "history_card/1"
+
+
 def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
     """verification.json and the finding, from the per-node records."""
     live = kind == "live"
@@ -623,7 +630,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
     for r in checked:
         streams = ", ".join(str(c["stream"]) for c in r["history_cards"] if c["stream"])
         if r["staple_verify"]["state"] != "PASS":
-            outside.append({"what": f"{r['name']}: the stapled history_card/1 verifies"
+            outside.append({"what": f"{r['name']}: the stapled {card_kind(r)} verifies"
                                     + (f" (streams {streams})" if len(r["history_cards"]) > 1 else ""),
                             "why": "its bytes, digest, profile and responder are checked; its signature is not: "
                                    + "; ".join(r["staple_verify"]["not_checked"]),
@@ -664,9 +671,10 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
             detail += f" The staple of {', '.join(standins)} is a rehearsal stand-in."
         detail += (f" The stapled checkpoint attestation is step 02's assertion; here ({names}) only its bytes are "
                    "matched to the committed digest.")
-        verified = [r["name"] for r in checked if r["staple_verify"]["state"] == "PASS"]
+        verified = [(r["name"], r) for r in checked if r["staple_verify"]["state"] == "PASS"]
         if verified:
-            detail += (f" The stapled history_card/1 of {', '.join(verified)} verifies with capsule-cli "
+            kinds = " and ".join(sorted({card_kind(rec) for _, rec in verified}))
+            detail += (f" The stapled {kinds} of {', '.join(r for r, _ in verified)} verifies with capsule-cli "
                        f"{sv_.pinned_version()} (a pre-release; every capsule-cli release is one) `verify --history`, under "
                        "the node key and the checkpoint key each card entry names: digest, envelope and checkpoint "
                        "signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a "
@@ -674,7 +682,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
         for r in checked:
             if r["staple_verify"]["state"] != "PASS":
                 detail += " " + finding.outside(
-                    f"the stapled history_card/1 signature ({r['name']}) is not verified: "
+                    f"the stapled {card_kind(r)} signature ({r['name']}) is not verified: "
                     + "; ".join(r["staple_verify"]["not_checked"]),
                     STAPLE_ISSUE)
         stapled = [r for r in checked if "standard_history" in r]

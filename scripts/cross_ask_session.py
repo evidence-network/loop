@@ -10,15 +10,17 @@ Two rehearsal nodes, one per ecosystem, each with its own rehearsal key (never a
          (`ask.nostr`): the mesh plugin does not read a Nostr mailbox yet (loop#442), so THE MAILBOX OF THIS NODE IS
          THIS SCRIPT'S ADAPTER (serve_mesh), not the mesh plugin. Entry and commitment are made together so they
          agree (ask_route nostr).
-  goose  evidencebook's G1 node (python/examples/goose at the goose-g1 pin), spoken to over MCP stdio as Goose speaks
-         to it; its commitment is the node's own (loop_advertise) and it answers by polling its mailbox.
+  goose  evidencebook's Goose node (python/examples/goose at the goose-g1 pin, a capsulectl-deal profile), spoken to over
+         MCP stdio as Goose speaks to it; its commitment is the node's own (loop_advertise) and it answers by polling its
+         mailbox.
 
 The relay is this process's in-memory NIP-01 relay (scripts/goose_ask_session.py), the rehearsal carrier: it hands the
 events over and logs when it received each (carrier.jsonl). Three asks go each way, as step 07's goose backend makes them:
 
   exchange       an exchange request about the asker's own first record; the asker is a stranger on a mailbox, so a
                  `counterparties` policy refuses it with a signed refusal (a correct answer)
-  history_card   history_card/1, answered to anyone with a signed artifact
+  history_card   a history card, answered to anyone with a signed artifact: history_card/2 of the goose node (which
+                 advertises /2, u539), history_card/1 of the mesh node
   exchange_late  the same exchange request, whose answer is posted only after the deadline: the asker records an
                  absence at the deadline and keeps the late reply
 
@@ -79,7 +81,6 @@ ASKS = ("exchange", "history_card", "exchange_late")
 PLANTS = ("wrong-key", "late-counted", "unsigned-refusal")
 MESH, GOOSE = "mesh", "goose"
 MESH_KEY_DIR = "population/rehearsal/keys/alice"  # the mesh rehearsal node's TEST key
-WITHIN = dt.timedelta(minutes=1)
 
 
 def _step07():
@@ -91,6 +92,8 @@ def _step07():
 
 
 step07 = _step07()
+# The mesh asker's window: the Goose node's commitment's answers_within (the request's deadline must be that after its seal).
+WITHIN = step07.duration(ANSWERS_WITHIN)
 
 
 def now():
@@ -100,7 +103,8 @@ def now():
 def request_map(name, first_record, deadline):
     """The request a node composes for an ask: step 07's three asks, with the request's own deadline."""
     if name == "history_card":
-        body = {"subject": {"checkpoints": None}, "derivation": "history_card/1", "coverage": {"min_freshness": 1}}
+        # The Goose node advertises history_card/2 (u539): a stranger's card probe of it asks /2.
+        body = {"subject": {"checkpoints": None}, "derivation": "history_card/2", "coverage": {"min_freshness": 1}}
     else:
         body = {"subject": {"exchange": first_record}, "coverage": {"min_freshness": 1}}
     return {**body, "deadline": deadline.strftime("%Y-%m-%dT%H:%M:%SZ")}
@@ -314,7 +318,8 @@ async def session(out, tmp, relay, capsulectl, plant):
     mesh = Mesh(out, tmp, capsulectl)
 
     def params():
-        env = {**os.environ, "GOOSE_HOME": str(tmp / "goose-home"), "GOOSE_OPERATOR": "goose-rehearsal"}
+        env = {**os.environ, "GOOSE_HOME": str(tmp / "goose-home"), "GOOSE_OPERATOR": "goose-rehearsal",
+               "GOOSE_NO_WITNESS": "1"}
         return StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
 
     async with stdio_client(params()) as (gr, gw):

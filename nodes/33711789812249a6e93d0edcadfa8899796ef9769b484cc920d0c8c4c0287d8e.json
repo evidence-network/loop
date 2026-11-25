@@ -5,13 +5,13 @@
     "policy": "counterparties",
     "stranger_safe": [
       "checkpoints",
-      "history_card/1"
+      "history_card/2"
     ]
   },
-  "host_build": "goose-g1 a255d824eecd64e1269aa22f581b748f099d3805 (evidencebook python/examples/goose, run by lab/goose.sh on the loop lab host)",
+  "host_build": "goose-g1 d3ad8fa2c38cdb9cded1f48f6c3051f86abf2793 (evidencebook python/examples/goose, run by lab/goose.sh on the loop lab host)",
   "key_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
   "mesh": "lab",
   "node_id": "33711789812249a6e93d0edcadfa8899796ef9769b484cc920d0c8c4c0287d8e",
   "operator": "ethanyzhang",
-  "plugin_version": "loop_server.py of goose-g1 a255d824eecd64e1269aa22f581b748f099d3805; the Goose node goose-2"
+  "plugin_version": "loop_server.py of goose-g1 d3ad8fa2c38cdb9cded1f48f6c3051f86abf2793; the Goose node goose-2"
 }

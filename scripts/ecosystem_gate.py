@@ -37,8 +37,9 @@ BASELINE = ROOT / "baseline" / "live.json"
 
 
 # A pin only one ecosystem's column runs: moving it moves no other ecosystem's baseline (the Goose node is not run
-# for mesh, so a goose-g1 bump must not turn the mesh gate red; evidence-network/loop#349).
-PIN_OWNER = {"goose-g1": "goose"}
+# for mesh, so a goose-g1 bump must not turn the mesh gate red; evidence-network/loop#349). capsule-engine is built
+# only for the Goose node (steps/goose.setup.sh, the admission its deals cite).
+PIN_OWNER = {"goose-g1": "goose", "capsule-engine": "goose"}
 
 
 def lock_pins(lock=ROOT / "versions.lock", eco=None):

@@ -224,6 +224,9 @@ class GateTest(unittest.TestCase):
         lock.write_text(LOCK.read_text() + "goose-g1 action-state-group/evidencebook 0123456789abcdef\n")
         self.assertNotIn("goose-g1", gate.lock_pins(lock, eco="mesh"))
         self.assertIn("goose-g1", gate.lock_pins(lock, eco="goose"))
+        # the capsule-engine pin is built only for the Goose node: the repository's own lock gives mesh none of it
+        self.assertNotIn("capsule-engine", gate.lock_pins(eco="mesh"))
+        self.assertIn("capsule-engine", gate.lock_pins(eco="goose"))
         # a mesh baseline recorded before the pin was owned by Goose still verifies after the pin moves
         self.update("a", {"01": "PASS"})
         doc = json.loads(self.baseline.read_text())

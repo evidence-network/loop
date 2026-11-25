@@ -93,8 +93,9 @@ def unchecked(why, legacy=False):
 
 def verify(commitment_path, node_key_id, binary_path=None):
     """{"state": PASS|FAIL|NOT_CHECKED, "errors": [...], "not_checked": [...], "outside": [...], "report": dict|None}
-    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given. A /2 card makes it
-    NOT_CHECKED before any capsule-cli run (see the module docstring)."""
+    for the history_card/1 staples of the commitment file, sent by the node whose key id (hex) is given. A history_card/2
+    staple (a Goose node's, u539) is run the same way: capsule-cli rc45 reports it under the kind history_card/1, with the
+    same per-property report (see the module docstring)."""
     try:
         doc = json.loads(Path(commitment_path).read_text())
         entries = hc.entries(doc)

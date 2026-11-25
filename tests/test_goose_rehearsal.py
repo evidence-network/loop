@@ -1,7 +1,9 @@
-"""The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): G1's two nodes, the mock rail paying their deal, step 01
-judging the capsule the buyer sealed with loop_seal, step 03 the commitment each node signed with loop_advertise, and step 06 reading G1's own pay record and the nodes' own signed settlement disclosures against the rail (01, 02, 03, 04, 05, 06, 07 and 12 pass). Skipped unless steps/goose.setup.sh has installed the Goose tools; with LOOP_REQUIRE_TOOLS=1 (CI) a missing tool fails instead of
-skipping. The step 01 tests also need steps/01-seal.setup.sh's verifier, the step 04 and 05 tests capsulectl, and the step 02 tests
-the step 02 driver, capsulectl and openssl 3 (steps/02-book.setup.sh, steps/12-join.setup.sh).
+"""The Goose rehearsal driver (scripts/goose_rehearsal.py, loop#330): the Goose node's two capsulectl-deal profiles running one
+x-deal-v1 deal with the mock rail paying it, step 01 judging the capsule the buyer sealed with loop_seal, step 03 the commitment
+each node signed with loop_advertise, step 05 each side's report with capsulectl-deal verify --bundle, and step 06 the two payment
+legs against the rail (01, 02, 03, 04, 05, 06, 07 and 12 pass). Skipped unless steps/goose.setup.sh has installed the Goose tools; with LOOP_REQUIRE_TOOLS=1 (CI) a missing tool fails instead of
+skipping. The step 01, 04 and 06 tests also need steps/01-seal.setup.sh's verifier, the step 04 tests capsulectl, and the step 02
+tests the step 02 driver, capsulectl and openssl 3 (steps/02-book.setup.sh, steps/12-join.setup.sh).
 
 Run: python3 -m unittest tests.test_goose_rehearsal -v
 """
@@ -21,6 +23,15 @@ import staple_stub  # noqa: E402
 setUpModule, tearDownModule = staple_stub.module_hooks()
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 REQUIRE_TOOLS = os.environ.get("LOOP_REQUIRE_TOOLS") == "1"  # CI, after the setups: a missing tool is an error, never a skip
+
+
+def seed_pem(seed, pem):
+    """An Ed25519 private key PEM (PKCS#8) from a profile's hex seed file, for openssl and the step 02 driver."""
+    import base64
+    der = bytes.fromhex("302e020100300506032b657004220420") + bytes.fromhex(Path(seed).read_text().strip())
+    Path(pem).write_text("-----BEGIN PRIVATE KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PRIVATE KEY-----\n")
+    Path(pem).chmod(0o600)
+    return Path(pem)
 
 
 def needs(path, msg):
@@ -69,11 +80,14 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(found["result"], "PASS", found["detail"])
         doc = json.loads((self.pop / "population.json").read_text())
         for n in json.loads((out / "verification.json").read_text())["nodes"]:
-            # published byte for byte as loop_advertise wrote it, under the node's own key, stapling goose/node
+            # published byte for byte as loop_advertise wrote it, under the node's own key, stapling the profile's
+            # history_card/2 for its cadence (u539)
             self.assertEqual(n["inputs"], "signed by the node")
             signed = doc["goose"]["commitments"][n["name"]]["commitment"]
             self.assertEqual((out / f"{n['name']}.commitment.json").read_bytes(), Path(signed).read_bytes())
-            self.assertEqual([(c["stream"], c["community"]) for c in n["history_cards"]], [("goose/node", "goose")])
+            self.assertEqual([(c["derivation"], c["community"]) for c in n["history_cards"]], [("history_card/2", "goose")])
+            self.assertRegex(n["history_cards"][0]["stream"], r"^deal-cadence/[0-9a-f]+$")
+        self.assertIn("The stapled history_card/2 of buyer, seller verifies", found["detail"])
 
     @needs(TOOLS.parent / "01-seal" / "bin" / "cross_language", "run steps/01-seal.setup.sh")
     def test_step_01_passes_unchanged_on_the_capsule_the_goose_node_sealed(self):
@@ -90,7 +104,7 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(sorted(found["pinned"]), ["aac-go", "goose-g1"])
         self.assertIn("sealed by the Goose node", found["asserts"])
         installed = json.loads((out / "checks.json").read_text())["installed"]
-        self.assertRegex(installed["capsule-emit"], r"^\d+\.\d+\.\d+")  # the Goose venv's, which is not the mesh pin
+        self.assertNotIn("capsule-emit", installed)  # the node's capsulectl-deal sealed it, not a capsule-emit
         self.assertNotIn("capsule-emit", found["pinned"])
         self.assertTrue({"node-key.pub.pem", "goose-run.log"} <= {x["path"] for x in found["proof"]})
 
@@ -144,7 +158,7 @@ class GooseRehearsalTest(unittest.TestCase):
         run = self.work / f"{name}-run"
         shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
         book = {**doc["goose"]["book"], "bundle": str(run / "book-bundle-buyer.json"),
-                "witnesses": str(run / "witnesses.json")}
+                "checkpoint": str(run / "book-checkpoint-buyer.cose"), "witnesses": str(run / "witnesses.json")}
         mutate(run, book)
         doc["goose"]["book"] = book
         pop = self.work / f"{name}-pop"
@@ -180,7 +194,7 @@ class GooseRehearsalTest(unittest.TestCase):
             def mutate(run, book):
                 driver = TOOLS.parent / "02-book" / "bin" / "loop-step02-book"
                 got = json.loads(subprocess.run(
-                    [str(driver), "lab-receipt", "--key", str(pem), "--statement", str(run / "book-bundle-buyer.checkpoint.cose"),
+                    [str(driver), "lab-receipt", "--key", str(pem), "--statement", str(run / "book-checkpoint-buyer.cose"),
                      "--at", "1793937188"], capture_output=True, text=True, check=True).stdout)
                 b = bundle(run)
                 b["checkpoint"]["witnesses"] = [{"ts_url": "http://127.0.0.1:1", "entry_hash": got["entry_hash"],
@@ -214,7 +228,8 @@ class GooseRehearsalTest(unittest.TestCase):
                                      ("notyet", not_yet, {"witness_not_before"}),
                                      ("buyerkey", signed_by(self.work / "keys" / "buyer" / "node-key.pem"), {"witness_not_node"}),
                                      ("sellerkey", signed_by(self.work / "keys" / "seller" / "node-key.pem"), {"witness_not_node"}),
-                                     ("sellercheckpointkey", signed_by(self.work / "run" / "seller" / "checkpoint.key"), {"witness_not_node"}),
+                                     ("sellercheckpointkey", signed_by(seed_pem(self.work / "run" / "seller" / "deal" / "checkpoint.seed",
+                                                                               self.work / "seller-checkpoint.pem")), {"witness_not_node"}),
                                      ("cpkey", other_checkpoint_key, {"checkpoint"}), ("otherbook", other_book, {"position"}),
                                      ("othercapsule", other_capsule, {"record"}), ("receipt", altered_receipt, {"witness_signature"})):
             with self.subTest(name):
@@ -274,19 +289,24 @@ class GooseRehearsalTest(unittest.TestCase):
                 self.fail("capsulectl is not installed")
             self.skipTest("run steps/12-join.setup.sh")
 
-    def test_step_04_passes_on_the_admissions_and_the_deal_opening_the_goose_buyer_sealed(self):
+    def test_step_04_passes_on_the_admissions_and_the_deal_context_the_goose_buyer_sealed(self):
         self._step_04_ready()
         out, found = self._step_04(self.pop, "findings")
         self.assertEqual(found["result"], "PASS", found["detail"])
         checks = json.loads((out / "checks.json").read_text())
         self.assertEqual({n: [c["check"] for c in cs] for n, cs in checks.items()}, {
             "go": ["bundle_verifies", "decision_sealed", "one_outcome", "goose_shape", "peer_named", "deal_sealed",
-                   "sealed_before_deal", "deal_cites_decision", "first_step_cites_decision"],
+                   "sealed_before_deal", "deal_cites_decision", "deal_commits_offer"],
             "no": ["bundle_verifies", "decision_sealed", "one_outcome", "goose_shape", "no_deal_after_no", "gate_refuses"]})
         self.assertEqual(json.loads((out / "counts.json").read_text())["by_outcome"], {"GO": 1, "NO": 1})
-        # the bytes judged are the ones loop_book_bundle wrote
+        # the bytes judged are the ones loop_deal_bundle wrote, and the offer the buyer signed
         self.assertEqual((out / "scenarios" / "go" / "bundle.json").read_bytes(),
-                         (self.work / "run" / "admission-go-disclosed.json").read_bytes())
+                         (self.work / "run" / "admission-go-bundle.json").read_bytes())
+        self.assertEqual((out / "offer.json").read_bytes(), (self.work / "run" / "offer.json").read_bytes())
+        offer = json.loads((out / "offer.verify.json").read_text())
+        self.assertTrue(offer["ok"], offer)
+        self.assertEqual(offer["digest"], json.loads((self.work / "run" / "deal.json").read_text())["offer"])
+        self.assertIn("aac-go", found["pinned"])
 
     def test_step_04_fails_each_check_a_planted_population_breaks(self):
         self._step_04_ready()
@@ -296,8 +316,8 @@ class GooseRehearsalTest(unittest.TestCase):
             doc = json.loads((self.pop / "population.json").read_text())
             run = self.work / f"{name}-run4"
             shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
-            doc["goose"]["admit"].update(go=str(run / "admission-go-disclosed.json"), no=str(run / "admission-no-disclosed.json"),
-                                         half=str(run / "buyer-half.json"), refused=str(run / "deal-refused.json"))
+            doc["goose"]["admit"].update(go=str(run / "admission-go-bundle.json"), no=str(run / "admission-no-disclosed.json"),
+                                         offer=str(run / "offer.json"), refused=str(run / "deal-refused.json"))
             mutate(doc, run)
             pop = self.work / f"{name}-pop4"
             pop.mkdir()
@@ -317,31 +337,36 @@ class GooseRehearsalTest(unittest.TestCase):
         def other_peer(doc, run):  # the GO names a peer other than the seller
             doc["goose"]["admit"]["peer"] = "buyer"
 
-        def half_without_cite(doc, run):  # the deal's first step cites nothing
-            h = json.loads((run / "buyer-half.json").read_text())
-            h["steps"][0]["capsule"]["evidence_record_header"]["links"] = []
-            (run / "buyer-half.json").write_text(json.dumps(h))
-
         def refusal_missing(doc, run):  # the gate was never asked: the kept answer is a success
             (run / "deal-refused.json").write_text(json.dumps({"ok": True, "peer": "ab" * 32}))
 
-        def half_forged(doc, run):  # the deal's first half altered after it was sealed
-            h = json.loads((run / "buyer-half.json").read_text())
-            h["steps"][0]["payload"]["body"]["terms"]["price_minor"] += 1
-            (run / "buyer-half.json").write_text(json.dumps(h))
+        def offer_forged(doc, run):  # the offer altered after the buyer signed it: its digest is not the context's
+            o = json.loads((run / "offer.json").read_text())
+            o["agent_input"]["body"]["terms"]["item"] = "something else"
+            (run / "offer.json").write_text(json.dumps(o))
+
+        def offer_resigned(doc, run):  # the offer's digest recomputes, but the signed record does not commit it
+            o = json.loads((run / "offer.json").read_text())
+            o["agent_input"]["body"]["terms"]["item"] = "something else"
+            o["record"]["model_attestation"]["compute_attestation"]["agent_input_digest"] = "44" * 32
+            (run / "offer.json").write_text(json.dumps(o))
+
+        def other_offer(doc, run):  # another file of the deal presented as the offer
+            doc["goose"]["admit"]["offer"] = str(run / "seller-agreement.json")
 
         for name, mutate, broken in (("swapped", swapped, {"go.decision_sealed", "no.decision_sealed"}),
                                      ("norefusal", refusal_missing, {"no.gate_refuses"}),
-                                     ("forgedhalf", half_forged, {"go.first_step_cites_decision"}),
+                                     ("forgedoffer", offer_forged, {"go.deal_commits_offer"}),
+                                     ("resignedoffer", offer_resigned, {"go.deal_commits_offer"}),
+                                     ("otheroffer", other_offer, {"go.deal_commits_offer"}),
                                      ("otherbuyer", other_buyer, {"go.decision_sealed", "no.decision_sealed"}),
-                                     ("otherpeer", other_peer, {"go.peer_named"}),
-                                     ("nocite", half_without_cite, {"go.first_step_cites_decision"})):
+                                     ("otherpeer", other_peer, {"go.peer_named"})):
             with self.subTest(name):
                 found, failed = planted(name, mutate)
                 self.assertEqual(found["result"], "FAIL", found["detail"])
                 self.assertLessEqual(broken, failed)
 
-    def test_step_04_judge_fails_a_no_that_a_record_cites_and_a_deal_sealed_before_its_decision(self):
+    def test_step_04_judge_fails_a_no_that_a_record_cites_a_deal_sealed_before_its_decision_and_another_offer(self):
         self._step_04_ready()
         import importlib.machinery
         import importlib.util
@@ -350,17 +375,19 @@ class GooseRehearsalTest(unittest.TestCase):
         loader.exec_module(mod)
         admit = json.loads((self.pop / "population.json").read_text())["goose"]["admit"]
         keys = {n: mod.book_keys.pub_hex(self.work / "keys" / n / "node-key.pem") for n in ("buyer", "seller")}
-        half = json.loads(Path(admit["half"]).read_text())
+        deal = json.loads((self.work / "run" / "deal.json").read_text())
+        offer_ok = (True, "the offer holds", {"digest": deal["offer"], "deal_id": deal["deal_id"], "to": keys["seller"]})
 
-        def judged(name, path, mutate):
+        def judged(name, path, mutate, offer_check=offer_ok):
             b = json.loads(Path(path).read_text())
             mutate(b)
             verdict = {"verdict": "VALID", "disclosures": [{"capsule_id": c, "status": "disclosure_match"} for c in b["disclosures"]]}
-            half_verdict = {"ok": True, "key_id": keys["buyer"], "deal_id": half["deal_id"]}
             refusal = json.loads(Path(admit["refused"]).read_text())
-            checks, _ = mod.goose_judge(name[:2], b, verdict, keys["buyer"], keys["seller"], half, half_verdict, refusal,
+            checks, _ = mod.goose_judge(name[:2], b, verdict, keys["buyer"], keys["seller"], offer_check, refusal,
                                         "GO" if name[:2] == "go" else "NO")
             return {c["check"] for c in checks if not c["ok"]}
+
+        self.assertEqual(judged("go-ok", admit["go"], lambda b: None), set())
 
         def cited(b):  # a later record's capsule cites the NO
             last = next(r for r in b["records"] if r["capsule_id"] != b["root"])
@@ -371,11 +398,17 @@ class GooseRehearsalTest(unittest.TestCase):
             b["completeness_certificate"]["range_proof"]["to_index"] -= 1
         self.assertEqual(judged("no-short", admit["no"], first_cut), {"no_deal_after_no"})
 
-        def reordered(b):  # the opening was committed before the admission
+        def reordered(b):  # the deal's context was committed before the admission
             heads = {c: d["agent_input"] for c, d in b["disclosures"].items()}
             dec = next(c for c, h in heads.items() if h["record_type"] == "goose_admitted")
             heads[dec]["seq"], heads[b["root"]]["seq"] = heads[b["root"]]["seq"], heads[dec]["seq"]
         self.assertEqual(judged("go-late", admit["go"], reordered), {"sealed_before_deal"})
+
+        def other_digest(b):  # the context names another offer than the one the buyer signed
+            b["disclosures"][b["root"]]["agent_input"]["statement"]["offer"] = "55" * 32
+        self.assertEqual(judged("go-offer", admit["go"], other_digest), {"deal_commits_offer"})
+        bad = (False, "the offer's signature does not verify", offer_ok[2])
+        self.assertEqual(judged("go-unsigned", admit["go"], lambda b: None, bad), {"deal_commits_offer"})
 
     def _step_05(self, pop, name):
         out = self.work / name / "05-deal"
@@ -384,68 +417,73 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return out, json.loads((out / "finding.json").read_text())
 
-    def test_step_05_passes_on_the_halves_the_goose_nodes_pushed_and_the_records_that_hold_them(self):
-        self._step_04_ready()
+    CLAUSES_05 = ["report_verifies", "signed_by_listed_key", "checkpoint_key_is_commitments", "one_deal_one_offer",
+                  "agreement_names_counterparty", "holds_counterparty_records"]
+
+    def test_step_05_passes_on_the_deal_the_goose_nodes_ran_and_their_reports(self):
         out, found = self._step_05(self.pop, "findings")
         self.assertEqual(found["result"], "PASS", found["detail"])
         checks = json.loads((out / "checks.json").read_text())
         for side in ("buyer", "seller"):
-            self.assertEqual([c["check"] for c in checks[side]], [
-                "halves_verify", "one_deal", "final_extends_pushed", "pushed_at_completion",
-                "close_cites_counterparty_checkpoint", "receiver_record", "holds_bytes_by_record_id",
-                "cites_request_and_checkpoint"])
-            self.assertTrue((out / "verify" / f"{side}-held-half-bundle.json").is_file())  # capsulectl's verdict is kept
-        # the halves judged are the bytes the nodes wrote
-        self.assertEqual((out / "halves" / "seller-exchange-half.json").read_bytes(),
-                         (self.work / "run" / "seller-exchange-half.json").read_bytes())
+            self.assertEqual([c["check"] for c in checks["checks"][side]], self.CLAUSES_05)
+            # the node's own verifier's verdict is kept
+            self.assertEqual(json.loads((out / "verify" / f"{side}-report.json").read_text())["verdict"], "VALID")
+        self.assertEqual(checks["checkpoint_keys"], json.loads((self.pop / "population.json").read_text())["goose"]
+                         ["verify"]["checkpoint_keys"])
+        # the files judged are the bytes the nodes wrote
+        self.assertEqual((out / "deal" / "seller-report.json").read_bytes(), (self.work / "run" / "seller-report.json").read_bytes())
         self.assertIn("not by a second implementation", found["detail"])
+        self.assertEqual(sorted(found["pinned"]), ["capsule-engine", "goose-g1"])
 
-    def test_step_05_fails_each_clause_a_planted_exchange_breaks(self):
-        self._step_04_ready()
+    def test_step_05_fails_each_clause_a_planted_deal_breaks(self):
         import shutil
 
         def planted(name, mutate):
             doc = json.loads((self.pop / "population.json").read_text())
             run = self.work / f"{name}-run5"
             shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
-            for key in doc["goose"]["deal"]:
-                if key.startswith(("buyer-", "seller-")):
-                    doc["goose"]["deal"][key] = str(run / Path(doc["goose"]["deal"][key]).name)
-            mutate(doc["goose"]["deal"], run)
+            doc["goose"]["deal"] = {k: str(run / Path(v).name) for k, v in doc["goose"]["deal"].items()}
+            mutate(doc, run)
             pop = self.work / f"{name}-pop5"
             pop.mkdir()
             (pop / "population.json").write_text(json.dumps(doc))
             out, found = self._step_05(pop, f"{name}-f5")
-            failed = {f"{s}.{c['check']}" for s, cs in json.loads((out / "checks.json").read_text()).items() for c in cs if not c["ok"]}
+            failed = {f"{s}.{c['check']}" for s, cs in json.loads((out / "checks.json").read_text())["checks"].items()
+                      for c in cs if not c["ok"]}
             return found, failed
 
-        def tampered(deal, run):  # a step's payload altered after it was sealed
-            p = run / "seller-exchange-half.json"
-            h = json.loads(p.read_text())
-            h["steps"][0]["payload"]["body"]["terms"]["price_minor"] += 1
-            p.write_text(json.dumps(h))
+        def tampered(doc, run):  # a record of the buyer's report altered after it was sealed
+            b = json.loads((run / "buyer-report.json").read_text())
+            b["records"][0]["operator"] = "someone-else"
+            (run / "buyer-report.json").write_text(json.dumps(b))
 
-        def other_signer(deal, run):  # the seller's pushed half is the buyer's
-            shutil.copyfile(run / "buyer-exchange-half.json", run / "seller-exchange-half.json")
+        def other_signer(doc, run):  # the seller's report presented as the buyer's
+            shutil.copyfile(run / "seller-report.json", run / "buyer-report.json")
 
-        def already_closed(deal, run):  # a half pushed after its close, not at the exchange's end
-            shutil.copyfile(run / "seller-final-half.json", run / "seller-exchange-half.json")
+        def other_offer(doc, run):  # the offer file is not the one the agreements commit
+            o = json.loads((run / "offer.json").read_text())
+            o["agent_input"]["body"]["terms"]["item"] = "something else"
+            (run / "offer.json").write_text(json.dumps(o))
 
-        def other_record(deal, run):  # the buyer's record of the held half is the seller's
-            shutil.copyfile(run / "seller-held-half-bundle.json", run / "buyer-held-half-bundle.json")
+        def other_commitment(doc, run):  # the buyer's commitment names the seller's checkpoint key
+            c = doc["goose"]["commitments"]
+            c["buyer"] = c["seller"]
 
-        for name, mutate, broken in (("tampered", tampered, {"buyer.halves_verify"}),
-                                     ("othersigner", other_signer, {"buyer.halves_verify"}),
-                                     ("closed", already_closed, {"buyer.pushed_at_completion"}),
-                                     ("otherrecord", other_record, {"buyer.receiver_record", "buyer.holds_bytes_by_record_id"})):
+        def other_deal(doc, run):  # the run names another deal
+            doc["goose"]["deal_id"] = "deal-0000000000000000"
+
+        for name, mutate, broken in (("tampered", tampered, {"buyer.report_verifies"}),
+                                     ("othersigner", other_signer, {"buyer.signed_by_listed_key",
+                                                                    "buyer.checkpoint_key_is_commitments"}),
+                                     ("otheroffer", other_offer, {"buyer.one_deal_one_offer", "seller.one_deal_one_offer"}),
+                                     ("othercommitment", other_commitment, {"buyer.checkpoint_key_is_commitments"}),
+                                     ("otherdeal", other_deal, {"buyer.one_deal_one_offer", "seller.one_deal_one_offer"})):
             with self.subTest(name):
                 found, failed = planted(name, mutate)
                 self.assertEqual(found["result"], "FAIL", found["detail"])
                 self.assertLessEqual(broken, failed)
 
-    def test_step_05_judge_fails_a_fork_another_deal_a_close_citing_another_checkpoint_and_a_payload_that_is_not_the_half(self):
-        self._step_04_ready()
-        import base64
+    def test_step_05_judge_fails_another_counterparty_a_record_not_held_and_an_unread_report(self):
         import copy
         import importlib.machinery
         import importlib.util
@@ -454,50 +492,33 @@ class GooseRehearsalTest(unittest.TestCase):
         loader.exec_module(mod)
         out, found = self._step_05(self.pop, "findings-unit")
         self.assertEqual(found["result"], "PASS", found["detail"])
-        deal = json.loads((self.pop / "population.json").read_text())["goose"]["deal"]
-        halves = {f"{w}-{k}": json.loads(Path(deal[f"{w}-{k}"]).read_text()) for w in ("buyer", "seller")
-                  for k in ("exchange-half", "final-half")}
-        verdicts = {n: json.loads((out / "verify" / f"{n}.json").read_text()) for n in halves}
-        sys.path.insert(0, str(ROOT / "steps"))
-        import goose_half
-        keys = {n: goose_half.key_of(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")}
-        bundle = json.loads(Path(deal["buyer-held-half-bundle"]).read_text())
+        doc = json.loads((self.pop / "population.json").read_text())
+        reports = {s: json.loads(Path(doc["goose"]["deal"][f"{s}-report"]).read_text()) for s in ("buyer", "seller")}
+        verdicts = {s: json.loads((out / "verify" / f"{s}-report.json").read_text()) for s in ("buyer", "seller")}
+        keys = {n: mod._spki_hex(self.work / "keys" / n / "node-key.pub.pem") for n in ("buyer", "seller")}
+        cp_keys = doc["goose"]["verify"]["checkpoint_keys"]
+        deal = json.loads((self.work / "run" / "deal.json").read_text())
 
-        def failed(mutate_verdicts=None, mutate_bundle=None):
-            v, b = copy.deepcopy(verdicts), copy.deepcopy(bundle)
+        def failed(mutate_reports=None, mutate_verdicts=None):
+            r, v = copy.deepcopy(reports), copy.deepcopy(verdicts)
+            (mutate_reports or (lambda r: None))(r)
             (mutate_verdicts or (lambda v: None))(v)
-            (mutate_bundle or (lambda b: None))(b)
-            return {c["check"] for c in mod.goose_clauses("buyer", "seller", halves, v, b, True, keys) if not c["ok"]}
+            return {c["check"] for c in mod.goose_clauses("buyer", "seller", r, v, keys, cp_keys, deal["offer"],
+                                                         deal["deal_id"]) if not c["ok"]}
 
         self.assertEqual(failed(), set())
 
-        def other_deal(v):
-            v["seller-final-half"]["deal_id"] = "deal-another"
-        self.assertIn("one_deal", failed(other_deal))
+        def other_counterparty(r):
+            r["buyer"]["extensions"]["x-deal-v1"]["book"]["agreement"]["payload"]["body"]["counterparty_key"] = "66" * 32
+        self.assertEqual(failed(other_counterparty), {"agreement_names_counterparty"})
 
-        def forked(v):  # the buyer's final half does not start with the steps it pushed
-            v["buyer-final-half"]["ids"] = ["00" * 32] + v["buyer-final-half"]["ids"][1:]
-        self.assertIn("final_extends_pushed", failed(forked))
+        def not_held(r):  # the buyer rests on fewer of the seller's records than the seller's own report names
+            r["buyer"]["extensions"]["x-deal-report/v0"]["agent_input"]["rests_on"]["counterparty"]["counted"] -= 1
+        self.assertEqual(failed(not_held), {"holds_counterparty_records"})
 
-        def wrong_checkpoint(v):
-            v["buyer-final-half"]["counterparty_checkpoint_cites"] = ["11" * 32]
-        self.assertEqual(failed(wrong_checkpoint) >= {"close_cites_counterparty_checkpoint"}, True)
-
-        def garbage_payload(b):  # the held bytes replaced
-            ext = b["extensions"]["evidencebook/payloads"]
-            for k in ext:
-                ext[k] = base64.urlsafe_b64encode(b"not the half").decode()
-        self.assertIn("holds_bytes_by_record_id", failed(mutate_bundle=garbage_payload))
-
-        def no_payload(b):
-            b["extensions"]["evidencebook/payloads"] = {}
-        self.assertIn("holds_bytes_by_record_id", failed(mutate_bundle=no_payload))
-
-        def other_request(b):  # the record cites nothing
-            for d in b["disclosures"].values():
-                if d["agent_input"]["record_type"] == "goose_half_received":
-                    d["agent_input"]["links"] = []
-        self.assertIn("cites_request_and_checkpoint", failed(mutate_bundle=other_request))
+        def no_extension_reading(v):  # VALID, but the node's verifier did not read the deal (no x-deal-v1 pass)
+            v["buyer"]["extensions"] = [x for x in v["buyer"]["extensions"] if x.get("kind") != "x-deal-v1"]
+        self.assertEqual(failed(mutate_verdicts=no_extension_reading), {"report_verifies"})
 
     def test_steps_04_and_05_are_not_checked_when_the_run_exported_nothing_for_them(self):
         self._step_04_ready()
@@ -516,10 +537,10 @@ class GooseRehearsalTest(unittest.TestCase):
         doc = json.loads((self.pop / "population.json").read_text())
         run = self.work / "truncated-run"
         shutil.copytree(self.work / "run", run, ignore=shutil.ignore_patterns("buyer", "seller", "*.key", "witness-key.pem"))
-        for name in ("buyer-half", "deal-refused", "seller-exchange-half", "buyer-held-half-bundle"):
+        for name in ("offer", "deal-refused", "buyer-report"):
             (run / f"{name}.json").write_text('{"truncated": ')
-        doc["goose"]["admit"].update({"half": str(run / "buyer-half.json"), "refused": str(run / "deal-refused.json")})
-        doc["goose"]["deal"].update({n: str(run / f"{n}.json") for n in ("seller-exchange-half", "buyer-held-half-bundle")})
+        doc["goose"]["admit"].update({"offer": str(run / "offer.json"), "refused": str(run / "deal-refused.json")})
+        doc["goose"]["deal"].update({n: str(run / f"{n}.json") for n in ("offer", "buyer-report")})
         pop = self.work / "truncated-pop"
         pop.mkdir()
         (pop / "population.json").write_text(json.dumps(doc))
@@ -589,7 +610,7 @@ class GooseRehearsalTest(unittest.TestCase):
             del n["seller"]
             (run / "nodes.json").write_text(json.dumps(n))
 
-        for name, mutate, text in (("otherkey", other_key, "joined as"), ("noprobe", no_probe, "no history_card/1 probe"),
+        for name, mutate, text in (("otherkey", other_key, "joined as"), ("noprobe", no_probe, "no history_card/2 probe"),
                                    ("reply", altered_reply, "history_card"), ("forged", forged_commitment, "commitment"),
                                    ("nojoin", no_join_record, "no join record was exported"),
                                    ("otherjoin", other_join_record, "not the node's goose_joined record"),
@@ -608,13 +629,37 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(mod.goose_binding_errors("buyer", {"key_id": "x"}), [])
         self.assertIn("names a controller binding", mod.goose_binding_errors("buyer", {"controller_binding": {}})[0])
         s07 = mod.load_step07()
-        adv = {"subjects": ["checkpoints"], "derivations": ["history_card/1"]}
-        probe = dict(s07.ASKS["history_card"]["request"], nonce="n", deadline="2026-01-01T00:00:00Z", profile="evidence-interop/0")
+        adv = {"subjects": ["checkpoints"], "derivations": ["history_card/2"]}
+        probe = dict(s07.ASKS["history_card"]["request"], derivation="history_card/2", nonce="n",
+                     deadline="2026-01-01T00:00:00Z", profile="evidence-interop/0")
         self.assertEqual(mod.goose_probe_errors(s07, probe, adv), [])
         self.assertTrue(mod.goose_probe_errors(s07, {**probe, "derivation": "other/1"}, adv))  # another derivation
         self.assertTrue(mod.goose_probe_errors(s07, {**probe, "subject": {"exchange": "x"}}, adv))  # another subject
         self.assertTrue(mod.goose_probe_errors(s07, {**probe, "coverage": {"min_freshness": 9}}, adv))  # other coverage
         self.assertTrue(mod.goose_probe_errors(s07, probe, {**adv, "derivations": []}))  # not advertised
+        self.assertTrue(mod.goose_probe_errors(s07, {**probe, "derivation": "history_card/1"}, adv))  # the /1 probe (u539)
+
+    def test_step_12_holds_the_goose_staple_to_history_card_2_on_the_cadence_under_the_commitments_checkpoint_key(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("step12_join_card_tests", str(ROOT / "steps" / "12-join"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(mod)
+        adv_dir = self.work / "asks" / "buyer" / "advertised"
+        doc = json.loads((adv_dir / "commitment.json").read_text())
+        adv = mod.advertised(adv_dir)
+        self.assertEqual(mod.goose_card_errors(doc, adv), [])
+        self.assertEqual(adv["checkpoint_key"], json.loads((self.pop / "population.json").read_text())["goose"]
+                         ["verify"]["checkpoint_keys"]["buyer"])
+        other_key = {**adv, "card_keys": {s: "77" * 32 for s in adv["card_keys"]}}
+        self.assertIn("not the commitment's", mod.goose_card_errors(doc, other_key)[0])
+        v1 = json.loads(json.dumps(doc))
+        v1["history_cards"][0]["derivation"] = "history_card/1"
+        self.assertIn("staples no history_card/2", mod.goose_card_errors(v1, adv)[0])
+        book = json.loads(json.dumps(doc))
+        book["history_cards"][0]["stream"] = "goose/node"
+        self.assertIn("not the profile's cadence",
+                      mod.goose_card_errors(book, {**adv, "card_keys": {"goose/node": adv["checkpoint_key"]}})[0])
 
     def test_step_12_is_not_checked_on_a_checkout_other_than_the_pin(self):
         self._step_04_ready()
@@ -660,7 +705,7 @@ class GooseRehearsalTest(unittest.TestCase):
         deal_id = json.loads((self.work / "run" / "deal.json").read_text())["deal_id"]
         self.assertIn(f"({deal_id[:21]})", found["detail"])  # the whole `deal-` + 16 hex id, not 11 hex of it
         for who in ("buyer", "seller"):
-            self.assertTrue((self.work / "run" / who / "shelf.db").is_file())
+            self.assertTrue((self.work / "run" / who / "deal" / "signing.seed").is_file())  # the deal's own profiles
             self.assertFalse((self.work / "asks" / "run").exists())
         self.assertTrue(json.loads((out / "first-answered.json").read_text())["sealed"])
 
@@ -768,72 +813,116 @@ class GooseRehearsalTest(unittest.TestCase):
         edit(pop / "step06")
         return pop
 
-    def test_step_06_passes_on_the_exchange_read_from_g1s_pay_record_and_the_nodes_own_disclosures(self):
+    def test_step_06_passes_on_the_exchange_read_from_the_two_legs_and_names_d1_outside(self):
         deal = json.loads((self.work / "run" / "deal.json").read_text())
         found, checks, out = self.judge06(self.pop)
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertTrue(all(c["ok"] for c in checks.values()), checks)
-        self.assertIn("pay_record", checks)
-        # no exchange or disclosure file is the driver's: the step derived the exchange from G1's halves
+        self.assertEqual(sorted(checks), ["adapter", "band", "exchange_match", "finality", "ledger", "legs", "legs_signed",
+                                          "rail_fee", "reference"])
+        # no exchange file is the driver's: the step derived the exchange from the nodes' signed legs
         self.assertFalse((self.pop / "step06" / "exchange.json").exists())
         exchange = json.loads((out / "exchange.json").read_text())
         self.assertEqual((exchange["exchange_id"], exchange["payer"], exchange["payee"]),
                          (deal["deal_id"], deal["buyer"], deal["seller"]))
         self.assertEqual(exchange["settlement_ref"]["settlement_id"], deal["settlement_id"])
-        for n in ("buyer", "seller"):
-            self.assertEqual(json.loads((self.pop / "step06" / f"disclosure-{n}.json").read_text())["node"], f"goose-{n}")
+        # a node's own count of its settlements is not exported (D1): outside the assertion, named, never a check
+        self.assertNotIn("disclosed settlement count", found["asserts"])
+        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
+        self.assertIn("action-state-group/evidencebook#624", found["detail"])
 
-    def test_step_06_fails_when_the_opened_reference_is_not_the_one_the_pay_record_commits(self):
-        def edit(d):
-            doc = json.loads((d / "buyer-pay-opening.json").read_text())
-            local = json.loads(doc["opening"]["text"])
-            local["act"]["reference"] = "0" * 64
-            doc["opening"]["text"] = json.dumps(local, sort_keys=True, separators=(",", ":"))
-            (d / "buyer-pay-opening.json").write_text(json.dumps(doc))
-        found, checks, _ = self.judge06(self.tampered_population(edit))
-        self.assertEqual(found["result"], "FAIL")
-        self.assertFalse(checks["pay_record"]["ok"])
+    def _legs(self, d, edit):
+        for name in ("buyer-leg.json", "seller-leg.json"):
+            leg = json.loads((d / name).read_text())
+            edit(name.split("-")[0], leg["record"]["record"]["settlement"], leg)
+            (d / name).write_text(json.dumps(leg))
 
-    def test_step_06_fails_when_the_pay_record_names_another_settlement_than_the_rails(self):
-        def edit(d):  # the buyer's half no longer holds a pay record
-            half = json.loads((d / "buyer-half.json").read_text())
-            half["steps"] = [s for s in half["steps"] if s["payload"].get("body", {}).get("action") != "pay"]
-            (d / "buyer-half.json").write_text(json.dumps(half))
-        found, checks, _ = self.judge06(self.tampered_population(edit))
+    def test_step_06_fails_legs_that_do_not_carry_the_rails_settlement_or_do_not_agree(self):
+        def other_reference(side, st, leg):  # both legs name another payment than the rail's settlement
+            st["payment_ref"]["value"] = "0" * 64
+        found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, other_reference)))
         self.assertEqual(found["result"], "FAIL")
-        self.assertFalse(checks["pay_record"]["ok"])
+        self.assertFalse(checks["reference"]["ok"])
 
-    def test_step_06_fails_halves_whose_producer_keys_are_not_the_populations_nodes(self):
-        def other_reference(d):  # foreign producer keys; a reference that is not the rail's falls to reference and exchange_match
-            half = json.loads((d / "buyer-half.json").read_text())
-            for st in half["steps"]:
-                st["capsule"]["key_id"] = "ab" * 32
-            (d / "buyer-half.json").write_text(json.dumps(half))
-        found, checks, _ = self.judge06(self.tampered_population(other_reference))
+        def disagree(side, st, leg):  # the payee leg states another reference than the payer leg
+            if side == "seller":
+                st["payment_ref"]["value"] = "1" * 64
+        found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, disagree)))
         self.assertEqual(found["result"], "FAIL")
-        self.assertFalse(checks["pay_record"]["ok"])
-        self.assertIn("two distinct nodes", checks["pay_record"]["detail"])
+        self.assertIn("differ", checks["legs"]["detail"])
 
-    def test_step_06_fails_a_pay_payload_its_header_does_not_commit(self):
-        def edit(d):
-            half = json.loads((d / "buyer-half.json").read_text())
-            for st in half["steps"]:
-                if st["payload"].get("body", {}).get("action") == "pay" and "reference_commitment" in st["payload"]["body"]:
-                    st["payload"]["body"]["amount_minor"] += 1
-            (d / "buyer-half.json").write_text(json.dumps(half))
-        found, checks, _ = self.judge06(self.tampered_population(edit))
+        def short(side, st, leg):  # the payee received less than the payer paid
+            if side == "seller":
+                st["received"]["value"] = "49"
+        found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, short)))
         self.assertEqual(found["result"], "FAIL")
-        self.assertIn("not the one its header commits", checks["pay_record"]["detail"])
+        self.assertIn("received", checks["legs"]["detail"])
 
-    def test_step_06_fails_a_node_disclosure_whose_count_or_signature_is_not_the_nodes_own(self):
-        def edit(d):
-            doc = json.loads((d / "disclosure-seller.json").read_text())
-            doc["settlements"] = 2  # signed for 1: the signature no longer verifies
-            (d / "disclosure-seller.json").write_text(json.dumps(doc))
-        found, checks, _ = self.judge06(self.tampered_population(edit))
+    def test_step_06_fails_legs_whose_signers_are_not_the_populations_nodes(self):
+        def foreign(side, st, leg):
+            leg["record"]["record"]["key_id"] = "ab" * 32
+        found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, foreign)))
         self.assertEqual(found["result"], "FAIL")
-        self.assertFalse(checks["ledger_count:seller"]["ok"])
-        self.assertTrue(checks["ledger_count:buyer"]["ok"])
+        self.assertIn("two distinct nodes", checks["legs"]["detail"])
+
+    @needs(TOOLS.parent / "01-seal" / "bin" / "cross_language", "run steps/01-seal.setup.sh")
+    def test_step_06_fails_a_leg_altered_after_its_node_signed_it(self):
+        def altered(side, st, leg):  # the same reference, but the signed record no longer matches its bytes
+            if side == "buyer":
+                st["observed_at"] = "2026-01-01T00:00:00Z"
+        found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, altered)))
+        self.assertEqual(found["result"], "FAIL")
+        self.assertFalse(checks["legs_signed"]["ok"])
+
+
+@needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
+class GooseAskWindowTest(unittest.TestCase):
+    """The pinned node's asker refuses a commitment whose answers_within is under its minimum (PT1M is), and every window
+    the loop's Goose drivers advertise or ask through is at least that minimum."""
+
+    PROBE = r"""
+import sys, json
+from datetime import timedelta
+import mailbox_exchange as mx
+least = (mx.MINIMUM_ABSENCE_WINDOW + mx.SEAL_MARGIN).total_seconds()
+mx.route = lambda commitment: {"answers_within": int(sys.argv[1]), "responder": "r", "checkpoint": "c",
+                               "mailbox_key": "m", "relays": []}
+try:
+    mx.ask(None, {}, "checkpoints")
+    refused = None
+except mx.Refused as e:
+    refused = str(e)
+except Exception as e:  # the window was accepted, and the ask went on to the node this probe does not give
+    refused = None
+print(json.dumps({"least": least, "refused": refused}))
+"""
+
+    def window(self, seconds):
+        src = TOOLS / "src" / "python" / "examples" / "goose"
+        r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", self.PROBE, str(seconds)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, cwd=src,
+                           env={**os.environ, "PYTHONPATH": str(src)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_a_pt1m_commitment_is_refused_and_the_loops_windows_are_not(self):
+        import importlib.machinery
+        import importlib.util
+        import re
+        loader = importlib.machinery.SourceFileLoader("step07_window_tests", str(ROOT / "steps" / "07-ask"))
+        s07 = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+        loader.exec_module(s07)
+        def window_of(script):  # read from the source: the drivers import mcp, which only the Goose venv has
+            return re.search(r'^ANSWERS_WITHIN = "([^"]+)"', (ROOT / "scripts" / script).read_text(), re.M).group(1)
+        pt1m = self.window(60)
+        self.assertIsNotNone(pt1m["refused"])
+        self.assertIn("answers_within is shorter", pt1m["refused"])
+        for name, text in (("goose_ask_session", window_of("goose_ask_session.py")), ("goose_live", window_of("goose_live.py")),
+                           ("steps/07-ask", s07.REHEARSAL_ANSWERS_WITHIN)):
+            seconds = s07.duration(text).total_seconds()
+            with self.subTest(name):
+                self.assertGreaterEqual(seconds, pt1m["least"])
+                self.assertIsNone(self.window(int(seconds))["refused"])
 
 
 if __name__ == "__main__":

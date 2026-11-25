@@ -5,7 +5,7 @@ scripts/lab_circulate.py (loop#384) also calls pay() to return lab-1's earnings 
 shares this log and guard.
 
 Not run by the loop's steps (steps/06-settle only reads what this wrote): lab/goose.sh pay runs it on the lab host,
-through goose_live.py. The Goose nodes (G1) drive no rail and hold no wallet, so the payer's lab wallet (lab-1 by
+through goose_live.py. The Goose nodes (evidencebook python/examples/goose) drive no rail and hold no wallet, so the payer's lab wallet (lab-1 by
 default) pays an invoice the payee's (lab-2) raised, both through their node's local wallet API (`/api/wallet`, the
 API `mesh-llm wallet` uses), and the Goose buyer's `loop_settle` takes the invoice's payment_hash as the reference it
 observed.
@@ -152,17 +152,22 @@ def mark_settled(log, payment_hash, deal_id, direction):
     return sum(1 for e in entries if e["status"] == "settled" and e["direction"] == direction)
 
 
-def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
+def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None, before_send=None):
     """One payment payer -> payee. Returns the record step 06 reads (lightning.json), without the preimage.
 
-    The amount is reserved in the log before `send`; a failure that the wallet reports releases it, one whose outcome
-    is not known (no answer to `send`, or no terminal status within `wait`) keeps it."""
+    `before_send(payment_hash)`, when given, runs once the payee's invoice is in hand and before anything is reserved
+    or sent: the payer's own final review of the payment (a Goose node's check, scripts/goose_live.py); an exception
+    from it stops the payment, nothing sent. The amount is reserved in the log before `send`; a failure that the wallet
+    reports releases it, one whose outcome is not known (no answer to `send`, or no terminal status within `wait`)
+    keeps it."""
     preflight(payer, payee, amount_msat, log, now)
     direction = f"{payer.name}>{payee.name}"
     inv = payee.call("fund", amount_msat=amount_msat)
     h = inv.get("payment_hash") if isinstance(inv, dict) else None
     if not (isinstance(h, str) and HEX64.fullmatch(h) and isinstance(inv.get("bolt11"), str) and inv.get("amount_msat") == amount_msat):
         raise Refused("the payee's wallet did not return a payment_hash and an invoice for the amount; nothing was sent")
+    if before_send is not None:
+        before_send(h)
     entry = {"day": utc_day(now), "direction": direction, "payment_hash": h, "amount_msat": amount_msat, "status": "reserved",
              "at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")}
     with locked(log):  # re-check under the lock: two runs never both pass the cap
@@ -189,7 +194,13 @@ def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
     deadline = time.monotonic() + wait
     out = inb = None
     while time.monotonic() < deadline:
-        out, inb = payer.transaction(h, False), payee.transaction(h, True)
+        try:
+            out, inb = payer.transaction(h, False), payee.transaction(h, True)
+        except Refused as e:
+            # A wallet that refuses the query after the send says nothing about the payment: its outcome is not known
+            # (only the payer's own failed row is a failure), and the reservation stays.
+            raise Unknown(f"payment {h} was handed to {payer.name}'s wallet, but a transaction query was refused ({e}); "
+                          "its reservation stays") from e
         if out and out.get("status") == "failed":
             settle_entry("failed")
             raise Refused(f"the payment failed in {payer.name}'s wallet ({clean(out.get('status_msg'))})")
