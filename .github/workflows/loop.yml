@@ -1,4 +1,6 @@
-# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on every pull request, and by hand.
+# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on a push to main that changes
+# anything outside the paths-ignore list below, and by hand. Pull requests do not run it (about 50 minutes):
+# `scripts/check.sh --full` runs it before such a push (CONTRIBUTING.md).
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -9,11 +11,37 @@ name: loop
 on:
   schedule:
     - cron: "0 2 * * *"
-  pull_request:
+  # Fail-safe: a push to main runs the loop unless it changes only paths shown never to be read by the loop (its steps,
+  # scripts and tests read no top-level Markdown file and nothing under docs/, and no other workflow file). When in
+  # doubt a path stays off this list. CONTRIBUTING.md points here for when `scripts/check.sh --full` is due.
+  push:
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - ".github/workflows/commitments.yml"
+      - ".github/workflows/dco.yml"
+      - ".github/workflows/direct-push.yml"
+      - ".github/workflows/ecosystem-gate.yml"
+      - ".github/workflows/harvest-allowlist.yml"
+      - ".github/workflows/harvest-app-check.yml"
+      - ".github/workflows/leak-lint.yml"
+      - ".github/workflows/live-alerts.yml"
+      - ".github/workflows/live-daily.yml"
+      - ".github/workflows/nodes.yml"
+      - ".github/workflows/personal-data.yml"
+      - ".github/workflows/reports.yml"
+      - ".github/workflows/stats.yml"
+      - ".github/workflows/versions.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# No pull request runs it: every run has its own group, so a push, nightly or dispatched run is never cancelled or replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   loop:
@@ -156,3 +184,13 @@ jobs:
               gh issue create --title "loop step $nn ($name) fails" --label "$label" --body "$body"
             fi
           done 3< loop-summary.txt
+      # Any failed run on main (the nightly, or a dispatch on main) also opens or comments on one ci-red issue for the
+      # workflow, labelled ci-red; the loop-step-NN issues above stay as they are.
+      - name: Report a failed run on main
+        if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "loop failed on main or nightly"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+        run: bash .github/scripts/report-failure.sh

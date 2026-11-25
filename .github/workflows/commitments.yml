@@ -1,12 +1,42 @@
 name: commitments
 
 on:
+  # Pull requests run this only when they touch what it reads: the step 03 driver and its setup, step 12 and join.sh
+  # (test_commitment1 loads both), the Python the step, the checkers and the tests import (steps/, scripts/, lab/), the
+  # tests and their fixtures, the published commitments, bindings and revocations (nodes/, bindings/), the lab's
+  # committed commitments and the pins.
+  # Every push to main runs it in full.
   pull_request:
+    paths:
+      - ".github/workflows/commitments.yml"
+      - "versions.lock"
+      - "steps/03-advertise*"
+      - "steps/capsule-cli.setup.sh"
+      - "steps/12-join"
+      - "join.sh"
+      - "steps/*.py"
+      - "scripts/*.py"
+      - "lab/*.py"
+      - "lab/runs/**"
+      - "tests/test_step03_advertise.py"
+      - "tests/test_nostr_carrier.py"
+      - "tests/test_commitment1.py"
+      - "tests/test_staple_verify.py"
+      - "tests/staple_stub.py"
+      - "tests/fixtures/**"
+      - "tests/nodes/**"
+      - "nodes/**"
+      - "bindings/**"
   push:
     branches: [main]
 
 permissions:
   contents: read
+
+# Pull request runs share a group per ref and cancel; a push to main is never cancelled or replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   commitments:
