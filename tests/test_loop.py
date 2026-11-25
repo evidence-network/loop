@@ -224,7 +224,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(results.pop("04"), "PASS")  # on the admissions and the deal opening the buyer sealed
         self.assertEqual(results.pop("12"), "PASS")  # the joined nodes' commitments and a stranger's history_card/2 probe
         self.assertEqual(results.pop("05"), "PASS")  # on each side's x-deal-v1 report, capsulectl-deal verify --bundle
-        self.assertEqual(results.pop("06"), "PASS")  # on the payer and payee legs; the settlement count is outside (D1)
+        self.assertEqual(results.pop("06"), "PASS")  # on the payer and payee legs and each node's signed settlement count
         self.assertEqual(results.pop("07"), "PASS")  # on the asks the nodes answered by polling their mailboxes
         self.assertEqual(set(results.values()), {"NOT_CHECKED"})
         out = self.dir / "findings" / "goose" / f"{dt.datetime.now(dt.timezone.utc):%F}-rehearsal"
@@ -235,7 +235,7 @@ class LoopTest(unittest.TestCase):
         self.assertEqual(sorted(set(self.finding("03-advertise", out)["pinned"]) - {"capsule-cli"}), ["goose-g1"])
         six = self.finding("06-settle", out)
         self.assertIn("the exchange read from the Goose nodes' payer and payee legs", six["detail"])
-        self.assertIn("ledger_count", six["detail"])  # outside the assertion, named: D1 is not built
+        self.assertIn("ledger_count:buyer", six["detail"])  # inside the assertion (evidencebook#920)
         self.assertIn("checks.json", [x["path"] for x in six["proof"]])  # the run's evidence stays in the finding
         self.assertLessEqual({"buyer-leg.json", "seller-leg.json"}, {x["path"] for x in six["proof"]})
         self.assertEqual(sorted(six["pinned"]), ["capsule-engine", "goose-g1"])

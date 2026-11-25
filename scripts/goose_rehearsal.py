@@ -79,14 +79,16 @@ def node_keys(python, run, work, name):
 
 def step06_inputs(pop, work, deal):
     """Step 06's rehearsal inputs for the deal: the two payment legs the nodes sealed (the buyer's payer leg and the
-    seller's payee leg, each carrying the payment reference it observed) and the controllers (stand-ins, as in the mesh
-    rehearsal). The step derives the exchange from the legs and the rail's object; the driver writes none."""
+    seller's payee leg, each carrying the payment reference it observed), each node's signed settlement disclosure
+    (loop_settlement_disclosure) and the controllers (stand-ins, as in the mesh rehearsal). The step derives the
+    exchange from the legs and the rail's object; the driver writes none."""
     import make_rail
 
     run = work / "run"
     inputs = pop / "step06"
     inputs.mkdir(parents=True, exist_ok=True)
-    for src, name in (("buyer-leg.json", "buyer-leg.json"), ("seller-leg.json", "seller-leg.json")):
+    for name in ("buyer-leg.json", "seller-leg.json", "disclosure-buyer.json", "disclosure-seller.json"):
+        src = name
         shutil.copyfile(run / src, inputs / name)
     make_rail.dump(inputs / "controllers.json", {"stand_in": True, "controllers": {
         deal["buyer"]: "goose-controller-buyer", deal["seller"]: "goose-controller-seller"}})

@@ -204,6 +204,11 @@ async def run(out, rail_dir):
             await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=PRICE_MINOR, payment_ref=ref,
                               out_path=str(out / "seller-leg.json"))
             await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-leg.json"))
+            # 06: each node's signed count of its settlements on the deal's rail, through the mock ledger's latest
+            # sequence (its one line), which step 06 compares with the rail's ledger (ledger_count).
+            for node in (buyer, seller):
+                await node.call("loop_settlement_disclosure", rail=RAIL, through_sequence=settlement["sequence"],
+                                out_path=str(out / f"disclosure-{node.name}.json"))
             delivery = await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"))
             if delivery.get("paused"):
                 await seller.call("loop_deal_approve", deal_id=deal_id, check_id=delivery["check_id"], choice="proceed",

@@ -66,6 +66,18 @@ class GuardTest(unittest.TestCase):
             self.assertEqual(lab.sent, 1)
         self.assertEqual(gl.read_log(self.log)[0]["status"], "reserved")  # the reservation stays
 
+    def test_the_settled_count_starts_at_the_profiles_start_and_keeps_every_later_payment(self):
+        entries = [{"day": "2026-11-24", "direction": "lab-1>lab-2", "payment_hash": f"{i:064x}", "amount_msat": 1000,
+                    "status": "settled", "at": at, "deal_id": f"deal-{i}"}
+                   for i, at in enumerate(("2026-11-24T22:00:00Z", "2026-11-25T13:07:13Z", "2026-11-25T13:07:14Z",
+                                           "2026-11-26T13:00:00Z"))]
+        entries.append({**entries[-1], "payment_hash": "f" * 64, "status": "succeeded", "at": "2026-11-27T13:00:00Z"})
+        self.log.parent.mkdir(parents=True, exist_ok=True)
+        gl.rewrite_log(self.log, entries)
+        # the payment being closed now, and a later one no node may hold any more: both count; the two before do not
+        self.assertEqual(gl.mark_settled(self.log, "f" * 64, "deal-5", "lab-1>lab-2", since="2026-11-25T13:07:14Z"), 3)
+        self.assertEqual(gl.mark_settled(self.log, "f" * 64, "deal-5", "lab-1>lab-2"), 5)  # unbounded: the whole log
+
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
         with FakeLab() as lab:
             with self.assertRaisesRegex(gl.Refused, "3000"):
@@ -253,14 +265,16 @@ class PaidSessionTest(unittest.TestCase):
         found, out = self.step06(pop_dir, "ok")
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertIn("lab wallet lab-1 to lab-2", found["detail"])
-        # the two legs carry the payment's hash, signed by the nodes; a node's own settlement count is D1, outside
+        # the two legs carry the payment's hash, signed by the nodes; each node's own signed count is ledger_count
         legs = {s: json.loads((pop_dir / "step06" / f"{s}-leg.json").read_text())["record"]["record"] for s in ("buyer", "seller")}
         self.assertEqual({legs[s]["settlement"]["payment_ref"]["value"] for s in legs},
                          {json.loads((pop_dir / "step06" / "lightning.json").read_text())["payment_hash"]})
         self.assertEqual((legs["buyer"]["key_id"], legs["seller"]["key_id"]),
                          (self.ids["goose-2"]["key_id"], self.ids["goose-1"]["key_id"]))
-        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
-        self.assertNotIn("ledger_count", json.loads((out / "checks.json").read_text())["checks"])
+        checks = json.loads((out / "checks.json").read_text())["checks"]
+        self.assertTrue(checks["ledger_count:goose-1"]["ok"] and checks["ledger_count:goose-2"]["ok"], checks)
+        self.assertNotIn("D1", found["detail"])
+        self.assertLessEqual({"disclosure-goose-1.json", "disclosure-goose-2.json"}, {x["path"] for x in found["proof"]})
         for f in out.iterdir():  # nothing the step wrote holds the preimage
             self.assertNotIn(pre, f.read_text())
         # each tamper is a FAIL naming the check
@@ -270,7 +284,8 @@ class PaidSessionTest(unittest.TestCase):
                 ("fee", lambda d: d["payee"].update(fee_msat=0), "rail_fee"),
                 ("match", lambda d: d["payee"].update(amount_msat=900), "exchange_match"),
                 ("hash", lambda d: d.update(payment_hash="1" * 64), "reference"),
-                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference")):
+                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference"),
+                ("count", lambda d: d.update(payments_recorded=ln["payments_recorded"] + 1), "ledger_count")):
             d = json.loads(json.dumps(ln))
             mutate(d)
             (pop_dir / "step06" / "lightning.json").write_text(json.dumps(d))

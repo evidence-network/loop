@@ -37,8 +37,10 @@ payment reference its side observed in clear (`settlement.payment_ref`, type ln.
 settlement id; the legs must be of one deal, settled, agree on the reference, the terms and the amount, and be signed by
 two nodes of the population (their producer signatures are checked in aac-go, step 01's checks, where it is installed).
 The exchange's id, payer, payee, currency, amount and decimals are then the legs', and the checks above compare them with
-the rail's object. A Goose node exports no signed count of its settlements on a rail (D1 in evidencebook#624's plan, not
-built), so ledger_count is outside the Goose assertion and named in the finding.
+the rail's object. Each Goose node's signed count of its settlements (loop_settlement_disclosure, DIR/step06/
+disclosure-<node>.json, evidencebook#920) is ledger_count as above, with two Goose rules: its rail is the deal's,
+lightning (GOOSE_RAIL, the rail an ln.payment_hash reference names; the mock rail's declaration says mock), and its
+through_sequence is the ledger's latest sequence exactly (the node counts all its settlements; the label is not a filter).
 
 On the live population no rail is verified: the lab nodes record their
 wallets' reports of Lightning payments (capsules plugin settlement legs and
@@ -132,11 +134,10 @@ cc = mock_rail.cc
 ASSERTS = ("a settlement object for the exchange is on the rail, referenced by its own settlement id and not "
            "copied, and the rail's adapter finds it signed by the rail and final; its value band is derived from "
            "it; its rail-fee flag is set; each node's disclosed settlement count equals the public ledger's count")
-# The Goose rehearsal's assertion: the same, without the nodes' settlement counts, which a Goose node does not export (D1).
-GOOSE_ASSERTS = ASSERTS.replace("; each node's disclosed settlement count equals the public ledger's count", "", 1) + (
+# The Goose rehearsal's assertion: the same, and the nodes' payment legs carry the settlement's id.
+GOOSE_ASSERTS = ASSERTS + (
     "; the buyer's payer leg and the seller's payee leg, each signed by its node, carry the settlement's id as their "
     "payment reference")
-assert "disclosed settlement count" not in GOOSE_ASSERTS
 PINNED = []
 INPUTS = ["exchange.json", "controllers.json"]
 RAIL_FILES = ["rail.json", "ledger.jsonl"]
@@ -187,13 +188,11 @@ def nodes_of(population_dir):
     return out
 
 
-GOOSE_INPUTS = ["controllers.json", "buyer-leg.json", "seller-leg.json"]
+GOOSE_INPUTS = ["controllers.json", "buyer-leg.json", "seller-leg.json"]  # and disclosure-<node>.json, as gather reads
 GOOSE_PROOF = ["exchange.json"] + GOOSE_INPUTS  # exchange.json is derived by the step, not copied
-# What the Goose node does not export on x-deal-v1: a node's signed count of its settlements on a rail (the rail-wide
-# settlement disclosure, D1 in the plan of evidencebook#624), so ledger_count is outside the step for Goose.
-GOOSE_D1 = ("each node's own signed count of its settlements on the rail (ledger_count): the Goose node on x-deal-v1 "
-            "exports no rail-wide settlement disclosure (D1 in evidencebook#624's plan, not built)")
-GOOSE_D1_ISSUE = "action-state-group/evidencebook#624"
+# The rail a Goose node records for its deal, and so names in its settlement disclosure: the node pays on lightning only,
+# and its legs' reference type is ln.payment_hash. In the rehearsal the reference is the mock rail's settlement id.
+GOOSE_RAIL = "lightning"
 
 
 def leg_signatures(out, nodes):
@@ -361,8 +360,8 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
     (out / "adapter.json").write_text(json.dumps(adapter_out, indent=2, sort_keys=True) + "\n")
 
     by_key = {v: k for k, v in nodes.items()}
-    # A Goose node exports no settlement disclosure (GOOSE_D1): ledger_count is outside its assertion, never a check.
-    for name in [] if goose else sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
+    latest = max((o["sequence"] for o in objs if o), default=None)
+    for name in sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
         f = out / f"disclosure-{name}.json"
         key_id = nodes.get(name)
         if not f.is_file():
@@ -373,12 +372,15 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
         through = d.get("through_sequence")
         counted = sum(1 for o in objs if o and o["final"] is True and key_id in (o["payer"], o["payee"])
                       and isinstance(through, int) and o["sequence"] <= through)
-        ok = (signed and d.get("rail") == decl["rail"] and checks["ledger"]["ok"]
-              and isinstance(through, int) and through <= len(objs) and d.get("settlements") == counted)
+        # A Goose node counts all its settlements and labels the count with the sequence it was given, so its label
+        # must be the ledger's latest; a Mesh node's disclosure counts through any prefix of the ledger.
+        is_seq = isinstance(through, int) and not isinstance(through, bool)
+        ok = (signed and d.get("rail") == (GOOSE_RAIL if goose else decl["rail"]) and checks["ledger"]["ok"]
+              and is_seq and (through == latest if goose else through <= len(objs)) and d.get("settlements") == counted)
         checks[f"ledger_count:{name}"] = check(ok, f"{name} discloses {d.get('settlements')!r} through sequence "
                                                    f"{through!r} (signature {'verifies' if signed else 'fails'}); "
                                                    f"the public ledger counts {counted}")
-    if not goose and not any(k.startswith("ledger_count:") for k in checks):
+    if not any(k.startswith("ledger_count:") for k in checks):
         checks["ledger_count"] = check(False, "no node disclosure to compare with the ledger")
 
     controllers = read_json(out / "controllers.json").get("controllers", {})
@@ -407,14 +409,13 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
     if goose:
         # The Goose rehearsal (scripts/goose_rehearsal.py): the exchange is derived from the two payment legs the nodes
         # signed (see the docstring), so the checks above judge them against the rail's object. The controller
-        # declarations are rehearsal stand-ins, as in the mesh rehearsal; a node's own settlement count is not exported.
+        # declarations are rehearsal stand-ins, as in the mesh rehearsal; each node's own settlement count is ledger_count.
         detail = (f"{where} ({payer} pays {payee}) on the mock rail, a rehearsal rail under a TEST key that moves no "
                   f"value: these held, the exchange read from the Goose nodes' payer and payee legs, "
                   f"the rest on the rail's proof bytes: {', '.join(checks)}. Band {band}. "
                   f"Volume: {vol['filtered']} filtered of {vol['raw']} raw settlements ({vol['filter']}). "
                   + ("" if signed_legs is not None else finding.outside(
                       f"the legs' producer signatures: {legs_why}", GOOSE_ISSUE) + " ")
-                  + finding.outside(GOOSE_D1, GOOSE_D1_ISSUE) + " "
                   + finding.outside("the controller declarations, which are rehearsal stand-ins", GOOSE_ISSUE) + " "
                   + finding.outside("a settlement object on a real rail, verified with finality: the rehearsal's rail is a mock, "
                                     "and a real Lightning payment is judged only in the live Goose run "
@@ -1147,7 +1148,9 @@ GOOSE_LIGHTNING_ASSERTS = (
     "the buyer's payer leg and the seller's payee leg, each signed by its Goose node, carry the payment_hash of a real "
     "Lightning payment as their payment reference; the payment is final by the payer's preimage (checked on the host "
     "that paid, only the outcome kept); its value band is derived from the amount; it carries a fee paid to a third "
-    "party (fee_msat > 0); and the payer's amount equals the payee's credit plus fee")
+    "party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's own signed settlement "
+    "disclosure on lightning equals the count of payments recorded between the two lab wallets since the nodes' "
+    "profiles started")
 GOOSE_LIGHTNING_ISSUE = "evidence-network/loop#349"
 GOOSE_LIGHTNING_FILES = ["buyer-leg.json", "seller-leg.json", "lightning.json"]
 
@@ -1157,7 +1160,9 @@ def main_goose_lightning(pop_dir, pop, out, started):
     wallets' outcome.
 
     Inputs, in DIR/step06: the buyer's payer leg and the seller's payee leg of their x-deal-v1 deal (as the rehearsal),
-    and lightning.json, which lab/goose.sh pay wrote from the two lab wallets' own transaction records for the payment:
+    each node's signed settlement disclosure (disclosure-<node name>.json: rail lightning, through_sequence 0, as Lightning
+    has no ledger sequence), and lightning.json, which lab/goose.sh pay wrote from the two lab wallets' own transaction
+    records for the payment:
     {payment_hash, payer: {status, amount_msat, fee_msat, preimage_check}, payee: {status, amount_msat, fee_msat},
     payments_recorded}. The preimage was hashed on the host that paid; only the outcome is kept, never the preimage. The
     Goose nodes hold no wallet: the lab wallets pay as their controllers, which the finding says. The deal's price is in
@@ -1168,12 +1173,12 @@ def main_goose_lightning(pop_dir, pop, out, started):
     for p in out.iterdir():
         if p.is_file():
             p.unlink()
-    for f in GOOSE_LIGHTNING_FILES:
+    for f in GOOSE_LIGHTNING_FILES + sorted(p.name for p in inputs.glob("disclosure-*.json")):
         shutil.copyfile(inputs / f, out / f)
     nodes = nodes_of(pop_dir)
     by_key = {v: k for k, v in nodes.items()}
     checks = {}
-    exchange, checks["legs"] = goose_exchange(out, {"rail": "lightning"}, nodes)
+    exchange, checks["legs"] = goose_exchange(out, {"rail": GOOSE_RAIL}, nodes)
     (out / "exchange.json").write_text(json.dumps(exchange, indent=2, sort_keys=True) + "\n")
     signed_legs, legs_why = leg_signatures(out, nodes) if checks["legs"]["ok"] else (False, "the legs do not agree")
     checks["legs_signed"] = check(bool(signed_legs), legs_why)  # run and pay refuse to start without aac-go
@@ -1198,8 +1203,24 @@ def main_goose_lightning(pop_dir, pop, out, started):
     checks["rail_fee"] = check(is_int(fee) and fee > 0, f"the payee's wallet reports fee_msat {fee!r} on the inbound payment")
     checks["exchange_match"] = check(is_int(amount) and is_int(credit) and is_int(fee) and amount == credit + fee,
                                      f"the payer's amount {amount!r} msat; the payee's credit {credit!r} plus fee {fee!r}")
+    # Lightning has no public ledger: the lab wallets' payment log, counted from when the nodes' profiles started
+    # (scripts/goose_live.py COUNT_SINCE), stands in for the count each node discloses.
+    count = ln.get("payments_recorded")
+    for name in sorted(set(nodes) | {f.stem[len("disclosure-"):] for f in out.glob("disclosure-*.json")}):
+        f = out / f"disclosure-{name}.json"
+        if not f.is_file():
+            checks[f"ledger_count:{name}"] = check(False, f"{name} made no disclosure of its settlement count")
+            continue
+        d, key_id = read_json(f), nodes.get(name)
+        signed = key_id is not None and d.get("key_id") == key_id and cc.verify_sig(d, cc.ED25519_SPKI + bytes.fromhex(key_id))
+        through = d.get("through_sequence")
+        checks[f"ledger_count:{name}"] = check(
+            signed and d.get("rail") == GOOSE_RAIL and is_int(through) and through == 0 and is_int(count)
+            and d.get("settlements") == count,
+            f"{name} discloses {d.get('settlements')!r} on rail {d.get('rail')!r} through sequence {through!r} (signature "
+            f"{'verifies' if signed else 'fails'}); the lab wallets recorded {count!r} payments between them")
     (out / "checks.json").write_text(json.dumps({"checks": checks}, indent=2, sort_keys=True) + "\n")
-    proof = ["exchange.json"] + GOOSE_LIGHTNING_FILES + ["checks.json"]
+    proof = ["exchange.json"] + GOOSE_LIGHTNING_FILES + sorted(p.name for p in out.glob("disclosure-*.json")) + ["checks.json"]
     failed = [f"{k} ({c['detail']})" for k, c in checks.items() if not c["ok"]]
     where = f"exchange {exchange.get('exchange_id')}, payment_hash {h}"
     if failed:
@@ -1210,12 +1231,12 @@ def main_goose_lightning(pop_dir, pop, out, started):
               f"payment of {amount} msat from lab wallet {ln.get('payer_wallet')} to {ln.get('payee_wallet')} inside the lab "
               f"payment guard, the lab wallets standing in as the Goose nodes' controllers (the nodes hold no wallet). "
               f"These held: {', '.join(checks)}. Band {json.dumps(band(amount), sort_keys=True)}. "
-              + finding.outside(GOOSE_D1, GOOSE_D1_ISSUE) + " "
               + finding.outside(f"the deal's price ({exchange.get('amount_atomic')} {exchange.get('currency')} at scale "
                                 f"{exchange.get('decimals')}) against the wallets' msat amount: x-deal-v1 takes a 3-letter "
                                 "currency and the node's pinned admission pack gives a BTC deal no GO, so the deal is "
                                 "priced in USD and no rate ties it to the payment", GOOSE_LIGHTNING_ISSUE) + " "
-              + finding.outside("a public ledger's count of the payments (Lightning has none)", PUBLIC_LEDGER_ISSUE) + " "
+              + finding.outside("a public ledger's count of the payments (Lightning has none; the nodes' own signed "
+                                "disclosures are compared with the lab wallets' payment log)", PUBLIC_LEDGER_ISSUE) + " "
               + "Spend: one payment, made by the run that paid (lab/goose.sh pay), never by this step.")
     return finding.write(out, result="PASS", population=pop["population"], asserts=GOOSE_LIGHTNING_ASSERTS,
                          pinned=pop.get("pinned"), proof=proof, detail=detail, started=started)

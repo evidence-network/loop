@@ -139,17 +139,21 @@ def preflight(payer, payee, amount_msat, log, now=None):
     return spendable
 
 
-def mark_settled(log, payment_hash, deal_id, direction):
+def mark_settled(log, payment_hash, deal_id, direction, since=None):
     """The Goose deal for a succeeded payment is closed on both nodes: mark its entry, and return how many payments in
-    this direction have a settled deal (what each node's disclosure counts). A payment whose deal never closed stays
-    `succeeded`: it counts against the cap, not here, and the next step 06 FAILs on the mismatch until it is looked at."""
+    this direction have a settled deal (what each node's disclosure counts). With `since` (a UTC stamp,
+    YYYY-MM-DDTHH:MM:SSZ), only entries stamped at or after it count: the nodes' profiles started then, and the log is
+    older (a fixed boundary, never what a node says it holds, so a deal a node lost still counts here). A payment whose
+    deal never closed stays `succeeded`: it counts against the cap, not here, and the next step 06 FAILs on the mismatch
+    until it is looked at."""
     with locked(log):
         entries = read_log(log)
         for e in entries:
             if e["payment_hash"] == payment_hash:
                 e["status"], e["deal_id"] = "settled", deal_id
         rewrite_log(log, entries)
-    return sum(1 for e in entries if e["status"] == "settled" and e["direction"] == direction)
+    return sum(1 for e in entries if e["status"] == "settled" and e["direction"] == direction
+               and (since is None or e.get("at", "") >= since))
 
 
 def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None, before_send=None):
