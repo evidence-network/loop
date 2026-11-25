@@ -148,6 +148,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1411,19 +1412,25 @@ def judge_live(pop, out, started):
 
 
 # --- The Goose rehearsal: a Goose node's join and a stranger's probe (loop#330) --------------------------------
-# G1 has no join.sh and keeps no controller binding. A node's join is loop_join: it opens the node book, seals the join
-# record and returns the node's keys and its signed commitment. The step reads the asks session of the Goose rehearsal
+# The Goose node has no join.sh and keeps no controller binding. A node's join is loop_join: it opens the node's
+# capsulectl-deal profile, seals the join record in its node book and returns the node's keys and its signed commitment.
+# The commitment staples the profile's history_card/2 (Steven's u539: a staple always carries history_card/2, a sampled
+# chain of the cadence checkpoints with no deal counts), whose stream is the cadence (deal-cadence/<id>), not the node
+# book: its card is checked against the checkpoint key the commitment names (goose_card_errors). The step reads the asks session of the Goose rehearsal
 # (scripts/goose_ask_session.py: two nodes that joined and advertised, each asked by the other through the mailbox its
 # commitment names) and judges, with step 07's own checks, each node's commitment and the stranger's probe
-# (checkpoints with the history_card/1 derivation, the one probe the Goose asks session makes; a bare checkpoints ask
+# (checkpoints with the history_card/2 derivation, the one probe the Goose asks session makes; a bare checkpoints ask
 # is not made) of it. The probe is answered by the node polling its mailbox and is verified under the
 # node's listed keys in a fresh book. The controller binding is optional (Steven, u137): a commitment that names none is
 # the unbound case, stated, not a failure.
 GOOSE_ASSERTS = ("one command on the pinned Goose release (loop_join) opens the node's book, seals its join record and "
                  "returns the node's signed commitment, the node then advertises the commitment it is asked through, "
                  "which names the keys it answers under, and a stranger's probe of the node (the checkpoints subject "
-                 "with the history_card/1 derivation) verifies and matches the advertised policy; no controller "
-                 "binding is kept" + STAPLE_ASSERT)
+                 "with the history_card/2 derivation) verifies and matches the advertised policy; no controller "
+                 "binding is kept" + STAPLE_ASSERT.replace("stapled history_card/1", "stapled history_card/2", 1))
+# The card a Goose node staples and the probe a stranger makes of it (u539).
+GOOSE_CARD = "history_card/2"
+GOOSE_CARD_STREAM = re.compile(r"^deal-cadence/[0-9a-f]+$")
 GOOSE_PINNED = ["goose-g1", "capsulectl", "capsulectl-book", "capsule-cli"]
 
 
@@ -1440,14 +1447,31 @@ def goose_binding_errors(name, doc):
         if "controller_binding" in doc else []
 
 
+def goose_card_errors(doc, adv):
+    """The commitment staples the profile's history_card/2 for its cadence (u539), under the checkpoint key the commitment
+    names: a Goose node's own card. Returns what is not."""
+    cards = [c for c in hc.history_cards(doc) if c.get("derivation") == GOOSE_CARD]
+    if not cards:
+        return [f"the commitment staples no {GOOSE_CARD} (it staples {[c.get('derivation') for c in hc.history_cards(doc)]})"]
+    errs = []
+    for c in cards:
+        stream, key = c.get("stream"), adv["card_keys"].get(c.get("stream"))
+        if not (isinstance(stream, str) and GOOSE_CARD_STREAM.fullmatch(stream)):
+            errs.append(f"the {GOOSE_CARD} card's stream {stream!r} is not the profile's cadence (deal-cadence/<id>)")
+        if key != adv["checkpoint_key"]:
+            errs.append(f"the {GOOSE_CARD} card for {stream} names checkpoint key {key}, not the commitment's "
+                        f"{adv['checkpoint_key']}")
+    return errs
+
+
 def goose_probe_errors(s07, request, adv):
-    """The ask kept as the history_card/1 probe is that probe, and the advertised policy answers it to a stranger."""
-    want = s07.ASKS["history_card"]["request"]
+    """The ask kept as the history_card/2 probe is that probe, and the advertised policy answers it to a stranger."""
+    want = {**s07.ASKS["history_card"]["request"], "derivation": GOOSE_CARD}
     errs = [] if all(request.get(k) == v for k, v in want.items()) else [
         f"the request is {s07.asked(request)} with coverage {request.get('coverage')}, not "
-        f"checkpoints+history_card/1 with coverage {want['coverage']}"]
+        f"checkpoints+{GOOSE_CARD} with coverage {want['coverage']}"]
     if "checkpoints" not in adv["subjects"] or want["derivation"] not in adv["derivations"]:
-        errs.append("the commitment does not advertise checkpoints and history_card/1")
+        errs.append(f"the commitment does not advertise checkpoints and {GOOSE_CARD}")
     if not s07.stranger_safe(request, adv):
         errs.append("the advertised policy does not answer this request to a stranger")
     return errs
@@ -1496,20 +1520,20 @@ def run_goose(pop, out, tmp):
         if adv["node_key"] != joined["key_id"]:
             failures.append(f"{name}: the commitment is for key {adv['node_key']}, the node joined as {joined['key_id']}")
         failures += goose_binding_errors(name, load(adv_dir / "commitment.json"))
-        failures += [f"{name}: {e}" for e in check_own_card(adv)]
+        failures += [f"{name}: {e}" for e in goose_card_errors(load(adv_dir / "commitment.json"), adv)]
         f, n, p, signed_state = staple_signatures(adv_dir, name, "commitment.json", adv["node_key"])
         if signed_state == "LEGACY":
-            lines.append(f"{name}: its stapled history_card/1 is not verified (an evidence-commitment/0, {STAPLE_ISSUE}: capsule-cli takes no "
+            lines.append(f"{name}: its stapled {GOOSE_CARD} is not verified (an evidence-commitment/0, {STAPLE_ISSUE}: capsule-cli takes no "
                          "keys for it)")
         failures += f
         not_checked += n
         proof += [f"{name}/advertised/{x}" for x in p]
-        # A stranger's probe: every other node asked this one for history_card/1 (checkpoints with that derivation).
+        # A stranger's probe: every other node asked this one for history_card/2 (checkpoints with that derivation).
         probed = 0
         for asker in sorted(set(nodes) - {name}):
             d = out / asker / "asks" / name / "history_card"
             if not (d / "outcome.bundle.json").is_file():
-                failures.append(f"{asker} asked {name}: no history_card/1 probe was recorded")
+                failures.append(f"{asker} asked {name}: no {GOOSE_CARD} probe was recorded")
                 continue
             events = [json.loads(ln) for ln in (out / asker / "asks" / name / "carrier.jsonl").read_text().splitlines()]
             verdict, verrs = s07.verify_bundle(d / "outcome.bundle.json", capsulectl)
@@ -1532,9 +1556,9 @@ def run_goose(pop, out, tmp):
         if probed == 0:
             failures.append(f"{name}: no stranger probed it")
         lines.append(f"{name}: joined as {joined['key_id'][:12]} (loop_join's commitment and its join record verify), the "
-                     f"commitment it is asked through names no controller binding (optional, u137), history_card/1 "
+                     f"commitment it is asked through names no controller binding (optional, u137), {GOOSE_CARD} "
                      f"probed by {probed} stranger(s)"
-                     + (f"; its stapled history_card/1 verifies with capsule-cli {staple_verify.pinned_version()}"
+                     + (f"; its stapled {GOOSE_CARD} verifies with capsule-cli {staple_verify.pinned_version()}"
                         if signed_state == "PASS" else ""))
     if not nodes:
         failures.append("the asks session joined no nodes")

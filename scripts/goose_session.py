@@ -1,21 +1,36 @@
 #!/usr/bin/env python3
-"""One scripted Goose deal on the mock rail: G1's scripted run, with the rail paying before the buyer settles (loop#330).
+"""One scripted Goose deal on the mock rail: the Goose node's own scripted run, with the rail paying before the buyer
+settles (loop#330, evidencebook#624).
 
 Usage (in the Goose venv): goose_session.py OUT RAIL_DIR
 
-The same calls as evidencebook's python/examples/goose/scripted_run.py (two loop_server.py processes, a buyer and a
-seller, spoken to over MCP stdio as Goose speaks to them), with one difference: after the seller has answered the
-buyer's half, the mock rail (population/rehearsal/rail/mock_rail.py) issues the settlement object for the deal, and
-the buyer's `loop_settle` takes that object's settlement_id as the payment reference it observed. The rail is the
-one the mesh rehearsal's step 06 reads; the deal's pay record commits the reference, and the buyer's
-`loop_pay_opening` opens it for step 06, which ties the deal and the rail's object by the id. Each node's own
-`loop_settlement_disclosure` gives step 06 its count. Nothing moves; the rail key is a TEST key made for the run.
+The same x-deal-v1 sequence as evidencebook's python/examples/goose/scripted_run.py at the goose-g1 pin (two
+loop_server.py processes, a buyer and a seller, each a capsulectl-deal profile, spoken to over MCP stdio as Goose speaks
+to them), with what the loop's steps read added around it:
+
+  12  each node's join (loop_join, its commitment written beside it) and the join record's bundle, header disclosed
+  04  the buyer's GO on the seller and its NO on a stranger (loop_admit); the deal's context, which cites the GO, as a
+      disclosed bundle (loop_deal_bundle); the NO's bundle at the end of the session; the node's refusal to open a deal
+      with the refused peer (deal-refused.json)
+  01  a model call the buyer sealed (loop_seal)
+  02  that record's bundle under the buyer's book checkpoint (loop_book writes the checkpoint statement, this driver posts
+      it to the rehearsal's TEST witness and passes the receipt to loop_book_bundle)
+  05  the deal's files in the order they are exchanged (offer, agreements, payment legs, delivery, statements) and each
+      side's report bundle (loop_deal_report)
+  06  the mock rail (population/rehearsal/rail/mock_rail.py) issues the settlement object for the deal before the buyer
+      pays; its settlement_id is the payment reference the buyer's payer leg carries and the seller's payee leg states
+      it received (the node pays on lightning only, so the deal's rail is "lightning" and the reference is this run's)
+  03  each node's signed commitment (loop_advertise), naming the mailbox step 07 asks through
+
+Nothing moves; the rail key and the witness key are TEST keys made for the run. GOOSE_NO_WITNESS=1: the profiles name no
+public witness.
 """
 import asyncio
 import json
 import os
 import sys
 import threading
+import urllib.request
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -35,9 +50,12 @@ from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
-CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 500, 1  # the deal's price is in USD cents
-# A peer the buyer refuses: two 64-hex keys no node holds.
-STRANGER, STRANGER_CHECKPOINT = "ab" * 32, "cd" * 32
+# The deal's price is in USD cents. The node's admission pack (capsule-engine's ladder pack) gives GO only under 1 USD.
+CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 50, 1
+RAIL = "lightning"  # the node pays on lightning only; in the rehearsal the reference is the mock rail's settlement_id
+# A peer the buyer refuses: a 64-hex key no node holds.
+STRANGER = "ab" * 32
+REPORT_WAIT = 600  # a report rests on the cadence tick that covers the deal (a tick is due about every 5 minutes)
 
 
 class Goose:
@@ -50,7 +68,7 @@ class Goose:
         out = await self.raw(tool, **arguments)
         if not out.get("ok"):
             raise SystemExit(f"{self.name} {tool}: {out.get('error')}")
-        print(f"{self.name:6} {tool:22} ok")
+        print(f"{self.name:6} {tool:22} ok", flush=True)
         return out
 
     async def raw(self, tool, **arguments):
@@ -75,9 +93,8 @@ def issue_settlement(rail_dir, deal_id, payer, payee):
 
 def start_witness(out, driver):
     """The rehearsal's test witness for step 02: the lab witness's handler (lab/witness.py) on a loopback port, over plain
-    HTTP (the Goose node's witness client takes http and https), signing with a key made for this run and held apart from
-    both nodes. Returns (server, the directory file the nodes check receipts under); the step's listing of the witness key is
-    written beside it as witnesses.json."""
+    HTTP, signing with a key made for this run and held apart from both nodes. Returns (server, endpoint, the directory
+    file the receipt is checked under); the step's listing of the witness key is written beside it as witnesses.json."""
     key = out / "witness-key.pem"
     private = Ed25519PrivateKey.generate()
     key.write_bytes(private.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
@@ -86,24 +103,35 @@ def start_witness(out, driver):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     key_id = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
     not_before = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # receipts count from the witness's start
+    endpoint = f"http://127.0.0.1:{server.server_port}"
     directory = out / "witnesses-directory.json"
     directory.write_text(json.dumps({"witnesses": [{"name": "goose-rehearsal-witness", "key_ids": [key_id],
-                                                    "endpoint": f"http://127.0.0.1:{server.server_port}"}]}))
+                                                    "endpoint": endpoint}]}))
     (out / "witnesses.json").write_text(json.dumps({"witnesses": [{
         "name": "goose-rehearsal-witness", "key_id": key_id, "not_before": not_before}]}, indent=2) + "\n")
-    return server, directory
+    return server, endpoint, directory
+
+
+def witness_receipt(endpoint, statement):
+    """The witness's receipt for one checkpoint statement, in a bundle's checkpoint.witnesses form (the node's
+    loop_book_bundle takes it as the host fetched it)."""
+    req = urllib.request.Request(f"{endpoint}/checkpoints", data=statement, method="POST",
+                                 headers={"Content-Type": "application/cose"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        got = json.loads(r.read())
+    return {"ts_url": endpoint, "entry_hash": got["entry_hash"], "receipt_b64": got["receipt_b64"],
+            "leaf_index": got["leaf_index"], "tree_size": got["tree_size"]}
 
 
 async def run(out, rail_dir):
     out.mkdir(parents=True, exist_ok=True)
     driver = Path(os.environ.get("LOOP_STEP02_BOOK_BIN") or Path(os.environ.get(
         "LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "02-book" / "bin" / "loop-step02-book")
-    witness, directory = start_witness(out, driver) if driver.is_file() and os.access(driver, os.X_OK) else (None, None)
+    witness, endpoint, directory = (start_witness(out, driver) if driver.is_file() and os.access(driver, os.X_OK)
+                                    else (None, None, None))
 
     def params(name):
-        env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}"}
-        if directory:
-            env["GOOSE_WITNESSES"] = str(directory)
+        env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}", "GOOSE_NO_WITNESS": "1"}
         return StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
 
     async with stdio_client(params("buyer")) as (br, bw), stdio_client(params("seller")) as (sr, sw):
@@ -121,74 +149,80 @@ async def run(out, rail_dir):
             (out / "joined.json").write_text(json.dumps(
                 {"buyer": {"key_id": b["key_id"], "record_id": b["record_id"]},
                  "seller": {"key_id": s["key_id"], "record_id": s["record_id"]}}, sort_keys=True))
-            await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
-                             decision="GO", reason="known inference seller")
-            await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
-                              decision="GO", reason="paying customer")
+            for name, key in (("buyer", b), ("seller", s)):
+                (out / f"{name}.key").write_text(key["key_id"])
+                (out / f"{name}.checkpoint-key").write_text(key["checkpoint_key_id"])
+            await buyer.call("loop_admit", peer_key_id=s["key_id"], decision="GO", reason="known inference seller")
+            await seller.call("loop_admit", peer_key_id=b["key_id"], decision="GO", reason="paying customer")
             # 04: the buyer also refuses a stranger (NO). No deal opens with it, and no record cites that NO.
-            refused = await buyer.call("loop_admit", peer_key_id=STRANGER, checkpoint_key_id=STRANGER_CHECKPOINT,
-                                       decision="NO", reason="unknown seller")
+            refused = await buyer.call("loop_admit", peer_key_id=STRANGER, decision="NO", reason="unknown seller")
             # 01: the buyer seals a model call, an effect-boundary record step 01 reads. Provider and model are what
             # the step tells the producer (steps/01-seal MODEL); model_attestation must carry them back.
             sealed = await buyer.call("loop_seal", provider="rehearsal", model_id="rehearsal-model",
                                       prompt="rehearsal inference", completion="rehearsal completion",
                                       out_path=str(out / "sealed-buyer.json"))
             if witness:  # 02: the sealed call's place in the buyer's book, its checkpoint and the witness's receipt
+                cose = out / "book-checkpoint-buyer.cose"
+                cp = await buyer.call("loop_book", book_id="goose/node", out_path=str(cose))
+                receipt = out / "book-receipt-buyer.json"
+                receipt.write_text(json.dumps(witness_receipt(endpoint, cose.read_bytes()), sort_keys=True))
                 await buyer.call("loop_book_bundle", book_id="goose/node", record_id=sealed["record_id"],
-                                 out_path=str(out / "book-bundle-buyer.json"))
+                                 out_path=str(out / "book-bundle-buyer.json"), witness_receipt=str(receipt),
+                                 witness_directory=str(directory), at=cp["checkpoint"]["id"])
+            # 05: the buyer offers.
             opened = await buyer.call("loop_deal_open", peer_key_id=s["key_id"], item="inference: 1k tokens",
-                                      price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock",
-                                      asked="buy 1k tokens of inference from the seller")
+                                      price_minor=PRICE_MINOR, currency=CURRENCY, rail=RAIL,
+                                      asked="buy 1k tokens of inference from the seller", out_path=str(out / "offer.json"))
             deal_id = opened["deal_id"]
-            # 04: the buyer's admission and the deal's opening as one bundle (the NO's, with the book up to the end of the
-            # session, is exported last). The headers (the decision and what each record cites) travel only when disclosed,
-            # so the judged bundles disclose the root: the opening, and the NO.
+            # 04: the buyer's record of the deal's context, which cites its GO, with both disclosed: one bundle.
             await buyer.call("loop_deal_bundle", deal_id=deal_id, out_path=str(out / "admission-go-bundle.json"))
-            opening = json.loads((out / "admission-go-bundle.json").read_text())["root"]
-            await buyer.call("loop_book_bundle", book_id="goose/node", record_id=opening, disclose=True,
-                             out_path=str(out / "admission-go-disclosed.json"))
             # 04: the gate holds, asked directly: a deal with the peer the buyer refused is itself refused, and seals nothing.
             attempt = await buyer.raw("loop_deal_open", peer_key_id=STRANGER, item="inference: 1k tokens",
-                                      price_minor=PRICE_MINOR, currency=CURRENCY, rail="mock", asked="buy from the stranger")
+                                      price_minor=PRICE_MINOR, currency=CURRENCY, rail=RAIL, asked="buy from the stranger",
+                                      out_path=str(out / "offer-to-stranger.json"))
             if attempt.get("ok"):
                 raise SystemExit("buyer loop_deal_open: a deal opened with the peer the buyer refused (NO)")
             (out / "deal-refused.json").write_text(json.dumps({"peer": STRANGER, **attempt}, sort_keys=True))
-            await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "buyer-half.json"))
-            await seller.call("loop_deal_respond", request_file=str(out / "buyer-half.json"),
-                              asked="sell 1k tokens of inference at the listed price")
-            await seller.call("loop_deal_push", deal_id=deal_id, out_path=str(out / "seller-half.json"))
-            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-half.json"))
+            # 05: the seller answers with its agreement; the buyer agrees back.
+            await seller.call("loop_deal_respond", request_file=str(out / "offer.json"),
+                              asked="sell 1k tokens of inference at the listed price",
+                              out_path=str(out / "seller-agreement.json"))
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-agreement.json"))
+            await buyer.call("loop_deal_agree", deal_id=deal_id, out_path=str(out / "buyer-agreement.json"))
+            await seller.call("loop_deal_reconcile", peer_file=str(out / "buyer-agreement.json"))
+            # 06: the rail settles; the buyer pays with the rail's reference. The final review pauses (a price the agent
+            # picked, a rail with no card protection); the user's answer is sealed, as in the node's scripted run.
             settlement = issue_settlement(rail_dir, deal_id, b["key_id"], s["key_id"])
-            await buyer.call("loop_settle", deal_id=deal_id, payment_ref=settlement["settlement_id"])
-            # The exchange ends: each side asks for the other's half and shares its own; the close cites the
-            # checkpoint of the half each holds.
+            ref = settlement["settlement_id"]
+            paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=str(out / "buyer-leg.json"))
+            if paused.get("paused"):
+                await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed",
+                                 said="yes")
+                await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=str(out / "buyer-leg.json"),
+                                 check_id=paused["check_id"])
+            await seller.call("loop_deal_reconcile", peer_file=str(out / "buyer-leg.json"))
+            await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=PRICE_MINOR, payment_ref=ref,
+                              out_path=str(out / "seller-leg.json"))
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-leg.json"))
+            delivery = await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"))
+            if delivery.get("paused"):
+                await seller.call("loop_deal_approve", deal_id=deal_id, check_id=delivery["check_id"], choice="proceed",
+                                  said="yes")
+                await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=str(out / "seller-delivery.json"),
+                                  check_id=delivery["check_id"])
+            await buyer.call("loop_deal_reconcile", peer_file=str(out / "seller-delivery.json"))
             for me in (buyer, seller):
-                await me.call("loop_deal_end_exchange", deal_id=deal_id, out_path=str(out / f"{me.name}-exchange-half.json"))
+                await me.call("loop_deal_close", deal_id=deal_id, status="received",
+                              out_path=str(out / f"{me.name}-statement.json"))
             for me, peer in ((buyer, seller), (seller, buyer)):
-                held = await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-exchange-half.json"))
-                # 05: the record the receiver sealed for the half it holds, with the request it cites disclosed.
-                await peer.call("loop_book_bundle", book_id="goose/node", record_id=held["recorded"], disclose=True,
-                                out_path=str(out / f"{peer.name}-held-half-bundle.json"))
-            await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
-            await seller.call("loop_deal_close", deal_id=deal_id, status="received")
-            # 06: the buyer opens its pay record's reference commitment, and each node signs its own count of the
-            # settlements on the rail (the rail's one ledger line is sequence 1).
-            await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(out / "buyer-pay-opening.json"))
+                await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-statement.json"))
+            # 05: each side's report of the deal, as an Evidence Bundle resting on the cadence tick that covers it.
+            await asyncio.gather(*(node.call("loop_deal_report", deal_id=deal_id, wait_seconds=REPORT_WAIT,
+                                             out_path=str(out / f"{node.name}-report.json")) for node in (buyer, seller)))
             for node in (buyer, seller):
-                await node.call("loop_settlement_disclosure", rail="mock", through_sequence=settlement["sequence"],
-                                out_path=str(out / f"{node.name}-settlement-disclosure.json"))
-            for me, peer in ((buyer, seller), (seller, buyer)):
-                path = str(out / f"{me.name}-final-half.json")
-                await me.call("loop_deal_push", deal_id=deal_id, out_path=path)
-                await peer.call("loop_deal_reconcile", peer_file=path)
-            for node, key in ((buyer, b), (seller, s)):
-                await node.call("loop_tick")
                 await node.call("loop_probe")
                 await node.call("loop_standard_history", out_path=str(out / f"{node.name}-card.json"))
-                await node.call("loop_history_card", book_id=f"deal/{deal_id}",
-                                out_path=str(out / f"{node.name}-history-card.json"))
-                (out / f"{node.name}.key").write_text(key["key_id"])
-                (out / f"{node.name}.checkpoint-key").write_text(key["checkpoint_key_id"])
+                await node.call("loop_history_card", out_path=str(out / f"{node.name}-history-card.json"))
                 # 03: the node's own signed commitment and policy (loop_advertise), laid out for nodes/commitments/.
                 # It advertises a Nostr mailbox, through which step 07 asks the node.
                 await node.call("loop_advertise", out_dir=str(out / "commitments"), relays=ADVERTISED_RELAY,
@@ -198,8 +232,8 @@ async def run(out, rail_dir):
                              out_path=str(out / "admission-no-disclosed.json"))
     if witness:
         witness.shutdown()
-    (out / "deal.json").write_text(json.dumps({"deal_id": deal_id, "buyer": b["key_id"], "seller": s["key_id"],
-                                               "settlement_id": settlement["settlement_id"]}, sort_keys=True))
+    (out / "deal.json").write_text(json.dumps({"deal_id": deal_id, "offer": opened["offer"], "buyer": b["key_id"],
+                                               "seller": s["key_id"], "settlement_id": ref}, sort_keys=True))
 
 
 if __name__ == "__main__":

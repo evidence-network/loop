@@ -25,8 +25,8 @@ The finding:
   listed in detail, and the witness part is the one not_checked entry.
 
 On a Goose rehearsal population (`goose.book` in population.json; scripts/goose_rehearsal.py) the step seals nothing: it
-judges the Evidence Bundle the Goose node wrote with loop_book_bundle (G1), with the checkpoint and the test witness's
-receipt beside it, by capsulectl verify --bundle, the driver's lab-check and openssl, and the comparisons in
+judges the Evidence Bundle the Goose node wrote with loop_book_bundle (its capsulectl-deal profile's `deal node bundle`),
+with the checkpoint statement the driver gave the test witness (loop_book) and the witness's receipt inside it, by capsulectl verify --bundle, the driver's lab-check and openssl, and the comparisons in
 goose_checks. With no book bundle in the population, or a tool missing, it is NOT_CHECKED, naming what.
 
 On the live population each node's own book is used: the book join.sh made
@@ -843,8 +843,9 @@ def judge_live(pop, out, started):
 
 
 # --- The Goose rehearsal: the book bundle the Goose node writes (loop#330, evidencebook#301) ------------------
-# G1's loop_book_bundle writes the Evidence Bundle of one record of the node's book, with the checkpoint that covers it
-# and the receipt of the witness the node asked for that very checkpoint. The step does not seal anything: it judges
+# The node's loop_book writes the book's checkpoint statement; the driver posts it to the test witness and hands the
+# receipt to loop_book_bundle, which writes the Evidence Bundle of one record of the node's book with the checkpoint that
+# covers it and that receipt, verified under the witness directory before it is written. The step does not seal anything: it judges
 # those bytes with the checks the live population uses, the pinned capsulectl on the bundle and the offline receipt
 # check, and holds the node's own keys to what the population names.
 GOOSE_ASSERTS = ("the record is in the Goose node's book at a stated position, under a checkpoint the node signed that "
@@ -945,9 +946,9 @@ def main_goose(pop, out, started):
                              pinned=GOOSE_PINNED, proof=[], detail=f"not checked: {why}", started=started,
                              not_checked=[{"what": "goose-g1", "why": why,
                                            "issue": "none: steps/goose.setup.sh has not installed the pin"}])
-    stem = str(Path(book["bundle"]).with_suffix(""))
     shutil.copyfile(book["bundle"], out / "bundle.json")
-    shutil.copyfile(f"{stem}.checkpoint.cose", out / "checkpoint.cose")
+    # The checkpoint statement the witness received (loop_book's out_path).
+    shutil.copyfile(book["checkpoint"], out / "checkpoint.cose")
     shutil.copyfile(book["witnesses"], out / "witnesses.json")
     shutil.copyfile(book["capsule"], out / "capsule.json")
     sealed = json.loads((out / "capsule.json").read_text())

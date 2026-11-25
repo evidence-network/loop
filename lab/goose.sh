@@ -1,30 +1,37 @@
 #!/usr/bin/env bash
-# lab/goose.sh: the Goose lab driver (evidence-network/loop#349, under loop#315). It runs two of evidencebook's Goose
-# nodes (G1, python/examples/goose at the goose-g1 pin in versions.lock) on the loop lab host, beside lab-1..4 and
-# independent of them, so the loop's steps can judge a Goose ecosystem live. Run it on the lab host as the lab
-# operator, from a clone of this repository, in this order:
+# lab/goose.sh: the Goose lab driver (evidence-network/loop#349, under loop#315). It runs two of evidencebook's Goose nodes
+# (python/examples/goose at the goose-g1 pin in versions.lock, each a capsulectl-deal profile, x-deal-v1) on the loop lab
+# host, beside lab-1..4 and independent of them, so the loop's steps can judge a Goose ecosystem live. Run it on the lab
+# host as the lab operator, from a clone of this repository, in this order:
 #
 #   lab/goose.sh [--dry-run] tools|init|entries|commitments|session|run|pay
 #
-#   tools        install the Goose node (steps/goose.setup.sh) into $LOOP_TOOLS/goose, and step 01's pinned aac-go
-#                verifier (steps/01-seal.setup.sh) into $LOOP_TOOLS/01-seal, which run and pay refuse to start without
+#   tools        install the Goose node (steps/goose.setup.sh: the checkout, capsulectl-deal and capsule-engine) into
+#                $LOOP_TOOLS/goose, and step 01's pinned aac-go verifier (steps/01-seal.setup.sh) into $LOOP_TOOLS/01-seal,
+#                which run and pay refuse to start without (steps 01 and 06 check signatures with it)
 #   init         start each node once on its own persistent home, $LAB_DIR/goose/homes/<name> (mode 700), so it has
-#                its keys; write its public key under $LAB_DIR/goose/keys/<name>/ and the two ids to
-#                $LAB_DIR/goose/ids.json. Keys already there are kept: a node's producer key is its identity, the
-#                key nodes/<node_id>.json lists. Private keys stay in the homes and are never printed or copied
+#                its capsulectl-deal profile and keys (no public witness: GOOSE_NO_WITNESS=1); write its public key under
+#                $LAB_DIR/goose/keys/<name>/ and the two ids to $LAB_DIR/goose/ids.json. Keys already there are kept: a
+#                node's signing key is its identity, the key nodes/<node_id>.json lists. A home of the old Python node
+#                (producer.key and checkpoint.key, no profile) gets a profile made from those two keys, so both key ids
+#                stay, and joins again: its ids.json entry is rewritten with the new join record, and its old shelf.db
+#                stays beside it as an archive (evidencebook#624). Private keys stay in the homes, never printed or copied
 #   entries      write nodes/<node_id>.json for each node, as the operator LAB_OPERATOR (the operator statement is
 #                theirs: they open or approve the pull request), with ask_route nostr; an entry already there is kept
 #   commitments  each node's own signed commitment and policy (loop_advertise), written exactly as returned to
 #                nodes/commitments/<node_id>.json and policies/, then checked with scripts/check_commitment.py.
 #                The harness signs nothing. Order: init, entries, commitments, then open the pull request
 #   session      one run of the nodes: goose-2 seals a model call (step 01) and the two ask each other through the
-#                mailbox their published commitments name (step 07), each answering by polling its own mailbox.
+#                mailbox their published commitments name (step 07), each answering by polling its own mailbox; the
+#                commitments must answer within PT2M or longer (the node asks through no window under 90 seconds).
 #                Writes $LAB_DIR/goose/work/<UTC stamp>/population/population.json. Pays nothing
 #   run          session, then ./loop.sh --stage 1 --ecosystem goose --population live into
 #                findings/goose/<UTC date>-live (LAB_OUT overrides), the steps without a Goose input NOT_CHECKED.
 #                Needs the nodes listed in nodes/ at this clone's HEAD (step 03 reads them there)
-#   pay          run, plus step 06: one real Lightning payment from lab-1's wallet to lab-2's (lab wallets standing in as the
-#                Goose nodes' controllers; the nodes hold no wallet), 1,000 msat, inside the lab payment guard (at most
+#   pay          run, plus step 06: one x-deal-v1 deal between the nodes (priced 50 USD cents: x-deal-v1 takes a 3-letter
+#                currency, and the node's pinned admission pack gives a BTC deal no GO), paid by one real Lightning payment
+#                from lab-1's wallet to lab-2's (lab wallets standing in as the Goose nodes' controllers; the nodes hold no
+#                wallet), 1,000 msat, whose payment hash both nodes' payment legs carry, inside the lab payment guard (at most
 #                3,000 msat per payment and 9,000 msat per direction per UTC day, LAB-BRINGUP.md). scripts/goose_lightning.py
 #                refuses before anything is sent unless the day's log ($LAB_DIR/goose/lightning/payments.jsonl) and the
 #                payer wallet's own count leave room and neither wallet has a payment pending. Findings go to
@@ -32,7 +39,7 @@
 #                but the LIVE_RUN lock, which is removed on every exit
 #
 # The relay is the lab's, in the session process: the commitments name wss://relay.loop-lab.example, which only a node
-# on this host reaches, and a node answers only while a run polls it, so the commitments' PT1M answer window holds
+# on this host reaches, and a node answers only while a run polls it, so the commitments' PT2M answer window holds
 # during a run only. The finding says so; no authenticating public relay is approved yet.
 #
 # live_daily.sh runs `pay` itself as its last pass (loop#363) with GOOSE_IN_LIVE_DAILY=1, which makes run use the LIVE_RUN
@@ -102,7 +109,7 @@ for name, d in sorted(json.load(open(ids)).items()):
     entry = {
         "node_id": d["node_id"], "key_id": d["key_id"], "operator": operator, "consent": check_nodes.CONSENT,
         "mesh": "lab", "ask_route": "nostr",
-        "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/1"]},
+        "disclosure": {"policy": "counterparties", "stranger_safe": ["checkpoints", "history_card/2"]},
         "host_build": f"goose-g1 {rev} (evidencebook python/examples/goose, run by lab/goose.sh on the loop lab host)",
         "plugin_version": f"loop_server.py of goose-g1 {rev}; the Goose node {name}",
     }

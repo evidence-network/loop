@@ -60,8 +60,9 @@ pairs.json holds one row per (asker ecosystem, responder ecosystem), each in the
 the worst row: FAIL if any row fails, else NOT_CHECKED if any is, else PASS; step 08 re-derives every row.
 
 REHEARSAL. scripts/cross_rehearsal.py runs scripts/cross_ask_session.py (in the Goose venv) with rehearsal keys only: a
-mesh node (a capsulectl book node, steps/07-ask's join) and a Goose node (evidencebook's G1) that ask each other, three
-asks each way, as step 07 does, and the run waits out the one-minute deadline of the late ask. The mesh node's mailbox
+mesh node (a capsulectl book node, steps/07-ask's join) and a Goose node (evidencebook's python/examples/goose, a
+capsulectl-deal profile) that ask each other, three asks each way, as step 07 does, and the run waits out the two-minute
+deadline (PT2M) of the late ask. The mesh node's mailbox
 is the loop's adapter (scripts/cross_ask_session.py), not the mesh plugin, and the mesh rehearsal listing is an entry
 with `ask_route: nostr` made together with its re-signed commitment; so the PASS means: request and answer bytes verify
 across ecosystems under the listed keys. Outside this step's assertion: the mesh plugin's own mailbox

@@ -22,8 +22,8 @@ read back. The finding names the carrier.
   `git show`. Rehearsal nodes are never added to this repository's list. On
   the Goose rehearsal population (`scripts/goose_rehearsal.py`), the harness
   signs nothing: each node's commitment is the `/1` one the node signed itself
-  with evidencebook G1's `loop_advertise`, published byte for byte, and it must
-  be under the node's own key.
+  with the evidencebook Goose node's `loop_advertise` (its capsulectl-deal
+  profile), published byte for byte, and it must be under the node's own key.
 - **live**: the harness never signs for a live node. A live commitment is
   signed by the node itself: the pinned capsules plugin signs and serves it
   (capsules-plugin PR #75, in the pin) and returns it to its operator, who
@@ -56,7 +56,7 @@ checkpoint signature, the card's checkpoint anchor, responder) fails the node. W
 passes, the finding says so in `detail` and lists no staple entry; caller
 invariance and request binding stay outside the check (a commitment carries no
 request, and no second caller's answer is held). A rehearsal stand-in staple (the harness builds an `evidence-commitment/0`, so it is the same gap as
-the next, owned by loop#410 (the harness builds those `/0` commitments; a plugin pin that predates `/1` signs them for real nodes); the Goose population verifies a real `/1` card, loop#407),
+the next, owned by loop#410 (the harness builds those `/0` commitments; a plugin pin that predates `/1` signs them for real nodes); the Goose population verifies a real card, `history_card/2`, loop#407),
 an `evidence-commitment/0` (capsule-cli takes no keys for it, and a plugin before v0.1.16 signs those), a runner without
 the binary, or a card entry without a `checkpoint_key` (an allowed shape, never refused; loop#410) leaves
 the staple's signature as a `not_checked` entry on a PASS. Two parts are listed
@@ -207,9 +207,11 @@ the same (`has_history: false`); nothing marks a clear. Rewriting or
 truncating the old log is not a clear: it fails the card's consistency check
 as before.
 
-`join.sh` writes /1, one card per book the node serves, and so does
-evidencebook G1's Goose node (`loop_advertise`), which staples its node book
-`goose/node`. The rehearsal harness of this step still signs /0 for its mesh
+`join.sh` writes /1, one card per book the node serves. Evidencebook's Goose
+node (`loop_advertise`) also signs an `evidence-commitment/1`, whose one card is
+its profile's `history_card/2` (Steven's u539: a staple always carries
+`history_card/2`, a sampled chain of the cadence checkpoints with no deal
+counts) for the stream `deal-cadence/<id>`; capsule-cli checks it the same way. The rehearsal harness of this step still signs /0 for its mesh
 test nodes; a published /1 commitment verifies here the same way.
 
 The policy file is `{"profile": "disclosure-policy/0", "key_id", "policy":

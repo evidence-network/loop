@@ -151,6 +151,14 @@ class PaidSessionTest(unittest.TestCase):
         found, out = self.step06(pop_dir, "ok")
         self.assertEqual(found["result"], "PASS", found["detail"])
         self.assertIn("lab wallet lab-1 to lab-2", found["detail"])
+        # the two legs carry the payment's hash, signed by the nodes; a node's own settlement count is D1, outside
+        legs = {s: json.loads((pop_dir / "step06" / f"{s}-leg.json").read_text())["record"]["record"] for s in ("buyer", "seller")}
+        self.assertEqual({legs[s]["settlement"]["payment_ref"]["value"] for s in legs},
+                         {json.loads((pop_dir / "step06" / "lightning.json").read_text())["payment_hash"]})
+        self.assertEqual((legs["buyer"]["key_id"], legs["seller"]["key_id"]),
+                         (self.ids["goose-2"]["key_id"], self.ids["goose-1"]["key_id"]))
+        self.assertIn("D1 in evidencebook#624's plan, not built", found["detail"])
+        self.assertNotIn("ledger_count", json.loads((out / "checks.json").read_text())["checks"])
         for f in out.iterdir():  # nothing the step wrote holds the preimage
             self.assertNotIn(pre, f.read_text())
         # each tamper is a FAIL naming the check
@@ -160,7 +168,7 @@ class PaidSessionTest(unittest.TestCase):
                 ("fee", lambda d: d["payee"].update(fee_msat=0), "rail_fee"),
                 ("match", lambda d: d["payee"].update(amount_msat=900), "exchange_match"),
                 ("hash", lambda d: d.update(payment_hash="1" * 64), "reference"),
-                ("count", lambda d: d.update(payments_recorded=2), "ledger_count")):
+                ("deal", lambda d: d.update(deal_id="deal-0000000000000000"), "reference")):
             d = json.loads(json.dumps(ln))
             mutate(d)
             (pop_dir / "step06" / "lightning.json").write_text(json.dumps(d))

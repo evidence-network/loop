@@ -64,9 +64,9 @@ a Nostr mailbox in their signed commitments (`ask.nostr`, binding nostr-mailbox-
 (scripts/goose_ask_session.py): the asked node polls its mailbox and answers from its own book. The carrier is the
 session's relay, which logs when it received each event. The same three asks are made, with these differences, all in
 `judge_ask(..., mailbox=True)`: the asker is a stranger on a mailbox, so the policy answers it only what it answers a
-stranger (the `exchange` ask is refused with a signed refusal, `history_card/1` answered); the request carries its own
-`deadline`, which must be the commitment's `answers_within` after it was sealed, and is the window; each outcome bundle is
-G1's `loop_book_bundle` with `disclose`.
+stranger (the `exchange` ask is refused with a signed refusal, `history_card/2` answered: a Goose node advertises /2,
+u539); the request carries its own `deadline`, which must be the commitment's `answers_within` after it was sealed, and
+is the window; each outcome bundle is the node's `loop_book_bundle` with `disclose`.
 
 `reporter` (Mesh plugin nodes): asks each node checkpoints, history_card/1 and an
 exchange request (below) through the daily reporter's ask (scripts/daily_report.py), judged as step 12
@@ -165,9 +165,11 @@ BOOK_MISSING = "capsulectl or capsulectl-book is not installed where 07 ran (ste
 PINNED_BOOK = ["capsulectl", "capsulectl-book"]
 PINNED_GOOSE = ["capsulectl", "capsulectl-book", "goose-g1"]
 PINNED_REPORTER = ["capsules", "mesh-llm", *finding.mesh_pr_pins(), "reporter", "capsulectl", "capsulectl-book"]
-# Rehearsal nodes answer within a minute: the shortest window an absence may claim
-# (evidencebook MinimumAbsenceWindow), so the late ask's absence is recorded in this run.
-REHEARSAL_ANSWERS_WITHIN = "PT1M"
+# Rehearsal nodes answer within two minutes: a Goose node asks a node (the cross stage's mesh node, which this join
+# makes) only through a window of at least 90 seconds (the shortest absence window, a minute, and the time to seal the
+# request; evidencebook python/examples/goose mailbox_exchange.py), and PT2M is the shortest whole-minute window above
+# it, so the late ask's absence is still recorded in this run.
+REHEARSAL_ANSWERS_WITHIN = "PT2M"
 ADVERTISED = ("commitment.json", "disclosure-policy.json", "policy.json", "book.json")
 ASKS = {
     "exchange": {"delivery": "on_time"},

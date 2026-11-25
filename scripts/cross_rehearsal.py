@@ -22,6 +22,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop"))
 NO_TOOLS = 3
+sys.path.insert(0, str(HERE))
+from goose_rehearsal import node_env  # noqa: E402  what a Goose node process needs from the installed tools
 
 
 def main(argv=None):
@@ -31,7 +33,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     goose = a.tools / "goose"
     python, src = goose / "venv" / "bin" / "python", goose / "src"
-    if not python.is_file() or not (src / "python" / "examples" / "goose" / "loop_server.py").is_file():
+    if not python.is_file() or not (src / "python" / "examples" / "goose" / "loop_server.py").is_file() \
+            or not (goose / "bin" / "capsulectl-deal").is_file() or not (goose / "bin" / "capsule-engine").is_file():
         print(f"cross_rehearsal: no Goose tools in {goose} (run steps/goose.setup.sh)", file=sys.stderr)
         return NO_TOOLS
     if not (a.tools / "bin" / "capsulectl").is_file():
@@ -43,7 +46,7 @@ def main(argv=None):
     r = subprocess.run([str(python), "-B", str(HERE / "cross_ask_session.py"), str(run)], stdin=subprocess.DEVNULL,
                        capture_output=True, text=True,
                        env={**os.environ, "LOOP_GOOSE_SRC": str(src), "LOOP_TOOLS": str(a.tools),
-                            "PYTHONDONTWRITEBYTECODE": "1"})
+                            "PYTHONDONTWRITEBYTECODE": "1", **node_env(goose)})
     (work / "cross_session.log").write_text(r.stdout + r.stderr)
     if r.returncode != 0:
         print("cross_rehearsal: the cross ask session failed; the end of its log:\n" + "\n".join(
@@ -52,7 +55,7 @@ def main(argv=None):
     nodes = json.loads((run / "nodes.json").read_text())
     pop = work / "population"
     pop.mkdir(parents=True, exist_ok=True)
-    doc = {"population": "rehearsal", "pinned": ["goose-g1"],
+    doc = {"population": "rehearsal", "pinned": ["goose-g1", "capsule-engine"],
            "cross": {"run": str(run), "asks": ["exchange", "exchange_late", "history_card"], "log": str(work / "cross_session.log"),
                      "nodes": {n: {"key_id": v["key_id"], "ecosystem": v["ecosystem"]} for n, v in nodes.items()}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

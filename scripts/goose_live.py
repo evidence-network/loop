@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""The Goose lab driver's Python half: G1's Goose nodes on the loop lab host, with keys that persist (loop#349).
+"""The Goose lab driver's Python half: the Goose nodes on the loop lab host, with keys that persist (loop#349).
 
 Usage (in the Goose venv, which has `mcp`, `websockets` and `cryptography`; lab/goose.sh runs it):
 
-  goose_live.py init       --homes DIR --keys DIR --ids FILE   join each node not in FILE (a new key on first use), write its public key
+  goose_live.py init       --homes DIR --keys DIR --ids FILE   join each node with no capsulectl-deal profile or no id in
+                           FILE, write its public key
   goose_live.py advertise  --homes DIR --out DIR      each node's own signed commitment and policy (loop_advertise)
   goose_live.py session    --homes DIR --keys DIR --ids FILE --published DIR --work DIR
                            seal a model call, ask through the published commitments, write the population
 
-The two nodes are G1's loop_server.py processes (evidencebook python/examples/goose at the goose-g1 pin), spoken to over
-MCP stdio as Goose speaks to them, each with its own GOOSE_HOME under --homes. Unlike the rehearsal's, those homes
-persist: a node's producer key is its identity, so it is the key nodes/<node_id>.json lists and the key the node signs
-its commitment with. The private keys never leave the homes (mode 0600, written by G1); this driver reads none and
-prints only public ids.
+The two nodes are evidencebook's python/examples/goose loop_server.py processes at the goose-g1 pin, each a
+capsulectl-deal profile (x-deal-v1), spoken to over MCP stdio as Goose speaks to them, each with its own GOOSE_HOME under
+--homes. Unlike the rehearsal's, those homes persist: a node's signing key is its identity, so it is the key
+nodes/<node_id>.json lists and the key the node signs its commitment with. The private keys never leave the homes (mode
+0600, written by capsulectl-deal); this driver reads none and prints only public ids.
+
+Cutover from the old Python node (evidencebook#624): a home with no capsulectl-deal profile (no <home>/deal/signing.seed)
+gets one on first use, created from the old node's own key files, GOOSE_SIGNING_KEY_FILE=<home>/producer.key and
+GOOSE_CHECKPOINT_KEY_FILE=<home>/checkpoint.key, so both key ids stay and nodes/ needs no new entry. The old shelf.db stays
+in the home as a read-only archive; the new profile's History starts at the cutover, so `init` joins the node again and
+rewrites its ids.json entry with the new join record. Every profile is made with GOOSE_NO_WITNESS=1: no public witness.
 
 `session` is one run: goose-2 seals a model call (step 01), then the two nodes ask each other through the mailbox the
 commitments in --published name (step 07, scripts/goose_ask_session.py), each answering by polling its own mailbox. The
@@ -32,15 +39,43 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from goose_ask_session import Goose  # noqa: E402
-from goose_rehearsal import PUBLIC  # noqa: E402
+from goose_rehearsal import node_env  # noqa: E402
 NAMES = ("goose-1", "goose-2")  # goose-1 sells, goose-2 buys
 # The relay the commitments name: step 03 requires a wss:// URL; no node outside the lab host can reach this one.
 RELAY = "wss://relay.loop-lab.example"
-ANSWERS_WITHIN = "PT1M"  # the shortest window an absence may claim; the nodes answer only while a run polls them
+# The node's asker refuses a window under 90 seconds (scripts/goose_ask_session.py ANSWERS_WITHIN); the nodes answer only
+# while a run polls them.
+ANSWERS_WITHIN = "PT2M"
 POLL_INTERVAL = 30
 STEPS = ["01", "03", "07"]  # the steps a session gives a Goose input; `session --pay` adds 06 (one real payment, loop#349)
-PRICE_MSAT, CURRENCY, DECIMALS = 1000, "BTC", 11  # the paid deal's price in msat (BTC at assetScale 11, as the lab's band)
+# The paid deal's price: USD cents. x-deal-v1 takes a 3-letter currency only (so not msat), and the node's pinned
+# admission pack (capsule-engine's ladder test pack) gives a deal in BTC no GO; 50 cents is a GO under it. The rail is
+# lightning: the payment the lab wallets make is what the legs reference, by its payment hash.
+PRICE_MINOR, CURRENCY = 50, "USD"
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose" if "LOOP_GOOSE_SRC" in os.environ else None
+# The tools steps/goose.setup.sh installed: LOOP_GOOSE_SRC is <tools>/goose/src.
+TOOLS = Path(os.environ["LOOP_GOOSE_SRC"]).parent if "LOOP_GOOSE_SRC" in os.environ else None
+# A node's public key, SPKI PEM, from its profile's signing seed (hex); run in the Goose venv.
+PUBLIC = ("import sys; from pathlib import Path; "
+          "from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey as K; "
+          "from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat; "
+          "k = K.from_private_bytes(bytes.fromhex(Path(sys.argv[1]).read_text().strip())); "
+          "sys.stdout.write(k.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo).decode())")
+
+
+def has_profile(home):
+    """Whether the node's home holds its capsulectl-deal profile (capsulectl deal init made it)."""
+    return (Path(home) / "deal" / "signing.seed").is_file()
+
+
+def carried_keys(home):
+    """The old node's key files a new profile is made from, so its key ids stay: {env: path} for each that exists, and
+    only while the home has no profile yet (the node reads them on its first `deal init` only)."""
+    if has_profile(home):
+        return {}
+    return {env: str(Path(home) / f) for env, f in (("GOOSE_SIGNING_KEY_FILE", "producer.key"),
+                                                    ("GOOSE_CHECKPOINT_KEY_FILE", "checkpoint.key"))
+            if (Path(home) / f).is_file()}
 
 
 def servers(homes, relay_map=None):
@@ -48,7 +83,8 @@ def servers(homes, relay_map=None):
     from mcp import StdioServerParameters
     out = {}
     for name in NAMES:
-        env = {**os.environ, "GOOSE_HOME": str(Path(homes) / name), "GOOSE_OPERATOR": name}
+        home = Path(homes) / name
+        env = {**os.environ, "GOOSE_HOME": str(home), "GOOSE_OPERATOR": name, **node_env(TOOLS), **carried_keys(home)}
         if relay_map:
             env["GOOSE_RELAY_MAP"] = relay_map
         out[name] = StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
@@ -72,7 +108,7 @@ async def with_nodes(homes, work, relay_map=None):
 
 def checkpoint_key_id(published, node_id):
     """A node's checkpoint key id, read from the commitment it published (history_cards[0].checkpoint_key, base64url of
-    the Ed25519 SPKI): no join, which would seal one more record in a lab node."""
+    the Ed25519 SPKI): no join, which would seal one more record in a lab node. scripts/live_cross_session.py reads it."""
     import base64
     doc = json.loads((Path(published) / f"{node_id}.json").read_text())
     raw = doc["history_cards"][0]["checkpoint_key"]
@@ -80,74 +116,81 @@ def checkpoint_key_id(published, node_id):
 
 
 async def pay_deal(nodes, ids, step06, pay_one, settled):
-    """One deal goose-2 buys from goose-1 over a real Lightning payment: G1's calls as goose_session.py makes them, except
-    the rail. `pay_one()` (goose_lightning.pay on the lab wallets) pays once both sides hold the agreed terms and returns
-    the record step 06 reads; the buyer's loop_settle commits its payment_hash and loop_pay_opening opens it. Writes
-    DIR (step06): the halves, the opening, each node's signed settlement disclosure and lightning.json."""
+    """One x-deal-v1 deal goose-2 buys from goose-1 over a real Lightning payment: the node's own scripted sequence (as
+    goose_session.py makes it), except the rail. `pay_one()` (goose_lightning.pay on the lab wallets) pays once both
+    sides hold each other's agreement and returns the record step 06 reads; the buyer's payer leg and the seller's payee
+    leg carry its payment_hash as their payment reference. The final reviews pause, and are answered "proceed": the lab
+    operator who runs `lab/goose.sh pay` asked for this payment. Writes DIR (step06): buyer-leg.json, seller-leg.json and
+    lightning.json."""
     buyer, seller = nodes["goose-2"], nodes["goose-1"]
-    b, s = ids["goose-2"], ids["goose-1"]  # each: key_id, checkpoint_key_id
+    b, s = ids["goose-2"], ids["goose-1"]
     step06.mkdir(parents=True, exist_ok=True)
-    await buyer.call("loop_admit", peer_key_id=s["key_id"], checkpoint_key_id=s["checkpoint_key_id"],
-                     decision="GO", reason="known inference seller")
-    await seller.call("loop_admit", peer_key_id=b["key_id"], checkpoint_key_id=b["checkpoint_key_id"],
-                      decision="GO", reason="paying customer")
-    opened = await buyer.call("loop_deal_open", peer_key_id=s["key_id"], item="inference: 1k tokens",
-                              price_minor=PRICE_MSAT, currency=CURRENCY, rail="lightning",
-                              asked="buy 1k tokens of inference from the seller")
-    deal_id, tmp = opened["deal_id"], step06 / "tmp"
+    tmp = step06 / "tmp"
     tmp.mkdir(exist_ok=True)
-    await buyer.call("loop_deal_push", deal_id=deal_id, out_path=str(tmp / "buyer-half.json"))
-    await seller.call("loop_deal_respond", request_file=str(tmp / "buyer-half.json"),
-                      asked="sell 1k tokens of inference at the listed price")
-    await seller.call("loop_deal_push", deal_id=deal_id, out_path=str(tmp / "seller-half.json"))
-    await buyer.call("loop_deal_reconcile", peer_file=str(tmp / "seller-half.json"))
+    await buyer.call("loop_admit", peer_key_id=s["key_id"], decision="GO", reason="known inference seller")
+    await seller.call("loop_admit", peer_key_id=b["key_id"], decision="GO", reason="paying customer")
+    opened = await buyer.call("loop_deal_open", peer_key_id=s["key_id"], item="inference: 1k tokens",
+                              price_minor=PRICE_MINOR, currency=CURRENCY, rail="lightning",
+                              asked="buy 1k tokens of inference from the seller", out_path=str(tmp / "offer.json"))
+    deal_id = opened["deal_id"]
+    await seller.call("loop_deal_respond", request_file=str(tmp / "offer.json"),
+                      asked="sell 1k tokens of inference at the listed price", out_path=str(tmp / "seller-agreement.json"))
+    await buyer.call("loop_deal_reconcile", peer_file=str(tmp / "seller-agreement.json"))
+    await buyer.call("loop_deal_agree", deal_id=deal_id, out_path=str(tmp / "buyer-agreement.json"))
+    await seller.call("loop_deal_reconcile", peer_file=str(tmp / "buyer-agreement.json"))
     record = await asyncio.get_running_loop().run_in_executor(None, pay_one)  # the one real payment
-    await buyer.call("loop_settle", deal_id=deal_id, payment_ref=record["payment_hash"])
+    ref = record["payment_hash"]
+    leg = str(step06 / "buyer-leg.json")
+    paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg)
+    if paused.get("paused"):
+        await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
+        await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg, check_id=paused["check_id"])
+    await seller.call("loop_deal_reconcile", peer_file=leg)
+    await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=PRICE_MINOR, payment_ref=ref,
+                      out_path=str(step06 / "seller-leg.json"))
+    await buyer.call("loop_deal_reconcile", peer_file=str(step06 / "seller-leg.json"))
+    delivery = str(tmp / "seller-delivery.json")
+    paused = await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=delivery)
+    if paused.get("paused"):
+        await seller.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
+        await seller.call("loop_deal_deliver", deal_id=deal_id, out_path=delivery, check_id=paused["check_id"])
+    await buyer.call("loop_deal_reconcile", peer_file=delivery)
     for me in (buyer, seller):
-        await me.call("loop_deal_end_exchange", deal_id=deal_id, out_path=str(tmp / f"{me.name}-exchange-half.json"))
+        await me.call("loop_deal_close", deal_id=deal_id, status="received", out_path=str(tmp / f"{me.name}-statement.json"))
     for me, peer in ((buyer, seller), (seller, buyer)):
-        await peer.call("loop_deal_reconcile", peer_file=str(tmp / f"{me.name}-exchange-half.json"))
-    await buyer.call("loop_deal_close", deal_id=deal_id, status="received")
-    await seller.call("loop_deal_close", deal_id=deal_id, status="received")
-    await buyer.call("loop_pay_opening", deal_id=deal_id, out_path=str(step06 / "buyer-pay-opening.json"))
-    record["payments_recorded"] = settled(record["payment_hash"], deal_id)  # both books hold the deal now
-    for node in (buyer, seller):  # the rail has no ledger sequence: 0
-        await node.call("loop_settlement_disclosure", rail="lightning", through_sequence=0,
-                        out_path=str(step06 / f"disclosure-{node.name}.json"))
-    for me, peer in ((buyer, seller), (seller, buyer)):
-        path = str(tmp / f"{me.name}-final-half.json")
-        await me.call("loop_deal_push", deal_id=deal_id, out_path=path)
-        await peer.call("loop_deal_reconcile", peer_file=path)
-    shutil.copyfile(tmp / f"{buyer.name}-final-half.json", step06 / "buyer-half.json")
-    shutil.copyfile(tmp / f"{seller.name}-final-half.json", step06 / "seller-half.json")
+        await peer.call("loop_deal_reconcile", peer_file=str(tmp / f"{me.name}-statement.json"))
+    record["payments_recorded"] = settled(ref, deal_id)  # both books hold the deal now
     shutil.rmtree(tmp)
     (step06 / "lightning.json").write_text(json.dumps({**record, "deal_id": deal_id}, indent=2, sort_keys=True) + "\n")
     return deal_id
 
 
-def public_key(producer_key):
-    pub = subprocess.run([sys.executable, "-c", PUBLIC, str(producer_key)], stdin=subprocess.DEVNULL,
-                         capture_output=True, text=True)
+def public_key(home):
+    """A node's public key (SPKI PEM), from its profile's signing seed."""
+    pub = subprocess.run([sys.executable, "-c", PUBLIC, str(Path(home) / "deal" / "signing.seed")],
+                         stdin=subprocess.DEVNULL, capture_output=True, text=True)
     if pub.returncode != 0:
-        raise SystemExit(f"cannot read a node's producer key: {pub.stderr.strip()}")
+        raise SystemExit(f"cannot read a node's signing key: {pub.stderr.strip()}")
     return pub.stdout
 
 
 def cmd_init(a):
-    """Join each node that has no identity in --ids yet (a node joined once keeps its first join record), write every
-    node's public key, and print the ids: {name: {node_id, key_id, record_id}}."""
+    """Join each node that has no capsulectl-deal profile yet (made from its old key files, so its key ids stay) or no
+    identity in --ids; write every node's public key, and print the ids: {name: {node_id, key_id, record_id}}. A node with
+    a profile and an id keeps its join record."""
     ids = json.loads(Path(a.ids).read_text()) if Path(a.ids).is_file() else {}
+    join = {name for name in NAMES if not has_profile(Path(a.homes) / name) or "record_id" not in ids.get(name, {})}
 
     async def work(nodes):
-        for name, g in nodes.items():
-            if "record_id" not in ids.get(name, {}):
-                j = await g.call("loop_join")
-                ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"]}  # G1's node id is its signing key's id
+        for name in sorted(join):
+            j = await nodes[name].call("loop_join")
+            # the node's id is its signing key's id
+            ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"]}
     asyncio.run(with_nodes(a.homes, work))
     for name in NAMES:
         kd = Path(a.keys) / name
         kd.mkdir(parents=True, exist_ok=True)
-        (kd / "node-key.pub.pem").write_text(public_key(Path(a.homes) / name / "producer.key"))
+        (kd / "node-key.pub.pem").write_text(public_key(Path(a.homes) / name))
     print(json.dumps(ids, indent=2, sort_keys=True))
 
 
@@ -177,16 +220,15 @@ def cmd_session(a):
     try:
         joined = {n: {"key_id": d["key_id"], "record_id": d["record_id"]} for n, d in
                   json.loads(Path(a.ids).read_text()).items()}
-        asyncio.run(asks.run(run, relay, a.homes, a.published, joined, names=NAMES, relay_name=RELAY))
+        asyncio.run(asks.run(run, relay, a.homes, a.published, joined, names=NAMES, relay_name=RELAY,
+                           operator="{}"))  # the operator servers() gives each node
     finally:
         relay.close()
     src = Path(os.environ["LOOP_GOOSE_SRC"])
     rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
                          text=True).stdout.strip()
-    emit = subprocess.run([sys.executable, "-B", "-I", "-c", "import importlib.metadata as m; print(m.version('capsule-emit'))"],
-                          stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
-    if not rev or not emit:
-        raise SystemExit(f"cannot read the Goose checkout revision ({rev!r}) or the capsule-emit version ({emit!r})")
+    if not rev:
+        raise SystemExit("cannot read the Goose checkout revision")
     ids = json.loads((run / "nodes.json").read_text())
     pop = work / "population"
     pop.mkdir(exist_ok=True)
@@ -203,8 +245,7 @@ def cmd_session(a):
             print(f"goose_live: payment refused: {e}", file=sys.stderr)
             a.pay = False
         if a.pay:
-            node_ids = {n: {**d, "checkpoint_key_id": checkpoint_key_id(a.published, d["key_id"])}
-                        for n, d in json.loads(Path(a.ids).read_text()).items()}
+            node_ids = json.loads(Path(a.ids).read_text())
 
             async def deal(nodes):
                 return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log),
@@ -213,8 +254,8 @@ def cmd_session(a):
             steps.append("06")
             lightning = {"payer": payer.name, "payee": payee.name, "file": "step06/lightning.json"}
     nodes = [{"name": n, "node_id": ids[n]["key_id"], "key_dir": str(Path(a.keys) / n)} for n in NAMES]
-    doc = {"population": "live", "nodes": nodes, "pinned": ["goose-g1"],
-           "goose": {"run": str(work), "log": str(work / "session.log"), "rev": rev, "capsule_emit": emit,
+    doc = {"population": "live", "nodes": nodes, "pinned": ["goose-g1", "capsule-engine"],
+           "goose": {"run": str(work), "log": str(work / "session.log"), "rev": rev,
                      "steps": steps, "sealed": {"node": "goose-2", "capsule": str(sealed)},
                      "asks": {"run": str(run), "log": str(work / "session.log")}}}
     if lightning:
@@ -249,6 +290,8 @@ def main(argv=None):
         ap.error("--pay needs --lightning-log")
     if SRC is None:
         raise SystemExit("set LOOP_GOOSE_SRC to the Goose checkout (steps/goose.setup.sh installs it)")
+    # Every node process this driver starts, the ask session's included, runs on the installed plugin and engine.
+    os.environ.update(node_env(TOOLS))
     {"init": cmd_init, "advertise": cmd_advertise, "session": cmd_session}[a.cmd](a)
     return 0
 
