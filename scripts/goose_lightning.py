@@ -152,17 +152,22 @@ def mark_settled(log, payment_hash, deal_id, direction):
     return sum(1 for e in entries if e["status"] == "settled" and e["direction"] == direction)
 
 
-def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None):
+def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None, before_send=None):
     """One payment payer -> payee. Returns the record step 06 reads (lightning.json), without the preimage.
 
-    The amount is reserved in the log before `send`; a failure that the wallet reports releases it, one whose outcome
-    is not known (no answer to `send`, or no terminal status within `wait`) keeps it."""
+    `before_send(payment_hash)`, when given, runs once the payee's invoice is in hand and before anything is reserved
+    or sent: the payer's own final review of the payment (a Goose node's check, scripts/goose_live.py); an exception
+    from it stops the payment, nothing sent. The amount is reserved in the log before `send`; a failure that the wallet
+    reports releases it, one whose outcome is not known (no answer to `send`, or no terminal status within `wait`)
+    keeps it."""
     preflight(payer, payee, amount_msat, log, now)
     direction = f"{payer.name}>{payee.name}"
     inv = payee.call("fund", amount_msat=amount_msat)
     h = inv.get("payment_hash") if isinstance(inv, dict) else None
     if not (isinstance(h, str) and HEX64.fullmatch(h) and isinstance(inv.get("bolt11"), str) and inv.get("amount_msat") == amount_msat):
         raise Refused("the payee's wallet did not return a payment_hash and an invoice for the amount; nothing was sent")
+    if before_send is not None:
+        before_send(h)
     entry = {"day": utc_day(now), "direction": direction, "payment_hash": h, "amount_msat": amount_msat, "status": "reserved",
              "at": (now or dt.datetime.now(dt.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")}
     with locked(log):  # re-check under the lock: two runs never both pass the cap

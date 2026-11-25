@@ -171,6 +171,10 @@ async def run(a):
     (out / "nodes.json").write_text(json.dumps(nodes, indent=2, sort_keys=True) + "\n")
 
     homes = a.lab_dir / "goose" / "homes"
+    if not goose_live.has_profile(homes / a.goose_name):
+        # The node would make a profile with new keys, and the old key files are read only on that first `deal init`:
+        # `lab/goose.sh init` carries them over first (scripts/goose_live.py).
+        raise SystemExit(f"{homes / a.goose_name} has no capsulectl-deal profile yet: run lab/goose.sh init first")
     env = {**os.environ, "GOOSE_HOME": str(homes / a.goose_name), "GOOSE_OPERATOR": a.goose_name,
            "GOOSE_RELAY_MAP": json.dumps({a.relay_name: a.relay_addr}), **goose_live.node_env(goose_live.TOOLS)}
     params = StdioServerParameters(command=sys.executable, args=[str(SRC / "loop_server.py")], env=env)
@@ -255,7 +259,7 @@ async def run(a):
     pop = out / "population"
     pop.mkdir()
     rev = os.popen(f"git -C {ROOT} rev-parse HEAD").read().strip()
-    doc = {"population": "live", "pinned": ["goose-g1"],
+    doc = {"population": "live", "pinned": ["goose-g1", "capsule-engine"],
            "cross": {"run": str(out), "asks": [ASK], "head": rev,
                      "nodes": {n: {"key_id": v["key_id"], "ecosystem": v["ecosystem"]} for n, v in nodes.items()}}}
     (pop / "population.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")

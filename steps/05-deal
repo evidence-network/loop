@@ -1503,6 +1503,7 @@ def _spki_hex(pem):
         raise ValueError(f"{pem}: not an Ed25519 SPKI public key")
     return der[12:].hex()
 
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--population", required=True)

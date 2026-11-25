@@ -117,8 +117,8 @@ def checkpoint_key_id(published, node_id):
 
 async def pay_deal(nodes, ids, step06, pay_one, settled):
     """One x-deal-v1 deal goose-2 buys from goose-1 over a real Lightning payment: the node's own scripted sequence (as
-    goose_session.py makes it), except the rail. `pay_one()` (goose_lightning.pay on the lab wallets) pays once both
-    sides hold each other's agreement and returns the record step 06 reads; the buyer's payer leg and the seller's payee
+    goose_session.py makes it), except the rail. `pay_one(before_send)` (goose_lightning.pay on the lab wallets) pays
+    once both sides hold each other's agreement and the buyer's check has passed and returns the record step 06 reads; the buyer's payer leg and the seller's payee
     leg carry its payment_hash as their payment reference. The final reviews pause, and are answered "proceed": the lab
     operator who runs `lab/goose.sh pay` asked for this payment. Writes DIR (step06): buyer-leg.json, seller-leg.json and
     lightning.json."""
@@ -138,13 +138,25 @@ async def pay_deal(nodes, ids, step06, pay_one, settled):
     await buyer.call("loop_deal_reconcile", peer_file=str(tmp / "seller-agreement.json"))
     await buyer.call("loop_deal_agree", deal_id=deal_id, out_path=str(tmp / "buyer-agreement.json"))
     await seller.call("loop_deal_reconcile", peer_file=str(tmp / "buyer-agreement.json"))
-    record = await asyncio.get_running_loop().run_in_executor(None, pay_one)  # the one real payment
+    leg, loop, approved = str(step06 / "buyer-leg.json"), asyncio.get_running_loop(), {}
+
+    async def review(ref):
+        # The buyer's final review of this payment runs before the money moves (capsulectl-deal's settle contract,
+        # internal/deal/deal_v1_settle.go: check, then send). A deny stops the payment with nothing sent; a pause is
+        # answered "proceed" (the operator asked for it). A check that proceeds seals the leg at once.
+        paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg)
+        if paused.get("paused"):
+            if paused.get("verdict") == "deny":
+                raise RuntimeError(f"the buyer's check denied the payment (check {paused['check_id']}); nothing was sent")
+            await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
+            approved["check_id"] = paused["check_id"]
+
+    def before_send(ref):  # runs in pay_one's thread; the nodes live on this event loop
+        asyncio.run_coroutine_threadsafe(review(ref), loop).result()
+    record = await loop.run_in_executor(None, pay_one, before_send)  # the one real payment
     ref = record["payment_hash"]
-    leg = str(step06 / "buyer-leg.json")
-    paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg)
-    if paused.get("paused"):
-        await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
-        await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg, check_id=paused["check_id"])
+    if approved:
+        await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg, check_id=approved["check_id"])
     await seller.call("loop_deal_reconcile", peer_file=leg)
     await seller.call("loop_deal_received", deal_id=deal_id, amount_minor=PRICE_MINOR, payment_ref=ref,
                       out_path=str(step06 / "seller-leg.json"))
@@ -248,7 +260,7 @@ def cmd_session(a):
             node_ids = json.loads(Path(a.ids).read_text())
 
             async def deal(nodes):
-                return await pay_deal(nodes, node_ids, pop / "step06", lambda: gl.pay(payer, payee, log),
+                return await pay_deal(nodes, node_ids, pop / "step06", lambda before_send: gl.pay(payer, payee, log, before_send=before_send),
                                       lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"))
             asyncio.run(with_nodes(a.homes, deal))
             steps.append("06")

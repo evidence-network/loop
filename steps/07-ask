@@ -168,7 +168,8 @@ PINNED_REPORTER = ["capsules", "mesh-llm", *finding.mesh_pr_pins(), "reporter", 
 # Rehearsal nodes answer within two minutes: a Goose node asks a node (the cross stage's mesh node, which this join
 # makes) only through a window of at least 90 seconds (the shortest absence window, a minute, and the time to seal the
 # request; evidencebook python/examples/goose mailbox_exchange.py), and PT2M is the shortest whole-minute window above
-# it, so the late ask's absence is still recorded in this run.
+# it, so the late ask's absence is still recorded in this run. Every rehearsal join takes it, the mesh stage's too
+# (one more minute of the late ask's wait there), so the cross stage's mesh node is joined as the mesh stage's are.
 REHEARSAL_ANSWERS_WITHIN = "PT2M"
 ADVERTISED = ("commitment.json", "disclosure-policy.json", "policy.json", "book.json")
 ASKS = {

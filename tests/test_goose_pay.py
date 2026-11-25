@@ -43,6 +43,21 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(gl.read_log(self.log)[0]["status"], "settled")
         self.assertNotIn(pre, json.dumps(rec) + self.log.read_text())
 
+    def test_the_payers_review_runs_with_the_invoices_hash_before_anything_is_sent(self):
+        seen = []
+        with FakeLab() as lab:
+            rec = gl.pay(*self.wallets(lab), self.log, wait=5, before_send=lambda h: seen.append((h, lab.sent)))
+        self.assertEqual(seen, [(rec["payment_hash"], 0)])
+
+    def test_a_review_that_refuses_stops_the_payment_with_nothing_sent_or_reserved(self):
+        def refuse(h):
+            raise RuntimeError("the node's check denied the payment")
+        with FakeLab() as lab:
+            with self.assertRaisesRegex(RuntimeError, "denied"):
+                gl.pay(*self.wallets(lab), self.log, wait=5, before_send=refuse)
+            self.assertEqual(lab.sent, 0)
+        self.assertEqual(gl.read_log(self.log) if self.log.exists() else [], [])
+
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
         with FakeLab() as lab:
             with self.assertRaisesRegex(gl.Refused, "3000"):
