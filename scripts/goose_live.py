@@ -3,8 +3,8 @@
 
 Usage (in the Goose venv, which has `mcp`, `websockets` and `cryptography`; lab/goose.sh runs it):
 
-  goose_live.py init       --homes DIR --keys DIR --ids FILE   join each node with no capsulectl-deal profile or no id in
-                           FILE, write its public key
+  goose_live.py init       --homes DIR --keys DIR --ids FILE   join each node (once per key: a joined node gets its own
+                           join record back), write its public key
   goose_live.py advertise  --homes DIR --out DIR      each node's own signed commitment and policy (loop_advertise)
   goose_live.py session    --homes DIR --keys DIR --ids FILE --published DIR --work DIR
                            seal a model call, ask through the published commitments, write the population
@@ -78,6 +78,15 @@ def carried_keys(home):
             if (Path(home) / f).is_file()}
 
 
+def profile_ctl(homes, name):
+    """The node's own capsulectl-deal profile, as the node runs it (python/examples/goose/ctl.py: profile `name`, the
+    operator servers() gives the node, under its GOOSE_HOME), with the plugin steps/goose.setup.sh built."""
+    if str(SRC) not in sys.path:
+        sys.path.insert(0, str(SRC))
+    from ctl import Ctl
+    return Ctl(Path(homes) / name, name, node_env(TOOLS)["GOOSE_CAPSULECTL_DEAL"])
+
+
 def servers(homes, relay_map=None):
     """(name -> StdioServerParameters): one loop_server.py per node, on its own persistent home."""
     from mcp import StdioServerParameters
@@ -115,13 +124,14 @@ def checkpoint_key_id(published, node_id):
     return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))[-32:].hex()
 
 
-async def pay_deal(nodes, ids, step06, pay_one, settled):
+async def pay_deal(nodes, ids, step06, pay_one, settled, ctl):
     """One x-deal-v1 deal goose-2 buys from goose-1 over a real Lightning payment: the node's own scripted sequence (as
     goose_session.py makes it), except the rail. `pay_one(before_send)` (goose_lightning.pay on the lab wallets) pays
     once both sides hold each other's agreement and the buyer's check has passed and returns the record step 06 reads; the buyer's payer leg and the seller's payee
     leg carry its payment_hash as their payment reference. The final reviews pause, and are answered "proceed": the lab
-    operator who runs `lab/goose.sh pay` asked for this payment. Writes DIR (step06): buyer-leg.json, seller-leg.json and
-    lightning.json."""
+    operator who runs `lab/goose.sh pay` asked for this payment. `ctl(name, *args)` runs one capsulectl-deal verb on that
+    node's own profile: the node's loop_settle seals `--sent` and the settled leg in one call, so the driver runs `--sent`
+    itself before the wallet sends (below). Writes DIR (step06): buyer-leg.json, seller-leg.json and lightning.json."""
     buyer, seller = nodes["goose-2"], nodes["goose-1"]
     b, s = ids["goose-2"], ids["goose-1"]
     step06.mkdir(parents=True, exist_ok=True)
@@ -141,19 +151,35 @@ async def pay_deal(nodes, ids, step06, pay_one, settled):
     leg, loop, approved = str(step06 / "buyer-leg.json"), asyncio.get_running_loop(), {}
 
     async def review(ref):
-        # The buyer's final review of this payment runs before the money moves (capsulectl-deal's settle contract,
-        # internal/deal/deal_v1_settle.go: check, then send). A deny stops the payment with nothing sent; a pause is
-        # answered "proceed" (the operator asked for it). A check that proceeds seals the leg at once.
+        # Everything that can refuse this payment runs before the money moves, as capsulectl-deal's settle contract
+        # says (internal/deal/deal_v1_settle.go: "Before you hand it to the rail, run deal settle --sent --check"):
+        # the buyer's check (a deny stops here, nothing sent; a pause is answered "proceed", the operator asked for
+        # the payment), then `--sent`, which re-checks the gate, the approval and the limits and counts the payment in
+        # flight. The node's loop_settle afterwards finds it in flight and seals the settled leg (goose_node.py pay).
         paused = await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg)
-        if paused.get("paused"):
-            if paused.get("verdict") == "deny":
-                raise RuntimeError(f"the buyer's check denied the payment (check {paused['check_id']}); nothing was sent")
-            await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
-            approved["check_id"] = paused["check_id"]
+        if not paused.get("paused"):
+            # The check proceeded without a pause: the node sealed --sent and the settled leg in that call.
+            return
+        if paused.get("verdict") == "deny":
+            raise RuntimeError(f"the buyer's check denied the payment (check {paused['check_id']}); nothing was sent")
+        await buyer.call("loop_deal_approve", deal_id=deal_id, check_id=paused["check_id"], choice="proceed", said="yes")
+        await loop.run_in_executor(None, lambda: ctl(buyer.name, "settle", "--deal", deal_id, "--sent", "--check",
+                                                     paused["check_id"], "--payment-ref-type", "ln.payment_hash"))
+        approved["check_id"] = paused["check_id"]
 
     def before_send(ref):  # runs in pay_one's thread; the nodes live on this event loop
         asyncio.run_coroutine_threadsafe(review(ref), loop).result()
-    record = await loop.run_in_executor(None, pay_one, before_send)  # the one real payment
+    from goose_lightning import Refused as WalletRefused
+    try:
+        record = await loop.run_in_executor(None, pay_one, before_send)  # the one real payment
+    except WalletRefused:
+        # After --sent, a refusal from the wallet side means nothing settled (the wallet's own row says failed, or the
+        # day's cap stopped it before send): the payment is recorded failed, which ends its check. An outcome that is
+        # not known (goose_lightning.Unknown) leaves it in flight, as the contract says.
+        if approved:
+            ctl(buyer.name, "settle", "--deal", deal_id, "--check", approved["check_id"], "--status", "failed",
+                "--out", str(tmp / "buyer-failed-leg.json"))
+        raise
     ref = record["payment_hash"]
     if approved:
         await buyer.call("loop_settle", deal_id=deal_id, payment_ref=ref, out_path=leg, check_id=approved["check_id"])
@@ -187,14 +213,14 @@ def public_key(home):
 
 
 def cmd_init(a):
-    """Join each node that has no capsulectl-deal profile yet (made from its old key files, so its key ids stay) or no
-    identity in --ids; write every node's public key, and print the ids: {name: {node_id, key_id, record_id}}. A node with
-    a profile and an id keeps its join record."""
+    """Join every node (a home with no capsulectl-deal profile gets one made from its old key files, so its key ids
+    stay), write every node's public key, and print the ids: {name: {node_id, key_id, record_id}}. loop_join seals one
+    join record per key (`once="key_id"`), so a node already joined gets its own join record back: --ids is always the
+    profile's, never a stale pre-cutover entry left by an init that stopped before lab/goose.sh rewrote the file."""
     ids = json.loads(Path(a.ids).read_text()) if Path(a.ids).is_file() else {}
-    join = {name for name in NAMES if not has_profile(Path(a.homes) / name) or "record_id" not in ids.get(name, {})}
 
     async def work(nodes):
-        for name in sorted(join):
+        for name in NAMES:
             j = await nodes[name].call("loop_join")
             # the node's id is its signing key's id
             ids[name] = {"node_id": j["key_id"], "key_id": j["key_id"], "record_id": j["record_id"]}
@@ -261,7 +287,8 @@ def cmd_session(a):
 
             async def deal(nodes):
                 return await pay_deal(nodes, node_ids, pop / "step06", lambda before_send: gl.pay(payer, payee, log, before_send=before_send),
-                                      lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"))
+                                      lambda h, d: gl.mark_settled(log, h, d, f"{payer.name}>{payee.name}"),
+                                      lambda name, *args: profile_ctl(a.homes, name).run(*args))
             asyncio.run(with_nodes(a.homes, deal))
             steps.append("06")
             lightning = {"payer": payer.name, "payee": payee.name, "file": "step06/lightning.json"}

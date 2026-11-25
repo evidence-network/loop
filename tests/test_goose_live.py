@@ -190,9 +190,15 @@ class SessionTest(unittest.TestCase):
                 self.assertRegex(ids[name]["record_id"], r"^[0-9a-f]{64}$")
                 self.assertNotEqual(ids[name]["record_id"], old[name]["record_id"])
                 self.assertTrue((homes / name / "shelf.db").is_file())  # the old store stays, untouched
-        # init again: the profiles are there, so nobody joins again
+        # init again: each node's join is found, not sealed again, so the ids stay
         again = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
         self.assertEqual(again.returncode, 0, again.stderr[-2000:])
+        self.assertEqual(json.loads((lab / "goose" / "ids.json").read_text()), ids)
+        # an init that stopped after the profiles were made but before ids.json was rewritten: the retry still gives
+        # the profile's own join record, not the stale pre-cutover one
+        (lab / "goose" / "ids.json").write_text(json.dumps(old))
+        r = goose("init", LAB_DIR=str(lab), LOOP_TOOLS=str(TOOLS))
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
         self.assertEqual(json.loads((lab / "goose" / "ids.json").read_text()), ids)
         shutil.rmtree(lab)
 
