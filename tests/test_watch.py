@@ -813,10 +813,12 @@ class WatchTest(unittest.TestCase):
             cards = watch.history_cards(c)
             self.assertEqual(len(cards), 1, nid_)
             goose = by_id[nid_]["operator"] != "StevenMih"  # a Goose reference node; the lab's Mesh nodes (any ask_route) are Steven's
-            # the Goose reference nodes answer history_card/1; a Mesh node of capsules 0.1.20+ answers history_card/2
+            # the Goose reference nodes (capsulectl-deal, evidencebook#624) and a Mesh node of capsules 0.1.20+ staple
+            # history_card/2 (u539); an older Mesh node history_card/1
             self.assertIn(cards[0]["derivation"], ("history_card/1", "history_card/2"))
             self.assertEqual((cards[0]["community"], cards[0]["history"]), ("goose" if goose else "mesh-llm", True))
-            self.assertRegex(cards[0]["stream"], r"^goose/node$" if goose else r"^capsules/[0-9a-f]{16}$")  # the stream name
+            # the stream name: the capsulectl-deal node's cadence book, or the capsules plugin's book
+            self.assertRegex(cards[0]["stream"], r"^deal-cadence/[0-9a-f]{16}$" if goose else r"^capsules/[0-9a-f]{16}$")
             self.assertEqual(cards[0]["witnesses"], [])  # the lab books are unwitnessed
 
     # (p) History pages: the shared capsule-viewer History view draws each stream (evidence-network/loop#360)
