@@ -11,6 +11,7 @@ class FakeLab:
     def __init__(self, spendable=9873, spent_today=0, send_result="succeeded", fee=5, pending=False, send_http=None):
         self.spendable, self.spent_today, self.send_result, self.fee, self.pending = spendable, spent_today, send_result, fee, pending
         self.send_http = send_http
+        self.query_http_after_send = None  # an HTTP status the transactions query answers once a send went out
         self.txs = {"lab-1": [], "lab-2": []}
         self.invoices = {}
         self.sent = 0
@@ -34,6 +35,8 @@ class FakeLab:
                 elif c == "policy":
                     body = {"daily_budget_msat": 9000, "mode": "automatic", "spent_today_msat": lab.spent_today,
                             "remaining_daily_budget_msat": 9000 - lab.spent_today}
+                elif c == "transactions" and lab.query_http_after_send and lab.sent:
+                    code, body = lab.query_http_after_send, {"error": "boom"}
                 elif c == "transactions":
                     body = list(lab.txs[who]) + ([{"status": "pending", "inbound": False, "payment_hash": "0" * 64}] if lab.pending else [])
                 elif c == "fund":

@@ -194,7 +194,13 @@ def pay(payer, payee, log, amount_msat=AMOUNT_MSAT, wait=120, now=None, before_s
     deadline = time.monotonic() + wait
     out = inb = None
     while time.monotonic() < deadline:
-        out, inb = payer.transaction(h, False), payee.transaction(h, True)
+        try:
+            out, inb = payer.transaction(h, False), payee.transaction(h, True)
+        except Refused as e:
+            # A wallet that refuses the query after the send says nothing about the payment: its outcome is not known
+            # (only the payer's own failed row is a failure), and the reservation stays.
+            raise Unknown(f"payment {h} was handed to {payer.name}'s wallet, but a transaction query was refused ({e}); "
+                          "its reservation stays") from e
         if out and out.get("status") == "failed":
             settle_entry("failed")
             raise Refused(f"the payment failed in {payer.name}'s wallet ({clean(out.get('status_msg'))})")

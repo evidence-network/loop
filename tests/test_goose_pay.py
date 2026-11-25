@@ -58,6 +58,14 @@ class GuardTest(unittest.TestCase):
             self.assertEqual(lab.sent, 0)
         self.assertEqual(gl.read_log(self.log) if self.log.exists() else [], [])
 
+    def test_a_refused_query_after_the_send_is_an_unknown_outcome_never_a_failure(self):
+        with FakeLab() as lab:
+            lab.query_http_after_send = 500
+            with self.assertRaisesRegex(gl.Unknown, "transaction query was refused"):
+                gl.pay(*self.wallets(lab), self.log, wait=3)
+            self.assertEqual(lab.sent, 1)
+        self.assertEqual(gl.read_log(self.log)[0]["status"], "reserved")  # the reservation stays
+
     def test_a_payment_over_the_per_payment_cap_is_refused_and_sends_nothing(self):
         with FakeLab() as lab:
             with self.assertRaisesRegex(gl.Refused, "3000"):
@@ -152,6 +160,8 @@ def pay_one(before_send):
     before_send("ab" * 32)
     if mode == "wallet-failed":
         raise gl.Refused("the payment failed in lab-1's wallet")
+    if mode == "wallet-unknown":
+        raise gl.Unknown("a transaction query was refused after the send")
     events.append(["wallet", "send"])
     return {"payment_hash": "ab" * 32}
 
@@ -187,6 +197,11 @@ class PayOrderTest(unittest.TestCase):
         ev = self.run_mode("sent-refused")
         self.assertNotIn(["wallet", "send"], ev)
         self.assertEqual(ev[-1], ["raised", "RuntimeError"])
+
+    def test_an_unknown_outcome_after_sent_leaves_the_payment_in_flight(self):
+        ev = self.run_mode("wallet-unknown")
+        self.assertNotIn(["goose-2", "ctl", "failed"], ev)
+        self.assertEqual(ev[-1], ["raised", "Unknown"])
 
     def test_a_wallet_failure_after_sent_records_the_payment_failed(self):
         ev = self.run_mode("wallet-failed")
