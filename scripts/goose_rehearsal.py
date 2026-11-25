@@ -88,8 +88,7 @@ def step06_inputs(pop, work, deal):
     inputs = pop / "step06"
     inputs.mkdir(parents=True, exist_ok=True)
     for name in ("buyer-leg.json", "seller-leg.json", "disclosure-buyer.json", "disclosure-seller.json"):
-        src = name
-        shutil.copyfile(run / src, inputs / name)
+        shutil.copyfile(run / name, inputs / name)
     make_rail.dump(inputs / "controllers.json", {"stand_in": True, "controllers": {
         deal["buyer"]: "goose-controller-buyer", deal["seller"]: "goose-controller-seller"}})
 

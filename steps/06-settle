@@ -37,10 +37,11 @@ payment reference its side observed in clear (`settlement.payment_ref`, type ln.
 settlement id; the legs must be of one deal, settled, agree on the reference, the terms and the amount, and be signed by
 two nodes of the population (their producer signatures are checked in aac-go, step 01's checks, where it is installed).
 The exchange's id, payer, payee, currency, amount and decimals are then the legs', and the checks above compare them with
-the rail's object. Each Goose node's signed count of its settlements (loop_settlement_disclosure, DIR/step06/
-disclosure-<node>.json, evidencebook#920) is ledger_count as above, with two Goose rules: its rail is the deal's,
-lightning (GOOSE_RAIL, the rail an ln.payment_hash reference names; the mock rail's declaration says mock), and its
-through_sequence is the ledger's latest sequence exactly (the node counts all its settlements; the label is not a filter).
+the rail's object. Each Goose node's signed count of its settlements (loop_settlement_disclosure,
+DIR/step06/disclosure-<node>.json, evidencebook#920) is ledger_count as above, with two Goose rules: its rail is the
+deal's, lightning (GOOSE_RAIL, the rail an ln.payment_hash reference names; the mock rail's declaration says mock), and
+its through_sequence is the ledger's latest sequence exactly (the node counts all its settlements; the label is not a
+filter).
 
 On the live population no rail is verified: the lab nodes record their
 wallets' reports of Lightning payments (capsules plugin settlement legs and
@@ -376,7 +377,8 @@ def decide(out, *, population, nodes, started, goose=False, pinned=None):
         # must be the ledger's latest; a Mesh node's disclosure counts through any prefix of the ledger.
         is_seq = isinstance(through, int) and not isinstance(through, bool)
         ok = (signed and d.get("rail") == (GOOSE_RAIL if goose else decl["rail"]) and checks["ledger"]["ok"]
-              and is_seq and (through == latest if goose else through <= len(objs)) and d.get("settlements") == counted)
+              and is_seq and (through == latest if goose else through <= len(objs)) and is_int(d.get("settlements"))
+              and d.get("settlements") == counted)
         checks[f"ledger_count:{name}"] = check(ok, f"{name} discloses {d.get('settlements')!r} through sequence "
                                                    f"{through!r} (signature {'verifies' if signed else 'fails'}); "
                                                    f"the public ledger counts {counted}")
@@ -1187,7 +1189,7 @@ def main_goose_lightning(pop_dir, pop, out, started):
     h = ln.get("payment_hash")
     ref = exchange.get("settlement_ref") or {}
     checks["reference"] = check(
-        bool(exchange) and ref.get("rail") == "lightning" and isinstance(h, str) and HEX32.fullmatch(h)
+        bool(exchange) and ref.get("rail") == GOOSE_RAIL and isinstance(h, str) and HEX32.fullmatch(h)
         and ref.get("settlement_id") == h and ln.get("deal_id") == exchange.get("exchange_id"),
         f"the legs' payment reference {ref.get('settlement_id')!r} of deal {exchange.get('exchange_id')!r}; the wallets' "
         f"payment_hash {h!r} for deal {ln.get('deal_id')!r}")
@@ -1216,7 +1218,7 @@ def main_goose_lightning(pop_dir, pop, out, started):
         through = d.get("through_sequence")
         checks[f"ledger_count:{name}"] = check(
             signed and d.get("rail") == GOOSE_RAIL and is_int(through) and through == 0 and is_int(count)
-            and d.get("settlements") == count,
+            and is_int(d.get("settlements")) and d.get("settlements") == count,
             f"{name} discloses {d.get('settlements')!r} on rail {d.get('rail')!r} through sequence {through!r} (signature "
             f"{'verifies' if signed else 'fails'}); the lab wallets recorded {count!r} payments between them")
     (out / "checks.json").write_text(json.dumps({"checks": checks}, indent=2, sort_keys=True) + "\n")

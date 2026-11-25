@@ -21,6 +21,17 @@ TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-net
 PY = TOOLS / "goose" / "venv" / "bin" / "python"
 
 
+def resign(doc, seed_file, tmp_dir):
+    """doc signed again (scripts/check_commitment.py sign) with the Ed25519 key whose hex seed is in seed_file."""
+    import base64
+    import check_commitment as cc
+    seed = bytes.fromhex(Path(seed_file).read_text().strip())
+    pem = Path(tempfile.mkdtemp(dir=tmp_dir)) / "key.pem"
+    der = bytes.fromhex("302e020100300506032b657004220420") + seed  # Ed25519 PKCS#8
+    pem.write_text("-----BEGIN PRIVATE KEY-----\n" + base64.b64encode(der).decode() + "\n-----END PRIVATE KEY-----\n")
+    return cc.sign(doc, pem)
+
+
 class GuardTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -293,6 +304,26 @@ class PaidSessionTest(unittest.TestCase):
             self.assertEqual(found["result"], "FAIL", what)
             self.assertIn(check, found["detail"], what)
         (pop_dir / "step06" / "lightning.json").write_text(json.dumps(ln))
+        # a node's disclosure that is missing, on the wrong rail, or labelled off Lightning's sequence 0 (re-signed with
+        # the node's own key, so only the rule fails): a FAIL of that node's ledger_count alone
+        disc = pop_dir / "step06" / "disclosure-goose-2.json"
+        good = disc.read_text()
+        seed = self.lab / "goose" / "homes" / "goose-2" / "deal" / "signing.seed"
+        for what, edit in (("missing", None), ("unsigned", "unsigned"), ("rail mock", {"rail": "mock"}),
+                           ("label 1", {"through_sequence": 1}), ("label False", {"through_sequence": False}),
+                           ("count True", {"settlements": True})):
+            if edit is None:
+                disc.unlink()
+            elif edit == "unsigned":
+                disc.write_text(json.dumps({**json.loads(good), "settlements": json.loads(good)["settlements"] + 1}))
+            else:
+                disc.write_text(json.dumps(resign({**json.loads(good), **edit}, seed, self.lab)))
+            found, out = self.step06(pop_dir, f"bad-disclosure-{what.replace(' ', '-')}")
+            checks = json.loads((out / "checks.json").read_text())["checks"]
+            self.assertEqual(found["result"], "FAIL", what)
+            self.assertFalse(checks["ledger_count:goose-2"]["ok"], what)
+            self.assertTrue(checks["ledger_count:goose-1"]["ok"], what)
+            disc.write_text(good)
 
     def test_a_guard_refusal_runs_the_session_without_06_and_says_why(self):
         lab = self.lab / "goose"

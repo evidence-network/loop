@@ -856,6 +856,7 @@ class GooseRehearsalTest(unittest.TestCase):
             "stale label": resigned(lambda doc: doc.update(through_sequence=0)),
             "future label": resigned(lambda doc: doc.update(through_sequence=2)),
             "boolean label": resigned(lambda doc: doc.update(through_sequence=True)),
+            "boolean count": resigned(lambda doc: doc.update(settlements=True)),
         }
         # the re-signing itself keeps a correct disclosure passing
         found, checks, _ = self.judge06(self.tampered_population(resigned(lambda doc: None)))
