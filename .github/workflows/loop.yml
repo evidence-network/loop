@@ -185,7 +185,7 @@ jobs:
             fi
           done 3< loop-summary.txt
       # Any failed run on main (the nightly, or a dispatch on main) also opens or comments on one ci-red issue for the
-      # workflow, which the coordinator's watchdog lists; the loop-step-NN issues above stay as they are.
+      # workflow, labelled ci-red; the loop-step-NN issues above stay as they are.
       - name: Report a failed run on main
         if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
