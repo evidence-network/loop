@@ -67,9 +67,10 @@ each is switched on with the release that supports it.
 
 The Goose column describes the rehearsal population (two Goose nodes on a mock rail). Steps 01, 03 and 07 also have a live Goose input; step 06 uses a real Lightning payment between lab wallets when the live run pays.
 
-Two gates hold the bar. Each pull request runs `loop.sh --stage 1` (steps 01, 02, 03, 12, 07 and 08)
-against the rehearsal population (simulated nodes on a mock rail, no real payments) and fails
-if any step fails. The ecosystem gate keeps each step's last live result per ecosystem, with
+Two gates hold the bar. `loop.sh --stage 1 --strict` (steps 01, 02, 03, 12, 07 and 08) runs against
+the rehearsal population (simulated nodes on a mock rail, no real payments) on every push to main that
+changes the loop's inputs, nightly (`.github/workflows/loop.yml`), and in `scripts/check.sh --full` before
+such a push, and fails if any step fails. The ecosystem gate keeps each step's last live result per ecosystem, with
 the pins it ran under, in [`baseline/`](baseline/README.md): a pull request that changes a pin
 must bring a new live run, and fails if a step that passed now fails, is missing or reads
 `NOT_CHECKED`.

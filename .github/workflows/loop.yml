@@ -1,5 +1,6 @@
-# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly and by hand. Pull requests do not run it
-# (about 50 minutes): run `scripts/check.sh --full` before pushing a change to its inputs (CONTRIBUTING.md).
+# The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on a push to main that changes its
+# inputs (the paths below), and by hand. Pull requests do not run it (about 50 minutes): `scripts/check.sh --full` runs
+# it before a push that changes those paths (CONTRIBUTING.md).
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -10,15 +11,31 @@ name: loop
 on:
   schedule:
     - cron: "0 2 * * *"
+  # The loop's inputs; CONTRIBUTING.md points here for when `scripts/check.sh --full` is due before a push.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/loop.yml"
+      - ".github/scripts/report-failure.sh"
+      - "loop.sh"
+      - "join.sh"
+      - "versions.lock"
+      - "steps/**"
+      - "population/**"
+      - "lab/**"
+      - "scripts/*.py"
+      - "status/**"
+      - "tests/**"
+      - "nodes/revocations/**"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Pull request runs (none today) share a group per ref and cancel; a nightly or dispatched run is never cancelled or replaced.
+# No pull request runs it: every run has its own group, so a push, nightly or dispatched run is never cancelled or replaced.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   loop:
@@ -122,7 +139,6 @@ jobs:
           path: findings/
           if-no-files-found: warn
       - name: Open or update one issue per failing step
-        id: per-step
         if: always() && github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,19 +178,13 @@ jobs:
               gh issue create --title "loop step $nn ($name) fails" --label "$label" --body "$body"
             fi
           done 3< loop-summary.txt
-      # A nightly failure the step above did not report (one before loop-summary.txt exists, one with no FAIL row in
-      # it, or the step above failing itself) opens or comments on one ci-red issue for the workflow.
-      - name: Report a nightly failure no step issue covers
-        if: failure() && github.event_name == 'schedule'
+      # Any failed run on main (the nightly, or a dispatch on main) also opens or comments on one ci-red issue for the
+      # workflow, which the coordinator's watchdog lists; the loop-step-NN issues above stay as they are.
+      - name: Report a failed run on main
+        if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           TITLE: "loop failed on main or nightly"
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
-          PER_STEP: ${{ steps.per-step.outcome }}
-        run: |
-          if [ "$PER_STEP" = success ] && [ -f loop-summary.txt ] && awk '$3 == "FAIL" { found = 1 } END { exit !found }' loop-summary.txt; then
-            echo "The per-step issues above cover this failure."
-            exit 0
-          fi
-          bash .github/scripts/report-failure.sh
+        run: bash .github/scripts/report-failure.sh

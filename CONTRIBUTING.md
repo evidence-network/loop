@@ -16,13 +16,16 @@ A code owner (`.github/CODEOWNERS`) reviews each pull request.
 
 ## Check locally before you push
 
-Before every push: `scripts/check.sh` (about 20 min on an Apple-silicon Mac). Before pushing a change to `steps/`,
-`loop.sh`, `population/`, `versions.lock`, `lab/`, the `scripts/` the steps run (`cross_*`, `goose_*`,
-`check_cross_run.py`), `status/findings.py` or `.github/workflows/loop.yml`, also `scripts/check.sh --full`
-(about 80 min; needs go, cargo, openssl 3, bash 4+, GNU `timeout`, `flock`, Google Chrome and network for the
-pinned tools).
-Pull requests run only the fast set; the `loop` job (stage 1, the cross stage and steps 10 and 11 with every
-step's pinned tools) runs nightly and on demand. The leak scans need the `LEAK_LINT_TERMS` secret and run only in CI.
+Before every push: `scripts/check.sh` (about 20 min on an Apple-silicon Mac). Before pushing a change to any path
+in the `push: paths:` list of `.github/workflows/loop.yml` (the steps, `loop.sh`, `join.sh`, `population/`,
+`versions.lock`, `lab/`, `scripts/*.py`, `status/`, `tests/` and `nodes/revocations/`), also
+`scripts/check.sh --full` (about 80 min; needs go, cargo, openssl 3, bash 4+, GNU `timeout`, `flock`, Google
+Chrome and network for the pinned tools). Pull requests run only the fast set.
+
+The one exception: `scripts/check.sh` skips the `loop` job (every step's pinned tools, stage 1, the cross stage
+and steps 10 and 11), which takes about 51 min in CI and about 79 min on a Mac. `--full` runs it; CI runs it
+nightly and on each push to main that changes those paths, and a failure there opens a `ci-red` issue the same
+day. The leak scans need the `LEAK_LINT_TERMS` secret and run only in CI.
 
 ## Sign your commits off (DCO)
 

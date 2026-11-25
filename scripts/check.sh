@@ -4,8 +4,12 @@
 #   scripts/check.sh          what a pull request runs: nodes, reports, personal-data, dco, versions, gate,
 #                             commitments and site (the commands of their workflows), and leak-lint when
 #                             LEAK_LINT_TERMS is set
-#   scripts/check.sh --full   also what only the nightly run does: loop.yml's loop job (every step's pinned
-#                             tools, the step tests with LOOP_REQUIRE_TOOLS=1, stage 1, the cross stage, steps 10 and 11)
+#   scripts/check.sh --full   also loop.yml's loop job (every step's pinned tools, the step tests with
+#                             LOOP_REQUIRE_TOOLS=1, stage 1, the cross stage, steps 10 and 11)
+#
+# The exception: the default tier skips the loop job (about 51 min in CI, 79 min on a Mac). Run --full before a push
+# that changes a path in loop.yml's push paths list; CI runs the job nightly and on such a push to main, and a
+# failure there opens a ci-red issue (CONTRIBUTING.md).
 #
 # Exits non-zero on the first failure. Runs from any directory; writes nothing into the checkout (the rehearsal
 # runs, the site and the summaries go to a temporary directory). The step tools install under LOOP_TOOLS
@@ -32,6 +36,7 @@ step() { printf '\n== %s (at %ss)\n' "$*" "$SECONDS"; }
 # A command that must fail (`! cmd` would not stop a set -e script).
 refused() { if "$@"; then echo "check: expected a refusal from: $*" >&2; exit 1; fi; }
 day=$(date -u +%F)
+git fetch -q origin main || { echo "check: could not fetch origin main (offline?); dco and the ecosystem gate compare against it" >&2; exit 1; }
 base=$(git rev-parse origin/main)
 # Each CI job starts on a fresh runner: the jobs below that install nothing see no step tools, so their tool-backed
 # tests skip as in CI rather than run against whatever an earlier run left in LOOP_TOOLS. commitments sees only the
@@ -162,7 +167,12 @@ for s in steps/*.setup.sh; do
 done
 
 step "loop (loop.yml): step tests with the pinned tools"
-LOOP_REQUIRE_TOOLS=1 python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step07_ask tests.test_step08_verify tests.test_step09_dispute tests.test_step10_judge tests.test_step11_report tests.test_step12_join tests.test_step13_ask_across tests.test_goose_rehearsal tests.test_commitment1 tests.test_staple_verify tests.test_ledger_proof -v
+# The module list is read from loop.yml's own step, so the two cannot drift.
+modules=$(awk '/^ *run: python3 -B -m unittest tests\.test_step01_seal / { sub(/^ *run: python3 -B -m unittest /, ""); sub(/ -v$/, ""); print; exit }' \
+  .github/workflows/loop.yml)
+[ -n "$modules" ] || { echo "check: could not read the step-test modules from loop.yml" >&2; exit 1; }
+# shellcheck disable=SC2086 # one word per module
+LOOP_REQUIRE_TOOLS=1 python3 -B -m unittest $modules -v
 
 step "loop (loop.yml): stage 1 on the rehearsal population"
 run="$tmp/loop/$day-rehearsal"
