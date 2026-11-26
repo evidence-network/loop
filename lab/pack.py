@@ -293,6 +293,8 @@ def refuse_secrets(files, lab_dir):
     datas = [(arc, path.read_bytes()) for arc, path in files]
     # A preimage is found by its key's name, or, keyless, by hashing to a 64-hex value the packed files carry.
     hashes = frozenset(h for _, data in datas for h in check_no_preimages.hexes(data))
+    # A checkpoint digest beside the witness entry_hash it opens is not a preimage (check_no_preimages.entry_hash_only).
+    entry_only = check_no_preimages.entry_hash_only(data for _, data in datas)
     for arc, data in datas:
         if PRIVATE_MARK in data:
             errs.append(f"{arc}: holds a private key; it is never packed")
@@ -300,7 +302,7 @@ def refuse_secrets(files, lab_dir):
             errs.append(f"{arc}: holds a Nostr key (npub or nsec); the tree carries none")
         if token and token in data:
             errs.append(f"{arc}: holds the mesh invite token; it is never packed")
-        lines = check_no_preimages.hits_in(data, hashes)
+        lines = check_no_preimages.hits_in(data, hashes, entry_only)
         if lines:
             errs.append(f"{arc}: holds a payment preimage (lines {', '.join(map(str, lines[:5]))}); it is never packed")
     return errs

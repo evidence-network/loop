@@ -451,6 +451,14 @@ KEYS = {"peer_commitment", "verdict", "source", "reads", "rows", "request_id", "
 # The base policy's rows, in the order the plugin lists them, and a row's results (capsules-plugin admission/base.rs).
 ROWS = ("identity", "key_age", "performed_and_settled", "disputes", "corroboration")
 ROW_RESULTS = ("pass", "fail", "not_read")
+# capsules-plugin#351 (v0.1.24) adds a sixth row after the five: the card carries a witness receipt this node verified
+# on its latest checkpoint. It records only (effect none, the verdict unchanged) and seals the evaluator's label; only
+# `witnessed` passes, and with no card read the row is not_read and has no label (admission/base.rs). A plugin before
+# v0.1.24 seals the five rows alone, so the sixth is optional.
+WITNESS_ROW = "witnessed_card"
+WITNESS_LABELS = {"witnessed": "pass", "unknown_witness": "fail", "unwitnessed": "fail"}
+# The card read's derivations: history_card/1, and history_card/2, which the plugin reads first from v0.1.24 (#350).
+CARD_DERIVATIONS = ("history_card/1", "history_card/2")
 
 
 def decision_block(ln):
@@ -511,16 +519,23 @@ def block_problems(blk):
     else:
         if pc is None:
             errs.append("rows on a decision that names no peer")
-        if not (isinstance(rows, list) and len(rows) == len(ROWS)
+        base = rows[:len(ROWS)] if isinstance(rows, list) else None
+        extra = rows[len(ROWS):] if isinstance(rows, list) else None
+        if not (base is not None and len(base) == len(ROWS)
                 and all(isinstance(x, dict) and ROW_KEYS[0] <= set(x) <= ROW_KEYS[1] and x["row"] == name
-                        and x["result"] in ROW_RESULTS for x, name in zip(rows, ROWS))):
-            errs.append("rows are not the five base-policy rows in order, each pass, fail or not_read")
+                        and x["result"] in ROW_RESULTS for x, name in zip(base, ROWS))
+                and len(extra) <= 1):
+            errs.append("rows are not the five base-policy rows in order, each pass, fail or not_read, "
+                        "and at most the witnessed-card row after them")
         else:
-            errs += row_member_problems(rows, bool(packs))
+            witness = witness_row_problems(extra[0]) if extra else []
+            errs += witness
+            if not witness:
+                errs += row_member_problems(rows, bool(packs))
         card = tail[0] if tail else None
         if not (card == {"kind": "history_card", "state": "not_read"}
                 or (isinstance(card, dict) and set(card) == {"kind", "derivation", "commitment"}
-                    and card["kind"] == "history_card" and card["derivation"] == "history_card/1"
+                    and card["kind"] == "history_card" and card["derivation"] in CARD_DERIVATIONS
                     and digest_ok(card["commitment"]))):
             errs.append("the second read is not the peer's history card")
         errs += pack_problems(tail[1:], price)
@@ -531,6 +546,23 @@ def block_problems(blk):
 # A row is {row, result}; the evaluator's own view of it (PR #178) adds effect, and count and denominator where
 # it counts. The base policy's five rows are record rows, which never change the decision (effect none).
 ROW_KEYS = ({"row", "result"}, {"row", "result", "effect", "count", "denominator"})
+
+
+def witness_row_problems(x):
+    """Why the sixth row is not the plugin's witnessed-card row; [] when it is. The row records the
+    evaluator's label, and its result follows from the label: witnessed passes, unknown_witness and unwitnessed
+    fail; with no card read it is not_read and carries no label."""
+    if not (isinstance(x, dict) and x.get("row") == WITNESS_ROW and {"row", "result"} <= set(x)
+            <= {"row", "result", "effect", "label"} and x["result"] in ROW_RESULTS):
+        return ["the row after the five base rows is not the witnessed-card row"]
+    if x["result"] == "not_read":
+        return [] if "label" not in x else ["the witnessed-card row is not_read but carries a label"]
+    label = x.get("label")
+    if not isinstance(label, str) or label not in WITNESS_LABELS:
+        return [f"the witnessed-card row's label {label!r} is none the evaluator gives"]
+    if WITNESS_LABELS[label] != x["result"]:
+        return [f"the witnessed-card row is {x['result']} with label {label}, which gives {WITNESS_LABELS[label]}"]
+    return []
 PACK_KEYS = {"base": {"kind", "role", "pack", "definition_digest"},
              "price": {"kind", "role", "pack", "definition_digest", "profile"}}
 PRICE_OUTCOMES = ("allow", "deny", "escalate")
@@ -545,7 +577,7 @@ def count_ok(v):
 
 
 def row_member_problems(rows, base_pack_cited):
-    """Why the evaluator's members on the five rows are not the plugin's; [] when they are. The effect is on
+    """Why the evaluator's members on the rows are not the plugin's; [] when they are. The effect is on
     every row or none, and the base pack is cited exactly when it is."""
     errs, with_effect = [], ["effect" in x for x in rows]
     if any(with_effect) and not all(with_effect):
@@ -554,7 +586,7 @@ def row_member_problems(rows, base_pack_cited):
         errs.append("the rows' effect and the base terms pack read go together; one is missing")
     for x in rows:
         if "effect" in x and x["effect"] != "none":
-            errs.append(f"row {x['row']} has effect {x['effect']!r}; the five base rows are record rows, effect none")
+            errs.append(f"row {x['row']} has effect {x['effect']!r}; the base rows are record rows, effect none")
         for k in ("count", "denominator"):
             if k in x and not count_ok(x[k]):
                 errs.append(f"row {x['row']}: {k} is not a count")
@@ -685,6 +717,19 @@ def row_checks(blk):
         else:
             check, why_row = "NOT_CHECKED", why[row]
         out.append({"row": row, "sealed": got[row], "want": want, "check": check, "why": why_row})
+    if WITNESS_ROW in got:
+        # With no card cited, the row is not_read; with one, the label depends on receipts the record does not carry.
+        want = ["fail", "pass"] if cited else ["not_read"]
+        if got[WITNESS_ROW] not in want:
+            out.append({"row": WITNESS_ROW, "sealed": got[WITNESS_ROW], "want": want, "check": "FAIL",
+                        "why": f"{WITNESS_ROW} is {got[WITNESS_ROW]}; the rules give {' or '.join(want)} "
+                               + ("with a cited card" if cited else "with no card cited")})
+        elif cited:
+            out.append({"row": WITNESS_ROW, "sealed": got[WITNESS_ROW], "want": want, "check": "NOT_CHECKED",
+                        "why": "the label follows from the card's witness receipts, which the record cites only by "
+                               "a salted commitment"})
+        else:
+            out.append({"row": WITNESS_ROW, "sealed": got[WITNESS_ROW], "want": want, "check": "PASS", "why": ""})
     return out
 
 

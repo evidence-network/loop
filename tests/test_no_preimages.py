@@ -98,6 +98,51 @@ class NoPreimagesTest(unittest.TestCase):
         (self.d / "c.json").write_text(json.dumps({"key_id": "ef" * 32, "payment_hash": ph}))
         self.assertEqual(check_no_preimages.scan([self.d]), [])
 
+    def test_a_checkpoint_digest_beside_its_witness_entry_hash_is_not_a_preimage(self):
+        # capsules 0.1.24's counterparty-inclusion citations cite a cll-checkpoint whose digest a witness registered
+        # under its sha256 (entry_hash), in each traced form: a reference, a checkpoint_digest member, a check's text.
+        cp = bytes(range(32, 64))
+        entry = hashlib.sha256(cp).hexdigest()
+        ref = {"references": [{"type": "cll-checkpoint", "digest_alg": "SHA-256", "digest": cp.hex(),
+                               "citation_purpose": "counterparty_inclusion"}]}
+        (self.d / "capsules.jsonl").write_text(json.dumps(ref, separators=(",", ":")) + "\n")
+        (self.d / "held-1-inclusion.json").write_text(json.dumps({"checkpoint_digest": cp.hex()}, indent=2) + "\n")
+        (self.d / "checks.json").write_text(json.dumps({"why": f"capsule x is included under checkpoint {cp.hex()}"}) + "\n")
+        receipt = {"witness": {"ts_url": "https://witness.example", "entry_hash": entry}}  # the plugin's receipt object
+        (self.d / "checkpoints.response.json").write_text(json.dumps(receipt) + "\n")
+        self.assertEqual(check_no_preimages.scan([self.d]), [])
+        # The same sha256 anywhere else than as an entry_hash (a payment hash): every one of them is a hit again.
+        (self.d / "ledger.jsonl").write_text(json.dumps({"payment_hash": entry}) + "\n")
+        self.assertEqual(sorted(check_no_preimages.scan([self.d])),
+                         sorted(f"{self.d / n}:{line}" for n, line in (("capsules.jsonl", 1), ("checks.json", 1),
+                                                                      ("held-1-inclusion.json", 2))))
+        (self.d / "ledger.jsonl").unlink()
+        # A value not named as a checkpoint where it stands is a hit even when its sha256 is only an entry_hash.
+        (self.d / "c.json").write_text(json.dumps({"secret": cp.hex()}) + "\n")
+        self.assertEqual(check_no_preimages.scan([self.d]), [f"{self.d / 'c.json'}:1"])
+        (self.d / "c.json").unlink()
+        # A real preimage beside its payment hash still fires, named as a checkpoint or not.
+        pre = bytes(range(32))
+        ph = hashlib.sha256(pre).hexdigest()
+        (self.d / "ledger.jsonl").write_text(json.dumps({"payment_hash": ph}) + "\n")
+        (self.d / "c.json").write_text(json.dumps({"checkpoint_digest": pre.hex()}) + "\n")
+        self.assertEqual(check_no_preimages.scan([self.d]), [f"{self.d / 'c.json'}:1"])
+
+    def test_a_preimage_beside_a_bare_entry_hash_or_a_loose_checkpoint_word_is_still_found(self):
+        pre = bytes(range(32))
+        h = hashlib.sha256(pre).hexdigest()
+        for text in (
+            # A "checkpoint" word nearby and a bare entry_hash member (no witness receipt object).
+            json.dumps({"note": "checkpoint", "secret": pre.hex(), "entry_hash": h}),
+            # A witness receipt object, but the value does not stand where a checkpoint digest stands.
+            json.dumps({"note": "checkpoint", "secret": pre.hex(), "w": {"ts_url": "https://w.example", "entry_hash": h}}),
+            # Where a checkpoint digest stands, but its sha256 is a bare entry_hash, not a receipt's.
+            json.dumps({"checkpoint_digest": pre.hex(), "entry_hash": h}),
+        ):
+            with self.subTest(text=text[:60]):
+                (self.d / "c.json").write_text(text + "\n")
+                self.assertEqual(check_no_preimages.scan([self.d]), [f"{self.d / 'c.json'}:1"])
+
     def test_a_signed_statement_naming_a_preimage_is_found(self):
         (self.d / "x.cose").write_bytes(b"\xd2\x84\x43\xa1hpreimageX\x20" + bytes(32))
         (self.d / "y.cose").write_bytes(b"\xd2\x84\x43\xa1payment")

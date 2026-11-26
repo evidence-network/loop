@@ -1498,6 +1498,20 @@ class PackTest(LabFixture):
         f.write_text(json.dumps({"payment_hash": h}) + "\n" + "free text " + pre + "\n")  # keyless: found by its hash
         self.assertTrue(any("payment preimage" in e for e in self.pack()))
 
+    def test_packs_a_witnessed_checkpoint_digest_and_refuses_a_preimage_dressed_as_one(self):
+        # capsules 0.1.24: a cll-checkpoint reference beside the witness receipt that registered it (entry_hash =
+        # sha256 of the digest) is not a preimage; the same value beside a bare entry_hash is refused.
+        cp = "6b" * 32
+        h = hashlib.sha256(bytes.fromhex(cp)).hexdigest()
+        d = self.root / "findings" / f"{DAY}-live" / "05-deal"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "ref.jsonl").write_text(json.dumps({"references": [{"type": "cll-checkpoint", "digest_alg": "SHA-256",
+                                                                 "digest": cp}]}, separators=(",", ":")) + "\n")
+        (d / "ask.json").write_text(json.dumps({"witness": {"ts_url": "https://w.example", "entry_hash": h}}) + "\n")
+        self.assertFalse(any("payment preimage" in e for e in self.pack()))
+        (d / "ask.json").write_text(json.dumps({"note": "checkpoint", "secret": cp, "entry_hash": h}) + "\n")
+        self.assertTrue(any("payment preimage" in e for e in self.pack()))
+
     def test_refuses_the_invite_token(self):
         (self.root / "findings" / f"{DAY}-live" / "12-join" / "loop-step.log").write_text(
             "joined with invite-token-value-for-the-test\n")
