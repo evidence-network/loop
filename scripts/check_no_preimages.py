@@ -17,7 +17,9 @@ preimages; tests/fixtures is data and is scanned), failing closed, for:
   preimage and is left out: a log checkpoint's digest, standing exactly where one stands (a
   cll-checkpoint reference's digest, a checkpoint_digest member, "under/and checkpoint <digest>"
   in a check's text), whose sha256 appears in the trees only as the entry_hash of a witness
-  receipt object ({"ts_url": <witness URL>, "entry_hash": ...}). A witness registers a
+  receipt in the plugin's shape (ts_url, entry_hash, leaf_index, tree_size and a COSE_Sign1
+  receipt_b64, nothing else). This guards against a preimage our own tooling copies out by
+  mistake; a file written to defeat it is out of its reach, as base64 of a preimage always was. A witness registers a
   checkpoint under the sha256 of its digest, so capsules 0.1.24's counterparty-inclusion citations
   put both in the findings (evidence-network/loop#485 run 2026-11-26-live-1). Any other occurrence
   of that sha256, such as a payment_hash, keeps the hit;
@@ -26,6 +28,8 @@ preimages; tests/fixtures is data and is scanned), failing closed, for:
 Usage: python3 scripts/check_no_preimages.py [PATH ...]
 Exit 0 = none found; 1 = found (each printed as path:line, never the value); 2 = a PATH does not exist.
 """
+import base64
+import binascii
 import hashlib
 import json
 import re
@@ -44,9 +48,10 @@ def tests_code(parts):
     return len(parts) > 1 and parts[0] == "tests" and parts[1] != "fixtures"
 NAMED = re.compile(rb"(?i)pre_?image(?!_check)[^0-9a-fA-F\n]{0,24}[0-9a-fA-F]{64}(?![0-9a-fA-F])")
 HEX64 = re.compile(rb"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])")
-#: A witness receipt's entry_hash, the sha256 of the checkpoint digest the witness registered, in the receipt object the
-#: plugin writes: `{"ts_url":"<witness>","entry_hash":"<hex>"}`. A bare entry_hash member is not one.
-ENTRY_HASH = re.compile(rb'"ts_url"\s*:\s*"https?://[^"\s]+"\s*,\s*"entry_hash"\s*:\s*"([0-9a-fA-F]{64})"')
+#: A witness receipt as the capsules plugin returns it in an ask's answer (witness_receipts[].witness): exactly these
+#: members, ts_url a URL, entry_hash 64 hex, the two positions integers, and receipt_b64 the witness's COSE_Sign1 receipt.
+RECEIPT_KEYS = {"ts_url", "entry_hash", "receipt_b64", "leaf_index", "tree_size"}
+COSE_SIGN1 = b"\xd2\x84"
 #: The exact places a checkpoint digest stands, each ending right before the value: a cll-checkpoint reference's digest,
 #: a checkpoint_digest member, and a check's text naming it ("... included under checkpoint <digest>").
 CHECKPOINT_PLACES = (
@@ -73,16 +78,56 @@ def files(paths):
                 yield p
 
 
+def is_receipt(o):
+    """Whether o is a witness receipt in the plugin's shape (RECEIPT_KEYS), its receipt_b64 a COSE_Sign1 message."""
+    if not (isinstance(o, dict) and set(o) == RECEIPT_KEYS and isinstance(o["ts_url"], str)
+            and re.fullmatch(r"https?://\S+", o["ts_url"]) and isinstance(o["entry_hash"], str)
+            and HEX64.fullmatch(o["entry_hash"].encode()) and isinstance(o["receipt_b64"], str)
+            and all(isinstance(o[k], int) and not isinstance(o[k], bool) for k in ("leaf_index", "tree_size"))):
+        return False
+    try:
+        return base64.b64decode(o["receipt_b64"], validate=True).startswith(COSE_SIGN1)
+    except (ValueError, binascii.Error):
+        return False
+
+
+def receipt_entry_hashes(o, out):
+    """Count into out each entry_hash of a witness receipt in the JSON value o, at any depth."""
+    if is_receipt(o):
+        out[o["entry_hash"].lower()] = out.get(o["entry_hash"].lower(), 0) + 1
+    elif isinstance(o, dict):
+        for v in o.values():
+            receipt_entry_hashes(v, out)
+    elif isinstance(o, list):
+        for v in o:
+            receipt_entry_hashes(v, out)
+
+
+def json_values(data):
+    """The JSON values in data: the whole of it, or each line of a JSON-lines file; nothing for other formats."""
+    try:
+        return [json.loads(data)]
+    except ValueError:
+        pass
+    out = []
+    for line in data.split(b"\n"):
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
 def entry_hash_only(datas):
-    """The 64-hex values (lowercased) that every time they occur in datas stand as a witness receipt's entry_hash (in
-    the receipt object ENTRY_HASH matches)."""
+    """The 64-hex values (lowercased) that every time they occur in datas stand as the entry_hash of a witness receipt
+    in the plugin's shape (is_receipt)."""
     total, as_entry = {}, {}
     for data in datas:
         for h in HEX64.findall(data):
-            total[h.lower()] = total.get(h.lower(), 0) + 1
-        for h in ENTRY_HASH.findall(data):
-            as_entry[h.lower()] = as_entry.get(h.lower(), 0) + 1
-    return frozenset(h.decode() for h, n in as_entry.items() if total.get(h) == n)
+            total[h.lower().decode()] = total.get(h.lower().decode(), 0) + 1
+        for v in json_values(data):
+            receipt_entry_hashes(v, as_entry)
+    return frozenset(h for h, n in as_entry.items() if total.get(h) == n)
 
 
 def witnessed_checkpoint(line, m, entry_only):

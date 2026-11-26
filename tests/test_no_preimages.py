@@ -1,4 +1,5 @@
 """A payment preimage never reaches a published tree: steps/live.py copy_redacted and scripts/check_no_preimages.py."""
+import base64
 import hashlib
 import json
 import subprocess
@@ -18,6 +19,12 @@ HASH = hashlib.sha256(bytes.fromhex(PRE)).hexdigest()
 OBS = {"capsule_id": "obs-1", "key_id": "k1", "model_attestation": {"compute_attestation": {"x-mesh-settlement-v1": {
     "phase": "output_settlement_observed", "source": "wallet_reported", "preimage": PRE, "payment_hash": HASH,
     "amount_msat": 1000, "exchange_id": "ex-1"}}}}
+
+
+def witness_receipt(entry_hash):
+    """A witness receipt in the capsules plugin's shape (an ask answer's witness_receipts[].witness)."""
+    return {"ts_url": "https://witness.example", "entry_hash": entry_hash, "leaf_index": 7, "tree_size": 8,
+            "receipt_b64": base64.b64encode(b"\xd2\x84" + bytes(40)).decode()}
 
 
 class NoPreimagesTest(unittest.TestCase):
@@ -108,7 +115,7 @@ class NoPreimagesTest(unittest.TestCase):
         (self.d / "capsules.jsonl").write_text(json.dumps(ref, separators=(",", ":")) + "\n")
         (self.d / "held-1-inclusion.json").write_text(json.dumps({"checkpoint_digest": cp.hex()}, indent=2) + "\n")
         (self.d / "checks.json").write_text(json.dumps({"why": f"capsule x is included under checkpoint {cp.hex()}"}) + "\n")
-        receipt = {"witness": {"ts_url": "https://witness.example", "entry_hash": entry}}  # the plugin's receipt object
+        receipt = {"witness": witness_receipt(entry)}  # the plugin's receipt object
         (self.d / "checkpoints.response.json").write_text(json.dumps(receipt) + "\n")
         self.assertEqual(check_no_preimages.scan([self.d]), [])
         # The same sha256 anywhere else than as an entry_hash (a payment hash): every one of them is a hit again.
@@ -135,9 +142,15 @@ class NoPreimagesTest(unittest.TestCase):
             # A "checkpoint" word nearby and a bare entry_hash member (no witness receipt object).
             json.dumps({"note": "checkpoint", "secret": pre.hex(), "entry_hash": h}),
             # A witness receipt object, but the value does not stand where a checkpoint digest stands.
-            json.dumps({"note": "checkpoint", "secret": pre.hex(), "w": {"ts_url": "https://w.example", "entry_hash": h}}),
+            json.dumps({"note": "checkpoint", "secret": pre.hex(), "w": witness_receipt(h)}),
             # Where a checkpoint digest stands, but its sha256 is a bare entry_hash, not a receipt's.
             json.dumps({"checkpoint_digest": pre.hex(), "entry_hash": h}),
+            # Both conditions forged in one object: checkpoint text and a ts_url/entry_hash pair (no receipt).
+            json.dumps({"secret": f"under checkpoint {pre.hex()}", "ts_url": "https://example.invalid", "entry_hash": h}),
+            # A receipt object short of the plugin's shape: no receipt_b64, or one that is not a COSE_Sign1.
+            json.dumps({"checkpoint_digest": pre.hex(), "w": {**witness_receipt(h), "receipt_b64": "aGVsbG8="}}),
+            json.dumps({"checkpoint_digest": pre.hex(), "w": {k: v for k, v in witness_receipt(h).items()
+                                                              if k != "receipt_b64"}}),
         ):
             with self.subTest(text=text[:60]):
                 (self.d / "c.json").write_text(text + "\n")

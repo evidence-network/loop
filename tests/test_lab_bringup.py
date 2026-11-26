@@ -4,6 +4,7 @@ Run: python3 -B -m unittest tests.test_lab_bringup -v
 Nothing here starts a node or touches a network: lab.sh runs only with --dry-run.
 """
 import contextlib
+import base64
 import hashlib
 import io
 import json
@@ -1507,7 +1508,9 @@ class PackTest(LabFixture):
         d.mkdir(parents=True, exist_ok=True)
         (d / "ref.jsonl").write_text(json.dumps({"references": [{"type": "cll-checkpoint", "digest_alg": "SHA-256",
                                                                  "digest": cp}]}, separators=(",", ":")) + "\n")
-        (d / "ask.json").write_text(json.dumps({"witness": {"ts_url": "https://w.example", "entry_hash": h}}) + "\n")
+        receipt = {"ts_url": "https://w.example", "entry_hash": h, "leaf_index": 1, "tree_size": 2,
+                   "receipt_b64": base64.b64encode(b"\xd2\x84" + bytes(40)).decode()}
+        (d / "ask.json").write_text(json.dumps({"witness": receipt}) + "\n")
         self.assertFalse(any("payment preimage" in e for e in self.pack()))
         (d / "ask.json").write_text(json.dumps({"note": "checkpoint", "secret": cp, "entry_hash": h}) + "\n")
         self.assertTrue(any("payment preimage" in e for e in self.pack()))
