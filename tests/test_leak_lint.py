@@ -116,6 +116,88 @@ class LeakLintTest(unittest.TestCase):
         self.repo.commit()
         self.assertEqual(run_lint(self.repo.path).returncode, 0)
 
+    @staticmethod
+    def sealed_capsule(**extra):
+        """A sealed capsule file shaped as each step writes it (loop#485), and synthetic terms that its encoded
+        values spell by chance: one inside each of the capsule id, the capsule, the signature, the content and
+        its sha256."""
+        import base64
+        import hashlib
+        cid = hashlib.sha256(b"synthetic capsule").hexdigest()
+        capsule = base64.b64encode(json.dumps({"capsule_id": cid, "operator": "n"}).encode()).decode()
+        # COSE_Sign1: tag 18, [protected {1: -8}, unprotected {}, payload nil, a 64-byte signature].
+        cose = b"\xd2\x84\x43\xa1\x01\x27\xa0\xf6\x58\x40" + hashlib.sha512(b"synthetic signature").digest()
+        envelope = base64.b64encode(cose).decode()
+        content_bytes = b'{"loop": "synthetic payload"}'
+        content = base64.b64encode(content_bytes).decode()
+        digest = hashlib.sha256(content_bytes).hexdigest()
+        doc = {"capsule_id": cid, "capsule": capsule, "producer_envelope": envelope,
+               "artifacts": [{"name": "payload", "content": content, "content_sha256": digest}]}
+        doc.update(extra)
+        terms = {"class-blob": [cid[20:30], capsule[40:50], envelope[30:40], content[8:18], digest[20:30]]}
+        return doc, terms
+
+    def test_term_inside_a_sealed_capsules_encoded_value_is_not_a_hit(self):
+        doc, terms = self.sealed_capsule()
+        self.repo.write("stats/status/findings/r/02-book/n/capsule.json", json.dumps(doc, separators=(",", ":")) + "\n")
+        self.repo.write("pretty/capsule.json", json.dumps(doc, indent=2) + "\n")
+        self.repo.commit()
+        result = run_lint(self.repo.path, terms=terms)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_the_same_values_hit_outside_a_sealed_capsule(self):
+        doc, terms = self.sealed_capsule()
+        bad_digest = dict(doc, artifacts=[dict(doc["artifacts"][0], content_sha256="0" * 64)])
+        bad_id = dict(doc, capsule_id="1" * 64)
+        bad_envelope = dict(doc, producer_envelope=doc["capsule"])
+        ident = "SYNTHETICQUEUEWORD1234567890AbCdEfGhIjK"  # base64-shaped, 40 characters
+        cases = (
+            # The values outside a sealed capsule: in Markdown, and in a JSON file of another shape.
+            ("a.md", "see %s and %s\n" % (doc["producer_envelope"], doc["capsule"])),
+            ("b.json", json.dumps({"content": doc["artifacts"][0]["content"], "capsule_id": doc["capsule_id"]}) + "\n"),
+            # A sealed capsule whose values do not check out: each field's own check.
+            ("c.json", json.dumps(bad_digest) + "\n"),
+            ("d.json", json.dumps(bad_id) + "\n"),
+            ("e.json", json.dumps(bad_envelope) + "\n"),
+            # A base64-shaped identifier in each field of an otherwise sealed capsule, and beside one.
+            ("f.json", json.dumps(dict(doc, capsule_id=ident)) + "\n"),
+            ("g.json", json.dumps(dict(doc, producer_envelope=ident)) + "\n"),
+            ("h.json", json.dumps(dict(doc, note=ident)) + "\n"),
+            ("i.md", '{"content":"%s"}\n' % ident),
+            # A sealed capsule plus a nested field named like an encoded one, holding the same value.
+            ("j.json", json.dumps(dict(doc, notes={"content": doc["artifacts"][0]["content"]})) + "\n"),
+            # A second artifact whose digest fails: nothing in the file is exempt.
+            ("k.json", json.dumps(dict(doc, artifacts=doc["artifacts"] + [bad_digest["artifacts"][0]])) + "\n"),
+            # An envelope with the COSE_Sign1 prefix that is not one whole COSE_Sign1 message.
+            ("l.json", json.dumps(dict(doc, producer_envelope="0oQA" + ident)) + "\n"),
+            ("m.json", json.dumps(dict(doc, producer_envelope=doc["producer_envelope"][:-4])) + "\n"),
+            # A repeated key hides a nested field from the shape check (json.loads keeps the last one).
+            ("n.json", '{"artifacts":[{"notes":{"content":"%s"}}],%s\n'
+             % (ident, json.dumps(dict(doc, artifacts=[dict(doc["artifacts"][0], content=ident)]))[1:])),
+            ("o.json", '{"artifacts":[{"notes":{"content":"%s"}}],%s\n'
+             % (doc["artifacts"][0]["content"], json.dumps(doc)[1:])),
+        )
+        terms = {**terms, "class-ident": ["SYNTHETICQUEUEWORD"], "class-env": [doc["producer_envelope"][20:30]]}
+        for rel, text in cases:
+            with self.subTest(rel=rel):
+                doc_path = self.repo.write(rel, text)
+                self.repo.commit()
+                red = run_lint(self.repo.path, terms=terms)
+                self.assertEqual(red.returncode, 1, red.stdout)
+                self.assertIn(f"{rel}:", red.stdout)
+                doc_path.unlink()
+                self.repo.commit()
+        self.assertEqual(run_lint(self.repo.path, terms=terms).returncode, 0)
+
+    def test_a_term_straddling_an_encoded_value_still_hits(self):
+        doc, _ = self.sealed_capsule()
+        line = json.dumps(doc, separators=(",", ":"))
+        edge = doc["producer_envelope"][-4:] + '","'
+        self.assertIn(edge, line)
+        self.repo.write("capsule.json", line + "\n")
+        self.repo.commit()
+        self.assertEqual(run_lint(self.repo.path, terms={"class-edge": [edge]}).returncode, 1)
+
     def test_uncommitted_file_is_not_scanned(self):
         self.repo.write("README.md", "clean\n")
         self.repo.commit()

@@ -41,12 +41,21 @@ this repository has no lockfiles. Re-vendor them from there if one is ever added
     or reads outside ROOT: on a fork run ROOT is untrusted content.
   - **Every tracked text file**, whatever its name or suffix. Only a binary file, one holding a
     NUL byte, is skipped.
+  - **Encoded bytes are not text.** In a file that is exactly a sealed capsule
+    (`_proof_encoded_values`: closed key sets, the capsule id and the base64 capsule naming it, the
+    producer's base64 COSE_Sign1 parsed whole, each artifact's base64 content and the sha256 it
+    hashes to), a term match wholly inside one of those encoded values is not a hit: random signature and digest bytes spell short terms by
+    chance (loop#485), and base64 of real text never spells the term out. Every other string, and
+    every other file, is scanned as before.
 
 Usage: python3 leak_lint.py [ROOT=.]
 Exit 0 = clean; 1 = leak(s) found; 2 = misconfiguration (no term list).
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import json
 import os
 import re
@@ -206,10 +215,169 @@ def _has_bracket_id_leak(line: str) -> bool:
     return False
 
 
-def classify(line: str, terms: dict[str, tuple[str, ...]]) -> tuple[bool, list[str]]:
-    """(bracketed-id hit?, the term classes that match) for one line."""
+_HEX64 = re.compile(r"[0-9a-f]{64}")
+#: The only keys a sealed capsule file and each of its artifacts may carry; any other key and the file is not one.
+_CAPSULE_FILE_KEYS = {"capsule_id", "capsule", "producer_envelope", "artifacts"}
+_ARTIFACT_KEYS = {"name", "binding", "content", "state", "content_sha256"}
+
+
+def _b64(value: object) -> bytes | None:
+    """The bytes of *value* when it is a string of strictly valid base64, else ``None``."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return base64.b64decode(value, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+
+def _cbor_head(buf: bytes, i: int) -> tuple[int, int, int]:
+    """(major type, argument, next offset) of the CBOR item head at *i*; raises ValueError on a
+    malformed or indefinite-length head."""
+    if i >= len(buf):
+        raise ValueError("truncated")
+    major, info = buf[i] >> 5, buf[i] & 0x1F
+    if info < 24:
+        return major, info, i + 1
+    if info > 27:
+        raise ValueError("indefinite or reserved length")
+    n = 1 << (info - 24)
+    if i + 1 + n > len(buf):
+        raise ValueError("truncated")
+    return major, int.from_bytes(buf[i + 1 : i + 1 + n], "big"), i + 1 + n
+
+
+def _cbor_skip(buf: bytes, i: int, depth: int = 0) -> int:
+    """The offset just past the whole CBOR item at *i*; raises ValueError when it is malformed."""
+    if depth > 16:
+        raise ValueError("too deep")
+    major, arg, i = _cbor_head(buf, i)
+    if major in (2, 3):
+        if i + arg > len(buf):
+            raise ValueError("truncated")
+        return i + arg
+    if major == 4:
+        for _ in range(arg):
+            i = _cbor_skip(buf, i, depth + 1)
+        return i
+    if major == 5:
+        for _ in range(2 * arg):
+            i = _cbor_skip(buf, i, depth + 1)
+        return i
+    if major == 6:
+        return _cbor_skip(buf, i, depth + 1)
+    return i  # 0, 1 (integers) and 7 (simple values and floats: the head carries them)
+
+
+def _is_cose_sign1(buf: bytes) -> bool:
+    """True when *buf* is exactly one tagged COSE_Sign1 message (RFC 9052, section 4.2): tag 18 on
+    [protected: bstr, unprotected: map, payload: bstr or nil, signature: bstr], nothing after it."""
+    try:
+        major, arg, i = _cbor_head(buf, 0)
+        if (major, arg) != (6, 18):
+            return False
+        major, arg, i = _cbor_head(buf, i)
+        if (major, arg) != (4, 4):
+            return False
+        for allowed in ({2}, {5}, {2, 7}, {2}):
+            major, arg, _ = _cbor_head(buf, i)
+            if major not in allowed or (major == 7 and arg != 22):
+                return False
+            i = _cbor_skip(buf, i)
+        return i == len(buf)
+    except ValueError:
+        return False
+
+
+def _artifact_ok(art: object) -> bool:
+    if not isinstance(art, dict) or not set(art) <= _ARTIFACT_KEYS:
+        return False
+    if any(not isinstance(art.get(k, ""), str) for k in ("name", "binding", "state")):
+        return False
+    content, digest = _b64(art.get("content")), art.get("content_sha256")
+    return (content is not None and isinstance(digest, str) and bool(_HEX64.fullmatch(digest))
+            and hashlib.sha256(content).hexdigest() == digest)
+
+
+def _unique_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """A JSON object's dict, refusing a repeated key: `json.loads` keeps only the last one, so a
+    repeated key could hide a field from the shape check while its raw text is still matched."""
+    out: dict[str, object] = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError(f"repeated key {key!r}")
+        out[key] = value
+    return out
+
+
+def _proof_encoded_values(text: str) -> set[tuple[str, str]]:
+    """The (field, value) pairs of a sealed capsule file's encoded values, when *text* is one, else nothing.
+
+    A sealed capsule file (each step's ``capsule.json``, which the status page publishes) is one
+    JSON object with only the keys in _CAPSULE_FILE_KEYS: ``capsule_id`` (64 lowercase hex),
+    ``capsule``, base64 of a capsule naming that id, ``producer_envelope``, base64 of one COSE_Sign1
+    message, and ``artifacts``, each with only the keys in _ARTIFACT_KEYS and base64 ``content``
+    whose sha256 is its ``content_sha256``. Every check must hold, or nothing is exempt: the
+    closed key sets, with no key repeated at any depth, mean each field name occurs only at its
+    own place, and text that merely looks encoded is never exempt.
+    """
+    try:
+        doc = json.loads(text, object_pairs_hook=_unique_keys)
+    except ValueError:
+        return set()
+    if not isinstance(doc, dict) or set(doc) != _CAPSULE_FILE_KEYS:
+        return set()
+    cid, raw = doc["capsule_id"], _b64(doc["capsule"])
+    if not (isinstance(cid, str) and _HEX64.fullmatch(cid) and raw is not None):
+        return set()
+    try:
+        inner = json.loads(raw)
+    except ValueError:
+        return set()
+    if not isinstance(inner, dict) or inner.get("capsule_id") != cid:
+        return set()
+    envelope = _b64(doc["producer_envelope"])
+    if envelope is None or not _is_cose_sign1(envelope):
+        return set()
+    artifacts = doc["artifacts"]
+    if not isinstance(artifacts, list) or not all(_artifact_ok(a) for a in artifacts):
+        return set()
+    out = {("capsule_id", cid), ("capsule", doc["capsule"]), ("producer_envelope", doc["producer_envelope"])}
+    for art in artifacts:
+        out.update((("content", art["content"]), ("content_sha256", art["content_sha256"])))
+    return out
+
+
+def _encoded_spans(line: str, encoded: set[tuple[str, str]]) -> list[tuple[int, int]]:
+    """The spans of *line* that hold a checked value as the whole JSON string of its own field."""
+    return [
+        m.span(1)
+        for field, value in encoded
+        for m in re.finditer(r'"%s"\s*:\s*"(%s)"' % (re.escape(field), re.escape(value)), line)
+    ]
+
+
+def _term_in_text(line: str, word: str, spans: list[tuple[int, int]]) -> bool:
+    """True when *word* occurs in *line* outside every encoded span. Inside random signature or
+    digest bytes a short term turns up by chance (evidence-network/loop#485), and base64 of real
+    text never spells the term out, so a match wholly inside one is not a leak."""
+    start = line.find(word)
+    while start != -1:
+        end = start + len(word)
+        if not any(a <= start and end <= b for a, b in spans):
+            return True
+        start = line.find(word, start + 1)
+    return False
+
+
+def classify(
+    line: str, terms: dict[str, tuple[str, ...]], encoded: set[tuple[str, str]] = frozenset()
+) -> tuple[bool, list[str]]:
+    """(bracketed-id hit?, the term classes that match) for one line. A term counts only where it
+    occurs outside the file's checked encoded values (`_proof_encoded_values`, `_term_in_text`)."""
+    spans = _encoded_spans(line, encoded) if encoded else []
     return _has_bracket_id_leak(line), [
-        name for name, words in terms.items() if any(w in line for w in words)
+        name for name, words in terms.items() if any(_term_in_text(line, w, spans) for w in words)
     ]
 
 
@@ -230,11 +398,12 @@ def scan(root: Path, terms: dict[str, tuple[str, ...]]) -> tuple[list[str], list
             # A binary file: NUL bytes never appear in text. Every other file is scanned,
             # whatever its name or suffix (versions.lock, .verification, ATTEMPT, .pem).
             continue
+        encoded = _proof_encoded_values(text)
         for i, line in enumerate(text.splitlines(), start=1):
             stripped = line.strip()
             if stripped in allow:
                 continue
-            bracket, classes = classify(line, terms)
+            bracket, classes = classify(line, terms, encoded)
             if not bracket and not classes:
                 continue
             labels = ([BRACKET_CLASS] if bracket else []) + classes
