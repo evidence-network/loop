@@ -710,8 +710,9 @@ write_launcher() { # NAME EXTRA_ARGS...: the script tmux runs for one node
   # requester's own API, never whatever else listens on that port.
   [ "$TWINS" = 1 ] && [ "$name" = "$REQUESTER" ] && envs+=(CAPSULES_ADJUDICATE_DIFFERING_TWINS=on
     CAPSULES_OPENAI_API_URL="http://127.0.0.1:$(api_port "$name")")
+  # No --no-default-plugins: that flag came with mesh-llm#3008 (closed unmerged), and main installs no default plugins at serve.
   local -a args=(serve --config "$home/config.toml" --port "$(api_port "$name")" --console "$(console_port "$name")"
-    --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --no-default-plugins --log-format json "$@")
+    --bind-port "$(bind_port "$name")" --headless --disable-iroh-relays --log-format json "$@")
   local body
   body=$(
     echo '#!/usr/bin/env bash'

@@ -3,20 +3,22 @@
 # SHA or a released version tag; never a branch name or a short SHA.
 # The daily reporter writes this file's sha256 into each day's RUN.json.
 
-# Lab host build (a lab build, not a release; loop#436): one tree on the payer, Mesh-LLM/mesh-llm main at e1b0128 (a daily-lab-build
-# base: main plus Ethan's open PRs, each squashed to one commit whose message carries the PR's head SHA, as the asg-lab-rebuild
-# task does) and two open PRs, #3008 (the recommended plugin set is installed by default in setup and update) and #3040
-# (the plugin upgrade checks run on automatic and bootstrap upgrades; stacked on #3008, so its commit holds only its own
-# changes over #3008's head). The previous lab build (lab/asg-2026-10-31c, main c86f58e plus seven PRs, mesh-llm 0.78.0) kept the
-# node's own payments feature; mesh-llm#2654 removed it, so payments run through the pay-lightning plugin below.
-# lab/lab.sh check requires the lab source to contain mesh-llm and every mesh-llm-pr-<N> pin, as an ancestor or as the head named in a
-# squash commit's message.
-mesh-llm Mesh-LLM/mesh-llm e1b0128bf022a3fa0374a016fc05b3bbebafa27e
-mesh-llm-pr-3008 Mesh-LLM/mesh-llm 98016e56019064e5d0328d9abb750c761b722ea3
-mesh-llm-pr-3040 Mesh-LLM/mesh-llm c6e754563bcf2330e0eebc7b9b499738b35cada2
+# Lab host build (a lab build, not a release; loop#436): Mesh-LLM/mesh-llm main at 6d05e100 (2026-11-26) plus the open PRs the
+# lab or the demo nodes still need, each squashed onto main as one commit whose message carries the PR's head SHA (the
+# asg-lab-rebuild procedure; branch ethanyzhang/mesh-llm lab/asg-2026-11-26 at 3f8da458). The lab and the demo nodes run this one
+# build (Steven, 2026-11-26: the loop is our system CI and the demo nodes run the latest too). Dropped since the 11-12 build:
+# #3040 merged into main (2026-11-13), and #3008 (the recommended plugin set installed by default in setup and update) closed
+# unmerged; the lab installs its plugins from each node's config.toml and never runs setup, so it needed nothing #3008 did. Left
+# out: #3219 (#3008's successor, setup only) does not apply cleanly on this main, #3112 is stacked on plugin-catalog-sets, and
+# #3169 changes only docs/CLI.md. lab/lab.sh check requires the lab source to contain mesh-llm and every mesh-llm-pr-<N> pin, as an
+# ancestor or as the head named in a squash commit's message.
+mesh-llm Mesh-LLM/mesh-llm 6d05e100b84f75a4c2fd1a9d6d7c9a2278b64a34
 # mesh-llm#3066: the host's exchange id is a node-made id (hash of boot id, request seq, dispatch) that the terminal keeps, so the
 # payer's pay-lightning events and the openai.exchange.v1 envelopes share one id and capsules can join the terms leg (step 06 counterparty_count).
-mesh-llm-pr-3066 Mesh-LLM/mesh-llm 1681652152192559edace4351dfd91c4edfbbae8
+mesh-llm-pr-3066 Mesh-LLM/mesh-llm 13b17716cb39176bed4d0d9bc84312edb2d82e40
+# mesh-llm#3218: the console's request inspector says what its evidence shows in plain words, with dates and zones and one problems
+# section. Web UI only; the demo nodes' History page shows it, and the lab carries it so both run one build.
+mesh-llm-pr-3218 Mesh-LLM/mesh-llm fae0d57809447f9f31e287f66a334b544b727541
 # The payment plugin: Mesh-LLM/ln-payments-plugin main at 14a5f97 plus #11 (a settled payment's preimage on
 # payment.lifecycle.v1, which the capsules plugin's settlement check reads), merged on the lab host; lab/lab.sh check
 # requires both. The host passes the event on unchanged (payment.lifecycle.v1 is a local channel it broadcasts without reading),
@@ -62,7 +64,8 @@ lexe-wallet Mesh-LLM/lexe-wallet-plugin 9f830c181b4042a81069df50752cf19d035a5047
 # mesh-llm, muse or goose, so a Goose node's card (community goose) no longer gets HTTP 400 "not a known community" (#321, loop#443).
 # v0.1.23 (tag 2026-11-21): `checkpoint_range` replaces the unranged `checkpoints` ask, which a node past the 1 MiB answer cap now drops; doctor --probe asks the range
 # (#317, AAC#645), so lab-3 (past the cap) answers history_card/2 and a ranged checkpoint and steps 07 and 12 can judge it.
-capsules Mesh-LLM/capsules-plugin v0.1.23
+# main at 251f6eb2 (2026-11-26): v0.1.24 (tag 2026-11-25) plus the #368 crate refactors #379-#385, as capsules 0.1.24-main.251f6eb.
+capsules Mesh-LLM/capsules-plugin 251f6eb25322d636df178db6b69b52d928e33514
 # The evidence-request crate that evidencebook 0.0.15 builds with, which step 02's driver matches
 # (steps/02-book.setup.sh). crates.io 0.7.0 is published from this tag. The driver's Cargo.lock also carries
 # evidence-request 0.4.1, which agent-action-capsule 0.10.0 depends on.
@@ -111,12 +114,10 @@ aac-go action-state-group/agent-action-capsule go/v0.21.0
 # term rulings (terms 1-3 must_have). Its window.months is not used: step 10 judges every record up to the as-of instant. The repo has no release tag; a full SHA.
 inference-deals action-state-group/evidencebook-skills 2bd914ef2261b60f816e84cf94b79efeefcb67bf
 # step 06 settle, demo population
-# The demo nodes Brattain and Shockley run a dev build, not the lab's: mesh-llm lab/asg-2026-10-30 at
-# 3ffa5c4f1 on ethanyzhang/mesh-llm, which includes the unmerged mesh-llm PRs #2620, #2649, #2719 and #2721,
-# and the capsules plugin at main f494845. Only population/demo/population.json names these pins. The
-# run's build.json records the binary sha256 (8f7cbd57...) and the plugin archive sha256 (d4b075a1...).
-demo-mesh-llm ethanyzhang/mesh-llm 3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301
-demo-capsules Mesh-LLM/capsules-plugin f494845bb9e003d100429fc4c081fc11322551cc
+# The demo nodes Brattain and Shockley run the lab's build above: mesh-llm lab/asg-2026-11-26 at 3f8da458 on ethanyzhang/mesh-llm
+# (main 6d05e100 plus #3066 and #3218) and the capsules plugin at main 251f6eb2. Only population/demo/population.json names these pins.
+demo-mesh-llm ethanyzhang/mesh-llm 3f8da458b0228bb70df136cf424803ce59747e3f
+demo-capsules Mesh-LLM/capsules-plugin 251f6eb25322d636df178db6b69b52d928e33514
 # The Goose reference node the goose ecosystem's rehearsal and the lab's Goose nodes run: evidencebook's
 # python/examples/goose (x-deal-v1 since #833; loop_settlement_disclosure since #921), a thin MCP client of the
 # capsulectl-deal plugin built from the same checkout's capsulectl/ module, on the x-deal-v1 deal profile
