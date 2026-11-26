@@ -767,9 +767,69 @@ class Rows(unittest.TestCase):
             self.assertEqual(f["result"], "FAIL")
             self.assertIn("five base-policy rows", f["detail"])
 
+    @staticmethod
+    def with_witness_row(name, card_v2=False, **row):
+        """A #116 case with capsules-plugin#351's sixth row (v0.1.24) after the five, shaped like the five."""
+        b = case(name)
+        x = {"row": "witnessed_card", **row}
+        if "effect" in b["rows"][0] and "effect" not in row:
+            x["effect"] = "none"
+        b["rows"].append(x)
+        if card_v2 and "derivation" in b["reads"][1]:
+            b["reads"][1]["derivation"] = "history_card/2"
+        return b
+
+    def test_the_witnessed_card_row_and_history_card_2_of_v0_1_24_are_accepted(self):
+        for b in (self.with_witness_row("all-pass", card_v2=True, result="pass", label="witnessed"),
+                  self.with_witness_row("all-pass", result="fail", label="unknown_witness"),
+                  self.with_witness_row("all-pass", card_v2=True, result="fail", label="unwitnessed"),
+                  self.with_witness_row("no-card-yet", result="not_read")):
+            with self.subTest(row=b["rows"][-1], card=b["reads"][1]):
+                out, f = self.run_blocks(b)
+                self.assertEqual(f["result"], "PASS", f["detail"])
+                checks = {c["row"]: c for c in list(load(out / "lab-a" / "rows.json").values())[0]}
+                cited = "commitment" in b["reads"][1]
+                self.assertEqual(checks["witnessed_card"]["check"], "NOT_CHECKED" if cited else "PASS")
+
+    def test_a_witnessed_card_row_the_plugin_cannot_seal_fails(self):
+        cases = (
+            (self.with_witness_row("all-pass", result="pass", label="unwitnessed"), "which gives fail"),
+            (self.with_witness_row("all-pass", result="fail", label="witnessed"), "which gives pass"),
+            (self.with_witness_row("all-pass", result="pass", label="seen"), "none the evaluator gives"),
+            (self.with_witness_row("all-pass", result="pass"), "none the evaluator gives"),
+            (self.with_witness_row("no-card-yet", result="not_read", label="unwitnessed"), "carries a label"),
+            (self.with_witness_row("no-card-yet", result="fail", label="unwitnessed"), "row witnessed_card is fail"),
+            (self.with_witness_row("all-pass", result="pass", label="witnessed", effect="block"), "effect 'block'"),
+            (self.with_witness_row("all-pass", result="PASS", label="witnessed"), "not the witnessed-card row"),
+        )
+        for b, why in cases:
+            with self.subTest(why=why, row=b["rows"][-1]):
+                _, f = self.run_blocks(b)
+                self.assertEqual(f["result"], "FAIL", f["detail"])
+                self.assertIn(why, f["detail"])
+        b = self.with_witness_row("all-pass", result="pass", label="witnessed")
+        b["rows"][-1]["row"] = "something_else"
+        _, f = self.run_blocks(b)
+        self.assertIn("not the witnessed-card row", f["detail"])
+        # A sixth row that is not an object, or a label that is not a string, is a FAIL, never a crash.
+        for sixth in (None, 7, "witnessed_card", []):
+            b = case("all-pass")
+            b["rows"].append(sixth)
+            _, f = self.run_blocks(b)
+            self.assertEqual(f["result"], "FAIL", sixth)
+            self.assertIn("not the witnessed-card row", f["detail"])
+        for label in ([], {}, 3):
+            _, f = self.run_blocks(self.with_witness_row("all-pass", result="pass", label=label))
+            self.assertEqual(f["result"], "FAIL", label)
+            self.assertIn("none the evaluator gives", f["detail"])
+        b = self.with_witness_row("all-pass", result="pass", label="witnessed")
+        b["rows"].append(dict(b["rows"][-1]))
+        _, f = self.run_blocks(b)
+        self.assertIn("at most the witnessed-card row after them", f["detail"])
+
     def test_a_bad_second_read_fails(self):
         for card in ({"kind": "history_card", "state": "read"}, {"kind": "operator_policy", "state": "not_read"},
-                     {**ROWS116["all-pass"]["reads"][1], "derivation": "history_card/2"}, None):
+                     {**ROWS116["all-pass"]["reads"][1], "derivation": "history_card/3"}, None):
             b = case("all-pass")
             if card is None:
                 b["reads"].pop()

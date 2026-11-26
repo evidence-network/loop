@@ -1195,8 +1195,8 @@ class Step06SettleTest(unittest.TestCase):
         self.assertEqual((doc["population"], doc["kind"], doc["rail"]), ("demo", "live", None))
         self.assertEqual(doc["window"], {"from": "2026-10-30T17:58:00Z"})
         pins = finding.pins()
-        self.assertEqual(pins["demo-capsules"][1], "f494845bb9e003d100429fc4c081fc11322551cc")
-        self.assertEqual(pins["demo-mesh-llm"], ("ethanyzhang/mesh-llm", "3ffa5c4f1d7d162c964fc7fb24937c7ed5a12301"))
+        self.assertEqual(pins["demo-capsules"][1], "251f6eb25322d636df178db6b69b52d928e33514")
+        self.assertEqual(pins["demo-mesh-llm"], ("ethanyzhang/mesh-llm", "3f8da458b0228bb70df136cf424803ce59747e3f"))
 
     def test_a_named_live_kind_population_takes_the_live_path(self):
         lab = Path(self.tmp.name) / "lab"

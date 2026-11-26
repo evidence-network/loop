@@ -4,6 +4,7 @@ Run: python3 -B -m unittest tests.test_lab_bringup -v
 Nothing here starts a node or touches a network: lab.sh runs only with --dry-run.
 """
 import contextlib
+import base64
 import hashlib
 import io
 import json
@@ -1496,6 +1497,22 @@ class PackTest(LabFixture):
         self.assertFalse(self.out.exists())
         self.assertFalse(any(pre in e for e in errs))
         f.write_text(json.dumps({"payment_hash": h}) + "\n" + "free text " + pre + "\n")  # keyless: found by its hash
+        self.assertTrue(any("payment preimage" in e for e in self.pack()))
+
+    def test_packs_a_witnessed_checkpoint_digest_and_refuses_a_preimage_dressed_as_one(self):
+        # capsules 0.1.24: a cll-checkpoint reference beside the witness receipt that registered it (entry_hash =
+        # sha256 of the digest) is not a preimage; the same value beside a bare entry_hash is refused.
+        cp = "6b" * 32
+        h = hashlib.sha256(bytes.fromhex(cp)).hexdigest()
+        d = self.root / "findings" / f"{DAY}-live" / "05-deal"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "ref.jsonl").write_text(json.dumps({"references": [{"type": "cll-checkpoint", "digest_alg": "SHA-256",
+                                                                 "digest": cp}]}, separators=(",", ":")) + "\n")
+        receipt = {"ts_url": "https://w.example", "entry_hash": h, "leaf_index": 1, "tree_size": 2,
+                   "receipt_b64": base64.b64encode(b"\xd2\x84" + bytes(40)).decode()}
+        (d / "ask.json").write_text(json.dumps({"witness": receipt}) + "\n")
+        self.assertFalse(any("payment preimage" in e for e in self.pack()))
+        (d / "ask.json").write_text(json.dumps({"note": "checkpoint", "secret": cp, "entry_hash": h}) + "\n")
         self.assertTrue(any("payment preimage" in e for e in self.pack()))
 
     def test_refuses_the_invite_token(self):
