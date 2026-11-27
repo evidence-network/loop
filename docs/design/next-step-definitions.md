@@ -42,9 +42,10 @@ written here first, reviewed here, and switched on only once a pinned release ca
   text, as today.
 - One pull request switches one step on in one ecosystem. It changes `versions.lock` to product
   versions that support the new definition, changes the step to assert it, and adds the planted
-  failure test each step has (`steps/README.md`, A step). It brings a passing rehearsal run,
-  run with `scripts/check.sh --full` before the push and quoted in the pull request with its result
-  line (pull requests do not run the loop in CI), and,
+  failure test each step has (`steps/README.md`, A step). It brings a passing rehearsal run:
+  `loop.yml` dispatched on its branch (`gh workflow run loop.yml --ref <branch>`; pull requests do
+  not run the loop, a heavy suite, CONTRIBUTING.md) and linked in the pull request with its result,
+  and,
   since it changes a pin, the new live run the ecosystem gate asks for (`baseline/README.md`). If
   the new definition cannot PASS where v1 passed, the pull request does not merge.
 - Each ecosystem switches on its own. An ecosystem whose pinned product does not support a
