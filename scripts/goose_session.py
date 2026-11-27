@@ -123,12 +123,17 @@ def witness_receipt(endpoint, statement):
             "leaf_index": got["leaf_index"], "tree_size": got["tree_size"]}
 
 
+def usable_driver(driver):
+    """Whether the step 02 driver can run, an executable file: the session starts the rehearsal's test witness (and so
+    writes the buyer's book bundle) only then; otherwise it runs without one and step 02 reads NOT_CHECKED."""
+    return driver.is_file() and os.access(driver, os.X_OK)
+
+
 async def run(out, rail_dir):
     out.mkdir(parents=True, exist_ok=True)
     driver = Path(os.environ.get("LOOP_STEP02_BOOK_BIN") or Path(os.environ.get(
         "LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "02-book" / "bin" / "loop-step02-book")
-    witness, endpoint, directory = (start_witness(out, driver) if driver.is_file() and os.access(driver, os.X_OK)
-                                    else (None, None, None))
+    witness, endpoint, directory = start_witness(out, driver) if usable_driver(driver) else (None, None, None)
 
     def params(name):
         env = {**os.environ, "GOOSE_HOME": str(out / name), "GOOSE_OPERATOR": f"goose-{name}", "GOOSE_NO_WITNESS": "1"}
