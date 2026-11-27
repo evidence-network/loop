@@ -1,0 +1,51 @@
+{
+  "asserts": "the buyer's payer leg and the seller's payee leg, each signed by its Goose node, carry the payment_hash of a real Lightning payment as their payment reference; the payment is final by the payer's preimage (checked on the host that paid, only the outcome kept); its value band is derived from the amount; it carries a fee paid to a third party (fee_msat > 0); the payer's amount equals the payee's credit plus fee; and each node's own signed settlement disclosure on lightning equals the count of payments recorded between the two lab wallets since the nodes' profiles started",
+  "detail": "exchange deal-a7f7088f8ba2b70b, payment_hash 115faa2a5d7efdf8e389884147c0ef1782b692ff5c40a7fa3d9aa7a82bf64446 (goose-2 pays goose-1): one real Lightning payment of 1000 msat from lab wallet lab-1 to lab-2 inside the lab payment guard, the lab wallets standing in as the Goose nodes' controllers (the nodes hold no wallet). These held: legs, legs_signed, reference, finality, band, rail_fee, exchange_match, ledger_count:goose-1, ledger_count:goose-2. Band {\"currency\": \"BTC\", \"decade\": -8}. Outside this step's assertion: the deal's price (50 USD at scale 2) against the wallets' msat amount: x-deal-v1 takes a 3-letter currency and the node's pinned admission pack gives a BTC deal no GO, so the deal is priced in USD and no rate ties it to the payment: evidence-network/loop#349. Outside this step's assertion: a public ledger's count of the payments (Lightning has none; the nodes' own signed disclosures are compared with the lab wallets' payment log): evidence-network/loop#247. Spend: one payment, made by the run that paid (lab/goose.sh pay), never by this step.",
+  "finished": "2026-11-27T22:16:56Z",
+  "name": "settle",
+  "not_checked": [],
+  "pinned": {
+    "capsule-engine": {
+      "ref": "c9e72572a020d2b22a44d20f0aad7345033598da",
+      "repository": "action-state-group/capsule-engine"
+    },
+    "goose-g1": {
+      "ref": "capsulectl/v0.1.1",
+      "repository": "action-state-group/evidencebook"
+    }
+  },
+  "population": "live",
+  "proof": [
+    {
+      "path": "exchange.json",
+      "sha256": "2d392ed1e3a93be22943e3cba9270d57ed06a82762d2936ad093a8e84e9fa711"
+    },
+    {
+      "path": "buyer-leg.json",
+      "sha256": "9a450b6c090a0d328c26e1a82051f282b4eaaf4ddbec8ad7a5b9d02b9641300e"
+    },
+    {
+      "path": "seller-leg.json",
+      "sha256": "f14c72882a77033432daaf33d29adf7aa3b8755d3b4a234306afbcb9400a035a"
+    },
+    {
+      "path": "lightning.json",
+      "sha256": "1134c52b12d31298f1e7b40e9f2624badb906234f313263b063f45fa52903f4e"
+    },
+    {
+      "path": "disclosure-goose-1.json",
+      "sha256": "67bcbec4b3d739ad876c74463d306ffb7722121f845ead497ffb1133ffa37c10"
+    },
+    {
+      "path": "disclosure-goose-2.json",
+      "sha256": "50546f761eb0c0335230fcb096aaaceff3a30017f65c09c1ff57c355effbdf13"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "fcab819022e6f8170c44b2222e98aa1c3ed8b0f6bb339d49fa5143fa70718ebe"
+    }
+  ],
+  "result": "PASS",
+  "started": "2026-11-27T22:16:56Z",
+  "step": "06"
+}
