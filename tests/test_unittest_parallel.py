@@ -234,6 +234,21 @@ class RunnerTest(unittest.TestCase):
         self.assertIn("OK: 1 runs, 2 tests", r.stdout)
         self.assertEqual(marks.read_text().splitlines(), ["setup"])  # the fixture was built once
 
+    def test_modules_mode_splits_a_module_of_several_classes_too(self):
+        pkg = self.dir / "pkg"
+        pkg.mkdir()
+        (pkg / "test_multi.py").write_text(textwrap.dedent("""
+            import os, unittest
+            class A(unittest.TestCase):
+                def test_pid(self): print("pid", os.getpid())
+            class B(unittest.TestCase):
+                def test_pid(self): print("pid", os.getpid())
+            """))
+        r = self.run_runner("modules", "pkg.test_multi")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("OK: 2 runs, 2 tests", r.stdout)
+        self.assertEqual(len(set(re.findall(r"^pid (\d+)", r.stdout, re.M))), 2, r.stdout)
+
 
 def alive(pid):
     try:
