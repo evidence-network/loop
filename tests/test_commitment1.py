@@ -473,6 +473,12 @@ class Step12Staple(unittest.TestCase):
         (node / "probe" / "cards" / "alice-ledger").mkdir(parents=True)
         (node / "probe" / "cards" / "alice-ledger" / "2026-11.answer.json").write_text("{}")
         self.assertEqual(self.step.card_probe(adv, "alice-ledger/2026-11", node), "probe/cards/alice-ledger/2026-11")
+        # Another book whose log id reads like a window of the own book keeps its own probe when join.sh kept one.
+        (node / "probe" / "cards" / "alice-book").mkdir(parents=True)
+        (node / "probe" / "cards" / "alice-book" / "2026-10.answer.json").write_text("{}")
+        self.assertEqual(self.step.card_probe(adv, "alice-book/2026-10", node), "probe/cards/alice-book/2026-10")
+        self.assertFalse(self.step.own_card(adv, "alice-book/2026-10", node))
+        self.assertTrue(self.step.own_card(adv, "alice-book/2026-11", node))
         # A last segment that is no window label is a stream of its own, not a window of the book.
         self.assertEqual(self.step.card_probe(adv, "alice-book/notes", node), "probe/cards/alice-book/notes")
 

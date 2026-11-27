@@ -334,15 +334,23 @@ def card_probe(adv, stream, node_dir):
     """Where join.sh keeps the stranger's history_card/1 request and answer for a stream (no suffix), or None for a
     stream step 03's checker refuses: no path is built from it, so nothing is read or written outside probe/cards.
     join.sh asks each book by its profile's log id, so a windowed stream `<book>/<label>` (evidencebook#805) is kept
-    under its book: the exact stream's files when node_dir holds them, otherwise the book's."""
-    if hc.stream_book(stream, adv["book_id"]):
+    under its book. A stream whose own files node_dir holds keeps its own path first, so another book whose log id
+    reads like a window of a book (`alice-book/2026-10` beside `alice-book`) is never taken for that book's window."""
+    if stream == adv["book_id"]:
         return "probe/history_card"
     if not (isinstance(stream, str) and check_commitment_.STREAM.fullmatch(stream)):
         return None
+    if (Path(node_dir) / f"probe/cards/{stream}.answer.json").is_file():
+        return f"probe/cards/{stream}"
+    if hc.stream_book(stream, adv["book_id"]):
+        return "probe/history_card"
     base = hc.stream_base(stream)
-    if base and not (Path(node_dir) / f"probe/cards/{stream}.answer.json").is_file():
-        return f"probe/cards/{base}"
-    return f"probe/cards/{stream}"
+    return f"probe/cards/{base}" if base else f"probe/cards/{stream}"
+
+
+def own_card(adv, stream, node_dir):
+    """Whether `stream` is the join's own book's card (its log id, or a window of it whose probe is the book's)."""
+    return card_probe(adv, stream, node_dir) == "probe/history_card"
 
 
 def check_own_card(adv):
@@ -503,7 +511,7 @@ def verify_answers(node_dir, adv, capsulectl, work):
     asked = [(f"probe/{probe}", probe, adv["checkpoint_key"]) for probe in PROBES]
     asked += [(card_probe(adv, stream, node_dir), f"history_card of {stream}", key)
               for stream, key in sorted(adv["card_keys"].items())
-              if stream and not hc.stream_book(stream, adv["book_id"]) and key and card_probe(adv, stream, node_dir)]
+              if stream and key and card_probe(adv, stream, node_dir) and not own_card(adv, stream, node_dir)]
     for base, probe, checkpoint_key in asked:
         rid = load(node_dir / f"{base}.asked.json")["record_id"]
         r = cap("book", "request", "--profile", "stranger", "--for", rid,
@@ -618,8 +626,8 @@ def judge(node_dir, capsulectl, work, at=None, said=None):
                                              if f.is_file())
     for probe in PROBES:
         proof += [f"probe/{probe}.{k}.json" for k in ("request", "asked", "answer", "verified")]
-    for stream in sorted({x for x in adv["streams"] if x and not hc.stream_book(x, adv["book_id"])
-                          and card_probe(adv, x, node_dir)}):
+    for stream in sorted({x for x in adv["streams"] if x and card_probe(adv, x, node_dir)
+                          and not own_card(adv, x, node_dir)}):
         if adv["card_keys"].get(stream) is None:
             not_checked.append({"what": f"the stapled history_card/1 of book {stream} verifies under the node key "
                                         "and that book's checkpoint key",
