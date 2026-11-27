@@ -84,6 +84,8 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # step 10 sets to the window end so two runs over one 08 manifest give the same digests (loop#177).
 # v0.24.0 (2026-11-21) reads and asks `checkpoint_range` (evidencebook#605; AAC go v0.24.0, evidence-request 0.8.0), the subject capsules v0.1.23 answers
 # for a node past the answer cap; v0.21.0 refused it as request_malformed. It still builds with capsule-cli rc45.
+# Not yet the capsulectl/v0.1.1 release (goose-g1 below): this pin and capsulectl-book are the mesh baseline's
+# (baseline/live.json), so they move with a live run under the new pins, as the ecosystem gate requires (loop#501).
 capsulectl action-state-group/evidencebook v0.24.0
 # The evidencebook Rust crate steps 02 and 05 build with: crates.io 0.0.15, published from this tag (evidence-request
 # 0.5.0, checkpointed-local-log 0.5, agent-action-capsule 0.10.0). The drivers take it from crates.io, not a git tag.
@@ -99,10 +101,11 @@ aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.
 capsulectl-book action-state-group/evidencebook v0.24.0
 # The capsule-cli release whose `capsulectl verify --history` checks the history_card/1 a commitment staples
 # (steps 03 and 12; scripts/staple_verify.py, steps/capsule-cli.setup.sh builds it from this tag). Not the capsulectl
-# pin above, which is the core evidencebook builds with. Every capsule-cli
-# release is a pre-release: the stapled-card verifier first shipped in v0.1.0-rc33 (agent-action-capsule#430), and
+# pin above, which is the core evidencebook builds with. Every capsule-cli release before v0.1.1 (2026-11-27)
+# was a pre-release: the stapled-card verifier first shipped in v0.1.0-rc33 (agent-action-capsule#430), and
 # rc45 (2026-11-21) is the first whose reader accepts the bare checkpoint CWT sub capsules v0.1.20 signs (CLL -02; rc38 refuses it as "checkpoint CWT subject is invalid"), checks a staple of history_card/2 (rc42) and
 # is the capsulectl core evidencebook v0.21.0 builds with, which delivers the selected checkpoint to a witness past an older unreceipted row (capsule-cli#590).
+# Not yet the v0.1.1 release: a mesh baseline pin, which moves with a live run under it, like capsulectl (loop#501).
 capsule-cli action-state-group/capsule-cli v0.1.0-rc45
 # step 01 seal
 # The sealer (Python, PyPI capsule-emit 0.16.0) and the second-language Class 1
@@ -125,7 +128,10 @@ demo-capsules Mesh-LLM/capsules-plugin 251f6eb25322d636df178db6b69b52d928e33514
 # (evidencebook#624). Two loop_server.py processes are
 # spoken to over MCP stdio as Goose speaks to them. Installed by steps/goose.setup.sh; scripts/goose_rehearsal.py and
 # scripts/goose_live.py run it (loop#330, loop#349).
-goose-g1 action-state-group/evidencebook 1372f2ea75c2bc9c884dd701307ab3b1be92fa1e
+# The capsulectl v0.1.1 release (2026-11-27; commit 2ca6e8aa, which carries #933's 1372f2ea, the previous pin, loop#499):
+# steps/goose.setup.sh fetches the tag as refs/tags/capsulectl/v0.1.1, and the Goose runs record that tag as the revision
+# the steps compare with this pin (steps/finding.py checkout_ref; loop#501). The lab's Goose nodes take it at their next roll.
+goose-g1 action-state-group/evidencebook capsulectl/v0.1.1
 # The admission command a Goose node's deal agreement cites (`capsule-engine admission evaluate`): capsule-engine
 # go/v0.6.0, the commit evidencebook's CI runs the Goose node with (ci.yml, the goose job). Built by steps/goose.setup.sh.
 capsule-engine action-state-group/capsule-engine c9e72572a020d2b22a44d20f0aad7345033598da

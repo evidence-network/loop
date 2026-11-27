@@ -16,12 +16,21 @@ read -r CE_REPO CE_REF < <(awk '$1 == "capsule-engine" { print $2, $3 }' "$ROOT/
 [ -n "${CE_REF:-}" ] || { echo "versions.lock lacks capsule-engine" >&2; exit 1; }
 command -v go >/dev/null || { echo "goose.setup: go is not installed" >&2; exit 1; }
 
-fetch() {  # fetch REPO REF DIR: a checkout of exactly REF, kept when already there
-  if [ "$(git -C "$3" rev-parse HEAD 2>/dev/null || true)" != "$2" ]; then
+# fetch REPO REF DIR: a checkout of exactly REF, kept when already there. REF is a full commit SHA or a release tag; a
+# tag is kept as refs/tags/<tag>, so the checkout can say it is at the release (steps/finding.py checkout_ref, which
+# the Goose runs record as the revision the steps compare with the pin).
+fetch() {
+  local spec want
+  if [[ "$2" =~ ^[0-9a-f]{40}$ ]]; then
+    spec="$2"; want="$2"
+  else
+    spec="+refs/tags/$2:refs/tags/$2"; want="$(git -C "$3" rev-parse -q --verify "refs/tags/$2^{commit}" 2>/dev/null || true)"
+  fi
+  if [ -z "$want" ] || [ "$(git -C "$3" rev-parse HEAD 2>/dev/null || true)" != "$want" ]; then
     rm -rf "$3" && mkdir -p "$3"
     git -C "$3" init -q
-    git -C "$3" fetch -q --depth 1 "https://github.com/$1" "$2"
-    git -C "$3" checkout -q FETCH_HEAD
+    git -C "$3" fetch -q --no-tags --depth 1 "https://github.com/$1" "$spec"
+    git -C "$3" -c advice.detachedHead=false checkout -q "FETCH_HEAD^{commit}"
   fi
 }
 fetch "$REPO" "$REF" "$DEST/src"

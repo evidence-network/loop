@@ -451,9 +451,9 @@ def main(argv=None):
     if goose:  # the capsule is the Goose node's: say which node, tool and revision, and keep the key it verified under
         seen.pop("capsule-emit", None)  # the capsule-emit pin seals nothing here: the node's capsulectl-deal sealed it
         seen["goose-g1"] = goose["rev"]
-        if goose["rev"] != lock_version("goose-g1"):
+        if goose["rev"] != finding.pins()["goose-g1"][1]:  # the full ref: a tag pin's rev is the tag (finding.checkout_ref)
             not_checked.append({"what": "goose-g1", "why": f"installed {goose['rev']}, versions.lock pins "
-                                f"{lock_version('goose-g1')}",
+                                f"{finding.pins()['goose-g1'][1]}",
                                 "issue": "none: steps/goose.setup.sh has not installed the pin"})
         sealed_by = f"the Goose node {node}, tool loop_seal, goose-g1 {goose['rev']}"
         shutil.copyfile(key_dir / "node-key.pub.pem", out / "node-key.pub.pem")

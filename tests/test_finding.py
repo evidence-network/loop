@@ -131,5 +131,55 @@ class FindingTest(unittest.TestCase):
             self.write(proof=[str(self.step / "capsule.json")])
 
 
+class CheckoutRefTest(unittest.TestCase):
+    """finding.checkout_ref: the revision a Goose run records, compared with the goose-g1 pin (loop#501)."""
+
+    def setUp(self):
+        import subprocess
+        self.tmp = Path(tempfile.mkdtemp())
+        self.src = self.tmp / "src"
+        self.src.mkdir()
+
+        def git(*a):
+            return subprocess.run(["git", "-C", str(self.src), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                                   *a], check=True, capture_output=True, text=True).stdout.strip()
+        self.git = git
+        git("init", "-q")
+        git("commit", "-q", "--allow-empty", "-m", "one")
+        self.one = git("rev-parse", "HEAD")
+        git("tag", "-a", "-m", "release", "capsulectl/v0.1.1")  # annotated, as the release tag is
+        git("commit", "-q", "--allow-empty", "-m", "two")
+        self.two = git("rev-parse", "HEAD")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp)
+
+    def lock(self, ref):
+        path = self.tmp / "versions.lock"
+        path.write_text(f"goose-g1 action-state-group/evidencebook {ref}\n")
+        return path
+
+    def test_tag_pin_at_its_tag_reads_as_the_tag(self):
+        self.git("checkout", "-q", self.one)
+        self.assertEqual(finding.checkout_ref("goose-g1", self.src, self.lock("capsulectl/v0.1.1")), "capsulectl/v0.1.1")
+
+    def test_tag_pin_elsewhere_reads_as_the_commit(self):
+        self.assertEqual(finding.checkout_ref("goose-g1", self.src, self.lock("capsulectl/v0.1.1")), self.two)
+
+    def test_tag_pin_without_the_tag_reads_as_the_commit(self):
+        # A checkout installed before the tag pin (a SHA fetch keeps no tags) never reads as the release.
+        self.git("tag", "-d", "capsulectl/v0.1.1")
+        self.git("checkout", "-q", self.one)
+        self.assertEqual(finding.checkout_ref("goose-g1", self.src, self.lock("capsulectl/v0.1.1")), self.one)
+
+    def test_sha_pin_reads_as_the_commit(self):
+        self.git("checkout", "-q", self.one)
+        self.assertEqual(finding.checkout_ref("goose-g1", self.src, self.lock(self.one)), self.one)
+
+    def test_no_checkout_is_empty(self):
+        self.assertEqual(finding.checkout_ref("goose-g1", self.tmp / "none", self.lock("capsulectl/v0.1.1")), "")
+
+
 if __name__ == "__main__":
     unittest.main()

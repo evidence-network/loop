@@ -40,6 +40,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "population" / "rehearsal" / "rail"))
+sys.path.insert(0, str(HERE.parent / "steps"))
+import finding  # noqa: E402
 TOOLS = Path(os.environ.get("LOOP_TOOLS", Path.home() / ".cache" / "evidence-network-loop")) / "goose"
 # The steps that have a Goose input (steps/<NN>-*); each reads population.json's `goose` member.
 STEPS = ["01", "02", "03", "04", "05", "06", "07", "12"]
@@ -137,8 +139,7 @@ def main(argv=None):
             return 1
         nodes.append({"name": name, "key_dir": str(kd)})
     capsule = run / "sealed-buyer.json"
-    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
-                         text=True).stdout.strip()  # the Goose checkout the run used
+    rev = finding.checkout_ref("goose-g1", src)  # the Goose checkout the run used: the pinned tag, or its commit
     if not rev:
         print("goose_rehearsal: cannot read the Goose checkout revision", file=sys.stderr)
         return 1

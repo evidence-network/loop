@@ -18,6 +18,7 @@ import datetime as dt
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -64,6 +65,19 @@ def pins(path=ROOT / "versions.lock"):
             name, repo, ref = line.split()
             out[name] = (repo, ref)
     return out
+
+
+def checkout_ref(name, src, path=ROOT / "versions.lock"):
+    """The ref the git checkout `src` of pin `name` is at, in versions.lock's terms: the pinned tag when the checkout
+    holds that tag (refs/tags/<tag>, as steps/goose.setup.sh fetches a tag pin) and HEAD is its commit, otherwise
+    HEAD's commit SHA, so a checkout at another commit never reads as the pin. Empty when `src` is no git checkout."""
+    def git(*args):
+        return subprocess.run(["git", "-C", str(src), *args], stdin=subprocess.DEVNULL, capture_output=True,
+                              text=True).stdout.strip()
+    head, ref = git("rev-parse", "HEAD"), pins(path)[name][1]
+    if not head or re.fullmatch(r"[0-9a-f]{40}", ref):
+        return head
+    return ref if git("rev-parse", "-q", "--verify", f"refs/tags/{ref}^{{commit}}") == head else head
 
 
 def mesh_pr_pins(path=ROOT / "versions.lock"):
