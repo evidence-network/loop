@@ -50,17 +50,13 @@ from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
 
 SRC = Path(os.environ["LOOP_GOOSE_SRC"]) / "python" / "examples" / "goose"
+sys.path.insert(0, str(SRC))
+from ctl import Ctl  # noqa: E402  the node's own capsulectl-deal runner (GOOSE_CAPSULECTL_DEAL, the node's HOME)
 # The deal's price is in USD cents. The node's admission pack (capsule-engine's ladder pack) gives GO only under 1 USD.
 CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 50, 1
 RAIL = "lightning"  # the node pays on lightning only; in the rehearsal the reference is the mock rail's settlement_id
 # A peer the buyer refuses: a 64-hex key no node holds.
 STRANGER = "ab" * 32
-# A report rests on the cadence tick that covers the deal. The node's default cadence is a tick every 5 minutes give or
-# take 1 (capsulectl's), so the rehearsal gives each node's profile a 1-minute cadence with no jitter (CADENCE, written
-# after loop_join), as evidencebook-skills#428 does for tau2-live: `deal agree` stamps at once and sets the next tick
-# from the profile's cadence, so step 05's report waits about a minute, not five (loop#495).
-CADENCE = "cadence:\n    interval: 1m\n    jitter: 0s\n"
-REPORT_WAIT = 240
 
 
 class Goose:
@@ -82,18 +78,14 @@ class Goose:
         return json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
 
 
-def set_cadence(home, profile):
-    """Give the node's capsulectl-deal profile (<home>/.config/capsule/profiles/<profile>.yaml, the one its Ctl runs
-    under) the rehearsal's CADENCE. A profile that already has it is left as it is; one with another cadence refuses."""
-    path = Path(home) / ".config" / "capsule" / "profiles" / f"{profile}.yaml"
-    if not path.is_file():
-        raise SystemExit(f"goose_session: no profile {path} after loop_join")
-    text = path.read_text()
-    if CADENCE in text:
-        return
-    if any(line.startswith("cadence:") for line in text.splitlines()):
-        raise SystemExit(f"goose_session: {path} already sets another cadence")
-    path.write_text(text + ("" if text.endswith("\n") else "\n") + CADENCE)
+def stamp_now(home, profile):
+    """Stamp the node's deal log at once (`deal tick --now`, evidencebook#933), under the node's own profile and home
+    (the Ctl its loop_server runs), so step 05's report rests on a checkpoint without waiting for a cadence tick
+    (loop#498). Returns the tick's reply; a tick that did not stamp on demand refuses."""
+    done = Ctl(home, profile).run("tick", "--now")
+    if done.get("stamped_on_demand") is not True or done.get("state") != "ticked":
+        raise SystemExit(f"goose_session: {profile} deal tick --now did not stamp: {json.dumps(done)}")
+    return done
 
 
 def issue_settlement(rail_dir, deal_id, payer, payee):
@@ -167,8 +159,6 @@ async def run(out, rail_dir):
             # is exported for step 12. The asks of step 07 are made by these same nodes (goose_ask_session.py DEAL_RUN).
             b = await buyer.call("loop_join", commitment_dir=str(out / "buyer" / "joined"))
             s = await seller.call("loop_join", commitment_dir=str(out / "seller" / "joined"))
-            for name in ("buyer", "seller"):  # before the deal, so its agreement's stamp sets a 1-minute next tick
-                set_cadence(out / name, f"goose-{name}")
             for me, j in ((buyer, b), (seller, s)):
                 await me.call("loop_book_bundle", book_id="goose/node", record_id=j["record_id"], disclose=True,
                               out_path=str(out / me.name / "joined" / "join-record.bundle.json"))
@@ -247,8 +237,12 @@ async def run(out, rail_dir):
                               out_path=str(out / f"{me.name}-statement.json"))
             for me, peer in ((buyer, seller), (seller, buyer)):
                 await peer.call("loop_deal_reconcile", peer_file=str(out / f"{me.name}-statement.json"))
-            # 05: each side's report of the deal, as an Evidence Bundle resting on the cadence tick that covers it.
-            await asyncio.gather(*(node.call("loop_deal_report", deal_id=deal_id, wait_seconds=REPORT_WAIT,
+            # 05: each side's report of the deal, as an Evidence Bundle resting on a checkpoint that covers it: the driver
+            # stamps each node at once (<node>/stamp.json), so the report needs no wait for a cadence tick (loop#498).
+            for node in (buyer, seller):
+                (out / node.name / "stamp.json").write_text(
+                    json.dumps(stamp_now(out / node.name, f"goose-{node.name}"), indent=2) + "\n")
+            await asyncio.gather(*(node.call("loop_deal_report", deal_id=deal_id, wait_seconds=0,
                                              out_path=str(out / f"{node.name}-report.json")) for node in (buyer, seller)))
             for node in (buyer, seller):
                 await node.call("loop_probe")
