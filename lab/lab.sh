@@ -378,7 +378,8 @@ routes_model() {
     | python3 -c 'import json,sys; sys.exit(0 if any(m.get("id") == sys.argv[1] for m in json.load(sys.stdin).get("data", [])) else 1)' "$MODEL_NAME"
 }
 knows_own_id() { if is_remote "$1"; then [ -n "$(rcmd node-id "$1" 2> /dev/null | tr -d '[:space:]')" ]; else [ -s "$(data_of "$1")/self-peer-id" ]; fi; }
-port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
+# Captured, not piped into grep -q: a SIGPIPE to ss under pipefail would report a busy port free (#506).
+port_free() { [ -z "$(ss -Hltn "sport = :$1" 2> /dev/null)" ]; }
 
 # --- two hosts -------------------------------------------------------------------------------
 # One ssh session (key: lab/remote/authorized_keys.example) carries, for each remote node, its API and console ports to
@@ -465,6 +466,10 @@ resolve_pin() {
 }
 # head_of TREE: its HEAD commit; fails for an unset path or a path that is not a git tree.
 head_of() { [ -n "$1" ] && git -C "$1" rev-parse -q --verify 'HEAD^{commit}' 2> /dev/null; }
+# in_messages TREE BASE TEXT: some commit message in BASE..HEAD of TREE contains TEXT (a squashed PR names its head there).
+# The log is read in full before matching: piped into grep -q, git could still be writing when grep exits on the
+# match, die of SIGPIPE, and pipefail would make a match a miss (#506).
+in_messages() { local msgs; msgs=$(git -C "$1" log --format=%B "$2..HEAD" 2> /dev/null) && [[ $msgs == *"$3"* ]]; }
 # record SECTION: merge one command's outcome (JSON on stdin) into $LAB_DIR/build.json.
 record() { mkdir -p "$LAB_DIR" && python3 -B "$ROOT/lab/pack.py" record "$1" --lab-dir "$LAB_DIR"; }
 
@@ -510,7 +515,7 @@ cmd_check() {
       rc=0; git -C "$MESH_LLM_SRC" merge-base --is-ancestor "$c" HEAD 2> /dev/null || rc=$?
       # A squashed PR: its head is in the message of a commit above the main base.
       # The head need not be in the tree (git exits 128 then): the squashed commit says which PR head it carries.
-      if [ "$rc" != 0 ] && [ "$name" != mesh-llm ] && git -C "$MESH_LLM_SRC" log --format=%B "$(pin mesh-llm)..HEAD" 2> /dev/null | grep -qF "$c"; then rc=0; fi
+      if [ "$rc" != 0 ] && [ "$name" != mesh-llm ] && in_messages "$MESH_LLM_SRC" "$(pin mesh-llm)" "$c"; then rc=0; fi
       case $rc in
         0) ;;
         1) fails+=("mesh-llm source $mesh_head does not contain the $name pin $p") ;;
@@ -568,7 +573,7 @@ cmd_check() {
         p=$(pin "$name"); [ -n "$p" ] || continue
         rc=0; git -C "$PAY_LIGHTNING_SRC" merge-base --is-ancestor "$p" HEAD 2> /dev/null || rc=$?
         # A PR merged onto the lab tree as one commit: its head is in the message of a commit above the base pin.
-        if [ "$rc" != 0 ] && [ "$name" != pay-lightning ] && git -C "$PAY_LIGHTNING_SRC" log --format=%B "$(pin pay-lightning)..HEAD" 2> /dev/null | grep -qF "$p"; then rc=0; fi
+        if [ "$rc" != 0 ] && [ "$name" != pay-lightning ] && in_messages "$PAY_LIGHTNING_SRC" "$(pin pay-lightning)" "$p"; then rc=0; fi
         [ "$rc" = 0 ] || fails+=("pay-lightning source $pay_head does not contain the $name pin $p")
       done
       [ -z "$(git -C "$PAY_LIGHTNING_SRC" status --porcelain --untracked-files=no)" ] || fails+=("pay-lightning source has uncommitted changes")

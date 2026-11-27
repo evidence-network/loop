@@ -803,6 +803,19 @@ class SquashedPrPinTest(LabRoot):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIs(self.build()["ok"], True, self.build()["failures"])
 
+    def test_a_squashed_pr_is_accepted_when_git_writes_past_the_match(self):
+        # git log prints newest first: the match comes first, then an older message larger than any pipe buffer,
+        # so git is still writing after the matcher has its answer. A matcher that exits early (grep -q) kills git
+        # with SIGPIPE, which pipefail turned into a rejected pin (#506).
+        older = self.tmp / "older-message"
+        older.write_text("older\n\n" + "x" * (1 << 20) + "\n")
+        git(self.tmp / "mesh-llm", "commit", "-q", "--allow-empty", "-F", str(older))
+        git(self.tmp / "mesh-llm", "commit", "-q", "--allow-empty", "-m", f"squashed #2620\n\nhead {self.HEAD}")
+        self.lock(self.mesh[0], self.HEAD, "v0.1.5")
+        r = self.run_lab("check")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIs(self.build()["ok"], True, self.build()["failures"])
+
     def test_a_pr_head_in_no_message_and_not_in_the_tree_fails(self):
         self.lock(self.mesh[0], self.HEAD, "v0.1.5")
         r = self.run_lab("check")
