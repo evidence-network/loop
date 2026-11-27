@@ -29,6 +29,7 @@ case "${1:-}" in
 esac
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+[ "$full" = 0 ] || export LOOP_TESTS=all
 cd "$ROOT"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -102,8 +103,15 @@ python3 -B scripts/check_binding.py bindings
 python3 -B scripts/check_revocations.py nodes/revocations
 
 step "reports (reports.yml)"
-# The same test set as reports.yml's discover, one process per module (scripts/unittest_parallel.py).
-bare python3 scripts/unittest_parallel.py discover -s tests
+# The modules this change can affect (scripts/test_impact.py: what each module names and imports, against the changes
+# since the merge base with origin/main and the working tree's), in parallel (scripts/unittest_parallel.py). reports.yml
+# runs every module on each pull request, after a merge and nightly; --full and LOOP_TESTS=all run every module here.
+selected=$(python3 -B scripts/test_impact.py --explain)
+case "$selected" in
+  ALL) bare python3 scripts/unittest_parallel.py discover -s tests ;;
+  "") echo "no unit test module depends on what this change touches" ;;
+  *) bare python3 scripts/unittest_parallel.py discover -s tests --only "$(echo $selected | tr ' ' ,)" ;;
+esac
 python3 scripts/check_reports.py reports/daily
 
 # stats.yml's site job. Its rehearsal run, the hydrated live run and the built site go to $tmp: the findings are

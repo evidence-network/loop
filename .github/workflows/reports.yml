@@ -10,6 +10,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  # The local check runs only the modules a change can affect (scripts/test_impact.py); every module runs here on each
+  # pull request, after each merge and nightly, and a red run on main or a nightly opens a ci-red issue.
+  schedule:
+    - cron: "30 3 * * *"
 
 permissions:
   contents: read
@@ -17,9 +21,20 @@ permissions:
 jobs:
   reports:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - name: Reporter tests
         run: python3 scripts/unittest_parallel.py discover -s tests
       - name: Check the reports
         run: python3 scripts/check_reports.py reports/daily
+      - name: Report a failed run on main
+        if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "reports failed on main or nightly"
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ASSIGNEE: ${{ vars.CI_FAILURE_ASSIGNEE }}
+        run: bash .github/scripts/report-failure.sh

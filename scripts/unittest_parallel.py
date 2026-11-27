@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run unittest modules in parallel processes, one process per module, with the verdict a serial run gives.
 
-    python3 [-B] scripts/unittest_parallel.py discover [-s DIR] [-p PATTERN] [-j N]
+    python3 [-B] scripts/unittest_parallel.py discover [-s DIR] [-p PATTERN] [--only M1,M2] [-j N]
     python3 [-B] scripts/unittest_parallel.py modules [-j N] MODULE [MODULE ...]
 
 `discover` runs the same test set as `python3 -m unittest discover -s DIR -p PATTERN -v` (default tests,
@@ -42,6 +42,7 @@ def main(argv=None):
     d = sub.add_parser("discover")
     d.add_argument("-s", "--start", default="tests")
     d.add_argument("-p", "--pattern", default="test*.py")
+    d.add_argument("--only", default=None, help="comma-separated module names: run only these of the discovered set")
     m = sub.add_parser("modules")
     m.add_argument("module", nargs="+")
     for p in (d, m):
@@ -56,6 +57,14 @@ def main(argv=None):
                   f"({', '.join(packages)}); run them by name", file=sys.stderr)
             return 1
         files = sorted(Path(a.start).glob(a.pattern))
+        if a.only is not None:
+            want = {m for m in a.only.split(",") if m}
+            unknown = want - {f.stem for f in files}
+            if unknown:
+                print(f"unittest_parallel: --only names modules not in {a.start}: {', '.join(sorted(unknown))}",
+                      file=sys.stderr)
+                return 1
+            files = [f for f in files if f.stem in want]
         if not files:
             print(f"unittest_parallel: no {a.pattern} in {a.start}", file=sys.stderr)
             return 1
