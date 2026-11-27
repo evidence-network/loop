@@ -22,7 +22,8 @@ LAB = ROOT / "lab" / "lab.sh"
 # directory of our own, and stop that server when the run ends. tests/test_lab_bringup.py checks every module that
 # runs lab/lab.sh holds this block.
 if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
-    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-")
+    # Under /tmp, not $TMPDIR: tmux's socket path must stay under the 104-byte limit of a Unix socket name.
+    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-", dir="/tmp")
     atexit.register(lambda d=os.environ["LOOP_TEST_TMUX_TMPDIR"]: (
         shutil.which("tmux") and subprocess.run(["tmux", "kill-server"], capture_output=True,
                                                  env={**os.environ, "TMUX_TMPDIR": d}),

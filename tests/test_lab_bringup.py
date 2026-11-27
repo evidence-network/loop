@@ -29,7 +29,8 @@ LAB = ROOT / "lab" / "lab.sh"
 # directory of our own, and stop that server when the run ends. tests/test_lab_bringup.py checks every module that
 # runs lab/lab.sh holds this block.
 if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
-    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-")
+    # Under /tmp, not $TMPDIR: tmux's socket path must stay under the 104-byte limit of a Unix socket name.
+    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-", dir="/tmp")
     atexit.register(lambda d=os.environ["LOOP_TEST_TMUX_TMPDIR"]: (
         shutil.which("tmux") and subprocess.run(["tmux", "kill-server"], capture_output=True,
                                                  env={**os.environ, "TMUX_TMPDIR": d}),
@@ -1616,8 +1617,7 @@ class TmuxIsolationTest(unittest.TestCase):
 
     def test_this_module_talks_only_to_a_private_tmux_server(self):
         self.assertNotIn("TMUX", os.environ)
-        self.assertTrue(os.environ["TMUX_TMPDIR"].startswith(tempfile.gettempdir()), os.environ["TMUX_TMPDIR"])
-        self.assertIn("loop-test-tmux-", os.environ["TMUX_TMPDIR"])
+        self.assertTrue(os.environ["TMUX_TMPDIR"].startswith("/tmp/loop-test-tmux-"), os.environ["TMUX_TMPDIR"])
 
     def test_every_module_that_runs_lab_sh_holds_the_isolation_block(self):
         runs_lab = re.compile(r'"lab"\s*/\s*"lab\.sh"')
