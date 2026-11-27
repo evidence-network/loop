@@ -50,6 +50,7 @@ def main(argv=None):
                         "longest first and to split a long class into one run per test, then updated")
     m = sub.add_parser("modules")
     m.add_argument("module", nargs="+")
+    m.add_argument("--times", default=os.environ.get("LOOP_TEST_TIMES"), help="as for discover")
     for p in (d, m):
         p.add_argument("-j", "--jobs", type=int, default=int(os.environ.get("LOOP_TEST_JOBS") or os.cpu_count() or 1))
     a = ap.parse_args(argv)
@@ -84,34 +85,35 @@ def run_all(a):
         if not files:
             print(f"unittest_parallel: no {a.pattern} in {a.start}", file=sys.stderr)
             return 1
-        tests, shared = collect(py, a.start, a.pattern)
-        times = load_times(a.times)
-        jobs = []
-        for f in files:
-            base = py + ["-m", "unittest", "discover", "-s", a.start, "-p", f.name, "-v"]
-            ids = tests.get(f.stem)
-            classes = {}
-            for t in ids or ():
-                classes.setdefault(t.rsplit(".", 1)[0], []).append(t)
-            if ids is None:
-                # Whole: a module that did not load (its own run shows the error).
-                jobs.append(Job(f.stem, base, None))
-                continue
-            for cls, t in classes.items():
-                if len(t) > 1 and times.get(cls, 0) > SPLIT_SECONDS and cls not in shared:
-                    # A class that took long last time and shares no fixture between its tests: one run per test.
-                    # "*ID" matches that test id exactly.
-                    jobs += [Job(i, base + ["-k", f"*{i}"], 1, group=cls) for i in t]
-                elif len(classes) == 1:
-                    jobs.append(Job(f.stem, base, len(t), group=cls))
-                else:
-                    # One process per TestCase class: `-k MODULE.CLASS.*` selects exactly its tests; the count each
-                    # run reports is checked against the collection.
-                    jobs.append(Job(cls, base + ["-k", f"{cls}.*"], len(t), group=cls))
-        # The longest first (by last time's seconds, else by test count), so a long run does not start last.
-        jobs.sort(key=lambda j: (-times.get(j.name, times.get(j.group, 0)), -(j.expect or 0)))
+        tests, shared = collect(py, "discover", a.start, a.pattern)
+        modules = [(f.stem, py + ["-m", "unittest", "discover", "-s", a.start, "-p", f.name, "-v"]) for f in files]
     else:
-        jobs = [Job(mod, py + ["-m", "unittest", mod, "-v"], None) for mod in a.module]
+        tests, shared = collect(py, "names", *a.module)
+        modules = [(m, py + ["-m", "unittest", m, "-v"]) for m in a.module]
+    times = load_times(a.times)
+    jobs = []
+    for mod, base in modules:
+        ids = tests.get(mod)
+        classes = {}
+        for t in ids or ():
+            classes.setdefault(t.rsplit(".", 1)[0], []).append(t)
+        if ids is None:
+            # Whole: a module that did not load, or one the collection did not reach (its own run shows why).
+            jobs.append(Job(mod, base, None))
+            continue
+        for cls, t in classes.items():
+            if len(t) > 1 and times.get(cls, 0) > SPLIT_SECONDS and cls not in shared:
+                # A class that took long last time and shares no fixture between its tests: one run per test.
+                # "*ID" matches that test id exactly.
+                jobs += [Job(i, base + ["-k", f"*{i}"], 1, group=cls) for i in t]
+            elif len(classes) == 1:
+                jobs.append(Job(mod, base, len(t), group=cls))
+            else:
+                # One process per TestCase class: `-k MODULE.CLASS.*` selects exactly its tests; the count each run
+                # reports is checked against the collection.
+                jobs.append(Job(cls, base + ["-k", f"{cls}.*"], len(t), group=cls))
+    # The longest first (by last time's seconds, else by test count), so a long run does not start last.
+    jobs.sort(key=lambda j: (-times.get(j.name, times.get(j.group, 0)), -(j.expect or 0)))
 
     started = time.monotonic()
     failed, ran, took_by = [], 0, {}
@@ -138,8 +140,7 @@ def run_all(a):
         raise
     pool.shutdown()
     took = time.monotonic() - started
-    if a.mode == "discover":
-        save_times(a.times, took_by)
+    save_times(a.times, took_by)
     if failed:
         print(f"\nunittest_parallel: FAILED: {len(failed)} of {len(jobs)} runs ({', '.join(sorted(failed))}); "
               f"{ran} tests in {took:.1f}s", file=sys.stderr)
@@ -197,28 +198,39 @@ import json, sys, unittest
 def flat(s):
     for t in s:
         yield from flat(t) if isinstance(t, unittest.TestSuite) else [t]
+mode, out_path, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+loader = unittest.defaultTestLoader
+if mode == "discover":
+    groups = [(None, loader.discover(args[0], pattern=args[1]))]
+else:
+    sys.path.insert(0, "")
+    groups = [(name, loader.loadTestsFromName(name)) for name in args]
 out, shared = {}, set()
-for t in flat(unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])):
-    if type(t).__name__ == "_FailedTest" or type(t).__module__ == "unittest.loader":
-        out[t.id().rsplit(".", 1)[-1]] = None
-    elif out.get(t.id().split(".", 1)[0], []) is not None:
-        out.setdefault(t.id().split(".", 1)[0], []).append(t.id())
+for name, suite in groups:
+    for t in flat(suite):
+        if type(t).__name__ == "_FailedTest" or type(t).__module__ == "unittest.loader":
+            out[name or t.id().rsplit(".", 1)[-1]] = None
+            continue
+        mod = name or t.id().split(".", 1)[0]
+        if out.get(mod, []) is None:
+            continue
+        out.setdefault(mod, []).append(t.id())
         # A class whose tests share a fixture (setUpClass, or the module's setUpModule) is never split per test.
         cls = type(t)
         if (cls.setUpClass.__func__ is not unittest.TestCase.setUpClass.__func__
                 or hasattr(sys.modules.get(cls.__module__), "setUpModule")):
             shared.add(t.id().rsplit(".", 1)[0])
-with open(sys.argv[3], "w") as f:
+with open(out_path, "w") as f:
     json.dump({"tests": out, "shared": sorted(shared)}, f)
 """
 
 
-def collect(py, start, pattern):
-    """The test ids per module, from one discover in a child (the import side effects stay there; it runs as a module
+def collect(py, mode, *args):
+    """The test ids per module, from one discover (or load by name) in a child (the import side effects stay there; it runs as a module
     run does, so an interrupt stops it too). The ids go to a file: a module may print while it is imported."""
     with tempfile.TemporaryDirectory() as d:
         out = Path(d) / "tests.json"
-        rc, log, _ = run(py + ["-c", COLLECT, start, pattern, str(out)])
+        rc, log, _ = run(py + ["-c", COLLECT, mode, str(out), *args])
         if rc != 0 or not out.is_file():
             print(f"unittest_parallel: collecting the tests failed; running whole modules\n{log}", file=sys.stderr)
             return {}, set()

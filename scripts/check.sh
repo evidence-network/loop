@@ -32,7 +32,20 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 [ "$full" = 0 ] || export LOOP_TESTS=all
 cd "$ROOT"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# The site's rehearsal run goes in the background (below); a check that stops early stops it and everything it started
+# (loop.sh runs each step under GNU timeout, which puts the step in a process group of its own, so the whole tree is
+# signalled, parents first so nothing new starts), waits for it, then removes $tmp. Best effort: the check's own exit
+# status stands. (check-cleanup: begin)
+site_run=""
+tree() { local c; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
+stop_site_run() {
+  [ -n "$site_run" ] || return 0
+  # shellcheck disable=SC2046 # one pid per word
+  kill -TERM $(tree "$site_run") 2> /dev/null || true
+  wait "$site_run" 2> /dev/null || true
+}
+trap 'stop_site_run; rm -rf "$tmp"' EXIT
+# (check-cleanup: end)
 step() { printf '\n== %s (at %ss)\n' "$*" "$SECONDS"; }
 # A command that must fail (`! cmd` would not stop a set -e script).
 refused() { if "$@"; then echo "check: expected a refusal from: $*" >&2; exit 1; fi; }
@@ -94,13 +107,27 @@ fi
 
 step "commitments (commitments.yml)"
 LOOP_TOOLS="$tmp/commitments-tools" steps/03-advertise.setup.sh
-LOOP_TOOLS="$tmp/commitments-tools" python3 -B -m unittest tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 tests.test_staple_verify -v
+# commitments.yml's four modules, one process per module, in parallel (scripts/unittest_parallel.py).
+LOOP_TOOLS="$tmp/commitments-tools" python3 -B scripts/unittest_parallel.py modules tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 tests.test_staple_verify
 LOOP_TOOLS="$tmp/commitments-tools" python3 -B steps/03-advertise --population tests/fixtures/step03/population/rehearsal --out "$tmp/commitments/03-advertise"
 python3 -B steps/finding.py check "$tmp/commitments"
 grep -q '"result": "PASS"' "$tmp/commitments/03-advertise/finding.json"
 python3 -B scripts/check_commitment.py nodes/commitments
 python3 -B scripts/check_binding.py bindings
 python3 -B scripts/check_revocations.py nodes/revocations
+
+# The site job's step setups and its stage 1 rehearsal run depend on nothing the unit tests do, so they start now and
+# run beside them; the site step below waits for them and prints their output. As in stats.yml, a failing setup or a
+# loop.sh that exits non-zero is a warning, not a failure: the site is built from whatever the run wrote.
+cp -R findings "$tmp/findings"
+(
+  for s in steps/*.setup.sh; do
+    [ -e "$s" ] || continue
+    bash "$s" || echo "warning: $s exited $?"
+  done
+  ./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
+) < /dev/null > "$tmp/site-run.log" 2>&1 &
+site_run=$!
 
 step "reports (reports.yml)"
 # The modules this change can affect (scripts/test_impact.py: what each module names and imports, against the changes
@@ -124,12 +151,10 @@ step "site (stats.yml)"
 # test_watch, test_growth) already ran in the reports step above, in the same bare environment.
 python3 -B site/build.py tests/fixtures/stats/daily --findings tests/fixtures/stats/findings --lock versions.lock --out "$tmp/fixture-site"
 diff -u tests/fixtures/stats/expected/index.html "$tmp/fixture-site/stats/index.html"
-for s in steps/*.setup.sh; do
-  [ -e "$s" ] || continue
-  bash "$s" || echo "warning: $s exited $?"
-done
-cp -R findings "$tmp/findings"
-./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
+echo "-- the setups and the stage 1 rehearsal run, started before the reports step (at ${SECONDS}s):"
+wait "$site_run" || { echo "check: the site's setup and rehearsal run could not complete" >&2; cat "$tmp/site-run.log" >&2; exit 1; }
+site_run=""
+cat "$tmp/site-run.log"
 python3 -B scripts/hydrate_findings.py "$tmp/findings"
 site="$tmp/_site"
 python3 -B site/build.py stats/data/daily --findings "$tmp/findings" --lock versions.lock --out "$site" --rehearsal stats/data/rehearsal
