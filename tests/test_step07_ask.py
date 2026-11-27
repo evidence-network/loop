@@ -315,7 +315,9 @@ def ask_record(rid, header):
 
 def seal_records(ledger, peer, asked, outcome):
     """What the pinned plugin appends to the asker's ledger for one ask: the sealed evidence_request, then, as
-    `outcome` says, the record of what came of it. Whole-second times, as the plugin writes them."""
+    `outcome` says, the record of what came of it. Whole-second times, as the plugin writes them; returns the time
+    the request carries, the ask's own time (a test that reads the clock again after sealing can fall a second
+    behind it on a busy machine)."""
     at = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     sent = {**asked, "audience": peer, "nonce": f"n-{time.time_ns()}", "requester_auth": {"sig": "x"}}
     path = ledger / "ledger" / "capsules.jsonl"
@@ -367,6 +369,7 @@ def seal_records(ledger, peer, asked, outcome):
     ledger.joinpath("ledger").mkdir(parents=True, exist_ok=True)
     with ledger.joinpath("ledger", "capsules.jsonl").open("a") as f:
         f.write("".join(lines))
+    return at
 
 
 def exchange_reply(kind, half):
@@ -1162,8 +1165,7 @@ class ReporterBackendTest(Tmp):
 
     def test_a_window_the_commitments_answers_within_keeps_open_is_not_checked_not_failed(self):
         ledger, asked = self.ledger(), {"profile": "p", "subject": {"checkpoints": None}}
-        seal_records(ledger, "peer-1", asked, "none")
-        at = step.now()
+        at = seal_records(ledger, "peer-1", asked, "none")
         with mock.patch.object(step, "OPEN_WINDOW_WAIT", dt.timedelta(0)):
             late = at + dt.timedelta(seconds=100)  # past sealed + 60s, inside sealed + answers_within
             with mock.patch.object(step, "now", side_effect=lambda: late):
@@ -1188,7 +1190,7 @@ class ReporterBackendTest(Tmp):
                     "links": [{"type": "cites", "target": rid}], "committed_at": window["closed"],
                     "statement": {"outcome": "recorded_absence", "request_digest": step.request_digest(
                         h["statement"]["request"]), "window": window}}))
-        at = step.now()
+        at = sealed
         with mock.patch.object(step.time, "sleep", side_effect=seal_absence):
             extract = step.ledger_extract(ledger / "ledger", "peer-1", asked, at, at, None, None)
         self.assertEqual([o["record"] for o in extract["outcomes"]], ["f" * 64])
