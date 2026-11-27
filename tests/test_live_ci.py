@@ -2,18 +2,21 @@
 
 ci.sh runs against stub `gcloud` and `gh` programs on PATH; entry.sh runs against a temporary lab with its own conf.
 """
-# ops/live-ci/entry.sh skips while any lab.sh or loop.sh process runs on the host, and other test modules start such
-# processes: run this module by itself (scripts/unittest_parallel.py).
-# unittest_parallel: alone
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pgrep_scope  # noqa: E402
+
+# The script under test refuses while any lab.sh or loop.sh runs on the host; count only the ones these tests start.
+pgrep_scope.scope()
 CI = ROOT / "ops" / "live-ci" / "ci.sh"
 ENTRY = ROOT / "ops" / "live-ci" / "entry.sh"
 
