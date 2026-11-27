@@ -1,4 +1,5 @@
 """scripts/unittest_parallel.py gives the verdict a serial unittest run gives, module by module in parallel."""
+import re
 import signal
 import subprocess
 import sys
@@ -53,14 +54,14 @@ class RunnerTest(unittest.TestCase):
         self.write("test_three.py", USES_HELPER)
         r = self.run_runner("discover", "-s", str(self.dir), "-j", "3")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("OK: 3 modules, 5 tests", r.stdout)
+        self.assertIn("OK: 3 runs, 5 tests", r.stdout)
 
     def test_a_failing_module_fails_the_run_and_is_named(self):
         self.write("test_good.py", PASS)
         self.write("test_bad.py", FAIL)
         r = self.run_runner("discover", "-s", str(self.dir))
         self.assertEqual(r.returncode, 1)
-        self.assertIn("FAILED: 1 of 2 modules (test_bad)", r.stderr)
+        self.assertIn("FAILED: 1 of 2 runs (test_bad)", r.stderr)
         self.assertIn("test_bad", r.stdout)  # its own output is printed whole
 
     def test_a_module_that_cannot_import_fails_the_run(self):
@@ -160,6 +161,22 @@ class RunnerTest(unittest.TestCase):
         solo = spans.pop("solo")
         for name, s in spans.items():
             self.assertTrue(s["end"] <= solo["start"] or s["start"] >= solo["end"], f"{name} overlapped the alone module")
+
+    def test_a_module_of_several_classes_runs_one_process_per_class_and_names_the_failing_one(self):
+        self.write("test_multi.py", """
+            import os, unittest
+            class A(unittest.TestCase):
+                def test_pid(self): print("pid", os.getpid())
+                def test_b(self): pass
+            class B(unittest.TestCase):
+                def test_pid(self): print("pid", os.getpid())
+            class Bad(unittest.TestCase):
+                def test_bad(self): self.assertEqual(1, 2)
+            """)
+        r = self.run_runner("discover", "-s", str(self.dir), "-j", "3")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAILED: 1 of 3 runs (test_multi.Bad); 4 tests", r.stderr)
+        self.assertEqual(len(set(re.findall(r"^pid (\d+)", r.stdout, re.M))), 2, r.stdout)  # A and B apart
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ except a module whose code under test refuses to run while any lab.sh or loop.sh
 the line `# unittest_parallel: alone` runs by itself, after every other module has finished.
 """
 import argparse
+import json
 import os
 import re
 import signal
@@ -58,11 +59,26 @@ def main(argv=None):
         if not files:
             print(f"unittest_parallel: no {a.pattern} in {a.start}", file=sys.stderr)
             return 1
-        # The biggest files first, so a long module does not start last.
-        files.sort(key=lambda f: -f.stat().st_size)
-        jobs = [(f.stem, py + ["-m", "unittest", "discover", "-s", a.start, "-p", f.name, "-v"], alone(f)) for f in files]
+        tests = collect(py, a.start, a.pattern)
+        jobs = []
+        for f in files:
+            base = py + ["-m", "unittest", "discover", "-s", a.start, "-p", f.name, "-v"]
+            ids = tests.get(f.stem)
+            classes = {}
+            for t in ids or ():
+                classes.setdefault(t.rsplit(".", 1)[0], []).append(t)
+            if alone(f) or ids is None or len(classes) < 2:
+                # Whole: an alone module, one that did not load (its own run shows the error) or a single class.
+                jobs.append(Job(f.stem, base, alone(f), len(ids) if ids is not None else None))
+            else:
+                # One process per TestCase class, so a long module spreads over the workers. `-k MODULE.CLASS.*`
+                # selects exactly that class's tests; the count each run reports is checked against the collection.
+                jobs += [Job(cls, base + ["-k", f"{cls}.*"], False, len(t)) for cls, t in classes.items()]
+        # The largest first, so a long job does not start last.
+        jobs.sort(key=lambda j: -(j.expect or 0))
     else:
-        jobs = [(mod, py + ["-m", "unittest", mod, "-v"], alone(Path(*mod.split(".")).with_suffix(".py"))) for mod in a.module]
+        jobs = [Job(mod, py + ["-m", "unittest", mod, "-v"], alone(Path(*mod.split(".")).with_suffix(".py")), None)
+                for mod in a.module]
 
     # SIGTERM (a gate or CI stopping the run) is handled as Ctrl-C is: no queued module starts, running ones stop.
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
@@ -71,17 +87,21 @@ def main(argv=None):
     pool = ThreadPoolExecutor(max_workers=max(1, a.jobs))
     try:
         # The side-by-side modules first, then each `alone` module with nothing else running.
-        for batch in ([j for j in jobs if not j[2]], *([j] for j in jobs if j[2])):
-            futs = {pool.submit(run, cmd): name for name, cmd, _ in batch}
+        for batch in ([j for j in jobs if not j.alone], *([j] for j in jobs if j.alone)):
+            futs = {pool.submit(run, j.cmd): j for j in batch}
             for fut in as_completed(futs):
-                name = futs[fut]
+                j = futs[fut]
                 rc, out, secs = fut.result()
-                sys.stdout.write(f"\n=== {name} (exit {rc}, {secs:.1f}s)\n{out}")
-                sys.stdout.flush()
+                sys.stdout.write(f"\n=== {j.name} (exit {rc}, {secs:.1f}s)\n{out}")
                 n = re.search(r"^Ran (\d+) tests? in", out, re.M)
-                ran += int(n.group(1)) if n else 0
-                if rc not in (0, NO_TESTS):
-                    failed.append(name)
+                got = int(n.group(1)) if n else 0
+                ran += got
+                if j.expect is not None and got != j.expect:
+                    sys.stdout.write(f"unittest_parallel: {j.name} ran {got} tests where the collection found {j.expect}\n")
+                    failed.append(j.name)
+                elif rc not in (0, NO_TESTS):
+                    failed.append(j.name)
+                sys.stdout.flush()
     except KeyboardInterrupt:
         STOP.set()
         pool.shutdown(wait=False, cancel_futures=True)
@@ -93,14 +113,44 @@ def main(argv=None):
     pool.shutdown()
     took = time.monotonic() - started
     if failed:
-        print(f"\nunittest_parallel: FAILED: {len(failed)} of {len(jobs)} modules ({', '.join(sorted(failed))}); "
+        print(f"\nunittest_parallel: FAILED: {len(failed)} of {len(jobs)} runs ({', '.join(sorted(failed))}); "
               f"{ran} tests in {took:.1f}s", file=sys.stderr)
         return 1
     if ran == 0:
-        print(f"\nunittest_parallel: FAILED: no test ran in {len(jobs)} modules", file=sys.stderr)
+        print(f"\nunittest_parallel: FAILED: no test ran in {len(jobs)} runs", file=sys.stderr)
         return 1
-    print(f"\nunittest_parallel: OK: {len(jobs)} modules, {ran} tests in {took:.1f}s")
+    print(f"\nunittest_parallel: OK: {len(jobs)} runs, {ran} tests in {took:.1f}s")
     return 0
+
+
+class Job:
+    def __init__(self, name, cmd, alone, expect):
+        self.name, self.cmd, self.alone, self.expect = name, cmd, alone, expect
+
+
+# Prints {module: [test id, ...]} for every module a whole-directory discover loads; null for one that failed to load.
+COLLECT = """
+import json, sys, unittest
+def flat(s):
+    for t in s:
+        yield from flat(t) if isinstance(t, unittest.TestSuite) else [t]
+out = {}
+for t in flat(unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])):
+    if type(t).__name__ == "_FailedTest" or type(t).__module__ == "unittest.loader":
+        out[t.id().rsplit(".", 1)[-1]] = None
+    elif out.get(t.id().split(".", 1)[0], []) is not None:
+        out.setdefault(t.id().split(".", 1)[0], []).append(t.id())
+json.dump(out, sys.stdout)
+"""
+
+
+def collect(py, start, pattern):
+    """The test ids per module, from one discover in a child (the import side effects stay there)."""
+    r = subprocess.run(py + ["-c", COLLECT, start, pattern], stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"unittest_parallel: collecting the tests failed; running whole modules\n{r.stderr}", file=sys.stderr)
+        return {}
+    return json.loads(r.stdout)
 
 
 def alone(path):
