@@ -173,7 +173,7 @@ is replaced by:
 | Field | Type | Meaning |
 |---|---|---|
 | `history_cards` | list, at least one entry, sorted by `stream` | one stapled card per evidence stream |
-| `history_cards[].stream` | string | the log id of the book the card covers: plain names (letters, digits, `.`, `_`, `-`, each starting with a letter or digit) joined by `/`, e.g. `alice-book` or `goose/node` |
+| `history_cards[].stream` | string | the log id of the book the card covers: plain names (letters, digits, `.`, `_`, `-`, each starting with a letter or digit) joined by `/`, e.g. `alice-book` or `goose/node`; a windowed book's card names its current window, `<log id>/<label>` (`alice-book/2026-11` for a book capsulectl v0.1.1 creates, split by month: evidencebook#805), and step 12 finds the probe it kept for that book with `scripts/history_cards.py` `stream_book` and `stream_base` |
 | `history_cards[].community` | string | the community the stream belongs to: `mesh-llm`, `muse` or `goose` (a closed list); `join.sh` writes `mesh-llm`, and evidencebook's Goose node `goose` |
 | `history_cards[].checkpoint_key` | base64url, optional | the SPKI (DER) of that stream's checkpoint signer; with it, a verifier can check the card's signature |
 | `history_cards[].derivation` | string | `history_card/1` or `history_card/2` (a sample of the stream's checkpoints that stays small as the log grows; its signature is not checked yet, as the pinned capsule-cli verifies `/1` only) |
