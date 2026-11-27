@@ -8,6 +8,7 @@ import base64
 import hashlib
 import io
 import json
+import atexit
 import os
 import re
 import shutil
@@ -22,6 +23,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LAB = ROOT / "lab" / "lab.sh"
+
+# lab.sh starts and kills tmux sessions. Every tmux call this module makes, its cleanups included, goes to a private
+# tmux server, never the one the person (or agent) running the tests works in: drop TMUX, point TMUX_TMPDIR at a
+# directory of our own, and stop that server when the run ends. tests/test_lab_bringup.py checks every module that
+# runs lab/lab.sh holds this block.
+if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
+    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-")
+    atexit.register(lambda d=os.environ["LOOP_TEST_TMUX_TMPDIR"]: (
+        shutil.which("tmux") and subprocess.run(["tmux", "kill-server"], capture_output=True,
+                                                 env={**os.environ, "TMUX_TMPDIR": d}),
+        shutil.rmtree(d, ignore_errors=True)))
+os.environ.pop("TMUX", None)
+os.environ["TMUX_TMPDIR"] = os.environ["LOOP_TEST_TMUX_TMPDIR"]
 sys.path.insert(0, str(ROOT / "lab"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_nodes  # noqa: E402
@@ -109,7 +123,7 @@ class DryRunTest(unittest.TestCase):
     def test_each_node_gets_its_build_mark_before_its_launch(self):
         # loop#103: the mark's time must not be later than the node's first decision.
         for name in ("lab-1", "lab-2", "lab-3"):
-            mark, launch = f"{self.lab}/run/{name}.build.json", f"tmux new-window -d -t loop-lab -n {name}"
+            mark, launch = f"{self.lab}/run/{name}.build.json", f"tmux new-window -d -t =loop-lab: -n {name}"
             self.assertIn(mark, self.out)
             self.assertLess(self.out.index(mark), self.out.index(launch))
 
@@ -117,7 +131,7 @@ class DryRunTest(unittest.TestCase):
         for i, name in enumerate(("lab-1", "lab-2", "lab-3"), 1):
             self.assertIn(f"HOME={self.lab}/nodes/{name} ", self.out)
             self.assertIn(f"--port 980{i} --console 981{i} --bind-port 982{i}", self.out)
-            self.assertIn(f"tmux new-window -d -t loop-lab -n {name}", self.out)
+            self.assertIn(f"tmux new-window -d -t =loop-lab: -n {name}", self.out)
             self.assertIn(f"CAPSULES_HOST_CONSOLE_URL=http://127.0.0.1:981{i}", self.out)
         launches = [l for l in self.out.splitlines() if " serve --config " in l]
         self.assertEqual(len(launches), 3)
@@ -184,7 +198,7 @@ class DryRunTest(unittest.TestCase):
             self.assertIn(f"XDG_CONFIG_HOME={self.lab}/nodes/{name}/join-book/config ", r.stdout)
             self.assertIn(f"profile update --profile {name} --checkpoint-endpoint https://127.0.0.1:9830 ", r.stdout)
         self.assertIn(f"serve --key {key} ", r.stdout)
-        self.assertIn("tmux new-window -d -t loop-lab -n witness", r.stdout)
+        self.assertIn("tmux new-window -d -t =loop-lab: -n witness", r.stdout)
         self.assertIn(f"LOOP_WITNESS_CA={self.lab}/witness/tls-cert.pem", self.out)
 
     def test_relay_is_the_lab_hosts_own_standing_relay_in_the_goose_venv(self):
@@ -192,7 +206,7 @@ class DryRunTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn(f"exec /t/goose/venv/bin/python -B {ROOT}/lab/relay.py serve --port 9840 --log {self.lab}/relay/events.jsonl",
                       r.stdout)
-        self.assertIn("tmux new-window -d -t loop-lab -n relay", r.stdout)
+        self.assertIn("tmux new-window -d -t =loop-lab: -n relay", r.stdout)
 
     def test_advertising_nodes_get_the_relay_map_and_the_switch_and_no_other_node_does(self):
         env = {**self.env, "LAB_NOSTR_NODES": "lab-1 lab-3"}
@@ -1594,6 +1608,30 @@ class WitnessListingTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("lab-1's plugin key", r.stderr)
         self.assertEqual(self.entries(), [])
+
+
+class TmuxIsolationTest(unittest.TestCase):
+    """No test may reach the tmux server of whoever runs the tests: lab.sh kill-session there once took down every
+    session on it (evidence-network/loop#489)."""
+
+    def test_this_module_talks_only_to_a_private_tmux_server(self):
+        self.assertNotIn("TMUX", os.environ)
+        self.assertTrue(os.environ["TMUX_TMPDIR"].startswith(tempfile.gettempdir()), os.environ["TMUX_TMPDIR"])
+        self.assertIn("loop-test-tmux-", os.environ["TMUX_TMPDIR"])
+
+    def test_every_module_that_runs_lab_sh_holds_the_isolation_block(self):
+        runs_lab = re.compile(r'"lab"\s*/\s*"lab\.sh"')
+        missing = [p.name for p in sorted((ROOT / "tests").glob("test*.py"))
+                   if runs_lab.search(p.read_text()) and 'os.environ["TMUX_TMPDIR"] = os.environ["LOOP_TEST_TMUX_TMPDIR"]'
+                   not in p.read_text()]
+        self.assertEqual(missing, [])
+
+    def test_lab_sh_names_its_tmux_session_exactly(self):
+        # A bare -t NAME also matches another session by prefix or pattern; "=NAME" matches only NAME.
+        text = LAB.read_text()
+        targets = re.findall(r'tmux (?:has-session|kill-session|new-window -d) -t "([^"]*)"', text)
+        self.assertTrue(targets)
+        self.assertEqual({t for t in targets if not t.startswith("=$SESSION")}, set())
 
 
 if __name__ == "__main__":

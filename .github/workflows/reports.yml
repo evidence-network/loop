@@ -20,6 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Reporter tests
-        run: python3 -m unittest discover -s tests -v
+        run: python3 scripts/unittest_parallel.py discover -s tests
       - name: Check the reports
         run: python3 scripts/check_reports.py reports/daily

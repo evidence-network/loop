@@ -2,6 +2,9 @@
 
 ci.sh runs against stub `gcloud` and `gh` programs on PATH; entry.sh runs against a temporary lab with its own conf.
 """
+# ops/live-ci/entry.sh skips while any lab.sh or loop.sh process runs on the host, and other test modules start such
+# processes: run this module by itself (scripts/unittest_parallel.py).
+# unittest_parallel: alone
 import os
 import shutil
 import subprocess

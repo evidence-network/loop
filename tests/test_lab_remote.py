@@ -3,6 +3,7 @@
 Run: python3 -B -m unittest tests.test_lab_remote -v
 Nothing here touches a network: ssh is a stand-in script that runs the verb on this machine, as the forced command would.
 """
+import atexit
 import os
 import shutil
 import sqlite3
@@ -15,6 +16,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LAB = ROOT / "lab" / "lab.sh"
+
+# lab.sh starts and kills tmux sessions. Every tmux call this module makes, its cleanups included, goes to a private
+# tmux server, never the one the person (or agent) running the tests works in: drop TMUX, point TMUX_TMPDIR at a
+# directory of our own, and stop that server when the run ends. tests/test_lab_bringup.py checks every module that
+# runs lab/lab.sh holds this block.
+if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
+    os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-")
+    atexit.register(lambda d=os.environ["LOOP_TEST_TMUX_TMPDIR"]: (
+        shutil.which("tmux") and subprocess.run(["tmux", "kill-server"], capture_output=True,
+                                                 env={**os.environ, "TMUX_TMPDIR": d}),
+        shutil.rmtree(d, ignore_errors=True)))
+os.environ.pop("TMUX", None)
+os.environ["TMUX_TMPDIR"] = os.environ["LOOP_TEST_TMUX_TMPDIR"]
 WRAPPER = ROOT / "lab" / "remote" / "loop-lab-remote"
 TRUE = shutil.which("true")
 

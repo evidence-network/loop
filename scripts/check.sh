@@ -102,19 +102,15 @@ python3 -B scripts/check_binding.py bindings
 python3 -B scripts/check_revocations.py nodes/revocations
 
 step "reports (reports.yml)"
-bare python3 -m unittest discover -s tests -v
+# The same test set as reports.yml's discover, one process per module (scripts/unittest_parallel.py).
+bare python3 scripts/unittest_parallel.py discover -s tests
 python3 scripts/check_reports.py reports/daily
 
 # stats.yml's site job. Its rehearsal run, the hydrated live run and the built site go to $tmp: the findings are
 # a copy of the committed ones with the fresh run beside them, as the job's checkout holds them.
 step "site (stats.yml)"
-bare python3 -B -m unittest discover -s tests -p test_site.py -v
-bare python3 -B -m unittest discover -s tests -p test_status_page.py -v
-bare python3 -B -m unittest discover -s tests -p test_stats_redesign.py -v
-bare python3 -B -m unittest discover -s tests -p test_stats_contrast.py -v
-bare python3 -B -m unittest discover -s tests -p test_rehearsal.py -v
-bare python3 -B -m unittest discover -s tests -p test_watch.py -v
-bare python3 -B -m unittest discover -s tests -p test_growth.py -v
+# The job's unit tests (test_site, test_status_page, test_stats_redesign, test_stats_contrast, test_rehearsal,
+# test_watch, test_growth) already ran in the reports step above, in the same bare environment.
 python3 -B site/build.py tests/fixtures/stats/daily --findings tests/fixtures/stats/findings --lock versions.lock --out "$tmp/fixture-site"
 diff -u tests/fixtures/stats/expected/index.html "$tmp/fixture-site/stats/index.html"
 for s in steps/*.setup.sh; do
@@ -172,7 +168,7 @@ modules=$(awk '/^ *run: python3 -B -m unittest tests\.test_step01_seal / { sub(/
   .github/workflows/loop.yml)
 [ -n "$modules" ] || { echo "check: could not read the step-test modules from loop.yml" >&2; exit 1; }
 # shellcheck disable=SC2086 # one word per module
-LOOP_REQUIRE_TOOLS=1 python3 -B -m unittest $modules -v
+LOOP_REQUIRE_TOOLS=1 python3 -B scripts/unittest_parallel.py modules $modules
 
 step "loop (loop.yml): stage 1 on the rehearsal population"
 run="$tmp/loop/$day-rehearsal"
