@@ -18,9 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LAB = ROOT / "lab" / "lab.sh"
 
 # lab.sh starts and kills tmux sessions. Every tmux call this module makes, its cleanups included, goes to a private
-# tmux server, never the one the person (or agent) running the tests works in: drop TMUX, point TMUX_TMPDIR at a
-# directory of our own, and stop that server when the run ends. tests/test_lab_bringup.py checks every module that
-# runs lab/lab.sh holds this block.
+# tmux server, never the one the person (or agent) running the tests works in: drop TMUX and TMUX_PANE, point
+# TMUX_TMPDIR at a directory of our own, and stop that server when the run ends (loop#490). tests/test_lab_bringup.py
+# checks every module that runs lab/lab.sh holds this block.
 if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
     # Under /tmp, not $TMPDIR: tmux's socket path must stay under the 104-byte limit of a Unix socket name.
     os.environ["LOOP_TEST_TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="loop-test-tmux-", dir="/tmp")
@@ -29,6 +29,7 @@ if not os.environ.get("LOOP_TEST_TMUX_TMPDIR"):
                                                  env={**os.environ, "TMUX_TMPDIR": d}),
         shutil.rmtree(d, ignore_errors=True)))
 os.environ.pop("TMUX", None)
+os.environ.pop("TMUX_PANE", None)
 os.environ["TMUX_TMPDIR"] = os.environ["LOOP_TEST_TMUX_TMPDIR"]
 WRAPPER = ROOT / "lab" / "remote" / "loop-lab-remote"
 TRUE = shutil.which("true")
