@@ -257,41 +257,6 @@ class GooseRehearsalTest(unittest.TestCase):
         self.assertEqual(found["result"], "NOT_CHECKED", found["detail"])
         self.assertEqual(found["not_checked"][0]["what"], "goose-g1")
 
-    def test_a_run_without_a_usable_step_02_driver_still_passes_step_03_and_step_02_says_not_checked(self):
-        # One whole rehearsal without a driver (a missing file). A driver that exists but is not executable takes the
-        # same path in the session (goose_session.usable_driver is false either way), which
-        # test_only_an_executable_file_is_a_usable_driver checks without a second 7-minute rehearsal (loop#489).
-        bin_ = self.work / "no-such-driver"
-        work = self.work / "nodriver-missing"
-        env = {**os.environ, "LOOP_STEP02_BOOK_BIN": str(bin_)}
-        r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/goose_rehearsal.py"), "--work", str(work)],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        pop = work / "population"
-        self.assertNotIn("book", json.loads((pop / "population.json").read_text())["goose"])
-        for step, result in (("02-book", "NOT_CHECKED"), ("03-advertise", "PASS")):
-            out = work / "findings" / step
-            done = subprocess.run([str(ROOT / "steps" / step), "--population", str(pop), "--out", str(out)],
-                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
-            self.assertEqual(done.returncode, 0, done.stderr)
-            self.assertEqual(json.loads((out / "finding.json").read_text())["result"], result)
-
-    def test_only_an_executable_file_is_a_usable_driver(self):
-        # The session's own check, in the Goose tools' Python (goose_session imports mcp): a missing file and a file
-        # that is not executable are not usable, an executable file is.
-        plain, exe = self.work / "plain-driver", self.work / "exe-driver"
-        plain.write_text("")
-        exe.write_text("#!/bin/sh\n")
-        exe.chmod(0o755)
-        code = ("import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); import goose_session as g; "
-                "print([g.usable_driver(Path(p)) for p in sys.argv[2:]])")
-        r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", code, str(ROOT / "scripts"),
-                            str(self.work / "no-such-driver"), str(plain), str(exe)],
-                           env={**os.environ, "LOOP_GOOSE_SRC": str(TOOLS / "src")}, stdin=subprocess.DEVNULL,
-                           capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout.strip(), "[False, False, True]")
-
     def _step_04(self, pop, name):
         out = self.work / name / "04-admit"
         r = subprocess.run([str(ROOT / "steps/04-admit"), "--population", str(pop), "--out", str(out)],
@@ -926,6 +891,52 @@ class GooseRehearsalTest(unittest.TestCase):
         found, checks, _ = self.judge06(self.tampered_population(lambda d: self._legs(d, altered)))
         self.assertEqual(found["result"], "FAIL")
         self.assertFalse(checks["legs_signed"]["ok"])
+
+
+@needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
+class GooseNoDriverTest(unittest.TestCase):
+    """A rehearsal of its own, without the step 02 driver: a class apart from GooseRehearsalTest, whose rehearsal it does
+    not read, so the two rehearsals (about 7 minutes each) run side by side under scripts/unittest_parallel.py."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+
+    def test_a_run_without_a_usable_step_02_driver_still_passes_step_03_and_step_02_says_not_checked(self):
+        # One whole rehearsal without a driver (a missing file). A driver that exists but is not executable takes the
+        # same path in the session (goose_session.usable_driver is false either way), which
+        # test_only_an_executable_file_is_a_usable_driver checks without a second 7-minute rehearsal (loop#489).
+        bin_ = self.dir / "no-such-driver"
+        work = self.dir / "nodriver-missing"
+        env = {**os.environ, "LOOP_STEP02_BOOK_BIN": str(bin_)}
+        r = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/goose_rehearsal.py"), "--work", str(work)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        pop = work / "population"
+        self.assertNotIn("book", json.loads((pop / "population.json").read_text())["goose"])
+        for step, result in (("02-book", "NOT_CHECKED"), ("03-advertise", "PASS")):
+            out = work / "findings" / step
+            done = subprocess.run([str(ROOT / "steps" / step), "--population", str(pop), "--out", str(out)],
+                                  stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(json.loads((out / "finding.json").read_text())["result"], result)
+
+    def test_only_an_executable_file_is_a_usable_driver(self):
+        # The session's own check, in the Goose tools' Python (goose_session imports mcp): a missing file and a file
+        # that is not executable are not usable, an executable file is.
+        plain, exe = self.dir / "plain-driver", self.dir / "exe-driver"
+        plain.write_text("")
+        exe.write_text("#!/bin/sh\n")
+        exe.chmod(0o755)
+        code = ("import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); import goose_session as g; "
+                "print([g.usable_driver(Path(p)) for p in sys.argv[2:]])")
+        r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", code, str(ROOT / "scripts"),
+                            str(self.dir / "no-such-driver"), str(plain), str(exe)],
+                           env={**os.environ, "LOOP_GOOSE_SRC": str(TOOLS / "src")}, stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "[False, False, True]")
 
 
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
