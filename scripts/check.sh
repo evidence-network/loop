@@ -109,26 +109,13 @@ python3 -B scripts/check_revocations.py nodes/revocations
 # run beside them; the site step below waits for them and prints their output. As in stats.yml, a failing setup or a
 # loop.sh that exits non-zero is a warning, not a failure: the site is built from whatever the run wrote.
 cp -R findings "$tmp/findings"
-# With --full the same run is the loop job's: --strict (it only changes loop.sh's exit status, not what it writes), and
-# each setup's status kept, so the loop job below judges them as loop.yml does instead of running both again.
-run="$tmp/loop/$day-rehearsal"
-mkdir -p "$tmp/loop"
 set -m  # its own process group, so the EXIT trap stops loop.sh and the steps too
 (
   for s in steps/*.setup.sh; do
     [ -e "$s" ] || continue
-    echo "-- $s"
-    bash "$s" || { rc=$?; echo "warning: $s exited $rc"; echo "$s exited $rc" >> "$tmp/setup-failures"; }
+    bash "$s" || echo "warning: $s exited $?"
   done
-  if [ "$full" = 1 ]; then
-    rc=0
-    ./loop.sh --stage 1 --population rehearsal --strict --out "$run" > "$tmp/loop-summary.txt" || rc=$?
-    echo "$rc" > "$tmp/stage1.rc"
-    cat "$tmp/loop-summary.txt"
-    cp -R "$run" "$tmp/findings/$day-rehearsal"
-  else
-    ./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
-  fi
+  ./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
 ) < /dev/null > "$tmp/site-run.log" 2>&1 &
 site_run=$!
 set +m
@@ -195,11 +182,12 @@ fi
 
 # loop.yml's loop job, as the nightly run does it: a setup that fails fails the check, and a missing tool fails a
 # step test instead of skipping it.
-step "loop (loop.yml): each step's pins (installed before the reports step, output above)"
-if [ -s "$tmp/setup-failures" ]; then
-  cat "$tmp/setup-failures" >&2
-  exit 1
-fi
+step "loop (loop.yml): each step's pins"
+for s in steps/*.setup.sh; do
+  [ -e "$s" ] || continue
+  echo "-- $s"
+  bash "$s"
+done
 
 step "loop (loop.yml): step tests with the pinned tools"
 # The module list is read from loop.yml's own step, so the two cannot drift.
@@ -209,9 +197,9 @@ modules=$(awk '/^ *run: python3 -B -m unittest tests\.test_step01_seal / { sub(/
 # shellcheck disable=SC2086 # one word per module
 LOOP_REQUIRE_TOOLS=1 python3 -B scripts/unittest_parallel.py modules $modules
 
-step "loop (loop.yml): stage 1 on the rehearsal population (run --strict before the reports step, summary above)"
-rc=$(cat "$tmp/stage1.rc")
-[ "$rc" = 0 ] || { echo "check: loop.sh --stage 1 --strict exited $rc" >&2; exit "$rc"; }
+step "loop (loop.yml): stage 1 on the rehearsal population"
+run="$tmp/loop/$day-rehearsal"
+./loop.sh --stage 1 --population rehearsal --strict --out "$run" | tee "$tmp/loop-summary.txt"
 
 step "loop (loop.yml): the cross stage (step 13) on the rehearsal population"
 cross="$tmp/loop/cross/$day-rehearsal"
