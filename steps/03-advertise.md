@@ -49,8 +49,7 @@ the sha256 of the policy bytes, the policy is signed by the same key, and the
 staple and checkpoint bytes match their digests. The result covers what the
 step asserts. The stapled `history_card/1` is also run through the pinned capsule-cli
 (`capsulectl verify --history`, `scripts/staple_verify.py`, installed by
-`steps/capsule-cli.setup.sh`; versions.lock's `capsule-cli`, a pre-release like
-every capsule-cli release) under the node key from the carrier and the
+`steps/capsule-cli.setup.sh`; versions.lock's `capsule-cli`) under the node key from the carrier and the
 `checkpoint_key` each card entry names. A failing property (digest, envelope or
 checkpoint signature, the card's checkpoint anchor, responder) fails the node. When every property
 passes, the finding says so in `detail` and lists no staple entry; caller

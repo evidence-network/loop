@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -239,6 +240,39 @@ class Step02WithoutDriverTest(unittest.TestCase):
             self.assertNotEqual(r.returncode, 0)
             self.assertIn("02-book.setup.sh", r.stderr)
             self.assertFalse((Path(tmp) / "02-book" / "finding.json").exists())
+
+
+class LiveToolPinsTest(unittest.TestCase):
+    """capsulectl(): the installed core and plugin against their pins, whatever the tag's shape (loop#503)."""
+
+    def tools(self, stamp_tag, plugin_version):
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        bin_ = tmp / "bin"
+        bin_.mkdir()
+        (bin_ / "capsulectl").write_text("#!/bin/sh\n")
+        (bin_ / "capsulectl-book").write_text(f"#!/bin/sh\necho capsulectl-book {plugin_version} 0000000\n")
+        for name in ("capsulectl", "capsulectl-book"):
+            (bin_ / name).chmod(0o755)
+        (bin_ / "capsulectl.built-from").write_text(
+            f"{finding.pins()['capsulectl'][0]} {stamp_tag} {'0' * 40} capsule-cli v0.1.1\n")
+        self.enterContext(unittest.mock.patch.dict(os.environ, {"LOOP_TOOLS": str(tmp), "CAPSULECTL": "",
+                                                                "CAPSULECTL_PLUGIN_ROOTS": ""}))
+        return step.capsulectl()[1]
+
+    def test_tools_built_at_the_pinned_tag_are_at_their_pins(self):
+        tag = finding.pins()["capsulectl"][1]  # capsulectl/v0.1.1: the stamp has the full tag, the plugin the version
+        self.assertEqual(self.tools(tag, tag.rsplit("/", 1)[-1]), [])
+
+    def test_a_core_stamped_with_another_tag_is_off_pin(self):
+        tag = finding.pins()["capsulectl"][1]
+        missing = self.tools("other/" + tag.rsplit("/", 1)[-1], tag.rsplit("/", 1)[-1])
+        self.assertEqual([m["what"] for m in missing], ["capsulectl"], missing)
+
+    def test_a_plugin_of_another_version_is_off_pin(self):
+        tag = finding.pins()["capsulectl"][1]
+        missing = self.tools(tag, "v0.0.0")
+        self.assertEqual([m["what"] for m in missing], ["capsulectl-book"], missing)
+        self.assertIn("installed v0.0.0", missing[0]["why"])
 
 
 if __name__ == "__main__":

@@ -675,7 +675,7 @@ def conclude(out, kind, records, proof, started, pinned=(), gaps=()):
         if verified:
             kinds = " and ".join(sorted({card_kind(rec) for _, rec in verified}))
             detail += (f" The stapled {kinds} of {', '.join(r for r, _ in verified)} verifies with capsule-cli "
-                       f"{sv_.pinned_version()} (a pre-release; every capsule-cli release is one) `verify --history`, under "
+                       f"{sv_.pinned_version()} `verify --history`, under "
                        "the node key and the checkpoint key each card entry names: digest, envelope and checkpoint "
                        "signatures, the card's checkpoint anchor and responder. Caller invariance and request binding are not part of it (a "
                        "commitment carries no request, and no second caller's answer is held).")

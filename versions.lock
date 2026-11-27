@@ -83,10 +83,10 @@ reporter evidence-network/loop 4d00c42c9856fc892f7309ee9b434dca1bb69202
 # stamps SOURCE_DATE_EPOCH on every book record, Result and checkpoint (evidencebook#330), which
 # step 10 sets to the window end so two runs over one 08 manifest give the same digests (loop#177).
 # v0.24.0 (2026-11-21) reads and asks `checkpoint_range` (evidencebook#605; AAC go v0.24.0, evidence-request 0.8.0), the subject capsules v0.1.23 answers
-# for a node past the answer cap; v0.21.0 refused it as request_malformed. It still builds with capsule-cli rc45.
-# Not yet the capsulectl/v0.1.1 release (goose-g1 below): this pin and capsulectl-book are the mesh baseline's
-# (baseline/live.json), so they move with a live run under the new pins, as the ecosystem gate requires (loop#501).
-capsulectl action-state-group/evidencebook v0.24.0
+# for a node past the answer cap; v0.21.0 refused it as request_malformed.
+# The capsulectl v0.1.1 release (2026-11-27; commit 2ca6e8aa) builds with the capsule-cli v0.1.1 release. This pin and
+# capsulectl-book are mesh baseline pins (baseline/live.json), moved with a live run under them (loop#503).
+capsulectl action-state-group/evidencebook capsulectl/v0.1.1
 # The evidencebook Rust crate steps 02 and 05 build with: crates.io 0.0.15, published from this tag (evidence-request
 # 0.5.0, checkpointed-local-log 0.5, agent-action-capsule 0.10.0). The drivers take it from crates.io, not a git tag.
 evidencebook action-state-group/evidencebook crates/evidencebook-v0.0.21
@@ -98,15 +98,16 @@ aac-rust action-state-group/agent-action-capsule crates/agent-action-capsule-v0.
 # step 12 join
 # The capsulectl-book plugin the join creates and probes the book with (`book doctor --probe`),
 # built from the evidencebook tag's capsulectl/ module.
-capsulectl-book action-state-group/evidencebook v0.24.0
+capsulectl-book action-state-group/evidencebook capsulectl/v0.1.1
 # The capsule-cli release whose `capsulectl verify --history` checks the history_card/1 a commitment staples
 # (steps 03 and 12; scripts/staple_verify.py, steps/capsule-cli.setup.sh builds it from this tag). Not the capsulectl
 # pin above, which is the core evidencebook builds with. Every capsule-cli release before v0.1.1 (2026-11-27)
 # was a pre-release: the stapled-card verifier first shipped in v0.1.0-rc33 (agent-action-capsule#430), and
 # rc45 (2026-11-21) is the first whose reader accepts the bare checkpoint CWT sub capsules v0.1.20 signs (CLL -02; rc38 refuses it as "checkpoint CWT subject is invalid"), checks a staple of history_card/2 (rc42) and
 # is the capsulectl core evidencebook v0.21.0 builds with, which delivers the selected checkpoint to a witness past an older unreceipted row (capsule-cli#590).
-# Not yet the v0.1.1 release: a mesh baseline pin, which moves with a live run under it, like capsulectl (loop#501).
-capsule-cli action-state-group/capsule-cli v0.1.0-rc45
+# v0.1.1 (2026-11-27, commit 129a80f3) is the first release that is not a pre-release, and the core capsulectl/v0.1.1
+# builds with. A mesh baseline pin, moved with a live run under it, like capsulectl (loop#503).
+capsule-cli action-state-group/capsule-cli v0.1.1
 # step 01 seal
 # The sealer (Python, PyPI capsule-emit 0.16.0) and the second-language Class 1
 # verifier (the AAC Go module's cross_language command).
