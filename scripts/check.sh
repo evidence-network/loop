@@ -32,7 +32,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 [ "$full" = 0 ] || export LOOP_TESTS=all
 cd "$ROOT"
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+# The site's rehearsal run goes in the background (below); a check that stops early stops it too.
+site_run=""
+trap '[ -z "$site_run" ] || kill -- "-$site_run" 2> /dev/null; rm -rf "$tmp"' EXIT
 step() { printf '\n== %s (at %ss)\n' "$*" "$SECONDS"; }
 # A command that must fail (`! cmd` would not stop a set -e script).
 refused() { if "$@"; then echo "check: expected a refusal from: $*" >&2; exit 1; fi; }
@@ -102,6 +104,21 @@ python3 -B scripts/check_commitment.py nodes/commitments
 python3 -B scripts/check_binding.py bindings
 python3 -B scripts/check_revocations.py nodes/revocations
 
+# The site job's step setups and its stage 1 rehearsal run depend on nothing the unit tests do, so they start now and
+# run beside them; the site step below waits for them and prints their output. As in stats.yml, a failing setup or a
+# loop.sh that exits non-zero is a warning, not a failure: the site is built from whatever the run wrote.
+cp -R findings "$tmp/findings"
+set -m  # its own process group, so the EXIT trap stops loop.sh and the steps too
+(
+  for s in steps/*.setup.sh; do
+    [ -e "$s" ] || continue
+    bash "$s" || echo "warning: $s exited $?"
+  done
+  ./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
+) < /dev/null > "$tmp/site-run.log" 2>&1 &
+site_run=$!
+set +m
+
 step "reports (reports.yml)"
 # The modules this change can affect (scripts/test_impact.py: what each module names and imports, against the changes
 # since the merge base with origin/main and the working tree's), in parallel (scripts/unittest_parallel.py). reports.yml
@@ -124,12 +141,10 @@ step "site (stats.yml)"
 # test_watch, test_growth) already ran in the reports step above, in the same bare environment.
 python3 -B site/build.py tests/fixtures/stats/daily --findings tests/fixtures/stats/findings --lock versions.lock --out "$tmp/fixture-site"
 diff -u tests/fixtures/stats/expected/index.html "$tmp/fixture-site/stats/index.html"
-for s in steps/*.setup.sh; do
-  [ -e "$s" ] || continue
-  bash "$s" || echo "warning: $s exited $?"
-done
-cp -R findings "$tmp/findings"
-./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
+echo "-- the setups and the stage 1 rehearsal run, started before the reports step (at ${SECONDS}s):"
+wait "$site_run" || { echo "check: the site's setup and rehearsal run could not complete" >&2; cat "$tmp/site-run.log" >&2; exit 1; }
+site_run=""
+cat "$tmp/site-run.log"
 python3 -B scripts/hydrate_findings.py "$tmp/findings"
 site="$tmp/_site"
 python3 -B site/build.py stats/data/daily --findings "$tmp/findings" --lock versions.lock --out "$site" --rehearsal stats/data/rehearsal
