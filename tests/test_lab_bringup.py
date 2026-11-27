@@ -22,6 +22,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+from local_http import LocalHTTPServer  # noqa: E402
 LAB = ROOT / "lab" / "lab.sh"
 
 # lab.sh starts and kills tmux sessions. Every tmux call this module makes, its cleanups included, goes to a private
@@ -570,7 +572,7 @@ class DryRunTest(unittest.TestCase):
                 self.rfile.read(int(self.headers["content-length"]))
                 self.reply(200, {"counterparty_count": {"status": "PASS", "paired": 1, "unpaired": []}})
 
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        srv = LocalHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         self.addCleanup(srv.server_close)
         self.addCleanup(srv.shutdown)

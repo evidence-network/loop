@@ -8,10 +8,12 @@ import sys
 import tempfile
 import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+from local_http import LocalHTTPServer  # noqa: E402
 sys.path.insert(0, str(ROOT / "lab"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_commitment as cc  # noqa: E402
@@ -48,7 +50,7 @@ class Console:
             def log_message(self, *a):
                 pass
 
-        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.srv = LocalHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.srv.server_port}"
 

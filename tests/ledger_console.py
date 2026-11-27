@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "steps" / "09-dispute.d"))
 import aac  # noqa: E402
 import ledger_proof  # noqa: E402
 import live  # noqa: E402
+from local_http import LocalHTTPServer  # noqa: E402
 
 _TMP = tempfile.TemporaryDirectory(prefix="ledger-console-")
 STUB = Path(_TMP.name) / "loop-ledger-check"
@@ -98,7 +99,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-SERVER = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+SERVER = LocalHTTPServer(("127.0.0.1", 0), Handler)
 threading.Thread(target=SERVER.serve_forever, daemon=True).start()
 
 
