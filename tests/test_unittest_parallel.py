@@ -1,4 +1,5 @@
 """scripts/unittest_parallel.py gives the verdict a serial unittest run gives, module by module in parallel."""
+import os
 import re
 import signal
 import subprocess
@@ -121,7 +122,9 @@ class RunnerTest(unittest.TestCase):
                 from pathlib import Path
                 class T(unittest.TestCase):
                     def test_s(self):
-                        Path({str(marks)!r}, "{i}").write_text("")
+                        import subprocess
+                        child = subprocess.Popen(["sleep", "60"])  # what a module starts must stop with it
+                        Path({str(marks)!r}, "{i}").write_text(str(child.pid))
                         time.sleep(60)
                 """)
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -136,7 +139,13 @@ class RunnerTest(unittest.TestCase):
             p.send_signal(sig)
             _, err = p.communicate(timeout=30)
             self.assertEqual(p.returncode, 130, err)
-            self.assertEqual(len(list(marks.iterdir())), 1, f"{sig}: a queued module started")
+            started = list(marks.iterdir())
+            self.assertEqual(len(started), 1, f"{sig}: a queued module started")
+            grandchild = int(started[0].read_text())
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and alive(grandchild):
+                time.sleep(0.1)
+            self.assertFalse(alive(grandchild), f"{sig}: the module's own child outlived the interrupt")
 
     def test_an_alone_module_runs_with_no_other_module_beside_it(self):
         # Each module records when it starts and ends; the alone one must not overlap any other.
@@ -177,6 +186,17 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("FAILED: 1 of 3 runs (test_multi.Bad); 4 tests", r.stderr)
         self.assertEqual(len(set(re.findall(r"^pid (\d+)", r.stdout, re.M))), 2, r.stdout)  # A and B apart
+
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A zombie whose parent was killed is reaped by init; a live process answers ps with a state other than Z.
+    st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(st) and not st.startswith("Z")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,18 @@
 # keys on the crate's path and file times, so every checkout or worktree of this repository rebuilt the same pinned
 # sources (about 45 s each for 02-book); the hash keys on content only. Any change to an input rebuilds.
 cargo_build_cached() {
+  local crate=$1 tools=$2 bin=$3
+  command -v flock > /dev/null || { echo "cargo_build_cached: flock is not installed (macOS: brew install flock)" >&2; return 1; }
+  mkdir -p "$tools"
+  # One build per tools directory at a time: checkouts at different sources share it, and the binary and its stamp
+  # must come from the same build.
+  (
+    flock 9
+    _cargo_build_cached_locked "$crate" "$tools" "$bin"
+  ) 9> "$tools/.build.lock"
+}
+
+_cargo_build_cached_locked() {
   local crate=$1 tools=$2 bin=$3 key
   key=$(
     cd "$crate" &&
@@ -19,8 +31,9 @@ cargo_build_cached() {
     echo "$bin: already built from these sources ($key)" >&2
     return 0
   fi
-  CARGO_TARGET_DIR="$tools/target" cargo build --release --locked --manifest-path "$crate/Cargo.toml"
+  rm -f "$tools/bin/$bin.built-from"
+  CARGO_TARGET_DIR="$tools/target" cargo build --release --locked --manifest-path "$crate/Cargo.toml" || return 1
   mkdir -p "$tools/bin"
-  install -m 0755 "$tools/target/release/$bin" "$tools/bin/$bin"
+  install -m 0755 "$tools/target/release/$bin" "$tools/bin/$bin" || return 1
   echo "$key" > "$tools/bin/$bin.built-from"
 }

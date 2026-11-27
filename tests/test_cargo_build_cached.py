@@ -13,7 +13,10 @@ CARGO = """#!/bin/sh
 case "$1" in
   --version) echo "cargo 1.0.0-test"; exit 0 ;;
 esac
+echo "start $(date +%s.%N 2>/dev/null || date +%s)" >> "$BUILDS.log"
+sleep "${SLOW:-0}"
 echo build >> "$BUILDS"
+echo "end" >> "$BUILDS.log"
 mkdir -p "$CARGO_TARGET_DIR/release"
 printf '#!/bin/sh\\necho built\\n' > "$CARGO_TARGET_DIR/release/tool"
 chmod 755 "$CARGO_TARGET_DIR/release/tool"
@@ -78,6 +81,19 @@ class CargoBuildCachedTest(unittest.TestCase):
         (self.crate / "target" / "junk").write_text("x")
         self.build()
         self.assertEqual(self.count(), 1)
+
+    def test_two_builds_into_one_tools_directory_take_turns(self):
+        # Two checkouts at different sources: without the lock the binary of one could carry the stamp of the other.
+        other = self.tmp / "crate2"
+        subprocess.run(["cp", "-R", str(self.crate), str(other)], check=True)
+        (other / "src" / "main.rs").write_text("fn main() { /* other */ }\n")
+        procs = [subprocess.Popen(["bash", "-c", f'. "{HELPER}" && cargo_build_cached "$1" "$2" tool', "-", str(c),
+                                   str(self.tools)], env={**self.env, "SLOW": "1"}, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for c in (self.crate, other)]
+        for p in procs:
+            self.assertEqual(p.wait(timeout=60), 0)
+        marks = [line.split()[0] for line in (self.tmp / "builds.log").read_text().splitlines()]
+        self.assertEqual(marks, ["start", "end", "start", "end"])  # never two at once
 
 
 if __name__ == "__main__":

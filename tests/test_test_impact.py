@@ -35,7 +35,9 @@ class SelectionTest(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(subprocess.run, ["rm", "-rf", str(self.root)])
         files = {
-            "scripts/mod_a.py": 'import subprocess\nRUN = ["steps/s1"]\nNOTE = "see scripts/mod_c.py for why"\n',
+            "scripts/mod_a.py": ('import subprocess\nfrom pathlib import Path\nHERE = Path(__file__).parent\nRUN = ["steps/s1"]\n'
+                                 'NOTE = "see scripts/mod_c.py for why"\nT = HERE / "page.html"\n'),
+            "scripts/page.html": "<p>\n",
             "scripts/mod_b.py": "X = 1\n",
             "scripts/mod_c.py": "Y = 2\n",
             "steps/s1": "#!/usr/bin/env python3\nimport mod_b\n",
@@ -90,6 +92,18 @@ class SelectionTest(unittest.TestCase):
 
     def test_the_test_module_itself_selects_itself(self):
         self.assertEqual(self.pick("tests/test_a.py"), ["test_a"])
+
+    def test_a_file_named_beside_the_code_that_reads_it_is_a_dependency(self):
+        self.assertEqual(self.pick("scripts/page.html"), ["test_a"])  # mod_a reads HERE / "page.html"
+
+    def test_a_deleted_file_keeps_its_dependents_and_an_unknown_deleted_program_runs_everything(self):
+        files = set(test_impact.git("ls-files").split()) | {"steps/old"}
+        for rel in ("steps/s1",):
+            (self.root / rel).unlink()
+            subprocess.run(["git", "-C", str(self.root), "rm", "-q", "--cached", rel], check=True)
+        repo = test_impact.Repo(files)  # the base's files, as main() builds it
+        self.assertEqual(test_impact.select(repo, ["steps/s1"])[0], ["test_a"])
+        self.assertEqual(test_impact.select(repo, ["steps/old"])[0], "ALL")
 
 
 class CommandTest(unittest.TestCase):

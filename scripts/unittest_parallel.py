@@ -13,7 +13,8 @@ when it finishes, then one summary line; the exit status is 1 when any module fa
 an import error or an unexpected success) or when no test ran at all, else 0. A module that holds no tests
 counts as passing beside others that do, as it does in a serial run. `discover` refuses a start directory that
 holds a package (a directory with __init__.py), since a whole-directory discover would recurse into it and this
-runner would not. Ctrl-C or SIGTERM starts no further module and stops the running ones. -j defaults to
+runner would not. Ctrl-C or SIGTERM starts no further module and stops the running ones with everything they
+started (each module runs in its own process group: SIGINT, then SIGKILL after 5 s). -j defaults to
 LOOP_TEST_JOBS, else the CPU count.
 
 Modules write only to their own temporary directories and pick ports from their pid, so they can run side by side,
@@ -22,6 +23,7 @@ except a module whose code under test refuses to run while any lab.sh or loop.sh
 the line `# unittest_parallel: alone` runs by itself, after every other module has finished.
 """
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -114,9 +116,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         STOP.set()
         pool.shutdown(wait=False, cancel_futures=True)
-        with LOCK:
-            for p in RUNNING:
-                p.kill()
+        stop_all()
         print("\nunittest_parallel: interrupted; no further module started", file=sys.stderr)
         return 130
     pool.shutdown()
@@ -162,6 +162,30 @@ def collect(py, start, pattern):
     return json.loads(r.stdout)
 
 
+def stop_all(grace=5.0):
+    """Stop every running module and what it started: SIGINT to each process group first, so unittest stops and the
+    modules' own cleanups (atexit, addCleanup) run, then SIGKILL to whatever is left after the grace period."""
+    with LOCK:
+        groups = [p.pid for p in RUNNING]
+    for g in groups:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(g, signal.SIGINT)
+    deadline = time.monotonic() + grace
+    while time.monotonic() < deadline and any(alive(g) for g in groups):
+        time.sleep(0.1)
+    for g in groups:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(g, signal.SIGKILL)
+
+
+def alive(group):
+    try:
+        os.killpg(group, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
 def alone(path):
     """True when the module's file asks to run with no other module beside it."""
     try:
@@ -180,7 +204,9 @@ def run(cmd):
     with LOCK:
         if STOP.is_set():
             return 130, "", 0.0
-        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        # Its own process group, so an interrupt reaches everything the module started (stop_all).
+        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             start_new_session=True)
         RUNNING.add(p)
     try:
         out, _ = p.communicate()

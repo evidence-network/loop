@@ -108,7 +108,10 @@ class Repo:
             if (r := self.resolve(cand)) and r not in CODE_DIRS:
                 out.add(r)
             elif not r:
-                # HERE / "x.py": a file named relative to a variable directory; any code file of that name.
+                # HERE / "template.html": a file named relative to a variable directory, most often the file's own;
+                # that sibling when it exists, and any code file of that name.
+                if (sib := self.resolve(str(Path(rel).parent / cand))):
+                    out.add(sib)
                 out |= self.by_name.get(Path(cand).name, set())
         for st in strings:
             for m in PATHLIKE.finditer(st):
@@ -189,6 +192,8 @@ def is_code(rel):
     if rel.split("/", 1)[0] not in CODE_DIRS or "/fixtures/" in rel:
         return False
     name = Path(rel).name
+    if not (ROOT / rel).exists():
+        return "." not in name or name.endswith((".py", ".sh"))  # deleted: what it was cannot be read, assume code
     # Workflows are read by tests (their text), never run by them: a dependency, not followed further.
     return name.endswith((".py", ".sh")) or ("." not in name and (ROOT / rel).is_file()
                                                                  and os.access(ROOT / rel, os.X_OK))
@@ -206,7 +211,7 @@ def changed(base):
 
 
 def modules(repo):
-    return sorted(f for f in repo.files if re.fullmatch(r"tests/test[^/]*\.py", f))
+    return sorted(f for f in repo.files if re.fullmatch(r"tests/test[^/]*\.py", f) and (ROOT / f).is_file())
 
 
 def select(repo, paths):
@@ -231,8 +236,9 @@ def main(argv=None):
     ap.add_argument("--explain", action="store_true", help="say on stderr why each module was selected")
     ap.add_argument("--deps", metavar="MODULE", help="print what MODULE (tests/test_x.py) depends on")
     a = ap.parse_args(argv)
-    repo = Repo(git("ls-files").split())
+    files = git("ls-files").split()
     if a.deps:
+        repo = Repo(files)
         print("\n".join(sorted(repo.deps(a.deps))))
         return 0
     if os.environ.get("LOOP_TESTS") == "all":
@@ -241,6 +247,8 @@ def main(argv=None):
     try:
         base = git("merge-base", a.base, "HEAD").strip()
         paths = changed(base)
+        # The base's files too: a test that names a file this change deletes still depends on it.
+        repo = Repo(set(files) | set(git("ls-tree", "-r", "--name-only", base).split()))
     except subprocess.CalledProcessError:
         print("test_impact: no merge base with", a.base, "; running every module", file=sys.stderr)
         print("ALL")
