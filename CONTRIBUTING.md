@@ -16,7 +16,11 @@ A code owner (`.github/CODEOWNERS`) reviews each pull request.
 
 ## Check locally before you push
 
-Before every push: `scripts/check.sh` (about 20 min on an Apple-silicon Mac). Before a push that changes anything
+Before every push: `scripts/check.sh` (it prints its own time at the end). Its unit tests are only the modules
+the change can affect (`scripts/test_impact.py` reads what each test module names and imports; a code change it
+cannot place runs them all, as does `LOOP_TESTS=all`), one process per test class in parallel
+(`scripts/unittest_parallel.py`); the `reports` workflow runs every module on each pull request, after each merge
+and nightly, and a red run on main or a nightly opens a `ci-red` issue. Before a push that changes anything
 outside the `paths-ignore` list of `.github/workflows/loop.yml` (today: top-level Markdown files, `docs/` and the
 other workflow files), also `scripts/check.sh --full` (about 80 min; needs go, cargo, openssl 3, bash 4+, GNU
 `timeout`, `flock`, Google Chrome and network for the pinned tools). Pull requests run only the fast set.

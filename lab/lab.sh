@@ -176,6 +176,8 @@ MODEL_NAME=${LAB_MODEL_NAME:-${MODEL_REF:-lab-model}}
 if [ -n "$MODEL_REF" ] && [ -z "${LAB_MODEL_NAME:-}" ] && [ -s "${LAB_DIR:-/nonexistent}/run/model-name" ]; then
   MODEL_NAME=$(cat "$LAB_DIR/run/model-name")
 fi
+# Every tmux target names this session exactly ("=NAME"): a bare name also matches by prefix and pattern, so a
+# kill-session or new-window could reach another session on the same tmux server.
 SESSION=${LAB_TMUX_SESSION:-loop-lab}
 # Split once, on any whitespace, and match against the same list the check used.
 SHARE=()
@@ -754,8 +756,8 @@ start_node() { # NAME EXTRA_ARGS...
   # noexec mount, a lost mode bit), and the window closes with an empty log and nothing said.
   local cmd
   cmd=$(printf 'bash %q >> %q 2>&1' "$LAB_DIR/run/$name.sh" "$(logfile "$name")")
-  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
-    run tmux new-window -d -t "$SESSION" -n "$name" "$cmd"
+  if [ "$DRY" = 1 ] || tmux has-session -t "=$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "=$SESSION:" -n "$name" "$cmd"
   else
     run tmux new-session -d -s "$SESSION" -n "$name" "$cmd"
   fi
@@ -1021,7 +1023,7 @@ cmd_stop() {
   done
   [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of witness) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile witness)"; }
   [ "${#ONLY[@]}" -gt 0 ] || { p=$(pid_of relay) && kill -TERM "$p" 2> /dev/null || true; rm -f "$(pidfile relay)"; }
-  tmux kill-session -t "$SESSION" 2> /dev/null || true
+  tmux kill-session -t "=$SESSION" 2> /dev/null || true
   # The second host's nodes last: a failure there leaves this host stopped and is said loudly.
   local rrc=0
   if [ "${#REMOTE[@]}" -gt 0 ]; then rcmd stop || rrc=$?; close_tunnel; fi
@@ -1240,8 +1242,8 @@ cmd_witness() {
   fi
   local cmd
   cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile witness)")
-  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
-    run tmux new-window -d -t "$SESSION" -n witness "$cmd"
+  if [ "$DRY" = 1 ] || tmux has-session -t "=$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "=$SESSION:" -n witness "$cmd"
   else
     run tmux new-session -d -s "$SESSION" -n witness "$cmd"
   fi
@@ -1274,8 +1276,8 @@ cmd_relay() {
   fi
   local cmd
   cmd=$(printf 'bash %q >> %q 2>&1' "$launcher" "$(logfile relay)")
-  if [ "$DRY" = 1 ] || tmux has-session -t "$SESSION" 2> /dev/null; then
-    run tmux new-window -d -t "$SESSION" -n relay "$cmd"
+  if [ "$DRY" = 1 ] || tmux has-session -t "=$SESSION" 2> /dev/null; then
+    run tmux new-window -d -t "=$SESSION:" -n relay "$cmd"
   else
     run tmux new-session -d -s "$SESSION" -n relay "$cmd"
   fi

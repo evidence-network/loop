@@ -5,6 +5,9 @@ bare repository it was pushed to, so HEAD is origin/main. A stand-in lab.sh reco
 window, and writes a finding per step; stand-in steps 10 and 11 do the same. Nothing here starts a node, pays or
 reaches a network. Run: python3 -B -m unittest discover -s tests -v
 """
+# scripts/live_daily.sh refuses to run while any lab.sh or loop.sh process runs on the host, and other test modules
+# start such processes: run this module by itself (scripts/unittest_parallel.py).
+# unittest_parallel: alone
 import json
 import os
 import shutil
