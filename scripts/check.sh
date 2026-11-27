@@ -32,9 +32,20 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 [ "$full" = 0 ] || export LOOP_TESTS=all
 cd "$ROOT"
 tmp=$(mktemp -d)
-# The site's rehearsal run goes in the background (below); a check that stops early stops it too.
+# The site's rehearsal run goes in the background (below); a check that stops early stops it and everything it started
+# (loop.sh runs each step under GNU timeout, which puts the step in a process group of its own, so the whole tree is
+# signalled, parents first so nothing new starts), waits for it, then removes $tmp. Best effort: the check's own exit
+# status stands. (check-cleanup: begin)
 site_run=""
-trap '[ -z "$site_run" ] || kill -- "-$site_run" 2> /dev/null; rm -rf "$tmp"' EXIT
+tree() { local c; echo "$1"; for c in $(pgrep -P "$1"); do tree "$c"; done; }
+stop_site_run() {
+  [ -n "$site_run" ] || return 0
+  # shellcheck disable=SC2046 # one pid per word
+  kill -TERM $(tree "$site_run") 2> /dev/null || true
+  wait "$site_run" 2> /dev/null || true
+}
+trap 'stop_site_run; rm -rf "$tmp"' EXIT
+# (check-cleanup: end)
 step() { printf '\n== %s (at %ss)\n' "$*" "$SECONDS"; }
 # A command that must fail (`! cmd` would not stop a set -e script).
 refused() { if "$@"; then echo "check: expected a refusal from: $*" >&2; exit 1; fi; }
@@ -109,7 +120,6 @@ python3 -B scripts/check_revocations.py nodes/revocations
 # run beside them; the site step below waits for them and prints their output. As in stats.yml, a failing setup or a
 # loop.sh that exits non-zero is a warning, not a failure: the site is built from whatever the run wrote.
 cp -R findings "$tmp/findings"
-set -m  # its own process group, so the EXIT trap stops loop.sh and the steps too
 (
   for s in steps/*.setup.sh; do
     [ -e "$s" ] || continue
@@ -118,7 +128,6 @@ set -m  # its own process group, so the EXIT trap stops loop.sh and the steps to
   ./loop.sh --stage 1 --population rehearsal --out "$tmp/findings/$day-rehearsal" || echo "warning: loop.sh exited $?"
 ) < /dev/null > "$tmp/site-run.log" 2>&1 &
 site_run=$!
-set +m
 
 step "reports (reports.yml)"
 # The modules this change can affect (scripts/test_impact.py: what each module names and imports, against the changes
