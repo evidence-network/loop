@@ -1,6 +1,6 @@
 # The loop, stage 1, then steps 10 and 11, on the rehearsal population: nightly, on a push to main that changes
-# anything outside the paths-ignore list below, and by hand. Pull requests do not run it (about 50 minutes):
-# `scripts/check.sh --full` runs it before such a push (CONTRIBUTING.md).
+# anything outside the paths-ignore list below, and by hand. Pull requests do not run it: it is a heavy suite, run
+# after a merge and nightly (CONTRIBUTING.md); `scripts/check.sh --full` runs the same job locally.
 # Each step's setup.sh installs its pins from versions.lock (a failing setup fails the job); the
 # tool-backed step tests run; loop.sh --strict runs the steps, checks their findings and fails the
 # job on a rehearsal FAIL or MALFORMED; findings/ is uploaded as an artifact. On the nightly run
@@ -13,7 +13,7 @@ on:
     - cron: "0 2 * * *"
   # Fail-safe: a push to main runs the loop unless it changes only paths shown never to be read by the loop (its steps,
   # scripts and tests read no top-level Markdown file and nothing under docs/, and no other workflow file). When in
-  # doubt a path stays off this list. CONTRIBUTING.md points here for when `scripts/check.sh --full` is due.
+  # doubt a path stays off this list.
   push:
     branches: [main]
     paths-ignore:
@@ -76,7 +76,7 @@ jobs:
       - name: Step tests with the pinned tools
         env:
           LOOP_REQUIRE_TOOLS: "1"
-        run: python3 -B -m unittest tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step07_ask tests.test_step08_verify tests.test_step09_dispute tests.test_step10_judge tests.test_step11_report tests.test_step12_join tests.test_step13_ask_across tests.test_goose_rehearsal tests.test_commitment1 tests.test_staple_verify tests.test_ledger_proof -v
+        run: python3 -B scripts/unittest_parallel.py modules tests.test_step01_seal tests.test_step02_book tests.test_step04_admit tests.test_step05_deal tests.test_step06_settle tests.test_step07_ask tests.test_step08_verify tests.test_step09_dispute tests.test_step10_judge tests.test_step11_report tests.test_step12_join tests.test_step13_ask_across tests.test_goose_rehearsal tests.test_commitment1 tests.test_staple_verify tests.test_ledger_proof
       # --strict: a rehearsal FAIL or MALFORMED finding fails the job (exit 3, or 1 for a refused finding).
       - name: Run stage 1 on the rehearsal population
         run: |
