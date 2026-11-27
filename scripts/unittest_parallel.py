@@ -30,6 +30,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -50,7 +51,18 @@ def main(argv=None):
     for p in (d, m):
         p.add_argument("-j", "--jobs", type=int, default=int(os.environ.get("LOOP_TEST_JOBS") or os.cpu_count() or 1))
     a = ap.parse_args(argv)
+    # SIGTERM (a gate or CI stopping the run) is handled as Ctrl-C is: no queued module starts, running ones stop.
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
+    try:
+        return run_all(a)
+    except KeyboardInterrupt:
+        STOP.set()
+        stop_all()
+        print("\nunittest_parallel: interrupted; no further module started", file=sys.stderr)
+        return 130
 
+
+def run_all(a):
     py = [sys.executable] + (["-B"] if sys.dont_write_bytecode else [])
     if a.mode == "discover":
         packages = sorted(str(p.parent) for p in Path(a.start).glob("*/__init__.py"))
@@ -91,8 +103,6 @@ def main(argv=None):
         jobs = [Job(mod, py + ["-m", "unittest", mod, "-v"], alone(Path(*mod.split(".")).with_suffix(".py")), None)
                 for mod in a.module]
 
-    # SIGTERM (a gate or CI stopping the run) is handled as Ctrl-C is: no queued module starts, running ones stop.
-    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
     started = time.monotonic()
     failed, ran = [], 0
     pool = ThreadPoolExecutor(max_workers=max(1, a.jobs))
@@ -116,9 +126,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         STOP.set()
         pool.shutdown(wait=False, cancel_futures=True)
-        stop_all()
-        print("\nunittest_parallel: interrupted; no further module started", file=sys.stderr)
-        return 130
+        raise
     pool.shutdown()
     took = time.monotonic() - started
     if failed:
@@ -149,17 +157,21 @@ for t in flat(unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[
         out[t.id().rsplit(".", 1)[-1]] = None
     elif out.get(t.id().split(".", 1)[0], []) is not None:
         out.setdefault(t.id().split(".", 1)[0], []).append(t.id())
-json.dump(out, sys.stdout)
+with open(sys.argv[3], "w") as f:
+    json.dump(out, f)
 """
 
 
 def collect(py, start, pattern):
-    """The test ids per module, from one discover in a child (the import side effects stay there)."""
-    r = subprocess.run(py + ["-c", COLLECT, start, pattern], stdin=subprocess.DEVNULL, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"unittest_parallel: collecting the tests failed; running whole modules\n{r.stderr}", file=sys.stderr)
-        return {}
-    return json.loads(r.stdout)
+    """The test ids per module, from one discover in a child (the import side effects stay there; it runs as a module
+    run does, so an interrupt stops it too). The ids go to a file: a module may print while it is imported."""
+    with tempfile.TemporaryDirectory() as d:
+        out = Path(d) / "tests.json"
+        rc, log, _ = run(py + ["-c", COLLECT, start, pattern, str(out)])
+        if rc != 0 or not out.is_file():
+            print(f"unittest_parallel: collecting the tests failed; running whole modules\n{log}", file=sys.stderr)
+            return {}
+        return json.loads(out.read_text())
 
 
 def stop_all(grace=5.0):
@@ -208,11 +220,10 @@ def run(cmd):
         p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              start_new_session=True)
         RUNNING.add(p)
-    try:
-        out, _ = p.communicate()
-    finally:
-        with LOCK:
-            RUNNING.discard(p)
+    # Interrupted here (KeyboardInterrupt in the main thread), it stays in RUNNING for stop_all.
+    out, _ = p.communicate()
+    with LOCK:
+        RUNNING.discard(p)
     return p.returncode, out, time.monotonic() - t
 
 

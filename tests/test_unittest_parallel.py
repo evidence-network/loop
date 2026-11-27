@@ -188,6 +188,31 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(len(set(re.findall(r"^pid (\d+)", r.stdout, re.M))), 2, r.stdout)  # A and B apart
 
 
+    def test_an_interrupt_while_the_tests_are_collected_stops_what_the_import_started(self):
+        mark = self.dir / "collector-child"
+        self.write("test_slowimport.py", f"""
+            import subprocess, time, unittest
+            from pathlib import Path
+            child = subprocess.Popen(["sleep", "60"])
+            Path({str(mark)!r}).write_text(str(child.pid))
+            time.sleep(60)
+            class T(unittest.TestCase):
+                def test_t(self): pass
+            """)
+        p = subprocess.Popen([sys.executable, "-B", str(RUNNER), "discover", "-s", str(self.dir)], cwd=self.dir,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        deadline = time.monotonic() + 30
+        while not mark.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        p.send_signal(signal.SIGTERM)
+        _, err = p.communicate(timeout=30)
+        self.assertEqual(p.returncode, 130, err)
+        grandchild = int(mark.read_text())
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and alive(grandchild):
+            time.sleep(0.1)
+        self.assertFalse(alive(grandchild), "the collection's child outlived the interrupt")
+
 
 def alive(pid):
     try:
