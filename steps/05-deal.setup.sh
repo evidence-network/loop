@@ -45,9 +45,9 @@ if [ "$eb_want" != "$eb_got" ] || [ "$eb_source" != "registry+https://github.com
 fi
 
 command -v cargo >/dev/null || { echo "05-deal.setup: cargo is not installed" >&2; exit 1; }
-CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path "$CRATE/Cargo.toml"
-mkdir -p "$TOOLS/bin"
-install -m 0755 "$TOOLS/target/release/loop-step05-deal" "$TOOLS/bin/loop-step05-deal"
+# shellcheck source=steps/cargo-build-cached.sh
+. "$ROOT/steps/cargo-build-cached.sh"
+cargo_build_cached "$CRATE" "$TOOLS" loop-step05-deal
 echo "05-deal.setup: installed $TOOLS/bin/loop-step05-deal (evidencebook $eb_got, checkpointed-local-log $got)"
 
 # On the live population the step recomputes each held half's capsule_id with

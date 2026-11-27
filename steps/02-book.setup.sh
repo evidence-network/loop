@@ -70,9 +70,9 @@ if [ "$eb_want" != "$eb_got" ] || [ "$eb_source" != "registry+https://github.com
 fi
 
 command -v cargo >/dev/null || { echo "02-book.setup: cargo is not installed" >&2; exit 1; }
-CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path "$CRATE/Cargo.toml"
-mkdir -p "$TOOLS/bin"
-install -m 0755 "$TOOLS/target/release/loop-step02-book" "$TOOLS/bin/loop-step02-book"
+# shellcheck source=steps/cargo-build-cached.sh
+. "$ROOT/steps/cargo-build-cached.sh"
+cargo_build_cached "$CRATE" "$TOOLS" loop-step02-book
 echo "02-book.setup: installed $TOOLS/bin/loop-step02-book (evidencebook $eb_got, checkpointed-local-log $(locked checkpointed-local-log version), agent-action-capsule $(locked agent-action-capsule version))"
 
 # On the live population the step drives each node's book with capsulectl and

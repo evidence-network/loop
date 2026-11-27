@@ -24,7 +24,7 @@ if [ "$want" != "$got" ]; then
   exit 1
 fi
 command -v cargo >/dev/null || { echo "ledger-check.setup: cargo is not installed" >&2; exit 1; }
-CARGO_TARGET_DIR="$TOOLS/target" cargo build --release --locked --manifest-path "$CRATE/Cargo.toml"
-mkdir -p "$TOOLS/bin"
-install -m 0755 "$TOOLS/target/release/loop-ledger-check" "$TOOLS/bin/loop-ledger-check"
+# shellcheck source=steps/cargo-build-cached.sh
+. "$ROOT/steps/cargo-build-cached.sh"
+cargo_build_cached "$CRATE" "$TOOLS" loop-ledger-check
 echo "ledger-check.setup: installed $TOOLS/bin/loop-ledger-check (checkpointed-local-log $got)"
