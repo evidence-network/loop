@@ -107,6 +107,9 @@ step "reports (reports.yml)"
 # since the merge base with origin/main and the working tree's), in parallel (scripts/unittest_parallel.py). reports.yml
 # runs every module on each pull request, after a merge and nightly; --full and LOOP_TESTS=all run every module here.
 selected=$(python3 -B scripts/test_impact.py --explain)
+# Each run's time last time (outside the temporary LOOP_TOOLS the bare runs get): the longest start first, and a long
+# test class runs one process per test.
+export LOOP_TEST_TIMES="$tools/test-times.json"
 case "$selected" in
   ALL) bare python3 scripts/unittest_parallel.py discover -s tests ;;
   "") echo "no unit test module depends on what this change touches" ;;

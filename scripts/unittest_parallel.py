@@ -17,10 +17,9 @@ runner would not. Ctrl-C or SIGTERM starts no further module and stops the runni
 started (each module runs in its own process group: SIGINT, then SIGKILL after 5 s). -j defaults to
 LOOP_TEST_JOBS, else the CPU count.
 
-Modules write only to their own temporary directories and pick ports from their pid, so they can run side by side,
-except a module whose code under test refuses to run while any lab.sh or loop.sh process runs on the host
-(scripts/live_daily.sh, ops/live-ci/entry.sh): the other modules start such processes. A module whose file holds
-the line `# unittest_parallel: alone` runs by itself, after every other module has finished.
+Modules write only to their own temporary directories and pick ports from their pid, so they run side by side; the
+scripts that refuse while a lab.sh or loop.sh runs on the host are tested with a pgrep scoped to the test's own
+processes (tests/pgrep_scope.py).
 """
 import argparse
 import contextlib
@@ -46,6 +45,9 @@ def main(argv=None):
     d.add_argument("-s", "--start", default="tests")
     d.add_argument("-p", "--pattern", default="test*.py")
     d.add_argument("--only", default=None, help="comma-separated module names: run only these of the discovered set")
+    d.add_argument("--times", default=os.environ.get("LOOP_TEST_TIMES"),
+                   help="a JSON file of each run's seconds last time (default LOOP_TEST_TIMES): read to start the "
+                        "longest first and to split a long class into one run per test, then updated")
     m = sub.add_parser("modules")
     m.add_argument("module", nargs="+")
     for p in (d, m):
@@ -83,6 +85,7 @@ def run_all(a):
             print(f"unittest_parallel: no {a.pattern} in {a.start}", file=sys.stderr)
             return 1
         tests = collect(py, a.start, a.pattern)
+        times = load_times(a.times)
         jobs = []
         for f in files:
             base = py + ["-m", "unittest", "discover", "-s", a.start, "-p", f.name, "-v"]
@@ -90,45 +93,52 @@ def run_all(a):
             classes = {}
             for t in ids or ():
                 classes.setdefault(t.rsplit(".", 1)[0], []).append(t)
-            if alone(f) or ids is None or len(classes) < 2:
-                # Whole: an alone module, one that did not load (its own run shows the error) or a single class.
-                jobs.append(Job(f.stem, base, alone(f), len(ids) if ids is not None else None))
-            else:
-                # One process per TestCase class, so a long module spreads over the workers. `-k MODULE.CLASS.*`
-                # selects exactly that class's tests; the count each run reports is checked against the collection.
-                jobs += [Job(cls, base + ["-k", f"{cls}.*"], False, len(t)) for cls, t in classes.items()]
-        # The largest first, so a long job does not start last.
-        jobs.sort(key=lambda j: -(j.expect or 0))
+            if ids is None:
+                # Whole: a module that did not load (its own run shows the error).
+                jobs.append(Job(f.stem, base, None))
+                continue
+            for cls, t in classes.items():
+                if len(t) > 1 and times.get(cls, 0) > SPLIT_SECONDS:
+                    # A class that took long last time: one run per test. "*ID" matches that test id exactly.
+                    jobs += [Job(i, base + ["-k", f"*{i}"], 1, group=cls) for i in t]
+                elif len(classes) == 1:
+                    jobs.append(Job(f.stem, base, len(t), group=cls))
+                else:
+                    # One process per TestCase class: `-k MODULE.CLASS.*` selects exactly its tests; the count each
+                    # run reports is checked against the collection.
+                    jobs.append(Job(cls, base + ["-k", f"{cls}.*"], len(t), group=cls))
+        # The longest first (by last time's seconds, else by test count), so a long run does not start last.
+        jobs.sort(key=lambda j: (-times.get(j.name, times.get(j.group, 0)), -(j.expect or 0)))
     else:
-        jobs = [Job(mod, py + ["-m", "unittest", mod, "-v"], alone(Path(*mod.split(".")).with_suffix(".py")), None)
-                for mod in a.module]
+        jobs = [Job(mod, py + ["-m", "unittest", mod, "-v"], None) for mod in a.module]
 
     started = time.monotonic()
-    failed, ran = [], 0
+    failed, ran, took_by = [], 0, {}
     pool = ThreadPoolExecutor(max_workers=max(1, a.jobs))
     try:
-        # The side-by-side modules first, then each `alone` module with nothing else running.
-        for batch in ([j for j in jobs if not j.alone], *([j] for j in jobs if j.alone)):
-            futs = {pool.submit(run, j.cmd): j for j in batch}
-            for fut in as_completed(futs):
-                j = futs[fut]
-                rc, out, secs = fut.result()
-                sys.stdout.write(f"\n=== {j.name} (exit {rc}, {secs:.1f}s)\n{out}")
-                n = re.search(r"^Ran (\d+) tests? in", out, re.M)
-                got = int(n.group(1)) if n else 0
-                ran += got
-                if j.expect is not None and got != j.expect:
-                    sys.stdout.write(f"unittest_parallel: {j.name} ran {got} tests where the collection found {j.expect}\n")
-                    failed.append(j.name)
-                elif rc not in (0, NO_TESTS):
-                    failed.append(j.name)
-                sys.stdout.flush()
+        futs = {pool.submit(run, j.cmd): j for j in jobs}
+        for fut in as_completed(futs):
+            j = futs[fut]
+            rc, out, secs = fut.result()
+            took_by[j] = secs
+            sys.stdout.write(f"\n=== {j.name} (exit {rc}, {secs:.1f}s)\n{out}")
+            n = re.search(r"^Ran (\d+) tests? in", out, re.M)
+            got = int(n.group(1)) if n else 0
+            ran += got
+            if j.expect is not None and got != j.expect:
+                sys.stdout.write(f"unittest_parallel: {j.name} ran {got} tests where the collection found {j.expect}\n")
+                failed.append(j.name)
+            elif rc not in (0, NO_TESTS):
+                failed.append(j.name)
+            sys.stdout.flush()
     except KeyboardInterrupt:
         STOP.set()
         pool.shutdown(wait=False, cancel_futures=True)
         raise
     pool.shutdown()
     took = time.monotonic() - started
+    if a.mode == "discover":
+        save_times(a.times, took_by)
     if failed:
         print(f"\nunittest_parallel: FAILED: {len(failed)} of {len(jobs)} runs ({', '.join(sorted(failed))}); "
               f"{ran} tests in {took:.1f}s", file=sys.stderr)
@@ -140,9 +150,44 @@ def run_all(a):
     return 0
 
 
+# A class whose run took longer than this last time runs one process per test.
+SPLIT_SECONDS = 30
+
+
 class Job:
-    def __init__(self, name, cmd, alone, expect):
-        self.name, self.cmd, self.alone, self.expect = name, cmd, alone, expect
+    def __init__(self, name, cmd, expect, group=None):
+        self.name, self.cmd, self.expect, self.group = name, cmd, expect, group or name
+
+
+def load_times(path):
+    """Last time's seconds per run name and per class; empty when there is no file or it cannot be read. Only the
+    order of the runs and the split of a long class depend on it, never which tests run or their verdict."""
+    if not path:
+        return {}
+    try:
+        data = json.loads(Path(path).read_text())
+        return {k: float(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def save_times(path, took_by):
+    if not path or not took_by:
+        return
+    times = load_times(path)
+    per_class = {}
+    for j, secs in took_by.items():
+        times[j.name] = round(secs, 1)
+        per_class[j.group] = per_class.get(j.group, 0) + secs
+    for cls, secs in per_class.items():
+        times[cls] = round(secs, 1)
+    try:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        tmp = Path(f"{path}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(times, sort_keys=True, indent=0))
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"unittest_parallel: could not record the run times in {path}: {e}", file=sys.stderr)
 
 
 # Prints {module: [test id, ...]} for every module a whole-directory discover loads; null for one that failed to load.
@@ -196,14 +241,6 @@ def alive(group):
         return True
     except (ProcessLookupError, PermissionError):
         return False
-
-
-def alone(path):
-    """True when the module's file asks to run with no other module beside it."""
-    try:
-        return any(line.strip() == "# unittest_parallel: alone" for line in path.read_text().splitlines())
-    except OSError:
-        return False  # a name with no file here (a module found elsewhere on sys.path) runs side by side
 
 
 STOP = threading.Event()

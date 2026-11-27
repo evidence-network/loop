@@ -5,20 +5,23 @@ bare repository it was pushed to, so HEAD is origin/main. A stand-in lab.sh reco
 window, and writes a finding per step; stand-in steps 10 and 11 do the same. Nothing here starts a node, pays or
 reaches a network. Run: python3 -B -m unittest discover -s tests -v
 """
-# scripts/live_daily.sh refuses to run while any lab.sh or loop.sh process runs on the host, and other test modules
-# start such processes: run this module by itself (scripts/unittest_parallel.py).
-# unittest_parallel: alone
 import json
 import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pgrep_scope  # noqa: E402
+
+# The script under test refuses while any lab.sh or loop.sh runs on the host; count only the ones these tests start.
+pgrep_scope.scope()
 # What the script and the checks it runs read: everything but the findings and the lab.
 COPY = ["scripts", "steps", "status", "baseline", "population", "versions.lock", "nodes"]
 

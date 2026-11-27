@@ -1,4 +1,5 @@
 """scripts/unittest_parallel.py gives the verdict a serial unittest run gives, module by module in parallel."""
+import json
 import os
 import re
 import signal
@@ -147,30 +148,6 @@ class RunnerTest(unittest.TestCase):
                 time.sleep(0.1)
             self.assertFalse(alive(grandchild), f"{sig}: the module's own child outlived the interrupt")
 
-    def test_an_alone_module_runs_with_no_other_module_beside_it(self):
-        # Each module records when it starts and ends; the alone one must not overlap any other.
-        log = self.dir / "log"
-        body = """
-            import os, time, unittest
-            class T(unittest.TestCase):
-                def test_t(self):
-                    with open({log!r}, "a") as f: f.write(f"start {name} {{time.monotonic()}}\\n")
-                    time.sleep(0.5)
-                    with open({log!r}, "a") as f: f.write(f"end {name} {{time.monotonic()}}\\n")
-            """
-        for name in ("a", "b", "c"):
-            self.write(f"test_{name}.py", body.format(log=str(log), name=name))
-        self.write("test_solo.py", "# unittest_parallel: alone\n" + textwrap.dedent(body.format(log=str(log), name="solo")))
-        r = self.run_runner("discover", "-s", str(self.dir), "-j", "4")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        spans = {}
-        for line in log.read_text().splitlines():
-            what, name, t = line.split()
-            spans.setdefault(name, {})[what] = float(t)
-        solo = spans.pop("solo")
-        for name, s in spans.items():
-            self.assertTrue(s["end"] <= solo["start"] or s["start"] >= solo["end"], f"{name} overlapped the alone module")
-
     def test_a_module_of_several_classes_runs_one_process_per_class_and_names_the_failing_one(self):
         self.write("test_multi.py", """
             import os, unittest
@@ -212,6 +189,32 @@ class RunnerTest(unittest.TestCase):
         while time.monotonic() < deadline and alive(grandchild):
             time.sleep(0.1)
         self.assertFalse(alive(grandchild), "the collection's child outlived the interrupt")
+
+    def test_a_class_that_took_long_last_time_runs_one_process_per_test_with_the_same_verdict(self):
+        self.write("test_long.py", """
+            import os, unittest
+            class L(unittest.TestCase):
+                def test_a(self): print("pid", os.getpid())
+                def test_ab(self): print("pid", os.getpid())
+                def test_b(self): self.assertEqual(1, 2)
+            """)
+        times = self.dir / "times.json"
+        times.write_text('{"test_long.L": 999}')
+        r = self.run_runner("discover", "-s", str(self.dir), "--times", str(times), "-j", "3")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("FAILED: 1 of 3 runs (test_long.L.test_b); 3 tests", r.stderr)  # test_a did not also run test_ab
+        self.assertEqual(len(set(re.findall(r"^pid (\d+)", r.stdout, re.M))), 2, r.stdout)
+        recorded = json.loads(times.read_text())
+        self.assertIn("test_long.L.test_a", recorded)
+        self.assertIn("test_long.L", recorded)
+
+    def test_an_unreadable_times_file_changes_nothing(self):
+        self.write("test_one.py", PASS)
+        times = self.dir / "times.json"
+        times.write_text("not json")
+        r = self.run_runner("discover", "-s", str(self.dir), "--times", str(times))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("OK: 1 runs, 2 tests", r.stdout)
 
 
 def alive(pid):
