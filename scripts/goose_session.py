@@ -55,7 +55,12 @@ CURRENCY, DECIMALS, PRICE_MINOR, FEE = "USD", 2, 50, 1
 RAIL = "lightning"  # the node pays on lightning only; in the rehearsal the reference is the mock rail's settlement_id
 # A peer the buyer refuses: a 64-hex key no node holds.
 STRANGER = "ab" * 32
-REPORT_WAIT = 600  # a report rests on the cadence tick that covers the deal (a tick is due about every 5 minutes)
+# A report rests on the cadence tick that covers the deal. The node's default cadence is a tick every 5 minutes give or
+# take 1 (capsulectl's), so the rehearsal gives each node's profile a 1-minute cadence with no jitter (CADENCE, written
+# after loop_join), as evidencebook-skills#428 does for tau2-live: `deal agree` stamps at once and sets the next tick
+# from the profile's cadence, so step 05's report waits about a minute, not five (loop#495).
+CADENCE = "cadence:\n    interval: 1m\n    jitter: 0s\n"
+REPORT_WAIT = 240
 
 
 class Goose:
@@ -75,6 +80,20 @@ class Goose:
         """The tool's JSON reply, a refusal included."""
         result = await self.session.call_tool(tool, arguments)
         return json.loads("".join(c.text for c in result.content if getattr(c, "type", "") == "text"))
+
+
+def set_cadence(home, profile):
+    """Give the node's capsulectl-deal profile (<home>/.config/capsule/profiles/<profile>.yaml, the one its Ctl runs
+    under) the rehearsal's CADENCE. A profile that already has it is left as it is; one with another cadence refuses."""
+    path = Path(home) / ".config" / "capsule" / "profiles" / f"{profile}.yaml"
+    if not path.is_file():
+        raise SystemExit(f"goose_session: no profile {path} after loop_join")
+    text = path.read_text()
+    if CADENCE in text:
+        return
+    if any(line.startswith("cadence:") for line in text.splitlines()):
+        raise SystemExit(f"goose_session: {path} already sets another cadence")
+    path.write_text(text + ("" if text.endswith("\n") else "\n") + CADENCE)
 
 
 def issue_settlement(rail_dir, deal_id, payer, payee):
@@ -148,6 +167,8 @@ async def run(out, rail_dir):
             # is exported for step 12. The asks of step 07 are made by these same nodes (goose_ask_session.py DEAL_RUN).
             b = await buyer.call("loop_join", commitment_dir=str(out / "buyer" / "joined"))
             s = await seller.call("loop_join", commitment_dir=str(out / "seller" / "joined"))
+            for name in ("buyer", "seller"):  # before the deal, so its agreement's stamp sets a 1-minute next tick
+                set_cadence(out / name, f"goose-{name}")
             for me, j in ((buyer, b), (seller, s)):
                 await me.call("loop_book_bundle", book_id="goose/node", record_id=j["record_id"], disclose=True,
                               out_path=str(out / me.name / "joined" / "join-record.bundle.json"))

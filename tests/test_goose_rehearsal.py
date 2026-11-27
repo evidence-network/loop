@@ -65,6 +65,27 @@ class GooseRehearsalTest(unittest.TestCase):
         text = (ROOT / "scripts" / "goose_session.py").read_text()
         self.assertIn(f'provider="{seal01.MODEL["provider"]}", model_id="{seal01.MODEL["model_id"]}"', text)
 
+    def test_each_node_ticks_on_the_rehearsals_one_minute_cadence(self):
+        # loop#495: the deal's agreement stamps, and that stamp's next tick is set from the profile's cadence (1m, no
+        # jitter: due within the minute after the stamp's minute), not capsulectl's 5m give or take 1m.
+        import sqlite3
+        from datetime import datetime
+        for name in ("buyer", "seller"):
+            with self.subTest(name):
+                profile = self.work / "run" / name / ".config" / "capsule" / "profiles" / f"goose-{name}.yaml"
+                self.assertIn("cadence:\n    interval: 1m\n    jitter: 0s\n", profile.read_text())
+                db = sqlite3.connect(self.work / "run" / name / "deal" / "deal.db")
+                try:
+                    ticks = db.execute("SELECT at, due_next FROM cadence_ticks ORDER BY tick").fetchall()
+                finally:
+                    db.close()
+                self.assertGreaterEqual(len(ticks), 2)  # deal init's, then the agreement's stamp and later ticks
+                for at, due in ticks[1:]:
+                    gap = (datetime.fromisoformat(due.replace("Z", "+00:00"))
+                           - datetime.fromisoformat(at.replace("Z", "+00:00"))).total_seconds()
+                    self.assertGreaterEqual(gap, 60)
+                    self.assertLess(gap, 120)
+
     def test_population_names_the_two_goose_nodes_and_the_steps_with_an_input(self):
         doc = json.loads((self.pop / "population.json").read_text())
         self.assertEqual([n["name"] for n in doc["nodes"]], ["buyer", "seller"])
@@ -896,7 +917,7 @@ class GooseRehearsalTest(unittest.TestCase):
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
 class GooseNoDriverTest(unittest.TestCase):
     """A rehearsal of its own, without the step 02 driver: a class apart from GooseRehearsalTest, whose rehearsal it does
-    not read, so the two rehearsals (about 7 minutes each) run side by side under scripts/unittest_parallel.py."""
+    not read, so the two rehearsals (about 3 minutes each, loop#495) run side by side under scripts/unittest_parallel.py."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -906,7 +927,7 @@ class GooseNoDriverTest(unittest.TestCase):
     def test_a_run_without_a_usable_step_02_driver_still_passes_step_03_and_step_02_says_not_checked(self):
         # One whole rehearsal without a driver (a missing file). A driver that exists but is not executable takes the
         # same path in the session (goose_session.usable_driver is false either way), which
-        # test_only_an_executable_file_is_a_usable_driver checks without a second 7-minute rehearsal (loop#489).
+        # test_only_an_executable_file_is_a_usable_driver checks without a second rehearsal (loop#489).
         bin_ = self.dir / "no-such-driver"
         work = self.dir / "nodriver-missing"
         env = {**os.environ, "LOOP_STEP02_BOOK_BIN": str(bin_)}
@@ -937,6 +958,52 @@ class GooseNoDriverTest(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.strip(), "[False, False, True]")
+
+
+@needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
+class GooseCadenceTest(unittest.TestCase):
+    """goose_session.set_cadence (loop#495): the rehearsal's 1m cadence is added to a node's profile once, a rerun on the same
+    homes leaves it as it is, and a profile with another cadence or none at all refuses."""
+
+    PROBE = r"""
+import sys
+import goose_session as gs
+try:
+    gs.set_cadence(sys.argv[1], "goose-buyer")
+except SystemExit as e:
+    print("refused:", e)
+"""
+
+    def set_cadence(self, home):
+        r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", self.PROBE, str(home)],
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           env={**os.environ, "PYTHONPATH": str(ROOT / "scripts"),
+                                "LOOP_GOOSE_SRC": str(TOOLS / "src")})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def profile(self, home, text):
+        path = Path(home) / ".config" / "capsule" / "profiles" / "goose-buyer.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text(text)
+        return path
+
+    def test_the_cadence_is_added_once(self):
+        with tempfile.TemporaryDirectory() as home:
+            path = self.profile(home, "name: goose-buyer\nlog: deal")
+            self.assertEqual(self.set_cadence(home), "")
+            once = path.read_text()
+            self.assertEqual(once, "name: goose-buyer\nlog: deal\ncadence:\n    interval: 1m\n    jitter: 0s\n")
+            self.assertEqual(self.set_cadence(home), "")
+            self.assertEqual(path.read_text(), once)
+
+    def test_another_cadence_or_no_profile_refuses(self):
+        with tempfile.TemporaryDirectory() as home:
+            path = self.profile(home, "name: goose-buyer\ncadence:\n    interval: 1h\n")
+            self.assertIn("already sets another cadence", self.set_cadence(home))
+            self.assertEqual(path.read_text(), "name: goose-buyer\ncadence:\n    interval: 1h\n")
+        with tempfile.TemporaryDirectory() as home:
+            self.assertIn("no profile", self.set_cadence(home))
 
 
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
