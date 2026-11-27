@@ -24,7 +24,8 @@ and nightly, and a red run on main or a nightly opens a `ci-red` issue. Pull req
 
 `scripts/check.sh` skips the `loop` job (every step's pinned tools, the step tests with them, stage 1, the cross
 stage and steps 10 and 11). It is a heavy suite, about 17 minutes on an Apple-silicon Mac (timed job by job,
-evidence-network/loop#489; one Goose rehearsal alone is about 7 minutes), so it is not a pre-push step: CI runs it
+evidence-network/loop#489, before evidence-network/loop#495 cut one Goose rehearsal from about 7 minutes to
+about 3), so it is not a pre-push step: CI runs it
 after each merge that changes anything outside the `paths-ignore` list of `.github/workflows/loop.yml` and nightly,
 and a failure there opens a `ci-red` issue the same day, fixed or reverted that day. `scripts/check.sh --full` runs
 it locally when you want it before a push (needs go, cargo, openssl 3, bash 4+, GNU `timeout`, `flock`, Google
