@@ -52,12 +52,24 @@ class ScopeTest(unittest.TestCase):
         self.assertEqual(r.stdout.split(), mine)
 
     def test_a_grandchild_is_seen(self):
-        p = subprocess.Popen(["bash", "-c", f'bash -c \'exec -a "{self.token} loop.sh" sleep 30\' & wait'])
-        self.addCleanup(lambda: (subprocess.run(["pkill", "-f", self.token], capture_output=True), p.kill(), p.wait()))
+        # The name goes in through the environment, so only the grandchild's command line holds the token.
+        mark = Path(self.tmpdir()) / "pid"
+        p = subprocess.Popen(["bash", "-c", 'bash -c \'echo $$ > "$MARK"; exec -a "$NAME" sleep 30\' & wait'],
+                             env={**os.environ, "MARK": str(mark), "NAME": f"{self.token} loop.sh"})
+        self.addCleanup(lambda: (p.kill(), p.wait()))
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline and pgrep("-f", self.token).returncode != 0:
+        while time.monotonic() < deadline and not (mark.exists() and mark.read_text().strip()):
             time.sleep(0.05)
-        self.assertEqual(pgrep("-f", self.token).returncode, 0)
+        grandchild = mark.read_text().strip()
+        self.addCleanup(lambda: subprocess.run(["kill", grandchild], capture_output=True))
+        r = pgrep("-f", self.token)
+        self.assertEqual((r.returncode, r.stdout.split()), (0, [grandchild]))
+
+    def tmpdir(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", d]))
+        return d
 
 
 if __name__ == "__main__":

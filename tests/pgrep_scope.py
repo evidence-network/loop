@@ -13,15 +13,21 @@ import tempfile
 from pathlib import Path
 
 STUB = """#!/bin/bash
-# The real pgrep's answer, keeping only descendants of $LOOP_TEST_PID (tests/pgrep_scope.py).
+# The real pgrep's answer, keeping only descendants of $LOOP_TEST_PID (tests/pgrep_scope.py). The real one runs as a
+# direct child, never in a $(...) subshell (a forked copy of this script, whose command line holds the pattern), and
+# this script leaves itself out: procps' pgrep excludes only itself, not its ancestors.
+tmp=$(mktemp) || exit 2
+"$LOOP_REAL_PGREP" "$@" > "$tmp"
 out=""
-for p in $("$LOOP_REAL_PGREP" "$@"); do
+while read -r p; do
+  [ "$p" = "$$" ] && continue
   q=$p
   while [ -n "$q" ] && [ "$q" -gt 1 ]; do
     if [ "$q" = "$LOOP_TEST_PID" ]; then out="$out$p"$'\\n'; break; fi
     q=$(ps -o ppid= -p "$q" 2> /dev/null | tr -d ' ')
   done
-done
+done < "$tmp"
+rm -f "$tmp"
 [ -n "$out" ] || exit 1
 printf '%s' "$out"
 """
