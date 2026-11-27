@@ -24,7 +24,7 @@ import threading
 import unittest
 import unittest.mock
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -33,6 +33,7 @@ os.environ.setdefault("LOOP_REVOCATIONS_FETCH", "0")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
+from local_http import LocalHTTPServer  # noqa: E402
 import staple_stub  # noqa: E402
 
 # The pinned capsule-cli is a stub for this module; tests/test_staple_verify.py runs the real one.
@@ -420,7 +421,7 @@ class FakeConsole:
                     return self.reply(502, (REPORTER_FIX / "absence.txt").read_bytes())
                 self.reply(200, (REPORTER_FIX / f"{what}.json").read_bytes())
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
@@ -880,7 +881,7 @@ class PluginConsole:
                     return self.reply(200, json.dumps(reply).encode())
                 self.reply(404, b"no such tool")
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

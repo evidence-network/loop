@@ -6,6 +6,8 @@ import json
 import os
 import threading
 
+from local_http import LocalHTTPServer
+
 
 class FakeLab:
     def __init__(self, spendable=9873, spent_today=0, send_result="succeeded", fee=5, pending=False, send_http=None):
@@ -70,7 +72,7 @@ class FakeLab:
 
     def __enter__(self):
         for who in ("lab-1", "lab-2"):
-            s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), self.handler(who))
+            s = LocalHTTPServer(("127.0.0.1", 0), self.handler(who))
             threading.Thread(target=s.serve_forever, daemon=True).start()
             self.servers[who] = s
         self.ports = {w: s.server_address[1] for w, s in self.servers.items()}

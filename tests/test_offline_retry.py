@@ -17,10 +17,12 @@ import threading
 import time
 import unittest
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+from local_http import LocalHTTPServer  # noqa: E402
 sys.path.insert(0, str(ROOT / "scripts"))
 import check_nodes  # noqa: E402
 import check_reports  # noqa: E402
@@ -126,7 +128,7 @@ class FakeConsole:
                     return self.reply(502, NO_REPLY[what])
                 self.reply(200, (FIXTURES / f"{what}.json").read_bytes())
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = LocalHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
