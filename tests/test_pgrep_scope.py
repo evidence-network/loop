@@ -62,7 +62,13 @@ class ScopeTest(unittest.TestCase):
             time.sleep(0.05)
         grandchild = mark.read_text().strip()
         self.addCleanup(lambda: subprocess.run(["kill", grandchild], capture_output=True))
-        r = pgrep("-f", self.token)
+        # The pid file is written just before the exec that renames it: poll until the rename is visible.
+        deadline = time.monotonic() + 10
+        while True:
+            r = pgrep("-f", self.token)
+            if r.stdout.split() == [grandchild] or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
         self.assertEqual((r.returncode, r.stdout.split()), (0, [grandchild]))
 
     def tmpdir(self):
