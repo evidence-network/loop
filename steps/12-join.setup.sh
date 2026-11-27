@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install what step 12 (Join) needs, exactly at its versions.lock pins:
 # capsulectl (the core) and capsulectl-book (the book plugin), both built from
-# source at the evidencebook tag they pin. That tag has no release assets, so
-# its capsulectl/ module is built here: capsulectl-book from ./cmd/capsulectl-book,
+# source at the evidencebook tag they pin, with the release's own flags, so a
+# host needs no release asset for its platform: capsulectl-book from ./cmd/capsulectl-book,
 # and the core from the capsule-cli version that module's go.mod and go.sum
 # lock. The binaries go to $LOOP_TOOLS/bin (default
 # ~/.cache/evidence-network-loop/bin), where join.sh and steps/02-book and
@@ -45,13 +45,15 @@ commit="$(git -C "$src/repo" rev-parse HEAD)"
 cd "$src/repo/capsulectl"
 
 # As the tag's own release build (capsulectl/scripts/release-build.sh): CGO off,
-# -trimpath, no VCS stamp, and the core's and the plugin's versions injected.
+# -trimpath, no VCS stamp, and the core's and the plugin's versions injected. The plugin's
+# version is the tag without its capsulectl/ prefix (v0.1.1 for capsulectl/v0.1.1), as the release's.
+book_version="${book_tag##*/}"
 CORE=github.com/action-state-group/capsule-cli
 core_version="$(go list -m -f '{{.Version}}' "$CORE")"
 core_commit="$(go mod download -json "$CORE@$core_version" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Origin"]["Hash"])')"
 core_ld="-s -w -buildid= -X $CORE/cli.CLIVersion=$core_version -X $CORE/cli.CLICommit=$core_commit"
 build() { CGO_ENABLED=0 go build -mod=readonly -trimpath -buildvcs=false "$@"; }
-build -ldflags "$core_ld -X $CORE/cli.PluginVersion=$book_tag -X $CORE/cli.PluginCommit=$commit" \
+build -ldflags "$core_ld -X $CORE/cli.PluginVersion=$book_version -X $CORE/cli.PluginCommit=$commit" \
   -o "$bin/capsulectl-book" ./cmd/capsulectl-book
 build -ldflags "$core_ld" -o "$bin/capsulectl" "$CORE/cmd/capsulectl"
 echo "$book_repo $book_tag $commit capsule-cli $core_version" >"$bin/capsulectl.built-from"

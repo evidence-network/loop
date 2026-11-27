@@ -142,6 +142,24 @@ def _history(answer):
     return [e for e in history if isinstance(e, dict)] if isinstance(history, list) else []
 
 
+# The label of one window of a windowed book (evidencebook window.go, label): a year, quarter, month, ISO week or day.
+WINDOW_LABEL = re.compile(r"\d{4}(?:-Q[1-4]|-\d{2}(?:-\d{2})?|-W\d{2})?")
+
+
+def stream_book(stream, book):
+    """Whether `stream` is the log of book `book`: its own log id, or one window of it (`<book>/<label>`). A book
+    capsulectl v0.1.1 creates is split by month (evidencebook#805), so its card names `<book>/2026-11`."""
+    if not (isinstance(stream, str) and isinstance(book, str) and book):
+        return False
+    return stream == book or (stream.startswith(book + "/") and WINDOW_LABEL.fullmatch(stream[len(book) + 1:]) is not None)
+
+
+def stream_base(stream):
+    """The book a windowed stream `<book>/<label>` belongs to, or None when the stream names no window."""
+    book, sep, label = stream.rpartition("/") if isinstance(stream, str) else ("", "", "")
+    return book if sep and book and WINDOW_LABEL.fullmatch(label) else None
+
+
 def card_stream(answer):
     """The card's own log id: the evidence stream its result names, or None."""
     result = card_result(answer) if answer is not None else None

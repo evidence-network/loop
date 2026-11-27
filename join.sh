@@ -37,8 +37,10 @@
 # The books the node serves are found with the CLI: every profile that
 # `capsulectl profile list` names under --home's config (XDG_CONFIG_HOME=
 # HOME/config), except the stranger's, whose trusted keys include the node
-# key; `capsulectl profile show` gives its log id, the card's stream, and
-# its checkpoint key, which the card's entry names (checkpoint_key). Every
+# key; `capsulectl profile show` gives its log id, which the stranger asks,
+# and its checkpoint key, which the card's entry names (checkpoint_key). The
+# card's stream is the log id the card names: a book capsulectl v0.1.1
+# creates is split by month, so <log id>/<YYYY-MM> (evidencebook#805). Every
 # card is in the mesh-llm community. The
 # join's own book is always one. To serve another book, create its profile
 # under the same --home, signed by the node key, with a checkpoint, before
@@ -261,6 +263,7 @@ import base64, hashlib, json, sys
 root, out, key, book_id, node, checkpoint_key, within, now, books = sys.argv[1:]
 sys.path.insert(0, f"{root}/scripts")
 import check_commitment as cc
+import history_cards as hc
 b64 = lambda raw: base64.b64encode(raw).decode("ascii")
 policy = cc.sign({"profile": cc.POLICY_PROFILE, "key_id": node,
                   "policy": json.load(open(f"{out}/policy.json"))}, key)
@@ -271,11 +274,16 @@ attestation = (json.dumps({"book_id": book_id, "checkpoint_key": checkpoint_key,
                            "statement": book["checkpoint_statement"]}, indent=2, sort_keys=True) + "\n").encode()
 cards = []
 for line in open(books).read().splitlines():
-    _, stream, checkpoint = line.split("\t")
-    staple = open(f"{out}/probe/" + ("history_card" if stream == book_id else f"cards/{stream}") + ".answer.json",
+    _, log_id, checkpoint = line.split("\t")
+    staple = open(f"{out}/probe/" + ("history_card" if log_id == book_id else f"cards/{log_id}") + ".answer.json",
                   "rb").read()
     if "artifact" not in json.loads(staple):
-        sys.exit(f"join.sh: book {stream} did not answer history_card/1 with a card (does it have a checkpoint?)")
+        sys.exit(f"join.sh: book {log_id} did not answer history_card/1 with a card (does it have a checkpoint?)")
+    # The stream is the card's own log id, as check_commitment.py requires: a windowed book (capsulectl v0.1.1)
+    # signs its card under <log id>/<window label>, not the profile's base log id.
+    stream = hc.card_stream(json.loads(staple))
+    if not hc.stream_book(stream, log_id):
+        sys.exit(f"join.sh: book {log_id}'s card names log id {stream!r}, not its own or one of its windows")
     cards.append({"stream": stream, "community": "mesh-llm", "derivation": "history_card/1",
                   "sha256": hashlib.sha256(staple).hexdigest(), "bytes": b64(staple),
                   "checkpoint_key": cc.b64url(cc.ED25519_SPKI + bytes.fromhex(checkpoint))})

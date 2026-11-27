@@ -445,7 +445,7 @@ class Step12Staple(unittest.TestCase):
         for stream in accepted:
             with self.subTest(stream=stream):
                 for suffix in ("answer", "request", "verified"):
-                    path = (node / f"{self.step.card_probe(adv, stream)}.{suffix}.json").resolve()
+                    path = (node / f"{self.step.card_probe(adv, stream, node)}.{suffix}.json").resolve()
                     self.assertTrue(path.is_relative_to(cards), path)
 
     def test_a_stream_the_checker_refuses_names_no_path_and_reads_nothing_outside_the_node(self):
@@ -453,7 +453,7 @@ class Step12Staple(unittest.TestCase):
         adv = {"book_id": "alice-book"}
         for stream in ("../x", "a/../../x", "/etc/passwd", "a//b", None, ""):
             with self.subTest(stream=stream):
-                self.assertIsNone(self.step.card_probe(adv, stream))
+                self.assertIsNone(self.step.card_probe(adv, stream, d))
         # A card whose kept answer sits outside the node directory, under the refused stream's path, is not read.
         doc = json.loads((d / "commitment.json").read_text())
         (self.tmp / "x.answer.json").write_bytes(base64.b64decode(doc["history_cards"][1]["bytes"]))
@@ -461,6 +461,35 @@ class Step12Staple(unittest.TestCase):
         adv = self.step.advertised(d)
         self.assertEqual(self.step.check_staple(d, adv),
                          ["the stapled card for stream ../../../x is not the answer the stranger kept for that book"])
+
+    def test_a_windowed_stream_reads_the_probe_join_sh_kept_for_its_book(self):
+        # join.sh asks each book by its profile's log id; a v0.1.1 card names <log id>/<window> (evidencebook#805).
+        node, adv = self.tmp / "node", {"book_id": "alice-book"}
+        self.assertEqual(self.step.card_probe(adv, "alice-book", node), "probe/history_card")
+        self.assertEqual(self.step.card_probe(adv, "alice-book/2026-11", node), "probe/history_card")
+        self.assertEqual(self.step.card_probe(adv, "alice-ledger", node), "probe/cards/alice-ledger")
+        self.assertEqual(self.step.card_probe(adv, "alice-ledger/2026-11", node), "probe/cards/alice-ledger")
+        # A stream whose own files are there (a book named like a window) keeps its own path.
+        (node / "probe" / "cards" / "alice-ledger").mkdir(parents=True)
+        (node / "probe" / "cards" / "alice-ledger" / "2026-11.answer.json").write_text("{}")
+        self.assertEqual(self.step.card_probe(adv, "alice-ledger/2026-11", node), "probe/cards/alice-ledger/2026-11")
+        # Another book whose log id reads like a window of the own book keeps its own probe when join.sh kept one.
+        (node / "probe" / "cards" / "alice-book").mkdir(parents=True)
+        (node / "probe" / "cards" / "alice-book" / "2026-10.answer.json").write_text("{}")
+        self.assertEqual(self.step.card_probe(adv, "alice-book/2026-10", node), "probe/cards/alice-book/2026-10")
+        self.assertFalse(self.step.own_card(adv, "alice-book/2026-10", node))
+        self.assertTrue(self.step.own_card(adv, "alice-book/2026-11", node))
+        # A last segment that is no window label is a stream of its own, not a window of the book.
+        self.assertEqual(self.step.card_probe(adv, "alice-book/notes", node), "probe/cards/alice-book/notes")
+
+    def test_the_own_book_check_accepts_its_window_and_nothing_else(self):
+        adv = {"book_id": "alice-book", "checkpoint_key": "K", "streams": ["alice-book/2026-11", "alice-ledger/2026-11"],
+               "card_keys": {"alice-book/2026-11": "K", "alice-ledger/2026-11": "L"}}
+        self.assertEqual(self.step.check_own_card(adv), [])
+        self.assertEqual(self.step.check_own_card(dict(adv, card_keys={"alice-book/2026-11": "L"})),
+                         ["the card entry for alice-book names a checkpoint key other than the book's checkpoint's"])
+        self.assertEqual(self.step.check_own_card(dict(adv, streams=["alice-books/2026-11"], card_keys={})),
+                         ["the commitment staples no history_card/1 for the join's own book alice-book"])
 
     def test_both_profiles_hold(self):
         for src in (TWO, ROOT / "tests" / "fixtures" / "step12" / "joined" / "alice"):
@@ -529,7 +558,27 @@ class RealJoin(unittest.TestCase):
             make.make(out, Path(tmp) / "home")
             doc = json.loads((out / "commitment.json").read_text())
             self.assertEqual(cc.verify(doc, cc.file_fetcher(out)), ([], []))
-        self.assertEqual([c["stream"] for c in hc.history_cards(doc)], ["alice-book", "alice-ledger"])
+        # capsulectl v0.1.1 splits a new book by month (evidencebook#805): each card names its book's current window.
+        streams = [c["stream"] for c in hc.history_cards(doc)]
+        self.assertEqual([hc.stream_base(s) for s in streams], ["alice-book", "alice-ledger"], streams)
+
+
+class WindowedStreams(unittest.TestCase):
+    """history_cards.stream_book and stream_base: a windowed book's stream is <book>/<window label> (evidencebook#805)."""
+
+    def test_a_book_and_each_window_label_shape(self):
+        for stream in ("a-book", "a-book/2026", "a-book/2026-Q4", "a-book/2026-11", "a-book/2026-W48", "a-book/2026-11-27"):
+            with self.subTest(stream=stream):
+                self.assertTrue(hc.stream_book(stream, "a-book"))
+        for label in ("2026", "2026-Q4", "2026-11", "2026-W48", "2026-11-27"):
+            self.assertEqual(hc.stream_base(f"x/a-book/{label}"), "x/a-book")
+
+    def test_another_book_or_a_plain_segment_is_not_a_window(self):
+        for stream in ("a-book2/2026-11", "a-book/notes", "a-book/2026-13x", "a-book/2026-Q5", "a-book/2026/11", "", None):
+            with self.subTest(stream=stream):
+                self.assertFalse(hc.stream_book(stream, "a-book"))
+        for stream in ("a-book", "a-book/notes", "2026-11", "/2026-11", None):
+            self.assertIsNone(hc.stream_base(stream))
 
 
 @unittest.skipUnless(OPENSSL and shutil.which("git"), NO_OPENSSL + " (or git)")
