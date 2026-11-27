@@ -20,14 +20,15 @@ Before every push: `scripts/check.sh` (it prints its own time at the end). Its u
 the change can affect (`scripts/test_impact.py` reads what each test module names and imports; a code change it
 cannot place runs them all, as does `LOOP_TESTS=all`), one process per test class in parallel
 (`scripts/unittest_parallel.py`); the `reports` workflow runs every module on each pull request, after each merge
-and nightly, and a red run on main or a nightly opens a `ci-red` issue. Before a push that changes anything
-outside the `paths-ignore` list of `.github/workflows/loop.yml` (today: top-level Markdown files, `docs/` and the
-other workflow files), also `scripts/check.sh --full` (about 80 min; needs go, cargo, openssl 3, bash 4+, GNU
-`timeout`, `flock`, Google Chrome and network for the pinned tools). Pull requests run only the fast set.
+and nightly, and a red run on main or a nightly opens a `ci-red` issue. Pull requests run only the fast set.
 
-The one exception: `scripts/check.sh` skips the `loop` job (every step's pinned tools, stage 1, the cross stage
-and steps 10 and 11), which takes about 51 min in CI and about 79 min on a Mac. `--full` runs it; CI runs it
-nightly and on each such push to main, and a failure there opens a `ci-red` issue the same day. The leak scans need the `LEAK_LINT_TERMS` secret and run only in CI.
+`scripts/check.sh` skips the `loop` job (every step's pinned tools, the step tests with them, stage 1, the cross
+stage and steps 10 and 11). It is a heavy suite, about 17 minutes on an Apple-silicon Mac (timed job by job,
+evidence-network/loop#489; one Goose rehearsal alone is about 7 minutes), so it is not a pre-push step: CI runs it
+after each merge that changes anything outside the `paths-ignore` list of `.github/workflows/loop.yml` and nightly,
+and a failure there opens a `ci-red` issue the same day, fixed or reverted that day. `scripts/check.sh --full` runs
+it locally when you want it before a push (needs go, cargo, openssl 3, bash 4+, GNU `timeout`, `flock`, Google
+Chrome and network for the pinned tools). The leak scans need the `LEAK_LINT_TERMS` secret and run only in CI.
 
 ## Sign your commits off (DCO)
 

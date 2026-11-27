@@ -71,7 +71,8 @@ Two gates hold the bar. The rehearsal gate runs after merge: `loop.sh --stage 1 
 03, 12, 07 and 08), then the cross stage (step 13) and steps 10 and 11, runs against the rehearsal population
 (simulated nodes on a mock rail, no real payments) on every push to main that changes the loop's inputs,
 nightly, and by hand (`.github/workflows/loop.yml`), and fails if any step fails; a failed run on main opens a
-`ci-red` issue the same day. Contributors run it first with `scripts/check.sh --full`. The ecosystem gate keeps each step's last live result per ecosystem, with
+`ci-red` issue the same day. `scripts/check.sh --full` runs the same job locally when wanted (over 10 minutes, so it is not
+a pre-push step). The ecosystem gate keeps each step's last live result per ecosystem, with
 the pins it ran under, in [`baseline/`](baseline/README.md): a pull request that changes a pin
 must bring a new live run, and fails if a step that passed now fails, is missing or reads
 `NOT_CHECKED`.

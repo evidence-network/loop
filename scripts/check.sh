@@ -7,9 +7,9 @@
 #   scripts/check.sh --full   also loop.yml's loop job (every step's pinned tools, the step tests with
 #                             LOOP_REQUIRE_TOOLS=1, stage 1, the cross stage, steps 10 and 11)
 #
-# The exception: the default tier skips the loop job (about 51 min in CI, 79 min on a Mac). Run --full before a push
-# that changes anything outside loop.yml's push paths-ignore list; CI runs the job nightly and on such a push to
-# main, and a failure there opens a ci-red issue (CONTRIBUTING.md).
+# The exception: the default tier skips the loop job, a heavy suite (about 17 min on a Mac, timed job by job, loop#489),
+# which CI runs after each merge that changes anything outside loop.yml's push paths-ignore list and nightly, a failure
+# there opening a ci-red issue (CONTRIBUTING.md); --full runs it locally when wanted.
 #
 # Exits non-zero on the first failure. Runs from any directory; writes nothing into the checkout (the rehearsal
 # runs, the site and the summaries go to a temporary directory). The step tools install under LOOP_TOOLS
@@ -200,7 +200,7 @@ done
 
 step "loop (loop.yml): step tests with the pinned tools"
 # The module list is read from loop.yml's own step, so the two cannot drift.
-modules=$(awk '/^ *run: python3 -B -m unittest tests\.test_step01_seal / { sub(/^ *run: python3 -B -m unittest /, ""); sub(/ -v$/, ""); print; exit }' \
+modules=$(awk '/^ *run: python3 -B scripts\/unittest_parallel\.py modules tests\.test_step01_seal / { sub(/^ *run: python3 -B scripts\/unittest_parallel\.py modules /, ""); print; exit }' \
   .github/workflows/loop.yml)
 [ -n "$modules" ] || { echo "check: could not read the step-test modules from loop.yml" >&2; exit 1; }
 # shellcheck disable=SC2086 # one word per module
