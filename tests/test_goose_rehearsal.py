@@ -65,26 +65,15 @@ class GooseRehearsalTest(unittest.TestCase):
         text = (ROOT / "scripts" / "goose_session.py").read_text()
         self.assertIn(f'provider="{seal01.MODEL["provider"]}", model_id="{seal01.MODEL["model_id"]}"', text)
 
-    def test_each_node_ticks_on_the_rehearsals_one_minute_cadence(self):
-        # loop#495: the deal's agreement stamps, and that stamp's next tick is set from the profile's cadence (1m, no
-        # jitter: due within the minute after the stamp's minute), not capsulectl's 5m give or take 1m.
-        import sqlite3
-        from datetime import datetime
+    def test_step_05_reports_on_a_stamp_taken_on_demand_not_a_cadence_tick(self):
+        # loop#498: the driver stamps each node with `deal tick --now` before step 05, so each report rests on that stamp
+        # and is asked for with no wait (a report not covered refuses at once instead of polling for a cadence tick).
         for name in ("buyer", "seller"):
             with self.subTest(name):
-                profile = self.work / "run" / name / ".config" / "capsule" / "profiles" / f"goose-{name}.yaml"
-                self.assertIn("cadence:\n    interval: 1m\n    jitter: 0s\n", profile.read_text())
-                db = sqlite3.connect(self.work / "run" / name / "deal" / "deal.db")
-                try:
-                    ticks = db.execute("SELECT at, due_next FROM cadence_ticks ORDER BY tick").fetchall()
-                finally:
-                    db.close()
-                self.assertGreaterEqual(len(ticks), 2)  # deal init's, then the agreement's stamp and later ticks
-                for at, due in ticks[1:]:
-                    gap = (datetime.fromisoformat(due.replace("Z", "+00:00"))
-                           - datetime.fromisoformat(at.replace("Z", "+00:00"))).total_seconds()
-                    self.assertGreaterEqual(gap, 60)
-                    self.assertLess(gap, 120)
+                stamp = json.loads((self.work / "run" / name / "stamp.json").read_text())
+                self.assertIs(stamp["stamped_on_demand"], True)
+                self.assertEqual(stamp["state"], "ticked")
+                self.assertTrue((self.work / "run" / f"{name}-report.json").is_file())
 
     def test_population_names_the_two_goose_nodes_and_the_steps_with_an_input(self):
         doc = json.loads((self.pop / "population.json").read_text())
@@ -917,7 +906,7 @@ class GooseRehearsalTest(unittest.TestCase):
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
 class GooseNoDriverTest(unittest.TestCase):
     """A rehearsal of its own, without the step 02 driver: a class apart from GooseRehearsalTest, whose rehearsal it does
-    not read, so the two rehearsals (about 3 minutes each, loop#495) run side by side under scripts/unittest_parallel.py."""
+    not read, so the two rehearsals (about 2 minutes each, loop#498) run side by side under scripts/unittest_parallel.py."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -961,49 +950,48 @@ class GooseNoDriverTest(unittest.TestCase):
 
 
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
-class GooseCadenceTest(unittest.TestCase):
-    """goose_session.set_cadence (loop#495): the rehearsal's 1m cadence is added to a node's profile once, a rerun on the same
-    homes leaves it as it is, and a profile with another cadence or none at all refuses."""
+class GooseStampTest(unittest.TestCase):
+    """goose_session.stamp_now (loop#498): step 05 asks for its reports only after each node's `deal tick --now` says it
+    stamped on demand; a tick that ran on the schedule instead, or did not tick, refuses before any report is asked for."""
 
     PROBE = r"""
 import sys
 import goose_session as gs
 try:
-    gs.set_cadence(sys.argv[1], "goose-buyer")
+    print("stamped:", gs.stamp_now(sys.argv[1], "goose-buyer")["tick"])
 except SystemExit as e:
     print("refused:", e)
 """
 
-    def set_cadence(self, home):
-        r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", self.PROBE, str(home)],
-                           stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           env={**os.environ, "PYTHONPATH": str(ROOT / "scripts"),
-                                "LOOP_GOOSE_SRC": str(TOOLS / "src")})
+    def stamp(self, reply):
+        with tempfile.TemporaryDirectory() as d:
+            ctl = Path(d) / "capsulectl-deal"  # stands in for the node's binary: prints the tick's reply
+            ctl.write_text(f"#!/bin/sh\necho '{json.dumps(reply)}'\n")
+            ctl.chmod(0o755)
+            r = subprocess.run([str(TOOLS / "venv" / "bin" / "python"), "-B", "-c", self.PROBE, d],
+                               stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               env={**os.environ, "PYTHONPATH": str(ROOT / "scripts"), "GOOSE_CAPSULECTL_DEAL": str(ctl),
+                                    "LOOP_GOOSE_SRC": str(TOOLS / "src")})
         self.assertEqual(r.returncode, 0, r.stderr)
         return r.stdout.strip()
 
-    def profile(self, home, text):
-        path = Path(home) / ".config" / "capsule" / "profiles" / "goose-buyer.yaml"
-        path.parent.mkdir(parents=True)
-        path.write_text(text)
-        return path
+    def test_a_stamp_on_demand_is_returned(self):
+        self.assertEqual(self.stamp({"state": "ticked", "tick": 7, "stamped_on_demand": True}), "stamped: 7")
 
-    def test_the_cadence_is_added_once(self):
-        with tempfile.TemporaryDirectory() as home:
-            path = self.profile(home, "name: goose-buyer\nlog: deal")
-            self.assertEqual(self.set_cadence(home), "")
-            once = path.read_text()
-            self.assertEqual(once, "name: goose-buyer\nlog: deal\ncadence:\n    interval: 1m\n    jitter: 0s\n")
-            self.assertEqual(self.set_cadence(home), "")
-            self.assertEqual(path.read_text(), once)
+    def test_a_tick_not_stamped_on_demand_refuses(self):
+        for reply in ({"state": "ticked", "tick": 7, "stamped_on_demand": False},  # the shelf was not migrated
+                      {"state": "not_due", "stamped_on_demand": False},
+                      {"state": "ticked", "tick": 7}):  # a capsulectl without --now's reply member
+            with self.subTest(reply):
+                self.assertIn("did not stamp", self.stamp(reply))
 
-    def test_another_cadence_or_no_profile_refuses(self):
-        with tempfile.TemporaryDirectory() as home:
-            path = self.profile(home, "name: goose-buyer\ncadence:\n    interval: 1h\n")
-            self.assertIn("already sets another cadence", self.set_cadence(home))
-            self.assertEqual(path.read_text(), "name: goose-buyer\ncadence:\n    interval: 1h\n")
-        with tempfile.TemporaryDirectory() as home:
-            self.assertIn("no profile", self.set_cadence(home))
+    def test_every_report_is_asked_for_after_the_stamps_with_no_wait(self):
+        text = (ROOT / "scripts" / "goose_session.py").read_text()
+        stamps = text.index("stamp_now(out / node.name")
+        reports = text.index('node.call("loop_deal_report"')
+        self.assertLess(stamps, reports)
+        self.assertEqual(text.count('"loop_deal_report"'), 1)
+        self.assertIn('node.call("loop_deal_report", deal_id=deal_id, wait_seconds=0,', text)
 
 
 @needs(TOOLS / "venv" / "bin" / "python", "run steps/goose.setup.sh to install the Goose tools")
