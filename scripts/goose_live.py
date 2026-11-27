@@ -38,8 +38,10 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "steps"))
 from goose_ask_session import Goose  # noqa: E402
 from goose_rehearsal import node_env  # noqa: E402
+import finding  # noqa: E402
 NAMES = ("goose-1", "goose-2")  # goose-1 sells, goose-2 buys
 # The relay the commitments name: step 03 requires a wss:// URL; no node outside the lab host can reach this one.
 RELAY = "wss://relay.loop-lab.example"
@@ -272,8 +274,7 @@ def cmd_session(a):
     finally:
         relay.close()
     src = Path(os.environ["LOOP_GOOSE_SRC"])
-    rev = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"], stdin=subprocess.DEVNULL, capture_output=True,
-                         text=True).stdout.strip()
+    rev = finding.checkout_ref("goose-g1", src)  # the pinned tag, or the commit
     if not rev:
         raise SystemExit("cannot read the Goose checkout revision")
     ids = json.loads((run / "nodes.json").read_text())

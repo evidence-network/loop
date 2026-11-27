@@ -98,12 +98,16 @@ cmd_entries() {
   [ "$DRY" = 1 ] && { echo "+ write nodes/<node_id>.json for each node in $G/ids.json"; return; }
   [ -n "${LAB_OPERATOR:-}" ] || die "set LAB_OPERATOR to the GitHub handle of whoever runs the nodes"
   python3 -B - "$ROOT" "$G/ids.json" "$LAB_OPERATOR" "$LOOP_GOOSE_SRC" <<'PY'
-import json, subprocess, sys
+import json, sys
 from pathlib import Path
 root, ids, operator, src = sys.argv[1:]
 sys.path.insert(0, root + "/scripts")
+sys.path.insert(0, root + "/steps")
 import check_nodes
-rev = subprocess.run(["git", "-C", src, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+import finding
+rev = finding.checkout_ref("goose-g1", src)  # the pinned tag, or the commit
+if not rev:
+    sys.exit(f"cannot read the Goose checkout revision in {src}")
 for name, d in sorted(json.load(open(ids)).items()):
     path = Path(root) / "nodes" / f"{d['node_id']}.json"
     entry = {
