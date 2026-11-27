@@ -216,6 +216,24 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("OK: 1 runs, 2 tests", r.stdout)
 
+    def test_a_long_class_with_a_shared_fixture_is_not_split(self):
+        marks = self.dir / "setups"
+        self.write("test_shared.py", f"""
+            import unittest
+            class S(unittest.TestCase):
+                @classmethod
+                def setUpClass(cls):
+                    open({str(marks)!r}, "a").write("setup\\n")
+                def test_a(self): pass
+                def test_b(self): pass
+            """)
+        times = self.dir / "times.json"
+        times.write_text('{"test_shared.S": 999}')
+        r = self.run_runner("discover", "-s", str(self.dir), "--times", str(times))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("OK: 1 runs, 2 tests", r.stdout)
+        self.assertEqual(marks.read_text().splitlines(), ["setup"])  # the fixture was built once
+
 
 def alive(pid):
     try:

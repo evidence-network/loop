@@ -84,7 +84,7 @@ def run_all(a):
         if not files:
             print(f"unittest_parallel: no {a.pattern} in {a.start}", file=sys.stderr)
             return 1
-        tests = collect(py, a.start, a.pattern)
+        tests, shared = collect(py, a.start, a.pattern)
         times = load_times(a.times)
         jobs = []
         for f in files:
@@ -98,8 +98,9 @@ def run_all(a):
                 jobs.append(Job(f.stem, base, None))
                 continue
             for cls, t in classes.items():
-                if len(t) > 1 and times.get(cls, 0) > SPLIT_SECONDS:
-                    # A class that took long last time: one run per test. "*ID" matches that test id exactly.
+                if len(t) > 1 and times.get(cls, 0) > SPLIT_SECONDS and cls not in shared:
+                    # A class that took long last time and shares no fixture between its tests: one run per test.
+                    # "*ID" matches that test id exactly.
                     jobs += [Job(i, base + ["-k", f"*{i}"], 1, group=cls) for i in t]
                 elif len(classes) == 1:
                     jobs.append(Job(f.stem, base, len(t), group=cls))
@@ -196,14 +197,19 @@ import json, sys, unittest
 def flat(s):
     for t in s:
         yield from flat(t) if isinstance(t, unittest.TestSuite) else [t]
-out = {}
+out, shared = {}, set()
 for t in flat(unittest.defaultTestLoader.discover(sys.argv[1], pattern=sys.argv[2])):
     if type(t).__name__ == "_FailedTest" or type(t).__module__ == "unittest.loader":
         out[t.id().rsplit(".", 1)[-1]] = None
     elif out.get(t.id().split(".", 1)[0], []) is not None:
         out.setdefault(t.id().split(".", 1)[0], []).append(t.id())
+        # A class whose tests share a fixture (setUpClass, or the module's setUpModule) is never split per test.
+        cls = type(t)
+        if (cls.setUpClass.__func__ is not unittest.TestCase.setUpClass.__func__
+                or hasattr(sys.modules.get(cls.__module__), "setUpModule")):
+            shared.add(t.id().rsplit(".", 1)[0])
 with open(sys.argv[3], "w") as f:
-    json.dump(out, f)
+    json.dump({"tests": out, "shared": sorted(shared)}, f)
 """
 
 
@@ -215,8 +221,9 @@ def collect(py, start, pattern):
         rc, log, _ = run(py + ["-c", COLLECT, start, pattern, str(out)])
         if rc != 0 or not out.is_file():
             print(f"unittest_parallel: collecting the tests failed; running whole modules\n{log}", file=sys.stderr)
-            return {}
-        return json.loads(out.read_text())
+            return {}, set()
+        data = json.loads(out.read_text())
+        return data["tests"], set(data["shared"])
 
 
 def stop_all(grace=5.0):
