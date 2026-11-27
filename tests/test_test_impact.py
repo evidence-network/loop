@@ -1,5 +1,6 @@
 """scripts/test_impact.py: which unit test modules a change can affect (evidence-network/loop#489)."""
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -16,10 +17,11 @@ class ThisRepositoryTest(unittest.TestCase):
     def setUp(self):
         self.repo = test_impact.Repo(test_impact.git("ls-files").split())
 
-    def test_every_test_module_depends_on_code_outside_tests(self):
-        # A module that depends on nothing outside tests/ would never be selected by a change to what it tests.
+    def test_every_test_module_depends_on_code_it_tests(self):
+        # A module that depends only on test modules would never be selected by a change to what it tests. A helper
+        # in tests/ that is not itself a test module (tests/pgrep_scope.py) counts as code under test.
         unmapped = [m for m in test_impact.modules(self.repo)
-                    if not [d for d in self.repo.deps(m) if not d.startswith("tests/")]]
+                    if not [d for d in self.repo.deps(m) if not re.fullmatch(r"tests/test[^/]*\.py", d)]]
         self.assertEqual(unmapped, [])
 
     def test_a_step_change_selects_that_steps_tests(self):
