@@ -96,7 +96,8 @@ fi
 
 step "commitments (commitments.yml)"
 LOOP_TOOLS="$tmp/commitments-tools" steps/03-advertise.setup.sh
-LOOP_TOOLS="$tmp/commitments-tools" python3 -B -m unittest tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 tests.test_staple_verify -v
+# commitments.yml's four modules, one process per module, in parallel (scripts/unittest_parallel.py).
+LOOP_TOOLS="$tmp/commitments-tools" python3 -B scripts/unittest_parallel.py modules tests.test_step03_advertise tests.test_nostr_carrier tests.test_commitment1 tests.test_staple_verify
 LOOP_TOOLS="$tmp/commitments-tools" python3 -B steps/03-advertise --population tests/fixtures/step03/population/rehearsal --out "$tmp/commitments/03-advertise"
 python3 -B steps/finding.py check "$tmp/commitments"
 grep -q '"result": "PASS"' "$tmp/commitments/03-advertise/finding.json"
