@@ -54,7 +54,8 @@ CONSOLE_PORT=$((9940 + N)) # not lab-N's 981N
 die() { echo "lab-wallet-create: $*" >&2; exit 1; }
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 w() { HOME=$TMP_HOME "$MESH_LLM_BIN" --config "$TMP_CONFIG" wallet --port "$CONSOLE_PORT" "$@"; }
-port_free() { ! ss -Hltn "sport = :$1" 2> /dev/null | grep -q .; }
+# Captured, not piped into grep -q: a SIGPIPE to ss under pipefail would report a busy port free (loop#506).
+port_free() { [ -z "$(ss -Hltn "sport = :$1" 2> /dev/null)" ]; }
 
 [ -d "$LAB_DIR" ] || die "$LAB_DIR not found"
 [ "$(id -un)" = "$(stat -c %U "$LAB_DIR")" ] || die "run as the user that owns $LAB_DIR (the lab user: sudo -u <lab user>)"
